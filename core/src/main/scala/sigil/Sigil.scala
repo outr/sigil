@@ -5698,7 +5698,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // suggestion-emitting tool result replaces the list.
         {
           scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
-          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, claimedTimestamp = claimed.timestamp, isGreeting = greeting && iteration == 1, discoveredCapabilitiesRef = discoveredCapabilitiesRef).flatMap {
+          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, claimedTimestamp = claimed.timestamp, isGreeting = greeting && iteration == 1, discoveredCapabilitiesRef = discoveredCapabilitiesRef, healedThisTurn = Some(healedThisTurn)).flatMap {
             case (rawCtx, triggers) =>
               // Sigil bug #125 — propagate the cap-hit soft-stop flag
               // through the TurnContext so runAgentTurn → ConversationRequest →
@@ -6876,7 +6876,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                  claimedTimestamp: Timestamp,
                                  isGreeting: Boolean = false,
                                  discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]] =
-                                   new AtomicReference(Map.empty)): Task[(TurnContext, Stream[Event])] =
+                                   new AtomicReference(Map.empty),
+                                 healedThisTurn: Option[java.util.concurrent.atomic.AtomicBoolean] = None): Task[(TurnContext, Stream[Event])] =
     for {
       triggerEvents <- withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
         all.view
@@ -6885,6 +6886,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                     && TriggerFilter.isTriggerFor(agent, e)
                     && visibilityAllows(e.visibility, agent.id))
           .toList
+      }
+      _ = {
+        // Sigil #313 — reset the heal allowance when a fresh user-
+        // authored Standard Message drains as a trigger. The agent's
+        // claim can survive across multiple user messages (the #307
+        // scenario — new user msg arriving mid-loop joins the
+        // existing claim), so the heal boundary aligns with the
+        // human notion of "turn" (one user message → one heal
+        // chance) rather than the wider claim arc. Predicate matches
+        // [[sigil.conversation.compression.CompactionInvariant.CurrentUserTaskMessage]]'s
+        // rule so the heal and curator boundaries are derived from
+        // the same source.
+        healedThisTurn.foreach { flag =>
+          val freshUserTurn = triggerEvents.exists {
+            case m: Message
+              if m.role == MessageRole.Standard
+              && !m.participantId.isInstanceOf[AgentParticipantId] => true
+            case _ => false
+          }
+          if (freshUserTurn) flag.set(false)
+        }
       }
       chain = buildChain(triggerEvents, agent)
       // Sigil bug #205 — resolve the actually-routed model up-front so
