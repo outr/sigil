@@ -144,7 +144,12 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
           argsJson = "{\"reason\":\"REASON_MARKER_42\"}",
           callId = callId,
           participantId = TestAgent,
-          sourceEventId = callId
+          sourceEventId = callId,
+          // Sigil #313 — renderFrames throws BrokenHistoryException
+          // on Active tool calls. The frame's settled-state shape is
+          // what reaches the renderer in any real wire request, so
+          // this fixture mirrors that.
+          state = ToolCallState.Complete("Mode changed.")
         )
       ))
       val body = bodyOf(turn)

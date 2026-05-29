@@ -237,6 +237,36 @@ object FrameBuilder {
         ))
 
       case _: AgentState | _: Stop                       => None
+
+      // Sigil #313 — heal-pipeline audit events render as system
+      // frames so the agent's next iteration reads them in context.
+      // The trail is what makes the heal observable to the model:
+      // "your prior tool call was orphaned; the framework synthesised
+      // a result; pick up from here." Without the frame the model
+      // would replay the same broken sequence after the synthetic
+      // settle lands.
+      case d: sigil.event.ConversationCorruptionDetected =>
+        Some(ContextFrame.System(
+          content = s"[framework-heal] Detected corruption (${d.detectorSource}): " +
+            s"${d.detectedCorruption.size} evidence row(s); " +
+            s"original error: ${d.originalError.errorClass}: ${d.originalError.message}.",
+          sourceEventId = d._id,
+          visibility    = d.visibility
+        ))
+      case h: sigil.event.ConversationHealed =>
+        Some(ContextFrame.System(
+          content = s"[framework-heal] ${h.strategyName} applied ${h.corrections.size} correction(s)" +
+            (if (h.remainingIssues.isEmpty) "." else s"; remaining: ${h.remainingIssues.mkString("; ")}"),
+          sourceEventId = h._id,
+          visibility    = h.visibility
+        ))
+      case ex: sigil.event.HealingExhausted =>
+        Some(ContextFrame.System(
+          content = s"[framework-heal] ${ex.strategyName} exhausted: retry failed with " +
+            s"${ex.retryError.errorClass}: ${ex.retryError.message}",
+          sourceEventId = ex._id,
+          visibility    = ex.visibility
+        ))
       // Bug #61 — Reaction is UI signal, not curator-visible
       // context. Reactions persist as durable events but never
       // render into the prompt; agents that care query the event

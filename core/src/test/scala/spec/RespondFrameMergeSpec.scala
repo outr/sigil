@@ -88,7 +88,11 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
           argsJson      = s"""{"reason":"$replyText","recoverable":false}""",
           callId        = callId,
           participantId = agent,
-          sourceEventId = Id[Event]("toolinvoke-respond-failure-1")
+          sourceEventId = Id[Event]("toolinvoke-respond-failure-1"),
+          // Sigil #313 — every ToolCall reaching the wire renderer
+          // must be settled by construction; renderFrames throws
+          // BrokenHistoryException on an Active row.
+          state         = ToolCallState.Complete(s"""{"reason":"$replyText"}""")
         ),
         ContextFrame.Text(
           content       = replyText,
@@ -126,7 +130,8 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
           argsJson      = """{"topicLabel":"x","topicSummary":"y","content":"reply","disposition":"Success","endsTurn":true}""",
           callId        = callId,
           participantId = agent,
-          sourceEventId = Id[Event]("toolinvoke-respond-3")
+          sourceEventId = Id[Event]("toolinvoke-respond-3"),
+          state         = ToolCallState.Complete("""{"text":"reply"}""")
         ),
         ContextFrame.Text(
           content       = "reply",

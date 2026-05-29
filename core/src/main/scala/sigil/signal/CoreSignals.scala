@@ -1,7 +1,7 @@
 package sigil.signal
 
 import fabric.rw.*
-import sigil.event.{AgentState, CapabilityResults, ComplexityChange, Event, Message, ModeChange, ProgressCheckpoint, Reaction, Reasoning, ReadState, RouteResolved, Stop, TopicChange, ToolApproval, ToolInvoke, ToolLog}
+import sigil.event.{AgentState, CapabilityResults, ComplexityChange, ConversationCorruptionDetected, ConversationHealed, Event, HealingExhausted, Message, ModeChange, ProgressCheckpoint, Reaction, Reasoning, ReadState, RouteResolved, Stop, TopicChange, ToolApproval, ToolInvoke, ToolLog}
 
 /**
  * The framework's built-in Signal subtypes, split into typed sublists so
@@ -37,7 +37,10 @@ object CoreSignals {
     summon[RW[ToolApproval]],
     summon[RW[ProgressCheckpoint]],
     summon[RW[RouteResolved]],
-    summon[RW[ComplexityChange]]
+    summon[RW[ComplexityChange]],
+    summon[RW[ConversationCorruptionDetected]],
+    summon[RW[ConversationHealed]],
+    summon[RW[HealingExhausted]]
   )
 
   val deltas: List[RW[? <: Delta]] = List(
@@ -102,7 +105,8 @@ object CoreSignals {
     summon[RW[XmlToolCallLeak]],
     summon[RW[ServiceStatusSignal]],
     summon[RW[ServiceLogSignal]],
-    summon[RW[ThinkingChunk]]
+    summon[RW[ThinkingChunk]],
+    summon[RW[HealingActivityNotice]]
   )
 
   val all: List[RW[? <: Signal]] = events ++ deltas ++ notices

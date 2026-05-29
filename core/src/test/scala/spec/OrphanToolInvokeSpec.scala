@@ -18,13 +18,14 @@ import sigil.tool.ToolName
  *
  * Under the typed tool-execution model every tool call is paired with
  * a result event by construction, so a dangling `ToolCall` reaching
- * the renderer is a genuine framework bug. The renderer must
+ * the renderer is a genuine framework bug. Sigil #313 — the renderer
  *
- *   1. log it loudly (a `dangling tool_call` error naming the wireId)
+ *   1. logs loudly (a `dangling tool_call` error naming the wireId)
  *      rather than papering over it;
- *   2. NOT fabricate a synthetic `function_call_output` — the
- *      wire-side orphan-heal is removed, so a real bug surfaces
- *      instead of being masked.
+ *   2. throws [[sigil.heal.BrokenHistoryException]] carrying the
+ *      structured corruption evidence, so the agent loop's reactive
+ *      self-heal pipeline can dispatch to the matching healing
+ *      strategy.
  *
  * Forcing the orphan path here is the same shape every renderFrames
  * spec uses: a `ContextFrame.ToolCall` with no following
@@ -92,7 +93,8 @@ class OrphanToolInvokeSpec extends AnyWordSpec with Matchers {
 
     "log the framework-bug error naming the dangling wireId" in {
       val (_, logged) = captureRootLog {
-        TestProvider.render(orphanFrames, agent)
+        an[sigil.heal.BrokenHistoryException] should be thrownBy
+          TestProvider.render(orphanFrames, agent)
       }
       val danglingError = logged.find(_.contains("dangling tool_call"))
       danglingError shouldBe defined
@@ -106,18 +108,21 @@ class OrphanToolInvokeSpec extends AnyWordSpec with Matchers {
       text should include (pairedCallId.value)
     }
 
-    "synthesize NO function_call_output for the orphan — the wire-side heal is removed" in {
-      val rendered = TestProvider.render(orphanFrames, agent)
-      // No fabricated result for the unpaired call.
-      rendered.collectFirst {
-        case t: ProviderMessage.ToolResult if t.toolCallId == orphanCallId.value => t
-      } shouldBe None
-      // The paired call still carries its real result content — the
-      // dangling-call handling doesn't disturb well-formed calls.
-      val pairedOutput = rendered.collectFirst {
-        case t: ProviderMessage.ToolResult if t.toolCallId == pairedCallId.value => t
+    "throw BrokenHistoryException carrying typed corruption evidence" in {
+      val thrown = intercept[sigil.heal.BrokenHistoryException] {
+        TestProvider.render(orphanFrames, agent)
       }
-      pairedOutput.map(_.content) shouldBe Some("real-paired-result")
+      val orphanIds = thrown.corruption.collect {
+        case m: sigil.heal.CorruptionEvidence.MissingToolResult => m.callId
+      }
+      // Only the unpaired call surfaces as corruption; the paired
+      // call rendered cleanly and never tripped the invariant.
+      orphanIds shouldBe List(orphanCallId.value)
+      // Each evidence row names the underlying tool so log
+      // aggregators see which tool's call orphaned.
+      thrown.corruption.collect {
+        case m: sigil.heal.CorruptionEvidence.MissingToolResult => m.toolName
+      } shouldBe List(nonAtomicName.value)
     }
   }
 }

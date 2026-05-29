@@ -48,6 +48,18 @@ object TestSigil extends Sigil {
 
   override def testMode: Boolean = true
 
+  /** Sigil #313 — TestSigil runs every spec in
+    * [[sigil.heal.HealingMode.Strict]] so any new corruption shape
+    * the framework's tests inadvertently start producing is caught
+    * loudly rather than silently patched over. Specs that need to
+    * exercise the heal-and-retry path override this via
+    * [[setHealingMode]]. */
+  private val healingModeRef =
+    new java.util.concurrent.atomic.AtomicReference[sigil.heal.HealingMode](sigil.heal.HealingMode.Strict)
+  override def healingMode: sigil.heal.HealingMode = healingModeRef.get()
+  def setHealingMode(mode: sigil.heal.HealingMode): Unit = healingModeRef.set(mode)
+  def resetHealingMode(): Unit = healingModeRef.set(sigil.heal.HealingMode.Strict)
+
   /** Sigil #277 — tests use synthetic pre-registered models; skip the
     * OpenRouter network round-trip at boot. Specs that genuinely need
     * the live OpenRouter catalog (none today) would override back to
@@ -157,7 +169,14 @@ object TestSigil extends Sigil {
     * participants to this list — re-registration is cheap and
     * avoids per-suite Sigil variants. */
   override protected def participantIds: List[RW[? <: ParticipantId]] =
-    List(RW.static(TestUser), RW.static(TestAgent))
+    List(
+      RW.static(TestUser),
+      RW.static(TestAgent),
+      RW.static(StrictAgent),
+      RW.static(ExhaustedAgent),
+      RW.static(ForensicAgent),
+      RW.static(BrokenHistoryAgent)
+    )
 
   /** Registers every test-only [[SpaceId]] once. Add new test
     * spaces here when specs introduce them. */
@@ -503,6 +522,7 @@ object TestSigil extends Sigil {
     memoryClassifierModelRef.set(None)
     resolveProviderStrategyRef.set(None)
     accessibleSpacesRef.set((_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId]))
+    healingModeRef.set(sigil.heal.HealingMode.Strict)
   }
 
   /** Expose the in-memory information store that backs `getInformation`

@@ -42,11 +42,13 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
 
   "Provider.renderFrames with unpaired tool calls" should {
 
-    "synthesize NO fallback output for unpaired tool calls" in {
+    "throw BrokenHistoryException for unpaired tool calls (Sigil #313)" in {
       // Two non-atomic ToolCalls in a row with no intervening
-      // ToolResult. The wire-side orphan-heal is removed — the
-      // renderer ships them as-is (and logs a framework-bug error);
-      // it does NOT fabricate placeholder outputs.
+      // ToolResult. The renderer no longer logs-and-ships the broken
+      // wire body; it throws a typed
+      // [[sigil.heal.BrokenHistoryException]] carrying the structured
+      // corruption evidence. The agent loop's `handleError` chain
+      // dispatches to a matching healing strategy.
       val frames = Vector[ContextFrame](
         ContextFrame.ToolCall(
           toolName = nonAtomicName,
@@ -63,14 +65,17 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
           sourceEventId = Id[Event]("frame-B")
         )
       )
-      val messages = TestProvider.render(frames, agent)
-      val outputIds = messages.collect {
-        case t: ProviderMessage.ToolResult => t.toolCallId
+      val thrown = intercept[sigil.heal.BrokenHistoryException] {
+        TestProvider.render(frames, agent)
+      }
+      thrown.corruption should have size 2
+      val ids = thrown.corruption.collect {
+        case m: sigil.heal.CorruptionEvidence.MissingToolResult => m.callId
       }.toSet
-      outputIds shouldBe empty
+      ids shouldBe Set(callA.value, callB.value)
     }
 
-    "render a real ToolResult for a paired call and nothing for the unpaired one" in {
+    "render a real ToolResult for a paired call and throw on the unpaired one (Sigil #313)" in {
       // callA paired (Complete state), callB unpaired (Active state).
       val frames = Vector[ContextFrame](
         ContextFrame.ToolCall(nonAtomicName, """{"q":"a"}""", callA, agent,
@@ -79,14 +84,13 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
         ContextFrame.ToolCall(nonAtomicName, """{"q":"b"}""", callB, agent,
           sourceEventId = Id[Event]("frame-B"))
       )
-      val messages = TestProvider.render(frames, agent)
-      val resultsByCall = messages.collect {
-        case t: ProviderMessage.ToolResult => t.toolCallId -> t.content
-      }.toMap
-      // The paired call renders its real result; the unpaired call
-      // gets no synthesized output.
-      resultsByCall(callA.value) shouldBe "real-result-A"
-      resultsByCall.keySet should not contain callB.value
+      val thrown = intercept[sigil.heal.BrokenHistoryException] {
+        TestProvider.render(frames, agent)
+      }
+      val unpairedIds = thrown.corruption.collect {
+        case m: sigil.heal.CorruptionEvidence.MissingToolResult => m.callId
+      }
+      unpairedIds shouldBe List(callB.value)
     }
 
     "tolerate a ToolResult arriving for a call that was never seen (no crash)" in {

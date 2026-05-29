@@ -128,6 +128,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   protected def signalRegistrations: List[RW[? <: Signal]] = Nil
 
   /**
+   * App-specific [[sigil.heal.CorruptionEvidence]] subtypes. The
+   * framework's three core cases
+   * ([[sigil.heal.CorruptionEvidence.MissingToolResult]],
+   * [[sigil.heal.CorruptionEvidence.DanglingToolResultOrigin]],
+   * [[sigil.heal.CorruptionEvidence.OrphanSummaryCoverage]]) register
+   * automatically; this list extends the discriminator for app-defined
+   * corruption shapes.
+   *
+   * Default empty — apps add subtypes only when their healing
+   * strategies emit non-framework evidence.
+   */
+  protected def corruptionEvidenceRegistrations: List[RW[? <: sigil.heal.CorruptionEvidence]] = Nil
+
+  /**
    * App-specific [[sigil.provider.WorkType]] subtypes. The framework
    * ships six baseline categories
    * ([[sigil.provider.ConversationWork]], [[sigil.provider.CodingWork]],
@@ -2264,6 +2278,33 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def refusalDetector: sigil.provider.RefusalDetector =
     sigil.provider.RefusalDetector.Default
+
+  /**
+   * Reactive self-healers registered with the framework. When an
+   * iteration of [[runAgentLoop]] throws, the agent loop's
+   * `handleError` chain walks this list with the thrown error and
+   * picks the first match — runs the strategy in
+   * [[sigil.heal.HealingMode.Recover]], records the corruption and
+   * re-throws in [[sigil.heal.HealingMode.Strict]].
+   *
+   * Default ships [[sigil.heal.MissingToolResultStrategy]] — heals
+   * the orphan-`ToolInvoke` shape (#313). Apps override to add their
+   * own strategies; concatenate with `super.healingStrategies` to
+   * keep the framework defaults.
+   */
+  def healingStrategies: List[sigil.heal.HealingStrategy] =
+    List(sigil.heal.MissingToolResultStrategy)
+
+  /**
+   * Per-instance toggle for how the framework reacts to a
+   * [[sigil.heal.HealingStrategy]]-matched error. Production default
+   * [[sigil.heal.HealingMode.Recover]] heals + retries the agent's
+   * iteration. Dev / CI default ([[sigil.heal.HealingMode.Strict]],
+   * overridden in `TestSigil`) re-throws so the developer hits the
+   * failure; corruption is still recorded via the durable
+   * [[sigil.event.ConversationCorruptionDetected]] event.
+   */
+  def healingMode: sigil.heal.HealingMode = sigil.heal.HealingMode.Recover
 
   // -- outbound / per-viewer pipeline --
 
@@ -5393,7 +5434,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // per `runAgent` call means the next user turn starts with an
       // empty cache, preventing prompt pollution from prior turns'
       // discoveries.
-      discoveredCapabilitiesRef = new AtomicReference(Map.empty)
+      discoveredCapabilitiesRef = new AtomicReference(Map.empty),
+      // Sigil #313 — one heal per turn. CAS-gated; a healed retry
+      // that ALSO fails is treated as Exhausted, NOT retried again.
+      healedThisTurn = new java.util.concurrent.atomic.AtomicBoolean(false),
+      // Sigil #313 — correlation id shared across the durable triple
+      // (CorruptionDetected → Healed → Exhausted) for THIS turn.
+      healCorrelationId = new AtomicReference(None)
     )
 
   /**
@@ -5460,7 +5507,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                    * reference going out of scope, so a new
                                    * `runAgent` call starts with a fresh empty
                                    * map. */
-                                 discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]]
+                                 discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]],
+                                 /** Sigil #313 — single-shot fire-gate for the
+                                   * reactive self-heal. Threaded through every
+                                   * recursion so a healed retry that ALSO
+                                   * fails does NOT trigger a second heal —
+                                   * `HealingExhausted` publishes and the
+                                   * standard failure path runs. The flag is
+                                   * shared across the whole agent loop (one
+                                   * heal per user turn). */
+                                 healedThisTurn: java.util.concurrent.atomic.AtomicBoolean,
+                                 /** Sigil #313 — correlation id shared between
+                                   * the durable
+                                   * [[sigil.event.ConversationCorruptionDetected]],
+                                   * [[sigil.event.ConversationHealed]],
+                                   * [[sigil.event.HealingExhausted]] triple
+                                   * for a single turn's heal arc. Threaded so
+                                   * the retry's audit pulse joins the same
+                                   * arc. */
+                                 healCorrelationId: AtomicReference[Option[String]]
                                    ): Task[Unit] = Task.defer {
     // Bug #149 — release the agent's claim AND fire the per-turn
     // memory extractor exactly once. The CAS-guard guarantees a
@@ -5519,7 +5584,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         failurePublished          = failurePublished,
         forceResponseSynthesis    = true,
         forcedReason              = Some(reason),
-        discoveredCapabilitiesRef = discoveredCapabilitiesRef
+        discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+        healedThisTurn            = healedThisTurn,
+        healCorrelationId         = healCorrelationId
       )
     // Sigil #257 — recovery for a no-tool-call response: run ONE more
     // iteration with the FULL roster + normal `tool_choice` intact (NOT
@@ -5543,7 +5610,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         forceResponseSynthesis    = false,
         forcedReason              = None,
         noToolCallRetries         = noToolCallRetries + 1,
-        discoveredCapabilitiesRef = discoveredCapabilitiesRef
+        discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+        healedThisTurn            = healedThisTurn,
+        healCorrelationId         = healCorrelationId
       )
     val stopFlag = Option(stopFlags.get(claimed._id))
     // Bug #74 — flips when a `respond` settles with `endsTurn = false`
@@ -5875,7 +5944,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                           userVisibleSeen = userVisibleSeen,
                           turnExtractorFired = turnExtractorFired,
                           failurePublished = failurePublished,
-                          discoveredCapabilitiesRef = discoveredCapabilitiesRef))
+                          discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+                          healedThisTurn = healedThisTurn,
+                          healCorrelationId = healCorrelationId))
                     )
                 }
               }
@@ -5965,34 +6036,65 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           }
         }
     }.handleError { t =>
-      // Any unhandled failure mid-turn — surface the failure to the
-      // user so the chat doesn't go silent (Bug #6), then release the
-      // lock so the agent isn't stuck Active forever, then re-raise
-      // so the fiber's error boundary logs it. Each step is
-      // independently best-effort: a downstream failure (DB
-      // unavailable, hub closed, missing topic, etc.) doesn't mask
-      // the original error.
-      //
-      // Sigil bug #200 — `publishFailureMessage` is CAS-gated so an
-      // exception that propagates up through N recursion levels only
-      // surfaces ONE Failure Message in the chat instead of N
-      // identical bubbles. The inner-most handler wins the publish;
-      // outer handlers re-throw silently. `scribe.error` stays per-
-      // level (stack-trace shape differs per recursion depth and is
-      // diagnostically useful in operator logs); `terminate()` stays
-      // per-level (already idempotent). `Task.error(t)` stays
-      // per-level so the failure still propagates to the fiber's
-      // error boundary.
-      scribe.error(s"runAgent failed for ${agent.id.value} in ${convId.value}", t)
-      val publishOnce: Task[Unit] =
-        if (failurePublished.compareAndSet(false, true))
-          publishFailureMessage(agent, convId, t).handleError(_ => Task.unit)
-        else Task.unit
-      // The Failure Message persists inside the batched transaction;
-      // the terminal release + re-raise run as the post-commit
-      // continuation so the Idle/Complete signal never races the commit.
-      publishOnce.map(_ =>
-        terminate(skipFallback = true).handleError(_ => Task.unit).flatMap(_ => Task.error(t)))
+      // Sigil #313 — reactive self-heal: BEFORE the standard failure
+      // surface fires, walk `healingStrategies` looking for a match.
+      // First match wins. In `HealingMode.Recover` (production
+      // default), the strategy publishes its corrections, the audit
+      // triple (CorruptionDetected → Healed) lands, and we recurse
+      // the iteration ONCE. In `HealingMode.Strict` (TestSigil
+      // default, dev/CI), the corruption is recorded but the heal
+      // does NOT run and the original error re-throws — so the
+      // developer hits the failure and gets a chance to fix the
+      // underlying cause rather than rely on the patch.
+      val tryHeal: Task[Option[Task[Unit]]] = tryHealAgentLoopError(
+        agent             = agent,
+        convId            = convId,
+        claimed           = claimed,
+        thrown            = t,
+        healedThisTurn    = healedThisTurn,
+        healCorrelationId = healCorrelationId
+      )
+      tryHeal.flatMap {
+        case Some(retryTask) =>
+          // Heal applied; recurse the iteration. The recurse runs as
+          // the post-commit continuation so the heal's published
+          // events are durable before the retry reads them. Wrap in
+          // Task.pure so it becomes the iterationStep's continuation
+          // rather than executing inline.
+          Task.pure(retryTask)
+        case None =>
+          // No heal applied (no match, healing exhausted, or strict
+          // refusal). Fall through to the standard failure path.
+          //
+          // Any unhandled failure mid-turn — surface the failure to the
+          // user so the chat doesn't go silent (Bug #6), then release the
+          // lock so the agent isn't stuck Active forever, then re-raise
+          // so the fiber's error boundary logs it. Each step is
+          // independently best-effort: a downstream failure (DB
+          // unavailable, hub closed, missing topic, etc.) doesn't mask
+          // the original error.
+          //
+          // Sigil bug #200 — `publishFailureMessage` is CAS-gated so an
+          // exception that propagates up through N recursion levels only
+          // surfaces ONE Failure Message in the chat instead of N
+          // identical bubbles. The inner-most handler wins the publish;
+          // outer handlers re-throw silently. `scribe.error` stays per-
+          // level (stack-trace shape differs per recursion depth and is
+          // diagnostically useful in operator logs); `terminate()` stays
+          // per-level (already idempotent). `Task.error(t)` stays
+          // per-level so the failure still propagates to the fiber's
+          // error boundary.
+          scribe.error(s"runAgent failed for ${agent.id.value} in ${convId.value}", t)
+          val publishOnce: Task[Unit] =
+            if (failurePublished.compareAndSet(false, true))
+              publishFailureMessage(agent, convId, t).handleError(_ => Task.unit)
+            else Task.unit
+          // The Failure Message persists inside the batched transaction;
+          // the terminal release + re-raise run as the post-commit
+          // continuation so the Idle/Complete signal never races the commit.
+          publishOnce.map(_ =>
+            terminate(skipFallback = true).handleError(_ => Task.unit).flatMap(_ => Task.error(t)))
+      }
     }
     // Hold one `events` transaction open across this iteration's
     // work — every `publish` → `apply` and every event read routed
@@ -6501,6 +6603,195 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       ))
     }
 
+  /** Sigil #313 — reactive self-heal entry point invoked from the
+    * agent loop's `handleError`.
+    *
+    * Returns `Some(retryTask)` when the heal applied and the agent
+    * loop should run one more iteration (the retry); `None` when the
+    * standard failure path should take over (no strategy matched, or
+    * we've already healed this turn, or strict mode refused).
+    *
+    * Publishes a durable triple — [[sigil.event.ConversationCorruptionDetected]]
+    * before the strategy runs, [[sigil.event.ConversationHealed]] /
+    * [[sigil.event.HealingExhausted]] after — plus operational
+    * [[sigil.signal.HealingActivityNotice]] pulses so log aggregators
+    * see both the audit (durable) and alerting (transient) channels.
+    *
+    * Best-effort by design: a heal-pipeline DB / hub failure must
+    * not mask the original error. Every publish runs with
+    * `.handleError(_ => Task.unit)` so the worst case is "we lost
+    * the audit pulse, the original failure still surfaces". */
+  private final def tryHealAgentLoopError(agent: AgentParticipant,
+                                          convId: Id[Conversation],
+                                          claimed: AgentState,
+                                          thrown: Throwable,
+                                          healedThisTurn: java.util.concurrent.atomic.AtomicBoolean,
+                                          healCorrelationId: AtomicReference[Option[String]]): Task[Option[Task[Unit]]] = {
+    val matchedOpt: Option[sigil.heal.HealingStrategy] = healingStrategies.find(_.matches(thrown))
+    matchedOpt match {
+      case None => Task.pure(None)
+      case Some(strategy) =>
+        val mode = healingMode
+        // `scribe.error` the original error with full payload BEFORE
+        // any audit publishes — log aggregators see the upstream
+        // failure regardless of what the audit pipeline does next.
+        scribe.error(
+          s"heal[${strategy.name}] caught ${thrown.getClass.getSimpleName} on " +
+            s"${agent.id.value}/${convId.value}: ${Option(thrown.getMessage).getOrElse("(no message)")}",
+          thrown
+        )
+        val evidence = strategy.detect(thrown)
+        val errorEvidence = sigil.event.ErrorEvidence.of(thrown)
+        val correlation: String = healCorrelationId.updateAndGet { current =>
+          current.orElse(Some(TurnContext.freshCorrelationId()))
+        }.getOrElse(TurnContext.freshCorrelationId())
+        // Always publish CorruptionDetected — both Recover and Strict
+        // paths record the corruption. Strict refuses the heal but
+        // the durable trail must show the failure was seen.
+        val detectorSource: String = thrown match {
+          case _: sigil.heal.BrokenHistoryException => "renderFrames-invariant"
+          case _                                    => "provider-call"
+        }
+        val publishDetected: Task[Unit] = withDB(_.conversations.transaction(_.get(convId))).flatMap {
+          case None       => Task.unit
+          case Some(conv) =>
+            conv.topics.headOption match {
+              case None        => Task.unit
+              case Some(topic) =>
+                publish(sigil.event.ConversationCorruptionDetected(
+                  conversationId     = convId,
+                  topicId            = topic.id,
+                  detectorSource     = detectorSource,
+                  originalError      = errorEvidence,
+                  correlationId      = correlation,
+                  modelId            = Some(agent.modelId),
+                  detectedCorruption = evidence,
+                  participantId      = agent.id
+                )).map(_ => ())
+            }
+        }.handleError { e =>
+          scribe.warn(s"heal[${strategy.name}] publishDetected failed for ${convId.value}: " +
+            s"${e.getClass.getSimpleName}: ${Option(e.getMessage).getOrElse("")}")
+          Task.unit
+        }
+
+        mode match {
+          case sigil.heal.HealingMode.Strict =>
+            // Record corruption, fire StrictRefused notice, fall
+            // through to the existing failure path (the original
+            // throwable re-raises through the agent loop's standard
+            // path).
+            val notify: Task[Unit] = Task {
+              hub.emit(sigil.signal.HealingActivityNotice(
+                conversationId     = convId,
+                strategyName       = strategy.name,
+                detectedCorruption = evidence,
+                outcome            = sigil.heal.HealingOutcome.StrictRefused
+              ))
+              ()
+            }.handleError(_ => Task.unit)
+            publishDetected.flatMap(_ => notify).map(_ => None)
+          case sigil.heal.HealingMode.Recover =>
+            if (!healedThisTurn.compareAndSet(false, true)) {
+              // We already healed this turn AND the retry failed.
+              // Publish HealingExhausted + Exhausted notice and fall
+              // through. NO second heal.
+              val publishExhausted: Task[Unit] = withDB(_.conversations.transaction(_.get(convId))).flatMap {
+                case None       => Task.unit
+                case Some(conv) =>
+                  conv.topics.headOption match {
+                    case None        => Task.unit
+                    case Some(topic) =>
+                      publish(sigil.event.HealingExhausted(
+                        conversationId = convId,
+                        topicId        = topic.id,
+                        correlationId  = correlation,
+                        strategyName   = strategy.name,
+                        retryError     = errorEvidence,
+                        participantId  = agent.id
+                      )).map(_ => ())
+                  }
+              }.handleError(_ => Task.unit)
+              val notify: Task[Unit] = Task {
+                hub.emit(sigil.signal.HealingActivityNotice(
+                  conversationId     = convId,
+                  strategyName       = strategy.name,
+                  detectedCorruption = evidence,
+                  outcome            = sigil.heal.HealingOutcome.Exhausted
+                ))
+                ()
+              }.handleError(_ => Task.unit)
+              publishExhausted.flatMap(_ => notify).map(_ => None)
+            } else {
+              // First heal this turn — publish Detected, run strategy,
+              // publish Healed + Healed notice, return retry task.
+              val runStrategy: Task[sigil.heal.HealResult] =
+                strategy.apply(evidence, convId, this).handleError { e =>
+                  scribe.error(s"heal[${strategy.name}] strategy.apply threw on " +
+                    s"${agent.id.value}/${convId.value}", e)
+                  Task.pure(sigil.heal.HealResult(
+                    corrections     = Nil,
+                    remainingIssues = List(s"strategy.apply threw ${e.getClass.getSimpleName}: ${Option(e.getMessage).getOrElse("")}")
+                  ))
+                }
+              val emitNotice: sigil.heal.HealResult => Task[Unit] = result => Task {
+                val _ = result
+                hub.emit(sigil.signal.HealingActivityNotice(
+                  conversationId     = convId,
+                  strategyName       = strategy.name,
+                  detectedCorruption = evidence,
+                  outcome            = sigil.heal.HealingOutcome.Healed
+                ))
+                ()
+              }.handleError(_ => Task.unit)
+              val publishHealed: sigil.heal.HealResult => Task[Unit] = result =>
+                withDB(_.conversations.transaction(_.get(convId))).flatMap {
+                  case None       => Task.unit
+                  case Some(conv) =>
+                    conv.topics.headOption match {
+                      case None        => Task.unit
+                      case Some(topic) =>
+                        publish(sigil.event.ConversationHealed(
+                          conversationId  = convId,
+                          topicId         = topic.id,
+                          correlationId   = correlation,
+                          strategyName    = strategy.name,
+                          corrections     = result.corrections,
+                          remainingIssues = result.remainingIssues,
+                          participantId   = agent.id
+                        )).map(_ => ())
+                    }
+                }.handleError(_ => Task.unit)
+              // Build the retry — same iteration recurse so the
+              // healed-history check runs fresh. We deliberately
+              // re-use the SAME claimed (the claim hasn't released);
+              // iteration count keeps advancing.
+              val retryTask: Task[Unit] = runAgentLoop(
+                agent                     = agent,
+                convId                    = convId,
+                claimed                   = claimed,
+                iteration                 = 1,
+                sinceTimestamp            = claimed.timestamp,
+                greeting                  = false,
+                userVisibleSeen           = new java.util.concurrent.atomic.AtomicBoolean(false),
+                turnExtractorFired        = new java.util.concurrent.atomic.AtomicBoolean(false),
+                failurePublished          = new java.util.concurrent.atomic.AtomicBoolean(false),
+                discoveredCapabilitiesRef = new AtomicReference(Map.empty),
+                healedThisTurn            = healedThisTurn,
+                healCorrelationId         = healCorrelationId
+              )
+              val pipeline: Task[Option[Task[Unit]]] = for {
+                _      <- publishDetected
+                result <- runStrategy
+                _      <- publishHealed(result)
+                _      <- emitNotice(result)
+              } yield Some(retryTask)
+              pipeline
+            }
+        }
+    }
+  }
+
   private final def publishFailureMessage(agent: AgentParticipant,
                                           convId: Id[Conversation],
                                           t: Throwable): Task[Unit] =
@@ -6767,6 +7058,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               .distinctBy(_.definition.className)*
           )
       _ = sigil.viewer.ViewerStatePayload.register(viewerStatePayloadRegistrations.distinct*)
+      // Heal-pipeline polytypes. The framework-shipped CorruptionEvidence
+      // subtypes are registered here; apps with their own evidence
+      // shapes register through `corruptionEvidenceRegistrations`.
+      _ = sigil.heal.CorruptionEvidence.register(
+            (List[RW[? <: sigil.heal.CorruptionEvidence]](
+              summon[RW[sigil.heal.CorruptionEvidence.MissingToolResult]],
+              summon[RW[sigil.heal.CorruptionEvidence.DanglingToolResultOrigin]],
+              summon[RW[sigil.heal.CorruptionEvidence.OrphanSummaryCoverage]]
+            ) ++ corruptionEvidenceRegistrations).distinct*
+          )
       // Mixin hook — runs AFTER all framework leaf polytypes register but
       // BEFORE the aggregates that walk Participant/Tool/Signal definitions.
       // Mixins that register polytypes whose subtype RWs reach into framework

@@ -1495,6 +1495,12 @@ trait Provider extends Service {
     // calls were emitted.
     val pendingToolCallIds: scala.collection.mutable.LinkedHashSet[String] =
       scala.collection.mutable.LinkedHashSet.empty
+    // Sigil #313 — when the invariant fails, build typed evidence rows
+    // for each orphan so the agent loop's `handleError` chain can
+    // hand a structured payload to the matching healing strategy
+    // without parsing a log line. Maps wireId -> evidence.
+    val pendingOrphans: scala.collection.mutable.LinkedHashMap[String, _root_.sigil.heal.CorruptionEvidence.MissingToolResult] =
+      scala.collection.mutable.LinkedHashMap.empty
 
     // Forensic trail — every wire id that walked through the
     // ToolCall branch for this agent, and every wire id that
@@ -1591,6 +1597,11 @@ trait Provider extends Service {
               // after the agent's turn has settled). Track as pending
               // so the post-walk invariant check surfaces it loudly.
               pendingToolCallIds.add(wireId)
+              pendingOrphans.update(wireId, _root_.sigil.heal.CorruptionEvidence.MissingToolResult(
+                invokeId = tc.callId,
+                callId   = wireId,
+                toolName = tc.toolName.value
+              ))
           }
           i += 1
 
@@ -1618,16 +1629,21 @@ trait Provider extends Service {
     // and a provider stream that dies mid-args is settled by
     // `settleOrphanToolInvoke`. So the frame trail handed here
     // should never carry a dangling `ContextFrame.ToolCall` in
-    // `Active` state. If one slips through it is a genuine framework
-    // bug — log it loudly rather than papering over it with a
-    // synthetic wire output. Surfacing the failure beats masking it.
-    if (pendingToolCallIds.nonEmpty)
+    // `Active` state. If one slips through, log loudly AND throw a
+    // typed [[_root_.sigil.heal.BrokenHistoryException]] carrying the
+    // structured corruption evidence so the agent loop's
+    // `handleError` chain can dispatch to a matching
+    // [[_root_.sigil.heal.HealingStrategy]] without parsing the log line.
+    // Sigil #313.
+    if (pendingToolCallIds.nonEmpty) {
       scribe.error(
         s"renderFrames: ${pendingToolCallIds.size} dangling tool_call(s) with no paired " +
           s"ToolResult in this turn's frame trail — wireIds=[${pendingToolCallIds.mkString(", ")}]. " +
           "Every tool call should be paired by construction; this indicates a framework bug. " +
           s"invokes seen: [${invokesSeen.mkString(", ")}]; results seen: [${resultsSeen.mkString(", ")}]."
       )
+      throw _root_.sigil.heal.BrokenHistoryException(pendingOrphans.values.toList)
+    }
 
     mergeAdjacentAssistantContent(out.result())
   }

@@ -59,13 +59,12 @@ class OpenAIOrphanFunctionCallSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   "OpenAIProvider.renderInput tool-call rendering" should {
 
-    "render an unpaired function_call WITHOUT synthesizing a paired output" in {
+    "throw BrokenHistoryException for an unpaired function_call (Sigil #313)" in {
       // A ToolCall frame with NO matching ToolResult should never
       // happen under the typed model — every call is paired by
-      // construction. If one ever does, `renderInput` ships it as-is
-      // and the orchestrator logs the framework bug; it does NOT
-      // fabricate a placeholder `function_call_output` (the old
-      // `ensureFunctionCallsPaired` safety net is removed).
+      // construction. Sigil #313 — when it does happen, `renderInput`
+      // throws [[sigil.heal.BrokenHistoryException]] so the agent
+      // loop's heal pipeline dispatches to the matching strategy.
       val orphanCallId = Id[Event]("orphan-call-7nTbS97zIPJe9PQo2sGTq6V7nX11hQsT")
       val sourceId     = Id[Event]("source-1")
       val frames: Vector[ContextFrame] = Vector(
@@ -84,22 +83,14 @@ class OpenAIOrphanFunctionCallSpec extends AsyncWordSpec with AsyncTaskSpec with
         // NO ContextFrame.ToolResult for orphanCallId
       )
 
-      val body  = renderBody(frames)
-      val items = inputItems(body)
-
-      val callIds = items.collect {
-        case it if it.get("type").map(_.asString).contains("function_call") =>
-          it.get("call_id").map(_.asString).getOrElse("")
+      val thrown = intercept[sigil.heal.BrokenHistoryException] {
+        renderBody(frames)
       }
-      val outputCallIds = items.collect {
-        case it if it.get("type").map(_.asString).contains("function_call_output") =>
-          it.get("call_id").map(_.asString).getOrElse("")
+      val ids = thrown.corruption.collect {
+        case m: sigil.heal.CorruptionEvidence.MissingToolResult => m.callId
       }
-      withClue(s"callIds=$callIds outputCallIds=$outputCallIds body=${body.take(500)}") {
-        callIds should contain(orphanCallId.value)
-        // No safety-net synthesis — the orphan stays unpaired.
-        outputCallIds should not contain orphanCallId.value
-      }
+      ids should contain (orphanCallId.value)
+      succeed
     }
 
     "leave properly-paired function_calls / function_call_outputs untouched (no double-output)" in {

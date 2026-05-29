@@ -1,6 +1,7 @@
 package sigil.provider
 
 import sigil.AgentRunawayException
+import sigil.heal.HealingStrategy
 
 /**
  * Categorize a provider-call failure into "retry the same candidate",
@@ -36,21 +37,54 @@ trait ErrorClassifier {
   }
 }
 
-enum ErrorClassification {
+sealed trait ErrorClassification
+
+object ErrorClassification {
   /** Same candidate, after `retryDelay`. The candidate's
     * `retryCount` caps how many times this fires. */
-  case Retry
+  case object Retry extends ErrorClassification
 
   /** Move to the next candidate in the chain. The current
     * candidate enters its `cooldown` before being eligible
     * again. */
-  case Fallthrough
+  case object Fallthrough extends ErrorClassification
 
   /** Stop the strategy — surface the error to the caller. */
-  case Fatal
+  case object Fatal extends ErrorClassification
+
+  /** Error matches a registered [[sigil.heal.HealingStrategy]]. The
+    * agent loop's `handleError` chain branches here BEFORE the
+    * Retry / Fallthrough / Fatal triage — runs the strategy
+    * ([[sigil.heal.HealingMode.Recover]]) or records the corruption
+    * and re-throws ([[sigil.heal.HealingMode.Strict]]).
+    *
+    * Distinguished from `Retry` because the heal repairs the
+    * durable log BEFORE retrying — the agent's iteration runs
+    * against a fixed history, not the same broken history that
+    * caused the failure. */
+  case class Healable(strategy: HealingStrategy) extends ErrorClassification
 }
 
 object ErrorClassifier {
+
+  /**
+   * Classifier that walks [[HealingStrategy]] candidates and
+   * returns [[ErrorClassification.Healable]] on the first match.
+   * Falls through ([[ErrorClassification.Fallthrough]]) on no
+   * match so callers can chain via
+   * `healing(strategies).orElse(Default)`.
+   *
+   * Used at the agent-loop boundary — the agent loop reads
+   * [[sigil.Sigil.healingStrategies]] and composes a healing
+   * classifier on top of `Default` for that turn.
+   */
+  def healing(strategies: List[HealingStrategy]): ErrorClassifier = new ErrorClassifier {
+    override def classify(throwable: Throwable): ErrorClassification =
+      strategies.find(_.matches(throwable)) match {
+        case Some(strategy) => ErrorClassification.Healable(strategy)
+        case None           => ErrorClassification.Fallthrough
+      }
+  }
 
   /**
    * Default classifier — typed-exception dispatch first, then string
