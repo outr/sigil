@@ -108,7 +108,83 @@ object InputNormalizer {
     case DefType.Bool =>
       coerceStringScalar(json, intParse = false, numParse = false, boolParse = true)
 
+    case DefType.Poly(values, _) =>
+      // Singleton-only hierarchies advertise a flat string `enum` of leaf
+      // names (see `DefinitionToSchema.polySchema`). Canonicalise the
+      // wire input back to whatever fabric's RW expects so older
+      // persisted records and in-flight clients keep round-tripping:
+      //   - Scala 3 enum / `RW.enumeration` (every subtype `DefType.Null`)
+      //     decodes a bare `Str(<simpleClassName>)`.
+      //   - Open `PolyType` with `RW.static`-backed registrations (every
+      //     subtype `DefType.Obj(empty)`) decodes `Obj("type" -> Str(...))`.
+      // Accepts the leaf form (`"Medium"`, `"AnalysisWork"`), any
+      // shorter prefix-stripped form (`"Complexity.Medium"`), and the
+      // original wire form. Mixed / fields-bearing hierarchies pass
+      // through unchanged so the existing `oneOf` decoder keeps owning
+      // them.
+      if (values.nonEmpty && values.values.forall(isSingletonShape))
+        normalizeSingletonPoly(json, values)
+      else json
+
     case _ => json
+  }
+
+  /** Same predicate as [[DefinitionToSchema.isSingletonShape]] — kept local so
+    * the two layers don't reach across the codegen boundary for one line. */
+  private def isSingletonShape(d: Definition): Boolean = d.defType match {
+    case DefType.Null   => true
+    case DefType.Obj(m) => m.isEmpty
+    case _              => false
+  }
+
+  /** Canonicalise an input value addressed at a singleton-only poly field
+    * back to fabric's wire shape — bare-Str for Null subtypes, Obj-with-
+    * `type` for Obj-empty subtypes — looking up the registered key whose
+    * leaf segment (text after the last `.`) matches what came in.
+    *
+    * Falls through unchanged when the leaf is ambiguous (two registered
+    * keys share the same leaf segment) or when the canonical wire form
+    * already came in: fabric's RW handles those paths. */
+  private def normalizeSingletonPoly(json: Json, values: Map[String, Definition]): Json = {
+    val leafIndex: Map[String, List[String]] =
+      values.keys.toList.groupBy(leafOf)
+    val nullKey: String => Boolean = k => values.get(k).exists(_.defType == DefType.Null)
+
+    def resolveByLeaf(raw: String): Option[String] =
+      if (values.contains(raw)) Some(raw)
+      else leafIndex.get(leafOf(raw)) match {
+        case Some(single :: Nil) => Some(single)
+        case _                   => None
+      }
+
+    def canonicalize(raw: String): Json = resolveByLeaf(raw) match {
+      case Some(k) if nullKey(k) => Str(k)
+      case Some(k)               => Obj(Map("type" -> Str(k)))
+      case None                  => Str(raw)
+    }
+
+    json match {
+      case Str(s, _) =>
+        canonicalize(s)
+      case Obj(fields) =>
+        // Object form (`{"type": "..."}` or a richer shape). When the
+        // discriminator is present, canonicalise it; otherwise leave the
+        // object intact and let fabric's RW emit its actionable error.
+        fields.get("type") match {
+          case Some(Str(s, _)) =>
+            resolveByLeaf(s) match {
+              case Some(k) => Obj(fields.updated("type", Str(k)))
+              case None    => json
+            }
+          case _ => json
+        }
+      case other => other
+    }
+  }
+
+  private def leafOf(name: String): String = {
+    val i = name.lastIndexOf('.')
+    if (i < 0) name else name.substring(i + 1)
   }
 
   /** Sigil #272 — rewrite a string-encoded scalar to its declared type

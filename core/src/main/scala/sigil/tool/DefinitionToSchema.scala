@@ -120,11 +120,22 @@ object DefinitionToSchema {
     // OpenAI gpt-4o-mini) reject the whole tools array. Render as an
     // unconstrained string so the field remains typed but unvalidated.
     if (values.isEmpty) return obj("type" -> str("string"))
-    val isSimpleEnum = values.values.forall(_.defType == DefType.Null)
-    if (isSimpleEnum) {
+    // Singleton-only hierarchies — every subtype carries no structural
+    // payload (a Scala 3 enum case produces `DefType.Null`; an open
+    // `PolyType` registered via `RW.static(value)` produces `DefType.Obj`
+    // with an empty field map). Both shapes are semantically "this
+    // value is just a tag" — advertise a flat string enum keyed by leaf
+    // names so the model emits the natural form (`"Medium"` /
+    // `"AnalysisWork"`) instead of fabric's `Parent.Leaf` disambiguation
+    // chain (`"Complexity.Medium"`) or the `oneOf`-over-objects ceremony
+    // a fields-bearing hierarchy would warrant. `InputNormalizer`
+    // re-canonicalises both leaf and prefixed forms back to whatever
+    // fabric's RW expects on the decode side, so persisted records and
+    // older clients keep round-tripping.
+    if (values.values.forall(isSingletonShape)) {
       obj(
         "type" -> str("string"),
-        "enum" -> arr(values.keys.map(str).toList*)
+        "enum" -> arr(values.keys.map(k => str(leafOf(k))).toList*)
       )
     } else {
       val branches = values.map { case (name, d) => variantBranch(name, d) }.toList
@@ -132,12 +143,34 @@ object DefinitionToSchema {
     }
   }
 
+  /** True when a poly subtype's defType carries no structural payload —
+    * `DefType.Null` (Scala 3 enum case / sealed-trait case object via
+    * `RW.enumeration`) or `DefType.Obj` with an empty field map
+    * (`RW.static`-backed open `PolyType` registration). Mixed
+    * hierarchies fall through to the `oneOf` encoding. */
+  private def isSingletonShape(d: Definition): Boolean = d.defType match {
+    case DefType.Null      => true
+    case DefType.Obj(m)    => m.isEmpty
+    case _                 => false
+  }
+
+  /** Tail segment of a fabric poly key — `"Complexity.Medium"` → `"Medium"`,
+    * `"Outer.Inner.Leaf"` → `"Leaf"`, a bare `"Medium"` → `"Medium"`. */
+  private def leafOf(key: String): String = {
+    val i = key.lastIndexOf('.')
+    if (i < 0) key else key.substring(i + 1)
+  }
+
   private def variantBranch(name: String, definition: Definition): Json = {
-    // Discriminator schema: `type: "string"` + `const: <name>`. The
+    // Discriminator schema: `type: "string"` + `const: <leaf>`. The
     // `type` key is mandatory for OpenAI strict mode (rejects schemas
-    // missing it); harmless and accurate for non-strict providers.
+    // missing it); harmless and accurate for non-strict providers. The
+    // const is the leaf segment of the fabric poly key — the longer
+    // `Parent.Sub.Leaf` chain is internal disambiguation that doesn't
+    // belong on the model's wire surface. Fabric's RW decodes the leaf
+    // back via its case-insensitive legacy-leaf fallback.
     val constProp: (String, Json) =
-      Discriminator -> obj("type" -> str("string"), "const" -> str(name))
+      Discriminator -> obj("type" -> str("string"), "const" -> str(leafOf(name)))
     definition.defType match {
       case DefType.Obj(map) =>
         val required = str(Discriminator) :: map.collect {
