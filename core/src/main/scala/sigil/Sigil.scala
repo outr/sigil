@@ -2973,35 +2973,57 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                       label: String,
                                       conversationId: Option[Id[Conversation]] = None)
                                      (task: FrameworkWorkflowControl => Task[A]): Task[A] = {
-    import sigil.signal.{FrameworkWorkflowNotice, FrameworkWorkflowPhase}
-    val workflowId = java.util.UUID.randomUUID().toString
-    val started    = System.currentTimeMillis()
-    val token      = new CancellationToken(workflowId)
-    val record     = ActiveFrameworkWorkflow(workflowId, workflowType, label, conversationId, started, token)
-    def emit(phase: FrameworkWorkflowPhase): Task[Unit] =
-      publish(FrameworkWorkflowNotice(workflowId, workflowType, phase, conversationId))
+    // Backwards-compat shim. The public signature has not changed —
+    // every prior callsite (in this repo and downstream) still calls
+    // it the same way. Internally it delegates to [[RunUnit.execute]]
+    // for the Started → Completed | Failed pulse, but ALSO carries the
+    // extras this surface was always responsible for:
+    //
+    //   - the `Step` callback handed to the body via
+    //     [[FrameworkWorkflowControl]] (with its implicit
+    //     cancellation-token checkpoint),
+    //   - registration / deregistration in
+    //     [[Sigil.activeFrameworkWorkflows]] for the
+    //     `cancel_framework_workflow` tool surface,
+    //   - the special `CancellationException` failure-reason format
+    //     ("cancelled: <reason>") that
+    //     [[sigil.tool.core.CancelFrameworkWorkflowTool]] depends on.
+    //
+    // The persistent-Event vs operational-Notice distinction
+    // pinned on [[RunUnit.execute]] still holds — apps and the
+    // framework continue to publish persistent lifecycle Events
+    // separately for their own callsites; the wrap here only emits
+    // the operational `FrameworkWorkflowNotice`.
+    val token = new CancellationToken(java.util.UUID.randomUUID().toString)
+    val record = ActiveFrameworkWorkflow(token.workflowId, workflowType, label, conversationId,
+      System.currentTimeMillis(), token)
+    val started = record.startedAtMillis
     val stepCb: String => Task[Unit] = { stepLabel =>
-      token.checkpoint.flatMap(_ => emit(FrameworkWorkflowPhase.Step(stepLabel, System.currentTimeMillis() - started)))
+      token.checkpoint.flatMap(_ =>
+        publish(sigil.signal.FrameworkWorkflowNotice(
+          token.workflowId,
+          workflowType,
+          sigil.signal.FrameworkWorkflowPhase.Step(stepLabel, System.currentTimeMillis() - started),
+          conversationId
+        ))
+      )
     }
     val control = FrameworkWorkflowControl(stepCb, token)
-    emit(FrameworkWorkflowPhase.Started(label)).flatMap { _ =>
-      Sigil.activeFrameworkWorkflows.put(workflowId, record)
-      task(control).attempt.flatMap { result =>
-        Sigil.activeFrameworkWorkflows.remove(workflowId)
-        result match {
-          case scala.util.Success(value) =>
-            emit(FrameworkWorkflowPhase.Completed(System.currentTimeMillis() - started))
-              .map(_ => value)
-          case scala.util.Failure(c: CancellationException) =>
-            emit(FrameworkWorkflowPhase.Failed(s"cancelled: ${c.reason}", System.currentTimeMillis() - started))
-              .flatMap(_ => Task.error(c))
-          case scala.util.Failure(err) =>
-            val reason = s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("")}"
-            emit(FrameworkWorkflowPhase.Failed(reason, System.currentTimeMillis() - started))
-              .flatMap(_ => Task.error(err))
-        }
-      }
-    }
+    given sigilGiven: Sigil = this
+    Task {
+      Sigil.activeFrameworkWorkflows.put(token.workflowId, record)
+      ()
+    }.flatMap(_ => RunUnit.execute(new FunctionRunUnit[A](
+      label = label,
+      workflowType = workflowType,
+      conversationId = conversationId,
+      run = task(control),
+      cleanup = Task {
+        Sigil.activeFrameworkWorkflows.remove(token.workflowId)
+        ()
+      },
+      cancellationToken = Some(token)
+    )))
   }
 
   /** Convenience overload: wrap a Task that doesn't need to emit
@@ -5293,7 +5315,50 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private final def runAgent(agent: AgentParticipant,
                              conv: Conversation,
                              claimed: AgentState,
-                             greeting: Boolean = false): Task[Unit] =
+                             greeting: Boolean = false): Task[Unit] = {
+    // Top-level operational wrap. The agent loop's existing
+    // `handleError` chain still publishes the Failure Message and
+    // releases the AgentState claim — this wrap layers a
+    // `FrameworkWorkflowNotice` (workflowType = "agent-loop") on top
+    // so operational observers (activity bars, latency traces) get an
+    // explicit terminal pulse when the loop ends. Closes the gap
+    // adjacent to bug #312 where operational observers had no signal
+    // for an agent loop that crashed mid-stream.
+    //
+    // `emitCompleted = false` because the loop already publishes a
+    // richer settled-state signal via `AgentStateDelta` (Idle /
+    // Complete) — a duplicate operational `Completed` would only add
+    // noise. The `Failed` Notice still fires when relevant.
+    //
+    // The wrap's failure path observes the throwable via the default
+    // re-throw — the same throwable continues up to the fiber error
+    // boundary the existing `runAgentLoop.handleError` chain
+    // re-raises through.
+    given sigilGiven: Sigil = this
+    val unit = new RunUnit[Unit] {
+      override val label = s"agent loop ${agent.id.value} / ${conv._id.value}"
+      override val workflowType = "agent-loop"
+      override val conversationId = Some(conv._id)
+      override def emitCompleted = false
+      override val run: Task[Unit] = runAgentLoopForUnit(agent, conv, claimed, greeting)
+    }
+    // `RunUnit.execute` re-throws the underlying exception after the
+    // Failed Notice fires — matches the prior behaviour where
+    // `runAgentLoop` itself rethrew via `Task.error(t)`. The fiber
+    // boundary from `startUnit()` still logs the failure.
+    RunUnit.execute(unit)
+  }
+
+  /** Inner body of [[runAgent]] — keeps the existing iteration
+    * scaffolding intact. Split out so the top-level operational
+    * [[RunUnit]] wrap can layer over it without disturbing the
+    * lifecycle scaffolding the agent loop relies on
+    * (`userVisibleSeen` / `turnExtractorFired` / `failurePublished`
+    * / `discoveredCapabilitiesRef`). */
+  private final def runAgentLoopForUnit(agent: AgentParticipant,
+                                        conv: Conversation,
+                                        claimed: AgentState,
+                                        greeting: Boolean): Task[Unit] =
     runAgentLoop(
       agent,
       conv._id,
