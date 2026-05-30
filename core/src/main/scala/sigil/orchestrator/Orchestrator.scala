@@ -493,7 +493,7 @@ object Orchestrator {
         val isInternal = Orchestrator.UserVisibleTerminalTools.contains(active.toolName)
         // Sigil bug #204 — emit the deferred ToolInvoke NOW with
         // parsed `input` populated, then the settle delta.
-        val deferredInvoke: Signal = ToolInvoke(
+        val deferredInvoke: ToolInvoke = ToolInvoke(
           toolName       = ToolName(active.toolName),
           participantId  = caller,
           conversationId = convId,
@@ -896,7 +896,23 @@ object Orchestrator {
                   Stream.emits(collected)
                 }
               )
-              Stream.emits(toolDeltaPrefix) ++ finalStream
+              // #317 — broadcast the Active ToolInvoke to live wire
+              // subscribers the moment dispatch begins, BEFORE
+              // `finalStream` forces the (possibly long-running) tool
+              // execution. `++` evaluates `finalStream`'s outer task —
+              // which drains `executed.toList`, i.e. runs the whole tool
+              // — right after the left stream's outer task resolves, so
+              // for a slow tool the prefix would otherwise reach the
+              // wire only at drain-end. Doing the broadcast in the left
+              // stream's outer task gets the chip on screen at tool-start.
+              // The same invoke still flows through the batched
+              // `.evalTap(publish)` below for durable persist; `publish`
+              // sees the eager-broadcast marker and suppresses its hub
+              // re-emit, so the event broadcasts once and persists once.
+              val eagerPrefix: Stream[Signal] = Stream.force(
+                sigil.broadcastEager(deferredInvoke).map(_ => Stream.emits(toolDeltaPrefix))
+              )
+              eagerPrefix ++ finalStream
             }
 
             if (active.toolName == "respond") {

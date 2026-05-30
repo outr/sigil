@@ -2422,6 +2422,41 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * instance; initialized lazily so initialization order is safe. */
   private final lazy val hub: SignalHub = new SignalHub(signalHubCapacity)
 
+  /** #317 — event ids whose live broadcast already happened eagerly
+    * (via [[broadcastEager]]) ahead of the per-iteration batch drain.
+    * [[publish]] consults this set at its hub-emit step and SKIPS the
+    * re-broadcast for a matching event id (removing it), so the event
+    * is broadcast exactly once even though it still flows through the
+    * full publish pipeline for durable persist + projection. */
+  private final val eagerlyBroadcastEventIds: java.util.Set[Id[Event]] =
+    java.util.concurrent.ConcurrentHashMap.newKeySet[Id[Event]]()
+
+  /**
+   * #317 — broadcast `event` to live [[signals]] / [[signalsFor]]
+   * subscribers immediately, ahead of the per-iteration batch drain
+   * (and ahead of any blocking tool execution that drain would
+   * otherwise gate the broadcast behind).
+   *
+   * Records the event id so the subsequent [[publish]] of the same
+   * event — which still runs the full pipeline (durable insert,
+   * projection, fan-out, settled effects) — suppresses its own
+   * hub re-emit. The event is therefore broadcast exactly once and
+   * persisted exactly once; only the broadcast *timing* moves
+   * forward.
+   *
+   * Inbound transforms run here so the eagerly-broadcast shape
+   * matches what `publish` would have emitted; `_id` is stable
+   * across transforms, so the suppression key holds.
+   */
+  final def broadcastEager(event: Event): Task[Unit] =
+    applyInboundTransforms(event).map {
+      case resolved: Event =>
+        eagerlyBroadcastEventIds.add(resolved._id)
+        hub.emit(resolved)
+        ()
+      case _ => ()
+    }
+
   /**
    * Broadcast-level stream of every signal that has completed its
    * publish pipeline (transforms applied, persisted, projections
@@ -2690,7 +2725,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           _ <- updateView(resolved)
           _ <- maybeApplyModeSkill(resolved)
           _ <- applyStop(resolved)
-          _ <- Task { hub.emit(resolved); () }
+          // #317 — skip the re-broadcast when this event was already
+          // broadcast eagerly at tool-start; persist + projection above
+          // still ran, so the event stays durable + projected exactly once.
+          _ <- Task {
+                 val alreadyBroadcast = resolved match {
+                   case e: Event => eagerlyBroadcastEventIds.remove(e._id)
+                   case _        => false
+                 }
+                 if (!alreadyBroadcast) hub.emit(resolved)
+                 ()
+               }
           _ <- resolved match {
                  case e: Event => fanOut(e)
                  case _: sigil.signal.Delta => Task.unit

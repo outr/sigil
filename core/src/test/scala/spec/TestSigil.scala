@@ -156,7 +156,8 @@ object TestSigil extends Sigil {
       sigil.tool.util.SleepTool,
       sigil.tool.util.LookupTool,
       GetMagicNumberTool,
-      ProgressEmittingTool
+      ProgressEmittingTool,
+      EagerActiveLatchTool
     ): @annotation.nowarn("cat=deprecation"))
 
   // ---- registration lists ----
@@ -178,7 +179,8 @@ object TestSigil extends Sigil {
       RW.static(BrokenHistoryAgent),
       RW.static(NoOpHealAgent),
       RW.static(AgentLoopErrorAgent),
-      RW.static(AgentLoopMultiAgent)
+      RW.static(AgentLoopMultiAgent),
+      RW.static(EagerActiveAgent)
     )
 
   /** Registers every test-only [[SpaceId]] once. Add new test
