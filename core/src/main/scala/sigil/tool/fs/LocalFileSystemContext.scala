@@ -23,8 +23,18 @@ import scala.jdk.CollectionConverters.*
  * [[OutputTruncationBytes]] per stream; if a process produces more,
  * its tail is silently dropped (the captured prefix still appears
  * in the result).
+ *
+ * `searchFiles` runs a model-authored regex, so each `Matcher.find()`
+ * is bounded by `regexStepBudget` per line (#318) — a pathological
+ * catastrophic-backtracking pattern aborts the whole search with a
+ * [[RegexBudgetExceededException]] rather than wedging the agent loop.
+ * The default is generous enough that real greps over large trees never
+ * hit it; tests construct the context with a tight budget to exercise
+ * the guard.
  */
-class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemContext {
+class LocalFileSystemContext(basePath: Option[Path] = None,
+                             regexStepBudget: Long = LocalFileSystemContext.DefaultRegexStepBudget)
+    extends FileSystemContext {
   import LocalFileSystemContext.OutputTruncationBytes
 
   override def executeCommand(command: String,
@@ -109,7 +119,8 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
             if (!isBinary(path)) {
               val lines = readLinesLenient(path)
               lines.zipWithIndex.foreach { case (line, idx) =>
-                if (regex.matcher(line).find() && results.size < maxMatches) {
+                val bounded = new StepBoundedCharSequence(line, regexStepBudget, pattern)
+                if (regex.matcher(bounded).find() && results.size < maxMatches) {
                   val before = lines.slice(Math.max(0, idx - contextLines), idx)
                   val after  = lines.slice(idx + 1, Math.min(lines.size, idx + 1 + contextLines))
                   results += GrepMatch(
@@ -123,6 +134,10 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
               }
             }
           } catch {
+            // A blown regex budget is a whole-search abort, not a
+            // per-file skip — rethrow so it surfaces as a recoverable
+            // tool failure (#318) instead of silently dropping the file.
+            case b: RegexBudgetExceededException => throw b
             case t: Throwable =>
               scribe.warn(s"grep: skipping ${base.relativize(path)} — ${t.getClass.getSimpleName}: ${t.getMessage}")
           }
@@ -257,4 +272,12 @@ object LocalFileSystemContext {
   /** Maximum bytes captured per stream (stdout / stderr) for shell
     * commands. Protects against runaway output blowing memory. */
   val OutputTruncationBytes: Int = 100 * 1024
+
+  /** Per-line `Matcher.find()` step budget for [[searchFiles]] (#318).
+    * Counts `charAt` reads against one line; a catastrophic-backtracking
+    * pattern blows it and aborts the search with a
+    * [[RegexBudgetExceededException]]. Sized so a legitimate regex over a
+    * line of any realistic length never trips it — the field hang burned
+    * 548 CPU-seconds, i.e. billions of steps, against a single line. */
+  val DefaultRegexStepBudget: Long = 50_000_000L
 }
