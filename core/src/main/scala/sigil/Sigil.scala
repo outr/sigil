@@ -5361,6 +5361,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * iterations. Set to 0 to disable checkpointing. */
   protected def progressCheckpointInterval: Int = 15
 
+  /** #321 — model for the out-of-band progress reflection. The reflection
+    * can cancel an in-flight workflow (its `shouldAskUser` / stall verdict
+    * becomes an orchestrator intervention), so it must NOT run on the
+    * cheapest routed candidate — a bad "stuck / ask the user" call throws
+    * away an entire in-progress task. Defaults to the agent's own model
+    * (the tier already judged adequate for the work). Apps override to
+    * impose a different floor. */
+  def progressReflectionModelFor(agent: AgentParticipant): Id[Model] = agent.modelId
+
   /** Number of consecutive `meaningfulProgress = false` checkpoints
     * required before the framework intervenes with a synthetic
     * respond asking the user for guidance. Default 2. Setting to 1
@@ -6388,13 +6397,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             |current status looks identical to the prior status, set meaningfulProgress = false
             |so the framework can intervene.""".stripMargin
         val userPrompt = renderCheckpointPrompt(ctx, priorStatus, iteration)
-        sigil.tool.consult.ConsultTool.invokeRouted[sigil.tool.consult.ProgressReflectionInput](
+        sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ProgressReflectionInput](
           sigil = this,
-          tool = sigil.tool.consult.ProgressReflectionTool,
+          modelId = progressReflectionModelFor(agent),
           chain = List(agent.id),
-          fallbackModelId = agent.modelId,
           systemPrompt = systemPrompt,
-          userPrompt = userPrompt
+          userPrompt = userPrompt,
+          tool = sigil.tool.consult.ProgressReflectionTool,
+          generationSettings = sigil.tool.consult.ProgressReflectionTool.consultSettings
         ).flatMap {
         case None         => Task.pure(None)  // checkpoint-call failed; let the loop continue
         case Some(report) =>
@@ -6492,17 +6502,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         .collect { case e: Event if e.conversationId == convId => e }
         .toList
         .sortBy(_.timestamp.value)
-      // The most recent user Message — non-agent participant, Standard role.
-      val userMsg = convEvents.reverseIterator.collectFirst {
+      // #320 — the objective is the most-recent substantive (non-
+      // continuation) user message, NOT the latest turn. A bare
+      // "Proceed" advances the task; it isn't the task. Render the
+      // continuation alongside so the reflector sees what was just
+      // asked while judging progress against the real goal.
+      val userMsgs = convEvents.collect {
         case m: Message
           if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
              m.role == MessageRole.Standard &&
              m.content.nonEmpty =>
           m
       }
-      val task: Option[String] = userMsg.map(m => textOfContent(m.content))
-      // Tool calls + agent responds since the user message.
-      val cutoff = userMsg.map(_.timestamp.value).getOrElse(0L)
+      val (substantive, directive) =
+        sigil.conversation.ProgressTaskSelector.select(userMsgs, m => textOfContent(m.content))
+      val task: Option[String]            = substantive.map(m => textOfContent(m.content))
+      val latestDirective: Option[String] = directive.map(m => textOfContent(m.content))
+      // Tool calls + agent responds since the OBJECTIVE (not the
+      // continuation), so the history covers the whole arc of work.
+      val cutoff = substantive.map(_.timestamp.value).getOrElse(0L)
       val historyEntries = scala.collection.mutable.ListBuffer.empty[String]
       // Sigil #265 — each tool transaction lives on a single stateful
       // ToolInvoke; the post-settle outcome is on the invoke itself,
@@ -6532,7 +6550,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         historyEntries += s"respond × ${agentResponds.size} (latest: \"${snippet(agentResponds.last, 80)}\")"
       else
         agentResponds.foreach(r => historyEntries += s"respond → \"${snippet(r, 80)}\"")
-      ProgressContext(userTask = task, toolHistory = historyEntries.toList)
+      ProgressContext(userTask = task, toolHistory = historyEntries.toList, latestDirective = latestDirective)
     }.handleError(_ => Task.pure(ProgressContext(None, Nil)))
 
   /** Evaluate the agent's recent tool-call tail for objective stall
@@ -6603,7 +6621,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                              priorStatus: Option[String],
                              iteration: Int): String = {
     val taskBlock = ctx.userTask match {
-      case Some(t) => s"The user's request:\n\"$t\"\n\n"
+      case Some(t) =>
+        val directiveLine = ctx.latestDirective match {
+          case Some(d) => s"The user has since said \"$d\" to continue this objective.\n\n"
+          case None    => "\n"
+        }
+        s"The user's request:\n\"$t\"\n\n" + directiveLine
       case None    => "The user's request: (no recent substantive user message found)\n\n"
     }
     val historyBlock = ctx.toolHistory match {
