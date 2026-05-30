@@ -40,7 +40,11 @@ case class TaskExecuted(participantId: ParticipantId,
                         workerConversationId: Option[Id[Conversation]] = None,
                         override val state: EventState = EventState.Complete,
                         override val role: MessageRole = MessageRole.Standard,
-                        override val visibility: MessageVisibility = MessageVisibility.All,
+                        // #323 — Agents-only: the parent AGENT reads the worker
+                        // result (woken via TriggerFilter, rendered as a System
+                        // frame by FrameBuilder) and decides what to surface;
+                        // the raw framework signal stays out of user-facing UIs.
+                        override val visibility: MessageVisibility = MessageVisibility.Agents,
                         timestamp: Timestamp = Timestamp(),
                         override val origin: Option[Id[Event]] = None,
                         override val source: Option[String] = None,

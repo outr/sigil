@@ -7,9 +7,9 @@ import lightdb.progress.ProgressManager
 import rapid.Task
 import sigil.conversation.Conversation
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, MessageVisibility}
+import sigil.event.{Event, Message, MessageRole, MessageVisibility, ToolInvoke}
 import sigil.provider.{GenerationSettings, OneShotRequest, OutputTokenCap, ProviderEvent, TokenUsage}
-import sigil.signal.EventState
+import sigil.signal.{EventState, Signal}
 import sigil.tool.model.ResponseContent
 import sigil.workflow.trigger.AnswerTrigger
 import strider.Workflow
@@ -146,26 +146,34 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
           case _ => Task.unit
         }.drain.flatMap { _ =>
           val response = acc.toString
-          toolCompletionRef.get() match {
-            // LLM called complete_task as a structured tool — settle
-            // immediately with its supplied summary.
-            case Some(summary) =>
-              Task.pure(SigilAgentDecisionStep.withUsage(obj(
-                "complete"  -> bool(true),
-                "summary"   -> str(summary),
-                "iteration" -> num(input.iteration),
-                "exhausted" -> bool(false)
-              ), usageRef.get()))
-            // Tool calls (non-complete_task) — dispatch each, fold
-            // results into priorReasoning, continue iterating.
-            case None if !otherCalls.isEmpty =>
-              dispatchToolCallsAndContinue(host, workflow, response, otherCalls, workerTools, ctx).map { json =>
-                SigilAgentDecisionStep.withUsage(json, usageRef.get())
+          // #324 — persist this iteration's transcript into the worker's
+          // OWN conversation so drill-in shows real content. Best-effort:
+          // observability must never fail the worker. Build the synthetic
+          // context once and reuse it for the tool-dispatch path.
+          SyntheticTurnContext.build(host, workflow).flatMap { tcx =>
+            persistTranscript(host, tcx, response).flatMap { _ =>
+              toolCompletionRef.get() match {
+                // LLM called complete_task as a structured tool — settle
+                // immediately with its supplied summary.
+                case Some(summary) =>
+                  Task.pure(SigilAgentDecisionStep.withUsage(obj(
+                    "complete"  -> bool(true),
+                    "summary"   -> str(summary),
+                    "iteration" -> num(input.iteration),
+                    "exhausted" -> bool(false)
+                  ), usageRef.get()))
+                // Tool calls (non-complete_task) — dispatch each, fold
+                // results into priorReasoning, continue iterating.
+                case None if !otherCalls.isEmpty =>
+                  dispatchToolCallsAndContinue(host, workflow, response, otherCalls, workerTools, ctx, tcx).map { json =>
+                    SigilAgentDecisionStep.withUsage(json, usageRef.get())
+                  }
+                // Fall through to marker-based handling for `Complete:` /
+                // `AskParent:` / `Report:` / `Status:` / continuation.
+                case None =>
+                  decideNext(host, workflow, response, usageRef.get(), ctx)
               }
-            // Fall through to marker-based handling for `Complete:` /
-            // `AskParent:` / `Report:` / `Status:` / continuation.
-            case None =>
-              decideNext(host, workflow, response, usageRef.get(), ctx)
+            }
           }
         }
       }
@@ -181,7 +189,8 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
                                            response: String,
                                            calls: java.util.concurrent.ConcurrentLinkedQueue[(String, sigil.tool.ToolInput)],
                                            workerTools: List[sigil.tool.Tool],
-                                           ctx: Option[JobContext]): Task[Json] = host match {
+                                           ctx: Option[JobContext],
+                                           tcx: sigil.TurnContext): Task[Json] = host match {
     case ws: WorkflowSigil =>
       import scala.jdk.CollectionConverters.*
       val callList = calls.iterator().asScala.toList
@@ -195,7 +204,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         val cls = t.inputRW.definition.className.getOrElse(t.name.value)
         cls -> t
       }.toMap
-      SyntheticTurnContext.build(host, workflow).flatMap { tcx =>
+      {
         val toolEvents: Task[List[String]] = rapid.Task.sequence(callList.map { case (className, ti) =>
           // Match by input-class against the registered worker tools.
           val toolOpt = byInputClass.get(className).orElse {
@@ -207,7 +216,14 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
           }
           toolOpt match {
             case Some(t) =>
-              t.execute(ti, tcx, Event.id()).toList.map { evs =>
+              // #324 — record the call in the worker conv: publish a
+              // ToolInvoke(Active) the execute stream's settling
+              // ToolDelta will then complete, mirroring the orchestrator.
+              val invokeId = Event.id()
+              publishWorkerInvoke(host, tcx, t, ti, invokeId).flatMap { _ =>
+              t.execute(ti, tcx, invokeId).toList.flatMap { evs =>
+                publishWorkerEvents(host, tcx, evs).map { _ => evs }
+              }.map { evs =>
                 val text = evs.collect {
                   case m: sigil.event.Message =>
                     m.content.collect { case sigil.tool.model.ResponseContent.Text(s) => s }.mkString
@@ -229,6 +245,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
                     }
                 }.filter(_.nonEmpty).mkString("\n")
                 s"[Tool ${t.name.value}] $text"
+              }
               }
             case None =>
               rapid.Task.pure(s"[Tool $className] (no matching tool in worker roster — call dropped)")
@@ -263,6 +280,70 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         "AgentDecisionStep tool dispatch requires the host Sigil to mix in WorkflowSigil."
       ))
   }
+
+  /** #324 — persist the worker's own transcript into its scratchpad
+    * conversation (`workflow.conversationId`) so a client drilling into
+    * the worker sees real content: the opening brief and each
+    * iteration's response. Attributed to the worker's resolved
+    * participant (the delegating agent, via the synthetic context's
+    * chain). Best-effort — a persistence hiccup is logged, never fails
+    * the worker. No-op when the chain can't be resolved (orphan run). */
+  private def persistTranscript(host: sigil.Sigil, tcx: sigil.TurnContext, response: String): Task[Unit] =
+    tcx.chain.headOption match {
+      case None => Task.unit
+      case Some(pid) =>
+        def msg(text: String): Message = Message(
+          participantId  = pid,
+          conversationId = tcx.conversation.id,
+          topicId        = tcx.conversation.currentTopicId,
+          content        = Vector(ResponseContent.Text(text)),
+          state          = EventState.Complete,
+          role           = MessageRole.Standard,
+          visibility     = MessageVisibility.All
+        )
+        val briefTask =
+          if (input.iteration == 0) host.publish(msg(s"[Worker brief]\n${input.brief}")).unit
+          else Task.unit
+        val responseTask =
+          if (response.trim.nonEmpty) host.publish(msg(response)).unit
+          else Task.unit
+        briefTask
+          .flatMap(_ => responseTask)
+          .handleError(err => Task { scribe.warn(s"worker transcript persist failed: ${err.getMessage}"); () })
+    }
+
+  /** Publish the worker's tool call as a `ToolInvoke(Active)` in the
+    * worker conv. The settling `ToolDelta` from `tool.execute`
+    * (published by [[publishWorkerEvents]]) completes it — the same
+    * call/result pairing the orchestrator builds. Best-effort; no-op
+    * without a resolvable participant. */
+  private def publishWorkerInvoke(host: sigil.Sigil,
+                                  tcx: sigil.TurnContext,
+                                  tool: sigil.tool.Tool,
+                                  ti: sigil.tool.ToolInput,
+                                  invokeId: Id[Event]): Task[Unit] =
+    tcx.chain.headOption match {
+      case None => Task.unit
+      case Some(pid) =>
+        host.publish(ToolInvoke(
+          toolName       = tool.name,
+          participantId  = pid,
+          conversationId = tcx.conversation.id,
+          topicId        = tcx.conversation.currentTopicId,
+          input          = Some(ti),
+          state          = EventState.Active,
+          _id            = invokeId
+        )).unit.handleError(err => Task { scribe.warn(s"worker invoke persist failed: ${err.getMessage}"); () })
+    }
+
+  /** Publish the events a worker tool's `execute` produced (ancillary
+    * emitted events plus the settling `ToolDelta`) into the worker
+    * conv — they are already scoped to it by the synthetic context.
+    * Best-effort. */
+  private def publishWorkerEvents(host: sigil.Sigil, tcx: sigil.TurnContext, events: List[Signal]): Task[Unit] =
+    if (tcx.chain.isEmpty) Task.unit
+    else rapid.Task.sequence(events.map(host.publish)).unit
+      .handleError(err => Task { scribe.warn(s"worker tool-event persist failed: ${err.getMessage}"); () })
 
   private def decideNext(host: sigil.Sigil, workflow: Workflow, response: String, usage: Option[TokenUsage], ctx: Option[JobContext]): Task[Json] =
     SigilAgentDecisionStep.parseMarker(response) match {

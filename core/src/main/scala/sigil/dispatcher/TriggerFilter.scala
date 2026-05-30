@@ -2,6 +2,7 @@ package sigil.dispatcher
 
 import sigil.event.{AgentState, Event, Message, ModeChange, MessageRole, Stop, TopicChange}
 import sigil.participant.Participant
+import sigil.workflow.event.TaskExecuted
 
 /**
  * Decides which Events count as triggers for which participants. Used by:
@@ -51,6 +52,10 @@ object TriggerFilter {
     case m: Message if m.participantId == p.id                        => false
     case tc: TopicChange if tc.participantId == p.id                  => false
     case _: Message | _: ModeChange | _: TopicChange                  => true
+    // #323 — an async worker completion must wake the parent agent so
+    // it can read the result and act. It's a ControlPlaneEvent (not a
+    // Message), so the rules above miss it.
+    case _: TaskExecuted                                              => true
     case _                                                            => false
   }
 }

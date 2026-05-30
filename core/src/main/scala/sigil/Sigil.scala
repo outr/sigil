@@ -5018,6 +5018,40 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     Task.pure(None)
 
   /**
+   * Workspace for a conversation, walking the `parentConversationId`
+   * chain when the conversation itself has no binding. A worker or
+   * staging conversation (spawned by `delegate_task` / import staging)
+   * starts with no workspace of its own — the app only bound a
+   * workspace to the user-facing parent. Without this fallthrough a
+   * delegated worker can discover `grep` / `read_file` but has no
+   * project root to run them against, so it spins to its iteration
+   * cap reporting "no workspace path" (sigil #325).
+   *
+   * Resolution: `workspaceFor(conversationId)` first; on `None`, load
+   * the conversation and recurse into its `parentConversationId`.
+   * Bounded depth guards against a malformed parent cycle. Reuses the
+   * app's own `workspaceFor` override at every level — apps wire the
+   * workspace once on the parent and every descendant inherits it.
+   */
+  def resolvedWorkspaceFor(conversationId: Id[Conversation]): Task[Option[java.nio.file.Path]] =
+    resolvedWorkspaceFor(conversationId, depth = 8)
+
+  private def resolvedWorkspaceFor(conversationId: Id[Conversation], depth: Int): Task[Option[java.nio.file.Path]] =
+    workspaceFor(conversationId).flatMap {
+      case found @ Some(_)    => Task.pure(found)
+      case None if depth <= 0 => Task.pure(None)
+      case None =>
+        withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
+          case Some(conv) =>
+            conv.parentConversationId match {
+              case Some(parentId) => resolvedWorkspaceFor(parentId, depth - 1)
+              case None           => Task.pure(None)
+            }
+          case None => Task.pure(None)
+        }
+    }
+
+  /**
    * Open a staging conversation that buffers events for a
    * long-running import workflow. The staging conv is a regular
    * [[Conversation]] row with `stagingFor = Some(target)` —

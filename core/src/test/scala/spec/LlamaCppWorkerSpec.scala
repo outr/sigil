@@ -10,7 +10,8 @@ import sigil.db.Model
 import sigil.event.{Event, Message, ToolOutcome}
 import sigil.signal.ToolDelta
 import sigil.tool.util.DelegateTaskOutput
-import sigil.participant.{AgentParticipantId, DefaultAgentParticipant}
+import fabric.rw.*
+import sigil.participant.{AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.provider.{AnalysisWork, GenerationSettings, Instructions}
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.role.Role
@@ -48,6 +49,18 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
   private val convId = Conversation.id("worker-llamacpp-conv")
   private val modelId = LiveLlamaModel.resolve(TestWorkflowSigil, TestSigil.llamaCppHost)
+
+  // #323 — a settling worker publishes TaskExecuted into its parent
+  // conversation, which now wakes any AGENT participant there. These
+  // worker-subsystem tests only need the parent as a message *sender*
+  // (TaskExecuted.participantId, Report:/AskParent: routing), not a live
+  // LLM agent — a non-agent participant keeps the parent from firing an
+  // (un-cacheable) turn of its own when the worker completes.
+  private case class WorkerParentSender(override val id: ParticipantId = WorkflowTestUser,
+                                        override val displayName: String = "parent",
+                                        override val avatarUrl: Option[String] = None)
+    extends Participant derives RW
+  Participant.register(summon[RW[WorkerParentSender]])
 
   /** Schedule + wait for terminal status, then return the settled run. */
   private def runWorker(role: Role, brief: String): Task[Workflow] = {
@@ -328,13 +341,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
         val parentConv = Conversation(
           topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
-          participants = List(DefaultAgentParticipant(
-            id = WorkflowTestUser,
-            modelId = Model.id("test", "model"),
-            toolNames = Nil,
-            instructions = Instructions(),
-            generationSettings = GenerationSettings()
-          )),
+          participants = List(WorkerParentSender()),
           _id = parentConvId
         )
         val workerConv = Conversation(
@@ -389,13 +396,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         val parentConvId = Conversation.id(s"delegate-parent-${rapid.Unique()}")
         val parentConv = Conversation(
           topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
-          participants = List(DefaultAgentParticipant(
-            id = WorkflowTestUser,
-            modelId = Model.id("test", "model"),
-            toolNames = Nil,
-            instructions = Instructions(),
-            generationSettings = GenerationSettings()
-          )),
+          participants = List(WorkerParentSender()),
           _id = parentConvId
         )
 
@@ -441,11 +442,22 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           }
           settled <- waitForTerminal(Id[Workflow](taskId))
           workerConvOpt <- TestWorkflowSigil.withDB(_.conversations.transaction(_.get(Conversation.id(workerConvId))))
+          // #324 — the worker must persist its OWN transcript into its
+          // scratchpad conv so drilling into it shows real content. Pre-fix
+          // the worker only emitted outbound signals to the parent and its
+          // own conv had zero Message/ToolInvoke events (empty drill-in).
+          workerEvents <- TestWorkflowSigil.withDB(_.eventsTransaction(Conversation.id(workerConvId))(_.list))
+            .map(_.filter(_.conversationId == Conversation.id(workerConvId)))
         } yield {
           settled.status shouldBe WorkflowStatus.Success
           settled.conversationId shouldBe Some(workerConvId)
           workerConvOpt should not be empty
           workerConvOpt.get.parentConversationId shouldBe Some(parentConvId)
+          val workerMessages = workerEvents.collect { case m: Message => m }
+          val workerText = workerMessages.flatMap(_.content.collect { case ResponseContent.Text(t) => t })
+          withClue(s"worker conv should carry a transcript; saw events: ${workerEvents.map(_.getClass.getSimpleName)}: ") {
+            workerText.exists(_.contains("[Worker brief]")) shouldBe true
+          }
           val terminalSummary = settled.stepResults.flatMap(_.output).flatMap { json =>
             for {
               c <- json.get("complete").map(_.asBoolean) if c
@@ -504,13 +516,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
         val parentConv = Conversation(
           topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
-          participants = List(DefaultAgentParticipant(
-            id = WorkflowTestUser,
-            modelId = Model.id("test", "model"),
-            toolNames = Nil,
-            instructions = Instructions(),
-            generationSettings = GenerationSettings()
-          )),
+          participants = List(WorkerParentSender()),
           _id = parentConvId
         )
         val workerConv = Conversation(
@@ -610,13 +616,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
         val parentConv = Conversation(
           topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
-          participants = List(DefaultAgentParticipant(
-            id = WorkflowTestUser,
-            modelId = Model.id("test", "model"),
-            toolNames = Nil,
-            instructions = Instructions(),
-            generationSettings = GenerationSettings()
-          )),
+          participants = List(WorkerParentSender()),
           _id = parentConvId
         )
         val workerConv = Conversation(
@@ -701,13 +701,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
         val parentConv = Conversation(
           topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
-          participants = List(DefaultAgentParticipant(
-            id = WorkflowTestUser,
-            modelId = Model.id("test", "model"),
-            toolNames = Nil,
-            instructions = Instructions(),
-            generationSettings = GenerationSettings()
-          )),
+          participants = List(WorkerParentSender()),
           _id = parentConvId
         )
         val workerConv = Conversation(
@@ -746,13 +740,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         val parentConvId = Conversation.id(s"conc-parent-${rapid.Unique()}")
         val parentConv = Conversation(
           topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
-          participants = List(DefaultAgentParticipant(
-            id = WorkflowTestUser,
-            modelId = Model.id("test", "model"),
-            toolNames = Nil,
-            instructions = Instructions(),
-            generationSettings = GenerationSettings()
-          )),
+          participants = List(WorkerParentSender()),
           _id = parentConvId
         )
 

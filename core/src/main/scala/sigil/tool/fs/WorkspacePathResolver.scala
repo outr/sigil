@@ -7,8 +7,10 @@ import java.nio.file.Paths
 
 /**
  * Resolves filesystem-tool input paths against the conversation's
- * workspace (per [[sigil.Sigil.workspaceFor]]) so multi-conversation
- * apps can route filesystem ops correctly.
+ * workspace (per [[sigil.Sigil.resolvedWorkspaceFor]], which walks the
+ * `parentConversationId` chain) so multi-conversation apps can route
+ * filesystem ops correctly — and a delegated worker inherits its
+ * parent's project root rather than running rootless.
  *
  * Semantics mirror `Path.resolve`:
  *
@@ -34,7 +36,7 @@ object WorkspacePathResolver {
   def resolve(ctx: ToolContext, path: String): Task[String] = {
     val asPath = Paths.get(path)
     if (asPath.isAbsolute) Task.pure(path)
-    else ctx.sigil.workspaceFor(ctx.conversation.id).map {
+    else ctx.sigil.resolvedWorkspaceFor(ctx.conversation.id).map {
       case Some(workspace) => workspace.resolve(path).toString
       case None            => path
     }
@@ -46,6 +48,6 @@ object WorkspacePathResolver {
     * "use JVM cwd" default applies). */
   def resolveOptional(ctx: ToolContext, path: Option[String]): Task[Option[String]] = path match {
     case Some(p) => resolve(ctx, p).map(Some(_))
-    case None    => ctx.sigil.workspaceFor(ctx.conversation.id).map(_.map(_.toString))
+    case None    => ctx.sigil.resolvedWorkspaceFor(ctx.conversation.id).map(_.map(_.toString))
   }
 }

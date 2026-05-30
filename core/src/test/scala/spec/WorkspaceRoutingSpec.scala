@@ -107,6 +107,38 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         resolved shouldBe "build.sbt"
       }
     }
+
+    // #325 — a delegate_task worker conversation has no workspace of its
+    // own (the app only binds one to the user-facing parent). Without
+    // the parent-chain fallthrough the worker can discover grep/read_file
+    // but has no project root to run them against, and spins to its
+    // iteration cap reporting "no workspace path." The resolver must
+    // inherit the parent's workspace via parentConversationId.
+    "inherit the parent conversation's workspace via parentConversationId for a worker" in {
+      val parentId = Conversation.id(s"ws-parent-${rapid.Unique()}")
+      val workerId = Conversation.id(s"ws-worker-${rapid.Unique()}")
+      TestSigil.setWorkspace(parentId, Some(projectA))  // worker itself: none
+      val workerConv = Conversation(
+        topics               = List(TopicEntry(TestTopicId, "worker", "worker")),
+        parentConversationId = Some(parentId),
+        _id                  = workerId
+      )
+      val workerCtx = ToolContext(
+        TurnContext(
+          sigil        = TestSigil,
+          chain        = List(TestUser),
+          conversation = workerConv,
+          turnInput    = TurnInput(ConversationView(conversationId = workerId)),
+          model        = TestSigil.defaultTestModel
+        ),
+        Event.id(),
+        ToolName("workspace_test")
+      )
+      for {
+        _        <- TestSigil.withDB(_.conversations.transaction(_.upsert(workerConv)))
+        resolved <- WorkspacePathResolver.resolve(workerCtx, "build.sbt")
+      } yield Path.of(resolved).normalize shouldBe projectA.resolve("build.sbt").normalize
+    }
   }
 
   "FS tools with per-conversation workspaces" should {
