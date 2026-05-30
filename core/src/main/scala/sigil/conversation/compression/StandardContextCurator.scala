@@ -308,14 +308,24 @@ case class StandardContextCurator(sigil: Sigil,
               // budget genuinely can't accommodate them.
               val afterStage2b = afterStage2.copy(summaries = Vector.empty)
               if (tokensOf(afterStage2b, frames, Vector.empty) <= cap) Task.pure(afterStage2b)
-              else {
-                // Stage 3 — iterative frame compression. Resolve the
-                // invariant-protected `sourceEventId`s once so the
-                // iterative split doesn't cleave a paired tool
-                // exchange or fold a structurally load-bearing event.
-                resolveProtectedEventIds(tentative.conversationId, frames).flatMap { protectedIds =>
+              else compactLargeFrames(tentative.conversationId, frames).flatMap { compacted =>
+                // Stage 2c — elide oversized tool-result / message frames
+                // to a short summary + reload-id (#316). Targets the
+                // actual budget bloat (a giant grep result, a huge
+                // message) WITHOUT dropping any frame; full content stays
+                // durable and re-examinable via next_page(eventId). This
+                // runs before the lossy frame shed, so the common case
+                // (one oversized tool result) never reaches Stage 3.
+                val afterStage2c = afterStage2b.copy(frames = compacted)
+                if (tokensOf(afterStage2c, compacted, Vector.empty) <= cap) Task.pure(afterStage2c)
+                else {
+                // Stage 3 — last-resort frame shed for sheer history
+                // length. Resolve the invariant-protected
+                // `sourceEventId`s once so the shed never folds the user
+                // task or cleaves a paired tool exchange.
+                resolveProtectedEventIds(tentative.conversationId, compacted).flatMap { protectedIds =>
                   shedFramesIteratively(
-                    kept = frames,
+                    kept = compacted,
                     droppedSoFar = Vector.empty,
                     summaryCarry = None,
                     cap = cap,
@@ -324,7 +334,7 @@ case class StandardContextCurator(sigil: Sigil,
                     conversationId = tentative.conversationId,
                     protectedSourceEventIds = protectedIds,
                     tokensOfKept = (kept, summaryOpt) =>
-                      tokensOf(afterStage2b, kept, summaryOpt.toVector)
+                      tokensOf(afterStage2c, kept, summaryOpt.toVector)
                   )
                 }.flatMap { case (newerKept, summaryOpt) =>
                   summaryOpt match {
@@ -335,8 +345,11 @@ case class StandardContextCurator(sigil: Sigil,
                       // next turn's `framesFor` filters them out.
                       // Without this, the same shed re-fires every
                       // turn forever — the summary lands but the
-                      // frames it replaced come right back.
-                      val shedSlice = frames.dropRight(newerKept.size)
+                      // frames it replaced come right back. The
+                      // advance is capped below the current user task
+                      // by `advanceClearedAt` (#316), so old history
+                      // sheds while the task never does.
+                      val shedSlice = compacted.dropRight(newerKept.size)
                       val advance: Task[Unit] = shedSlice.lastOption match {
                         case Some(boundary) =>
                           sigil.withDB(_.eventsTransaction(tentative.conversationId)(_.get(boundary.sourceEventId))).flatMap {
@@ -347,13 +360,14 @@ case class StandardContextCurator(sigil: Sigil,
                           }
                         case None => Task.unit
                       }
-                      advance.map(_ => afterStage2b.copy(
+                      advance.map(_ => afterStage2c.copy(
                         frames    = newerKept,
                         summaries = Vector(summary._id)
                       ))
                     case None =>
-                      Task.pure(afterStage2b.copy(frames = newerKept))
+                      Task.pure(afterStage2c.copy(frames = newerKept))
                   }
+                }
                 }
               }
             }
@@ -471,6 +485,57 @@ case class StandardContextCurator(sigil: Sigil,
         invariants.iterator.flatMap(_.applicableIds(sorted, ctx)).toSet
       }.handleError(_ => Task.pure(Set.empty))
     }
+  }
+
+  /** Frames whose rendered content exceeds this elide to summary+id
+    * under budget pressure (#316). High enough that ordinary messages
+    * pass through untouched; low enough that a bulk tool result or a
+    * giant paste is caught. */
+  private val frameElisionThreshold: Int = 2000
+
+  /** Characters of the original content kept as the elision's gist
+    * when the tool author supplied no summary. */
+  private val frameElisionHeadChars: Int = 240
+
+  /** #316 — per-frame budget elision. Replace oversized tool-result and
+    * message frame content with a short gist + a `next_page(eventId)`
+    * reload pointer, keeping the frame in place. Non-destructive: the
+    * durable event retains full content, re-examinable via next_page.
+    * Prefers the tool author's `ToolInvoke.summary` for the gist (this
+    * runs only on the over-budget path, over oversized frames, so the
+    * per-frame event lookup is rare), falling back to a head excerpt. */
+  private def compactLargeFrames(conversationId: Id[Conversation],
+                                 frames: Vector[ContextFrame]): Task[Vector[ContextFrame]] =
+    Task.sequence(frames.map {
+      case tc: ContextFrame.ToolCall =>
+        tc.state match {
+          case ToolCallState.Complete(content, images) if content.length > frameElisionThreshold =>
+            sigil.withDB(_.eventsTransaction(conversationId)(_.get(tc.sourceEventId))).map { evOpt =>
+              val authored = evOpt.collect {
+                case ti: _root_.sigil.event.ToolInvoke if ti.summary.trim.nonEmpty => ti.summary.trim
+              }
+              val gist = authored.getOrElse(headExcerpt(content))
+              tc.copy(state = ToolCallState.Complete(
+                elisionText(tc.toolName.value, gist, content.length, images.size, tc.sourceEventId), Nil))
+            }
+          case _ => Task.pure(tc)
+        }
+      case t: ContextFrame.Text if t.content.length > frameElisionThreshold =>
+        Task.pure(t.copy(content =
+          elisionText("message", headExcerpt(t.content), t.content.length, 0, t.sourceEventId)))
+      case other => Task.pure(other)
+    })
+
+  private def headExcerpt(s: String): String = s.take(frameElisionHeadChars).trim
+
+  private def elisionText(label: String,
+                          gist: String,
+                          fullLen: Int,
+                          imageCount: Int,
+                          eventId: Id[_root_.sigil.event.Event]): String = {
+    val imgs = if (imageCount > 0) s", $imageCount image(s)" else ""
+    s"$gist… [$label content elided to fit the context budget — $fullLen chars$imgs. " +
+      s"Reload full content with next_page(\"${eventId.value}\").]"
   }
 
   /** Resolve the criticalMemories / memories id buckets from a

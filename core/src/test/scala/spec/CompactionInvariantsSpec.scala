@@ -72,10 +72,17 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   "CompactionInvariant.CurrentUserTaskMessage" should {
 
-    "be a no-op when ctx.claimedAt is None (curator-side semantics)" in Task {
-      val u = userMsg("please find the bug")
-      val ids = CompactionInvariant.CurrentUserTaskMessage.applicableIds(Vector(u), emptyCtx)
-      ids shouldBe empty
+    "protect the most-recent user task when ctx.claimedAt is None (#316 safe-by-default)" in Task {
+      val older  = userMsg("old task", ts = 10L)
+      val recent = userMsg("please find the bug", ts = 100L)
+      val agent  = agentMsg("working on it", ts = 110L)
+      val ids = CompactionInvariant.CurrentUserTaskMessage.applicableIds(Vector(older, recent, agent), emptyCtx)
+      ids shouldBe Set(recent._id)
+    }
+
+    "protect nothing when there are no user tasks and no claim" in Task {
+      val a = agentMsg("autonomous output", ts = 10L)
+      CompactionInvariant.CurrentUserTaskMessage.applicableIds(Vector(a), emptyCtx) shouldBe empty
     }
 
     "protect a user-authored Standard-role Message inside the claim window" in Task {

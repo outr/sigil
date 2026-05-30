@@ -31,28 +31,28 @@ trait CompactionInvariant {
 
 object CompactionInvariant {
 
-  /** Protect user-authored Standard-role Message events that fall
-    * within the current agent claim's window — they carry the task
-    * the loop is working on; folding one leaves the model with no
-    * goal in scope. When `ctx.claimedAt` is `None` the predicate is
-    * a no-op: there's no "current" claim, so the curator-side per-
-    * turn shed can absorb older user messages into summaries via
-    * the normal stage-3 path. */
+  /** Protect the user task(s) the agent is working on — folding one
+    * leaves the model with no goal in scope (the #316 "reverted to a
+    * greeting" failure). With a claim in scope, protect every user-
+    * authored Standard Message at or after it (the #307 claim window,
+    * so a mid-turn follow-up is covered too). Without a claim — the
+    * curator's per-turn shed never threads one — fall back to
+    * protecting the MOST-RECENT user task. Safe-by-default: the
+    * invariant never silently protects nothing wherever it's used. */
   case object CurrentUserTaskMessage extends CompactionInvariant {
     override val name: String = "CurrentUserTaskMessage"
 
-    override def applicableIds(events: Vector[Event], ctx: TurnEventsContext): Set[Id[Event]] =
-      ctx.claimedAt match {
-        case None => Set.empty
-        case Some(claim) =>
-          events.iterator.collect {
-            case m: Message
-              if m.role == MessageRole.Standard
-              && !m.participantId.isInstanceOf[AgentParticipantId]
-              && m.timestamp.value >= claim.value =>
-              m._id
-          }.toSet
+    override def applicableIds(events: Vector[Event], ctx: TurnEventsContext): Set[Id[Event]] = {
+      val userTasks = events.collect {
+        case m: Message
+          if m.role == MessageRole.Standard
+          && !m.participantId.isInstanceOf[AgentParticipantId] => m
       }
+      ctx.claimedAt match {
+        case Some(claim) => userTasks.iterator.filter(_.timestamp.value >= claim.value).map(_._id).toSet
+        case None        => userTasks.sortBy(_.timestamp.value).lastOption.map(_._id).toSet
+      }
+    }
   }
 
   /** Protect the first event at or after `ctx.claimedAt` — the

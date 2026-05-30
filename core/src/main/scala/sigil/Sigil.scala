@@ -3766,13 +3766,34 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * filters the curator's rolling-window input. Bug #147.
    */
   def advanceClearedAt(conversationId: Id[Conversation], at: Timestamp): Task[Unit] =
-    withDB(_.conversations.transaction(_.modify(conversationId) {
-      case Some(conv) =>
-        val current = conv.clearedAt.map(_.value).getOrElse(0L)
-        if (at.value <= current) Task.pure(Some(conv))
-        else Task.pure(Some(conv.copy(clearedAt = Some(at), modified = Timestamp(Nowish()))))
-      case None => Task.pure(None)
-    })).unit
+    withDB(_.eventsTransaction(conversationId)(_.list)).flatMap { evs =>
+      // #316 — a budget shed may never advance the watermark to or past
+      // the current user task. `framesFor` keeps frames with
+      // `timestamp > clearedAt`, so capping strictly below the most-
+      // recent user-authored Standard Message makes it structurally
+      // impossible for a shed to permanently filter the active task out
+      // of context — regardless of any shed-logic bug. Old history
+      // before the task still sheds (recoverable via search_conversation
+      // / next_page). Explicit conversation-clear sets `clearedAt`
+      // directly and is intentionally unaffected by this cap.
+      val taskTs: Option[Long] = evs.iterator.collect {
+        case m: sigil.event.Message
+          if m.conversationId == conversationId
+          && m.role == sigil.event.MessageRole.Standard
+          && !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] => m.timestamp.value
+      }.maxOption
+      val capped = taskTs match {
+        case Some(t) if at.value >= t => Timestamp(t - 1)
+        case _                        => at
+      }
+      withDB(_.conversations.transaction(_.modify(conversationId) {
+        case Some(conv) =>
+          val current = conv.clearedAt.map(_.value).getOrElse(0L)
+          if (capped.value <= current) Task.pure(Some(conv))
+          else Task.pure(Some(conv.copy(clearedAt = Some(capped), modified = Timestamp(Nowish()))))
+        case None => Task.pure(None)
+      })).unit
+    }
 
   /** Fetch the [[EncodedContext]] cache row for this `(agentId,
     * conversationId, modelId)` triple, returning a fresh empty row if

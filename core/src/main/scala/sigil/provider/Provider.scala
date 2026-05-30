@@ -1296,8 +1296,22 @@ trait Provider extends Service {
     }
 
     if (resolved.summaries.nonEmpty) {
-      sb.append("\n== Earlier in this conversation ==\n")
-      resolved.summaries.foreach(s => sb.append(s.text).append("\n"))
+      sb.append("\n== Earlier in this conversation (summarized) ==\n")
+      resolved.summaries.foreach { s =>
+        sb.append(s.text)
+        if (s.coversEventIds.nonEmpty)
+          sb.append(s""" [summarizes ${s.coversEventIds.size} earlier events — """ +
+            s"""next_page("${s._id.value}") to browse them and reload any in full]""")
+        sb.append("\n")
+      }
+      // Reload convention (#316). Large tool results / messages may be
+      // elided to a short summary + an id, and old history folded into
+      // the summaries above. `next_page("<id>")` reloads full content —
+      // an event id returns that event (paginated); a summary id lists
+      // the events it covers to drill into. Nothing is lost, only
+      // deferred — reach for it when you need detail an entry only hints at.
+      sb.append("\nWhen an entry shows `next_page(\"<id>\")`, call it to reload the full content " +
+        "it elided (an event id → that event; a summary id → the events it covers).\n")
     }
 
     if (turn.information.nonEmpty) {
