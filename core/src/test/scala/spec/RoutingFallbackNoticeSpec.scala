@@ -47,7 +47,7 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   // TestSigil auto-registration hooks cover the agent's nominal id
   // but not strategy-escalated candidates.
   TestSigil.testModel(agentModelId)
-  TestSigil.testModel(Model.id("test", "only-low"))
+  TestSigil.testModel(Model.id("test", "only-high"))
   TestSigil.testModel(Model.id("test", "only-veryhigh"))
   TestSigil.testModel(Model.id("test", "fits-medium"))
 
@@ -82,14 +82,15 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   "Bug #175 — every-candidate-skipped routing fallback" should {
 
     "publish a Tool-role Message describing the gap alongside RouteResolved" in {
-      // Two candidates, neither supporting Medium — the classifier returns
-      // Medium, so every candidate is skipped and the framework falls
-      // back to agent.modelId.
-      val onlyLow      = Model.id("test", "only-low")
+      // Both candidates are ABOVE Medium — the classifier returns Medium,
+      // so #315 down-only degradation finds nothing at or below Medium and
+      // the framework falls back to agent.modelId (the genuine bottom-out
+      // the #175 notice exists for).
+      val onlyHigh     = Model.id("test", "only-high")
       val onlyVeryHigh = Model.id("test", "only-veryhigh")
       val strategy = ProviderStrategy.routed(
         default = List(
-          ModelCandidate(onlyLow,      supportedComplexity = Set(Complexity.Low)),
+          ModelCandidate(onlyHigh,     supportedComplexity = Set(Complexity.High)),
           ModelCandidate(onlyVeryHigh, supportedComplexity = Set(Complexity.VeryHigh))
         ),
         inferComplexity = Some((_, _) => Task.pure(Complexity.Medium))
@@ -115,7 +116,7 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         val rrs = evs.collect { case rr: RouteResolved if rr.conversationId == convId => rr }
         rrs should not be empty
         rrs.head.chosenModelId shouldBe agentModelId
-        rrs.head.skipReasons.keySet should contain allOf (onlyLow, onlyVeryHigh)
+        rrs.head.skipReasons.keySet should contain allOf (onlyHigh, onlyVeryHigh)
 
         val noticeMessages = evs.collect {
           case m: Message
@@ -127,7 +128,7 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         rendered should include ("Medium")
         rendered should include (agentModelId.value)
         rendered should include ("don't loop")
-        rendered should include (onlyLow.value)
+        rendered should include (onlyHigh.value)
         rendered should include (onlyVeryHigh.value)
       }
     }

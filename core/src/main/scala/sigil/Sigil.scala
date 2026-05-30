@@ -1368,8 +1368,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         }
     }
 
-    def matchesComplexity(candidate: sigil.provider.ModelCandidate): Boolean =
-      complexity.forall(c => candidate.supportedComplexity.contains(c))
+    // #315 — degrade to the nearest available tier AT OR BELOW the
+    // requested one (High → Medium → Low), not cratering to the pinned
+    // fallback when the exact tier has no candidate. `None` complexity
+    // keeps the legacy first-fit behaviour. Down-only by default: a
+    // High request never silently escalates to a VeryHigh candidate.
+    def pickFrom(avail: List[sigil.provider.ModelCandidate]): Option[Id[Model]] =
+      complexity match {
+        case None => avail.find(fits).map(_.modelId)
+        case Some(requested) =>
+          sigil.provider.Complexity.atOrBelow(requested).iterator
+            .flatMap(tier => avail.filter(_.supportedComplexity.contains(tier)).find(fits))
+            .map(_.modelId)
+            .nextOption()
+      }
 
     accessibleSpaces(chain, convId).flatMap { spaces =>
       val ordered = spaces.toList
@@ -1379,9 +1391,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           resolveProviderStrategy(space).flatMap {
             case None => loop(rest)
             case Some(strategy) =>
-              strategy.availableCandidates(workType)
-                .filter(matchesComplexity)
-                .find(fits).map(_.modelId) match {
+              pickFrom(strategy.availableCandidates(workType)) match {
                 case Some(modelId) => Task.pure(Some(modelId))
                 case None          => loop(rest)
               }
@@ -1805,7 +1815,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         case c if !c.supportedComplexity.contains(complexity) =>
           c.modelId -> s"supportedComplexity does not include $complexity"
       }.toMap
-      chosen  = candidateChain.find(_.supportedComplexity.contains(complexity))
+      // #315 — degrade to the nearest available tier at or below the
+      // inferred one before falling back to the agent's pinned model.
+      chosen  = Complexity.atOrBelow(complexity).iterator
+                  .flatMap(tier => candidateChain.find(_.supportedComplexity.contains(tier)))
+                  .nextOption()
       modelId = chosen.map(_.modelId).getOrElse(agent.modelId)
     } yield RoutingResolution(strategyOpt, userMsg, routedWorkType, complexity,
       candidateChain, skipReasons, chosen, modelId)

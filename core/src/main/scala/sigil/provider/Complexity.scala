@@ -60,4 +60,12 @@ object Complexity {
     case High     => VeryHigh
     case VeryHigh => VeryHigh
   }
+
+  /** The requested tier followed by every lower tier, in descending
+    * preference: `atOrBelow(High)` = `[High, Medium, Low]`. Routing
+    * uses this to degrade to the nearest *available* tier at or below
+    * the requested one (#315) instead of cratering to the pinned
+    * fallback when the exact tier has no candidate. */
+  def atOrBelow(c: Complexity): List[Complexity] =
+    ordered.take(ordered.indexOf(c) + 1).reverse
 }
