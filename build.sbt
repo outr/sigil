@@ -1,5 +1,5 @@
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "1.1.0"
+ThisBuild / version := "1.2.0-SNAPSHOT"
 
 ThisBuild / scalaVersion := "3.8.3"
 

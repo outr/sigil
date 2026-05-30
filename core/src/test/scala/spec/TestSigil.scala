@@ -176,7 +176,9 @@ object TestSigil extends Sigil {
       RW.static(ExhaustedAgent),
       RW.static(ForensicAgent),
       RW.static(BrokenHistoryAgent),
-      RW.static(NoOpHealAgent)
+      RW.static(NoOpHealAgent),
+      RW.static(AgentLoopErrorAgent),
+      RW.static(AgentLoopMultiAgent)
     )
 
   /** Registers every test-only [[SpaceId]] once. Add new test

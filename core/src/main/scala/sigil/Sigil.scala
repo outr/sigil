@@ -5366,21 +5366,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // adjacent to bug #312 where operational observers had no signal
     // for an agent loop that crashed mid-stream.
     //
-    // `emitCompleted = false` because the loop already publishes a
-    // richer settled-state signal via `AgentStateDelta` (Idle /
-    // Complete) — a duplicate operational `Completed` would only add
-    // noise. The `Failed` Notice still fires when relevant.
-    //
-    // The wrap's failure path observes the throwable via the default
-    // re-throw — the same throwable continues up to the fiber error
-    // boundary the existing `runAgentLoop.handleError` chain
-    // re-raises through.
+    // Sigil #313 — both terminal phases fire. `AgentStateDelta(Idle)`
+    // is a different channel keyed by agent/conversation, not the
+    // workflowId; consumers tracking framework workflows by workflowId
+    // can't correlate it, so a missing `Completed` left the Started
+    // open forever (activity-bar rows ticking after idle). The wrap
+    // must self-terminate: every Started gets a Completed or Failed.
     given sigilGiven: Sigil = this
     val unit = new RunUnit[Unit] {
       override val label = s"agent loop ${agent.id.value} / ${conv._id.value}"
       override val workflowType = "agent-loop"
       override val conversationId = Some(conv._id)
-      override def emitCompleted = false
       override val run: Task[Unit] = runAgentLoopForUnit(agent, conv, claimed, greeting)
     }
     // `RunUnit.execute` re-throws the underlying exception after the
