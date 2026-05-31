@@ -44,10 +44,8 @@ import sigil.tool.output.ToolOutputNode
  *   - `modelId` — optional explicit model id; when set, every
  *     worker uses this model. When unset, the framework resolves
  *     per the strategy + `complexity` hint.
- *   - `toolNames` — the worker's tool roster. Empty inherits the
- *     spawning agent's effective roster (same default as
- *     `delegate_task`); explicit list restricts.
- *   - `maxIterations` — caps each worker's agent loop.
+ *   - `toolNames` — the worker's work roster, on top of the framework
+ *     essentials each worker always has; empty gives just those.
  *   - `itemsAt` — tree level to dispatch over (default 0 =
  *     top-level).
  *   - `itemsLimit` — cap on the count consumed (default 50;
@@ -70,7 +68,6 @@ case class DispatchWorkersInput(itemsId: Id[ToolOutputNode],
                                 complexity: Option[Complexity] = None,
                                 modelId: Option[String] = None,
                                 toolNames: List[String] = Nil,
-                                maxIterations: Option[Int] = None,
                                 itemsAt: Option[Int] = None,
                                 itemsLimit: Int = 50,
                                 maxParallel: Int = 5,

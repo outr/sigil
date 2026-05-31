@@ -148,10 +148,10 @@ class RunUnitSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
 
     "NOT publish a parent-conversation echo Notice even when parentConversationId is set" in {
-      // Locked-design pin: the parent-echo flow for worker-delegation
-      // stays sourced from `SigilWorkflowManager.maybePublishTaskExecuted`.
-      // `RunUnit.execute` carries the parent hint as forward-compat
-      // metadata only.
+      // Locked-design pin: `RunUnit.execute` carries the parent hint as
+      // forward-compat metadata only — it never auto-publishes a
+      // cross-conversation echo. (Worker delegation bridges explicitly via
+      // relay_message, sigil #327.)
       val parent = Conversation.id("rununit-parent")
       val worker = Conversation.id("rununit-worker")
       val unit = new RunUnit[Int] {

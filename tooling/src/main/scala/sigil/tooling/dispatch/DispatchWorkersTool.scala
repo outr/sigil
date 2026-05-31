@@ -16,8 +16,6 @@ import sigil.tool.model.ResponseContent
 import sigil.tool.{Tool, ToolContext, ToolExample, ToolName, ToolResult}
 import sigil.tooling.container.ContainerSupport
 
-import java.util.concurrent.ConcurrentHashMap
-
 /**
  * Generic parallel per-item dispatch — the *headless* sibling of the
  * supervised [[sigil.tool.util.DelegateTaskTool delegate_task]] bridge
@@ -77,8 +75,7 @@ final class DispatchWorkersTool extends Tool {
       |  - `goal`           — one-sentence intent for the dispatch, for forensics
       |  - `complexity`     — routing hint passed to each worker's model resolution
       |  - `modelId`        — explicit model override per worker
-      |  - `toolNames`      — worker roster (empty gives the worker essentials + find_capability)
-      |  - `maxIterations`  — per-worker cap
+      |  - `toolNames`      — worker roster (empty gives the worker just the framework essentials)
       |  - `itemsAt`        — container tree level to read from
       |  - `itemsLimit`     — hard cap on items consumed
       |  - `maxParallel`    — concurrency cap (default 5; at most N workers run at once)
@@ -157,7 +154,6 @@ final class DispatchWorkersTool extends Tool {
       input         = input,
       host          = host
     )
-    DispatchWorkersTool.coordinator.register(state)
 
     for {
       _ <- host.publish(DispatchStarted(
@@ -183,12 +179,6 @@ final class DispatchWorkersTool extends Tool {
 
 object DispatchWorkersTool {
 
-  /** Process-wide coordinator registry. Each active dispatch registers
-    * its [[DispatchState]] here; the coordinator's background fiber routes
-    * incoming worker-Idle signals to the matching state by worker
-    * conversation id. */
-  private[dispatch] val coordinator: DispatchRegistry = new DispatchRegistry
-
   private val PreviewLength: Int = 80
   private[dispatch] def previewOf(item: Json): String = {
     val rendered = JsonFormatter.Compact(item)
@@ -203,19 +193,6 @@ object DispatchWorkersTool {
     val goalBlock    = input.goal.filter(_.nonEmpty).map(g => s"Dispatch goal: $g\n\n").getOrElse("")
     s"$goalBlock$payloadBlock\n\n${input.workerPrompt}"
   }
-}
-
-/** In-process registry of active dispatches keyed by worker conversation
-  * id so the coordinator can route incoming worker-Idle signals to the
-  * right [[DispatchState]] in O(1). */
-private[dispatch] final class DispatchRegistry {
-  private val byWorker: ConcurrentHashMap[LId[Conversation], DispatchState] = new ConcurrentHashMap()
-
-  def register(state: DispatchState): Unit = state.attach(this)
-
-  def link(workerId: LId[Conversation], state: DispatchState): Unit = byWorker.put(workerId, state)
-  def unlink(workerId: LId[Conversation]): Unit = byWorker.remove(workerId)
-  def find(workerId: LId[Conversation]): Option[DispatchState] = Option(byWorker.get(workerId))
 }
 
 /** Per-dispatch coordinator state. Tracks per-item assignment
@@ -240,9 +217,6 @@ private[dispatch] final class DispatchState(val dispatchId: String,
   private val workerToIndex = scala.collection.mutable.Map.empty[LId[Conversation], Int]
   private val workerIds     = scala.collection.mutable.Map.empty[LId[Conversation], WorkerParticipantId]
   private val results       = scala.collection.mutable.LinkedHashMap.empty[Int, WorkerSummary]
-  private var registry: DispatchRegistry = null
-
-  def attach(r: DispatchRegistry): Unit = synchronized { registry = r }
 
   /** Spawn the worker for `itemIndex` as a real agent in its own
     * sub-conversation and post the brief addressed to it. Registers the
@@ -287,7 +261,6 @@ private[dispatch] final class DispatchState(val dispatchId: String,
       _ = synchronized {
         workerToIndex(workerConv._id) = itemIndex
         workerIds(workerConv._id) = workerId
-        if (registry != null) registry.link(workerConv._id, this)
       }
       _ <- host.publish(Message(
         participantId  = parentCaller,
@@ -348,7 +321,6 @@ private[dispatch] final class DispatchState(val dispatchId: String,
                 iterations           = workerMsgs.size,
                 exhausted            = isFailure
               )
-              if (registry != null) registry.unlink(convId)
               val toSpawn = if (nextItemToSpawn < total) Some(nextItemToSpawn) else None
               (true, results.size >= total, toSpawn)
             }

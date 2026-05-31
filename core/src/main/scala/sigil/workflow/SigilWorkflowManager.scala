@@ -83,12 +83,11 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
     *   1. The workflow's `createdBy` matched against the source
     *      conversation's participants list.
     *   2. The source conversation's first participant.
-    *   3. For worker conversations spawned by `delegate_task`
-    *      (`participants = Nil`, `parentConversationId =
-    *      Some(parent)`) — the parent conversation's first
-    *      participant. Without this fallback the framework drops
-    *      every lifecycle event for worker runs because their
-    *      worker conv has no participants by construction.
+    *   3. For a participant-less conversation that descends from a
+    *      parent (`parentConversationId = Some(parent)`) — the parent
+    *      conversation's first participant, so a run anchored on such a
+    *      conversation still has an owner to attribute its lifecycle
+    *      events to.
     *
     * If no participant resolves through any of these, log a
     * warning and skip — the workflow is genuinely unowned. */
@@ -118,8 +117,8 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
   /** Locate a participant to attribute a workflow's lifecycle
     * event to. Walks the resolution chain documented on
     * [[publishLifecycle]] — `createdBy` match first, then the
-    * source conv's head participant, then the parent conv's
-    * head participant (for worker delegations). */
+    * source conv's head participant, then (for a participant-less
+    * conversation) the parent conv's head participant. */
   private def resolveCaller(workflow: Workflow,
                             conv: Conversation): Task[Option[ParticipantId]] = {
     val createdByValue = workflow.createdBy.getOrElse("")

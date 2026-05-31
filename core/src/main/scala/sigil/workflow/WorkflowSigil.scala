@@ -75,12 +75,12 @@ trait WorkflowSigil extends Sigil {
 
   /** Register the framework-shipped workflow triggers + step inputs.
     * Runs inside [[Sigil.polymorphicRegistrations]] (via the
-    * [[Sigil.mixinPolymorphicRegistrations]] hook) after the framework
-    * leaf polytypes (WorkType, Mode, SpaceId, ...) — required because
-    * `AgentDecisionStepInput.role: Role` references `WorkType`, and
-    * forcing the step input's RW.def before WorkType is registered
-    * would cache an empty WorkType polytype state in Role.def's lazy
-    * val (sigil bug #18). */
+    * [[Sigil.mixinPolymorphicRegistrations]] hook) AFTER the framework
+    * leaf polytypes (WorkType, Mode, SpaceId, ...) are registered —
+    * forcing a subtype's `RW.def` before its referenced leaf polytypes
+    * are populated caches an empty polytype state in a lazy val (sigil
+    * bug #18). `TriggerStepInput` references the `WorkflowTrigger`
+    * polytype registered in the same block, so triggers register first. */
   override protected def mixinPolymorphicRegistrations: Task[Unit] =
     super.mixinPolymorphicRegistrations.flatMap { _ =>
       Task {

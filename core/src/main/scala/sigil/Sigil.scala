@@ -6177,35 +6177,40 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 // publish + post-commit terminal release.
                 Task.error(buildRunawayException(
                   agent, conv, iteration, maxAgentIterations, forcedReason))
-              else if (conv.parentConversationId.isDefined &&
-                       conv.participants.count { case _: AgentParticipant => true; case _ => false } >= 2) {
-                // #327 chat-fidelity — in a directed worker sub-conversation
-                // (linked to a parent, two+ agents) a woken agent that has
-                // nothing more to add simply RESTS, exactly like a user who
-                // doesn't reply. No forced synthesis: forcing a reply here
-                // is what made the supervised bridge ping-pong. This is the
-                // natural termination — the supervisor relays its result up
-                // to the parent and, with nothing left for the worker,
-                // settles silently here; the worker (now un-addressed) is
-                // never re-woken. (User-facing conversations keep the #257
-                // forced-reply recovery below, where the agent owes the user
-                // an answer.)
-                scribe.debug(
-                  s"runAgentLoop[${agent.id.value}/${convId.value}] no tool call in a worker " +
-                    "sub-conversation; settling silently (chat-fidelity rest)"
-                )
-                // skipFallback — a silent rest must NOT synthesize the
-                // #282 "turn ended without a reply" placeholder; resting
-                // is the intended outcome here, not a stuck turn.
-                Task(terminate(skipFallback = true))
-              }
               else if (noToolCallRetries < noToolCallRetryLimit) {
+                // Recover a transient reasoning-model tool-call drop with a
+                // plain re-prompt — in BOTH user-facing and worker
+                // conversations. A worker-conv agent that genuinely meant
+                // to reply (e.g. a supervisor answering the worker) but
+                // dropped the call must get these retries, or the task
+                // stalls silently.
                 scribe.warn(
                   s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration returned no " +
                     s"tool call; retrying with the full roster (retry ${noToolCallRetries + 1}/$noToolCallRetryLimit)"
                 )
                 Task.pure(recurseFullRosterRetry)
-              } else
+              }
+              else if (conv.parentConversationId.isDefined &&
+                       conv.participants.count { case _: AgentParticipant => true; case _ => false } >= 2) {
+                // #327 chat-fidelity — once the drop-recovery retries are
+                // exhausted in a directed worker sub-conversation (linked to
+                // a parent, two+ agents), a woken agent that still has
+                // nothing to add simply RESTS, exactly like a user who
+                // doesn't reply. Replacing forced synthesis with rest is the
+                // natural termination: the supervisor relays its result up
+                // to the parent and, with nothing left for the worker,
+                // settles silently here; the worker (un-addressed) is never
+                // re-woken. (User-facing conversations force a reply below,
+                // where the agent owes the user an answer.) skipFallback —
+                // resting must NOT synthesize the #282 "turn ended without a
+                // reply" placeholder; rest is the intended outcome.
+                scribe.debug(
+                  s"runAgentLoop[${agent.id.value}/${convId.value}] no tool call after " +
+                    s"$noToolCallRetries retries in a worker sub-conversation; settling silently (chat-fidelity rest)"
+                )
+                Task(terminate(skipFallback = true))
+              }
+              else
                 Task.pure(recurseForced(ForcedSynthesisReason.NoToolCall))
             }
           }
@@ -7302,8 +7307,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // Mixin hook — runs AFTER all framework leaf polytypes register but
       // BEFORE the aggregates that walk Participant/Tool/Signal definitions.
       // Mixins that register polytypes whose subtype RWs reach into framework
-      // leaves (e.g. WorkflowSigil's WorkflowStepInput → AgentDecisionStepInput
-      // → Role → WorkType) MUST run here, not at trait-init time — otherwise
+      // leaves (e.g. a mixin subtype carrying a Role → WorkType, or a
+      // WorkflowStepInput referencing the WorkflowTrigger poly) MUST run here,
+      // not at trait-init time — otherwise
       // the subtype lazy-val Definitions cache empty leaf-poly snapshots and
       // downstream codegen sees empty dispatchers despite the leaf register
       // calls succeeding (sigil bug #18).
@@ -7746,8 +7752,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * changes don't have to ripple through a denormalization step.
    */
   def activeTasksFor(conversationId: Id[Conversation]): Task[List[sigil.conversation.ConversationTask]] =
-    withDB(_.conversations.transaction(_.list)).flatMap { all =>
-      val workers = all.filter(c => c.parentConversationId.contains(conversationId) && !c.archived)
+    withDB(_.conversations.transaction(
+      // Query the `parentConversationId` index (sigil #289) rather than
+      // scanning every conversation — a panel refresh shouldn't be O(all
+      // conversations).
+      _.query.filter(_.parentConversationId === Some(conversationId)).toList
+    )).flatMap { children =>
+      val workers = children.filter(!_.archived)
       Task.sequence(workers.map(workerTaskFor)).map(_.flatten)
     }
 
@@ -7784,9 +7795,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * override the WorkflowSigil-side filter or wrap this method.
    */
   def activeTasks(viewer: ParticipantId): Task[List[sigil.conversation.ConversationTask]] =
-    withDB(_.conversations.transaction(_.list)).flatMap { all =>
-      val workers = all.filter(c =>
-        c.parentConversationId.isDefined && !c.archived && c.participants.exists(_.id == viewer))
+    // Narrow to worker sub-conversations via the index first
+    // (participant membership isn't indexed, so the viewer filter still
+    // runs in memory — but only over the worker set, not all conversations).
+    withDB(_.conversations.transaction(_.query.filter(_.parentConversationId !== None).toList)).flatMap { children =>
+      val workers = children.filter(c => !c.archived && c.participants.exists(_.id == viewer))
       Task.sequence(workers.map(workerTaskFor))
         .map(_.flatten.sortBy(_.modifiedAt.value)(using Ordering.Long.reverse))
     }

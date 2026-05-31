@@ -25,9 +25,9 @@ import sigil.signal.{FrameworkWorkflowNotice, FrameworkWorkflowPhase}
  *
  * `parentConversationId` is a forward-compat hint carried for future
  * cross-conversation echo wiring; today's `execute` does NOT auto-publish
- * any cross-conversation event. The `delegate_task` parent-echo flow
- * continues to be sourced from
- * [[sigil.workflow.SigilWorkflowManager.maybePublishTaskExecuted]].
+ * any cross-conversation event. Worker delegation (sigil #327) bridges
+ * across conversations explicitly via `relay_message`, not through this
+ * hook.
  */
 trait RunUnit[T] {
 
@@ -47,11 +47,9 @@ trait RunUnit[T] {
   def conversationId: Option[Id[Conversation]]
 
   /** Forward-compat hint at the parent conversation when the unit is
-    * spawned by another (worker delegation, sub-conversation tooling).
-    * [[RunUnit.execute]] does NOT publish cross-conversation echoes —
-    * that stays the responsibility of the surface emitting the
-    * persistent Event (e.g.
-    * [[sigil.workflow.SigilWorkflowManager.maybePublishTaskExecuted]]).
+    * spawned by another (sub-conversation tooling). [[RunUnit.execute]]
+    * does NOT publish cross-conversation echoes — that stays the
+    * responsibility of the surface emitting the persistent Event.
     * Defined here so a future operational cross-conversation Notice
     * (if/when justified) finds the metadata already plumbed. */
   def parentConversationId: Option[Id[Conversation]] = None
