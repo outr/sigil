@@ -60,7 +60,6 @@ trait WorkflowSigil extends Sigil {
       summon[RW[sigil.workflow.event.WorkflowStepCompleted]] ::
       summon[RW[sigil.workflow.event.WorkflowRunCompleted]] ::
       summon[RW[sigil.workflow.event.WorkflowRunFailed]] ::
-      summon[RW[sigil.workflow.event.TaskExecuted]] ::
       super.eventRegistrations
 
   /** Auto-register the workflow Notices (approval prompts, etc.) so
@@ -89,8 +88,7 @@ trait WorkflowSigil extends Sigil {
           summon[RW[sigil.workflow.trigger.ConversationMessageTrigger]],
           summon[RW[sigil.workflow.trigger.TimeTrigger]],
           summon[RW[sigil.workflow.trigger.WebhookTrigger]],
-          summon[RW[sigil.workflow.trigger.WorkflowEventTrigger]],
-          summon[RW[sigil.workflow.trigger.AnswerTrigger]]
+          summon[RW[sigil.workflow.trigger.WorkflowEventTrigger]]
         ) ++ workflowTriggerRegistrations)*)
 
         WorkflowStepInput.register((List(
@@ -100,8 +98,7 @@ trait WorkflowSigil extends Sigil {
           summon[RW[ParallelStepInput]],
           summon[RW[LoopStepInput]],
           summon[RW[SubWorkflowStepInput]],
-          summon[RW[TriggerStepInput]],
-          summon[RW[AgentDecisionStepInput]]
+          summon[RW[TriggerStepInput]]
         ) ++ workflowStepInputRegistrations)*)
       }
     }
@@ -131,43 +128,49 @@ trait WorkflowSigil extends Sigil {
     manager
   }
 
+  // Worker delegation tasks come from the base `Sigil.activeTasksFor`
+  // (worker sub-conversations + AgentState, sigil #327); this override
+  // adds the GENERAL Strider workflow runs (scheduled / triggered /
+  // multi-step templates) tied to the conversation.
   override def activeTasksFor(conversationId: Id[sigil.conversation.Conversation])
-    : Task[List[sigil.conversation.ConversationTask]] = {
-    if (!_workflowManagerStarted) Task.pure(Nil)
-    else workflowManager.collection.transaction { tx =>
-      tx.query.toList.map { all =>
-        all.iterator
-          .filter(wf => wf.conversationId.contains(conversationId.value))
+    : Task[List[sigil.conversation.ConversationTask]] =
+    super.activeTasksFor(conversationId).flatMap { workerTasks =>
+      if (!_workflowManagerStarted) Task.pure(workerTasks)
+      else workflowManager.collection.transaction { tx =>
+        tx.query.toList.map { all =>
+          workerTasks ++ all.iterator
+            .filter(wf => wf.conversationId.contains(conversationId.value))
+            .filter(wf => !wf.finished)
+            .flatMap(sigil.conversation.ConversationTask.fromWorkflow)
+            .toList
+        }
+      }
+    }
+
+  override def activeTasks(viewer: sigil.participant.ParticipantId)
+    : Task[List[sigil.conversation.ConversationTask]] =
+    super.activeTasks(viewer).flatMap { workerTasks =>
+      if (!_workflowManagerStarted) Task.pure(workerTasks)
+      else for {
+        runs <- workflowManager.collection.transaction(_.query.toList)
+        // Default visibility predicate: viewer sees a task when they
+        // can see the underlying conversation. Cheapest sufficient
+        // filter today is "the conversation has them as a participant"
+        // — apps with admin / multi-tenant overrides extend this method.
+        viewerConvIds <- withDB(_.conversations.transaction(_.list)).map { convs =>
+          convs.collect {
+            case conv if conv.participants.exists(_.id == viewer) => conv._id.value
+          }.toSet
+        }
+      } yield {
+        val workflowTasks = runs.iterator
+          .filter(wf => wf.conversationId.exists(viewerConvIds.contains))
           .filter(wf => !wf.finished)
           .flatMap(sigil.conversation.ConversationTask.fromWorkflow)
           .toList
+        (workerTasks ++ workflowTasks).sortBy(_.modifiedAt.value)(using Ordering.Long.reverse)
       }
     }
-  }
-
-  override def activeTasks(viewer: sigil.participant.ParticipantId)
-    : Task[List[sigil.conversation.ConversationTask]] = {
-    if (!_workflowManagerStarted) Task.pure(Nil)
-    else for {
-      runs <- workflowManager.collection.transaction(_.query.toList)
-      // Default visibility predicate: viewer sees a task when they
-      // can see the underlying conversation. Cheapest sufficient
-      // filter today is "the conversation has them as a participant"
-      // — apps with admin / multi-tenant overrides extend this method.
-      viewerConvIds <- withDB(_.conversations.transaction(_.list)).map { convs =>
-        convs.collect {
-          case conv if conv.participants.exists(_.id == viewer) => conv._id.value
-        }.toSet
-      }
-    } yield {
-      runs.iterator
-        .filter(wf => wf.conversationId.exists(viewerConvIds.contains))
-        .filter(wf => !wf.finished)
-        .flatMap(sigil.conversation.ConversationTask.fromWorkflow)
-        .toList
-        .sortBy(_.modifiedAt.value)(using Ordering.Long.reverse)
-    }
-  }
 
   /** Whether the framework's workflow management tools (`create_workflow`,
     * `list_workflows`, `run_workflow`, …) are appended to `staticTools`.
@@ -197,12 +200,7 @@ trait WorkflowSigil extends Sigil {
     new sigil.workflow.tool.DeclineWorkflowTool,
     new sigil.workflow.tool.RegisterTriggerTool,
     new sigil.workflow.tool.UnregisterTriggerTool,
-    new sigil.workflow.tool.ListTriggersTool,
-    // Worker delegation — spawn a worker and answer its questions.
-    // Both require the workflow runtime, so they ship with the
-    // workflow management roster rather than `AllShippedTools`.
-    sigil.tool.util.DelegateTaskTool,
-    sigil.tool.util.AnswerWorkerTool
+    new sigil.workflow.tool.ListTriggersTool
   )
 
   override protected def modes: List[Mode] = {

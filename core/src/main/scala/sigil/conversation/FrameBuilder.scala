@@ -10,7 +10,6 @@ import sigil.tool.ToolInput.given
 import sigil.tool.ToolName
 import sigil.tool.discovery.CapabilityType
 import sigil.tool.model.ResponseContent
-import sigil.workflow.event.TaskExecuted
 
 /**
  * Pure, provider-agnostic translation from a single [[Event]] (that has
@@ -278,17 +277,6 @@ object FrameBuilder {
       // participant) state for delivery indicators, never seen
       // by the curator.
       case _: sigil.event.ReadState                      => None
-      // #323 — a worker completion must be readable by the parent
-      // agent it woke. It's a ControlPlaneEvent, so opt it back into
-      // the view ahead of the blanket skip, rendering the worker's
-      // summary as a System frame.
-      case te: TaskExecuted =>
-        val tail = if (te.exhausted) " — worker hit its iteration cap, result may be incomplete" else ""
-        Some(ContextFrame.System(
-          content       = s"[delegated task \"${te.roleName}\" completed after ${te.iterations} iteration(s)$tail]\n${te.summary}",
-          sourceEventId = te._id,
-          visibility    = te.visibility
-        ))
       case _: sigil.event.ControlPlaneEvent              => None
 
       case other =>

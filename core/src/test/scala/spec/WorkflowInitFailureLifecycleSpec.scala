@@ -10,10 +10,9 @@ import sigil.conversation.{Conversation, Topic, TopicEntry}
 import sigil.db.Model
 import sigil.participant.{AgentParticipantId, DefaultAgentParticipant}
 import sigil.provider.{ConversationMode, GenerationSettings, Instructions}
-import sigil.role.Role
 import sigil.signal.Signal
-import sigil.workflow.{AgentDecisionStepInput, JobStepInput, WorkflowTemplate}
-import sigil.workflow.event.{TaskExecuted, WorkflowRunCompleted, WorkflowRunFailed, WorkflowRunStarted}
+import sigil.workflow.{JobStepInput, WorkflowTemplate}
+import sigil.workflow.event.{WorkflowRunCompleted, WorkflowRunFailed, WorkflowRunStarted}
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.concurrent.duration.*
@@ -21,23 +20,14 @@ import scala.concurrent.duration.*
 /**
  * Coverage for the invariant that every workflow run terminates with a
  * lifecycle signal consumers can observe — `WorkflowRunStarted` →
- * (`WorkflowRunCompleted` | `WorkflowRunFailed`), plus a matching
- * `TaskExecuted` echoed into the parent conversation for any run
- * spawned via `delegate_task`.
+ * (`WorkflowRunCompleted` | `WorkflowRunFailed`).
  *
- * Pins down two surfaces that previously went silent:
- *
- *   1. A first-step exception (model resolution miss, missing host
- *      dep, etc.) — `WorkflowRunStarted` AND `WorkflowRunFailed` must
- *      still publish, so downstream UIs render a "failed" chip rather
- *      than a frozen "still running" placeholder.
- *
- *   2. A worker conversation spawned by `delegate_task` whose
- *      `participants` is empty — the lifecycle events have to land
- *      somewhere observable. The parent conversation (carrying the
- *      spawning agent) is the natural target; a `TaskExecuted` with
- *      `exhausted = true` echoes the failure into the parent so the
- *      parent agent's next iteration sees it.
+ * A first-step exception (model resolution miss, missing host dep, etc.)
+ * — `WorkflowRunStarted` AND `WorkflowRunFailed` must still publish, so
+ * downstream UIs render a "failed" chip rather than a frozen "still
+ * running" placeholder. The lifecycle events land on the run's
+ * `conversationId` (or, for a participant-less conversation, its
+ * parent's first participant).
  */
 class WorkflowInitFailureLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
@@ -119,84 +109,6 @@ class WorkflowInitFailureLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec 
         fails should have size 1
         ok shouldBe empty
         fails.head.reason should not be empty
-      }
-    }
-
-    "echo a TaskExecuted(exhausted=true) into the parent conversation when a delegate_task worker fails at init" in {
-      val parentConvId = Conversation.id("init-fail-parent-2")
-      val workerConvId = Conversation.id("init-fail-worker-2")
-      val recorded = new ConcurrentLinkedQueue[Signal]()
-      @volatile var running = true
-      TestWorkflowSigil.signals
-        .evalMap(s => Task { recorded.add(s); () })
-        .takeWhile(_ => running)
-        .drain
-        .startUnit()
-      Thread.sleep(100)
-
-      // Parent carries the participant; worker carries none (matches
-      // how DelegateTaskTool spawns worker conversations).
-      val parentConv = Conversation(
-        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
-        participants = List(DefaultAgentParticipant(
-          id = WorkflowTestUser.asInstanceOf[AgentParticipantId],
-          modelId = Model.id("test", "model"),
-          toolNames = Nil,
-          instructions = Instructions(),
-          generationSettings = GenerationSettings()
-        )),
-        currentMode = ConversationMode,
-        space = GlobalSpace,
-        _id = parentConvId
-      )
-      val workerConv = Conversation(
-        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
-        participants = Nil,
-        currentMode = ConversationMode,
-        space = GlobalSpace,
-        parentConversationId = Some(parentConvId),
-        _id = workerConvId
-      )
-
-      // No template — `delegate_task` schedules ad-hoc via the
-      // manager. We mirror that pattern: directly schedule a
-      // single SigilAgentDecisionStep against an ad-hoc sourceId
-      // with the worker conv attached.
-      import sigil.workflow.SigilWorkflowModel.stepRW
-      val stepInput = AgentDecisionStepInput(
-        id      = "decision-0",
-        name    = Some("Init-failure decision"),
-        role    = Role(name = "init-fail-role", description = "Stub role for the init-failure test."),
-        brief   = "Anything — this step throws on entry.",
-        modelId = "definitely/not-a-registered-model"
-      )
-      val compiled = sigil.workflow.WorkflowStepInputCompiler.compile(List(stepInput))
-      val sourceId = lightdb.id.Id[strider.WorkflowParent](s"adhoc-init-fail-${rapid.Unique()}")
-
-      for {
-        _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
-        _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(workerConv)))
-        run <- TestWorkflowSigil.workflowManager.schedule(
-                  name           = "delegate-init-fail",
-                  steps          = compiled.steps,
-                  sourceId       = sourceId,
-                  conversationId = Some(workerConvId.value)
-                )
-        _ <- waitFor(recorded, 15.seconds)(_.exists {
-                case t: TaskExecuted => t.taskId == run._id.value
-                case _ => false
-              })
-      } yield {
-        running = false
-        import scala.jdk.CollectionConverters.*
-        val all = recorded.iterator().asScala.toList
-        val taskEv = all.collect { case t: TaskExecuted if t.taskId == run._id.value => t }
-        taskEv should have size 1
-        val te = taskEv.head
-        te.conversationId shouldBe parentConvId
-        te.exhausted shouldBe true
-        te.summary.toLowerCase should include("fail")
-        te.workerConversationId shouldBe Some(workerConvId)
       }
     }
 

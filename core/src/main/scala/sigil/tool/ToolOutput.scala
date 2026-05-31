@@ -71,7 +71,6 @@ object ToolOutput extends PolyType[ToolOutput]()(using scala.reflect.ClassTag(cl
     summon[RW[sigil.tool.core.CancelFrameworkWorkflowOutput]],
 
     // util/
-    summon[RW[sigil.tool.util.AnswerWorkerOutput]],
     summon[RW[sigil.tool.util.DelegateTaskOutput]],
 
     // model/

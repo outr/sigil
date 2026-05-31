@@ -122,7 +122,6 @@ object CoreTools {
       summon[RW[UnpinMemoryInput]],
       summon[RW[MoveMemoryInput]],
       summon[RW[ContextBreakdownInput]],
-      summon[RW[sigil.tool.model.CompleteTaskInput]],
       summon[RW[sigil.tool.output.NextPageInput]],
       summon[RW[sigil.tool.output.QueryToolOutputInput]],
       summon[RW[sigil.tool.core.CancelFrameworkWorkflowInput]],

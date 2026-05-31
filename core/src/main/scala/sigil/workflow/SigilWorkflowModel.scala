@@ -26,7 +26,6 @@ object SigilWorkflowModel extends AbstractWorkflowModel {
     summon[RW[SigilJobStep]],
     summon[RW[SigilCondition]],
     summon[RW[SigilApproval]],
-    summon[RW[SigilAgentDecisionStep]],
     summon[RW[Parallel]],
     summon[RW[Loop]],
     summon[RW[Recycle]],
@@ -34,7 +33,6 @@ object SigilWorkflowModel extends AbstractWorkflowModel {
     summon[RW[sigil.workflow.trigger.ConversationMessageTriggerImpl]],
     summon[RW[sigil.workflow.trigger.TimeTriggerImpl]],
     summon[RW[sigil.workflow.trigger.WebhookTriggerImpl]],
-    summon[RW[sigil.workflow.trigger.WorkflowEventTriggerImpl]],
-    summon[RW[sigil.workflow.trigger.AnswerTriggerImpl]]
+    summon[RW[sigil.workflow.trigger.WorkflowEventTriggerImpl]]
   )
 }

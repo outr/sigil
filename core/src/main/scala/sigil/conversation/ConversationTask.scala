@@ -4,7 +4,6 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import sigil.workflow.SigilApproval
-import sigil.workflow.trigger.AnswerTriggerImpl
 import strider.{Workflow, WorkflowStatus}
 
 /**
@@ -56,6 +55,25 @@ object ConversationTask {
       )
     }
 
+  /** Project a worker sub-conversation (sigil #327 agent-bridge
+    * delegation) into a panel task. `active` reflects the worker
+    * agent's current [[sigil.event.AgentState]] — `Running` while it
+    * holds an Active claim (mid-turn), `Waiting` once it has yielded
+    * (responded; awaiting its supervisor). The task is keyed by the
+    * worker conversation id and attributed to the parent conversation
+    * that spawned it. */
+  def fromWorkerConversation(conv: Conversation, active: Boolean): ConversationTask =
+    ConversationTask(
+      taskId           = conv._id.value,
+      conversationId   = conv.parentConversationId.getOrElse(conv._id),
+      name             = conv.currentTopic.label,
+      status           = if (active) WorkflowStatus.Running else WorkflowStatus.Waiting,
+      displayStatus    = if (active) TaskDisplayStatus.Running else TaskDisplayStatus.Waiting,
+      startedAt        = conv.created,
+      modifiedAt       = conv.modified,
+      workflowSourceId = "worker"
+    )
+
   /** Refine Strider's lifecycle status with Sigil-specific
     * waiting flavors based on which step the run is parked on. */
   private def computeDisplayStatus(wf: Workflow): TaskDisplayStatus = wf.status match {
@@ -69,9 +87,8 @@ object ConversationTask {
     case WorkflowStatus.Waiting   =>
       val waitingStep = wf.waitingStepId.flatMap(id => wf.byStepId(id))
       waitingStep match {
-        case Some(_: SigilApproval)     => TaskDisplayStatus.WaitingForApproval
-        case Some(_: AnswerTriggerImpl) => TaskDisplayStatus.WaitingForAnswer
-        case _                          => TaskDisplayStatus.Waiting
+        case Some(_: SigilApproval) => TaskDisplayStatus.WaitingForApproval
+        case _                      => TaskDisplayStatus.Waiting
       }
     case WorkflowStatus.Paused    => TaskDisplayStatus.Paused
   }

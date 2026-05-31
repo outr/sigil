@@ -109,6 +109,10 @@ object AllShippedTools {
     new SaveMemoryTool(space),
     SearchConversationTool,
     RelayMessageTool,
+    // Worker delegation (sigil #327) — spawn a worker agent in a
+    // sub-conversation and supervise it; pure conversations + agents,
+    // no workflow runtime required.
+    sigil.tool.util.DelegateTaskTool,
     SemanticSearchTool,
     SleepTool,
     new SystemStatsTool(fs),

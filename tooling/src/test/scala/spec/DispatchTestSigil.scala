@@ -7,13 +7,15 @@ import lightdb.upgrade.DatabaseUpgrade
 import profig.Profig
 import rapid.Task
 import sigil.conversation.{Conversation, TurnInput}
-import sigil.db.{Model, SigilDB}
+import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider, SigilDB}
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
+import sigil.event.Event
 import sigil.information.Information
 import sigil.participant.{Participant, ParticipantId}
 import sigil.provider.Provider
 import sigil.signal.Signal
 import sigil.tool.Tool
+import sigil.tooling.dispatch.{DispatchCompleted, DispatchStarted}
 import sigil.vector.{NoOpVectorIndex, VectorIndex}
 import sigil.{Sigil, SpaceId}
 
@@ -55,6 +57,10 @@ object DispatchTestSigil extends Sigil {
   override def testMode: Boolean = true
 
   override protected def signalRegistrations: List[RW[? <: Signal]] = Nil
+  // Dispatch lifecycle events flow through Sigil.publish, so register
+  // their polymorphic RWs (production wires these via ToolingSigil).
+  override protected def eventRegistrations: List[RW[? <: Event]] =
+    summon[RW[DispatchStarted]] :: summon[RW[DispatchCompleted]] :: super.eventRegistrations
   override protected def participantIds: List[RW[? <: ParticipantId]] =
     List(RW.static(DispatchTestUser))
   override protected def spaceIds: List[RW[? <: SpaceId]] =
@@ -92,12 +98,35 @@ object DispatchTestSigil extends Sigil {
   override def wireInterceptor: spice.http.client.intercept.Interceptor =
     spice.http.client.intercept.Interceptor.empty
 
+  val defaultTestModelId: Id[Model] = Model.id("dispatch", "model")
+
+  /** Synthetic registered model so per-worker model routing resolves a
+    * real record (worker spawn calls `routedModelFor`). */
+  val defaultTestModel: Model = Model(
+    canonicalSlug       = defaultTestModelId.value,
+    huggingFaceId       = "",
+    name                = defaultTestModelId.value,
+    description         = "Synthetic dispatch test model.",
+    contextLength       = 32768L,
+    architecture        = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
+    pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+    topProvider         = ModelTopProvider(contextLength = Some(32768L), maxCompletionTokens = Some(8192L), isModerated = false),
+    perRequestLimits    = None,
+    supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
+    knowledgeCutoff     = None,
+    expirationDate      = None,
+    links               = ModelLinks(details = ""),
+    created             = lightdb.time.Timestamp(),
+    _id                 = defaultTestModelId
+  )
+
   def initFor(testClassName: String): Unit = {
     val name = testClassName.replace("$", "")
     val dbPath = Path.of("db", "test", name)
     deleteRecursive(dbPath)
     Profig.merge(fabric.obj("sigil" -> fabric.obj("dbPath" -> fabric.str(dbPath.toString))))
     instance.sync()
+    cache.merge(List(defaultTestModel)).sync()
     ()
   }
 

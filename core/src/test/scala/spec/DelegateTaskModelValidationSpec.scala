@@ -18,10 +18,12 @@ import sigil.tool.util.DelegateTaskTool
  * Coverage for the `delegate_task` `modelId` validation boundary. When
  * the parent agent emits a `modelId` that isn't in the host's
  * [[sigil.cache.ModelRegistry]], the tool must refuse at the boundary
- * with an actionable `ToolResult.Failure` rather than scheduling a
- * workflow that crashes deep in `SigilAgentDecisionStep`'s model
- * lookup. Refusal payload composes with [[sigil.tool.RefusalPayload]]
- * (schema + worked example + sampling of valid ids).
+ * with an actionable `ToolResult.Failure` — before spawning the worker
+ * sub-conversation — so the framework can't route a worker to an unknown
+ * model. Refusal payload composes with [[sigil.tool.RefusalPayload]]
+ * (schema + worked example + sampling of valid ids). The successful
+ * spawn path is covered end-to-end by the LlamaCpp delegation bridge
+ * spec.
  */
 class DelegateTaskModelValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
@@ -72,17 +74,12 @@ class DelegateTaskModelValidationSpec extends AsyncWordSpec with AsyncTaskSpec w
   private def successOutcome(signals: List[Signal]): Boolean =
     signals.collectFirst { case d: ToolDelta => d.outcome }.flatten.contains(ToolOutcome.Success)
 
-  private def scheduledRunCount: Task[Int] =
-    TestWorkflowSigil.workflowManager.collection.transaction(_.query.toList).map(_.size)
-
   "DelegateTaskTool" when {
     "modelId is set to an id not in the ModelRegistry" should {
       "refuse at the tool boundary with a ToolResult.Failure" in {
         for {
-          before  <- scheduledRunCount
           ctx     <- turnContext()
           signals <- DelegateTaskTool.execute(baseInput(Some(unregisteredIdString)), ctx, Event.id()).toList
-          after   <- scheduledRunCount
         } yield {
           val reason = failureReason(signals).getOrElse(
             fail(s"expected a Failure outcome on a settling ToolDelta; got signals=$signals"))
@@ -93,7 +90,6 @@ class DelegateTaskModelValidationSpec extends AsyncWordSpec with AsyncTaskSpec w
           reason.toLowerCase should (include("routing") or include("routed") or include("route") or include("providerstrategy"))
           reason should include("optional")
           successOutcome(signals) shouldBe false
-          after shouldBe before
         }
       }
 
@@ -111,37 +107,6 @@ class DelegateTaskModelValidationSpec extends AsyncWordSpec with AsyncTaskSpec w
           reason should include("\"brief\"")
           // Worked example present (RefusalPayload renders an Example block).
           reason.toLowerCase should include("example")
-        }
-      }
-    }
-
-    "modelId is set to an id that IS in the ModelRegistry" should {
-      "accept the call and schedule the workflow unchanged" in {
-        for {
-          before  <- scheduledRunCount
-          ctx     <- turnContext()
-          signals <- DelegateTaskTool.execute(baseInput(Some(registeredId.value)), ctx, Event.id()).toList
-          after   <- scheduledRunCount
-        } yield {
-          successOutcome(signals) shouldBe true
-          after shouldBe (before + 1)
-        }
-      }
-    }
-
-    "modelId is None" should {
-      "accept the call and schedule the workflow via routed selection unchanged" in {
-        for {
-          before  <- scheduledRunCount
-          ctx     <- turnContext()
-          // ctx.modelId is the spawning agent's fallback for routed
-          // selection — TurnContext.model is `registeredId`, which is
-          // in the registry, so the fallback resolves cleanly.
-          signals <- DelegateTaskTool.execute(baseInput(None), ctx, Event.id()).toList
-          after   <- scheduledRunCount
-        } yield {
-          successOutcome(signals) shouldBe true
-          after shouldBe (before + 1)
         }
       }
     }

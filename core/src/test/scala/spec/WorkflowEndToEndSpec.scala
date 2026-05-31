@@ -165,11 +165,17 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
   /** Test-only tool surface — adds [[EchoBackTool]] (used by the
     * worker tool-dispatch coverage in [[LlamaCppWorkerSpec]]) and
     * [[FailingTool]] (worker error-handling coverage) on top of the
-    * standard roster. `delegate_task` arrives via
-    * `WorkflowSigil.workflowManagementTools`. Other specs that don't
+    * standard roster. The worker-delegation bridge tools
+    * (`delegate_task`, `relay_message`, sigil #327) are added so the
+    * delegation specs can resolve them by name. Other specs that don't
     * touch these ignore them. */
   override def staticTools: List[sigil.tool.Tool] =
-    super.staticTools ++ List(EchoBackTool, FailingTool)
+    super.staticTools ++ List(
+      EchoBackTool,
+      FailingTool,
+      sigil.tool.util.DelegateTaskTool,
+      sigil.tool.util.RelayMessageTool
+    )
 
   /** Per-suite init: wipes any prior DB at the per-suite path, points
     * `sigil.dbPath` at it, and forces the Sigil instance to start so

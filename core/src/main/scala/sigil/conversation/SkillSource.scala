@@ -19,10 +19,17 @@ import fabric.rw.*
  *                        participant's `roles` list. Parameterized
  *                        by role name so multiple roles don't clobber
  *                        each other in the map.
+ *   - `Supervisor`     — injected on the delegating agent's projection
+ *                        in a worker sub-conversation (#327): the bridge
+ *                        guidance for judging whether the worker
+ *                        satisfied the brief, posting a follow-up when it
+ *                        hasn't, and relaying up to the parent when the
+ *                        worker needs the user or the work is done.
  */
 enum SkillSource derives RW {
   case Mode
   case Discovery
   case User
   case Role(name: String)
+  case Supervisor
 }

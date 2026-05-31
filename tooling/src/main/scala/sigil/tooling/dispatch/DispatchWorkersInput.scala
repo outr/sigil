@@ -9,13 +9,14 @@ import sigil.tool.ToolInput
 import sigil.tool.output.ToolOutputNode
 
 /**
- * Input for the refactored [[DispatchWorkersTool]] (sigil #288).
+ * Input for [[DispatchWorkersTool]] (sigil #327 — the headless fan-out).
  *
- * `dispatch_workers` is now "fan out N `delegate_task` calls, one
- * per item in a paginated container." Each spawned worker is a
- * full `SigilAgentDecisionStep` worker with `delegate_task`'s
- * contract — async return, `ask_parent` supported, observable on
- * the wire, tool whitelist, mediator pattern via the parent.
+ * `dispatch_workers` fans out one worker agent per item in a paginated
+ * container. Each worker runs as a real `AgentParticipant` in its own
+ * sub-conversation (linked to the parent) — async return, observable on
+ * the wire, role-scoped tool roster — and reports its result back when it
+ * settles. Workers are autonomous (no supervisor), unlike the supervised
+ * single-worker `delegate_task` bridge.
  *
  * The old `action: String` script and `confirmed: Boolean`
  * two-call protocol are gone. Per-item judgment now lives inside

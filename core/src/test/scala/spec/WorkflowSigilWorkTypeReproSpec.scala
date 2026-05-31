@@ -6,33 +6,27 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.WorkType
 import sigil.signal.Signal
-import sigil.workflow.AgentDecisionStepInput
+import sigil.tool.model.DelegateTaskInput
 
 /** Reproducer for sigil bug #18 — Sage (WorkflowSigil mixin) reports an
-  * empty WorkType Dart class. WorkflowSigil's trait body eagerly registers
-  * `WorkflowStepInput` subtypes — including AgentDecisionStepInput, which
-  * carries a Role with a WorkType field. If that registration runs before
-  * `polymorphicRegistrations.sync()`, AgentDecisionStepInput / Role lazy-val
-  * Definitions cache an empty WorkType polytype state. Subsequent codegen
-  * walks may inherit that empty snapshot. */
+  * empty WorkType Dart class. Any type carrying a `Role` (which has a
+  * `workType: WorkType` field) caches an empty WorkType polytype state in
+  * its lazy-val Definition if its RW.def is forced before
+  * `polymorphicRegistrations.sync()`. `DelegateTaskInput.role` is the
+  * canonical Role-carrying type after the #327 worker-delegation rework;
+  * after registration its WorkType subtypes must be populated. */
 class WorkflowSigilWorkTypeReproSpec extends AnyWordSpec with Matchers {
 
   "WorkflowSigil-mixed Sigil after polymorphicRegistrations" should {
     "see populated WorkType subtypes through Role's RW (sigil bug #18)" in {
-      // The bug: WorkflowSigil's trait body used to register
-      // `WorkflowStepInput` at trait-init time, forcing
-      // `AgentDecisionStepInput.RW.def` (which contains `Role`, which
-      // has `workType: WorkType`). Without WorkType.register having
-      // run yet, Role's lazy-val Definition cached an empty WorkType
-      // polytype state. Codegen walks through Role saw empty subtypes.
-      //
-      // Fix: WorkflowSigil's registrations now run via
-      // `mixinPolymorphicRegistrations`, AFTER the framework leaves.
-      // TestWorkflowSigil mixes WorkflowSigil — booting it via
-      // polymorphicRegistrations.sync() should leave Role's WorkType
+      // The bug: forcing a Role-carrying type's RW.def before
+      // WorkType.register has run caches an empty WorkType polytype
+      // state in Role's lazy-val Definition; codegen walks through
+      // Role then see empty subtypes. Booting TestWorkflowSigil via
+      // polymorphicRegistrations.sync() must leave Role's WorkType
       // field populated.
       TestWorkflowSigil.polymorphicRegistrations.sync()
-      val agentStepDefn = summon[RW[AgentDecisionStepInput]].definition
+      val agentStepDefn = summon[RW[DelegateTaskInput]].definition
 
       val roleField = agentStepDefn.defType match {
         case obj: DefType.Obj => obj.map.get("role").getOrElse(fail("no role field"))

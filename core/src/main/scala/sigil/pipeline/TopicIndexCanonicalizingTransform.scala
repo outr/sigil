@@ -70,7 +70,6 @@ object TopicIndexCanonicalizingTransform extends InboundTransform {
     case r: Reaction           => r.copy(topicIndex = idx)
     case rs: ReadState         => rs.copy(topicIndex = idx)
     case rr: Reasoning         => rr.copy(topicIndex = idx)
-    case te: sigil.workflow.event.TaskExecuted          => te.copy(topicIndex = idx)
     case wc: sigil.workflow.event.WorkflowRunCompleted  => wc.copy(topicIndex = idx)
     case wf: sigil.workflow.event.WorkflowRunFailed     => wf.copy(topicIndex = idx)
     case wt: sigil.workflow.event.WorkflowRunStarted    => wt.copy(topicIndex = idx)

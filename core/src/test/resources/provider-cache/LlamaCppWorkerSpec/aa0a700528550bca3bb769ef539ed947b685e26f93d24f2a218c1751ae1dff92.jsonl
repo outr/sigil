@@ -1,5 +1,0 @@
-{"requestHash":"aa0a700528550bca3bb769ef539ed947b685e26f93d24f2a218c1751ae1dff92","recordedAt":1779589095175}
-{"callId":"1ad78b6a8","toolName":"echo_back","type":"ProviderEvent.ToolCallStart"}
-{"callId":"1ad78b6a8","input":{"text":"marker-42-via-tool","type":"EchoBackInput"},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":1207,"completionTokens":17,"totalTokens":1224,"isEstimated":false,"cacheReadTokens":78,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

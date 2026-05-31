@@ -21,10 +21,9 @@ import fabric.rw.*
  *   - `summary` — the worker's terminator text (the `Complete: …`
  *     payload) when present. None when the worker failed before
  *     emitting a terminator.
- *   - `iterations` — how many AgentDecisionStep iterations the
- *     worker ran.
- *   - `exhausted` — true when the worker hit its `maxIterations`
- *     cap without emitting `Complete:`.
+ *   - `iterations` — how many response messages the worker produced.
+ *   - `exhausted` — true when the worker settled with a Failure
+ *     disposition (e.g. it hit its agent-loop iteration cap).
  */
 case class WorkerSummary(itemIndex: Int,
                          itemPreview: String,

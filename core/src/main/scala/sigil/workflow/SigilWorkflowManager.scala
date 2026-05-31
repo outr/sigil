@@ -6,7 +6,7 @@ import sigil.Sigil
 import sigil.conversation.{Conversation, Topic}
 import sigil.event.Event
 import sigil.participant.ParticipantId
-import sigil.workflow.event.{TaskExecuted, WorkflowRunCompleted, WorkflowRunFailed, WorkflowRunStarted, WorkflowStepCompleted}
+import sigil.workflow.event.{WorkflowRunCompleted, WorkflowRunFailed, WorkflowRunStarted, WorkflowStepCompleted}
 import strider.{AbstractWorkflowManager, Workflow, WorkflowActivity, WorkflowParent}
 import strider.step.Step
 
@@ -50,7 +50,7 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
         workflowId = workflow.sourceId.value, workflowName = workflow.name,
         runId = workflow._id.value
       )
-    }.flatMap(_ => maybePublishTaskExecuted(workflow, exhaustedOnFailure = None))
+    }
 
   override protected def onWorkflowFailed(workflow: Workflow): Task[Unit] = {
     val reason = SigilWorkflowManager.extractFailureReason(workflow)
@@ -60,7 +60,7 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
         workflowId = workflow.sourceId.value, workflowName = workflow.name,
         runId = workflow._id.value, reason = reason
       )
-    }.flatMap(_ => maybePublishTaskExecuted(workflow, exhaustedOnFailure = Some(reason)))
+    }
   }
 
   override protected def onStepCompleted(workflow: Workflow, stepId: Id[Step], success: Boolean): Task[Unit] =
@@ -72,81 +72,6 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
         stepId = stepId.value, stepName = stepName, success = success
       )
     }
-
-  /** Publish a [[TaskExecuted]] echo into the worker's parent
-    * conversation when the settled workflow contains an
-    * [[SigilAgentDecisionStep]] AND its worker conv has a
-    * `parentConversationId`. Carries the worker's summary, role
-    * name, iteration count, and `exhausted` flag so the parent
-    * agent's next iteration sees a clean task-completion signal.
-    *
-    * `exhaustedOnFailure = Some(reason)` is the failure path:
-    * the worker terminated without a settled step-result payload,
-    * so we synthesise `exhausted = true` with the failure reason
-    * as the summary. The parent agent reads it as "worker died
-    * during init" rather than waiting for a worker that already
-    * died. `None` is the happy path — sources summary / iteration
-    * from the final step's settled payload.
-    *
-    * Non-worker runs and orphan workers (no parent conv) emit
-    * nothing here; their `WorkflowRunCompleted` / `WorkflowRunFailed`
-    * stays the only signal. */
-  private def maybePublishTaskExecuted(workflow: Workflow,
-                                       exhaustedOnFailure: Option[String]): Task[Unit] = {
-    val agentSteps = workflow.steps.collect { case s: SigilAgentDecisionStep => s }
-    if (agentSteps.isEmpty) return Task.unit
-
-    val workerConvIdOpt = workflow.conversationId.map(s => Id[Conversation](s))
-    workerConvIdOpt match {
-      case None => Task.unit
-      case Some(workerConvId) =>
-        host.withDB(_.conversations.transaction(_.get(workerConvId))).flatMap {
-          case None => Task.unit
-          case Some(workerConv) => workerConv.parentConversationId match {
-            case None => Task.unit
-            case Some(parentConvId) =>
-              host.withDB(_.conversations.transaction(_.get(parentConvId))).flatMap {
-                case None => Task.unit
-                case Some(parentConv) =>
-                  // Pull the latest AgentDecisionStep's settle payload
-                  // — that's where the summary text lives on the
-                  // happy path. On failure there's no settled payload,
-                  // so the synthesised reason carries the meaning.
-                  val finalResult: Option[fabric.Json] = workflow.stepResults.headOption.flatMap(_.output)
-                  val payloadSummary    = finalResult.flatMap(_.get("summary").map(_.asString)).getOrElse("")
-                  val payloadExhausted  = finalResult.flatMap(_.get("exhausted").map(_.asBoolean)).getOrElse(false)
-                  val payloadIterations = finalResult.flatMap(_.get("iteration").map(_.asInt)).getOrElse(0) + 1
-
-                  val (summary, exhausted, iterations) = exhaustedOnFailure match {
-                    case Some(reason) => (s"Worker init failed: $reason", true, payloadIterations)
-                    case None         => (payloadSummary, payloadExhausted, payloadIterations)
-                  }
-                  val roleName = agentSteps.head.input.role.name
-
-                  val participantOpt = parentConv.participants.headOption.map(_.id)
-                  participantOpt match {
-                    case None => Task.unit
-                    case Some(pid) =>
-                      val ev = TaskExecuted(
-                        participantId         = pid,
-                        conversationId        = parentConvId,
-                        topicId               = parentConv.currentTopicId,
-                        taskId                = workflow._id.value,
-                        roleName              = roleName,
-                        summary               = summary,
-                        iterations            = iterations,
-                        exhausted             = exhausted,
-                        workerConversationId  = Some(workerConvId)
-                      )
-                      host.publish(ev).handleError(t =>
-                        Task(scribe.warn(s"TaskExecuted publish failed for run ${workflow._id.value}: ${t.getMessage}"))
-                      )
-                  }
-              }
-          }
-        }
-    }
-  }
 
   /** Helper — when a workflow run carries a `conversationId`,
     * publish the supplied lifecycle Event into that conversation

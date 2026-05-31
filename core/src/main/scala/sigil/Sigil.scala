@@ -31,7 +31,7 @@ import sigil.orchestrator.Orchestrator
 import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
-import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform}
+import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.service.Service
@@ -2182,7 +2182,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * `inlineContentThreshold = Long.MaxValue`.
    */
   def inboundTransforms: List[InboundTransform] =
-    List(LocationCaptureTransform, ContentExternalizationTransform, RespondOptionsSelectionFramingTransform, TopicIndexCanonicalizingTransform)
+    List(LocationCaptureTransform, ContentExternalizationTransform, RespondOptionsSelectionFramingTransform, TopicIndexCanonicalizingTransform, WorkerConversationAddressingTransform)
 
   /**
    * Bytes — content blocks larger than this get pushed to the
@@ -5298,11 +5298,33 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
       case None       => Task.unit
       case Some(conv) =>
-        val tasks: List[Task[Unit]] = conv.participants.collect {
-          case agent: AgentParticipant if TriggerFilter.isTriggerFor(agent, event) =>
-            tryFire(agent, conv)
+        val fire: Task[Unit] = {
+          val tasks: List[Task[Unit]] = conv.participants.collect {
+            case agent: AgentParticipant if TriggerFilter.isTriggerFor(agent, event) =>
+              tryFire(agent, conv)
+          }
+          Task.sequence(tasks).unit
         }
-        Task.sequence(tasks).unit
+        // #327 — a directed worker conversation (linked to a parent,
+        // ≥2 agents) terminates by the supervisor relaying up and not
+        // re-addressing the worker. Backstop a non-terminating
+        // supervisor↔worker exchange with a hard turn budget.
+        val agentIds: Set[ParticipantId] = conv.participants.collect { case a: AgentParticipant => (a.id: ParticipantId) }.toSet
+        val isDirectedWorker = conv.parentConversationId.isDefined && agentIds.sizeIs >= 2
+        if (!isDirectedWorker) fire
+        else withDB(_.eventsTransaction(conv._id)(_.list)).flatMap { evs =>
+          val agentMessages = evs.count {
+            case m: Message => agentIds.contains(m.participantId)
+            case _          => false
+          }
+          if (agentMessages < workerConversationTurnBudget) fire
+          else Task {
+            scribe.warn(
+              s"Worker conversation ${conv._id.value} reached its turn budget " +
+                s"($workerConversationTurnBudget agent messages); not firing further agent turns."
+            )
+          }
+        }
     }
 
   /**
@@ -5385,6 +5407,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * releasing the AgentState claim. Apps tighten or relax per their
     * cost / latency tolerance. */
   protected def maxAgentIterations: Int = 200
+
+  /** Hard backstop on the number of agent-authored messages in a
+    * *directed worker conversation* (sigil #327 — a sub-conversation
+    * linked to a parent carrying two or more agent participants). The
+    * supervised bridge is meant to terminate by the supervisor relaying
+    * its result to the parent and stopping (see
+    * [[sigil.pipeline.WorkerConversationAddressingTransform]]); this cap
+    * guarantees termination even if a model keeps the worker↔supervisor
+    * exchange going. Once the conversation holds this many agent
+    * messages, `fanOut` stops firing further agent turns in it. Apps
+    * tune per their cost tolerance. */
+  protected def workerConversationTurnBudget: Int = 40
 
   /** Iterations between progress checkpoints. Every Nth iteration the
     * framework runs an out-of-band reflection turn that compares the
@@ -6143,6 +6177,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 // publish + post-commit terminal release.
                 Task.error(buildRunawayException(
                   agent, conv, iteration, maxAgentIterations, forcedReason))
+              else if (conv.parentConversationId.isDefined &&
+                       conv.participants.count { case _: AgentParticipant => true; case _ => false } >= 2) {
+                // #327 chat-fidelity — in a directed worker sub-conversation
+                // (linked to a parent, two+ agents) a woken agent that has
+                // nothing more to add simply RESTS, exactly like a user who
+                // doesn't reply. No forced synthesis: forcing a reply here
+                // is what made the supervised bridge ping-pong. This is the
+                // natural termination — the supervisor relays its result up
+                // to the parent and, with nothing left for the worker,
+                // settles silently here; the worker (now un-addressed) is
+                // never re-woken. (User-facing conversations keep the #257
+                // forced-reply recovery below, where the agent owes the user
+                // an answer.)
+                scribe.debug(
+                  s"runAgentLoop[${agent.id.value}/${convId.value}] no tool call in a worker " +
+                    "sub-conversation; settling silently (chat-fidelity rest)"
+                )
+                // skipFallback — a silent rest must NOT synthesize the
+                // #282 "turn ended without a reply" placeholder; resting
+                // is the intended outcome here, not a stuck turn.
+                Task(terminate(skipFallback = true))
+              }
               else if (noToolCallRetries < noToolCallRetryLimit) {
                 scribe.warn(
                   s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration returned no " +
@@ -7690,7 +7746,29 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * changes don't have to ripple through a denormalization step.
    */
   def activeTasksFor(conversationId: Id[Conversation]): Task[List[sigil.conversation.ConversationTask]] =
-    Task.pure(Nil)
+    withDB(_.conversations.transaction(_.list)).flatMap { all =>
+      val workers = all.filter(c => c.parentConversationId.contains(conversationId) && !c.archived)
+      Task.sequence(workers.map(workerTaskFor)).map(_.flatten)
+    }
+
+  /** Project a worker sub-conversation into a [[sigil.conversation.ConversationTask]],
+    * reading the worker agent's live [[AgentState]] to mark it
+    * Running (mid-turn) vs Waiting (yielded). `None` when the
+    * conversation carries no worker agent. */
+  protected final def workerTaskFor(conv: Conversation): Task[Option[sigil.conversation.ConversationTask]] =
+    conv.participants.collectFirst {
+      case a: AgentParticipant if a.id.isInstanceOf[sigil.participant.WorkerParticipantId] => a.id
+    } match {
+      case None => Task.pure(None)
+      case Some(workerId) =>
+        withDB(_.events.transaction(_.get(agentStateLockId(workerId, conv._id)))).map { st =>
+          val active = st.exists {
+            case s: AgentState => s.state == EventState.Active
+            case _             => false
+          }
+          Some(sigil.conversation.ConversationTask.fromWorkerConversation(conv, active))
+        }
+    }
 
   /**
    * Global view across every conversation `viewer` can see. Default
@@ -7706,7 +7784,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * override the WorkflowSigil-side filter or wrap this method.
    */
   def activeTasks(viewer: ParticipantId): Task[List[sigil.conversation.ConversationTask]] =
-    Task.pure(Nil)
+    withDB(_.conversations.transaction(_.list)).flatMap { all =>
+      val workers = all.filter(c =>
+        c.parentConversationId.isDefined && !c.archived && c.participants.exists(_.id == viewer))
+      Task.sequence(workers.map(workerTaskFor))
+        .map(_.flatten.sortBy(_.modifiedAt.value)(using Ordering.Long.reverse))
+    }
 
   /**
    * Sub-conversation cost rollup. Returns `conversationId.cost` plus

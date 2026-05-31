@@ -98,7 +98,6 @@ object CoreSignals {
     summon[RW[WireRequestProfile]],
     summon[RW[PinnedMemoryBudgetWarning]],
     summon[RW[ConversationCostUpdated]],
-    summon[RW[WorkerAnswer]],
     summon[RW[ToolProgress]],
     summon[RW[ConversationHistoryImported]],
     summon[RW[FrameworkWorkflowNotice]],
