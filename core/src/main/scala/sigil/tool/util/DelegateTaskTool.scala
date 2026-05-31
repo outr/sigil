@@ -58,8 +58,9 @@ case object DelegateTaskTool extends Tool {
       |its own sub-conversation linked to this one; you stay in that sub-conversation as its supervisor
       |(its "user") — you task it, answer its questions, and decide what to surface back here. Requires
       |`role` (worker's identity + workType) and `brief` (the directive). `modelId` is optional (omit to
-      |let the framework route by `role.workType`). `toolNames` is the worker's work roster (it always
-      |gets `respond` + `find_capability`). Returns the worker's id + sub-conversation id.
+      |let the framework route by `role.workType`). `toolNames` is the worker's work roster (on top of
+      |the framework reply + capability-discovery essentials it always has). Returns the worker's id +
+      |sub-conversation id.
       |Use for "research X", "build Y", "analyze Z" — anything you'd rather hand off than answer inline.""".stripMargin
   override val examples = List(
     ToolExample(

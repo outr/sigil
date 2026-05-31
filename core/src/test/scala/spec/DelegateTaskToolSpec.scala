@@ -14,13 +14,12 @@ import sigil.tool.util.DelegateTaskTool
 import sigil.event.Event
 
 /**
- * Coverage for `delegate_task` against a vanilla Sigil — the tool
- * detects the missing [[sigil.workflow.WorkflowSigil]] mixin and
- * returns a structured error rather than crashing. End-to-end
- * worker spawning (real conversation creation, real workflow
- * scheduling, real LLM round-trip) lives in the worker-flow
- * integration spec that ships alongside the worker-iteration
- * machinery in subsequent phase-2 commits.
+ * Coverage for `delegate_task`'s input round-trip and its caller
+ * precondition: because the tool makes the calling agent the worker's
+ * supervisor (sigil #327), it must be invoked by an agent participant of
+ * the conversation and returns a structured error otherwise. End-to-end
+ * worker spawning (the two-agent sub-conversation) is covered by
+ * [[DelegationBridgeSpec]].
  */
 class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -67,10 +66,15 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   "DelegateTaskTool" should {
-    "return a structured error when the host Sigil doesn't mix in WorkflowSigil" in {
-      DelegateTaskTool.execute(sampleInput, turnContext(), Event.id()).toList.map { signals =>
-        val text = failureText(signals)
-        text should include("WorkflowSigil")
+    "refuse when the caller is not an agent participant of the conversation" in {
+      // delegate_task makes the caller the worker's supervisor, so it
+      // must be an agent participant of the conversation. The turn here
+      // is anchored as `TestUser` in a conversation with no agent
+      // participants, so the tool refuses with a structured error.
+      // (Registered model id so the modelId precondition passes first.)
+      val input = sampleInput.copy(modelId = Some(TestSigil.defaultTestModel._id.value))
+      DelegateTaskTool.execute(input, turnContext(), Event.id()).toList.map { signals =>
+        failureText(signals) should include("agent participant")
       }
     }
   }
