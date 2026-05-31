@@ -6053,19 +6053,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 // recursing.
                 val nextIteration = iteration + 1
                 val checkpointTask: Task[Option[CheckpointIntervention]] =
-                  // #330 — skip the automatic progress reflection inside a
-                  // supervised worker sub-conversation. The supervisor is
-                  // already the worker's progress monitor, and the
-                  // reflection anchors on a *user* message a worker
-                  // conversation doesn't have — so it both duplicates the
-                  // supervisor and misfires into a false "needs clarification."
-                  if (progressCheckpointInterval > 0 && nextIteration % progressCheckpointInterval == 0
-                      && !isDirectedWorkerConversation(conv))
+                  // The checkpoint runs in every conversation, workers
+                  // included (#332, amending #330). It bundles two
+                  // mechanisms: a mechanical stall detector
+                  // (repeated-identical-call / no-progress streak) that is
+                  // universally useful, and an LLM self-assessment that can
+                  // ask the user. #330 was right that the user-facing
+                  // *escalation* misfires in a worker — the supervisor owns
+                  // asking the human — but it suppressed the whole
+                  // checkpoint, disabling stall detection and letting a
+                  // grinding worker flail to the iteration cap. So we run the
+                  // checkpoint everywhere and instead redirect an `askingUser`
+                  // intervention to a supervisor handoff inside a worker (the
+                  // branch below).
+                  if (progressCheckpointInterval > 0 && nextIteration % progressCheckpointInterval == 0)
                     runProgressCheckpoint(agent, convId, claimed, nextIteration)
                   else
                     Task.pure(None)
                 checkpointTask.flatMap {
-                  case Some(intervention) if intervention.askingUser =>
+                  case Some(intervention) if intervention.askingUser && !isDirectedWorkerConversation(conv) =>
                     // Genuine "agent needs user input to proceed" —
                     // publish user-visible and release the claim. The
                     // agent can't make progress without the user's
@@ -6094,12 +6100,29 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                     // run ONE forced-synthesis iteration so the
                     // agent actually responds rather than going
                     // silent. Same shape as #125's cap-hit.
+                    //
+                    // #332 — this branch is also where an `askingUser`
+                    // signal lands inside a worker (the user-facing branch
+                    // above excludes workers). A worker can't ask the human
+                    // directly, so the directive tells it to report to its
+                    // supervisor; the forced-synthesis `respond` that
+                    // follows is the worker's handoff (addressed to the
+                    // supervisor, who then decides whether to redirect or
+                    // escalate to the user).
                     val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
                       .invoke("_stall_detected", agent.id, convId, conv.currentTopicId)
+                    val directiveContent =
+                      if (intervention.askingUser)
+                        Vector(_root_.sigil.tool.model.ResponseContent.Text(
+                          "You can't ask the user directly from here — your supervisor owns this task. " +
+                            "Stop gathering and call `respond` now to report what you've found and what you're blocked on."
+                        ))
+                      else intervention.message.content
                     val taggedDirective = intervention.message.copy(
                       role       = MessageRole.Tool,
                       visibility = MessageVisibility.Agents,
-                      origin     = Some(syntheticInvoke._id)
+                      origin     = Some(syntheticInvoke._id),
+                      content    = directiveContent
                     )
                     publish(syntheticInvoke)
                       .flatMap(_ => publish(taggedDirective))
