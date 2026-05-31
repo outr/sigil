@@ -56,16 +56,24 @@ object Cloudflare {
   /** Single entry in a row's `properties` array. Cloudflare exposes
     * per-model metadata (context length, max input/output tokens,
     * function-calling support, vision support, …) as a flat list of
-    * `{property_id, value}` records keyed by string id. */
-  case class Property(propertyId: String, value: String) derives RW
+    * `{property_id, value}` records keyed by string id.
+    *
+    * `value` is `Json`, not `String`: Cloudflare returns non-string
+    * values for some properties (e.g. `price` is a JSON array of
+    * per-unit pricing objects). [[toModel]] reads only the string-valued
+    * properties it consumes; everything else is ignored rather than
+    * fatal. Typing this `String` previously made fabric's strict decode
+    * throw on the array-valued `price`, collapsing the entire catalog to
+    * zero models. */
+  case class Property(propertyId: String, value: Json) derives RW
 
-  private case class ListResponse(result: List[Entry] = Nil,
+  private case class ListResponse(result: List[Json] = Nil,
                                    resultInfo: Option[ResultInfo] = None) derives RW
 
-  private case class ResultInfo(page: Int = 1,
-                                 perPage: Int = 0,
-                                 count: Int = 0,
-                                 totalCount: Int = 0) derives RW
+  case class ResultInfo(page: Int = 1,
+                        perPage: Int = 0,
+                        count: Int = 0,
+                        totalCount: Int = 0) derives RW
 
   /** The `task.name` Cloudflare assigns to chat-completion models. The
     * Workers AI catalog hosts many other task families (embeddings,
@@ -86,7 +94,11 @@ object Cloudflare {
     * custom Model record via `cache.merge` post-load. */
   def toModel(entry: Entry): Model = {
     val canonical = s"$Provider/${entry.name}"
-    val propsMap = entry.properties.iterator.map(p => p.propertyId -> p.value).toMap
+    // Keep only the string-valued properties toModel actually reads;
+    // non-string values (e.g. `price`'s array) are simply absent here.
+    val propsMap: Map[String, String] = entry.properties.iterator.collect {
+      case Property(id, Str(s, _)) => id -> s
+    }.toMap
     val contextLength: Long = propsMap.get("context_window")
       .orElse(propsMap.get("max_input_tokens"))
       .flatMap(_.toLongOption)
@@ -165,10 +177,9 @@ object Cloudflare {
         .header("Authorization", s"Bearer $apiToken")
         .call[Json]
         .flatMap { json =>
-          val normalized = json.filterOne(SnakeToCamelFilter)
-          val response = scala.util.Try(normalized.as[ListResponse]).getOrElse(ListResponse())
-          val combined = acc ++ response.result
-          val hasMore = response.resultInfo match {
+          val (entries, resultInfo) = parsePage(json)
+          val combined = acc ++ entries
+          val hasMore = resultInfo match {
             case Some(info) if info.perPage > 0 && info.page * info.perPage < info.totalCount => true
             case _ => false
           }
@@ -176,6 +187,32 @@ object Cloudflare {
         }
     }
     fetchPage(1, Nil).map(_.map(toModel))
+  }
+
+  /** Parse one `/ai/models/search` page: snake_case-normalise, then
+    * decode each entry **individually** so a single unparseable row
+    * (an unexpected property shape, a missing field) skips itself with a
+    * `scribe.warn` instead of collapsing the whole page to empty. A
+    * top-level decode failure is logged before falling back to an empty
+    * page — "0 models" is never silent. Returns the surviving entries
+    * plus pagination info. */
+  def parsePage(rawJson: Json): (List[Entry], Option[ResultInfo]) = {
+    val normalized = rawJson.filterOne(SnakeToCamelFilter)
+    val response = scala.util.Try(normalized.as[ListResponse]) match {
+      case scala.util.Success(r) => r
+      case scala.util.Failure(t) =>
+        scribe.warn(s"Cloudflare catalog page failed to parse — ${t.getClass.getSimpleName}: ${t.getMessage}")
+        ListResponse()
+    }
+    val entries = response.result.flatMap { row =>
+      scala.util.Try(row.as[Entry]) match {
+        case scala.util.Success(e) => Some(e)
+        case scala.util.Failure(t) =>
+          scribe.warn(s"Cloudflare catalog: skipping unparseable model entry — ${t.getClass.getSimpleName}: ${t.getMessage}")
+          None
+      }
+    }
+    (entries, response.resultInfo)
   }
 
   /** Convenience boot helper — load + merge into the framework cache.
