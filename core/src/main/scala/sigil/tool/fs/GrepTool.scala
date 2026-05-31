@@ -71,12 +71,19 @@ final class GrepTool(context: FileSystemContext) extends PaginatedTool[GrepInput
 
   private def runGrep(input: GrepInput, ctx: ToolContext): Stream[Node[GrepNode]] =
     Stream.force(
+      FilePathReference.resolveScope("grep", input.from, ctx).flatMap { allowed =>
       WorkspacePathResolver.resolve(ctx, input.path).flatMap { base =>
         context.searchFiles(base, input.pattern, input.glob, input.maxMatches, input.contextLines, input.includeIgnored).map { matches =>
+          // When `from` scopes the search, keep only matches whose file
+          // is in the referenced set before grouping.
+          val scoped = allowed match {
+            case None        => matches
+            case Some(paths) => matches.filter(m => FilePathReference.matches(m.filePath, paths))
+          }
           // Group by file. Each file becomes a top-level Node with
           // its line-matches as child Nodes (lazy children stream
           // built from the grouped list).
-          val byFile = matches.groupBy(_.filePath).toList.sortBy(_._1)
+          val byFile = scoped.groupBy(_.filePath).toList.sortBy(_._1)
           Stream.fromIterator(Task.pure(byFile.iterator.map { case (filePath, fileMatches) =>
             val children = Stream.fromIterator(Task.pure(
               fileMatches.iterator.map { m =>
@@ -94,6 +101,7 @@ final class GrepTool(context: FileSystemContext) extends PaginatedTool[GrepInput
             )
           }))
         }
+      }
       }
     )
 }

@@ -34,9 +34,15 @@ final class GlobTool(context: FileSystemContext) extends PaginatedTool[GlobInput
         Stream.force(Task.error(new RuntimeException(reason)))
       case None =>
         Stream.force(
-          WorkspacePathResolver.resolve(ctx, input.basePath).flatMap { base =>
-            context.listFiles(base, input.pattern, input.maxResults).map { paths =>
-              Stream.fromIterator(Task.pure(paths.iterator.map(p => Node.leaf(GlobEntry(p)))))
+          FilePathReference.resolveScope("glob", input.from, ctx).flatMap { allowed =>
+            WorkspacePathResolver.resolve(ctx, input.basePath).flatMap { base =>
+              context.listFiles(base, input.pattern, input.maxResults).map { paths =>
+                val scoped = allowed match {
+                  case None        => paths
+                  case Some(allow) => paths.filter(p => FilePathReference.matches(p, allow))
+                }
+                Stream.fromIterator(Task.pure(scoped.iterator.map(p => Node.leaf(GlobEntry(p)))))
+              }
             }
           }
         )
