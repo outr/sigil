@@ -7694,21 +7694,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def conversationContainerCleanupInterval: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(1).hour
 
-  /** Age window — containers older than the conversation's most
-    * recent event by this duration get pruned. Defaults to 30
-    * days; apps with stricter retention override. Pinned rows are
-    * skipped. */
-  def conversationContainerAgeWindow: scala.concurrent.duration.FiniteDuration =
-    scala.concurrent.duration.DurationInt(30).days
+  /** Age window for time-based container eviction. `None` (the
+    * default) means **tool output never expires by time** — it's a
+    * durable, point-in-time observation of mutable external state (what
+    * the agent actually saw / acted on), not a regenerable cache, so it
+    * lives for the conversation's lifetime and is reclaimed only when the
+    * conversation is deleted. `Some(window)` re-enables age pruning:
+    * containers older than the conversation's most recent event by
+    * `window` get pruned (pinned rows skipped). The
+    * [[sigil.maintenance.ConversationContainerCleanupTask]] machinery
+    * stays wired either way, so apps can turn a bound back on (or layer
+    * archival on top) without re-plumbing. */
+  def conversationContainerAgeWindow: Option[scala.concurrent.duration.FiniteDuration] = None
 
-  /** Per-conversation hard cap on container row count. When a
-    * conversation's total `ToolOutputNode` row count exceeds this
-    * threshold, the cleanup pass prunes oldest containers in FIFO
-    * order (excluding pinned rows) until the row count fits.
-    * Default 100,000 — generous for most apps; bulk-tool-heavy
-    * apps override. Row count is the easier-to-reason-about
-    * proxy for storage growth (vs. estimated bytes which would
-    * need per-row serialisation on every scan). */
+  /** Per-conversation hard cap on container row count — a runaway
+    * backstop, NOT a TTL. When a conversation's total `ToolOutputNode`
+    * row count exceeds this, the cleanup pass prunes oldest unpinned
+    * containers in FIFO order until it fits. Default 100,000 — high
+    * enough that normal use never trips it; it exists only so a
+    * pathological conversation can't grow the store without bound while
+    * time-based expiry is off. The principled long-term answer to
+    * volume is offloading cold output to cheaper storage (archival), not
+    * deletion; this cap is the interim guard. */
   def conversationContainerSizeLimit: Int = 100000
 
   /**

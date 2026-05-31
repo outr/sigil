@@ -11,28 +11,24 @@ import scala.concurrent.duration.*
  * Conversation-level GC for [[sigil.tool.output.ToolOutputNode]]
  * rows. Two pruning triggers:
  *
- *  1. **Age** — containers (the rows grouped by `callId`) whose
- *     `created` timestamp is older than the conversation's most
- *     recent event by more than `ageWindow` get pruned. A
- *     conversation that's "idle since yesterday" with containers
- *     from "a month before that" loses the old containers; new
- *     containers stay until the conversation itself rolls forward
- *     past the window.
+ *  1. **Age** (opt-in) — when `ageWindow` is `Some(window)`, containers
+ *     (rows grouped by `callId`) whose `created` timestamp is older than
+ *     the conversation's most recent event by more than `window` get
+ *     pruned. `None` (the default) disables time-based eviction
+ *     entirely: tool output is a durable point-in-time observation, not
+ *     a regenerable cache, so by default it lives for the conversation's
+ *     lifetime and is reclaimed only on conversation delete.
  *  2. **Size** — when a conversation's total row count exceeds
- *     `sizeLimit`, prune the oldest unpinned containers in FIFO
- *     order until the row count fits.
+ *     `sizeLimit`, prune the oldest unpinned containers in FIFO order
+ *     until the row count fits. A runaway backstop (not a TTL) that
+ *     stays active even when age eviction is off.
  *
  * Pinned rows (`pinned == true`) are never deleted by this pass;
  * apps wire `pin_container` / `unpin_container` for users to mark
  * containers as "do not GC."
- *
- * Coarse-grained — a container created and consumed in the same
- * agent loop never gets reaped (it's new). A container left
- * behind by yesterday's conversation when the user comes back
- * today is still there (well within the window).
  */
 final case class ConversationContainerCleanupTask(interval: FiniteDuration = 1.hour,
-                                                  ageWindow: FiniteDuration = 30.days,
+                                                  ageWindow: Option[FiniteDuration] = None,
                                                   sizeLimit: Int = 100000)
   extends MaintenanceTask {
 
@@ -52,9 +48,19 @@ final case class ConversationContainerCleanupTask(interval: FiniteDuration = 1.h
     host.withDB(_.toolOutputs.transaction(_.list)).flatMap { allRows =>
       val rows = allRows.toList.filter(_.conversationId == convId)
       if (rows.isEmpty) Task.pure(0)
-      else mostRecentEventTimestamp(host, conversation).flatMap { lastActivityMillis =>
-        val ageCutoffMillis = lastActivityMillis - ageWindow.toMillis
-        val aged   = rows.filter(r => !r.pinned && r.created.value < ageCutoffMillis)
+      else {
+        // Age pruning is opt-in (ageWindow = Some); when off (the
+        // default), skip the most-recent-event query entirely and prune
+        // nothing by time — only the size backstop can fire.
+        val agedTask: Task[List[ToolOutputNode]] = ageWindow match {
+          case None => Task.pure(Nil)
+          case Some(window) =>
+            mostRecentEventTimestamp(host, conversation).map { lastActivityMillis =>
+              val ageCutoffMillis = lastActivityMillis - window.toMillis
+              rows.filter(r => !r.pinned && r.created.value < ageCutoffMillis)
+            }
+        }
+        agedTask.flatMap { aged =>
         val survivors = rows.filterNot(aged.contains)
         val sizeOverflow = math.max(0, survivors.size - sizeLimit)
         val sizeOverflowVictims: List[ToolOutputNode] = {
@@ -89,6 +95,7 @@ final case class ConversationContainerCleanupTask(interval: FiniteDuration = 1.h
             }
           }).map(_ => victims.size)
         })
+        }
       }
     }
   }
