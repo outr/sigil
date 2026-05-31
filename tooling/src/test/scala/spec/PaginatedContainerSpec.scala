@@ -202,7 +202,7 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
       val task = ConversationContainerCleanupTask(
         interval  = 1.hour,
-        ageWindow = 30.days,
+        ageWindow = Some(30.days),
         sizeLimit = 100000
       )
       task.runOnce(DispatchTestSigil).flatMap { _ =>
@@ -239,7 +239,7 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
       val task = ConversationContainerCleanupTask(
         interval  = 1.hour,
-        ageWindow = 30.days,
+        ageWindow = Some(30.days),
         sizeLimit = 100000
       )
       task.runOnce(DispatchTestSigil).flatMap { _ =>
