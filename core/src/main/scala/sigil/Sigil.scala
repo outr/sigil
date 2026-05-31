@@ -7209,7 +7209,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _ = sigil.tool.ToolKind.register(
             (RW.static(sigil.tool.BuiltinKind) :: toolKindRegistrations).distinct*
           )
-      _ = ParticipantId.register(participantIds*)
+      _ = ParticipantId.register((summon[RW[sigil.participant.WorkerParticipantId]] :: participantIds).distinctBy(_.definition.className)*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
       _ = sigil.provider.WorkType.register(workTypes.map(w => RW.static(w))*)
       // Bug #53 — `toolInputRegistrations` is the mixin extension
