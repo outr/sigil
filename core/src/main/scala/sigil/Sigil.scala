@@ -5310,8 +5310,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // re-addressing the worker. Backstop a non-terminating
         // supervisor↔worker exchange with a hard turn budget.
         val agentIds: Set[ParticipantId] = conv.participants.collect { case a: AgentParticipant => (a.id: ParticipantId) }.toSet
-        val isDirectedWorker = conv.parentConversationId.isDefined && agentIds.sizeIs >= 2
-        if (!isDirectedWorker) fire
+        if (!isDirectedWorkerConversation(conv)) fire
         else withDB(_.eventsTransaction(conv._id)(_.list)).flatMap { evs =>
           val agentMessages = evs.count {
             case m: Message => agentIds.contains(m.participantId)
@@ -5419,6 +5418,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * messages, `fanOut` stops firing further agent turns in it. Apps
     * tune per their cost tolerance. */
   protected def workerConversationTurnBudget: Int = 40
+
+  /** True when `conv` is a *directed worker sub-conversation* (sigil
+    * #327): linked to a parent and carrying two or more agent
+    * participants (a delegating supervisor + at least one worker).
+    * Several worker-specific behaviors key off this — addressing-driven
+    * termination's silent rest, the worker turn budget, and skipping the
+    * redundant/misfiring progress reflection (#330). The supervisor is
+    * the worker's progress monitor in this model, so the framework's
+    * automatic reflection (which anchors on a *user* message that a
+    * worker conversation doesn't have) neither helps nor applies.
+    * Public so apps / UIs can ask the same question. */
+  final def isDirectedWorkerConversation(conv: Conversation): Boolean =
+    conv.parentConversationId.isDefined &&
+      conv.participants.count { case _: AgentParticipant => true; case _ => false } >= 2
 
   /** Iterations between progress checkpoints. Every Nth iteration the
     * framework runs an out-of-band reflection turn that compares the
@@ -6040,7 +6053,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 // recursing.
                 val nextIteration = iteration + 1
                 val checkpointTask: Task[Option[CheckpointIntervention]] =
-                  if (progressCheckpointInterval > 0 && nextIteration % progressCheckpointInterval == 0)
+                  // #330 — skip the automatic progress reflection inside a
+                  // supervised worker sub-conversation. The supervisor is
+                  // already the worker's progress monitor, and the
+                  // reflection anchors on a *user* message a worker
+                  // conversation doesn't have — so it both duplicates the
+                  // supervisor and misfires into a false "needs clarification."
+                  if (progressCheckpointInterval > 0 && nextIteration % progressCheckpointInterval == 0
+                      && !isDirectedWorkerConversation(conv))
                     runProgressCheckpoint(agent, convId, claimed, nextIteration)
                   else
                     Task.pure(None)
@@ -6190,8 +6210,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 )
                 Task.pure(recurseFullRosterRetry)
               }
-              else if (conv.parentConversationId.isDefined &&
-                       conv.participants.count { case _: AgentParticipant => true; case _ => false } >= 2) {
+              else if (isDirectedWorkerConversation(conv)) {
                 // #327 chat-fidelity — once the drop-recovery retries are
                 // exhausted in a directed worker sub-conversation (linked to
                 // a parent, two+ agents), a woken agent that still has
@@ -6609,8 +6628,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
              m.content.nonEmpty =>
           m
       }
-      val (substantive, directive) =
+      val (substantiveUser, directive) =
         sigil.conversation.ProgressTaskSelector.select(userMsgs, m => textOfContent(m.content))
+      // #330 (defense in depth, same family as #320) — re-anchor on the
+      // active objective when there's no substantive user message to judge
+      // against (agent-initiated turns, and any non-user-driven loop). Use
+      // the earliest substantive Standard message in the conversation as
+      // the objective rather than treating "no user message" as evidence
+      // of idle cycling and asking for clarification.
+      val substantive = substantiveUser.orElse(
+        convEvents.collect {
+          case m: Message if m.role == MessageRole.Standard && m.content.nonEmpty => m
+        }.minByOption(_.timestamp.value)
+      )
       val task: Option[String]            = substantive.map(m => textOfContent(m.content))
       val latestDirective: Option[String] = directive.map(m => textOfContent(m.content))
       // Tool calls + agent responds since the OBJECTIVE (not the
