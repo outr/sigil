@@ -86,9 +86,7 @@ object MaintenanceTaskTestSigil extends sigil.Sigil {
 
   override def maintenanceTasks: List[MaintenanceTask] = tasksRef.get()
 
-  override def providerFor(modelId: lightdb.id.Id[sigil.db.Model],
-                           chain: List[sigil.participant.ParticipantId]): rapid.Task[sigil.provider.Provider] =
-    Task.error(new RuntimeException("no provider"))
+  override def modelResolver: sigil.provider.ModelResolver = _ => None
 
   def initFor(testClassName: String): Unit = {
     val name = testClassName.replace("$", "")

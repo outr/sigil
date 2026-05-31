@@ -274,14 +274,19 @@ object TestSigil extends Sigil {
 
   // ---- hook overrides delegate to refs ----
 
-  override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] = {
-    // Sigil #277 — auto-register a synthetic Model record for any
-    // modelId a spec resolves through the framework boundary. Specs
-    // declare `private val modelId = Model.id("test", "<spec-shape>")`
-    // and never explicitly call `cache.merge`; this fallback keeps
-    // every per-spec id resolvable without changing each spec.
-    if (cache.find(modelId).isEmpty) testModel(modelId)
-    providerRef.get().apply()
+  override def modelResolver: sigil.provider.ModelResolver = new sigil.provider.ModelResolver {
+    override def resolve(modelId: Id[Model]): Option[sigil.provider.ProviderModel] = {
+      // Sigil #277 — auto-register a synthetic Model record for any
+      // modelId a spec resolves through the framework boundary. Specs
+      // declare `private val modelId = Model.id("test", "<spec-shape>")`
+      // and never explicitly call `cache.merge`; this fallback keeps
+      // every per-spec id resolvable without changing each spec.
+      if (cache.find(modelId).isEmpty) testModel(modelId)
+      // The swappable provider is constructed as a by-name Task (specs
+      // call `setProvider(...)`); resolve is synchronous, so run it here.
+      val provider = providerRef.get().apply().sync()
+      cache.find(modelId).map(sigil.provider.ProviderModel(provider, _))
+    }
   }
 
   /** Sigil #277 — auto-register an agent's nominal modelId before the

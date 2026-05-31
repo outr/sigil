@@ -36,7 +36,7 @@ import spice.http.HttpRequest
  * `call` implementation, not duplicating ~500 lines of conversation-
  * aware machinery.
  */
-trait Provider extends Service {
+trait Provider extends Service with ModelResolver {
   def `type`: ProviderType
 
   /** This provider's namespace key — matches the prefix on
@@ -100,6 +100,14 @@ trait Provider extends Service {
    * not openrouter).
    */
   def models: List[Model] = sigil.cache.find(provider = Some(providerKey))
+
+  /** A single provider serves any model the registry holds — resolution
+    * just pairs this provider with the record. Namespace dispatch across
+    * *multiple* providers is [[ProviderRegistry]]'s job, which gates by
+    * `providerKey` before delegating here, so this stays deliberately
+    * lenient. `None` only when the id isn't registered at all. */
+  override def resolve(modelId: Id[Model]): Option[ProviderModel] =
+    sigil.cache.find(modelId).map(ProviderModel(this, _))
 
   /** Tokenizer used by the framework's budget-validation pass to
     * estimate request size before sending. Default is the

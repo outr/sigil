@@ -85,8 +85,7 @@ object WireLogReplayBench {
     override def compressionMemorySpace(conversationId: Id[Conversation]): Task[Option[SpaceId]] = Task.pure(None)
     override def embeddingProvider: EmbeddingProvider = NoOpEmbeddingProvider
     override def vectorIndex: VectorIndex = NoOpVectorIndex
-    override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
-      Task.error(new UnsupportedOperationException("bench provider not configured"))
+    override def modelResolver: sigil.provider.ModelResolver = _ => None
   }
 
   private val topic = TopicEntry(sigil.conversation.Topic.id("bench-topic"), label = "bench", summary = "bench")

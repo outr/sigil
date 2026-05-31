@@ -35,9 +35,7 @@ class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
                                      storeManager: lightdb.store.CollectionManager,
                                      appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
         new ToolingSigilTestDB(directory, storeManager, appUpgrades)
-      override def providerFor(modelId: lightdb.id.Id[sigil.db.Model],
-                                chain: List[sigil.participant.ParticipantId]): rapid.Task[sigil.provider.Provider] =
-        rapid.Task.error(new RuntimeException("provider unused"))
+      override def modelResolver: sigil.provider.ModelResolver = _ => None
     }
   }
 

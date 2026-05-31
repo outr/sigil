@@ -36,8 +36,7 @@ class AccessibleSpacesPerConversationSpec extends AsyncWordSpec with AsyncTaskSp
                                     storeManager: lightdb.store.CollectionManager,
                                     appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
       new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
-    override def providerFor(modelId: Id[sigil.db.Model], chain: List[ParticipantId]): Task[sigil.provider.Provider] =
-      Task.error(new RuntimeException("not used"))
+    override def modelResolver: sigil.provider.ModelResolver = _ => None
 
     override def accessibleSpaces(chain: List[ParticipantId],
                                   conversationId: Id[Conversation]): Task[Set[SpaceId]] =
@@ -56,8 +55,7 @@ class AccessibleSpacesPerConversationSpec extends AsyncWordSpec with AsyncTaskSp
                                     storeManager: lightdb.store.CollectionManager,
                                     appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
       new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
-    override def providerFor(modelId: Id[sigil.db.Model], chain: List[ParticipantId]): Task[sigil.provider.Provider] =
-      Task.error(new RuntimeException("not used"))
+    override def modelResolver: sigil.provider.ModelResolver = _ => None
 
     override def accessibleSpaces(chain: List[ParticipantId]): Task[Set[SpaceId]] =
       Task.pure(Set[SpaceId](GlobalSpace))

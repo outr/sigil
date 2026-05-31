@@ -9,7 +9,7 @@ import rapid.Task
  * completion. The default handler (when [[McpServerConfig.samplingModelId]]
  * is unset) fails the request with an explanatory error; apps that
  * want sampling support either set `samplingModelId` (which uses the
- * framework's [[sigil.Sigil.providerFor]] to delegate) or supply a
+ * framework's [[sigil.Sigil.modelResolver]] to delegate) or supply a
  * custom handler by overriding `McpSigil.samplingHandlerFor`.
  *
  * The handler receives the raw `params` JSON from the server (the

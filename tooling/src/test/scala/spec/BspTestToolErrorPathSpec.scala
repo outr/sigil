@@ -47,9 +47,7 @@ class BspTestToolErrorPathSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
                                      storeManager: lightdb.store.CollectionManager,
                                      appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
         new TestDB(directory, storeManager, appUpgrades)
-      override def providerFor(modelId: lightdb.id.Id[sigil.db.Model],
-                                chain: List[sigil.participant.ParticipantId]): rapid.Task[sigil.provider.Provider] =
-        rapid.Task.error(new RuntimeException("provider unused in this spec"))
+      override def modelResolver: sigil.provider.ModelResolver = _ => None
     }
   }
 

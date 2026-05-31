@@ -117,13 +117,11 @@ final case class SigilJobStep(input: JobStepInput,
         ))
       case Some(s) =>
         val modelId = Id[Model](s)
-        host.providerFor(modelId, Nil).flatMap { provider =>
-          // Sigil #277 — resolve at the boundary.
-          val resolvedModel = host.cache.find(modelId).getOrElse(
-            throw new sigil.provider.UnregisteredModelException(modelId, host.cache.all.map(_._id))
-          )
+        Task(host.resolveProviderModel(modelId)).flatMap { pm =>
+          // Resolve provider + registered record at the boundary.
+          val provider = pm.provider
           val request = OneShotRequest(
-            model = resolvedModel,
+            model = pm.model,
             systemPrompt = "",
             userPrompt = prompt,
             generationSettings = GenerationSettings()

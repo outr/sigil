@@ -61,8 +61,8 @@ case class BenchmarkSigil(override val embeddingProvider: EmbeddingProvider,
   override def wireInterceptor: spice.http.client.intercept.Interceptor =
     spice.http.client.intercept.Interceptor.empty
 
-  override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
-    providerFactory(modelId)
+  override def modelResolver: sigil.provider.ModelResolver = (modelId: Id[Model]) =>
+    cache.find(modelId).map(sigil.provider.ProviderModel(providerFactory(modelId).sync(), _))
 }
 
 object BenchmarkSigil {

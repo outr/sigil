@@ -75,8 +75,7 @@ object TestSecretsSigil extends Sigil with SecretsSigil {
   override def wireInterceptor: spice.http.client.intercept.Interceptor =
     spice.http.client.intercept.Interceptor.empty
 
-  override def providerFor(modelId: lightdb.id.Id[Model], chain: List[ParticipantId]): Task[Provider] =
-    Task.error(new RuntimeException("TestSecretsSigil: no provider configured (the secrets spec doesn't need one)"))
+  override def modelResolver: sigil.provider.ModelResolver = _ => None
 
   override val embeddingProvider: EmbeddingProvider = NoOpEmbeddingProvider
   override val vectorIndex: VectorIndex = NoOpVectorIndex

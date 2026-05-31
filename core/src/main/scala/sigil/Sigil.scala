@@ -1721,7 +1721,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * `renderSystem` pipeline as a single merged context.
    *
    * Steps:
-   *   1. Resolve the live [[Provider]] via `providerFor(modelId, chain)`.
+   *   1. Resolve the live [[Provider]] + [[Model]] via `resolveProviderModel(modelId)`.
    *   2. Resolve each name in the effective tool roster to a live
    *      [[Tool]] via `findTools.byName`. Names that don't resolve
    *      are dropped.
@@ -1841,7 +1841,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       context.discoveredCapabilities.values.toList.flatMap(_.matches)
     val suggested = (context.turnInput.projectionFor(agent.id).suggestedTools ++ discoveredToolNames).distinct
 
-    val resolved: Task[(Provider, Vector[Tool], Id[Model], GenerationSettings, List[sigil.role.Role])] =
+    val resolved: Task[(Vector[Tool], Id[Model], GenerationSettings, List[sigil.role.Role])] =
       for {
         routing <- resolveRouting(agent, context.conversation, context)
         strategyOpt    = routing.strategyOpt
@@ -1945,7 +1945,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // any field they specify (currently a wholesale replace; if
         // we want field-by-field merge later that lives here).
         genSettings  = chosen.map(_.settings).getOrElse(agent.generationSettings)
-        p           <- providerFor(modelId, effectiveChain)
         rawTools    <- Task.sequence(effectiveNames.map(n => findTools.byName(n))).map(_.flatten.toVector)
         // Filter out memory tools when the chain has no accessible
         // spaces — surfacing `save_memory` / `unpin_memory` /
@@ -1964,9 +1963,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             s"AgentParticipant.resolveRoles must return a non-empty list (id=${agent.id.value})")
           rs
         }
-      } yield (p, t, modelId, genSettings, rolesResolved)
+      } yield (t, modelId, genSettings, rolesResolved)
 
-    Stream.force(resolved.map { case (provider, tools, modelId, genSettings, rolesResolved) =>
+    Stream.force(resolved.map { case (tools, modelId, genSettings, rolesResolved) =>
       // Bug #91 — stamp the registry's canonical id on outbound
       // requests when one is known. Settled Messages then carry the
       // prefixed form (`openai/gpt-5.5`) that the cost projection
@@ -1974,13 +1973,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // depend on the tolerant fallback at every read site. No-op
       // when the candidate's id isn't in the registry.
       val canonicalModelId = cache.canonicalIdFor(modelId)
-      // Sigil #277 — resolve the canonical id to a registered Model
-      // record before constructing the request. Cache miss throws
-      // `UnregisteredModelException` here so the failure surfaces at
-      // the turn boundary instead of silently truncating on the wire.
-      val resolvedModel: Model = cache.find(canonicalModelId).getOrElse(
-        throw new sigil.provider.UnregisteredModelException(canonicalModelId, cache.all.map(_._id))
-      )
+      // Sigil #277 + the modelResolver refactor — resolve the canonical
+      // id to BOTH the live provider and the registered Model record in
+      // one pass. A miss throws `UnregisteredModelException` here so the
+      // failure surfaces at the turn boundary instead of silently
+      // truncating on the wire. In a multi-provider app the registry
+      // dispatches by the id's namespace, so the provider always matches
+      // the model it's about to serve.
+      val resolvedPM = resolveProviderModel(canonicalModelId)
+      val provider = resolvedPM.provider
+      val resolvedModel: Model = resolvedPM.model
       // Sigil bug #199 — forced-synthesis is the framework's
       // last-resort "make the model respond" turn. Tool-call already
       // narrowed to the respond family at the orchestrator boundary;
@@ -2671,16 +2673,35 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   // -- provider resolution --
 
   /**
-   * Resolve a live [[Provider]] for the given model, scoped to the
-   * participant chain. The chain lets the app pick credentials
-   * (API keys, OAuth tokens, billing accounts) tied to the originating
-   * participant — typically `chain.head` is the user whose key pays for
-   * the call.
+   * The framework's model→provider binding. A single [[Provider]] for a
+   * one-backend app, or a [[sigil.provider.ProviderRegistry]] that
+   * dispatches by the model id's provider namespace for a multi-backend
+   * app (e.g. `ProviderRegistry(List(llamaCpp, anthropic, cloudflare))`).
    *
-   * Called by [[AgentParticipant.defaultProcess]] at every turn; no
-   * caching in the framework. Apps cache if they care.
+   * This replaces the former abstract `providerFor(modelId, chain)`:
+   * model→provider dispatch is now the framework's job, not something
+   * each consumer re-implements (the gap behind sigil #333). Because a
+   * registry dispatches by namespace and every provider renders its wire
+   * `model` field under that same key, a namespaced id can only reach the
+   * provider that serves it.
+   *
+   * Per-user / per-credential resolution (an app that lets users bring
+   * their own provider) is layered above this seam at the app level; this
+   * resolver is the internal / fallback binding.
    */
-  def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider]
+  def modelResolver: sigil.provider.ModelResolver
+
+  /**
+   * Resolve a model id to its [[sigil.provider.ProviderModel]] via
+   * [[modelResolver]], throwing [[sigil.provider.UnregisteredModelException]]
+   * when nothing serves it. The single resolution entry point the turn
+   * pipeline, [[sigil.tool.consult.ConsultTool]], and workflow steps go
+   * through — fail-loud rather than silently degrading.
+   */
+  final def resolveProviderModel(modelId: Id[Model]): sigil.provider.ProviderModel =
+    modelResolver.resolve(modelId).getOrElse(
+      throw new sigil.provider.UnregisteredModelException(modelId, cache.all.map(_._id))
+    )
 
   // -- framework dispatch (entry point) --
 

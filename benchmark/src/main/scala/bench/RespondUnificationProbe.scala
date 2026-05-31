@@ -53,8 +53,7 @@ object RespondUnificationProbe {
     override def compressionMemorySpace(conversationId: Id[sigil.conversation.Conversation]): Task[Option[sigil.SpaceId]] = Task.pure(None)
     override def embeddingProvider: sigil.embedding.EmbeddingProvider = sigil.embedding.NoOpEmbeddingProvider
     override def vectorIndex: sigil.vector.VectorIndex = sigil.vector.NoOpVectorIndex
-    override def providerFor(modelId: Id[Model], chain: List[sigil.participant.ParticipantId]): Task[Provider] =
-      Task.error(new UnsupportedOperationException("probe: providerFor unused"))
+    override def modelResolver: sigil.provider.ModelResolver = _ => None
   }
 
   // ---- Option B prototype types (would be the real shape if shipped) ----

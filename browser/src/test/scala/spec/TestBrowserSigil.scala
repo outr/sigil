@@ -90,8 +90,8 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
   def setAccessibleSpaces(f: List[ParticipantId] => Task[Set[SpaceId]]): Unit =
     accessibleSpacesRef.set(f)
 
-  override def providerFor(modelId: lightdb.id.Id[Model], chain: List[ParticipantId]): Task[Provider] =
-    providerRef.get().apply()
+  override def modelResolver: sigil.provider.ModelResolver = (modelId: lightdb.id.Id[Model]) =>
+    cache.find(modelId).map(sigil.provider.ProviderModel(providerRef.get().apply().sync(), _))
 
   override def accessibleSpaces(chain: List[ParticipantId]): Task[Set[SpaceId]] =
     accessibleSpacesRef.get().apply(chain)

@@ -119,7 +119,7 @@ case class OpenRouterProvider(apiKey: String,
     * nothing useful here. Override to return the full registry,
     * matching OpenRouter's "any model in the catalog is routable
     * through me" semantics. Apps with multiple providers should
-    * scope their [[Sigil.providerFor]] dispatch explicitly rather
+    * scope their [[Sigil.modelResolver]] dispatch explicitly rather
     * than relying on `provider.models` to disambiguate. */
   override def models: List[Model] = sigilRef.cache.all
 

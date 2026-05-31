@@ -58,8 +58,7 @@ object TestScriptSigil extends Sigil with ScriptSigil {
   override def compressionMemorySpace(conversationId: lightdb.id.Id[Conversation]): Task[Option[SpaceId]] =
     Task.pure(None)
 
-  override def providerFor(modelId: lightdb.id.Id[Model], chain: List[ParticipantId]): Task[Provider] =
-    Task.error(new RuntimeException("TestScriptSigil: no provider configured"))
+  override def modelResolver: sigil.provider.ModelResolver = _ => None
 
   override val embeddingProvider: EmbeddingProvider = NoOpEmbeddingProvider
   override val vectorIndex: VectorIndex = NoOpVectorIndex

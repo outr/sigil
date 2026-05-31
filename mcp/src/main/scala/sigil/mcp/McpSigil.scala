@@ -23,7 +23,7 @@ import sigil.tool.Tool
  *
  * The resolver hook [[samplingHandlerFor]] returns a per-server
  * [[SamplingHandler]] — the framework default uses the host's
- * provider via [[Sigil.providerFor]] when a config has
+ * provider via [[Sigil.modelResolver]] when a config has
  * `samplingModelId`, refusing otherwise. Apps that want different
  * sampling semantics override this hook.
  *
@@ -43,7 +43,7 @@ trait McpSigil extends Sigil {
   def mcpManagementToolsEnabled: Boolean = true
 
   /** Per-server sampling-handler resolver. Default: refuse unless
-    * `samplingModelId` is set, then delegate via [[providerFor]]. */
+    * `samplingModelId` is set, then delegate via [[modelResolver]]. */
   protected def samplingHandlerFor(config: McpServerConfig): SamplingHandler =
     config.samplingModelId match {
       case None => SamplingHandler.Refusing
@@ -119,7 +119,7 @@ trait McpSigil extends Sigil {
 }
 
 /**
- * Real [[SamplingHandler]] backed by [[Sigil.providerFor]] +
+ * Real [[SamplingHandler]] backed by [[Sigil.modelResolver]] +
  * [[OneShotRequest]]. The MCP server's `CreateMessageRequest` is
  * translated into:
  *
@@ -150,18 +150,16 @@ final class ProviderSamplingHandler(host: Sigil,
     val maxTokensOpt = params.get("maxTokens").map(_.asInt)
     val settings     = GenerationSettings(temperature = temperature, maxOutputTokens = maxTokensOpt)
 
-    // Sigil #277 — resolve at the boundary.
-    val resolvedModel = host.cache.find(modelId).getOrElse(
-      throw new sigil.provider.UnregisteredModelException(modelId, host.cache.all.map(_._id))
-    )
-    val request = OneShotRequest(
-      model              = resolvedModel,
-      systemPrompt       = systemPrompt,
-      userPrompt         = userPrompt,
-      generationSettings = settings
-    )
-
-    host.providerFor(modelId, Nil).flatMap { provider =>
+    // Resolve provider + registered Model record at the boundary in one
+    // pass (fail-loud on an unregistered id).
+    rapid.Task(host.resolveProviderModel(modelId)).flatMap { pm =>
+      val provider = pm.provider
+      val request = OneShotRequest(
+        model              = pm.model,
+        systemPrompt       = systemPrompt,
+        userPrompt         = userPrompt,
+        generationSettings = settings
+      )
       val collected = new java.lang.StringBuilder()
       val stopRef   = new java.util.concurrent.atomic.AtomicReference[StopReason](StopReason.Complete)
       val errRef    = new java.util.concurrent.atomic.AtomicReference[Option[String]](None)

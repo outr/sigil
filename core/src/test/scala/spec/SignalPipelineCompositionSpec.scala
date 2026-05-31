@@ -51,9 +51,7 @@ class SignalPipelineCompositionSpec extends AsyncWordSpec with AsyncTaskSpec wit
                                      storeManager: lightdb.store.CollectionManager,
                                      appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
         new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
-      override def providerFor(modelId: lightdb.id.Id[sigil.db.Model],
-                                chain: List[sigil.participant.ParticipantId]): rapid.Task[sigil.provider.Provider] =
-        rapid.Task.error(new RuntimeException("provider unused"))
+      override def modelResolver: sigil.provider.ModelResolver = _ => None
       override def inboundTransforms: List[InboundTransform] = transformsList
       override def settledEffects: List[SettledEffect] = effectsList
       override protected def participantIds: List[fabric.rw.RW[? <: sigil.participant.ParticipantId]] =

@@ -195,7 +195,7 @@ object BFCLBench {
                              expectedToolName: String,
                              groundTruthOpt: Option[Json]): (Either[Throwable, Boolean], Option[(String, Json)]) = {
     try {
-      val events = sigil.providerFor(request.modelId, Nil).flatMap(_.apply(request).toList).sync()
+      val events = sigil.resolveProviderModel(request.modelId).provider.apply(request).toList.sync()
       val toolCall = events.collectFirst {
         case ProviderEvent.ToolCallComplete(_, input: DynamicToolInput) => input
       }

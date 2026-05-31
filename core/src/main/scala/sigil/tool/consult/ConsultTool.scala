@@ -62,15 +62,14 @@ case object ConsultTool extends Tool {
 
 
   override def executeResult(input: ConsultInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
-    context.sigil.providerFor(input.modelId, context.chain).flatMap { provider =>
-      // Sigil #277 — resolve the requested model id to the registered
-      // record at the boundary; an unregistered id throws here rather
-      // than silently truncating on the wire.
-      val resolvedModel = context.sigil.cache.find(input.modelId).getOrElse(
-        throw new sigil.provider.UnregisteredModelException(input.modelId, context.sigil.cache.all.map(_._id))
-      )
+    Task(context.sigil.resolveProviderModel(input.modelId)).flatMap { pm =>
+      // Resolve the requested model id to BOTH provider and registered
+      // record at the boundary (`Task(...)` defers the unregistered-id
+      // throw into the Task error channel) rather than silently
+      // truncating on the wire.
+      val provider = pm.provider
       val request = OneShotRequest(
-        model = resolvedModel,
+        model = pm.model,
         systemPrompt = input.systemPrompt,
         userPrompt = input.userPrompt,
         chain = context.chain
@@ -146,20 +145,17 @@ case object ConsultTool extends Tool {
                                            generationSettings: GenerationSettings =
                                              GenerationSettings.classifierDefault): Task[ConsultOutcome[I]] = {
     val ct = summon[ClassTag[I]]
-    // Wrap the full chain (including `providerFor` resolution and
-    // request construction) so any throwable surfaces as
-    // `ConsultOutcome.Failed` rather than escaping to the caller.
-    // Matches the legacy `invoke` outer-handleError shape; without
-    // this, classifier consults whose providerFor itself throws
-    // (e.g. test fixtures that didn't wire a provider) silently
-    // tear down the surrounding caller's task chain.
-    sigil.providerFor(modelId, chain).flatMap { provider =>
-      // Sigil #277 — resolve the requested model id at the boundary.
-      val resolvedModel = sigil.cache.find(modelId).getOrElse(
-        throw new _root_.sigil.provider.UnregisteredModelException(modelId, sigil.cache.all.map(_._id))
-      )
+    // Wrap the full chain (including model resolution and request
+    // construction) so any throwable surfaces as `ConsultOutcome.Failed`
+    // rather than escaping to the caller. `Task(...)` defers the
+    // unregistered-id throw into the Task error channel; without it, a
+    // classifier consult whose model can't be resolved (e.g. a test
+    // fixture that didn't wire a provider) would tear down the
+    // surrounding caller's task chain.
+    Task(sigil.resolveProviderModel(modelId)).flatMap { pm =>
+      val provider = pm.provider
       val request = OneShotRequest(
-        model = resolvedModel,
+        model = pm.model,
         systemPrompt = systemPrompt,
         userPrompt = userPrompt,
         generationSettings = generationSettings,

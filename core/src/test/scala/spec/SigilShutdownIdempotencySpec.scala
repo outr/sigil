@@ -42,9 +42,7 @@ class SigilShutdownIdempotencySpec extends AsyncWordSpec with AsyncTaskSpec with
           s"This violates the codegen-safe shutdown invariant — instanceStarted should " +
           s"have skipped DB disposal because instance was never called."
       )
-    override def providerFor(modelId: lightdb.id.Id[sigil.db.Model],
-                              chain: List[sigil.participant.ParticipantId]): rapid.Task[sigil.provider.Provider] =
-      rapid.Task.error(new RuntimeException("not used"))
+    override def modelResolver: sigil.provider.ModelResolver = _ => None
   }
 
   "Sigil.shutdown" should {

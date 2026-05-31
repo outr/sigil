@@ -79,8 +79,8 @@ object DispatchTestSigil extends Sigil {
     providerRef.set(() => Task.error(new RuntimeException("DispatchTestSigil — provider not set")))
   }
 
-  override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
-    providerRef.get()()
+  override def modelResolver: sigil.provider.ModelResolver = (modelId: Id[Model]) =>
+    cache.find(modelId).map(sigil.provider.ProviderModel(providerRef.get()().sync(), _))
 
   override def curate(conversationId: Id[Conversation],
                       modelId: Id[Model],

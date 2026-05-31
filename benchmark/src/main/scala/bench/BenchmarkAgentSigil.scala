@@ -123,6 +123,6 @@ final class BenchmarkAgentSigil(viewer: ParticipantId,
       case None => spice.http.client.intercept.Interceptor.empty
     }
 
-  override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
-    providerFactory(modelId)
+  override def modelResolver: sigil.provider.ModelResolver = (modelId: Id[Model]) =>
+    cache.find(modelId).map(sigil.provider.ProviderModel(providerFactory(modelId).sync(), _))
 }

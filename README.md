@@ -71,8 +71,10 @@ object MySigil extends Sigil {
                                  appUpgrades: List[DatabaseUpgrade]): DB =
     new DefaultSigilDB(directory, storeManager, appUpgrades)
 
-  override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
-    Task.error(new RuntimeException("configure a provider registry"))
+  // Single backend: a Provider is itself a ModelResolver. Multiple
+  // backends: `ProviderRegistry(List(llamaCpp, anthropic, cloudflare))`,
+  // which dispatches by the model id's provider namespace.
+  override def modelResolver: ModelResolver = myProvider
 }
 ```
 

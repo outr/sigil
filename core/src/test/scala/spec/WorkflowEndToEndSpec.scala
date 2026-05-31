@@ -159,8 +159,8 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
 
   def setProvider(p: => Task[Provider]): Unit = providerRef.set(() => p)
 
-  override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
-    providerRef.get()()
+  override def modelResolver: sigil.provider.ModelResolver = (modelId: Id[Model]) =>
+    cache.find(modelId).map(sigil.provider.ProviderModel(providerRef.get()().sync(), _))
 
   /** Test-only tool surface — adds [[EchoBackTool]] (used by the
     * worker tool-dispatch coverage in [[LlamaCppWorkerSpec]]) and

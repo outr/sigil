@@ -18,7 +18,7 @@ import sigil.provider.{ConversationMode, Mode}
  * `TriggerFilter` predicate matches. Participants serialize through the
  * `Participant` poly — agents are persistent by value (modelId, toolNames,
  * instructions, …), with live `Provider` and `Tool` instances resolved at
- * call time via `Sigil.providerFor` and `ToolFinder.byName`.
+ * call time via `Sigil.modelResolver` and `ToolFinder.byName`.
  *
  * `currentMode` is the conversation's active operating mode, kept up to
  * date by the framework as [[sigil.event.ModeChange]] events land. All

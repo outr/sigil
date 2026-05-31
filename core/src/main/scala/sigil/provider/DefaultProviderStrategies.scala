@@ -9,7 +9,7 @@ import sigil.db.Model
  * Pre-shaped [[ProviderStrategyRecord]]s apps can optionally seed
  * into their database. Each strategy maps the framework's baseline
  * [[WorkType]]s to ordered model-id chains; the model ids are the
- * same identifiers `Sigil.providerFor` resolves, so apps need to
+ * same identifiers `Sigil.modelResolver` resolves, so apps need to
  * have those models reachable for the chains to fire.
  *
  * Three preset shapes:

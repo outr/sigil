@@ -136,9 +136,7 @@ object ScriptToolsTestSigil
   override def getInformation(id: lightdb.id.Id[sigil.information.Information]): Task[Option[sigil.information.Information]] = Task.pure(None)
   override def putInformation(information: sigil.information.Information): Task[Unit] = Task.unit
   override def compressionMemorySpace(conversationId: lightdb.id.Id[Conversation]): Task[Option[sigil.SpaceId]] = Task.pure(None)
-  override def providerFor(modelId: lightdb.id.Id[sigil.db.Model],
-                            chain: List[sigil.participant.ParticipantId]): Task[sigil.provider.Provider] =
-    Task.error(new RuntimeException("ScriptToolsTestSigil: no provider configured"))
+  override def modelResolver: sigil.provider.ModelResolver = _ => None
   override val embeddingProvider: sigil.embedding.EmbeddingProvider = sigil.embedding.NoOpEmbeddingProvider
   override val vectorIndex: sigil.vector.VectorIndex = sigil.vector.NoOpVectorIndex
 
