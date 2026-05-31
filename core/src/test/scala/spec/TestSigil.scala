@@ -312,10 +312,11 @@ object TestSigil extends Sigil {
                                participants: List[Participant] = Nil,
                                currentMode: Mode = sigil.provider.ConversationMode,
                                parentConversationId: Option[Id[sigil.conversation.Conversation]] = None,
+                               pinnedComplexity: Option[sigil.provider.Complexity] = None,
                                conversationId: Id[sigil.conversation.Conversation] = sigil.conversation.Conversation.id())
                               : Task[sigil.conversation.Conversation] = {
     participants.foreach(registerAgentModelIfMissing)
-    super.newConversation(createdBy, label, summary, participants, currentMode, parentConversationId, conversationId)
+    super.newConversation(createdBy, label, summary, participants, currentMode, parentConversationId, pinnedComplexity, conversationId)
   }
 
   /** Sigil #277 — auto-register the joining agent's modelId on

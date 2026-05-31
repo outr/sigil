@@ -4838,6 +4838,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                       participants: List[Participant] = Nil,
                       currentMode: Mode = ConversationMode,
                       parentConversationId: Option[Id[Conversation]] = None,
+                      pinnedComplexity: Option[sigil.provider.Complexity] = None,
                       conversationId: Id[Conversation] = Conversation.id()): Task[Conversation] = {
     val topic = Topic(
       conversationId = conversationId,
@@ -4850,6 +4851,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       participants = participants,
       currentMode = currentMode,
       parentConversationId = parentConversationId,
+      pinnedComplexity = pinnedComplexity,
       _id = conversationId
     )
     for {

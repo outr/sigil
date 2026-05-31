@@ -140,7 +140,11 @@ case object DelegateTaskTool extends Tool {
         label                = workerLabel,
         summary              = input.goal.getOrElse(brief).take(80),
         participants         = List(supervisor, workerAgent),
-        parentConversationId = Some(parentConvId)
+        parentConversationId = Some(parentConvId),
+        // #335 — pin the delegated complexity on the worker conversation
+        // so its per-turn routing honors the tier the caller asked for
+        // instead of re-inferring it (which biases Low) on every turn.
+        pinnedComplexity     = input.complexity
       )
       // Activate the supervisor bridge guidance on the caller's projection
       // in the worker conversation (renders only while it acts there).
