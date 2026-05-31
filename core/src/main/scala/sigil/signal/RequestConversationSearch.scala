@@ -30,4 +30,6 @@ import sigil.conversation.{Conversation, Topic}
 case class RequestConversationSearch(query: String,
                                      conversationId: Option[Id[Conversation]] = None,
                                      topicId: Option[Id[Topic]] = None,
-                                     limit: Int = 20) extends Notice derives RW
+                                     limit: Int = 20) extends Notice derives RW {
+  override def conversationScope: Option[Id[Conversation]] = conversationId
+}

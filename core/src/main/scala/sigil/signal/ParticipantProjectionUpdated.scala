@@ -31,4 +31,4 @@ import sigil.participant.ParticipantId
  */
 case class ParticipantProjectionUpdated(conversationId: Id[Conversation],
                                          participantId: ParticipantId,
-                                         projection: ParticipantProjection) extends Notice derives RW
+                                         projection: ParticipantProjection) extends ConversationNotice derives RW

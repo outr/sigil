@@ -15,4 +15,4 @@ import sigil.conversation.Conversation
  * simply isn't in their replay anymore, which is the correct
  * "doesn't exist" semantic.
  */
-case class ConversationDeleted(conversationId: Id[Conversation]) extends Notice derives RW
+case class ConversationDeleted(conversationId: Id[Conversation]) extends ConversationNotice derives RW

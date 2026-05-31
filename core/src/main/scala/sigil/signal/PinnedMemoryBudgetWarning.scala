@@ -32,7 +32,7 @@ case class PinnedMemoryBudgetWarning(conversationId: Id[Conversation],
                                      contextLength: Int,
                                      sharePct: Double,
                                      largestContributors: List[PinnedMemoryShare],
-                                     insights: List[ContextManagementInsight]) extends Notice derives RW
+                                     insights: List[ContextManagementInsight]) extends ConversationNotice derives RW
 
 /** A single pinned-memory contributor in
   * [[PinnedMemoryBudgetWarning.largestContributors]] — `(key, tokens)` pair. */

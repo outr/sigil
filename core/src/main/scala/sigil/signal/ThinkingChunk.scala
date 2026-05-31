@@ -31,4 +31,4 @@ import sigil.event.Event
  */
 case class ThinkingChunk(target: Id[Event],
                          conversationId: Id[Conversation],
-                         delta: String) extends Notice derives RW
+                         delta: String) extends ConversationNotice derives RW

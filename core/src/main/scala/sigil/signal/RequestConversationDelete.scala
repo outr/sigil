@@ -18,4 +18,4 @@ import sigil.conversation.Conversation
  * non-`Request*` Notice ([[ConversationDeleted]]) is the broadcast
  * confirmation.
  */
-case class RequestConversationDelete(conversationId: Id[Conversation]) extends Notice derives RW
+case class RequestConversationDelete(conversationId: Id[Conversation]) extends ConversationNotice derives RW

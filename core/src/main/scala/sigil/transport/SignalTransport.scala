@@ -8,7 +8,7 @@ import sigil.event.{Event, Message}
 import sigil.participant.ParticipantId
 import sigil.signal.{Delta, Notice, Signal}
 
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong, AtomicReference}
 
 /**
  * Bridges a [[Sigil]] to a [[SignalSink]]: replays history from
@@ -56,6 +56,10 @@ final class SignalTransport(sigil: Sigil) {
              conversations: ConversationFilter = None): Task[SinkHandle] = Task {
     val cancelled = new AtomicBoolean(false)
     val boundary = new AtomicLong(Long.MinValue)
+    // The live-delivery scope is mutable: `subscribe` / `unsubscribe` on
+    // the returned handle adjust it without reconnecting. Seeded from the
+    // `conversations` arg (the conversation(s) the connection opens with).
+    val filterRef = new AtomicReference[ConversationFilter](conversations)
     val live: Stream[Signal] = sigil.signalsFor(viewer)
 
     // Latest-status replay for registered services — every fresh
@@ -78,10 +82,20 @@ final class SignalTransport(sigil: Sigil) {
       }
     }
 
-    val forwarded: Stream[Signal] = live.filter {
-      case e: Event  => e.timestamp.value > boundary.get()
-      case _: Delta  => true
-      case _: Notice => true
+    // Live forwarding honors the current per-connection scope. A signal
+    // passes when the filter is unset (None — watch everything) or its
+    // `conversationScope` is global (None) or in the subscribed set.
+    // Events additionally clear the replay boundary to avoid
+    // double-delivery of anything replay already pushed.
+    val forwarded: Stream[Signal] = live.filter { s =>
+      val inScope = filterRef.get() match {
+        case None     => true
+        case Some(cs) => s.conversationScope.forall(cs.contains)
+      }
+      inScope && (s match {
+        case e: Event => e.timestamp.value > boundary.get()
+        case _        => true
+      })
     }.evalTap(s => sink.push(s))
 
     val combined = (serviceStatuses ++ replayed ++ forwarded).takeWhile(_ => !cancelled.get())
@@ -90,6 +104,22 @@ final class SignalTransport(sigil: Sigil) {
     new SinkHandle {
       override def detach: Task[Unit] =
         Task { cancelled.set(true) }.flatMap(_ => sink.close)
+
+      override def subscribe(conversationId: Id[Conversation]): Task[Unit] = Task {
+        filterRef.updateAndGet(cur => cur match {
+          case Some(cs) => Some(cs + conversationId)
+          case None     => None // already unscoped — every conversation already delivered
+        })
+        ()
+      }
+
+      override def unsubscribe(conversationId: Id[Conversation]): Task[Unit] = Task {
+        filterRef.updateAndGet(cur => cur match {
+          case Some(cs) => Some(cs - conversationId)
+          case None     => None
+        })
+        ()
+      }
     }
   }
 
@@ -113,11 +143,9 @@ final class SignalTransport(sigil: Sigil) {
    * Optional conversation-scope filter for the indexed event query.
    * `Some(cs)` with a non-empty set narrows to the `conversationId`
    * index via an `in` clause; an empty set matches nothing; `None`
-   * spans every conversation.
-   *
-   * Sigil #289 — the `cs` passed in is the EXPANDED set (callers
-   * resolve descendants via [[expandWithWorkerDescendants]] before
-   * calling this).
+   * spans every conversation. The set is the exact set the subscriber
+   * declared — no inference (#334 replaced the former worker-descendant
+   * auto-expansion with client-driven `subscribe` / `unsubscribe`).
    */
   private def conversationScopeFilter(convFilter: ConversationFilter): Option[Event.type => lightdb.filter.Filter[Event]] = {
     import lightdb.filter.*
@@ -127,35 +155,6 @@ final class SignalTransport(sigil: Sigil) {
       case None                   => None
     }
   }
-
-  /** Sigil #289 — expand a conversation-filter set by recursively
-    * adding any conversation whose `parentConversationId` resolves
-    * to an id already in the set. Apps subscribed to a parent
-    * conversation transitively see its workers (and their workers)
-    * without enumerating worker ids manually.
-    *
-    * Returns `None` when the input is `None` (unfiltered). Returns
-    * an expanded `Some(set)` otherwise. Uses the indexed
-    * `parentConversationId` field for cheap lookups; bounded by the
-    * actual descendant tree depth (typically 1–2 levels). */
-  private def expandWithWorkerDescendants(convFilter: ConversationFilter): Task[ConversationFilter] =
-    convFilter match {
-      case None     => Task.pure(None)
-      case Some(cs) =>
-        import lightdb.filter.*
-        def step(seen: Set[Id[Conversation]],
-                 frontier: Set[Id[Conversation]]): Task[Set[Id[Conversation]]] =
-          if (frontier.isEmpty) Task.pure(seen)
-          else sigil.withDB(_.conversations.transaction(_.query
-            .filter(_ => Conversation.parentConversationId.in(frontier.toSeq.map(id => Option(id))))
-            .toList
-          )).flatMap { children =>
-            val childIds = children.map(_._id).toSet
-            val nextFrontier = childIds.diff(seen)
-            step(seen ++ childIds, nextFrontier)
-          }
-        step(cs, cs).map(expanded => Some(expanded))
-    }
 
   /**
    * The single conversation id of `convFilter`, when it scopes to
@@ -176,14 +175,7 @@ final class SignalTransport(sigil: Sigil) {
 
   private def loadReplay(viewer: ParticipantId,
                          resume: ResumeRequest,
-                         rawConvFilter: ConversationFilter): Task[Stream[Signal]] =
-    expandWithWorkerDescendants(rawConvFilter).flatMap { convFilter =>
-      doLoadReplay(viewer, resume, convFilter)
-    }
-
-  private def doLoadReplay(viewer: ParticipantId,
-                           resume: ResumeRequest,
-                           convFilter: ConversationFilter): Task[Stream[Signal]] = {
+                         convFilter: ConversationFilter): Task[Stream[Signal]] = {
     val scopeFilter = conversationScopeFilter(convFilter)
     resume match {
       case ResumeRequest.None =>
@@ -255,4 +247,22 @@ final class SignalTransport(sigil: Sigil) {
  */
 trait SinkHandle {
   def detach: Task[Unit]
+
+  /**
+   * Add `conversationId` to this connection's live-delivery scope
+   * without reconnecting — the client-driven counterpart to opening a
+   * view (a tab, a worker drill-in). Subsequent live signals for that
+   * conversation flow to the sink. No-op on an unscoped sink (a `None`
+   * filter already delivers every conversation). Live-only: initial
+   * history for a freshly-subscribed conversation is fetched separately
+   * via the replay APIs (`eventsFor` / `RequestConversationHistory`),
+   * so there's no replay/live double-delivery to coordinate.
+   */
+  def subscribe(conversationId: Id[Conversation]): Task[Unit] = Task.unit
+
+  /**
+   * Remove `conversationId` from the live-delivery scope (the view
+   * closed). No-op on an unscoped sink.
+   */
+  def unsubscribe(conversationId: Id[Conversation]): Task[Unit] = Task.unit
 }

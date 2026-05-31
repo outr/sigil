@@ -26,4 +26,4 @@ import sigil.event.Event
  */
 case class ConversationSnapshot(conversationId: Id[Conversation],
                                 recentEvents: Vector[Event],
-                                hasMore: Boolean = false) extends Notice derives RW
+                                hasMore: Boolean = false) extends ConversationNotice derives RW

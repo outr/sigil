@@ -273,82 +273,132 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     }
   }
 
-  "SignalTransport conversation-filter expansion (sigil #289)" should {
+  "SignalTransport client-driven conversation scope (sigil #334)" should {
 
-    "include worker conversation events in the parent's replay window" in {
+    /** Pull the texts out of a signal collection. */
+    def textsOf(signals: Iterable[Signal]): List[String] =
+      signals.collect {
+        case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
+      }.toList
+
+    "NOT auto-expand a parent subscription to its workers — replay scoped to the parent excludes worker events" in {
       val parentId = freshConv("parent")
       val workerId = freshConv("worker")
-      val parent   = Conversation(_id = parentId, topics = TestTopicStack)
-      val worker   = Conversation(_id = workerId, topics = TestTopicStack,
-                                  parentConversationId = Some(parentId))
       for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(parent)))
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(worker)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
+               Conversation(_id = parentId, topics = TestTopicStack))))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
+               Conversation(_id = workerId, topics = TestTopicStack, parentConversationId = Some(parentId)))))
         _ <- TestSigil.publish(msg(parentId, 1000L, "parent-event"))
         _ <- TestSigil.publish(msg(workerId, 1100L, "worker-event"))
-        // Subscribe filtered to the PARENT only. Without the
-        // descendant-expansion fix the worker's event would be
-        // dropped; with the fix it transitively appears.
         signals <- transport.replay(TestUser, ResumeRequest.After(0L),
                                     conversations = Some(Set(parentId))).toList
       } yield {
-        val texts = signals.collect {
-          case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
-        }
+        val texts = textsOf(signals)
         texts should contain ("parent-event")
-        texts should contain ("worker-event")
+        texts should not contain "worker-event" // the parent isn't subscribed to the worker
       }
     }
 
-    "transitively include grandchild worker events when workers spawn sub-workers" in {
-      val grandparentId = freshConv("grandparent")
-      val parentId      = freshConv("subparent")
-      val childId       = freshConv("subchild")
-      val grandparent = Conversation(_id = grandparentId, topics = TestTopicStack)
-      val parent      = Conversation(_id = parentId, topics = TestTopicStack,
-                                     parentConversationId = Some(grandparentId))
-      val child       = Conversation(_id = childId, topics = TestTopicStack,
-                                     parentConversationId = Some(parentId))
+    "NOT transitively pull grandchild worker events into a grandparent subscription" in {
+      val gpId = freshConv("grandparent")
+      val pId  = freshConv("subparent")
+      val cId  = freshConv("subchild")
       for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(grandparent)))
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(parent)))
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(child)))
-        _ <- TestSigil.publish(msg(grandparentId, 1000L, "gp-event"))
-        _ <- TestSigil.publish(msg(parentId,      1100L, "p-event"))
-        _ <- TestSigil.publish(msg(childId,       1200L, "c-event"))
-        // Subscribe to the grandparent only.
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
+               Conversation(_id = gpId, topics = TestTopicStack))))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
+               Conversation(_id = pId, topics = TestTopicStack, parentConversationId = Some(gpId)))))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
+               Conversation(_id = cId, topics = TestTopicStack, parentConversationId = Some(pId)))))
+        _ <- TestSigil.publish(msg(gpId, 1000L, "gp-event"))
+        _ <- TestSigil.publish(msg(pId,  1100L, "p-event"))
+        _ <- TestSigil.publish(msg(cId,  1200L, "c-event"))
         signals <- transport.replay(TestUser, ResumeRequest.After(0L),
-                                    conversations = Some(Set(grandparentId))).toList
+                                    conversations = Some(Set(gpId))).toList
       } yield {
-        val texts = signals.collect {
-          case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
-        }
+        val texts = textsOf(signals)
         texts should contain ("gp-event")
-        texts should contain ("p-event")
-        texts should contain ("c-event")
+        texts should not contain "p-event"
+        texts should not contain "c-event"
       }
     }
 
-    "still scope replay to the explicit set when no worker hierarchy exists" in {
+    "scope replay to exactly the declared set" in {
       val convA = freshConv("a")
       val convB = freshConv("b")
       for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
-               Conversation(_id = convA, topics = TestTopicStack))))
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
-               Conversation(_id = convB, topics = TestTopicStack))))
         _ <- TestSigil.publish(msg(convA, 1000L, "a-event"))
         _ <- TestSigil.publish(msg(convB, 1100L, "b-event"))
-        // Subscribed to A only — B is not a worker of A, so its
-        // events should NOT appear (no false transitive expansion).
         signals <- transport.replay(TestUser, ResumeRequest.After(0L),
                                     conversations = Some(Set(convA))).toList
       } yield {
-        val texts = signals.collect {
-          case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
-        }
+        val texts = textsOf(signals)
         texts should contain ("a-event")
         texts should not contain "b-event"
+      }
+    }
+
+    "scope LIVE forwarding — a worker's live event never reaches a parent-only sink" in {
+      val parentId = freshConv("live-parent")
+      val workerId = freshConv("live-worker")
+      val sink = new RecordingSink
+      for {
+        handle  <- transport.attach(TestUser, sink, ResumeRequest.None, conversations = Some(Set(parentId)))
+        _       <- Task.sleep(100.millis)
+        _       <- TestSigil.publish(msg(workerId, 5000L, "worker-live"))
+        _       <- TestSigil.publish(msg(parentId, 5100L, "parent-live"))
+        _       <- Task.sleep(150.millis)
+        _       <- handle.detach
+      } yield {
+        val texts = textsOf(sink.signals)
+        texts should contain ("parent-live")
+        texts should not contain "worker-live"
+      }
+    }
+
+    "deliver a conversation's live events after subscribe(convId), and stop after unsubscribe(convId)" in {
+      val convA = freshConv("sub-a")
+      val convB = freshConv("sub-b")
+      val sink = new RecordingSink
+      for {
+        handle <- transport.attach(TestUser, sink, ResumeRequest.None, conversations = Some(Set(convA)))
+        _      <- Task.sleep(100.millis)
+        // B not yet subscribed — dropped.
+        _      <- TestSigil.publish(msg(convB, 6000L, "b-before"))
+        _      <- Task.sleep(100.millis)
+        _      <- handle.subscribe(convB)
+        _      <- TestSigil.publish(msg(convB, 6100L, "b-after-subscribe"))
+        _      <- Task.sleep(100.millis)
+        _      <- handle.unsubscribe(convB)
+        _      <- TestSigil.publish(msg(convB, 6200L, "b-after-unsubscribe"))
+        _      <- TestSigil.publish(msg(convA, 6300L, "a-always"))
+        _      <- Task.sleep(150.millis)
+        _      <- handle.detach
+      } yield {
+        val texts = textsOf(sink.signals)
+        texts should not contain "b-before"
+        texts should contain ("b-after-subscribe")
+        texts should not contain "b-after-unsubscribe"
+        texts should contain ("a-always")
+      }
+    }
+
+    "scope conversation-bound Notices too — a ConversationNotice for an unsubscribed conversation is dropped" in {
+      val convA = freshConv("notice-a")
+      val convB = freshConv("notice-b")
+      val sink = new RecordingSink
+      for {
+        handle <- transport.attach(TestUser, sink, ResumeRequest.None, conversations = Some(Set(convA)))
+        _      <- Task.sleep(100.millis)
+        _      <- TestSigil.publish(ConversationCreated(convA, TestUser))
+        _      <- TestSigil.publish(ConversationCreated(convB, TestUser))
+        _      <- Task.sleep(150.millis)
+        _      <- handle.detach
+      } yield {
+        val created = sink.signals.collect { case c: ConversationCreated => c.conversationId }
+        created should contain (convA)
+        created should not contain convB
       }
     }
   }

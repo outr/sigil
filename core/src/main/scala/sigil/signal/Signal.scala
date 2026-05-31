@@ -1,6 +1,8 @@
 package sigil.signal
 
 import fabric.rw.PolyType
+import lightdb.id.Id
+import sigil.conversation.Conversation
 
 /**
  * Root of sigil's external wire vocabulary. Every value that crosses the
@@ -23,7 +25,16 @@ import fabric.rw.PolyType
  * regardless of which kind a given frame is. Pattern-matching on
  * `case e: Event` / `case d: Delta` / `case n: Notice` tells consumers which
  * side they got.
+ *
+ * `conversationScope` is the wire-delivery key: `Some(id)` means this signal
+ * pertains to one conversation (Events and Deltas always; conversation-bound
+ * Notices via [[ConversationNotice]]); `None` means it's global (a catalog
+ * snapshot, a viewer-state pulse). [[sigil.transport.SignalTransport]] scopes
+ * a per-connection subscription against it — global signals always pass; a
+ * scoped signal is delivered only to subscribers watching its conversation.
  */
-trait Signal
+trait Signal {
+  def conversationScope: Option[Id[Conversation]] = None
+}
 
 object Signal extends PolyType[Signal]()(using scala.reflect.ClassTag(classOf[Signal]))

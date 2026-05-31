@@ -22,4 +22,4 @@ import sigil.conversation.Conversation
  * outbound-shaped [[ConversationCleared]] which the framework had no
  * handler for, so the action silently no-op'd.
  */
-case class RequestConversationClear(conversationId: Id[Conversation]) extends Notice derives RW
+case class RequestConversationClear(conversationId: Id[Conversation]) extends ConversationNotice derives RW

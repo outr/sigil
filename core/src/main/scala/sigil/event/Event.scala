@@ -26,6 +26,9 @@ import sigil.signal.{EventState, Signal}
 trait Event extends Signal with Document[Event] {
   def participantId: ParticipantId
   def conversationId: Id[Conversation]
+  /** Every Event belongs to exactly one conversation — that's its
+    * wire-delivery scope. */
+  final override def conversationScope: Option[Id[Conversation]] = Some(conversationId)
   def topicId: Id[Topic]
   /**
    * Server-canonical 0-based index of this event's `topicId` in the

@@ -28,6 +28,10 @@ trait Delta extends Signal {
     * `delta.conversationId` reads work. */
   def conversationId: Id[sigil.conversation.Conversation]
 
+  /** A Delta always lives in its target Event's conversation — that's
+    * its wire-delivery scope. */
+  final override def conversationScope: Option[Id[sigil.conversation.Conversation]] = Some(conversationId)
+
   /**
    * Apply this delta's mutation semantics to the given target Event,
    * returning the updated Event. The function is pure — it does not perform
