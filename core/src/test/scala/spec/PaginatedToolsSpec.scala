@@ -10,7 +10,7 @@ import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.ToolContext
 import sigil.tool.fs.{BashLine, BashTool, GlobEntry, GlobTool, GrepNode, GrepTool, FileSystemContext, LocalFileSystemContext, WriteFileTool}
 import sigil.tool.model.{BashInput, GlobInput, GrepInput, WriteFileInput}
-import sigil.tool.output.{JsonPagedResult, NextPageInput, NextPageTool, QueryToolOutputInput, QueryToolOutputTool}
+import sigil.tool.output.{JsonPagedResult, QueryToolOutputInput, QueryToolOutputTool}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -19,14 +19,14 @@ import sigil.event.Event
 /**
  * Coverage for [[PaginatedTool]]'s drain + read pipeline and the
  * three migrated bulk-result tools (grep / glob / bash). Tree-
- * shaped grep navigation goes through `next_page` against a file
+ * shaped grep line matches are read via a flat `query_tool_output(level = 1)` over the file
  * node's id; flat glob / bash paginate at the top level.
  *
  * The framework writes one [[sigil.tool.output.ToolOutputNode]]
  * row per emitted [[sigil.tool.output.Node]]; the first-page
  * [[JsonPagedResult]] is what the tool's settling
  * [[sigil.signal.ToolDelta]] carries inline as its `output`.
- * Subsequent pages land via [[NextPageTool]] / [[QueryToolOutputTool]].
+ * Further entries are read via [[QueryToolOutputTool]] (the retired next_page cursor is gone).
  */
 class PaginatedToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -91,17 +91,17 @@ class PaginatedToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       }
     }
 
-    "expose per-file matches when next_page is called against a file node id" in withTempDir { (fs, _) =>
+    "expose per-file line matches via query_tool_output(level = 1)" in withTempDir { (fs, _) =>
       val callId = sigil.event.Event.id()
       val ctx    = turnContext()
       for {
         _    <- new WriteFileTool(fs).execute(WriteFileInput("a.scala", "alpha\nbeta\nALPHA"), ctx, sigil.event.Event.id()).toList
-        out  <- new GrepTool(fs).execute(GrepInput(path = ".", pattern = "(?i)alpha"), ctx, callId).toList
-        page  = firstPage(out)
-        fileNodeId = page.nodeIds.head
-        // Expand that file's children via next_page.
-        children <- NextPageTool.invoke(NextPageInput(referenceId = fileNodeId, page = 0, pageSize = 50),
-                                        toolContext(ctx, sigil.event.Event.id(), NextPageTool.name))
+        _    <- new GrepTool(fs).execute(GrepInput(path = ".", pattern = "(?i)alpha"), ctx, callId).toList
+        // The line-match children are reached by a flat level-1 query
+        // over the container — the reference-operating replacement for
+        // the retired next_page tree-walk.
+        children <- QueryToolOutputTool.invoke(QueryToolOutputInput(callId = callId.value, level = Some(1)),
+                                               toolContext(ctx, sigil.event.Event.id(), QueryToolOutputTool.name))
       } yield {
         children.items.size shouldBe 2  // two ALPHA matches in a.scala
         val lineMatches = children.items.map(_.as[GrepNode]).collect { case l: GrepNode.LineMatch => l }
@@ -156,8 +156,8 @@ class PaginatedToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     }
   }
 
-  "NextPageTool" should {
-    "page past the first batch when the result exceeds firstPageSize" in withTempDir { (fs, _) =>
+  "QueryToolOutputTool (paging past the first batch)" should {
+    "read the second page of a large result via query_tool_output(page = 1)" in withTempDir { (fs, _) =>
       val callId = sigil.event.Event.id()
       val ctx    = turnContext()
       // 120 files; firstPageSize is 50 (default) → first page has 50, hasMore = true.
@@ -166,8 +166,8 @@ class PaginatedToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         _    <- Task.sequence(writes.toList)
         out  <- new GlobTool(fs).execute(GlobInput(basePath = ".", pattern = "*.scala"), ctx, callId).toList
         page  = firstPage(out)
-        next <- NextPageTool.invoke(NextPageInput(referenceId = callId.value, page = 1, pageSize = 50),
-                                    toolContext(ctx, sigil.event.Event.id(), NextPageTool.name))
+        next <- QueryToolOutputTool.invoke(QueryToolOutputInput(callId = callId.value, level = Some(0), page = 1, pageSize = 50),
+                                           toolContext(ctx, sigil.event.Event.id(), QueryToolOutputTool.name))
       } yield {
         page.items.size shouldBe 50
         page.hasMore shouldBe true

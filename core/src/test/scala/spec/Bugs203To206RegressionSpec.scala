@@ -169,8 +169,9 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
         // Pre-seeded tools preserved.
         names should contain("edit_file")
         names should contain("read_file")
-        // Pagination navigators merged in.
-        names should contain("next_page")
+        // Reference-operating navigators merged in (#336 — summarize,
+        // not the positional cursor).
+        names should contain("summarize_output")
         names should contain("query_tool_output")
       }
     }

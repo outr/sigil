@@ -11,11 +11,12 @@ import sigil.tool.ToolName
 import sigil.tool.output.JsonPagedResult
 
 /**
- * Regression coverage for sigil bug #202 — when a paginated tool's
- * `ToolResults` lands with navigable content, the universal
- * navigators (`next_page`, `query_tool_output`) must auto-promote
- * into `ParticipantProjection.suggestedTools` so the agent can
- * actually drill into the returned tree.
+ * Regression coverage for sigil bug #202 / #336 — when a paginated
+ * tool's result lands with navigable content, the reference-operating
+ * navigators (`summarize_output`, `query_tool_output`) must auto-promote
+ * into `ParticipantProjection.suggestedTools` so the agent's next move is
+ * to summarize / act on the set by reference rather than page it all into
+ * context. The positional `next_page` cursor is deliberately not promoted.
  */
 class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -55,7 +56,7 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   "Sigil pagination navigator promotion (bug #202)" should {
 
-    "auto-promote next_page + query_tool_output when a settled ToolInvoke carries a JsonPagedResult with hasMore = true" in {
+    "auto-promote summarize_output + query_tool_output when a settled ToolInvoke carries a JsonPagedResult with hasMore = true" in {
       val convId = freshConvId()
       val page = JsonPagedResult(
         items       = Nil,
@@ -70,7 +71,7 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
         _      <- publishPaginatedToolResult(convId, page)
         names  <- suggestedToolsOf(TestAgent, convId)
       } yield {
-        names should contain("next_page")
+        names should contain("summarize_output")
         names should contain("query_tool_output")
       }
     }
@@ -91,7 +92,7 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
         _      <- publishPaginatedToolResult(convId, page)
         names  <- suggestedToolsOf(TestAgent, convId)
       } yield {
-        names should contain("next_page")
+        names should contain("summarize_output")
         names should contain("query_tool_output")
       }
     }
@@ -112,7 +113,7 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
         _      <- publishPaginatedToolResult(convId, page)
         names  <- suggestedToolsOf(TestAgent, convId)
       } yield {
-        names should not contain "next_page"
+        names should not contain "summarize_output"
         names should not contain "query_tool_output"
       }
     }
@@ -133,7 +134,7 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
         _     <- TestSigil.publish(invoke)
         names <- suggestedToolsOf(TestAgent, convId)
       } yield {
-        names should not contain "next_page"
+        names should not contain "summarize_output"
         names should not contain "query_tool_output"
       }
     }
@@ -225,7 +226,7 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
         // After grep: the 50 PLUS the 2 navigators (52 total).
         afterGrep.size shouldBe 52
         discovered.foreach(t => afterGrep should contain(t))
-        afterGrep should contain("next_page")
+        afterGrep should contain("summarize_output")
         afterGrep should contain("query_tool_output")
 
         // After query_tool_output (the field-repro failure point):
@@ -233,7 +234,7 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
         // keeps them from doubling.
         afterQto.size shouldBe 52
         discovered.foreach(t => afterQto should contain(t))
-        afterQto should contain("next_page")
+        afterQto should contain("summarize_output")
         afterQto should contain("query_tool_output")
       }
     }
@@ -274,14 +275,14 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
         // After grep: original 10 preserved + 2 navigators.
         afterGrep.size should be >= 12
         seeded.foreach(t => afterGrep should contain(t.value))
-        afterGrep should contain("next_page")
+        afterGrep should contain("summarize_output")
         afterGrep should contain("query_tool_output")
 
         // After query_tool_output: original 10 STILL preserved +
         // 2 navigators (distinct keeps them from doubling).
         afterQto.size should be >= 12
         seeded.foreach(t => afterQto should contain(t.value))
-        afterQto should contain("next_page")
+        afterQto should contain("summarize_output")
         afterQto should contain("query_tool_output")
       }
     }
@@ -293,10 +294,10 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
       val grep = new sigil.tool.fs.GrepTool(new sigil.tool.fs.LocalFileSystemContext)
       val glob = new sigil.tool.fs.GlobTool(new sigil.tool.fs.LocalFileSystemContext)
       val bash = new sigil.tool.fs.BashTool(new sigil.tool.fs.LocalFileSystemContext)
-      grep.description should include("next_page")
+      grep.description should include("summarize_output")
       grep.description should include("query_tool_output")
-      glob.description should include("next_page")
-      bash.description should include("next_page")
+      glob.description should include("summarize_output")
+      bash.description should include("summarize_output")
     }
   }
 

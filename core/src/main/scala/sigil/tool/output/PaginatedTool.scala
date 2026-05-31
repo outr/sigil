@@ -19,13 +19,13 @@ import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
  * carrying the first page. [[Tool.execute]] then emits the settling
  * [[sigil.signal.ToolDelta]] folding the first-page payload onto the
  * originating [[sigil.event.ToolInvoke]]; subsequent pages are reached
- * through [[NextPageTool]] / [[QueryToolOutputTool]].
+ * through [[QueryToolOutputTool]].
  *
  * The specialised sub-shape of [[Tool]] for genuinely-unbounded bulk
  * output: one node at a time crosses the drain pipeline, the rest lives
  * in RocksDB. Tree shape — a `Node[A]` declares `hasChildren = true` and
  * a lazy `children: Stream[Node[A]]`; the framework drains depth-first,
- * child rows referencing their parent by id so `next_page(parentNodeId)`
+ * child rows referencing their parent by id so `query_tool_output(parentNodeId)`
  * returns them.
  *
  * Compose-friendly: another tool can call
@@ -41,7 +41,7 @@ abstract class PaginatedTool[In <: ToolInput, A](
   override val keywords: Set[String] = Set.empty,
   override val createdBy: Option[ParticipantId] = None,
   /** Number of rows returned in the first-page emission. The
-    * agent pages past this via `next_page`. Default 50. */
+    * agent pages past this via `query_tool_output`. Default 50. */
   val firstPageSize: Int = 50
 )(using inputRwEv: RW[In], payloadRwEv: RW[A]) extends Tool {
 
@@ -94,7 +94,7 @@ abstract class PaginatedTool[In <: ToolInput, A](
   /** Drain the stream into `db.toolOutputs`, then return the
     * first page. Rows are keyed by
     * `(conversationId, callId, referenceId, ordinal)` so
-    * `next_page` reads via the compound index. */
+    * `query_tool_output` reads via the compound index. */
   private def drainAndFirstPage(input: In, context: ToolContext): Task[JsonPagedResult] = {
     val convId = context.conversation.id
     val callId: Id[Event] = context.invokeId
@@ -143,18 +143,18 @@ object PaginatedTool {
   val PaginationFooter: String =
     """
       |
-      |— Paginated output —
-      |This tool's first-page result includes `callId`, `hasMore`, and `nodeIds`.
-      |Walk the tree with `next_page(referenceId)`:
-      |  • `referenceId = callId`     → next sibling page at this level
-      |  • `referenceId = <nodeId>`   → expand a node whose `hasChildren = true`
-      |Use `query_tool_output(callId, containsText?, level?)` for a flat
-      |cross-tree filter when you want matches anywhere in the result
-      |at once (e.g. "all line-matches that contain 'reset_password').""".stripMargin
+      |— Large result, addressable by reference —
+      |The first-page result carries `totalCount` (the full size), a sample of the
+      |first entries, and `callId` (a durable reference to the COMPLETE materialized
+      |set). Reason over the sample + count; do NOT page the whole result into your
+      |context. To go further, operate on the reference:
+      |  • `summarize_output(callId, focus?)`            → cheap LLM overview of the full set
+      |  • `query_tool_output(callId, containsText?, …)` → inspect specific entries (bounded)
+      |  • `dispatch_workers(itemsId = <nodeId/callId>)` → act on the set (a worker per item)
+      |  • `filter_container(...)`                       → narrow to a new reference""".stripMargin
 
   /** Read a page of paginated output from `db.toolOutputs`. Used
-    * by [[PaginatedTool]]'s first-page return, [[NextPageTool]],
-    * and [[QueryToolOutputTool]]. */
+    * by [[PaginatedTool]]'s first-page return     * and [[QueryToolOutputTool]]. */
   def readPage(host: _root_.sigil.Sigil,
                conversationId: Id[_root_.sigil.conversation.Conversation],
                callId: Id[Event],

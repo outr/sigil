@@ -25,7 +25,7 @@ import sigil.tooling.dispatch.DispatchWorkersTool
  * value used to carry fabricated placeholder paths (`/abs/path/Foo.scala`,
  * `/abs/path/myproject`) which agents copied verbatim into real tool
  * calls. Layer-1 fix: drop the placeholder examples entirely; the
- * universal navigation tools `next_page` / `query_tool_output` get
+ * universal navigation tools `reload_content` / `query_tool_output` get
  * no examples either (otherwise rendered schema-type names like
  * `"string"` leak as values).
  *
@@ -94,7 +94,7 @@ class LspBspToolExampleSpec extends AnyWordSpec with Matchers {
       new DispatchWorkersTool(),
       // Pagination navigation — bug #227 also called these out for
       // leaking schema-type strings in their rendered example slot
-      sigil.tool.output.NextPageTool,
+      sigil.tool.output.ReloadContentTool,
       sigil.tool.output.QueryToolOutputTool
     )
   }

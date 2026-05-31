@@ -3529,7 +3529,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           )
         }
         // Sigil bug #202 — auto-promote the universal pagination
-        // navigators (`next_page`, `query_tool_output`) whenever a
+        // navigators (`summarize_output`, `query_tool_output`) whenever a
         // paginated tool's first-page result lands with navigable
         // content (`hasMore` or non-empty `nodeIds`). Post-#265 the
         // typed output sits on the settled invoke itself; the
@@ -3588,7 +3588,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
 
   /** Sigil #289 — predicate for cross-conversation reads. The
-    * conversation-query tools (`search_conversation`, `next_page`,
+    * conversation-query tools (`search_conversation`, `reload_content`,
     * `query_tool_output`) call this before dispatching a read against
     * a `conversationId` that differs from the caller's current
     * conversation. Allowed when:
@@ -3840,7 +3840,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // impossible for a shed to permanently filter the active task out
       // of context — regardless of any shed-logic bug. Old history
       // before the task still sheds (recoverable via search_conversation
-      // / next_page). Explicit conversation-clear sets `clearedAt`
+      // / query_tool_output). Explicit conversation-clear sets `clearedAt`
       // directly and is intentionally unaffected by this cap.
       val taskTs: Option[Long] = evs.iterator.collect {
         case m: sigil.event.Message
@@ -8125,14 +8125,17 @@ object Sigil {
       pricing.completion * BigDecimal(usage.completionTokens)
   }
 
-  /** Sigil bug #202 — given a settled [[sigil.event.ToolInvoke.output]]
-    * payload rendered to JSON, return the universal pagination
-    * navigators (`next_page`, `query_tool_output`) when the payload
-    * is shaped like a [[sigil.tool.output.JsonPagedResult]] with
-    * navigable content (`hasMore` true, or a non-empty `nodeIds`
-    * list). Returns `Nil` for non-paginated results — including
-    * paginated results that fit in a single page with no children,
-    * where there's nothing for the agent to navigate to. */
+  /** Sigil bug #202 / #336 — given a settled [[sigil.event.ToolInvoke.output]]
+    * payload shaped like a [[sigil.tool.output.JsonPagedResult]] with more
+    * than its first page (`hasMore` true, or a non-empty `nodeIds`),
+    * suggest the reference-operating tools so the agent's next move is to
+    * summarize / act on the set BY REFERENCE rather than page the whole
+    * thing into its context: `summarize_output` (cheap LLM overview of the
+    * full set) and `query_tool_output` (bounded, predicate inspection of
+    * specific entries). Positional page-walking is gone (the `next_page`
+    * cursor was retired) — walking pages funnels the whole result into
+    * context. Returns `Nil` for non-paginated results and single-page
+    * results with no children (nothing to navigate). */
   private[sigil] def paginationNavigatorsFor(typed: Option[fabric.Json]): List[sigil.tool.ToolName] = {
     import fabric.{Bool, Arr, Obj}
     typed match {
@@ -8155,7 +8158,7 @@ object Sigil {
             case _                   => false
           }
           if (hasMore || hasNodes)
-            List(sigil.tool.output.NextPageTool.name, sigil.tool.output.QueryToolOutputTool.name)
+            List(sigil.tool.output.SummarizeOutputTool.name, sigil.tool.output.QueryToolOutputTool.name)
           else Nil
         }
       case _ => Nil

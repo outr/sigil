@@ -9,7 +9,7 @@ import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName}
 /**
  * List files under `basePath` matching a glob pattern. Paginated:
  * top-level nodes are [[GlobEntry]] (one per file). The first page
- * is inline; the rest paginate via `next_page`.
+ * is inline; the rest paginate via `query_tool_output`.
  */
 final class GlobTool(context: FileSystemContext) extends PaginatedTool[GlobInput, GlobEntry](
   name = ToolName("glob"),

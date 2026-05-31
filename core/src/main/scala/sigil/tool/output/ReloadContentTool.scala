@@ -10,51 +10,47 @@ import sigil.tool.{Tool, ToolName, ToolResult}
 import sigil.tool.model.ResponseContent
 
 /**
- * Universal navigation tool for paginated output produced by any
- * [[PaginatedTool]]. The agent calls this with the parent node's
- * `referenceId` (or the originating tool-call's id for the top-
- * level page) and receives the next page of typed JSON.
+ * Reload content that context virtualization (#316) elided to save
+ * budget, by id. When the curator trims a frame to a gist, it leaves a
+ * `[… reload_content("<id>")]` marker; the agent calls this with that id
+ * to get the full content back:
  *
- * Tree-aware: pass a node's `_id` (from a prior page's
- * `nodeIds`) to expand its children. Pass the tool-call's id (the
- * `callId` field on a [[JsonPagedResult]]) to walk top-level
- * siblings.
+ *   - an `event id` — returns that event's full content, paginated into
+ *     chunks.
+ *   - a `summary id` — returns the list of events the summary covers
+ *     (each with a snippet + its id); drill into one with
+ *     `reload_content("<eventId>")`.
+ *
+ * This is purely the #316 reload-by-id path. Tool *output* (grep / glob /
+ * … results) is no longer walked page-by-page — operate on it by
+ * reference instead (`summarize_output`, `query_tool_output`,
+ * `dispatch_workers`).
  *
  * Sigil #289 — accepts an optional `conversationId` to read from a
- * related conversation (parent or worker). When unset, defaults to
- * the caller's current conversation. Cross-conversation reads are
- * gated by [[sigil.Sigil.canReadConversation]]. */
-case object NextPageTool extends Tool {
-  type Input  = NextPageInput
+ * related conversation (parent or worker). When unset, defaults to the
+ * caller's current conversation. Cross-conversation reads are gated by
+ * [[sigil.Sigil.canReadConversation]]. */
+case object ReloadContentTool extends Tool {
+  type Input  = ReloadContentInput
   type Output = JsonPagedResult
-  val inputRW  = summon[RW[NextPageInput]]
+  val inputRW  = summon[RW[ReloadContentInput]]
   val outputRW = summon[RW[JsonPagedResult]]
-  val name = ToolName("next_page")
+  val name = ToolName("reload_content")
   val description =
-    """Read the next page of a paginated tool result.
+    """Reload full content that was elided from your context to save budget.
       |
-      |Most bulk-result tools (grep, glob, bash, lsp_workspace_symbols, ...) emit a
-      |first page inline + drain the rest to per-conversation storage. To read more,
-      |call `next_page` with one of:
+      |When an entry shows a `[… reload_content("<id>")]` marker, call this with that id:
       |
-      |  - the originating tool-call's `callId` (echoed on every first-page result)
-      |    — returns the next sibling page at the top level
-      |  - a node's `_id` from a prior page's `nodeIds` array — returns that node's
-      |    children when it had `hasChildren = true`
-      |
-      |Also reloads context that was elided to save budget:
-      |
-      |  - an `event id` (shown in an elided entry's `[… next_page("<id>")]` marker)
-      |    — returns that event's full content, paginated
+      |  - an `event id` — returns that event's full content, paginated
       |  - a `summary id` — returns the list of events the summary covers (each with a
-      |    snippet + its id); drill into one with `next_page("<eventId>")`
+      |    snippet + its id); drill into one with `reload_content("<eventId>")`
       |
       |Page indexing is zero-based. `pageSize` defaults to 50 (max 500).""".stripMargin
-  override val keywords = Set("next", "page", "more", "paginate", "results", "navigate", "children", "expand")
+  override val keywords = Set("reload", "expand", "content", "elided", "restore", "full", "rehydrate")
 
   private val maxPageSize = 500
 
-  override def executeResult(input: NextPageInput,
+  override def executeResult(input: ReloadContentInput,
                              ctx: ToolContext): Task[ToolResult[JsonPagedResult]] = {
     val pageSize = math.max(1, math.min(input.pageSize, maxPageSize))
     val targetConvId = input.conversationId.getOrElse(ctx.conversation.id)
@@ -62,45 +58,14 @@ case object NextPageTool extends Tool {
     ctx.sigil.canReadConversation(currentConvId, targetConvId).flatMap {
       case Left(reason) =>
         Task.pure(ToolResult.failure(
-          message = s"next_page: cannot read conversation `${targetConvId.value}` — $reason",
+          message = s"reload_content: cannot read conversation `${targetConvId.value}` — $reason",
           hint = Some(
             "Cross-conversation reads are allowed only against the caller's own conversation, " +
               "its parent, or one of its workers."
           )
         ))
       case Right(_) =>
-        ctx.sigil.withDB(_.toolOutputs.transaction(
-          _.query.filter(_.conversationKey === targetConvId.value).toList
-        )).flatMap { all =>
-          // Find any row matching the referenceId in this conversation;
-          // its callId is what we filter by.
-          val anyRow = all.find(n => n._id.value == input.referenceId || n.referenceId == input.referenceId || n.callId.value == input.referenceId)
-          anyRow match {
-            case None =>
-              // #316 — the referenceId isn't a paginated tool output.
-              // Resolve it as a ContextSummary id (browse its covered
-              // events) or an Event id (paginate that event's full
-              // content), so an elided `summary + id` placeholder
-              // expands back to the source.
-              resolveEventOrSummary(ctx, targetConvId, input.referenceId, input.page, pageSize)
-            case Some(row) =>
-              // `referenceId` may be either a node id (children-of-X) OR
-              // a callId (top-level rows of that call). We resolve to
-              // the row's actual referenceKey at query time.
-              val readRef =
-                if (row.callId.value == input.referenceId) input.referenceId
-                else if (row._id.value == input.referenceId) row._id.value
-                else input.referenceId
-              PaginatedTool.readPage(
-                host           = ctx.sigil,
-                conversationId = targetConvId,
-                callId         = row.callId,
-                referenceId    = readRef,
-                page           = input.page,
-                pageSize       = pageSize
-              ).map(ToolResult.Success(_))
-          }
-        }
+        resolveEventOrSummary(ctx, targetConvId, input.referenceId, input.page, pageSize)
     }
   }
 
@@ -133,7 +98,7 @@ case object NextPageTool extends Tool {
 
   /** A browsable index of a summary's covered events: each item names
     * the event id + a snippet, with `nodeIds` carrying the ids so the
-    * agent drills into one via `next_page("<eventId>")`. */
+    * agent drills into one via `reload_content("<eventId>")`. */
   private def summaryPage(ctx: ToolContext,
                           summary: ContextSummary,
                           referenceId: String,

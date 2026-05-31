@@ -8,7 +8,7 @@ import sigil.tool.ToolInput
 /**
  * Cross-tree query over a single tool-call's paginated output.
  * Used when the agent wants a filtered or sorted view that
- * `next_page` alone can't express — "all files with >10 matches",
+ * `query_tool_output` alone can't express — "all files with >10 matches",
  * "the top-level node with the highest count", "any node whose
  * payload mentions 'reset_password'".
  *

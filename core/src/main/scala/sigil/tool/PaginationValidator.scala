@@ -11,7 +11,7 @@ import fabric.define.DefType
  * the registration otherwise.
  *
  * [[sigil.tool.output.PaginatedTool]] subclasses are exempt — the
- * framework owns their pagination via `next_page` /
+ * framework owns their pagination via `query_tool_output` /
  * `query_tool_output`, so their input schema correctly omits
  * pagination fields.
  */
@@ -35,7 +35,7 @@ object PaginationValidator {
         else Left(
           s"Tool '${tool.name.value}' declares paginate = true but its input schema exposes no " +
             s"pagination field. Add one of: ${PaginationFieldNames.toList.sorted.mkString(", ")}, " +
-            "or extend sigil.tool.output.PaginatedTool to use the framework's next_page / " +
+            "or extend sigil.tool.output.PaginatedTool to use the framework's query_tool_output / " +
             "query_tool_output navigation."
         )
       case other =>

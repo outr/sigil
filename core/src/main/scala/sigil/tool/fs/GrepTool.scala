@@ -15,10 +15,10 @@ import scala.jdk.CollectionConverters.*
  *   - top-level nodes are [[GrepNode.FileMatch]] records (one
  *     per file with at least one hit)
  *   - each file node carries `hasChildren = true`; expanding it
- *     via `next_page` returns its [[GrepNode.LineMatch]] children
+ *     via `query_tool_output` returns its [[GrepNode.LineMatch]] children
  *
  * The first page of files lands inline; the rest paginate via
- * [[sigil.tool.output.NextPageTool]].
+ * [[sigil.tool.output.QueryToolOutputTool]].
  *
  * By default the walk skips well-known noise directories (build
  * outputs, IDE state, VCS metadata, package-manager caches,

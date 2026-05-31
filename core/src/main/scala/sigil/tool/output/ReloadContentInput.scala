@@ -6,23 +6,22 @@ import sigil.conversation.Conversation
 import sigil.tool.ToolInput
 
 /**
- * Navigate the next page of a paginated tool result.
+ * Reload content that context virtualization (#316) elided to save
+ * budget, by id.
  *
- *   - `referenceId` — the parent node id, OR the originating
- *     tool-call id for the top-level page. The first-page emission
- *     of a [[PaginatedTool]] surfaces both via `callId` and per-row
- *     `nodeIds`; the agent picks which level it wants to page.
- *   - `page` — zero-indexed page number. Page 0 reads rows
- *     `[0, pageSize)`, page 1 reads `[pageSize, 2*pageSize)`, etc.
- *   - `pageSize` — defaults to 50. Cap is 500 (the framework
- *     truncates higher values silently).
- *   - `conversationId` — sigil #289 — target a specific
- *     conversation for the read. When unset (default), the caller's
- *     current conversation is used. Cross-conversation reads are
- *     gated by [[sigil.Sigil.canReadConversation]] — typically
- *     allowed for the caller's parent or worker conversations.
+ *   - `referenceId` — an event id (from an elided entry's
+ *     `[… reload_content("<id>")]` marker) reloads that event's full
+ *     content, paginated; a summary id returns the list of events the
+ *     summary covers (each with a snippet + its id) so the agent drills
+ *     into one with `reload_content("<eventId>")`.
+ *   - `page` — zero-indexed page over the reloaded content's chunks.
+ *   - `pageSize` — defaults to 50 (max 500).
+ *   - `conversationId` — sigil #289 — target a specific conversation.
+ *     When unset (default), the caller's current conversation is used;
+ *     cross-conversation reads are gated by
+ *     [[sigil.Sigil.canReadConversation]] (parent / worker only).
  */
-case class NextPageInput(referenceId: String,
-                         page: Int = 0,
-                         pageSize: Int = 50,
-                         conversationId: Option[Id[Conversation]] = None) extends ToolInput derives RW
+case class ReloadContentInput(referenceId: String,
+                              page: Int = 0,
+                              pageSize: Int = 50,
+                              conversationId: Option[Id[Conversation]] = None) extends ToolInput derives RW

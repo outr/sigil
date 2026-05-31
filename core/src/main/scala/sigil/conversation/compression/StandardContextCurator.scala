@@ -313,7 +313,7 @@ case class StandardContextCurator(sigil: Sigil,
                 // to a short summary + reload-id (#316). Targets the
                 // actual budget bloat (a giant grep result, a huge
                 // message) WITHOUT dropping any frame; full content stays
-                // durable and re-examinable via next_page(eventId). This
+                // durable and re-examinable via reload_content(eventId). This
                 // runs before the lossy frame shed, so the common case
                 // (one oversized tool result) never reaches Stage 3.
                 val afterStage2c = afterStage2b.copy(frames = compacted)
@@ -498,9 +498,9 @@ case class StandardContextCurator(sigil: Sigil,
   private val frameElisionHeadChars: Int = 240
 
   /** #316 — per-frame budget elision. Replace oversized tool-result and
-    * message frame content with a short gist + a `next_page(eventId)`
+    * message frame content with a short gist + a `reload_content(eventId)`
     * reload pointer, keeping the frame in place. Non-destructive: the
-    * durable event retains full content, re-examinable via next_page.
+    * durable event retains full content, re-examinable via reload_content.
     * Prefers the tool author's `ToolInvoke.summary` for the gist (this
     * runs only on the over-budget path, over oversized frames, so the
     * per-frame event lookup is rare), falling back to a head excerpt. */
@@ -535,7 +535,7 @@ case class StandardContextCurator(sigil: Sigil,
                           eventId: Id[_root_.sigil.event.Event]): String = {
     val imgs = if (imageCount > 0) s", $imageCount image(s)" else ""
     s"$gist… [$label content elided to fit the context budget — $fullLen chars$imgs. " +
-      s"Reload full content with next_page(\"${eventId.value}\").]"
+      s"Reload full content with reload_content(\"${eventId.value}\").]"
   }
 
   /** Resolve the criticalMemories / memories id buckets from a

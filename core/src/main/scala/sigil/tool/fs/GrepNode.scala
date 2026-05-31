@@ -7,9 +7,9 @@ import fabric.rw.*
  * (one per file with at least one hit); their children are
  * [[LineMatch]] records for each match in that file.
  *
- * The agent pages through files at the top level (`next_page`
+ * The agent pages through files at the top level (`query_tool_output`
  * against the tool-call's id), then expands a file's matches by
- * calling `next_page` against the file node's id.
+ * calling `query_tool_output` against the file node's id.
  */
 sealed trait GrepNode derives RW
 

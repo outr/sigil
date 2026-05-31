@@ -18,7 +18,7 @@ import fabric.rw.*
  *     `change_mode("…")` invocation needed to unlock the matching
  *     tool roster).
  *   - `paginate` — `Some(true)` when the matched tool emits a paged
- *     `JsonPagedResult` (the agent must walk pages with `next_page`
+ *     `JsonPagedResult` (the agent must walk pages with `query_tool_output`
  *     to consume the full output); `Some(false)` for single-shot
  *     tools whose result lands on the settled `ToolInvoke`.
  *     `None` for non-tool capability kinds (modes, skills, memories)

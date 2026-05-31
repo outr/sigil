@@ -702,7 +702,7 @@ object Orchestrator {
                     s"Refused to dispatch `$toolName` -- you have already called this tool with " +
                       s"these exact args $priorIdentical times in the recent window (this would " +
                       s"be call #$attemptedCount).$previewText The result will not change. Try a " +
-                      "different approach: narrow the pattern, paginate via `next_page`, switch " +
+                      "different approach: narrow the pattern, paginate via `query_tool_output`, switch " +
                       "to a different tool, or ask the user for clarification." + escalationText
                   val capMsg = Message(
                     participantId  = caller,

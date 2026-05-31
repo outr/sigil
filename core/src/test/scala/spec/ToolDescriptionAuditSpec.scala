@@ -65,7 +65,13 @@ class ToolDescriptionAuditSpec extends AnyWordSpec with Matchers {
       "pin_complexity" -> "unpin_complexity", "unpin_complexity" -> "pin_complexity",
       "pin_memory" -> "unpin_memory", "unpin_memory" -> "pin_memory",
       "pin_model" -> "unpin_model", "unpin_model" -> "pin_model",
-      "next_page" -> "query_tool_output", "query_tool_output" -> "next_page"
+      // #336 — the bulk-output ladder tools name their sibling
+      // reference-operating tools (the intended next steps) by design.
+      "summarize_output" -> "query_tool_output",
+      "summarize_output" -> "dispatch_workers",
+      "summarize_output" -> "filter_container",
+      "query_tool_output" -> "summarize_output",
+      "query_tool_output" -> "dispatch_workers"
     )
   }
 

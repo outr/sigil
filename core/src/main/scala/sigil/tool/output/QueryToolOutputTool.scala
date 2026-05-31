@@ -11,10 +11,11 @@ import sigil.tool.{Tool, ToolName, ToolResult}
 
 /**
  * Filtered + sorted cross-tree query over one tool-call's
- * paginated output. Complements [[NextPageTool]] (the
- * level-by-level walker) — use this when the agent needs richer
- * access (`all files with >10 matches`, `nodes whose payload
- * mentions 'reset_password'`, etc.).
+ * bulk output — the bounded-inspection rung of the reference ladder.
+ * Use this when the agent needs a specific slice (`all files with >10
+ * matches`, `nodes whose payload mentions 'reset_password'`, etc.)
+ * rather than a whole-set summary ([[SummarizeOutputTool]]) or an action
+ * ([[sigil.tool.output]] consumers like `dispatch_workers`).
  *
  * Sigil #289 — accepts an optional `conversationId` to read from a
  * related conversation (parent or worker). When unset, defaults to
@@ -28,10 +29,12 @@ case object QueryToolOutputTool extends Tool {
   val outputRW = summon[RW[JsonPagedResult]]
   val name = ToolName("query_tool_output")
   val description =
-    """Query a paginated tool result with filters and pagination beyond what `next_page` exposes.
+    """Inspect specific entries of a bulk tool result by reference — filtered + paginated.
       |
-      |`callId` is required — every `PaginatedTool` first-page result echoes the
-      |originating call's id in its `callId` field. The query scope is that one call.
+      |`callId` is required — every bulk-result tool's first page echoes the originating
+      |call's id in its `callId` field. The query scope is that one call. Use this for a
+      |bounded look at specific rows; to summarize the whole set use `summarize_output`,
+      |to act on it use `dispatch_workers`.
       |
       |Optional filters:
       |  - `containsText` — case-insensitive substring filter over the row's rendered JSON

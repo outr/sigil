@@ -8,7 +8,7 @@ import fabric.rw.*
  * [[PaginatedTool.executeStream]]; the framework drains the stream
  * into [[ToolOutputNode]] rows keyed by
  * `(conversationId, callId, referenceId, ordinal)` so the agent
- * can navigate the result via `next_page` / `query_tool_output`
+ * can navigate the result via `query_tool_output` / `query_tool_output`
  * without ever materialising the full result in memory.
  *
  *   - `payload` — the typed per-item value (e.g. `GrepFileMatch`,
@@ -17,7 +17,7 @@ import fabric.rw.*
  *     Top-level nodes that wrap "this file has N matches" set
  *     `hasChildren = true`; children (e.g. per-match line records)
  *     typically set `false`. When `true`, the agent can call
- *     `next_page` against this node's id and receive its children.
+ *     `query_tool_output` against this node's id and receive its children.
  *   - `children` — child stream materialised on demand. The
  *     framework drains it lazily when the agent requests
  *     expansion. Empty when `hasChildren = false`.

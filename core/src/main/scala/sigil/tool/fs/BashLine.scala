@@ -9,7 +9,7 @@ import fabric.rw.*
  *
  * Agents reading the first page typically see the head of
  * stdout/stderr plus the exit row when the command was short;
- * long outputs paginate through `next_page`.
+ * long outputs paginate through `query_tool_output`.
  */
 sealed trait BashLine derives RW
 

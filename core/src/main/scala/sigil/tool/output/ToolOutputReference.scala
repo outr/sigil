@@ -16,8 +16,8 @@ import sigil.conversation.Conversation
  *
  * Cross-conversation reads go through [[Sigil.canReadConversation]], so a
  * reference is reachable only from the conversation that produced it, its
- * parent, or one of its workers — the same scope rule [[NextPageTool]] /
- * [[QueryToolOutputTool]] enforce. Failures return a `Left` carrying a
+ * parent, or one of its workers — the same scope rule
+ * [[QueryToolOutputTool]] and [[ReloadContentTool]] enforce. Failures return a `Left` carrying a
  * message the consuming tool surfaces to the agent (reclaimed reference,
  * cross-conversation denial) rather than throwing.
  */

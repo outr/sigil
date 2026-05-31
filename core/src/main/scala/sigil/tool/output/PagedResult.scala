@@ -7,7 +7,7 @@ import sigil.event.Event
 
 /**
  * One page of paginated tool output. Returned by the initial
- * tool call (top-level page) and by [[NextPageTool]] /
+ * tool call (top-level page) and by [[QueryToolOutputTool]] /
  * [[QueryToolOutputTool]] for subsequent navigation.
  *
  *   - `items` — typed payloads materialised from each row's
@@ -27,7 +27,7 @@ import sigil.event.Event
  *     [[QueryToolOutputTool]] for cross-tree queries.
  *   - `totalCount` — total rows under `referenceId` when known.
  *     `None` while the drainer is still streaming.
- *   - `nodeIds` — opaque per-item ids for `next_page` against a
+ *   - `nodeIds` — opaque per-item ids for `query_tool_output` against a
  *     specific node's children. Aligned with `items` 1:1.
  *   - `hasChildren` — per-item flag aligned with `items`. Tells
  *     the agent which items can be expanded.
@@ -48,7 +48,7 @@ final case class PagedResult[A](items: List[A],
 
 /**
  * Wire-friendly variant of [[PagedResult]] holding payloads as
- * raw JSON. Used internally by [[NextPageTool]] /
+ * raw JSON. Used internally by [[QueryToolOutputTool]] /
  * [[QueryToolOutputTool]] which don't know the per-call's tool
  * shape at compile time — the agent gets typed JSON the LLM
  * pretty-prints natively. Tool authors stay typed; navigation

@@ -36,7 +36,7 @@ import sigil.event.Event
  *     Surfaced to clients for tree-aware rendering.
  *   - `ordinal` — sibling order. Stable across pagination — page
  *     N returns rows `[N*pageSize, (N+1)*pageSize)`.
- *   - `hasChildren` — whether the agent can `next_page` against
+ *   - `hasChildren` — whether the agent can `query_tool_output` against
  *     this row's `_id` to expand.
  *   - `payload` — the typed per-item value, serialised through
  *     the tool's `RW[A]` at drain time.
@@ -73,7 +73,7 @@ object ToolOutputNode extends RecordDocumentModel[ToolOutputNode] with JsonConve
   /** Per-call scope — pagination queries narrow by (conversation, call, reference). */
   val callKey: I[String] = field.index("callKey", _.callId.value)
 
-  /** Parent-id scope — `next_page(referenceId)` reads rows where
+  /** Parent-id scope — `query_tool_output(referenceId)` reads rows where
     * `referenceKey === referenceId`. Top-level rows carry the
     * tool-call's id as their referenceKey. */
   val referenceKey: I[String] = field.index("referenceKey", _.referenceId)

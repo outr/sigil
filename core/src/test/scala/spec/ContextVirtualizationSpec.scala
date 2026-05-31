@@ -12,12 +12,12 @@ import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.ToolContext
 import sigil.tool.model.ResponseContent
-import sigil.tool.output.{NextPageInput, NextPageTool}
+import sigil.tool.output.{ReloadContentInput, ReloadContentTool}
 
 /**
  * Sigil #316 — lossless-by-reference context virtualization. Covers the
  * watermark cap (a budget shed can never permanently erase the current
- * user task) and the reload-by-id keystone (next_page resolves an event
+ * user task) and the reload-by-id keystone (reload_content resolves an event
  * id → its paginated content, and a summary id → the events it covers).
  */
 class ContextVirtualizationSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
@@ -34,7 +34,7 @@ class ContextVirtualizationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       turnInput    = TurnInput(conversationId = conv._id),
       model        = TestSigil.testModel(modelId)
     )
-    ToolContext(turn, Event.id(), NextPageTool.name)
+    ToolContext(turn, Event.id(), ReloadContentTool.name)
   }
 
   "advanceClearedAt cap (#316)" should {
@@ -59,7 +59,7 @@ class ContextVirtualizationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     }
   }
 
-  "next_page reload-by-id (#316 keystone)" should {
+  "reload_content reload-by-id (#316 keystone)" should {
     "paginate a single event's full content by event id" in {
       val convId = Conversation.id(s"ctxvirt-event-${rapid.Unique()}")
       val big    = "X" * 9000 // 3 chunks at 4000 chars/chunk
@@ -72,7 +72,7 @@ class ContextVirtualizationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       for {
         _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _   <- TestSigil.withDB(_.events.transaction(_.upsert(ev)))
-        res <- NextPageTool.invoke(NextPageInput(referenceId = evId.value, page = 0, pageSize = 2), toolCtx(conv))
+        res <- ReloadContentTool.invoke(ReloadContentInput(referenceId = evId.value, page = 0, pageSize = 2), toolCtx(conv))
       } yield {
         res.totalCount shouldBe Some(3)
         res.items.size shouldBe 2
@@ -90,7 +90,7 @@ class ContextVirtualizationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       for {
         _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _   <- TestSigil.persistSummary(summary)
-        res <- NextPageTool.invoke(NextPageInput(referenceId = summary._id.value, page = 0, pageSize = 50), toolCtx(conv))
+        res <- ReloadContentTool.invoke(ReloadContentInput(referenceId = summary._id.value, page = 0, pageSize = 50), toolCtx(conv))
       } yield {
         res.totalCount shouldBe Some(2)
         res.nodeIds should contain allOf (e1.value, e2.value)
