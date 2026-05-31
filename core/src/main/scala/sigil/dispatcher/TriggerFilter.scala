@@ -50,8 +50,17 @@ object TriggerFilter {
     case _: AgentState                                                => false
     case _: Stop                                                      => false
     case m: Message if m.participantId == p.id                        => false
+    // #328 — addressed messages direct the wake. A non-empty addressee
+    // set wakes ONLY the named participants; unaddressed (None/empty)
+    // keeps broadcast semantics so co-residents that are never addressed
+    // are woken zero times (passive co-residence). Orthogonal to
+    // visibility (who can see) — this is who should act.
+    case m: Message                                                   => m.addressees match {
+      case Some(set) if set.nonEmpty => set.contains(p.id)
+      case _                         => true
+    }
     case tc: TopicChange if tc.participantId == p.id                  => false
-    case _: Message | _: ModeChange | _: TopicChange                  => true
+    case _: ModeChange | _: TopicChange                               => true
     // #323 — an async worker completion must wake the parent agent so
     // it can read the result and act. It's a ControlPlaneEvent (not a
     // Message), so the rules above miss it.

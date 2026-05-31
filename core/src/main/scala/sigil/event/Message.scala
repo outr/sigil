@@ -76,6 +76,18 @@ case class Message(participantId: ParticipantId,
                      * dispatch throws. Content carries the reason. */
                    disposition: MessageDisposition = MessageDisposition.Success,
                    optionSelection: Option[OptionSelection] = None,
+                   /** Who this Message is directed at. `None`/empty =
+                     * broadcast — every co-participant's `TriggerFilter`
+                     * wakes on it (the original, back-compatible behavior).
+                     * A non-empty set directs the Message: only addressed
+                     * participants are triggered, so an agent can pose a
+                     * question to one co-participant (or a worker can
+                     * `@mention` its delegating agent) without waking
+                     * everyone, and unaddressed members co-reside passively
+                     * (woken zero times). Orthogonal to [[visibility]],
+                     * which governs who can *see* the Message, not who
+                     * should *act* on it. */
+                   addressees: Option[Set[ParticipantId]] = None,
                    override val visibility: MessageVisibility = MessageVisibility.All,
                    override val origin: Option[Id[Event]] = None,
                    override val source: Option[String] = None,
