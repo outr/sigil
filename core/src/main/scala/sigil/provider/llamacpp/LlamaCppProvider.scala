@@ -146,9 +146,30 @@ case class LlamaCppProvider(url: URL,
       case ProviderMessage.System(c) => c
     }).filter(_.nonEmpty).mkString("\n\n")
     val folded = foldMidArraySystems(nonLeading)
+    // Chat-template invariants for thinking-enabled Qwen3:
+    //   (a) at least one user-role message must exist (greet-on-join /
+    //       all-assistant turns otherwise raise "No user query found");
+    //   (b) the message list must NOT end with a content-only assistant
+    //       message — Qwen3 treats a trailing assistant turn as a
+    //       response *prefill*, which the server rejects with HTTP 400
+    //       ("Assistant response prefill is incompatible with
+    //       enable_thinking"). This arises in multi-agent conversations
+    //       (sigil #327 worker bridge): when an agent's turn is built
+    //       from a tail that is its own prior Message, that frame renders
+    //       Assistant and lands last. Appending the placeholder user turn
+    //       makes the model generate a fresh response instead of
+    //       attempting to continue the prefill. A trailing assistant that
+    //       carries `toolCalls` is left untouched — its tool result, not
+    //       a user turn, is what follows.
+    val hasUser = folded.exists { case _: ProviderMessage.User => true; case _ => false }
+    val endsWithContentAssistant = folded.lastOption.exists {
+      case a: ProviderMessage.Assistant => a.toolCalls.isEmpty
+      case _                            => false
+    }
     val withUserAnchor =
-      if (folded.exists { case _: ProviderMessage.User => true; case _ => false }) folded
-      else placeholderUserMessage +: folded
+      if (!hasUser) placeholderUserMessage +: folded
+      else if (endsWithContentAssistant) folded :+ placeholderUserMessage
+      else folded
     OpenAIChatCompletions.Preprocessed(combinedSystem, withUserAnchor)
   }
 

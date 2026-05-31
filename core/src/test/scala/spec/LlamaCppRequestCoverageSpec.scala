@@ -86,6 +86,26 @@ class LlamaCppRequestCoverageSpec extends AbstractRequestCoverageSpec {
         roles.head shouldBe "system"
       }
     }
+
+    // Regression for the sigil #327 multi-agent bridge — when an agent's
+    // turn is built from a tail that is its own prior Message (rendered
+    // assistant), the message list ends with a content-only assistant.
+    // Qwen3 treats a trailing assistant as a response *prefill* and the
+    // server raises HTTP 400 ("Assistant response prefill is incompatible
+    // with enable_thinking"). The provider must append a synthetic user
+    // anchor so the tail is user-role and the model generates fresh.
+    "append a synthetic user anchor when the tail is a content-only assistant (prevents Qwen prefill+thinking 400)" in {
+      val turn = emptyTurnInput.copy(frames = Vector(
+        ContextFrame.Text(content = "do the work", participantId = TestUser, sourceEventId = Id[Event]("u-1")),
+        ContextFrame.Text(content = "here is my reply", participantId = TestAgent, sourceEventId = Id[Event]("a-1"))
+      ))
+      val body = bodyOf(turn)
+      val messages: Vector[fabric.Json] = JsonParser(body).get("messages").map(_.asVector).getOrElse(Vector.empty)
+      val roles: Vector[String] = messages.flatMap(_.get("role").map(_.asString))
+      withClue(s"roles: ${roles.mkString(",")}") {
+        roles.lastOption shouldBe Some("user")
+      }
+    }
   }
 
   "tear down" should {
