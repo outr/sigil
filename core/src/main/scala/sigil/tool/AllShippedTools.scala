@@ -7,7 +7,7 @@ import sigil.tool.fs.{BashTool, DeleteFileTool, EditAtRangeTool, EditFileTool, F
 import sigil.tool.git.{GitBranchTool, GitDiffTool, GitLogTool, GitShowTool, GitStatusTool}
 import sigil.tool.memory.{ForgetMemoryTool, MemoryHistoryTool}
 import sigil.tool.process.{ProcessListTool, ProcessOutputTool, ProcessRegistry, ProcessSignalTool, ProcessSpawnTool}
-import sigil.tool.util.{LookupTool, SaveMemoryTool, SearchConversationTool, SemanticSearchTool, SleepTool, SystemStatsTool}
+import sigil.tool.util.{LookupTool, RelayMessageTool, SaveMemoryTool, SearchConversationTool, SemanticSearchTool, SleepTool, SystemStatsTool}
 import sigil.tool.web.{HttpRequestTool, WebFetchTool}
 
 import scala.concurrent.duration.*
@@ -108,6 +108,7 @@ object AllShippedTools {
     LookupTool,
     new SaveMemoryTool(space),
     SearchConversationTool,
+    RelayMessageTool,
     SemanticSearchTool,
     SleepTool,
     new SystemStatsTool(fs),
