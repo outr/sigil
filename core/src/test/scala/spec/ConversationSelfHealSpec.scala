@@ -314,9 +314,17 @@ class ConversationSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           content        = Vector(ResponseContent.Text("hello strict")),
           state          = EventState.Complete
         ))
+        // Wait for the StrictRefused notice AND the original error's
+        // Failure-disposition Message (published on a background fiber via
+        // handleError) — the latter is what the assertions inspect, and
+        // under concurrent load it can land after the notice, so awaiting
+        // only the notice raced an empty snapshot.
         _ <- waitFor(System.currentTimeMillis() + 15_000L)(
           recorded.iterator().asScala.exists {
             case n: HealingActivityNotice => n.outcome == HealingOutcome.StrictRefused
+            case _ => false
+          } && recorded.iterator().asScala.exists {
+            case m: Message if m.participantId == agent.id && m.isFailure => true
             case _ => false
           }
         )

@@ -144,10 +144,29 @@ class WorkerStallDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
                addressees     = Some(Set[ParticipantId](workerId)),
                state          = EventState.Complete
              ))
-      _   <- Task.sleep(7.seconds)
-      evs <- TestSigil.withDB(_.events.transaction(_.list))
-    } yield evs.filter(_.conversationId == convId)
+      // Poll for the terminal condition rather than sleeping a fixed
+      // interval — under the full suite's concurrent forked-JVM load the
+      // worker's background-fiber loop can take well over a fixed budget
+      // to reach the stall break, which raced an unconditional sleep into
+      // an empty snapshot.
+      evs <- awaitWorkerSettled(convId, System.currentTimeMillis() + 30_000L)
+    } yield evs
   }
+
+  private def workerEventsFor(convId: Id[Conversation]): Task[List[sigil.event.Event]] =
+    TestSigil.withDB(_.events.transaction(_.list)).map(_.filter(_.conversationId == convId))
+
+  /** The worker has settled once its `_stall_detected` invoke AND a
+    * worker-authored reply Message are both on the conversation — exactly
+    * what the assertions inspect. Polls until then or the deadline. */
+  private def awaitWorkerSettled(convId: Id[Conversation], deadline: Long): Task[List[sigil.event.Event]] =
+    workerEventsFor(convId).flatMap { evs =>
+      val ready =
+        evs.exists { case ti: ToolInvoke => ti.toolName.value == "_stall_detected" && ti.participantId == workerId; case _ => false } &&
+          evs.exists { case m: Message => m.participantId == workerId && m.role == MessageRole.Standard; case _ => false }
+      if (ready || System.currentTimeMillis() > deadline) Task.pure(evs)
+      else Task.sleep(100.millis).flatMap(_ => awaitWorkerSettled(convId, deadline))
+    }
 
   "the progress checkpoint in a worker sub-conversation" should {
     "run the stall detector and break a worker's degenerate loop early (not flail to the cap)" in {
