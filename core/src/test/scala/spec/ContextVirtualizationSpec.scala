@@ -12,7 +12,7 @@ import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.ToolContext
 import sigil.tool.model.ResponseContent
-import sigil.tool.output.{ReloadContentInput, ReloadContentTool}
+import sigil.tool.context.{ReloadContentInput, ReloadContentTool}
 
 /**
  * Sigil #316 — lossless-by-reference context virtualization. Covers the
@@ -60,9 +60,9 @@ class ContextVirtualizationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   }
 
   "reload_content reload-by-id (#316 keystone)" should {
-    "paginate a single event's full content by event id" in {
+    "reload a single event's full content by event id" in {
       val convId = Conversation.id(s"ctxvirt-event-${rapid.Unique()}")
-      val big    = "X" * 9000 // 3 chunks at 4000 chars/chunk
+      val big    = "X" * 9000
       val evId   = Event.id()
       val ev = Message(
         _id = evId, participantId = TestAgent, conversationId = convId, topicId = TestTopicEntry.id,
@@ -72,11 +72,9 @@ class ContextVirtualizationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       for {
         _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _   <- TestSigil.withDB(_.events.transaction(_.upsert(ev)))
-        res <- ReloadContentTool.invoke(ReloadContentInput(referenceId = evId.value, page = 0, pageSize = 2), toolCtx(conv))
+        res <- ReloadContentTool.invoke(ReloadContentInput(referenceId = evId.value), toolCtx(conv))
       } yield {
-        res.totalCount shouldBe Some(3)
-        res.items.size shouldBe 2
-        res.hasMore shouldBe true
+        res.text.count(_ == 'X') shouldBe 9000
       }
     }
 
@@ -90,10 +88,10 @@ class ContextVirtualizationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       for {
         _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _   <- TestSigil.persistSummary(summary)
-        res <- ReloadContentTool.invoke(ReloadContentInput(referenceId = summary._id.value, page = 0, pageSize = 50), toolCtx(conv))
+        res <- ReloadContentTool.invoke(ReloadContentInput(referenceId = summary._id.value), toolCtx(conv))
       } yield {
-        res.totalCount shouldBe Some(2)
-        res.nodeIds should contain allOf (e1.value, e2.value)
+        res.text should include(e1.value)
+        res.text should include(e2.value)
       }
     }
   }

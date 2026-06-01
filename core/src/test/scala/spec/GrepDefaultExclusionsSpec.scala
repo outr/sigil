@@ -1,6 +1,5 @@
 package spec
 
-import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
@@ -8,10 +7,9 @@ import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
 import sigil.event.Event
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.ToolOutput
-import sigil.tool.fs.{GrepNode, GrepTool, LocalFileSystemContext}
+import sigil.tool.TextToolOutput
+import sigil.tool.fs.{GrepTool, LocalFileSystemContext}
 import sigil.tool.model.GrepInput
-import sigil.tool.output.JsonPagedResult
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardOpenOption}
@@ -68,14 +66,15 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     )
   }
 
-  /** Pull the first-page `JsonPagedResult` out of the grep tool's
-    * emitted signals; FileMatch payloads identify which files matched. */
+  /** Pull the grep tool's settling text output (default `FilesWithMatches`
+    * mode → one matching path per line) and parse it into the file list. */
   private def matchedFiles(signals: List[Signal]): List[String] = {
-    val page = signals.collectFirst {
-      case d: ToolDelta if d.output.exists(_.isInstanceOf[JsonPagedResult]) =>
-        d.output.get.asInstanceOf[JsonPagedResult]
-    }.getOrElse(throw new RuntimeException(s"no settling ToolDelta with JsonPagedResult output found in $signals"))
-    page.items.map(_.as[GrepNode]).collect { case f: GrepNode.FileMatch => f.filePath }
+    val out = signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_.isInstanceOf[TextToolOutput]) =>
+        d.output.get.asInstanceOf[TextToolOutput]
+    }.getOrElse(throw new RuntimeException(s"no settling ToolDelta with TextToolOutput output found in $signals"))
+    if (out.text.trim == "(no matches)") Nil
+    else out.text.linesIterator.map(_.trim).filter(l => l.nonEmpty && !l.startsWith("[")).toList
   }
 
   private def runGrep(root: Path, includeIgnored: Boolean): Task[List[String]] = {

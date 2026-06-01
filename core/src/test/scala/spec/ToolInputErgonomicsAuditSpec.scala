@@ -73,9 +73,7 @@ class ToolInputErgonomicsAuditSpec extends AnyWordSpec with Matchers {
       new sigil.tool.fs.GrepTool(fs),
       new sigil.tool.fs.GlobTool(fs),
       new sigil.tool.fs.BashTool(fs),
-      sigil.tool.output.ReloadContentTool,
-      sigil.tool.output.QueryToolOutputTool,
-      sigil.tool.output.SummarizeOutputTool
+      sigil.tool.context.ReloadContentTool
     )
   }
 

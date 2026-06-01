@@ -92,6 +92,37 @@ class MarkdownContentParserSpec extends AnyWordSpec with Matchers {
       out.head.asInstanceOf[ResponseContent.Markdown].text should include("[the docs](https://example.com/docs)")
     }
 
+    // Sigil #346 — the respond_field fold relies on `respond`'s markdown
+    // parsing these Field-callout forms. localhost:8081 (Qwen3.6) emitted
+    // all three; the parser must recover a Field block from each or the
+    // fold silently drops fields.
+    "parse the two-line [!Field] callout" in {
+      val out = MarkdownContentParser.parse("> [!Field icon=\"check\"]\n> Status: PASSED")
+      out.collectFirst { case f: ResponseContent.Field => f } shouldBe
+        Some(ResponseContent.Field(label = "Status", value = "PASSED", icon = Some("check")))
+    }
+
+    "parse the inline [!Field] callout (label/value on the directive line)" in {
+      val out = MarkdownContentParser.parse("> [!Field icon=\"check\"] Status: PASSED")
+      out.collectFirst { case f: ResponseContent.Field => f } shouldBe
+        Some(ResponseContent.Field(label = "Status", value = "PASSED", icon = Some("check")))
+    }
+
+    "parse multiple [!Field] callouts packed in one blockquote" in {
+      val md = "> [!Field icon=\"check\"]\n> Status: PASSED\n> [!Field icon=\"commit\"]\n> Commit: a1b2c3d"
+      val fields = MarkdownContentParser.parse(md).collect { case f: ResponseContent.Field => f }
+      fields shouldBe Vector(
+        ResponseContent.Field(label = "Status", value = "PASSED", icon = Some("check")),
+        ResponseContent.Field(label = "Commit", value = "a1b2c3d", icon = Some("commit"))
+      )
+    }
+
+    "fall through to a plain blockquote when the alert type is unknown" in {
+      val out = MarkdownContentParser.parse("> [!Note] just a note")
+      out.collectFirst { case f: ResponseContent.Field => f } shouldBe None
+      out should not be empty
+    }
+
     "return empty vector for empty input" in {
       MarkdownContentParser.parse("")     should be(empty)
       MarkdownContentParser.parse("   ")  should be(empty)

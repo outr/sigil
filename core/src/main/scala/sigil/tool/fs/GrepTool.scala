@@ -1,109 +1,107 @@
 package sigil.tool.fs
 
-import rapid.{Stream, Task}
+import fabric.rw.*
+import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.model.GrepInput
-import sigil.tool.output.{Node, PaginatedTool}
-import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName}
+import sigil.tool.model.{GrepInput, GrepOutputMode}
+import sigil.tool.{PlaceholderInputDetector, TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
 import java.nio.file.Path
 import scala.jdk.CollectionConverters.*
 
 /**
- * Search files under a path for a regex pattern. Tree-shaped
- * paginated output:
- *   - top-level nodes are [[GrepNode.FileMatch]] records (one
- *     per file with at least one hit)
- *   - each file node carries `hasChildren = true`; expanding it
- *     via `query_tool_output` returns its [[GrepNode.LineMatch]] children
- *
- * The first page of files lands inline; the rest paginate via
- * [[sigil.tool.output.QueryToolOutputTool]].
+ * Search files under a path for a regex pattern. Output is bounded by
+ * construction (Claude Code's ripgrep shape, Sigil #346) and goes
+ * straight into the agent's context — no pagination, no reference
+ * handle. The caller picks an output mode and a `headLimit`; an
+ * over-limit result returns the first N entries plus a note to narrow.
+ * A genuinely large result is written to a file by the framework's
+ * overflow path (the agent reads it with `grep` / `read_file`).
  *
  * By default the walk skips well-known noise directories (build
  * outputs, IDE state, VCS metadata, package-manager caches,
  * `.claude/` worktrees). The full segment set is
- * [[GrepTool.DefaultExcludedSegments]]; callers can opt back in
- * via [[GrepInput.includeIgnored]].
+ * [[GrepTool.DefaultExcludedSegments]]; callers opt back in via
+ * [[GrepInput.includeIgnored]].
  */
-final class GrepTool(context: FileSystemContext) extends PaginatedTool[GrepInput, GrepNode](
-  name = ToolName("grep"),
-  description0 =
-    """Search files under `path` for a regex pattern. An optional file-set glob restricts the
-      |search; `contextLines` adds surrounding-context lines to each match.
+final class GrepTool(context: FileSystemContext) extends Tool with sigil.tool.ReadOnlyExternalTool {
+  type Input  = GrepInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[GrepInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("grep")
+  val description =
+    """Search files under `path` for a regex `pattern`. Output is bounded and lands directly in
+      |your reply context — there is no pagination.
       |
-      |Returns a paginated tree: the top-level page lists files (one node per file with
-      |at least one match, with `matchCount`); children are the matching lines for that
-      |file.
+      |`outputMode`:
+      |  • `FilesWithMatches` (default) — the file paths that match. The cheap scoping pass; a broad
+      |    pattern returns short paths, not a wall of lines.
+      |  • `Content` — the matching lines as `file:line: text` (+ surrounding lines via `contextLines`).
+      |    Use once you've narrowed the file set.
+      |  • `Count` — per-file match counts.
       |
-      |NOTE: By default, grep skips well-known noise directories: .git, .svn, .hg, .idea,
-      |.vscode, .metals, .bloop, target, build, out, .gradle, .sbt, node_modules, dist,
-      |.next, .venv, __pycache__, .claude (Claude Code worktrees), and similar. To search
-      |inside these, pass `includeIgnored: true`. The default matches what you almost
-      |always want: real source files, not build outputs or throwaway worktrees.""".stripMargin,
-  examples = List(
-    ToolExample("Find TODOs in Scala source", GrepInput(path = "src", pattern = "TODO", glob = Some("**/*.scala"))),
-    ToolExample("Find function definition with context", GrepInput(path = ".", pattern = "def myFunction", contextLines = 2))
-  ),
-  keywords = Set(
+      |An optional glob pattern (e.g. `**/*.scala`) restricts the file set; `headLimit` caps returned
+      |entries (default 100). Over the cap you get the first N plus a note to narrow with a more
+      |specific pattern, a glob, or a subpath. To search WITHIN an earlier result, just grep the
+      |file(s) it named.
+      |
+      |By default grep skips noise directories: .git, target, node_modules, dist, .venv, __pycache__,
+      |.idea, .vscode, .metals, .bloop, .claude (Claude Code worktrees), and similar. Pass
+      |`includeIgnored: true` to search inside them.""".stripMargin
+
+  override val examples: List[ToolExample] = List(
+    ToolExample("Which Scala files mention TODO", GrepInput(path = "src", pattern = "TODO", glob = Some("**/*.scala"))),
+    ToolExample("Show the matching lines for a definition", GrepInput(path = ".", pattern = "def myFunction",
+      outputMode = GrepOutputMode.Content, contextLines = 2))
+  )
+
+  override val keywords: Set[String] = Set(
     "grep", "search", "regex", "find", "match", "lines",
     "lookup", "ripgrep", "rg", "code", "text", "files", "pattern",
     "scan", "look", "occurrence", "string"
   )
-) with sigil.tool.ReadOnlyExternalTool {
+
   // Bug #86 — generic primitive: ranks below domain-specific tools
   // (LSP/BSP, typed inspectors) when both match a query, but stays
   // findable when nothing more specific applies.
   override def preferIfNoBetter: Boolean = true
 
-  // Bug #230 — match lists are the canonical input to
-  // `dispatch_workers`. Surfacing the tool after a grep nudges the
-  // agent toward "per-match LLM-or-script pipeline" instead of
-  // browsing pages of hits by hand.
-  override def suggestedNextTools: List[ToolName] = List(ToolName("dispatch_workers"))
-
-  override protected def executeStream(input: GrepInput, ctx: ToolContext): Stream[Node[GrepNode]] =
+  override def executeResult(input: GrepInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
-      case Some(reason) =>
-        Stream.force(Task.error(new RuntimeException(reason)))
-      case None         => runGrep(input, ctx)
+      case Some(reason) => Task.pure(ToolResult.failure(reason))
+      case None =>
+        WorkspacePathResolver.resolve(ctx, input.path).flatMap { base =>
+          context.searchFiles(base, input.pattern, input.glob, input.maxMatches, input.contextLines, input.includeIgnored)
+            .map(matches => ToolResult.Success(TextToolOutput(render(input.outputMode, input.headLimit, matches))))
+        }
     }
 
-  private def runGrep(input: GrepInput, ctx: ToolContext): Stream[Node[GrepNode]] =
-    Stream.force(
-      FilePathReference.resolveScope("grep", input.from, ctx).flatMap { allowed =>
-      WorkspacePathResolver.resolve(ctx, input.path).flatMap { base =>
-        context.searchFiles(base, input.pattern, input.glob, input.maxMatches, input.contextLines, input.includeIgnored).map { matches =>
-          // When `from` scopes the search, keep only matches whose file
-          // is in the referenced set before grouping.
-          val scoped = allowed match {
-            case None        => matches
-            case Some(paths) => matches.filter(m => FilePathReference.matches(m.filePath, paths))
-          }
-          // Group by file. Each file becomes a top-level Node with
-          // its line-matches as child Nodes (lazy children stream
-          // built from the grouped list).
-          val byFile = scoped.groupBy(_.filePath).toList.sortBy(_._1)
-          Stream.fromIterator(Task.pure(byFile.iterator.map { case (filePath, fileMatches) =>
-            val children = Stream.fromIterator(Task.pure(
-              fileMatches.iterator.map { m =>
-                Node.leaf[GrepNode](GrepNode.LineMatch(
-                  lineNumber    = m.lineNumber,
-                  content       = m.content,
-                  contextBefore = m.contextBefore,
-                  contextAfter  = m.contextAfter
-                ))
-              }
-            ))
-            Node.parent[GrepNode](
-              payload  = GrepNode.FileMatch(filePath = filePath, matchCount = fileMatches.size),
-              children = children
-            )
-          }))
-        }
+  /** Render the matches per the chosen mode, capped at `headLimit`. */
+  private def render(mode: GrepOutputMode, headLimit: Int, matches: List[GrepMatch]): String = mode match {
+    case GrepOutputMode.FilesWithMatches =>
+      capped(matches.map(_.filePath).distinct.sorted, headLimit, "files")
+    case GrepOutputMode.Count =>
+      val counts = matches.groupBy(_.filePath).toList.sortBy(_._1).map { case (f, ms) => s"$f: ${ms.size}" }
+      capped(counts, headLimit, "files")
+    case GrepOutputMode.Content =>
+      val lines = matches.sortBy(m => (m.filePath, m.lineNumber)).map { m =>
+        val before = m.contextBefore.map(c => s"${m.filePath}-     $c")
+        val after  = m.contextAfter.map(c => s"${m.filePath}-     $c")
+        (before :+ s"${m.filePath}:${m.lineNumber}: ${m.content}") ++ after
       }
-      }
-    )
+      capped(lines.flatten, headLimit, "matches")
+  }
+
+  private def capped(entries: List[String], headLimit: Int, unit: String): String =
+    if (entries.isEmpty) "(no matches)"
+    else {
+      val body = entries.take(headLimit).mkString("\n")
+      if (entries.size > headLimit)
+        body + s"\n\n[showing $headLimit of ${entries.size} $unit — narrow with a more specific pattern, a glob, or a subpath to see the rest]"
+      else body
+    }
 }
 
 object GrepTool {

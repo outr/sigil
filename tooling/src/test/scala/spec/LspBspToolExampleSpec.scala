@@ -18,7 +18,6 @@ import sigil.tooling.{
   LspPrepareRenameTool, LspPullDiagnosticsTool, LspRenameSymbolTool, LspRenameTool,
   LspSelectionRangeTool, LspSignatureHelpTool, LspTypeDefinitionTool, LspWorkspaceSymbolsTool
 }
-import sigil.tooling.dispatch.DispatchWorkersTool
 
 /**
  * Regression spec for sigil bug #227 — every LSP / BSP tool example
@@ -88,14 +87,8 @@ class LspBspToolExampleSpec extends AnyWordSpec with Matchers {
       new BspScalacOptionsTool(bsp),
       new BspScalaTestClassesTool(bsp),
       new BspScalaMainClassesTool(bsp),
-      // Rename + dispatch — wrap LSP / framework primitives under
-      // the hood and the agent reads their examples verbatim.
-      new LspRenameSymbolTool(lsp),
-      new DispatchWorkersTool(),
-      // Pagination navigation — bug #227 also called these out for
-      // leaking schema-type strings in their rendered example slot
-      sigil.tool.output.ReloadContentTool,
-      sigil.tool.output.QueryToolOutputTool
+      // Rename — wraps an LSP primitive; the agent reads its example verbatim.
+      new LspRenameSymbolTool(lsp)
     )
   }
 

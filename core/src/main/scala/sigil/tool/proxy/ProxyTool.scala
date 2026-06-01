@@ -47,7 +47,6 @@ class ProxyTool(val wrapped: Tool, transport: ToolProxyTransport) extends Tool {
   def name: ToolName      = wrapped.name
   def description: String = wrapped.description
 
-  override def paginate: Boolean = wrapped.paginate
   override def inputDefinition: fabric.define.Definition = wrapped.inputDefinition
   override def outputDefinition: Option[fabric.define.Definition] = wrapped.outputDefinition
   override def modes: Set[Id[Mode]]             = wrapped.modes

@@ -41,11 +41,8 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   private def sampleInput: DelegateTaskInput = DelegateTaskInput(
-    role = Role(
-      name = "researcher",
-      description = "Research and synthesize.",
-      workType = AnalysisWork
-    ),
+    role = "researcher",
+    roleDescription = Some("Research and synthesize."),
     brief = "Find recent papers on RAG",
     modelId = Some("anthropic/claude-sonnet-4-6")
   )

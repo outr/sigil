@@ -57,6 +57,11 @@ case object FindCapabilityTool extends Tool {
   // thousand tokens of stale schemas.
   override def resultTtl: Option[Int] = Some(0)
 
+  // Sigil #347 — the curated roster must arrive intact. It is sized to
+  // the model's context window below; the framework must never truncate
+  // it mid-entry or spill it to a file (the generic overflow path).
+  override def boundsOutputItself: Boolean = true
+
   override def executeResult(input: FindCapabilityInput,
                              context: ToolContext): Task[ToolResult[FindCapabilityOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
@@ -67,7 +72,12 @@ case object FindCapabilityTool extends Tool {
         callerSpaces = spaces,
         conversationId = Some(context.conversation.id)
       )
-      context.sigil.findCapabilities(request).flatMap { matches =>
+      context.sigil.findCapabilities(request).flatMap { allMatches =>
+        // Sigil #347 — size the roster to the running model's context
+        // window (count + rendered-bytes budget), trimming lowest-scored
+        // matches first, so a small-context model gets a roster that fits
+        // with room to act instead of one that overflows and gets chopped.
+        val matches = FindCapabilityTool.sizeToModel(allMatches, context.turn.model.contextLength)
         val toolNames = matches.collect {
           case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
         }
@@ -103,6 +113,30 @@ case object FindCapabilityTool extends Tool {
         }
       }
     }
+
+  /** Sigil #347 — trim a score-sorted match list to what the running
+    * model's context window can hold with room to act: a rendered-bytes
+    * budget (~15% of the window at ~4 chars/token) and a count cap that
+    * scales with the window (3 on a tiny model, up to 25 on a large
+    * one). Lowest-scored matches are dropped first; at least one match
+    * always survives. The input must already be sorted by score desc. */
+  private[core] def sizeToModel(matches: List[sigil.tool.discovery.CapabilityMatch],
+                                contextLength: Long): List[sigil.tool.discovery.CapabilityMatch] = {
+    val budgetChars = math.max(1500, (contextLength.toDouble * 4.0 * 0.15).toInt)
+    val maxCount    = math.max(3, math.min(25, (contextLength / 8000L).toInt))
+    val out = scala.collection.mutable.ListBuffer.empty[sigil.tool.discovery.CapabilityMatch]
+    var used = 0
+    var stopped = false
+    matches.foreach { m =>
+      if (!stopped) {
+        val cost = m.name.length + m.description.length + 8
+        if (out.size >= maxCount) stopped = true
+        else if (used + cost > budgetChars && out.nonEmpty) stopped = true
+        else { out += m; used += cost }
+      }
+    }
+    out.toList
+  }
 
   /** Normalise a keywords string into the lowercase, space-separated
     * form `findTools` expects: drop punctuation, split snake_case /

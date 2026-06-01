@@ -2,7 +2,6 @@ package sigil.tool.model
 
 import fabric.rw.*
 import sigil.provider.Complexity
-import sigil.role.Role
 import sigil.tool.ToolInput
 
 /**
@@ -11,21 +10,23 @@ import sigil.tool.ToolInput
  * agent-bridge model). The calling agent stays in that sub-conversation
  * as the worker's supervisor.
  *
- * `role` carries the worker's identity (description, optional skill,
- * [[sigil.provider.WorkType]]) and drives its system prompt; `brief` is
- * the directive posted to the worker.
+ * `role` is the worker's short role name (e.g. `"researcher"`,
+ * `"code-reviewer"`) — a flat string, not a nested object, so a small
+ * model can fill it reliably (sigil #346 ergonomics). `roleDescription`
+ * optionally overrides the worker's identity statement; when omitted the
+ * `brief` doubles as it.
  *
- * `goal` — optional one-sentence statement of the spawning agent's
- * higher-level intent, surfaced separately from `brief` for forensics.
+ * `brief` is the directive posted to the worker. `goal` is an optional
+ * one-sentence statement of the spawning agent's higher-level intent,
+ * surfaced separately for forensics.
  *
  * `modelId` is optional. When set, that exact model runs the worker;
  * when unset the framework routes via [[sigil.Sigil.routedModelFor]]
- * using `role.workType` (and `complexity` as a filter), falling back to
- * the spawning agent's model.
+ * (using `complexity` as a filter) and falls back to the spawning
+ * agent's model.
  *
  * `complexity` is an optional routing hint applied when the framework
- * resolves the worker's model (only meaningful when `modelId` is unset)
- * — filters the strategy's candidate chain by `supportedComplexity`.
+ * resolves the worker's model (only meaningful when `modelId` is unset).
  *
  * `toolNames` is the worker's work roster, on top of the framework
  * essentials it always has (a reply tool + capability discovery). Empty
@@ -33,9 +34,10 @@ import sigil.tool.ToolInput
  * what it needs via capability search. The worker does NOT inherit the
  * caller's user-facing control surface.
  */
-case class DelegateTaskInput(role: Role,
+case class DelegateTaskInput(role: String,
                              brief: String,
                              goal: Option[String] = None,
+                             roleDescription: Option[String] = None,
                              modelId: Option[String] = None,
                              complexity: Option[Complexity] = None,
                              toolNames: List[String] = Nil) extends ToolInput derives RW

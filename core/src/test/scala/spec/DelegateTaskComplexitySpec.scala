@@ -73,7 +73,8 @@ class DelegateTaskComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private def input(complexity: Option[Complexity]): DelegateTaskInput =
     DelegateTaskInput(
-      role       = Role(name = "bug-finder", description = "Find bugs.", workType = AnalysisWork),
+      role       = "bug-finder",
+      roleDescription = Some("Find bugs."),
       brief      = "Find all bug references in the repo.",
       modelId    = Some(modelId.value),
       complexity = complexity

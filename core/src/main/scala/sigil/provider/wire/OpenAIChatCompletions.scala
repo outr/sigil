@@ -123,6 +123,17 @@ object OpenAIChatCompletions {
     /** Forwarding policy for `GenerationSettings.effort`. */
     reasoningPolicy: ReasoningPolicy = ReasoningPolicy.None,
 
+    /** Under [[ReasoningPolicy.ReasoningEffortField]], how `ReasoningMode.Off`
+      * is rendered. Backends genuinely differ: DeepInfra (and the OpenAI
+      * canonical enum it mirrors) accept `reasoning_effort:"none"` to zero
+      * reasoning — empirically verified — whereas Cloudflare's Kimi-K2.6
+      * rejects `"none"` with an AiError (empty completion) and instead
+      * disables thinking via the vLLM chat-template toggle. `false`
+      * (default) → `reasoning_effort:"none"`; `true` → `chat_template_kwargs:
+      * {enable_thinking:false}`. Only affects the Off case; On/Auto always
+      * use `reasoning_effort`. */
+    reasoningOffUsesThinkingToggle: Boolean = false,
+
     /** Multimodal rendering policy. */
     multimodalPolicy: MultimodalPolicy = MultimodalPolicy.TextOnlyWithWarning,
 
@@ -357,9 +368,17 @@ object OpenAIChatCompletions {
         // GenerationSettings.reasoningMode is the user-facing toggle;
         // effort is the optional intensity hint. Auto + no effort →
         // omit (model default fires). On + no effort → "high" (the
-        // canonical "force thinking on" mapping). Off → "none"
-        // (OpenAI / DeepSeek both accept this enum value).
+        // canonical "force thinking on" mapping).
+        //
+        // Off is backend-specific (see `reasoningOffUsesThinkingToggle`):
+        // DeepInfra / the OpenAI canonical enum accept `reasoning_effort:
+        // "none"` (verified), but Cloudflare Kimi-K2.6 rejects "none" with
+        // an AiError and must disable via the vLLM `enable_thinking:false`
+        // chat-template toggle (also verified). On/Auto always use
+        // `reasoning_effort`.
         gen.reasoningMode match {
+          case ReasoningMode.Off if config.reasoningOffUsesThinkingToggle =>
+            Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(false)))
           case ReasoningMode.Off  => Vector("reasoning_effort" -> str("none"))
           case ReasoningMode.On   =>
             val level = gen.effort.map(Effort.openAIEffortLevel).getOrElse("high")

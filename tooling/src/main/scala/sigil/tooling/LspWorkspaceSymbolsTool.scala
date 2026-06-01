@@ -1,10 +1,9 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.output.{Node, PaginatedTool}
-import sigil.tool.{ToolInput, ToolName}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tooling.types.{LspPosition, LspWorkspaceSymbol}
 
 case class LspWorkspaceSymbolsInput(languageId: String,
@@ -13,14 +12,19 @@ case class LspWorkspaceSymbolsInput(languageId: String,
                                     maxResults: Int = 100) extends ToolInput derives RW
 
 /**
- * Search for symbols by name across the entire workspace.
- * Paginated: top-level nodes are [[LspWorkspaceSymbol]] hits in
- * the server's returned order. The first page is inline; the
- * rest paginate via `next_page`.
+ * Search for symbols by name across the workspace. Returns the matching
+ * symbol hits — `kind name (container) — uri` — as plain text straight
+ * into the agent's context, bounded by `maxResults`.
  */
-final class LspWorkspaceSymbolsTool(val manager: LspManager) extends PaginatedTool[LspWorkspaceSymbolsInput, LspWorkspaceSymbol](
-  name = ToolName("lsp_workspace_symbols"),
-  description0 =
+final class LspWorkspaceSymbolsTool(val manager: LspManager)
+    extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspWorkspaceSymbolsInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[LspWorkspaceSymbolsInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("lsp_workspace_symbols")
+  val description =
     """Search for symbols by name across the workspace.
       |
       |`languageId` selects the persisted LspServerConfig.
@@ -28,39 +32,29 @@ final class LspWorkspaceSymbolsTool(val manager: LspManager) extends PaginatedTo
       |`query` is the search string — fuzzy / substring depending on server config.
       |`maxResults` (default 100) caps the response.
       |
-      |Top-level nodes are symbol hits with `{kind, name, container, uri, position}`.""".stripMargin,
-  keywords = Set(
+      |Returns one line per hit: `kind name (container) — uri`.""".stripMargin
+
+  override val keywords: Set[String] = Set(
     "lsp", "workspace", "symbols", "symbol", "find symbol", "search",
     "class", "method", "function", "definition", "signature", "structure",
     "examine", "inspect", "analyze", "explore", "browse", "lookup",
     "code", "codebase", "semantic", "index", "catalog",
     "scala", "language", "navigate", "project"
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
 
-  // Bug #230 — symbol lists are the canonical input to
-  // `dispatch_workers` (per-symbol LLM-or-script pipeline). Surface
-  // the next tool so the agent sees the natural follow-up.
-  override def suggestedNextTools: List[ToolName] = List(ToolName("dispatch_workers"))
-
-  override protected def executeStream(input: LspWorkspaceSymbolsInput, context: ToolContext): Stream[Node[LspWorkspaceSymbol]] =
-    Stream.force(
-      withSessionTyped[Stream[Node[LspWorkspaceSymbol]]](
-        input.languageId, input.projectRoot, context,
-        onError = _ => Stream.empty
-      ) { (session, _, _) =>
-        session.workspaceSymbols(input.query).map { hits =>
-          val capped = hits.take(input.maxResults).map { h =>
-            LspWorkspaceSymbol(
-              kind      = Option(h.kind).map(_.toString.toLowerCase).getOrElse("unknown"),
-              name      = h.name,
-              container = h.containerName,
-              uri       = h.uri,
-              position  = h.range.map(r => LspPosition.fromLsp4j(r.getStart))
-            )
-          }
-          Stream.fromIterator(Task.pure(capped.iterator.map(Node.leaf(_))))
+  override def executeResult(input: LspWorkspaceSymbolsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    withSessionTyped[ToolResult[TextToolOutput]](
+      input.languageId, input.projectRoot, context,
+      onError = msg => ToolResult.failure(msg)
+    ) { (session, _, _) =>
+      session.workspaceSymbols(input.query).map { hits =>
+        val lines = hits.take(input.maxResults).map { h =>
+          val kind      = Option(h.kind).map(_.toString.toLowerCase).getOrElse("unknown")
+          val container = Option(h.containerName).filter(_.nonEmpty).map(c => s" ($c)").getOrElse("")
+          val pos       = h.range.map(_.getStart).map(s => s":${s.getLine + 1}").getOrElse("")
+          s"$kind ${h.name}$container — ${h.uri}$pos"
         }
+        ToolResult.Success(TextToolOutput(if (lines.isEmpty) "(no symbols)" else lines.mkString("\n")))
       }
-    )
+    }
 }

@@ -12,7 +12,7 @@ import sigil.event.Event
 import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, ProviderEvent}
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.tool.core.CoreTools
-import sigil.tool.model.{RespondFieldInput, RespondInput}
+import sigil.tool.model.RespondInput
 import sigil.vector.InMemoryVectorIndex
 
 /**
@@ -150,17 +150,14 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
         // Live-LLM proof: the model answers the question by referencing
         // the retrieved memory. The only source of "blue" in this turn
-        // is the stored memory — assert it shows up in whichever reply
-        // surface the model picked (respond's markdown content OR a
-        // structured respond_field/respond_options block).
+        // is the stored memory — assert it shows up in the model's
+        // `respond` content (a Field callout, if used, is inline markdown
+        // in that same content post-fold).
         provider(request).toList.map { events =>
           val respondText = events.collectFirst {
             case ProviderEvent.ToolCallComplete(_, r: RespondInput) => r.content
           }
-          val fieldText = events.collectFirst {
-            case ProviderEvent.ToolCallComplete(_, f: RespondFieldInput) => s"${f.label}: ${f.value}"
-          }
-          val replyText = (respondText.toList ++ fieldText.toList).mkString(" ")
+          val replyText = respondText.toList.mkString(" ")
           val toolsSeen = events.collect { case s: ProviderEvent.ToolCallStart => s.toolName }.toSet
           withClue(s"tools observed: ${toolsSeen.mkString(",")}; reply text: $replyText") {
             replyText.toLowerCase should include("blue")

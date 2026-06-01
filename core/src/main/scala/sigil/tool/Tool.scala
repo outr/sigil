@@ -69,15 +69,14 @@ trait Tool extends RecordDocument[Tool] {
   def executeResult(input: Input, context: ToolContext): Task[ToolResult[Output]] =
     executeOutput(input, context).map(ToolResult.success)
 
-  /** Whether this tool returns paginated output. Defaults to `false` —
-    * a plain `Tool`'s [[Output]] is bounded by its type. Tools whose
-    * output is potentially unbounded extend
-    * [[sigil.tool.output.PaginatedTool]], which overrides this to `true`
-    * and exposes the pagination input fields.
-    *
-    * Surfaced in [[sigil.event.CapabilityMatch]] so the agent learns
-    * from discovery whether a tool is one-shot or iterative. */
-  def paginate: Boolean = false
+  /** When `true`, the framework never truncates or files this tool's
+    * output on overflow — it is emitted inline verbatim. The tool
+    * guarantees it has sized its own output (e.g. `find_capability`
+    * trims its roster to the model's context window; its result must
+    * arrive intact, never chopped mid-entry or spilled to a file the
+    * agent then has to read back). Default `false` — ordinary tools
+    * get the file-backed overflow path. */
+  def boundsOutputItself: Boolean = false
 
   // ---- framework glue (final) ----
 
@@ -105,8 +104,10 @@ trait Tool extends RecordDocument[Tool] {
                     currentMessageId: Option[Id[Event]] = None): Stream[Signal] = {
     val ctx = ToolContext(turn, invokeId, invokedName, currentMessageId)
     Stream.force(
-      runResolution(input, ctx).map { res =>
-        Stream.emits[Signal](ctx.emittedEvents :+ buildResultDelta(res, ctx))
+      runResolution(input, ctx).flatMap { res =>
+        buildResultDelta(res, ctx).map { delta =>
+          Stream.emits[Signal](ctx.emittedEvents :+ delta)
+        }
       }
     )
   }
@@ -127,32 +128,30 @@ trait Tool extends RecordDocument[Tool] {
   /** Build the settling [[ToolDelta]] from a resolution — folds output,
     * outcome, and `state = Complete` onto the originating `ToolInvoke`
     * in one update. Sigil #265. */
-  private def buildResultDelta(result: ToolResult[Output], context: ToolContext): ToolDelta = {
+  private def buildResultDelta(result: ToolResult[Output], context: ToolContext): Task[ToolDelta] = {
     val invokeId = context.invokeId
     result match {
       case ToolResult.Success(value) =>
         val typedJson = outputRW.read(value)
         val rendered  = JsonFormatter.Compact(typedJson)
         val threshold = context.sigil.inlineContentThreshold
-        val summaryOpt =
-          if (rendered.length.toLong <= threshold) None
-          else Some(
-            summarize(value, rendered) + "\n\n" +
-              s"${name.value}: result is ${rendered.length} bytes (threshold $threshold), truncated inline. " +
-              "Refine inputs to narrow the output, or — for naturally-large bulk output — use PaginatedTool."
+        val summaryTask: Task[Option[String]] =
+          if (boundsOutputItself || rendered.length.toLong <= threshold) Task.pure(None)
+          else buildOverflowSummary(value, rendered, threshold, context).map(Some(_))
+        summaryTask.map { summaryOpt =>
+          ToolDelta(
+            target         = invokeId,
+            conversationId = context.conversation.id,
+            state          = Some(EventState.Complete),
+            summary        = summaryOpt,
+            output         = Some(value),
+            outcome        = Some(ToolOutcome.Success)
           )
-        ToolDelta(
-          target         = invokeId,
-          conversationId = context.conversation.id,
-          state          = Some(EventState.Complete),
-          summary        = summaryOpt,
-          output         = Some(value),
-          outcome        = Some(ToolOutcome.Success)
-        )
+        }
       case ToolResult.Failure(message, hint, args) =>
         val body = (List(message) ++ hint.toList.map(h => s"\n\nHint: $h") ++
           args.toList.map(a => s"\n\nFailing args: $a")).mkString
-        ToolDelta(
+        Task.pure(ToolDelta(
           target         = invokeId,
           conversationId = context.conversation.id,
           state          = Some(EventState.Complete),
@@ -160,7 +159,35 @@ trait Tool extends RecordDocument[Tool] {
           // No real `output` — outcome carries the failure. The
           // invoke's `output` field stays `ToolOutput.Pending`.
           outcome        = Some(ToolOutcome.Failure(body, recoverable = true))
-        )
+        ))
+    }
+  }
+
+  /** A success result that overflows [[Sigil.inlineContentThreshold]] is
+    * written to a file under the conversation's [[FileSystemContext]]
+    * (`.sigil/output/<convId>/<tool>-<callId>.txt`); the returned summary
+    * is a bounded head + the path + stats, so the agent recovers the rest
+    * with the filesystem tools it already has (`grep` / `read_file`) rather
+    * than a bespoke reference handle. Because the write goes through the
+    * same context those tools use, the file lands where they run (local or
+    * ProxyTool-remote). Falls back to inline truncate-and-tell when no
+    * workspace is bound or the write fails. Sigil #345/#346. */
+  private def buildOverflowSummary(value: Output, rendered: String, threshold: Long, context: ToolContext): Task[String] = {
+    val head  = summarize(value, rendered)
+    val lines = rendered.count(_ == '\n') + 1
+    val truncateAndTell =
+      head + "\n\n" +
+        s"[${name.value}: result is ${rendered.length} bytes / $lines lines (over the $threshold-byte inline limit), " +
+        "truncated. Narrow your inputs to see the rest.]"
+    context.sigil.fileSystemContextFor(context.conversation.id).flatMap {
+      case Some(fs) =>
+        val relPath = s".sigil/output/${context.conversation.id.value}/${name.value}-${context.invokeId.value}.txt"
+        fs.writeFile(relPath, rendered).map { bytes =>
+          head + "\n\n" +
+            s"[${name.value}: full result is $lines lines / $bytes bytes — written to $relPath. " +
+            "Use grep or read_file on that path to see the rest.]"
+        }.handleError(_ => Task.pure(truncateAndTell))
+      case None => Task.pure(truncateAndTell)
     }
   }
 

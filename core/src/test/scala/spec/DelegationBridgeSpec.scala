@@ -69,7 +69,8 @@ class DelegationBridgeSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         )
         result <- DelegateTaskTool.executeResult(
           DelegateTaskInput(
-            role    = Role(name = "calculator", description = "Compute simple arithmetic.", workType = AnalysisWork),
+            role    = "calculator",
+            roleDescription = Some("Compute simple arithmetic."),
             brief   = "Compute 2 + 2 and report the result.",
             modelId = Some(modelId.value)
           ),
