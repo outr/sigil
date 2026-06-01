@@ -357,10 +357,18 @@ object OpenAIChatCompletions {
         // GenerationSettings.reasoningMode is the user-facing toggle;
         // effort is the optional intensity hint. Auto + no effort →
         // omit (model default fires). On + no effort → "high" (the
-        // canonical "force thinking on" mapping). Off → "none"
-        // (OpenAI / DeepSeek both accept this enum value).
+        // canonical "force thinking on" mapping).
+        //
+        // Off is NOT a `reasoning_effort` value — that field's enum is
+        // minimal/low/medium/high; `"none"` is non-standard and, on the
+        // vLLM-served thinking models this policy fronts (Cloudflare
+        // Kimi-K2.6, DeepInfra, OpenRouter open-weight, DeepSeek), is
+        // rejected outright (Cloudflare returns an AiError, yielding an
+        // empty completion). The correct, verified disable for those
+        // models is the vLLM chat-template toggle `enable_thinking:false`
+        // — the same mechanism the ChatTemplateEnableThinking policy uses.
         gen.reasoningMode match {
-          case ReasoningMode.Off  => Vector("reasoning_effort" -> str("none"))
+          case ReasoningMode.Off  => Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(false)))
           case ReasoningMode.On   =>
             val level = gen.effort.map(Effort.openAIEffortLevel).getOrElse("high")
             Vector("reasoning_effort" -> str(level))
