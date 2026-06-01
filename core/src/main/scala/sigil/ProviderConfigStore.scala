@@ -90,7 +90,7 @@ trait ProviderConfigStore { this: Sigil =>
       case Some(_) =>
         for {
           // Cascade: any space whose assignment points at this record loses its assignment.
-          // Sigil bug #170 — N deletes share one assignments transaction.
+          //
           assigns <- withDB(_.providerAssignments.transaction(_.list))
           orphans  = assigns.toList.filter(_.strategyId == id)
           _       <- withDB(_.providerAssignments.transaction { tx =>

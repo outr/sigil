@@ -17,7 +17,7 @@ import sigil.information.{Information, InformationSummary}
  * **Tool results are out of scope.** Per the tool contract, what
  * `executeResult` emits is what the agent sees on its next iteration
  * — the framework must not silently substitute a placeholder for
- * arbitrary tool output (sigil bug #201). Tools whose output exceeds
+ * arbitrary tool output. Tools whose output exceeds
  * a single-shot consumable size must declare
  * [[sigil.tool.Tool.paginate]] = `true` and expose pagination
  * inputs in their schema; tools that don't paginate must self-limit

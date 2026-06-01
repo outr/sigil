@@ -77,8 +77,8 @@ final case class DartGenerator(sigil: Sigil,
 
     sigil.polymorphicRegistrations.sync()
 
-    // Sigil #294 — sanity-check that the Signal poly was populated as
-    // expected before snapshotting its definition. Mismatches usually
+    // Sanity-check that the Signal poly was populated as expected before
+    // snapshotting its definition. Mismatches usually
     // mean (a) a stale jar in the consumer's ivy cache predates one
     // of the signals declared in CoreSignals, (b) the consumer's
     // Sigil subclass shadowed `signalRegistrations` without calling

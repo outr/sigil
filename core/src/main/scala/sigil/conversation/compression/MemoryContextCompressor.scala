@@ -52,7 +52,7 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                    promptOverheadTokens: Long = 512L,
                                    /** Wire-protocol body ceiling shared with the
                                      * chunker. Defaults to [[SummaryOnlyCompressor.DefaultMaxChunkBytes]]
-                                     * (8 MB). Bug #143. */
+                                     * (8 MB). */
                                    maxChunkBytes: Long = SummaryOnlyCompressor.DefaultMaxChunkBytes,
                                    /** Concurrent leaf-summarization fan-out for
                                      * [[compressHierarchical]]. Default 1 = serial
@@ -64,8 +64,7 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                      * At parallelism = 4 a 100-chunk pass drops
                                      * from ~50 minutes to ~12. Epoch folds run
                                      * with the same knob — fewer calls per
-                                     * level, but the same bound applies. Bug
-                                     * #145. */
+                                     * level, but the same bound applies. */
                                    hierarchicalParallelism: Int = 1,
                                    /** Hard cap on the summarisation call's
                                      * generation. Without a cap the model
