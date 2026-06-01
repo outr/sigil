@@ -178,6 +178,30 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
       body should include(callId.value)
     }
 
+    // Sigil #343 — a wire call id minted by Cloudflare/OpenAI
+    // (`functions.<name>:<n>`) carries `.`/`:` that Anthropic's
+    // `tool_use.id` validator 400-rejects. The shared frame→message
+    // translate sanitizes the id to the portable charset on send, for
+    // BOTH the tool_use and its paired tool_result, so it round-trips
+    // through every provider's wire body unchanged-by-name.
+    "sanitize a non-portable wire call id to the portable charset, consistently for call + result (#343)" in {
+      val callId = syntheticEventId
+      val turn = emptyTurnInput.copy(frames = Vector(
+        ContextFrame.ToolCall(
+          toolName = ToolName("change_mode"),
+          argsJson = "{}",
+          callId = callId,
+          participantId = TestAgent,
+          sourceEventId = callId,
+          wireCallId = Some("functions.change_mode:7"),
+          state = ToolCallState.Complete("Mode changed.")
+        )
+      ))
+      val body = bodyOf(turn)
+      body should not include "functions.change_mode:7"
+      body should include("functions-change_mode-7")
+    }
+
     "render a System frame (e.g. title change) in the wire body" in {
       val marker = "TITLE_MARKER_42"
       val turn = emptyTurnInput.copy(frames = Vector(

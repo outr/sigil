@@ -1569,7 +1569,15 @@ trait Provider extends Service with ModelResolver {
           // Falls back to the framework's `Id[Event]` for synthetic
           // / framework-emitted calls (where there's no upstream
           // wire id to roundtrip).
-          val wireId = tc.wireCallId.getOrElse(tc.callId.value)
+          // Sigil #343 — normalize to the portable tool-call-id charset
+          // (`[A-Za-z0-9_-]`, Anthropic's rule, which OpenAI / Cloudflare
+          // also accept) so a conversation that minted ids on one provider
+          // (Cloudflare/Kimi emits `functions.NAME:N` — `.` and `:` are
+          // illegal for Anthropic) replays cleanly when a later turn routes
+          // to another. Applied to the single `wireId` so the tool_use id,
+          // its paired tool_result id, and the `invokesSeen` tracker all
+          // stay consistent. Idempotent for already-portable ids.
+          val wireId = Provider.portableToolCallId(tc.wireCallId.getOrElse(tc.callId.value))
           // Sigil bug #174 — record EVERY rendered ToolCall (not just those
           // with an upstream wireCallId) so the ToolResult branch can
           invokesSeen.add(wireId)
@@ -1718,6 +1726,17 @@ trait Provider extends Service with ModelResolver {
 }
 
 object Provider {
+
+  /** Sigil #343 — map a tool-call id to the portable charset every
+    * provider accepts (`[A-Za-z0-9_-]`, Anthropic's `tool_use.id` rule).
+    * Cloudflare/OpenAI mint `functions.<name>:<n>` ids whose `.` and `:`
+    * Anthropic 400-rejects when a mixed-provider conversation later routes
+    * to it. Deterministic (so a call id and its paired result id map to
+    * the same value) and idempotent (already-portable ids pass through). */
+  def portableToolCallId(id: String): String = {
+    val mapped = id.replaceAll("[^A-Za-z0-9_-]", "-")
+    if (mapped.isEmpty) "tool-call" else mapped
+  }
 
   /** Adaptive `max_tokens` cap applied when the paraphrase loop
     * detector has flagged this turn — bounds the damage when a
