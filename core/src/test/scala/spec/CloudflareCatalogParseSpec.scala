@@ -41,7 +41,8 @@ class CloudflareCatalogParseSpec extends AnyWordSpec with Matchers {
       |        {"property_id": "function_calling", "value": "true"},
       |        {"property_id": "price", "value": [
       |          {"unit": "per M input tokens", "price": 0.95, "currency": "USD"},
-      |          {"unit": "per M output tokens", "price": 4, "currency": "USD"}
+      |          {"unit": "per M output tokens", "price": 4, "currency": "USD"},
+      |          {"unit": "per M cached input tokens", "price": 0.16, "currency": "USD"}
       |        ]}
       |      ]
       |    },
@@ -89,13 +90,27 @@ class CloudflareCatalogParseSpec extends AnyWordSpec with Matchers {
   }
 
   "Cloudflare.toModel" should {
-    "read the string-valued properties and ignore the array `price`" in {
+    "read the string-valued properties (context, capabilities)" in {
       val (entries, _) = Cloudflare.parsePage(page)
       val kimi  = Cloudflare.toModel(entries.find(_.name == "@cf/moonshotai/kimi-k2.6").get)
       kimi.contextLength shouldBe 131072L
       kimi.supportedParameters should contain("tools")  // function_calling = "true"
-      // Pricing stays at zero (catalog price is per-neuron, not per-token).
-      kimi.pricing.prompt shouldBe BigDecimal(0)
+    }
+
+    "map the array-valued `price` into per-token ModelPricing (#337)" in {
+      val (entries, _) = Cloudflare.parsePage(page)
+      val kimi  = Cloudflare.toModel(entries.find(_.name == "@cf/moonshotai/kimi-k2.6").get)
+      val perM  = BigDecimal(1000000)
+      kimi.pricing.prompt         shouldBe (BigDecimal("0.95") / perM)
+      kimi.pricing.completion     shouldBe (BigDecimal("4") / perM)
+      kimi.pricing.inputCacheRead shouldBe Some(BigDecimal("0.16") / perM)
+    }
+
+    "leave pricing at zero for a model whose catalog entry carries no `price`" in {
+      val (entries, _) = Cloudflare.parsePage(page)
+      val llama = Cloudflare.toModel(entries.find(_.name == "@cf/meta/llama-3.1-8b").get)
+      llama.pricing.prompt shouldBe BigDecimal(0)
+      llama.pricing.inputCacheRead shouldBe None
     }
 
     "leave property string extraction empty when a value isn't a string" in {

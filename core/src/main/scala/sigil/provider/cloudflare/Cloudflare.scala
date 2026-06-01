@@ -88,10 +88,9 @@ object Cloudflare {
     * `max_output_tokens` when present so the framework's max-tokens
     * resolver has a real ceiling.
     *
-    * Pricing is left at zero — Workers AI bills per-neuron through
-    * the Cloudflare account rather than per-token in the catalog
-    * payload. Apps that need accurate cost attribution wire a
-    * custom Model record via `cache.merge` post-load. */
+    * Pricing is read from the array-valued `price` property (#337) and
+    * mapped into per-token [[ModelPricing]]; a model whose catalog entry
+    * carries no `price` stays at zero. */
   def toModel(entry: Entry): Model = {
     val canonical = s"$Provider/${entry.name}"
     // Keep only the string-valued properties toModel actually reads;
@@ -128,12 +127,7 @@ object Cloudflare {
         tokenizer        = "Unknown",
         instructType     = None
       ),
-      pricing             = ModelPricing(
-        prompt         = BigDecimal(0),
-        completion     = BigDecimal(0),
-        webSearch      = None,
-        inputCacheRead = None
-      ),
+      pricing             = pricingFrom(entry.properties),
       topProvider         = ModelTopProvider(
         contextLength       = Some(contextLength).filter(_ > 0),
         maxCompletionTokens = maxOutput,
@@ -148,6 +142,36 @@ object Cloudflare {
       created             = now,
       modified            = now,
       _id                 = Id[Model](canonical)
+    )
+  }
+
+  /** Per-million-token → per-token divisor. Cloudflare's catalog quotes
+    * `price` in per-M-token units; [[ModelPricing]] is per-token (see
+    * [[sigil.Sigil.costFor]], which multiplies by raw token counts). */
+  private val PerMillion = BigDecimal(1000000)
+
+  /** Map the array-valued `price` property into per-token
+    * [[ModelPricing]] (#337). Each row is `{unit, price, currency}`; we
+    * map the three token units we bill on and divide by a million.
+    * A missing / non-array / malformed `price` yields zeros, so a catalog
+    * entry without pricing still loads. Values parse through `toString`
+    * to avoid binary-float artifacts (`0.95` stays `0.95`). */
+  private def pricingFrom(properties: List[Property]): ModelPricing = {
+    val byUnit: Map[String, BigDecimal] = properties.collectFirst {
+      case Property("price", arr) if arr.isArr =>
+        arr.asVector.toList.flatMap { row =>
+          for {
+            unit  <- row.get("unit").map(_.asString)
+            price <- scala.util.Try(BigDecimal(row.get("price").map(_.asDouble).getOrElse(0.0).toString)).toOption
+          } yield unit -> price
+        }
+    }.getOrElse(Nil).toMap
+    def perToken(unit: String): Option[BigDecimal] = byUnit.get(unit).map(_ / PerMillion)
+    ModelPricing(
+      prompt         = perToken("per M input tokens").getOrElse(BigDecimal(0)),
+      completion     = perToken("per M output tokens").getOrElse(BigDecimal(0)),
+      webSearch      = None,
+      inputCacheRead = perToken("per M cached input tokens")
     )
   }
 
