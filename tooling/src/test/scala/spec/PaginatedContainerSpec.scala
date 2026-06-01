@@ -14,7 +14,7 @@ import sigil.signal.EventState
 import sigil.tool.model.ResponseContent
 import sigil.tool.output.ToolOutputNode
 import sigil.tooling.container.{
-  ContainerPredicate, ContainerSupport,
+  ContainerSupport,
   CreateContainerInput, CreateContainerTool,
   FilterContainerInput, FilterContainerTool,
   PinContainerInput, PinContainerTool
@@ -112,10 +112,7 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       }
       CreateContainerTool.invoke(CreateContainerInput(items), ToolContext(ctx, Event.id(), CreateContainerTool.name)).flatMap { source =>
         FilterContainerTool.invoke(
-          FilterContainerInput(
-            sourceId  = source.itemsId,
-            predicate = ContainerPredicate.Contains("\"foo\"")
-          ),
+          FilterContainerInput(sourceId = source.itemsId, contains = Some("\"foo\"")),
           ToolContext(ctx, Event.id(), FilterContainerTool.name)
         ).flatMap { derived =>
           derived.itemsId.value should not equal source.itemsId.value
@@ -129,6 +126,21 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
               all(derivedItems.map(_.asInstanceOf[Obj].value("category"))) shouldBe Str("foo")
             }
           }
+        }
+      }
+    }
+
+    "fail recoverably with a didactic message when no filter is supplied (#338)" in {
+      DispatchTestSigil.reset()
+      val ctx = turnContextFor(newConversation("filter-empty"))
+      CreateContainerTool.invoke(CreateContainerInput(List(Obj("name" -> Str("x")))),
+                                 ToolContext(ctx, Event.id(), CreateContainerTool.name)).flatMap { source =>
+        FilterContainerTool.executeResult(
+          FilterContainerInput(sourceId = source.itemsId),
+          ToolContext(ctx, Event.id(), FilterContainerTool.name)
+        ).map {
+          case f: sigil.tool.ToolResult.Failure => f.message.toLowerCase should include("provide one filter")
+          case other                            => fail(s"expected a recoverable failure, got $other")
         }
       }
     }

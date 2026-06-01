@@ -49,48 +49,58 @@ case object QueryToolOutputTool extends Tool {
                              ctx: ToolContext): Task[ToolResult[JsonPagedResult]] = {
     val pageSize = math.max(1, math.min(input.pageSize, maxPageSize))
     val safePage = math.max(0, input.page)
-    val targetConvId = input.conversationId.getOrElse(ctx.conversation.id)
     val currentConvId = ctx.conversation.id
 
-    ctx.sigil.canReadConversation(currentConvId, targetConvId).flatMap {
-      case Left(reason) =>
-        Task.pure(ToolResult.failure(
-          message = s"query_tool_output: cannot read conversation `${targetConvId.value}` — $reason",
-          hint = Some(
-            "Cross-conversation reads are allowed only against the caller's own conversation, " +
-              "its parent, or one of its workers."
-          )
-        ))
-      case Right(_) =>
-        ctx.sigil.withDB(_.toolOutputs.transaction(_.query.filter(n =>
-          n.conversationKey === targetConvId.value && n.callKey === input.callId
-        ).toList)).map { callRows =>
-          val filtered = callRows.filter { n =>
-            val levelOk = input.level.forall(_ == n.level)
-            val textOk  = input.containsText match {
-              case None    => true
-              case Some(q) =>
-                val needle = q.toLowerCase
-                JsonFormatter.Compact(n.payload).toLowerCase.contains(needle)
-            }
-            levelOk && textOk
-          }.sortBy(n => (n.level, n.ordinal))
-
-          val total = filtered.size
-          val window = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize)
-          val callIdEvent: Id[Event] = window.headOption.map(_.callId).getOrElse(Id[Event](input.callId))
-          ToolResult.Success(JsonPagedResult(
-            items       = window.map(_.payload).toList,
-            hasMore     = ((safePage + 1) * pageSize) < total,
-            page        = safePage,
-            pageSize    = pageSize,
-            referenceId = input.callId,
-            callId      = callIdEvent,
-            totalCount  = Some(total),
-            nodeIds     = window.map(_._id.value).toList,
-            hasChildren = window.map(_.hasChildren).toList
+    // #339 — resolve the call's rows by `callId` alone; the owning
+    // conversation is derived server-side (the agent never has to guess
+    // it). A cross-conversation read (parent inspecting a worker's output)
+    // is then authorized via `canReadConversation`.
+    ctx.sigil.withDB(_.toolOutputs.transaction(_.query.filter(n => n.callKey === input.callId).toList)).flatMap { allCallRows =>
+      allCallRows.headOption match {
+        case None =>
+          Task.pure(ToolResult.failure(
+            message = s"query_tool_output: no tool output found for callId `${input.callId}` — it may have been reclaimed; re-run the source tool.",
+            hint = Some("`callId` is echoed on every bulk tool's first-page result.")
           ))
-        }
+        case Some(anchor) =>
+          val owningConv = anchor.conversationId
+          ctx.sigil.canReadConversation(currentConvId, owningConv).flatMap {
+            case Left(reason) =>
+              Task.pure(ToolResult.failure(
+                message = s"query_tool_output: cannot read the conversation that owns `${input.callId}` — $reason",
+                hint = Some(
+                  "Cross-conversation reads are allowed only against the caller's own conversation, " +
+                    "its parent, or one of its workers."
+                )
+              ))
+            case Right(_) =>
+              val callRows = allCallRows.filter(_.conversationId == owningConv)
+              val filtered = callRows.filter { n =>
+                val levelOk = input.level.forall(_ == n.level)
+                val textOk  = input.containsText match {
+                  case None    => true
+                  case Some(q) =>
+                    val needle = q.toLowerCase
+                    JsonFormatter.Compact(n.payload).toLowerCase.contains(needle)
+                }
+                levelOk && textOk
+              }.sortBy(n => (n.level, n.ordinal))
+              val total = filtered.size
+              val window = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize)
+              val callIdEvent: Id[Event] = window.headOption.map(_.callId).getOrElse(Id[Event](input.callId))
+              Task.pure(ToolResult.Success(JsonPagedResult(
+                items       = window.map(_.payload).toList,
+                hasMore     = ((safePage + 1) * pageSize) < total,
+                page        = safePage,
+                pageSize    = pageSize,
+                referenceId = input.callId,
+                callId      = callIdEvent,
+                totalCount  = Some(total),
+                nodeIds     = window.map(_._id.value).toList,
+                hasChildren = window.map(_.hasChildren).toList
+              )))
+          }
+      }
     }
   }
 }

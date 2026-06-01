@@ -144,6 +144,30 @@ class SummarizeOutputSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         fromParent.toOption.map(_.rows.nonEmpty) shouldBe Some(true)
       }
     }
+
+    "query_tool_output resolves the owning conversation from the callId alone — no conversationId, cross-conv from a parent (#339)" in withTempDir { (fs, _) =>
+      val parentId = Conversation.id(s"qto-parent-${rapid.Unique()}")
+      val workerId = Conversation.id(s"qto-worker-${rapid.Unique()}")
+      val workerCtx = TurnContext(
+        sigil = TestSigil, chain = List(TestUser),
+        conversation = Conversation(topics = List(TopicEntry(TestTopicId, "t", "t")),
+                                    parentConversationId = Some(parentId), _id = workerId),
+        turnInput = TurnInput(ConversationView(conversationId = workerId)), model = TestSigil.defaultTestModel)
+      val parentCtx = turnContext(parentId)
+      val grepCall = Event.id()
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
+               Conversation(topics = List(TopicEntry(TestTopicId, "t", "t")), _id = parentId))))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(workerCtx.conversation)))
+        _ <- seed(fs, workerCtx)
+        _ <- new GrepTool(fs).execute(GrepInput(path = ".", pattern = "needle"), workerCtx, grepCall).toList
+        // From the PARENT, query the worker's grep by callId only — no
+        // conversationId supplied; the framework resolves it.
+        res <- sigil.tool.output.QueryToolOutputTool.invoke(
+                 sigil.tool.output.QueryToolOutputInput(callId = grepCall.value, level = Some(0)),
+                 toolCtx(parentCtx))
+      } yield res.totalCount.getOrElse(0) should be > 0
+    }
   }
 
   "tear down" should {
