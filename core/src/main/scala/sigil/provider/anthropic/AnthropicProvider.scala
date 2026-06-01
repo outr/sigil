@@ -533,7 +533,9 @@ case class AnthropicProvider(apiKey: String,
               case "max_tokens"  => StopReason.MaxTokens
               case "tool_use"    => StopReason.ToolCall
               case "stop_sequence" => StopReason.Complete
-              case _             => StopReason.Complete
+              case other =>
+                scribe.warn(s"Unmapped stop_reason from Anthropic: '$other' — treating as Complete")
+                StopReason.Complete
             }
             state.pendingDone = Some(mapped)
             usageEv

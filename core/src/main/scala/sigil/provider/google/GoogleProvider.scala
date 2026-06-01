@@ -461,7 +461,9 @@ case class GoogleProvider(apiKey: String,
             case "STOP"          => StopReason.Complete
             case "MAX_TOKENS"    => StopReason.MaxTokens
             case "SAFETY" | "RECITATION" | "BLOCKLIST" | "PROHIBITED_CONTENT" | "SPII" => StopReason.ContentFiltered
-            case _               => StopReason.Complete
+            case other =>
+              scribe.warn(s"Unmapped finishReason from Gemini: '$other' — treating as Complete")
+              StopReason.Complete
           }
           val stopReason = if (state.sawFunctionCall) StopReason.ToolCall else mapped
           events ++= state.acc.complete()
