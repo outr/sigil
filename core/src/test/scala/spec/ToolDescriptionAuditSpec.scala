@@ -71,7 +71,10 @@ class ToolDescriptionAuditSpec extends AnyWordSpec with Matchers {
       "summarize_output" -> "dispatch_workers",
       "summarize_output" -> "filter_container",
       "query_tool_output" -> "summarize_output",
-      "query_tool_output" -> "dispatch_workers"
+      "query_tool_output" -> "dispatch_workers",
+      // #344 — record_consent's description names respond_options to tell
+      // the agent that an options selection is NOT a reason to pre-consent.
+      "record_consent" -> "respond_options"
     )
   }
 

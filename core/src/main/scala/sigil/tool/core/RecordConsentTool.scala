@@ -41,28 +41,34 @@ case object RecordConsentTool extends Tool {
 
   val name = ToolName("record_consent")
   val description =
-    """Record the user's consent decision for a `requiresUserConsent` tool. Call AFTER the
-      |user has answered an approval prompt (typically via a structured-options reply).
-      |The framework refuses to dispatch consent-gated tools until an approval record exists.
+    """Record the user's consent decision for a consent-gated tool. Consent is REACTIVE,
+      |not a courtesy: call this ONLY when a tool you tried to use was REFUSED pending consent
+      |— i.e. the framework returned a Tool-result telling you the tool needs consent and to
+      |call `record_consent`. Most tools are NOT consent-gated; the framework gates only those
+      |flagged `requiresUserConsent` and tells you (via that refusal) when it applies.
       |
-      |- `toolName` — EXACT name of the consent-gated tool. Mistyped names persist a useless
-      |  record and the gate keeps refusing.
+      |Do NOT call this speculatively, and NOT just because the user selected an action from
+      |`respond_options` — the selection IS the authorization, and a non-gated tool runs
+      |directly. Pre-consenting for a tool that isn't gated is rejected and wastes a turn.
+      |
+      |- `toolName` — EXACT name of the tool the refusal named. Mistyped names persist a
+      |  useless record and the gate keeps refusing.
       |- `approved` — `true` clears the gate; `false` stickily declines until a fresh `true`.
       |- `reason` — optional narrative; renders in the refusal Tool-result for future agents.
       |
-      |Record `approved=false` for declined options too, so a later iteration doesn't revisit
-      |them.""".stripMargin
+      |When the user declines the prompt, record `approved=false` so a later iteration doesn't
+      |re-offer it.""".stripMargin
 
   override val examples: List[ToolExample] = List(
     ToolExample(
-      "user picked Metals from setup options",
-      RecordConsentInput(toolName = "start_metals", approved = true,
-        reason = Some("user picked Metals from setup options"))
+      "load_claude_state was refused pending consent; the user approved the prompt",
+      RecordConsentInput(toolName = "load_claude_state", approved = true,
+        reason = Some("user approved loading prior Claude Code session state when the gate prompted"))
     ),
     ToolExample(
-      "user did not select Claude state when offered",
+      "load_claude_state was refused pending consent; the user declined the prompt",
       RecordConsentInput(toolName = "load_claude_state", approved = false,
-        reason = Some("user did not select Claude state in setup options"))
+        reason = Some("user declined the state-load prompt"))
     )
   )
 
