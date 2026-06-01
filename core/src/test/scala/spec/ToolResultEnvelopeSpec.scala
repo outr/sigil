@@ -8,7 +8,7 @@ import sigil.TurnContext
 import sigil.conversation.Conversation
 import sigil.event.ToolOutcome
 import sigil.signal.ToolDelta
-import sigil.tool.core.{NoResponseTool, RespondCardTool, RespondCardsTool, RespondFailureTool, RespondFieldTool, RespondOptionsTool, RespondTool}
+import sigil.tool.core.{NoResponseTool, RespondCardTool, RespondCardsTool, RespondOptionsTool, RespondTool}
 import sigil.tool.{TextToolOutput, Tool, ToolFailureException, ToolInput, ToolName, ToolOutput, ToolResult}
 import sigil.tool.ToolContext
 import sigil.event.Event
@@ -207,11 +207,9 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
 
   "Respond-family tools" should {
     "all set destructive = true" in {
-      val deprecatedFamily: List[sigil.tool.Tool] =
-        (List(RespondOptionsTool, RespondFieldTool, RespondFailureTool): @annotation.nowarn("cat=deprecation"))
       val activeFamily: List[sigil.tool.Tool] =
-        List(RespondTool, RespondCardTool, RespondCardsTool, NoResponseTool)
-      (activeFamily ++ deprecatedFamily).foreach { t =>
+        List(RespondTool, RespondOptionsTool, RespondCardTool, RespondCardsTool, NoResponseTool)
+      activeFamily.foreach { t =>
         withClue(s"${t.name.value} should be destructive: ") {
           t.destructive shouldBe true
         }

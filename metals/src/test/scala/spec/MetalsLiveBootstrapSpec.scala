@@ -269,35 +269,28 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
           // invokes the LSP request, maps SymbolHit → typed
           // LspWorkspaceSymbol, returns result.
           _   <- checkpoint("calling tool with maxResults=100")
-          result1 <- tool.invokeFirstPage(LspWorkspaceSymbolsInput(
+          result1 <- tool.invoke(LspWorkspaceSymbolsInput(
             languageId  = "scala",
             projectRoot = workspace.toAbsolutePath.normalize.toString,
             query       = "Main",
             maxResults  = 100
           ), sigil.tool.ToolContext(context, sigil.event.Event.id(), tool.name))
-          _   <- checkpoint(s"tool returned ${result1.items.size} items, totalCount=${result1.totalCount.getOrElse(-1)}")
+          _   <- checkpoint(s"tool returned ${result1.text.linesIterator.size} lines")
 
           // Tool call 2 — same query, capped at 1.
-          result2 <- tool.invokeFirstPage(LspWorkspaceSymbolsInput(
+          result2 <- tool.invoke(LspWorkspaceSymbolsInput(
             languageId  = "scala",
             projectRoot = workspace.toAbsolutePath.normalize.toString,
             query       = "Main",
             maxResults  = 1
           ), sigil.tool.ToolContext(context, sigil.event.Event.id(), tool.name))
-          _   <- checkpoint(s"tool returned (capped) ${result2.items.size} items, hasMore=${result2.hasMore}")
+          _   <- checkpoint(s"tool returned (capped) ${result2.text.linesIterator.size} lines")
         } yield {
-          // Result mapping: items contain a Main symbol;
-          // totalCount matches; capping at 100 returns everything.
-          val names1 = result1.items.flatMap(_.get("name").map(_.asString))
-          names1 should contain("Main")
-          result1.totalCount.getOrElse(0) should be > 0
+          // Result mapping: the text output names a Main symbol.
+          result1.text should include("Main")
 
-          // Truncation: maxResults=1 drains exactly one node;
-          // hasMore is false because the stream produced only one
-          // item (the maxResults cap is applied inside the tool
-          // before draining).
-          result2.items.size shouldBe 1
-          result2.hasMore shouldBe false
+          // Truncation: maxResults=1 returns exactly one symbol line.
+          result2.text.linesIterator.filter(_.nonEmpty).size shouldBe 1
         }
 
         flow.map { result =>

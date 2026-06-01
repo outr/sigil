@@ -38,6 +38,7 @@ import sigil.service.Service
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
+import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
 import sigil.tool.core.{CoreTools, FindCapabilityTool}
 import sigil.tool.model.ResponseContent
 import sigil.tool.{ToolFinder, ToolInput}
@@ -690,8 +691,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           description = t.description,
           capabilityType = CapabilityType.Tool,
           score = baseScore + boost - penalty + nameMatch,
-          status = CapabilityStatus.Ready,
-          paginate = Some(t.paginate)
+          status = CapabilityStatus.Ready
         )
       }
       val modeMatches = modes.map { case (m, score) =>
@@ -863,12 +863,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * flow that dynamically generates a `ScriptTool(...)` with the
     * caller's `SpaceId`, then writes it via this helper. Returns the
     * stored tool. */
-  def createTool(tool: sigil.tool.Tool): Task[sigil.tool.Tool] = {
-    sigil.tool.PaginationValidator.validate(tool) match {
-      case Right(_)     => withDB(_.tools.transaction(_.upsert(tool)))
-      case Left(reason) => Task.error(new IllegalArgumentException(reason))
-    }
-  }
+  def createTool(tool: sigil.tool.Tool): Task[sigil.tool.Tool] =
+    withDB(_.tools.transaction(_.upsert(tool)))
 
   // -- conversation tool overlays (#97) --
 
@@ -1582,8 +1578,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                            * narrowing). */
                          recentlyUsedTools: Set[sigil.tool.ToolName] = Set.empty): List[sigil.tool.ToolName] = {
     import sigil.tool.core.{
-      ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool,
-      RespondFailureTool, RespondFieldTool, RespondOptionsTool
+      ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool, RespondOptionsTool
     }
     import sigil.tool.skill.ActivateSkillTool
     // Reply surface: `respond` (markdown + Field-callout + H2-Card +
@@ -1663,9 +1658,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // the strip set so apps that opted back into them retain the
         // same pure-discovery semantics.
         val stripped: Set[sigil.tool.ToolName] =
-          (Set(
-            RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool, NoResponseTool
-          ): @annotation.nowarn("cat=deprecation")).map(_.schema.name)
+          Set(RespondTool, RespondOptionsTool, NoResponseTool).map(_.schema.name)
         merged.filterNot(stripped.contains)
       } else merged
     // Tool position bias is real for smaller models — they tend to pick the
@@ -1690,8 +1683,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // catch-all "telling" tool. Sigil bug #168.
       RespondOptionsTool.schema.name    -> 101,
       RespondTool.schema.name           -> 102,
-      RespondFieldTool.schema.name      -> 103,
-      RespondFailureTool.schema.name    -> 104,
       NoResponseTool.schema.name        -> 105
     ): @annotation.nowarn("cat=deprecation")).withDefaultValue(50)
     deduped.zipWithIndex.sortBy { case (name, idx) => (priority(name), idx) }.map(_._1)
@@ -3528,33 +3519,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             invokedAt   = ti.timestamp
           )
         }
-        // Sigil bug #202 — auto-promote the universal pagination
-        // navigators (`summarize_output`, `query_tool_output`) whenever a
-        // paginated tool's first-page result lands with navigable
-        // content (`hasMore` or non-empty `nodeIds`). Post-#265 the
-        // typed output sits on the settled invoke itself; the
-        // promotion fires from the same projection update that
-        // records the invocation. Promotion is per-iteration; the
-        // overlay clears at loop release with the rest of
-        // `suggestedTools`.
-        val paginationNav: List[sigil.tool.ToolName] =
-          if (ti.state != EventState.Complete) Nil
-          else {
-            val typedJson: Option[fabric.Json] = ti.output match {
-              case sigil.tool.ToolOutput.Pending     => None
-              case _: sigil.tool.ToolOutput.Progress => None
-              case other                             =>
-                try Some(summon[RW[sigil.tool.ToolOutput]].read(other))
-                catch { case _: Throwable => None }
-            }
-            Sigil.paginationNavigatorsFor(typedJson)
-          }
         updateProjection(ti.conversationId, ti.participantId) { proj =>
           val recent = (invocation :: proj.recentToolInvocations).take(recentToolInvocationsLimit)
-          val merged = (proj.suggestedTools ++ nextTools ++ paginationNav).distinct
           val suggested =
-            if (nextTools.isEmpty && paginationNav.isEmpty) proj.suggestedTools
-            else merged
+            if (nextTools.isEmpty) proj.suggestedTools
+            else (proj.suggestedTools ++ nextTools).distinct
           proj.copy(recentToolInvocations = recent, suggestedTools = suggested)
         }
       case cr: CapabilityResults =>
@@ -5075,6 +5044,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
 
   /**
+   * Resolve the [[FileSystemContext]] a conversation's tools operate
+   * against — the seam the framework writes large tool output through.
+   * When a tool result overflows [[inlineContentThreshold]], the result
+   * is written to a file under this context's root
+   * (`.sigil/output/<convId>/<tool>-<callId>.txt`) and the agent recovers
+   * it with the filesystem tools it already has (`grep` / `read_file`),
+   * rather than navigating a bespoke reference handle. Because the write
+   * goes through the SAME context the agent's `grep`/`read_file` use, the
+   * file lands where those tools run — including the ProxyTool remote-fs
+   * case (the file is on the user's machine, where its grep runs).
+   *
+   * Default: wrap [[resolvedWorkspaceFor]] in a [[LocalFileSystemContext]]
+   * rooted at the workspace; `None` when no workspace is bound (the
+   * overflow path then falls back to inline truncate-and-tell). Apps that
+   * route filesystem work through a remote/proxied backend override this
+   * to return the matching context.
+   */
+  def fileSystemContextFor(conversationId: Id[Conversation]): Task[Option[FileSystemContext]] =
+    resolvedWorkspaceFor(conversationId).map(_.map(path => new LocalFileSystemContext(Some(path))))
+
+  /**
    * Open a staging conversation that buffers events for a
    * long-running import workflow. The staging conv is a regular
    * [[Conversation]] row with `stagingFor = Some(target)` —
@@ -5221,13 +5211,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
              db.topics.transaction { tx =>
                tx.query.filter(_.conversationId === conversationId).toList.flatMap { topics =>
                  Task.sequence(topics.map(t => tx.delete(t._id))).unit
-               }
-             }
-           }
-      _ <- withDB { db =>
-             db.toolOutputs.transaction { tx =>
-               tx.query.filter(_.conversationKey === conversationId.value).toList.flatMap { targets =>
-                 Task.sequence(targets.map(n => tx.delete(n._id))).unit
                }
              }
            }
@@ -7393,7 +7376,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // Aggregates after leaves + mixins.
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
-      _ = sigil.tool.PaginationValidator.validateAll(staticTools)
       _ = sigil.skill.Skill.register((staticSkills.map(s => RW.static(s)) ++ skillRegistrations).distinct*)
       _ = Signal.register((allEventRWs ++ allDeltaRWs ++ allNoticeRWs ++ signalRegistrations)*)
     } yield ()
@@ -7702,11 +7684,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def maintenanceTasks: List[sigil.maintenance.MaintenanceTask] =
     List(
       sigil.maintenance.StoredFileExpirationSweep(storedFileExpirationInterval),
-      sigil.maintenance.ConversationContainerCleanupTask(
-        interval  = conversationContainerCleanupInterval,
-        ageWindow = conversationContainerAgeWindow,
-        sizeLimit = conversationContainerSizeLimit
-      ),
       sigil.maintenance.OrphanStagingConversationSweep(orphanStagingSweepInterval, orphanStagingCutoff)
     )
 
@@ -7732,37 +7709,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * larger volumes override. */
   def storedFileExpirationInterval: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(1).hour
-
-  /** Cadence for [[sigil.maintenance.ConversationContainerCleanupTask]]
-    * — how often the framework walks conversations to age-out / size-
-    * cap their persisted [[sigil.tool.output.ToolOutputNode]] rows.
-    * Default: 1 hour. */
-  def conversationContainerCleanupInterval: scala.concurrent.duration.FiniteDuration =
-    scala.concurrent.duration.DurationInt(1).hour
-
-  /** Age window for time-based container eviction. `None` (the
-    * default) means **tool output never expires by time** — it's a
-    * durable, point-in-time observation of mutable external state (what
-    * the agent actually saw / acted on), not a regenerable cache, so it
-    * lives for the conversation's lifetime and is reclaimed only when the
-    * conversation is deleted. `Some(window)` re-enables age pruning:
-    * containers older than the conversation's most recent event by
-    * `window` get pruned (pinned rows skipped). The
-    * [[sigil.maintenance.ConversationContainerCleanupTask]] machinery
-    * stays wired either way, so apps can turn a bound back on (or layer
-    * archival on top) without re-plumbing. */
-  def conversationContainerAgeWindow: Option[scala.concurrent.duration.FiniteDuration] = None
-
-  /** Per-conversation hard cap on container row count — a runaway
-    * backstop, NOT a TTL. When a conversation's total `ToolOutputNode`
-    * row count exceeds this, the cleanup pass prunes oldest unpinned
-    * containers in FIFO order until it fits. Default 100,000 — high
-    * enough that normal use never trips it; it exists only so a
-    * pathological conversation can't grow the store without bound while
-    * time-based expiry is off. The principled long-term answer to
-    * volume is offloading cold output to cheaper storage (archival), not
-    * deletion; this cap is the interim guard. */
-  def conversationContainerSizeLimit: Int = 100000
 
   /**
    * One-shot sweep — deletes every memory with `expiresAt` set and
@@ -8123,46 +8069,6 @@ object Sigil {
       cacheReadRate    * BigDecimal(usage.cacheReadTokens) +
       cacheWriteRate   * BigDecimal(usage.cacheCreationTokens) +
       pricing.completion * BigDecimal(usage.completionTokens)
-  }
-
-  /** Sigil bug #202 / #336 — given a settled [[sigil.event.ToolInvoke.output]]
-    * payload shaped like a [[sigil.tool.output.JsonPagedResult]] with more
-    * than its first page (`hasMore` true, or a non-empty `nodeIds`),
-    * suggest the reference-operating tools so the agent's next move is to
-    * summarize / act on the set BY REFERENCE rather than page the whole
-    * thing into its context: `summarize_output` (cheap LLM overview of the
-    * full set) and `query_tool_output` (bounded, predicate inspection of
-    * specific entries). Positional page-walking is gone (the `next_page`
-    * cursor was retired) — walking pages funnels the whole result into
-    * context. Returns `Nil` for non-paginated results and single-page
-    * results with no children (nothing to navigate). */
-  private[sigil] def paginationNavigatorsFor(typed: Option[fabric.Json]): List[sigil.tool.ToolName] = {
-    import fabric.{Bool, Arr, Obj}
-    typed match {
-      case Some(o: Obj) =>
-        // Key-presence + shape check on the raw JSON — cheaper than
-        // a full RW decode, and tolerant of forward-compatible shape
-        // changes (extra fields don't break us). The combination of
-        // `callId`, `referenceId`, plus either `hasMore` or
-        // `nodeIds` is the JsonPagedResult fingerprint.
-        val v = o.value
-        val isPaged = v.contains("callId") && v.contains("referenceId")
-        if (!isPaged) Nil
-        else {
-          val hasMore = v.get("hasMore") match {
-            case Some(Bool(true, _)) => true
-            case _                   => false
-          }
-          val hasNodes = v.get("nodeIds") match {
-            case Some(Arr(items, _)) => items.nonEmpty
-            case _                   => false
-          }
-          if (hasMore || hasNodes)
-            List(sigil.tool.output.SummarizeOutputTool.name, sigil.tool.output.QueryToolOutputTool.name)
-          else Nil
-        }
-      case _ => Nil
-    }
   }
 
   /** Default extraction system prompt for [[Sigil.initializeMemories]].

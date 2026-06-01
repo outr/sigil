@@ -10,15 +10,14 @@ import sigil.event.{Event, Message, ToolOutcome}
 import sigil.signal.{EventState, ToolDelta}
 import sigil.tool.core.RespondTool
 import sigil.tool.model.{ResponseContent, RespondInput, SearchConversationInput}
-import sigil.tool.output.{QueryToolOutputInput, QueryToolOutputTool}
 import sigil.tool.util.SearchConversationTool
 
 /**
  * Regression for sigil #289 — the conversation-query tools
- * (`search_conversation`, `reload_content`, `query_tool_output`) accept
- * an optional `conversationId` and gate cross-conversation reads
- * via [[Sigil.canReadConversation]]. Allowed targets: own
- * conversation, parent, or a worker (direct child).
+ * (`search_conversation`, `reload_content`) accept an optional
+ * `conversationId` and gate cross-conversation reads via
+ * [[Sigil.canReadConversation]]. Allowed targets: own conversation,
+ * parent, or a worker (direct child).
  */
 class CrossConversationReadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)

@@ -15,7 +15,7 @@ import sigil.provider.{
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, RespondTool}
-import sigil.tool.model.{RespondFieldInput, RespondInput, ResponseContent}
+import sigil.tool.model.{RespondInput, ResponseContent}
 import spice.http.HttpRequest
 
 import java.util.concurrent.{ConcurrentLinkedQueue, atomic}
@@ -68,10 +68,11 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val events: List[ProviderEvent] =
         if (n == 1)
           List(
-            ProviderEvent.ToolCallStart(callId, "respond_field"),
+            ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.ToolCallComplete(
               callId,
-              RespondFieldInput(label = "Project Ready", value = "true")
+              RespondInput(topicLabel = "Project", topicSummary = "Project readiness",
+                content = "> [!Field]\n> Project Ready: true", endsTurn = true)
             ),
             ProviderEvent.Done(StopReason.Complete)
           )
@@ -143,15 +144,17 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           info(s"Iteration ${idx + 1}: ${call.messages.size} messages [$shape]")
         }
 
-        val iter2 = recorded(1)
-        withClue(s"Iteration 2's wire request had ${iter2.messages.size} messages.") {
-          // The minimum healthy shape after a respond_field + user reply:
-          //   - user msg 1 ("Set up project ready field")
-          //   - assistant tool call (respond_field) and tool result
-          //   - user msg 2 ("Can you give me an overview...")
-          // That's at least 3 messages. msgs == 1 (just the latest user
-          // message) would confirm bug #71. msgs >= 3 disproves it.
-          iter2.messages.size should be >= 3
+        // Bug #71: after a respond terminal + a fresh user reply, a later
+        // wire request must carry the accumulated prior-turn frames
+        // (user msg 1, the assistant respond + its tool result, user msg
+        // 2) — at least 3 messages. Under the bug EVERY call carried just
+        // the latest user message (size 1). We assert some post-reply
+        // request reached the healthy shape rather than pinning a call
+        // index, since `respond`'s topic resolution can interleave its own
+        // classifier calls (the pre-fold `respond_field` did not).
+        val maxShape = recorded.map(_.messages.size).max
+        withClue(s"Largest wire request carried $maxShape messages; per-call shapes: ${recorded.map(_.messages.size).mkString(",")}. ") {
+          maxShape should be >= 3
         }
       }
     }

@@ -57,8 +57,9 @@ case object DelegateTaskTool extends Tool {
     """Spawn a worker agent for long-running or specialized work. The worker runs as a real agent in
       |its own sub-conversation linked to this one; you stay in that sub-conversation as its supervisor
       |(its "user") — you task it, answer its questions, and decide what to surface back here. Requires
-      |`role` (worker's identity + workType) and `brief` (the directive). `modelId` is optional (omit to
-      |let the framework route by `role.workType`). `toolNames` is the worker's work roster (on top of
+      |`role` (a short role name like "researcher") and `brief` (the directive). `roleDescription`
+      |optionally overrides the worker's identity. `modelId` is optional (omit to let the framework
+      |route, falling back to your own model). `toolNames` is the worker's work roster (on top of
       |the framework reply + capability-discovery essentials it always has). Returns the worker's id +
       |sub-conversation id.
       |Use for "research X", "build Y", "analyze Z" — anything you'd rather hand off than answer inline.""".stripMargin
@@ -66,11 +67,8 @@ case object DelegateTaskTool extends Tool {
     ToolExample(
       "Delegate a research task",
       DelegateTaskInput(
-        role = sigil.role.Role(
-          name = "researcher",
-          description = "You are a research agent. Find relevant sources, synthesize, and report.",
-          workType = sigil.provider.AnalysisWork
-        ),
+        role = "researcher",
+        roleDescription = Some("You are a research agent. Find relevant sources, synthesize, and report."),
         brief = "Find recent papers on retrieval-augmented generation in 2026.",
         goal = Some("identify candidate sources for a literature review")
       )
@@ -104,21 +102,24 @@ case object DelegateTaskTool extends Tool {
                           supervisor: AgentParticipant): Task[ToolResult[DelegateTaskOutput]] = {
     val host         = ctx.sigil
     val parentConvId = ctx.conversation.id
-    val workerLabel  = s"Worker: ${input.role.name}"
+    // Build the worker's Role from the flat input (sigil #346) — the
+    // brief doubles as the identity statement when no override is given.
+    val role         = sigil.role.Role(name = input.role, description = input.roleDescription.getOrElse(input.brief))
+    val workerLabel  = s"Worker: ${role.name}"
 
     val resolvedModelTask: Task[LId[Model]] = input.modelId match {
       case Some(explicit) =>
         Task.pure(host.cache.findTolerant(LId[Model](explicit.toLowerCase)).map(_._id).getOrElse(LId[Model](explicit)))
       case None =>
         host.routedModelFor(
-          workType   = input.role.workType,
+          workType   = role.workType,
           chain      = ctx.chain,
           fallback   = ctx.modelId,
           complexity = input.complexity
         )
     }
 
-    val workerId   = WorkerParticipantId(s"${input.role.name}-${rapid.Unique()}")
+    val workerId   = WorkerParticipantId(s"${role.name}-${rapid.Unique()}")
     val workerTools = input.toolNames.map(ToolName(_))
     val brief       = composeBrief(input)
 
@@ -129,8 +130,8 @@ case object DelegateTaskTool extends Tool {
         modelId   = resolvedModel,
         toolNames = workerTools,
         tools     = ToolPolicy.Standard,
-        workType  = input.role.workType,
-        roles     = List(input.role)
+        workType  = role.workType,
+        roles     = List(role)
       )
       // The sub-conversation: supervisor (the delegating agent) + worker,
       // linked to the parent so the worker inherits its workspace (#325)
@@ -152,7 +153,7 @@ case object DelegateTaskTool extends Tool {
         conversationId = workerConv._id,
         participantId  = ctx.caller,
         source         = SkillSource.Supervisor,
-        slot           = WorkerSupervisorSkill.slot(brief, parentConvId, input.role.name)
+        slot           = WorkerSupervisorSkill.slot(brief, parentConvId, role.name)
       )
       // Post the brief addressed to the worker → fires its first turn.
       // From the supervisor's own id, so it doesn't wake the supervisor.
@@ -168,7 +169,7 @@ case object DelegateTaskTool extends Tool {
     } yield ToolResult.Success(DelegateTaskOutput(
       taskId       = workerId.value,
       workerConvId = workerConv._id.value,
-      role         = input.role.name
+      role         = role.name
     ))
   }
 

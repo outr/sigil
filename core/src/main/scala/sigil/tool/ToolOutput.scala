@@ -105,9 +105,6 @@ object ToolOutput extends PolyType[ToolOutput]()(using scala.reflect.ClassTag(cl
     summon[RW[sigil.tool.model.WebSearchOutput]],
     summon[RW[sigil.tool.model.WriteFileOutput]],
 
-    // output/
-    summon[RW[sigil.tool.output.JsonPagedResult]],
-
     // provider/
     summon[RW[sigil.tool.provider.CurrentModelOutput]],
     summon[RW[sigil.tool.provider.ListModelsOutput]]

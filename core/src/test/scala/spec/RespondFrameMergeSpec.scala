@@ -84,8 +84,8 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
       val replyText = "I cannot complete this task."
       val frames = Vector[ContextFrame](
         ContextFrame.ToolCall(
-          toolName      = _root_.sigil.tool.core.RespondFailureTool.schema.name,
-          argsJson      = s"""{"reason":"$replyText","recoverable":false}""",
+          toolName      = _root_.sigil.tool.core.RespondTool.schema.name,
+          argsJson      = s"""{"content":"$replyText","disposition":"failure"}""",
           callId        = callId,
           participantId = agent,
           sourceEventId = Id[Event]("toolinvoke-respond-failure-1"),
@@ -105,7 +105,7 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
       val assistants = rendered.collect { case a: ProviderMessage.Assistant => a }
       assistants should have size 1
       assistants.head.content shouldBe replyText
-      assistants.head.toolCalls.head.name shouldBe _root_.sigil.tool.core.RespondFailureTool.schema.name.value
+      assistants.head.toolCalls.head.name shouldBe _root_.sigil.tool.core.RespondTool.schema.name.value
     }
 
     "still produce two separate assistant entries when the agent's Text frame is unrelated to the tool call" in {

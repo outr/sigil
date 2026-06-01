@@ -17,11 +17,11 @@ import sigil.information.{Information, InformationSummary}
  * **Tool results are out of scope.** Per the tool contract, what
  * `executeResult` emits is what the agent sees on its next iteration
  * — the framework must not silently substitute a placeholder for
- * arbitrary tool output. Tools whose output exceeds
- * a single-shot consumable size must declare
- * [[sigil.tool.Tool.paginate]] = `true` and expose pagination
- * inputs in their schema; tools that don't paginate must self-limit
- * their output. There is no "framework-summarised" middle ground.
+ * arbitrary tool output. Tools whose output exceeds a single-shot
+ * consumable size self-limit (bounded output modes, `headLimit`) and
+ * rely on the framework's file-backed overflow path to spill the rest
+ * to a file the agent reads with `grep` / `read_file`. There is no
+ * "framework-summarised" middle ground.
  *
  * Apps must override [[sigil.Sigil.putInformation]] to a functional
  * implementation — without it, the catalog references won't resolve

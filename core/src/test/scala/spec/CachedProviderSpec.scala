@@ -238,7 +238,6 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     override def executeResult(input: ToolInput,
                                context: ToolContext): Task[sigil.tool.ToolResult[sigil.tool.TextToolOutput]] =
       Task.pure(sigil.tool.ToolResult.Success(sigil.tool.TextToolOutput("")))
-    override def paginate: Boolean = delegate.paginate
     override def inputDefinition: fabric.define.Definition = delegate.inputDefinition
   }
 }

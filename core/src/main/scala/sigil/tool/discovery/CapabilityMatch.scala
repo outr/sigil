@@ -17,12 +17,6 @@ import fabric.rw.*
  *     name); `RequiresSetup(hint)` for modes (the hint carries the
  *     `change_mode("…")` invocation needed to unlock the matching
  *     tool roster).
- *   - `paginate` — `Some(true)` when the matched tool emits a paged
- *     `JsonPagedResult` (the agent must walk pages with `query_tool_output`
- *     to consume the full output); `Some(false)` for single-shot
- *     tools whose result lands on the settled `ToolInvoke`.
- *     `None` for non-tool capability kinds (modes, skills, memories)
- *     where pagination is not a meaningful concept.
  *
  * Mirrors Scalagentic's `CapabilityMatch` shape (the framework's
  * predecessor) and leaves room to grow categories (`McpServer`,
@@ -32,5 +26,4 @@ case class CapabilityMatch(name: String,
                            description: String,
                            capabilityType: CapabilityType,
                            score: Double,
-                           status: CapabilityStatus,
-                           paginate: Option[Boolean] = None) derives RW
+                           status: CapabilityStatus) derives RW

@@ -35,7 +35,7 @@ object MarkdownContentParser {
   /** `> [!Type ...]` or bare `[!Type ...]` directive on the first line
     * of a blockquote body. Captures the type name + any inline
     * attributes (`icon="..."`, `multi`, `(recoverable)`). */
-  private val AlertDirective = """^\s*\[!([A-Za-z][A-Za-z0-9_-]*)\s*(.*?)\]\s*$""".r
+  private val AlertDirective = """^\s*\[!([A-Za-z][A-Za-z0-9_-]*)\s*([^\]]*)\]\s*(.*)$""".r
 
   def parse(markdown: String): Vector[ResponseContent] = {
     if (markdown.trim.isEmpty) return Vector.empty
@@ -54,9 +54,9 @@ object MarkdownContentParser {
         case h: Heading =>
           items += Block(ResponseContent.Heading(textOf(h)))
         case bq: BlockQuote =>
-          parseAlert(bq) match {
-            case Some(block) => items += Block(block)
-            case None        => blockFor(bq).foreach(b => items += Block(b))
+          parseAlerts(bq) match {
+            case Nil    => blockFor(bq).foreach(b => items += Block(b))
+            case blocks => blocks.foreach(b => items += Block(b))
           }
         case _ =>
           blockFor(node).foreach(b => items += Block(b))
@@ -90,26 +90,38 @@ object MarkdownContentParser {
     out.result()
   }
 
-  /** Recognise `> [!Type attrs...]\n> body...` GitHub alert callouts.
-    * Returns Some[ResponseContent] when the directive maps to a known
-    * structured block. Returns None for either non-alert blockquotes
-    * or alerts whose type isn't one we extract — those fall through
-    * to the generic markdown blockquote path. */
-  private def parseAlert(bq: BlockQuote): Option[ResponseContent] = {
+  /** Recognise GitHub-style `[!Type attrs...]` callouts in a blockquote
+    * and extract every structured block they map to. Returns `Nil` for a
+    * non-alert blockquote (first line isn't a directive) so the caller
+    * falls through to the generic markdown blockquote path.
+    *
+    * Handles the forms small models actually emit (validated against
+    * localhost:8081): the two-line `[!Field icon="…"]` + `Label: Value`,
+    * the inline `[!Field icon="…"] Label: Value` (label/value trailing on
+    * the directive line), AND several field callouts packed into one
+    * consecutive blockquote — each `[!…]` line starts a new segment. */
+  private def parseAlerts(bq: BlockQuote): List[ResponseContent] = {
     val rendered = renderMarkdown(bq).stripPrefix("> ")
-    val lines = rendered.split("\n").toList.map(_.stripPrefix("> "))
-    if (lines.isEmpty) return None
-    val directiveLine = lines.head.trim
-    AlertDirective.findFirstMatchIn(directiveLine) match {
-      case Some(m) =>
-        val typ   = m.group(1)
-        val attrs = parseAttrs(m.group(2))
-        val body  = lines.tail.map(_.replaceFirst("^>\\s*", "")).filter(_.nonEmpty)
-        typ.toLowerCase match {
-          case "field" => parseFieldBody(body, attrs)
-          case _       => None  // unknown alert type — let caller fall through
-        }
-      case None => None
+    val lines = rendered.split("\n").toList.map(_.replaceFirst("^>\\s*", ""))
+    if (lines.isEmpty || AlertDirective.findFirstMatchIn(lines.head.trim).isEmpty) return Nil
+    final case class Seg(typ: String, attrs: Map[String, String], body: scala.collection.mutable.ListBuffer[String])
+    val segs = scala.collection.mutable.ListBuffer.empty[Seg]
+    lines.foreach { raw =>
+      AlertDirective.findFirstMatchIn(raw.trim) match {
+        case Some(m) =>
+          val seg = Seg(m.group(1), parseAttrs(m.group(2)), scala.collection.mutable.ListBuffer.empty)
+          val trailing = m.group(3).trim
+          if (trailing.nonEmpty) seg.body += trailing
+          segs += seg
+        case None =>
+          if (raw.trim.nonEmpty) segs.lastOption.foreach(_.body += raw.trim)
+      }
+    }
+    segs.toList.flatMap { s =>
+      s.typ.toLowerCase match {
+        case "field" => parseFieldBody(s.body.toList, s.attrs)
+        case _       => None  // unknown alert type — drop the segment
+      }
     }
   }
 

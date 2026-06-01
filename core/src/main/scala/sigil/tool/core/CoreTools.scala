@@ -11,7 +11,7 @@ import sigil.tool.context.{
 }
 import sigil.tool.model.{
   CancelInput, ChangeModeInput, NoResponseInput, RecordConsentInput, RespondCardInput, RespondCardsInput,
-  RespondFailureInput, RespondFieldInput, RespondInput, RespondOptionsInput
+  RespondInput, RespondOptionsInput
 }
 import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
 
@@ -109,8 +109,6 @@ object CoreTools {
       summon[RW[RespondCardInput]],
       summon[RW[RespondCardsInput]],
       summon[RW[RespondOptionsInput]],
-      summon[RW[RespondFieldInput]],
-      summon[RW[RespondFailureInput]],
       summon[RW[ChangeModeInput]],
       summon[RW[NoResponseInput]],
       summon[RW[RecordConsentInput]],
@@ -122,9 +120,7 @@ object CoreTools {
       summon[RW[UnpinMemoryInput]],
       summon[RW[MoveMemoryInput]],
       summon[RW[ContextBreakdownInput]],
-      summon[RW[sigil.tool.output.ReloadContentInput]],
-      summon[RW[sigil.tool.output.QueryToolOutputInput]],
-      summon[RW[sigil.tool.output.SummarizeOutputInput]],
+      summon[RW[sigil.tool.context.ReloadContentInput]],
       summon[RW[sigil.tool.core.CancelFrameworkWorkflowInput]],
       summon[RW[RequestEscalationInput]],
       summon[RW[sigil.tool.model.RelayMessageInput]],
@@ -169,8 +165,6 @@ object CoreTools {
   val atomicContentToolNames: Set[sigil.tool.ToolName] = Set(
     RespondTool.schema.name,
     RespondOptionsTool.schema.name,
-    RespondFieldTool.schema.name,
-    RespondFailureTool.schema.name,
     RespondCardTool.schema.name,
     RespondCardsTool.schema.name,
     NoResponseTool.schema.name

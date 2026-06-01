@@ -149,8 +149,6 @@ object TestSigil extends Sigil {
       // by-name dispatch path (e.g. PostRespondContextSpec) still
       // resolve them through `findTools`.
       sigil.tool.core.RespondOptionsTool,
-      sigil.tool.core.RespondFieldTool,
-      sigil.tool.core.RespondFailureTool,
       sigil.tool.core.NoResponseTool,
       SendSlackMessageTool,
       sigil.tool.util.SleepTool,

@@ -10,10 +10,9 @@ import sigil.event.{Event, ToolInvoke, ToolOutcome}
 import sigil.provider.ConversationMode
 import sigil.signal.EventState
 import sigil.tool.ToolName
-import sigil.tool.output.{JsonPagedResult, PaginatedTool}
 
 /**
- * Coverage for bugs #203–#206:
+ * Coverage for bugs #203–#205:
  *   - #203 — mode descriptions / STEP A / ChangeModeTool now spell
  *     out symmetric "Enter when…" / "Don't enter for…" / "Exit when…"
  *     framing so the agent has consistent guidance for both entering
@@ -24,9 +23,6 @@ import sigil.tool.output.{JsonPagedResult, PaginatedTool}
  *   - #205 — `TurnContext.routedModelId` is populated by
  *     `Sigil.buildContext`, and the curator's budget gate uses the
  *     routed model rather than the agent's nominal `modelId`.
- *   - #206 — pagination navigators MERGE with the existing
- *     `suggestedTools` overlay (preserving find_capability promotions)
- *     rather than replacing it wholesale.
  */
 class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -135,45 +131,6 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
         model        = TestSigil.defaultTestModel
       )
       ctx.modelId shouldBe TestSigil.defaultTestModel._id
-    }
-  }
-
-  // ---- #206 ----
-
-  "Bug #206: pagination navigator promotion preserves prior overlay" should {
-
-    "MERGE next_page / query_tool_output with existing suggestedTools instead of replacing them" in {
-      val convId = freshConvId()
-      // Pre-seed the projection with a find_capability-style suggestion.
-      val preSeed = TestSigil.withDB(_.participantProjections.transaction { tx =>
-        tx.upsert(sigil.conversation.ParticipantProjection.empty(TestAgent, convId)
-          .copy(suggestedTools = List(ToolName("edit_file"), ToolName("read_file"))))
-      }).unit
-
-      val pagedOutput = JsonPagedResult(
-        items       = Nil,
-        hasMore     = true,
-        page        = 0,
-        pageSize    = 50,
-        referenceId = "ref",
-        callId      = Id[Event]("call")
-      )
-
-      for {
-        _      <- setup(convId)
-        _      <- preSeed
-        _      <- publishToolResults(convId, "grep", typed = Some(pagedOutput))
-        proj   <- TestSigil.projectionFor(TestAgent, convId)
-      } yield {
-        val names = proj.suggestedTools.map(_.value)
-        // Pre-seeded tools preserved.
-        names should contain("edit_file")
-        names should contain("read_file")
-        // Reference-operating navigators merged in (#336 — summarize,
-        // not the positional cursor).
-        names should contain("summarize_output")
-        names should contain("query_tool_output")
-      }
     }
   }
 

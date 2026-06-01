@@ -1,16 +1,9 @@
 package sigil.tooling
 
-import fabric.rw.RW
 import rapid.Task
 import sigil.Sigil
 import sigil.db.SigilDB
-import sigil.event.Event
 import sigil.tool.Tool
-import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
-import sigil.tooling.container.{
-  CreateContainerTool, FilterContainerTool, LoadFileAsContainerTool, PinContainerTool, UnpinContainerTool
-}
-import sigil.tooling.dispatch.{DispatchCompleted, DispatchStarted, DispatchWorkersTool}
 
 import scala.concurrent.duration.*
 
@@ -51,19 +44,13 @@ trait ToolingSigil extends Sigil {
   final lazy val bspManager: BspManager =
     new BspManager(this.asInstanceOf[Sigil { type DB <: SigilDB & ToolingCollections }])
 
-  /** Filesystem context for tools the mixin wires that touch disk
-    * (currently `dispatch_workers`'s `FromFile` adapter). Defaults to
-    * a sandbox-less local filesystem; apps with a workspace root
-    * override to scope the agent's reach. */
-  def fileSystemContext: FileSystemContext = new LocalFileSystemContext(basePath = None)
-
   override def staticTools: List[Tool] = {
     val base = super.staticTools
     if (toolingToolsEnabled) base ++ toolingTools else base
   }
 
   protected def toolingTools: List[Tool] =
-    lspTools ++ bspTools ++ dispatchTools ++ containerTools
+    lspTools ++ bspTools
 
   /** Every LSP-side tool the framework ships. Apps that want a
     * subset override this and pick. */
@@ -117,28 +104,6 @@ trait ToolingSigil extends Sigil {
     new BspScalaMainClassesTool(bspManager)
   )
 
-  /** Every dispatch-shaped tool the framework ships. The generic
-    * [[DispatchWorkersTool]] runs an adhoc Scala `action` script in
-    * parallel over a container of items — compiled once, then fanned
-    * out to N workers — composing with any paginated tool's output
-    * via the container abstraction. */
-  protected def dispatchTools: List[Tool] = List(
-    new DispatchWorkersTool()
-  )
-
-  /** Container producer / lifecycle tools — `create_container`,
-    * `load_file_as_container`, `filter_container`, `pin_container`,
-    * `unpin_container`. These materialise / narrow / preserve the
-    * [[sigil.tool.output.ToolOutputNode]] containers `dispatch_workers`
-    * (and any future container-shaped consumer) takes as input. */
-  protected def containerTools: List[Tool] = List(
-    CreateContainerTool,
-    new LoadFileAsContainerTool(fileSystemContext),
-    FilterContainerTool,
-    PinContainerTool,
-    UnpinContainerTool
-  )
-
   /** Periodic idle sweep — runs forever on a daemon fiber. */
   private def sweepLoop(): Task[Unit] = Task.defer {
     Task.sleep(toolingIdleSweepInterval)
@@ -151,14 +116,6 @@ trait ToolingSigil extends Sigil {
     sweepLoop().startUnit()
     ()
   }
-
-  /** Auto-register the dispatch lifecycle Events so fabric's
-    * polymorphic `Signal` round-trips them on the wire. Apps that
-    * override `eventRegistrations` should chain through `super`. */
-  override protected def eventRegistrations: List[RW[? <: Event]] =
-    summon[RW[DispatchStarted]] ::
-      summon[RW[DispatchCompleted]] ::
-      super.eventRegistrations
 
   startToolingIdleSweep().sync()
 }
