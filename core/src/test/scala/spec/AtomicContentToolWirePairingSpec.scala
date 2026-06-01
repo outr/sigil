@@ -77,11 +77,10 @@ class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
       pairedOutputs.head.content shouldBe """{"text":""}"""
     }
 
-    "list all 7 atomic content tools" in {
-      CoreTools.atomicContentToolNames should have size 7
+    "list the atomic content tools (respond_field/respond_failure folded into respond, #346)" in {
+      CoreTools.atomicContentToolNames should have size 5
       CoreTools.atomicContentToolNames.map(_.value) shouldBe Set(
-        "respond", "respond_options", "respond_field",
-        "respond_failure", "respond_card", "respond_cards", "no_response"
+        "respond", "respond_options", "respond_card", "respond_cards", "no_response"
       )
     }
   }

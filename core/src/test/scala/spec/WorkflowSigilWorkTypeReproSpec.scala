@@ -6,15 +6,15 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.WorkType
 import sigil.signal.Signal
-import sigil.tool.model.DelegateTaskInput
 
 /** Reproducer for sigil bug #18 — Sage (WorkflowSigil mixin) reports an
   * empty WorkType Dart class. Any type carrying a `Role` (which has a
   * `workType: WorkType` field) caches an empty WorkType polytype state in
   * its lazy-val Definition if its RW.def is forced before
-  * `polymorphicRegistrations.sync()`. `DelegateTaskInput.role` is the
-  * canonical Role-carrying type after the #327 worker-delegation rework;
-  * after registration its WorkType subtypes must be populated. */
+  * `polymorphicRegistrations.sync()`. `DefaultAgentParticipant.roles` is
+  * the canonical Role-carrying type; after registration its WorkType
+  * subtypes must be populated. (Post-#346 `DelegateTaskInput.role` is a
+  * flat String and no longer carries a Role.) */
 class WorkflowSigilWorkTypeReproSpec extends AnyWordSpec with Matchers {
 
   "WorkflowSigil-mixed Sigil after polymorphicRegistrations" should {
@@ -26,32 +26,8 @@ class WorkflowSigilWorkTypeReproSpec extends AnyWordSpec with Matchers {
       // polymorphicRegistrations.sync() must leave Role's WorkType
       // field populated.
       TestWorkflowSigil.polymorphicRegistrations.sync()
-      val agentStepDefn = summon[RW[DelegateTaskInput]].definition
 
-      val roleField = agentStepDefn.defType match {
-        case obj: DefType.Obj => obj.map.get("role").getOrElse(fail("no role field"))
-        case other            => fail(s"expected Obj, got $other")
-      }
-      val roleDefn = roleField.defType match {
-        case DefType.Opt(inner) => inner
-        case _                  => roleField
-      }
-      val workTypeField = roleDefn.defType match {
-        case obj: DefType.Obj => obj.map.get("workType").getOrElse(fail("Role has no workType"))
-        case other            => fail(s"Role expected Obj, got $other")
-      }
-      val workTypeInner = workTypeField.defType match {
-        case DefType.Opt(inner) => inner
-        case _                  => workTypeField
-      }
-      workTypeInner.defType match {
-        case p: DefType.Poly =>
-          p.values.keys should contain("ConversationWork")
-          p.values.keys should contain("CodingWork")
-        case other => fail(s"workType expected Poly, got $other")
-      }
-
-      // Now check DefaultAgentParticipant's workType field (computed
+      // Check DefaultAgentParticipant's workType field (computed
       // AFTER polymorphicRegistrations.sync()).
       val participantDefn = summon[RW[sigil.participant.DefaultAgentParticipant]].definition
       val pWorkType = participantDefn.defType match {

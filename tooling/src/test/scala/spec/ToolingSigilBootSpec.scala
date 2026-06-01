@@ -68,9 +68,9 @@ class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         _ <- s.shutdown
       } yield {
         toolNames should contain("lsp_rename_symbol")
-        toolNames should contain("dispatch_workers")
-        // The three-tool refactor session was replaced by
-        // dispatch_workers — they must NOT appear.
+        // The container/dispatch subsystem (dispatch_workers + the old
+        // refactor session) was removed with the bulk-output ladder (#346).
+        toolNames should not contain "dispatch_workers"
         toolNames should not contain "refactor_with_instruction"
         toolNames should not contain "refactor_apply"
         toolNames should not contain "refactor_cancel"
