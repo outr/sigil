@@ -64,6 +64,10 @@ case class CloudflareProvider(apiToken: String,
     // don't expect DeepInfra's bug #165 tool-call regression on `Off`
     // here — but live coverage will verify.
     reasoningPolicy   = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
+    // Kimi-K2.6 on Cloudflare rejects `reasoning_effort:"none"` (AiError →
+    // empty completion); disable thinking via the vLLM `enable_thinking`
+    // toggle instead. Verified live. On/Auto still use reasoning_effort.
+    reasoningOffUsesThinkingToggle = true,
     multimodalPolicy  = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
     // Defensive: Kimi can still degenerate even under more capable
     // hosting. Throwing on the empty-budget burn pattern lets a
