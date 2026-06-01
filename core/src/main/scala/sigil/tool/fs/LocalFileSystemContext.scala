@@ -107,10 +107,13 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
     val regex       = Pattern.compile(pattern)
     val globMatcher = glob.map(g => FileSystems.getDefault.getPathMatcher(s"glob:$g"))
     val results     = scala.collection.mutable.ListBuffer.empty[GrepMatch]
+    // #340 — when not including ignored paths, honor the workspace
+    // .gitignore's directory patterns on top of the built-in baseline.
+    val giSegments  = if (includeIgnored) Set.empty[String] else gitignoreExcludedSegments(base)
     val stream      = Files.walk(base)
     try {
       stream.iterator().asScala
-        .filter(p => includeIgnored || !isInExcludedDir(base, p))
+        .filter(p => includeIgnored || !isInExcludedDir(base, p, giSegments))
         .filter(Files.isRegularFile(_))
         .filter(p => globMatcher.forall(m => m.matches(p.getFileName) || m.matches(base.relativize(p))))
         .takeWhile(_ => results.size < maxMatches)
@@ -241,8 +244,41 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
     * Callers pass [[searchFiles]]'s `includeIgnored = true` (set
     * via [[sigil.tool.model.GrepInput.includeIgnored]] at the tool
     * layer) to bypass this filter and walk every reachable file. */
-  private def isInExcludedDir(base: Path, path: Path): Boolean =
-    scala.util.Try(base.relativize(path)).toOption.exists(GrepTool.isExcluded)
+  /** True when `path` sits under a noise directory — the built-in
+    * [[GrepTool.DefaultExcludedSegments]] baseline OR a directory the
+    * workspace's own `.gitignore` lists (`extraExcluded`, #340). A
+    * relativize failure (path outside `base`) fails *closed* — excluded —
+    * so an un-relativizable path never leaks into results. */
+  private def isInExcludedDir(base: Path, path: Path, extraExcluded: Set[String]): Boolean =
+    scala.util.Try(base.relativize(path)).toOption match {
+      case None      => true
+      case Some(rel) =>
+        GrepTool.isExcluded(rel) ||
+          (extraExcluded.nonEmpty && rel.iterator().asScala.exists(seg => extraExcluded.contains(seg.toString)))
+    }
+
+  /** Directory-name patterns from the workspace `.gitignore` (#340) — so
+    * `includeIgnored = false` honors project-specific ignored dirs
+    * (`target/`, `dist/`, a custom `generated/`, …) beyond the built-in
+    * baseline. Scope is deliberately simple: bare directory tokens
+    * (`target`, `target/`, `/target`); lines with globs, embedded
+    * slashes, or `!` negations are skipped (full gitignore glob/anchor
+    * semantics are out of scope — the baseline + simple dir names cover
+    * the build-output flooding this addresses). */
+  private def gitignoreExcludedSegments(base: Path): Set[String] = {
+    val gi = base.resolve(".gitignore")
+    if (!Files.exists(gi)) Set.empty
+    else scala.util.Try {
+      Files.readAllLines(gi).asScala.iterator
+        .map(_.trim)
+        .filter(l => l.nonEmpty && !l.startsWith("#") && !l.startsWith("!"))
+        .flatMap { l =>
+          val s = l.stripPrefix("/").stripSuffix("/")
+          if (s.nonEmpty && !s.contains("/") && !s.contains("*") && !s.contains("?")) Some(s) else None
+        }
+        .toSet
+    }.getOrElse(Set.empty)
+  }
 
   /** Read a file's lines via a UTF-8 decoder configured to REPLACE
     * malformed sequences with U+FFFD instead of throwing. Survives

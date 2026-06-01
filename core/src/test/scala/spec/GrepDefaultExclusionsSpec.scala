@@ -131,6 +131,25 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         )
       }
     }
+
+    "honor the workspace .gitignore — skip a project-specific ignored dir not in the built-in set (#340)" in withTempDir { root =>
+      writeFile(root.resolve(".gitignore"), "generated/\n# a comment\nbuild/\n")
+      writeFile(root.resolve("src/main/scala/Baz.scala"), "object Baz { /* TODO */ }")
+      // `generated/` is gitignored but NOT in DefaultExcludedSegments.
+      writeFile(root.resolve("generated/Stub.scala"), "object Stub { /* TODO generated */ }")
+      runGrep(root, includeIgnored = false).map { files =>
+        files shouldBe List("src/main/scala/Baz.scala")
+      }
+    }
+
+    "return the gitignored-dir matches when includeIgnored = true (#340)" in withTempDir { root =>
+      writeFile(root.resolve(".gitignore"), "generated/\n")
+      writeFile(root.resolve("src/main/scala/Baz.scala"), "object Baz { /* TODO */ }")
+      writeFile(root.resolve("generated/Stub.scala"), "object Stub { /* TODO generated */ }")
+      runGrep(root, includeIgnored = true).map { files =>
+        files.toSet shouldBe Set("src/main/scala/Baz.scala", "generated/Stub.scala")
+      }
+    }
   }
 
   "tear down" should {
