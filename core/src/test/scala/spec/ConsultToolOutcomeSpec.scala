@@ -133,8 +133,9 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       }
     }
 
-    "return NoOpinion on a clean stream with no matching tool_call" in {
+    "return NoOpinion when the model produced text but no matching tool_call" in {
       val provider = new ScriptedProvider(List(
+        ProviderEvent.TextDelta("I don't have a strong view here."),
         ProviderEvent.Done(StopReason.Complete)
       ))
       withProvider(provider) {
@@ -148,6 +149,30 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         ).map {
           case ConsultOutcome.NoOpinion => succeed
           case other                    => fail(s"expected NoOpinion, got $other")
+        }
+      }
+    }
+
+    "return Failed (not NoOpinion) when the provider returns an EMPTY completion for a forced tool call (#342)" in {
+      // The Cloudflare/Kimi `tool_choice:"required"` no-op: finish_reason
+      // stop, 0 completion tokens, no content, no tool call. Must be a
+      // distinct Failed so the caller can fall back / retry elsewhere
+      // rather than silently absorb it as a no-opinion.
+      val provider = new ScriptedProvider(List(
+        ProviderEvent.Usage(TokenUsage(promptTokens = 1059, completionTokens = 0, totalTokens = 1059)),
+        ProviderEvent.Done(StopReason.Complete)
+      ))
+      withProvider(provider) {
+        ConsultTool.invokeRich[ProbeInput](
+          sigil        = TestSigil,
+          modelId      = modelId,
+          chain        = List(TestUser),
+          systemPrompt = "sys",
+          userPrompt   = "ask",
+          tool         = ProbeTool
+        ).map {
+          case f: ConsultOutcome.Failed => f.cause.getMessage should include("empty completion")
+          case other                    => fail(s"expected Failed, got $other")
         }
       }
     }

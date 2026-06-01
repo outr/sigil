@@ -172,8 +172,27 @@ case object ConsultTool extends Tool {
           case None =>
             val usage = events.collectFirst { case ProviderEvent.Usage(u) => u }
             val stop  = events.collectFirst { case ProviderEvent.Done(reason) => reason }
+            // Sigil #342 — distinguish "the provider returned NOTHING for a
+            // single-tool consult" (no content, no tool call — often 0
+            // completion tokens, e.g. Cloudflare/Kimi treating
+            // `tool_choice:"required"` as a no-op) from a genuine
+            // no-opinion (the model produced text but didn't call the
+            // tool). The former is a provider failure the caller can fall
+            // back on or retry elsewhere — not something to absorb silently.
+            val producedSomething = events.exists {
+              case _: ProviderEvent.TextDelta         => true
+              case _: ProviderEvent.ContentBlockDelta => true
+              case _: ProviderEvent.ToolCallStart     => true
+              case _: ProviderEvent.ToolCallComplete  => true
+              case _                                  => false
+            }
             stop match {
               case Some(StopReason.MaxTokens) => ConsultOutcome.truncated(usage)
+              case _ if !producedSomething    =>
+                ConsultOutcome.Failed(new RuntimeException(
+                  "provider returned an empty completion for a single-tool consult (no content, no tool call" +
+                    usage.map(u => s", ${u.completionTokens} completion tokens").getOrElse("") +
+                    ") — the forced tool call was not honored"))
               case _                          => ConsultOutcome.NoOpinion
             }
         }
