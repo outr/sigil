@@ -15,7 +15,7 @@ import sigil.tool.core.{FindCapabilityTool, NoResponseTool, RespondTool}
 import sigil.tool.model.RespondInput
 
 /**
- * Live reliability characterization for Kimi-K2.5 hosted on Cloudflare
+ * Live reliability characterization for Kimi-K2.6 hosted on Cloudflare
  * Workers AI. Mirrors [[DigitalOceanKimiLiveSpec]] scenario-for-scenario
  * so the two sets of results are directly comparable.
  *
@@ -28,7 +28,7 @@ import sigil.tool.model.RespondInput
  * documents native support for `reasoning_effort`, `tool_choice:
  * required`, and `response_format` — no provider-specific workarounds
  * required in [[CloudflareProvider]]. This spec verifies that promise
- * holds against the live Kimi-K2.5 deployment.
+ * holds against the live Kimi-K2.6 deployment.
  */
 class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -41,7 +41,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   private lazy val provider: CloudflareProvider =
     CloudflareProvider(apiTokenOpt.get, accountIdOpt.get, TestSigil)
 
-  private val modelId: Id[Model] = Model.id("cloudflare", "@cf/moonshotai/kimi-k2.5")
+  private val modelId: Id[Model] = Model.id("cloudflare", "@cf/moonshotai/kimi-k2.6")
 
   // Sigil-test convention: live-API specs override `run` and route
   // through their provider's `runGated` so a missing SIGIL_LIVE
@@ -62,7 +62,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   private def skipUnlessLive(): Unit =
     if (apiTokenOpt.isEmpty || accountIdOpt.isEmpty)
       cancel(
-        "CLOUDFLARE_AUTH_TOKEN / CLOUDFLARE_ACCOUNT_ID not set — skipping live Cloudflare Kimi-K2.5 spec"
+        "CLOUDFLARE_AUTH_TOKEN / CLOUDFLARE_ACCOUNT_ID not set — skipping live Cloudflare Kimi-K2.6 spec"
       )
 
   /** Build a minimal single-turn ProviderCall — one user message,
@@ -140,7 +140,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     }
   }
 
-  "Cloudflare Kimi-K2.5 live reliability" should {
+  "Cloudflare Kimi-K2.6 live reliability" should {
 
     "complete a respond tool call with ReasoningMode.Auto" in {
       skipUnlessLive()
