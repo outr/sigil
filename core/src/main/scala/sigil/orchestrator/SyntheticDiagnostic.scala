@@ -2,7 +2,7 @@ package sigil.orchestrator
 
 import lightdb.id.Id
 import sigil.conversation.{Conversation, Topic}
-import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, ToolInvoke}
+import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, ToolInvoke, ToolOutcome}
 import sigil.participant.ParticipantId
 import sigil.signal.{EventState, Signal}
 import sigil.tool.ToolName
@@ -57,7 +57,21 @@ object SyntheticDiagnostic {
             topicId: Id[Topic],
             reason: String,
             disposition: MessageDisposition = MessageDisposition.Success): List[Signal] = {
-    val syntheticInvoke = invoke(name, caller, convId, topicId)
+    // Sigil #341 — make the invoke SELF-DESCRIBING: stamp the reason onto
+    // its own `outcome` + `summary`. The diagnostic's whole job is to hand
+    // the agent its `reason`, but that lived solely in the paired Tool-role
+    // Message — and on the orchestrator's execute-stream emit path that
+    // Message wasn't reaching the agent's frame, so the invoke rendered as
+    // a content-free `(pending)` and stranded the agent. `FrameBuilder`
+    // pairs the Message into the invoke's frame when present and otherwise
+    // falls back to `toolInvokePayload` (the invoke's own outcome/summary),
+    // so carrying the reason here means the guidance always reaches the
+    // frame regardless of whether the paired Message does.
+    val outcome = disposition match {
+      case f: MessageDisposition.Failure => ToolOutcome.Failure(reason, f.recoverable)
+      case _                             => ToolOutcome.Success
+    }
+    val syntheticInvoke = invoke(name, caller, convId, topicId).copy(outcome = outcome, summary = reason)
     val diagnostic = Message(
       participantId  = caller,
       conversationId = convId,

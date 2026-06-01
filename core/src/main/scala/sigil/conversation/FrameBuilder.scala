@@ -119,9 +119,14 @@ object FrameBuilder {
             (rendered, Nil)
         }
       case ToolOutcome.Pending =>
-        // Defensive: a Complete-state invoke shouldn't still be Pending
-        // on outcome — but if it is, surface whatever summary exists.
-        (if (ti.summary.nonEmpty) ti.summary else "(pending)", Nil)
+        // Defensive (#341): a Complete-state invoke shouldn't still be
+        // Pending on outcome — its paired Tool-role result Message either
+        // never settled it or never reached the frame. A bare content-free
+        // `(pending)` strands the agent (the diagnostic that was meant to
+        // break its loop conveys nothing). Surface a non-empty marker
+        // naming the call so the agent at least knows a result is missing
+        // rather than reading silence.
+        (if (ti.summary.nonEmpty) ti.summary else s"[${ti.toolName.value}: result pending — no content reached the frame]", Nil)
     }
 
   /**
