@@ -5340,13 +5340,39 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }).unit
     }
 
+  /**
+   * Whether `event` should wake `agent` via the cross-participant fan-out
+   * in `conv`. Normal conversations use [[TriggerFilter.isTriggerFor]].
+   *
+   * #352 — a DIRECTED worker conversation is stricter: an agent is woken
+   * ONLY by an addressed `Standard` Message from another participant (the
+   * brief, a relay, an answer). The worker's own Tool-role results and
+   * broadcast chatter must NOT cross-wake the supervisor into running the
+   * task itself — `TriggerFilter` fires Tool-role for every participant
+   * ahead of the addressee check, which had the supervisor spinning up its
+   * own coding loop on every worker tool call. Each agent's OWN
+   * continuation is driven by its self-loop (which still uses the full
+   * `isTriggerFor`), not fan-out, so the worker keeps iterating on its
+   * tool results; the supervisor simply stops waking on them and acts only
+   * when the worker actually addresses it (the [[WorkerConversationAddressingTransform]]
+   * addresses an agent's reply to the other agent).
+   */
+  private def shouldWake(agent: AgentParticipant, event: Event, conv: Conversation): Boolean =
+    if (!isDirectedWorkerConversation(conv)) TriggerFilter.isTriggerFor(agent, event)
+    else event match {
+      case m: Message
+        if m.role == MessageRole.Standard && m.participantId != agent.id &&
+          m.addressees.exists(_.contains(agent.id)) => true
+      case _ => false
+    }
+
   private final def fanOut(event: Event): Task[Unit] =
     withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
       case None       => Task.unit
       case Some(conv) =>
         val fire: Task[Unit] = {
           val tasks: List[Task[Unit]] = conv.participants.collect {
-            case agent: AgentParticipant if TriggerFilter.isTriggerFor(agent, event) =>
+            case agent: AgentParticipant if shouldWake(agent, event, conv) =>
               tryFire(agent, conv)
           }
           Task.sequence(tasks).unit
