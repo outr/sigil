@@ -1,0 +1,243 @@
+{"requestHash":"1be1dfc2da5abd14f9c32b4b604098abf444c8bf02e03431374a75797906c4a8","recordedAt":1780349573175}
+{"text":"Great","type":"ProviderEvent.TextDelta"}
+{"text":"!","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":"'m","type":"ProviderEvent.TextDelta"}
+{"text":" now","type":"ProviderEvent.TextDelta"}
+{"text":" in","type":"ProviderEvent.TextDelta"}
+{"text":" coding","type":"ProviderEvent.TextDelta"}
+{"text":" mode","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" ready","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"text":" work","type":"ProviderEvent.TextDelta"}
+{"text":" on","type":"ProviderEvent.TextDelta"}
+{"text":" your","type":"ProviderEvent.TextDelta"}
+{"text":" Scala","type":"ProviderEvent.TextDelta"}
+{"text":" project","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":16,"totalTokens":16,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"To","type":"ProviderEvent.TextDelta"}
+{"text":" get","type":"ProviderEvent.TextDelta"}
+{"text":" started","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":"'ll","type":"ProviderEvent.TextDelta"}
+{"text":" need","type":"ProviderEvent.TextDelta"}
+{"text":" a","type":"ProviderEvent.TextDelta"}
+{"text":" bit","type":"ProviderEvent.TextDelta"}
+{"text":" more","type":"ProviderEvent.TextDelta"}
+{"text":" context","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"1","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":29,"totalTokens":29,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" **","type":"ProviderEvent.TextDelta"}
+{"text":"What","type":"ProviderEvent.TextDelta"}
+{"text":"'s","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" project","type":"ProviderEvent.TextDelta"}
+{"text":" about","type":"ProviderEvent.TextDelta"}
+{"text":"?**","type":"ProviderEvent.TextDelta"}
+{"text":" (","type":"ProviderEvent.TextDelta"}
+{"text":"e","type":"ProviderEvent.TextDelta"}
+{"text":".g","type":"ProviderEvent.TextDelta"}
+{"text":".,","type":"ProviderEvent.TextDelta"}
+{"text":" web","type":"ProviderEvent.TextDelta"}
+{"text":" service","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" data","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":43,"totalTokens":43,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" pipeline","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" library","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" etc","type":"ProviderEvent.TextDelta"}
+{"text":".)","type":"ProviderEvent.TextDelta"}
+{"text":"\n","type":"ProviderEvent.TextDelta"}
+{"text":"2","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" **","type":"ProviderEvent.TextDelta"}
+{"text":"Do","type":"ProviderEvent.TextDelta"}
+{"text":" you","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" an","type":"ProviderEvent.TextDelta"}
+{"text":" existing","type":"ProviderEvent.TextDelta"}
+{"text":" code","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":58,"totalTokens":58,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"base","type":"ProviderEvent.TextDelta"}
+{"text":"**","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" should","type":"ProviderEvent.TextDelta"}
+{"text":" look","type":"ProviderEvent.TextDelta"}
+{"text":" at","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" or","type":"ProviderEvent.TextDelta"}
+{"text":" are","type":"ProviderEvent.TextDelta"}
+{"text":" we","type":"ProviderEvent.TextDelta"}
+{"text":" starting","type":"ProviderEvent.TextDelta"}
+{"text":" from","type":"ProviderEvent.TextDelta"}
+{"text":" scratch","type":"ProviderEvent.TextDelta"}
+{"text":"?","type":"ProviderEvent.TextDelta"}
+{"text":"\n","type":"ProviderEvent.TextDelta"}
+{"text":"3","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":72,"totalTokens":72,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" **","type":"ProviderEvent.TextDelta"}
+{"text":"What","type":"ProviderEvent.TextDelta"}
+{"text":" would","type":"ProviderEvent.TextDelta"}
+{"text":" you","type":"ProviderEvent.TextDelta"}
+{"text":" like","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"text":" design","type":"ProviderEvent.TextDelta"}
+{"text":" first","type":"ProviderEvent.TextDelta"}
+{"text":"?**","type":"ProviderEvent.TextDelta"}
+{"text":" (","type":"ProviderEvent.TextDelta"}
+{"text":"e","type":"ProviderEvent.TextDelta"}
+{"text":".g","type":"ProviderEvent.TextDelta"}
+{"text":".,","type":"ProviderEvent.TextDelta"}
+{"text":" architecture","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":88,"totalTokens":88,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" data","type":"ProviderEvent.TextDelta"}
+{"text":" models","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" API","type":"ProviderEvent.TextDelta"}
+{"text":" endpoints","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" algorithms","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Let","type":"ProviderEvent.TextDelta"}
+{"text":" me","type":"ProviderEvent.TextDelta"}
+{"text":" know","type":"ProviderEvent.TextDelta"}
+{"text":" and","type":"ProviderEvent.TextDelta"}
+{"text":" we","type":"ProviderEvent.TextDelta"}
+{"text":"'ll","type":"ProviderEvent.TextDelta"}
+{"text":" dive","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":105,"totalTokens":105,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" in","type":"ProviderEvent.TextDelta"}
+{"text":"!","type":"ProviderEvent.TextDelta"}
+{"text":" \uD83D\uDE80","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"callId":"2a0862190","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":107,"totalTokens":107,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"2a0862190","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"2a0862190","text":"Great","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"!","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" I","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"'m","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" now","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" in","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" coding","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" mode","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" ready","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" work","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" on","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" your","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" Scala","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" project","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"\n","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"\nTo","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" get","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" started","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" I","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"'ll","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" need","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" bit","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" more","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" context","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":":","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"\n","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"\n1","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" **","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"What","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"'s","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" project","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" about","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"?**","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" (","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"e","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":".g","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":".,","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" web","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" service","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" data","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" pipeline","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" library","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" etc","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":".)","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"\n2","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" **","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"Do","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" you","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" have","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" an","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" existing","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" code","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"base","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"**","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" I","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" should","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" look","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" at","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" or","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" are","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" we","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" starting","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" from","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" scratch","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"?","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"\n3","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" **","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"What","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" would","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" you","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" like","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" design","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" first","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"?**","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" (","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"e","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":".g","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":".,","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" architecture","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" data","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" models","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" API","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" endpoints","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" algorithms","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":")","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"\n","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"\nLet","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" me","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" know","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" and","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" we","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"'ll","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" dive","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" in","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":"!","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","text":" \uD83D\uDE80","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2a0862190","input":{"topicLabel":"Scala project kickoff","topicSummary":"User starting a coding session on a Scala project, ready to begin design phase.","content":"Great! I'm now in coding mode, ready to work on your Scala project.\n\nTo get started, I'll need a bit more context:\n\n1. **What's the project about?** (e.g., web service, data pipeline, library, etc.)\n2. **Do you have an existing codebase** I should look at, or are we starting from scratch?\n3. **What would you like to design first?** (e.g., architecture, data models, API endpoints, algorithms)\n\nLet me know and we'll dive in! \uD83D\uDE80","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":["scala","project","coding session"],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":5214,"completionTokens":350,"totalTokens":5564,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}
