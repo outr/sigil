@@ -66,7 +66,8 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
     * cap check reads. */
   private def requestWithPriorInvocations(convId: Id[Conversation],
                                           priorIdentical: Int,
-                                          keywords: String): ConversationRequest = {
+                                          keywords: String,
+                                          resulted: Boolean = true): ConversationRequest = {
     val canonicalHash = ToolInputCanonicalizer.argsHash(FindCapabilityInput(keywords = keywords))
     val canonicalPreview = ToolInputCanonicalizer.argsPreview(FindCapabilityInput(keywords = keywords))
     val priorInvocations = (1 to priorIdentical).toList.map { _ =>
@@ -74,7 +75,8 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         toolName    = FindCapabilityTool.name,
         argsHash    = canonicalHash,
         argsPreview = canonicalPreview,
-        invokedAt   = Timestamp(Nowish())
+        invokedAt   = Timestamp(Nowish()),
+        resulted    = resulted
       )
     }
     val projection = ParticipantProjection.empty(TestAgent, convId)
@@ -166,6 +168,35 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         }
         withClue(s"expected a cap-refusal Failure to surface (outcomes: $failures, msgs: ${capMsgs.size}): ") {
           (capFailures.nonEmpty || capMsgs.nonEmpty) shouldBe true
+        }
+      }
+    }
+
+    "NOT count race-induced retries (Pending-result priors) toward the cap (#354)" in {
+      // Seed FAR more than the cap of identical priors, but every one
+      // raced past the frame and never produced a result (resulted =
+      // false). A slow tool whose large output loses the frame race is
+      // not the agent spinning — retrying to obtain the missing result
+      // must be allowed, so the cap (and its escalation/restriction
+      // spiral) must NOT fire.
+      val convId = Conversation.id(s"dup-cap-race-${rapid.Unique()}")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
+      val request = requestWithPriorInvocations(convId, priorIdentical = 5, keywords = "x", resulted = false)
+      val provider = new FindCapStubProvider(keywords = "x")
+      for {
+        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
+      } yield {
+        val capFailure = signals.collect { case d: ToolDelta => d.outcome }.flatten
+          .collect { case f: ToolOutcome.Failure => f }
+          .exists(_.reason.contains("Refused to dispatch"))
+        val capMsg = signals.collect { case m: Message if m.role == MessageRole.Tool && m.isFailure => m }
+          .exists(_.content.exists {
+            case t: ResponseContent.Text => t.text.contains("Refused to dispatch")
+            case _                        => false
+          })
+        withClue("race-induced retries (resulted=false priors) must NOT trip the duplicate-call cap: ") {
+          (capFailure || capMsg) shouldBe false
         }
       }
     }

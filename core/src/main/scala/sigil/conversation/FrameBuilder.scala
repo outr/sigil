@@ -120,13 +120,20 @@ object FrameBuilder {
         }
       case ToolOutcome.Pending =>
         // Defensive (#341): a Complete-state invoke shouldn't still be
-        // Pending on outcome — its paired Tool-role result Message either
-        // never settled it or never reached the frame. A bare content-free
-        // `(pending)` strands the agent (the diagnostic that was meant to
-        // break its loop conveys nothing). Surface a non-empty marker
-        // naming the call so the agent at least knows a result is missing
-        // rather than reading silence.
-        (if (ti.summary.nonEmpty) ti.summary else s"[${ti.toolName.value}: result pending — no content reached the frame]", Nil)
+        // Pending on outcome — its paired result either never settled it or
+        // raced past the frame (a slow tool with a large result, #354). A
+        // bare content-free `(pending)` strands the agent. Surface a marker
+        // that names the call AND frames it as a missing-result race, NOT a
+        // failure — so the agent reads it as "the result didn't arrive,
+        // re-issuing is reasonable" rather than "the tool failed." The
+        // duplicate-call cap excludes these retries (#354), so re-issuing to
+        // obtain the missing result won't trip the escalation/restriction
+        // spiral.
+        val tn = ti.toolName.value
+        val raceMarker =
+          s"[$tn: result did not reach this turn (it completed but raced past the prompt, or is still " +
+            s"finishing) — this is NOT a failure; if you still need it, calling $tn again is reasonable.]"
+        (if (ti.summary.nonEmpty) ti.summary else raceMarker, Nil)
     }
 
   /**

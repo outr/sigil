@@ -26,8 +26,17 @@ import sigil.tool.ToolName
  *                    section.
  * @param invokedAt   wall-clock at dispatch, used to render "Ns / Nm /
  *                    Nh / Nd ago" in the prompt.
+ * @param resulted    whether this invocation actually produced a result
+ *                    (settled `Success`/`Failure`). `false` when the
+ *                    invoke settled with a `Pending` outcome — its result
+ *                    raced past the frame and never reached the agent
+ *                    (sigil #354). Defaults `true` for back-compat. The
+ *                    duplicate-call cap counts only `resulted` invocations
+ *                    so a retry of a never-resulted slow tool isn't
+ *                    punished as a spinning duplicate.
  */
 case class RecentToolInvocation(toolName: ToolName,
                                 argsHash: String,
                                 argsPreview: String,
-                                invokedAt: Timestamp) derives RW
+                                invokedAt: Timestamp,
+                                resulted: Boolean = true) derives RW

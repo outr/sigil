@@ -670,7 +670,15 @@ object Orchestrator {
                   .recentToolInvocations
                   .count(inv => inv.toolName.value == toolName
                              && inv.argsHash == canonicalHash
-                             && inv.invokedAt.value >= turnStartMs)
+                             && inv.invokedAt.value >= turnStartMs
+                             // Sigil #354 — only count invocations that actually
+                             // produced a result. A prior identical call whose
+                             // result raced past the frame (settled Pending, the
+                             // agent saw only a placeholder) is not the agent
+                             // spinning; retrying to obtain the missing result is
+                             // rational and must not trip the cap → escalation →
+                             // roster-restriction spiral.
+                             && inv.resulted)
                 if (priorIdentical >= identicalLimit - 1) {
                   val attemptedCount = priorIdentical + 1
                   val preview = _root_.sigil.tool.ToolInputCanonicalizer.argsPreview(input)

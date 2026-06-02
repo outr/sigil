@@ -3505,18 +3505,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // logical call repeats. Keep the most-recent
         // `recentToolInvocationsLimit` entries; older fall off the
         // tail.
+        // #354 — a slow tool whose large result raced past the frame
+        // settles Complete with a `Pending` outcome (the agent saw a
+        // placeholder, not the result). Record `resulted = false` so the
+        // duplicate-call cap doesn't count the agent's rational retry of a
+        // never-resulted call as a spinning duplicate (which escalated the
+        // tier to the ceiling and restricted the tool out of the roster).
+        val resulted = ti.outcome != sigil.event.ToolOutcome.Pending
         val invocation = ti.input match {
           case Some(in) => sigil.conversation.RecentToolInvocation(
             toolName    = ti.toolName,
             argsHash    = sigil.tool.ToolInputCanonicalizer.argsHash(in),
             argsPreview = sigil.tool.ToolInputCanonicalizer.argsPreview(in),
-            invokedAt   = ti.timestamp
+            invokedAt   = ti.timestamp,
+            resulted    = resulted
           )
           case None => sigil.conversation.RecentToolInvocation(
             toolName    = ti.toolName,
             argsHash    = "",
             argsPreview = "",
-            invokedAt   = ti.timestamp
+            invokedAt   = ti.timestamp,
+            resulted    = resulted
           )
         }
         updateProjection(ti.conversationId, ti.participantId) { proj =>
