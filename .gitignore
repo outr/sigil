@@ -13,3 +13,5 @@ wip.md
 benchmark/db
 core/db
 *.log
+# Framework file-backed tool-output overflow (sigil #346) — runtime artifact
+.sigil/
