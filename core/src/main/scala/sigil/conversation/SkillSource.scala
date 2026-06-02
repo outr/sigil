@@ -25,6 +25,12 @@ import fabric.rw.*
  *                        satisfied the brief, posting a follow-up when it
  *                        hasn't, and relaying up to the parent when the
  *                        worker needs the user or the work is done.
+ *   - `Worker`         — injected on the WORKER's own projection in its
+ *                        sub-conversation (#348): the symmetric doer
+ *                        framing telling the worker it is the delegated
+ *                        agent for the brief, must carry it out itself and
+ *                        report back, and must NOT re-delegate its whole
+ *                        assignment.
  */
 enum SkillSource derives RW {
   case Mode
@@ -32,4 +38,5 @@ enum SkillSource derives RW {
   case User
   case Role(name: String)
   case Supervisor
+  case Worker
 }

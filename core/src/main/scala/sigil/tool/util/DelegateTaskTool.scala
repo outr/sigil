@@ -76,7 +76,27 @@ case object DelegateTaskTool extends Tool {
   )
   override val keywords = Set("delegate", "worker", "spawn", "task", "research", "background", "subagent")
 
-  override def executeResult(input: DelegateTaskInput, ctx: ToolContext): Task[ToolResult[DelegateTaskOutput]] = {
+  override def executeResult(input: DelegateTaskInput, ctx: ToolContext): Task[ToolResult[DelegateTaskOutput]] =
+    // Sigil #348 — structural depth cap. The doer framing on the worker
+    // (WorkerSelfSkill) is the primary fix for re-delegation; this is the
+    // bound that keeps delegation safe even when that framing doesn't hold
+    // on a weak model. Refuse before spawning if the new worker would
+    // exceed maxDelegationDepth (top-level → worker = depth 1, → sub-worker
+    // = depth 2, deeper refused). Breadth (fan-out) at the allowed depth is
+    // still fine — only chain depth is capped.
+    ctx.sigil.delegationDepth(ctx.conversation.id).flatMap { callerDepth =>
+      val cap = ctx.sigil.maxDelegationDepth
+      if (callerDepth + 1 > cap)
+        Task.pure(ToolResult.failure(
+          message = s"delegate_task refused: delegation depth cap reached (max $cap). This conversation is " +
+            s"already $callerDepth level(s) deep in a worker chain; spawning another worker would exceed the cap.",
+          hint = Some("You are a delegated worker — do this brief YOURSELF rather than re-delegating it. " +
+            "Delegation depth is capped to prevent runaway worker→worker recursion (sigil #348).")
+        ))
+      else dispatchValidated(input, ctx)
+    }
+
+  private def dispatchValidated(input: DelegateTaskInput, ctx: ToolContext): Task[ToolResult[DelegateTaskOutput]] = {
     // Validate `input.modelId` at the boundary so an unknown id refuses
     // here (actionably) rather than failing the worker's first turn after
     // the sub-conversation already exists.
@@ -154,6 +174,15 @@ case object DelegateTaskTool extends Tool {
         participantId  = ctx.caller,
         source         = SkillSource.Supervisor,
         slot           = WorkerSupervisorSkill.slot(brief, parentConvId, role.name)
+      )
+      // Sigil #348 — symmetric doer framing on the WORKER's own projection:
+      // it is the delegated agent for this brief, must carry it out itself
+      // and report back, and must not re-delegate its whole assignment.
+      _ <- host.activateSkill(
+        conversationId = workerConv._id,
+        participantId  = workerId,
+        source         = SkillSource.Worker,
+        slot           = WorkerSelfSkill.slot(brief, role.name)
       )
       // Post the brief addressed to the worker → fires its first turn.
       // From the supervisor's own id, so it doesn't wake the supervisor.

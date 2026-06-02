@@ -83,6 +83,9 @@ class DelegationBridgeSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         workerConvId = Conversation.id(output.workerConvId)
         workerConv <- TestWorkflowSigil.withDB(_.conversations.transaction(_.get(workerConvId))).map(_.get)
         proj       <- TestWorkflowSigil.projectionFor(supervisorId, workerConvId)
+        workerPid   = workerConv.participants.map(_.id).collectFirst { case w: WorkerParticipantId => w }
+          .getOrElse(fail("no worker participant in the sub-conversation"))
+        workerProj <- TestWorkflowSigil.projectionFor(workerPid, workerConvId)
         events     <- TestWorkflowSigil.withDB(_.eventsTransaction(workerConvId)(_.list))
           .map(_.filter(_.conversationId == workerConvId))
         // The brief fires the worker on a background fiber; the silent
@@ -96,6 +99,9 @@ class DelegationBridgeSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         workerConv.participants.exists(_.id.isInstanceOf[WorkerParticipantId]) shouldBe true
         // Supervisor bridge skill active on the supervisor's projection there.
         proj.activeSkills.get(SkillSource.Supervisor).map(_.name) shouldBe Some("worker_supervisor")
+        // #348 — symmetric doer framing active on the WORKER's own projection,
+        // so it executes the brief itself instead of re-delegating it.
+        workerProj.activeSkills.get(SkillSource.Worker).map(_.name) shouldBe Some("worker_doer")
         // The brief is posted addressed to the worker (so it — and only it
         // — wakes), authored by the supervisor.
         val brief = events.collectFirst {

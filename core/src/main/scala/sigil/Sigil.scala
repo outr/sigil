@@ -5065,6 +5065,39 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     resolvedWorkspaceFor(conversationId).map(_.map(path => new LocalFileSystemContext(Some(path))))
 
   /**
+   * Maximum delegation depth — how deep a worker→sub-worker chain may go
+   * (sigil #348). A top-level agent → worker is depth 1; that worker →
+   * sub-worker is depth 2; a `delegate_task` that would exceed this is
+   * refused. This still lets a worker modularize (fan out genuinely
+   * separable sub-tasks at the allowed depth) while making runaway
+   * worker→worker→worker recursion structurally impossible even when the
+   * doer-framing prompt doesn't fully hold on a weak model. Apps override
+   * to widen or tighten.
+   */
+  def maxDelegationDepth: Int = 2
+
+  /**
+   * Delegation depth of a conversation — the number of
+   * `parentConversationId` hops to the root. A top-level (user-facing)
+   * conversation is depth 0; a worker sub-conversation is depth 1; a
+   * sub-worker's is depth 2; etc. Bounded walk (mirrors
+   * [[resolvedWorkspaceFor]]) so a malformed parent cycle can't loop.
+   */
+  def delegationDepth(conversationId: Id[Conversation]): Task[Int] =
+    delegationDepth(conversationId, depth = 0, fuel = 16)
+
+  private def delegationDepth(conversationId: Id[Conversation], depth: Int, fuel: Int): Task[Int] =
+    if (fuel <= 0) Task.pure(depth)
+    else withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
+      case Some(conv) =>
+        conv.parentConversationId match {
+          case Some(parentId) => delegationDepth(parentId, depth + 1, fuel - 1)
+          case None           => Task.pure(depth)
+        }
+      case None => Task.pure(depth)
+    }
+
+  /**
    * Open a staging conversation that buffers events for a
    * long-running import workflow. The staging conv is a regular
    * [[Conversation]] row with `stagingFor = Some(target)` —
