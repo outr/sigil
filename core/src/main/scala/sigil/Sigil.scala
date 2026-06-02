@@ -4832,7 +4832,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // Fire greetings in-line per agent. fireGreeting is a no-op for agents
       // without greet-eligible behaviors, so the cost for non-greeting setups
       // is just the participants.collect walk.
-      _      <- Task.sequence(stored.participants.collect {
+      //
+      // Sigil #350 — never greet in a worker/delegated sub-conversation. Its
+      // opener is the brief (`delegate_task` posts it), and there is no user
+      // to greet. A greeting there makes the supervisor run "how can I help?"
+      // turns AND poisons the worker's context (the worker mirrors the
+      // greeting). Suppress whenever the conversation has a parent.
+      _      <- if (stored.parentConversationId.isDefined) Task.unit
+                else Task.sequence(stored.participants.collect {
                   case agent: AgentParticipant => fireGreeting(agent, stored)
                 })
     } yield stored
@@ -6059,29 +6066,29 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart)
             shouldIterate.flatMap {
             case true if iteration < maxAgentIterations =>
-              // Bug #54 — emit per-iteration boundary state. Without
-              // these, a multi-iteration agent loop pins the
-              // consumer's state at `typing` (or whatever the last
-              // streaming activity was) for the whole outer-loop
-              // duration. Clients then can't render an accurate
-              // Stop button or per-turn UX.
+              // Bug #54 / #349 — un-stick the consumer's state at the
+              // iteration boundary. Without a pulse, a multi-iteration
+              // loop pins the consumer at `typing` (or whatever the last
+              // streaming activity was) for the whole outer loop, so
+              // clients can't render an accurate Stop button or per-turn
+              // UX. #54 originally pulsed `Idle → Thinking`, but `Idle`
+              // also means "turn complete" — overloading it made clients
+              // reset their per-turn UI (timer, thinking buffer, Stop
+              // button) on EVERY tool call (#349). Emit only the next
+              // iteration's real activity (`Thinking`): the
+              // `Typing → Thinking` delta is itself the visible change #54
+              // needed, and `Idle` now fires solely at the genuine turn
+              // end — restoring the invariant `Idle` ⇔ turn complete.
               //
-              // The pulses don't change the AgentState event's
-              // `state` (still Active — claim still held) — they
-              // mutate `activity` only, so the framework's claim-
-              // lock semantics are preserved. The next iteration
-              // runs in the same outer fiber.
+              // The pulse doesn't change the AgentState event's `state`
+              // (still Active — claim still held) — it mutates `activity`
+              // only, so the framework's claim-lock semantics are
+              // preserved. The next iteration runs in the same outer fiber.
               publish(AgentStateDelta(
                 target = claimed._id,
                 conversationId = convId,
-                activity = Some(AgentActivity.Idle)
-              )).flatMap(_ =>
-                publish(AgentStateDelta(
-                  target = claimed._id,
-                  conversationId = convId,
-                  activity = Some(AgentActivity.Thinking)
-                ))
-              ).flatMap { _ =>
+                activity = Some(AgentActivity.Thinking)
+              )).flatMap { _ =>
                 // Run the progress checkpoint at the boundary if this
                 // is a checkpoint iteration. The helper returns
                 // Some(message) when the agent reports being stuck

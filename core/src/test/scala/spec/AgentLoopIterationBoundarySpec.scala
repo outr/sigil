@@ -23,22 +23,20 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 /**
- * Coverage for sigil bug #54 — the agent loop now emits
- * `AgentStateDelta(Idle)` + `AgentStateDelta(Thinking)` between
- * iterations of a multi-iteration self-loop, so client UIs can
- * render turn-boundary state transitions even when the framework's
- * outer claim spans multiple iterations.
+ * Coverage for sigil bug #54 — the agent loop emits a per-iteration
+ * boundary pulse between iterations of a multi-iteration self-loop, so
+ * client UIs un-stick from `typing` (the last streamed activity) even
+ * when the framework's outer claim spans multiple iterations.
  *
- * Without these per-iteration pulses the consumer's activity
- * indicator pinned at `typing` (the last emitted activity in the
- * prior iteration's streaming) until the entire outer loop
- * completed. For long multi-iteration runs (e.g., a turn that
- * imports thousands of historical events and then iterates once
- * more on the tool-result trigger) this looked like the agent had
- * hung.
+ * Sigil #349 — that pulse used to be `Idle → Thinking`, but `Idle` also
+ * means "turn complete", so clients reset their per-turn UI on every tool
+ * call. The boundary now emits the next iteration's real activity
+ * (`Thinking`) directly, and `Idle` is emitted ONLY at the genuine turn
+ * end: a multi-iteration turn produces exactly one `Idle`, carrying
+ * `state = Complete`. The invariant is `Idle` ⇔ turn complete.
  *
- * The pulses mutate `AgentState.activity` only — `state` stays
- * `Active`, the claim is held across iterations as before.
+ * The pulse mutates `AgentState.activity` only — `state` stays `Active`,
+ * the claim is held across iterations as before.
  */
 class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -149,16 +147,22 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
     }
   }
 
-  "Sigil.runAgentLoop (bug #54)" should {
+  "Sigil.runAgentLoop (bug #54 / #349)" should {
 
-    "emit AgentStateDelta(Idle) without state=Complete between iterations" in {
+    "emit NO mid-turn Idle, and exactly one terminal Idle, across a multi-iteration turn (#349)" in {
       runScenario().map { signals =>
-        val nonTerminalIdle = signals.collect {
-          case d: AgentStateDelta if d.activity.contains(AgentActivity.Idle) && d.state.isEmpty => d
+        val idleDeltas = signals.collect {
+          case d: AgentStateDelta if d.activity.contains(AgentActivity.Idle) => d
         }
-        // At least one inter-iteration idle pulse (between iter 1
-        // and iter 2). Multi-iteration self-loops may emit more.
-        nonTerminalIdle should not be empty
+        // #349 — `Idle` ⇔ turn complete. The boundary pulse no longer
+        // reuses `Idle` (it emits `Thinking`), so a two-iteration turn
+        // produces exactly one Idle delta, and it carries state=Complete
+        // (the terminal release). A mid-turn Idle (state empty) is the bug.
+        withClue(s"idle deltas (state): ${idleDeltas.map(_.state).mkString(", ")}: ") {
+          idleDeltas.count(_.state.isEmpty) shouldBe 0
+          idleDeltas should have size 1
+          idleDeltas.head.state shouldBe Some(EventState.Complete)
+        }
       }
     }
 
@@ -167,9 +171,9 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
         val thinkingDeltas = signals.collect {
           case d: AgentStateDelta if d.activity.contains(AgentActivity.Thinking) => d
         }
-        // Iteration 1's thinking comes from tryFire's AgentState
-        // event (not a Delta). Iteration 2+'s thinking comes from
-        // the new per-iteration pulse — at least one Delta.
+        // The boundary pulse (#54's intent) now emits Thinking to un-stick
+        // the consumer from `typing` without the overloaded Idle (#349) —
+        // at least one such Delta on a multi-iteration turn.
         thinkingDeltas should not be empty
       }
     }
@@ -181,27 +185,6 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
                                   && d.state.contains(EventState.Complete) => d
         }
         terminalIdle should not be empty
-      }
-    }
-
-    "preserve the order: per-iteration Idle precedes per-iteration Thinking" in {
-      runScenario().map { signals =>
-        // Find the position of the first non-terminal Idle and the
-        // first non-terminal Thinking Delta. The Idle should come
-        // first — the loop emits "iter N ended (idle)" before "iter
-        // N+1 starting (thinking)".
-        val idx = signals.zipWithIndex.collect {
-          case (d: AgentStateDelta, i) if d.activity.contains(AgentActivity.Idle) && d.state.isEmpty =>
-            ("idle", i)
-          case (d: AgentStateDelta, i) if d.activity.contains(AgentActivity.Thinking) =>
-            ("thinking", i)
-        }
-        val firstIdleIdx     = idx.collectFirst { case ("idle", i) => i }
-        val firstThinkingIdx = idx.collectFirst { case ("thinking", i) => i }
-        (firstIdleIdx, firstThinkingIdx) match {
-          case (Some(i), Some(j)) => i should be < j
-          case _ => fail(s"expected both idle and thinking deltas; got ${idx.mkString(", ")}")
-        }
       }
     }
   }

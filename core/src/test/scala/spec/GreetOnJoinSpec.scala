@@ -140,6 +140,31 @@ class GreetOnJoinSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
     }
 
+    "NOT greet in a worker/delegated sub-conversation, even with greetsOnJoin = true (#350)" in {
+      // A conversation with a parentConversationId is a worker/delegated
+      // sub-conversation — its opener is the brief, not a greeting. Greeting
+      // there makes the supervisor run "how can I help?" turns and poisons
+      // the worker's context. Suppression is unconditional on the parent
+      // link, regardless of greetsOnJoin.
+      val recorder = new RecordingBroadcaster
+      recorder.attach(TestSigil)
+      NoOpStubProvider.callCount.set(0)
+      val convId = freshConvId("worker-no-greet")
+      val a      = agent(greetsOnJoin = true)
+      for {
+        _ <- TestSigil.newConversation(
+               createdBy            = TestUser,
+               participants         = List(a),
+               conversationId       = convId,
+               parentConversationId = Some(freshConvId("parent"))
+             )
+        _ <- Task.sleep(negativeWindow)
+      } yield {
+        claimsFor(recorder, TestAgent.value) shouldBe empty
+        NoOpStubProvider.callCount.get() shouldBe 0
+      }
+    }
+
     "fire exactly once for an agent with multiple roles when greetsOnJoin = true" in {
       val recorder = new RecordingBroadcaster
       recorder.attach(TestSigil)
