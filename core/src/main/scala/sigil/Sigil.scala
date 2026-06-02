@@ -6143,51 +6143,41 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                   else
                     Task.pure(None)
                 checkpointTask.flatMap {
-                  case Some(intervention) if intervention.askingUser && !isDirectedWorkerConversation(conv) =>
-                    // Genuine "agent needs user input to proceed" —
-                    // publish user-visible and release the claim. The
-                    // agent can't make progress without the user's
-                    // reply; the next user Message will re-trigger.
-                    // intervention.message persists inside the batched
-                    // transaction; terminate() runs as the post-commit
-                    // continuation.
-                    //
-                    // Sigil bug #284 — stamp `source` so consumers can
-                    // render this distinctly from a real agent reply
-                    // (different chrome / attribution). The participant
-                    // stays `agent.id` so the conversation participant
-                    // graph stays consistent; `source` carries the
-                    // framework-vs-agent distinguishing signal. Same
-                    // convention as `orchestrator-silent-turn`.
-                    val tagged = intervention.message.copy(source = Some("orchestrator-intervention"))
-                    publish(tagged).map(_ => terminate(skipFallback = true))
                   case Some(intervention) =>
-                    // Bug #133 — stall / no-progress streak. The
-                    // intervention text is a directive to the agent
-                    // ("Stop gathering and call respond"). Publish
-                    // as Tool-role (Agents visibility) under a
-                    // synthetic `_stall_detected` parent invoke so
-                    // the agent reads it on its next iteration but
-                    // the user doesn't see the raw directive. Then
-                    // run ONE forced-synthesis iteration so the
-                    // agent actually responds rather than going
-                    // silent. Same shape as #125's cap-hit.
-                    //
-                    // #332 — this branch is also where an `askingUser`
-                    // signal lands inside a worker (the user-facing branch
-                    // above excludes workers). A worker can't ask the human
-                    // directly, so the directive tells it to report to its
-                    // supervisor; the forced-synthesis `respond` that
-                    // follows is the worker's handoff (addressed to the
-                    // supervisor, who then decides whether to redirect or
-                    // escalate to the user).
+                    // Bug #133 / #332 / #353 — a checkpoint intervention
+                    // (stall streak OR "needs user input") ALWAYS routes the
+                    // directive to the AGENT, never a framework-authored
+                    // user-facing Message in the agent's voice followed by an
+                    // idle dead-end (#353: the old `askingUser` main-conversation
+                    // arm did exactly that — the user saw "I need clarification"
+                    // they couldn't act on, and control never returned to the
+                    // agent). Publish the directive as Tool-role (Agents
+                    // visibility) under a synthetic `_stall_detected` invoke,
+                    // then force ONE more iteration so the agent decides what to
+                    // do — continue, or ask the user ITSELF via `respond` /
+                    // `respond_options`. The directive is tailored per case:
                     val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
                       .invoke("_stall_detected", agent.id, convId, conv.currentTopicId)
                     val directiveContent =
-                      if (intervention.askingUser)
+                      if (intervention.askingUser && isDirectedWorkerConversation(conv))
+                        // Worker: can't ask the human directly — report up to
+                        // the supervisor, who decides whether to escalate.
                         Vector(_root_.sigil.tool.model.ResponseContent.Text(
                           "You can't ask the user directly from here — your supervisor owns this task. " +
                             "Stop gathering and call `respond` now to report what you've found and what you're blocked on."
+                        ))
+                      else if (intervention.askingUser)
+                        // Main conversation: leave the decision AND the
+                        // user-facing wording to the agent. The framework no
+                        // longer impersonates the agent toward the user (#353).
+                        // Note the false-positive guard: if the agent's recent
+                        // tool calls actually completed (e.g. externalized image
+                        // results), it can just continue.
+                        Vector(_root_.sigil.tool.model.ResponseContent.Text(
+                          "You appear blocked waiting on input. First check whether your recent tool calls actually " +
+                            "completed (their results may be large and externalized rather than inline) — if so, just " +
+                            "continue. If you genuinely need the user, ask them directly NOW via `respond_options` " +
+                            "(clickable choices, preferred) or `respond`, phrasing the question yourself."
                         ))
                       else intervention.message.content
                     val taggedDirective = intervention.message.copy(
@@ -6864,7 +6854,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         s"Pick a one-line currentStatus describing where things stand RIGHT NOW. Set " +
         s"meaningfulProgress = true ONLY when you're substantively further than the prior status. " +
         s"One-line remainingSteps for what's left. Empty stuckOn unless you genuinely can't proceed. " +
-        s"shouldAskUser = true ONLY if the user must clarify something."
+        // #353 — a call shown as "OK" has COMPLETED; large results (images,
+        // big reads) are stored out-of-line and won't appear inline. Only
+        // "(no result yet)" is genuinely pending. Do not treat completed
+        // calls as pending/processing — that false premise was stranding
+        // turns behind a bogus clarification request.
+        s"A tool call listed as \"OK\" SUCCEEDED — its result exists even if large and not shown here; " +
+        s"only \"(no result yet)\" is still pending. Never set shouldAskUser because completed calls " +
+        s"look resultless. shouldAskUser = true ONLY if the user must genuinely clarify something."
     taskBlock + historyBlock + priorBlock + ask
   }
 

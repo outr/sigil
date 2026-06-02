@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
-import sigil.event.Message
+import sigil.event.{Message, MessageRole, MessageVisibility, ToolInvoke}
 import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
 import sigil.provider.{
   CallId, GenerationSettings, Instructions, Provider, ProviderCall,
@@ -23,10 +23,13 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 /**
- * Regression for sigil bug #284 — framework-synthesised intervention
- * messages MUST carry a `source` stamp so consumer UIs render them
- * distinctly from real agent replies (different chrome, framework
- * attribution).
+ * Regression for sigil bug #353 (which supersedes #284's askingUser
+ * behaviour). A checkpoint `askingUser` intervention in a MAIN conversation
+ * must NOT be published as a user-visible "I need clarification" Message in
+ * the agent's voice followed by an idle dead-end. It is routed to the AGENT
+ * — a synthetic `_stall_detected` invoke + a Tool-role / Agents-visibility
+ * directive + one forced synthesis — so the agent decides whether to
+ * continue or ask the user itself via `respond` / `respond_options`.
  */
 class CheckpointInterventionSourceSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -128,23 +131,28 @@ class CheckpointInterventionSourceSpec extends AsyncWordSpec with AsyncTaskSpec 
     }
   }
 
-  "Sigil bug #284 — framework intervention source stamping" should {
+  "Sigil bug #353 — askingUser checkpoint routes to the agent, not the user" should {
 
-    "stamp source = 'orchestrator-intervention' on the askingUser checkpoint Message" in {
+    "publish NO user-visible orchestrator-intervention Message, but a Tool-role directive under a _stall_detected invoke" in {
       runScenario().map { signals =>
-        val agentMessages = signals.collect {
-          case m: Message if m.participantId == TestAgent => m
+        val agentMessages = signals.collect { case m: Message if m.participantId == TestAgent => m }
+        // #353 — the framework no longer impersonates the agent toward the
+        // user with a synthesized "I need clarification" Standard message.
+        val userVisibleIntervention = agentMessages.filter(_.source.contains("orchestrator-intervention"))
+        // Instead it routes to the agent: a synthetic _stall_detected invoke
+        // plus a Tool-role, Agents-visibility directive (origin = that invoke).
+        val stallInvokes = signals.collect {
+          case ti: ToolInvoke if ti.toolName.value == "_stall_detected" => ti
         }
-        val interventionMessages = agentMessages.filter(_.source.contains("orchestrator-intervention"))
+        val directives = agentMessages.filter(m => m.role == MessageRole.Tool && m.visibility == MessageVisibility.Agents)
         withClue(
-          s"agent messages observed: ${agentMessages.map(m => (m.source, m.role, m.content.headOption))}"
+          s"userVisibleIntervention=${userVisibleIntervention.size}, stallInvokes=${stallInvokes.size}, " +
+            s"directives=${directives.size}, msgs=${agentMessages.map(m => (m.source, m.role))}: "
         ) {
-          interventionMessages should not be empty
+          userVisibleIntervention shouldBe empty
+          stallInvokes should not be empty
+          directives should not be empty
         }
-        val body = interventionMessages.head.content.collect {
-          case t: ResponseContent.Text => t.text
-        }.mkString
-        body should include ("clarification")
       }
     }
   }
