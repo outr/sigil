@@ -15,10 +15,14 @@ import sigil.tool.model.DelegateTaskInput
 import sigil.tool.util.{DelegateTaskOutput, DelegateTaskTool}
 
 /**
- * Sigil #335 — a `delegate_task(complexity = High)` must pin that tier on
- * the spawned worker conversation, so the worker's per-turn routing
- * honors the delegated complexity instead of re-inferring it (which
- * biases Low) on every turn and routing to the cheapest model.
+ * Sigil #351 (reverses #335) — `delegate_task` must NOT pin complexity on
+ * the spawned worker conversation. Delegation happens at the moment of
+ * least information about the task (before any grep/read/discovery), so an
+ * early guess can't know the real tier; pinning it freezes a wrong number
+ * for the worker's whole life and blocks the per-turn classifier from
+ * adapting. A supplied `complexity` still seeds the worker's INITIAL model
+ * routing, but `pinnedComplexity` stays unset — reserved for
+ * `request_escalation`'s earned, in-flight bump.
  */
 class DelegateTaskComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestWorkflowSigil.initFor(getClass.getSimpleName)
@@ -95,8 +99,10 @@ class DelegateTaskComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with M
     sigil.tool.ToolContext(turn, sigil.event.Event.id(), DelegateTaskTool.name)
 
   "delegate_task" should {
-    "pin the delegated complexity on the worker conversation" in {
-      workerConvComplexity(Some(Complexity.High)).map(_ shouldBe Some(Complexity.High))
+    "NOT pin complexity on the worker conversation, even when one is delegated (#351)" in {
+      // The supervisor's early guess must not freeze the worker's tier;
+      // per-turn classification (+ earned request_escalation) owns routing.
+      workerConvComplexity(Some(Complexity.High)).map(_ shouldBe None)
     }
 
     "leave the worker conversation unpinned when no complexity is delegated" in {

@@ -156,16 +156,21 @@ case object DelegateTaskTool extends Tool {
       // The sub-conversation: supervisor (the delegating agent) + worker,
       // linked to the parent so the worker inherits its workspace (#325)
       // and the supervisor can relay between the two.
+      // #351 — do NOT pin complexity here (reverses #335). Delegation
+      // happens at the moment of LEAST information about the task: the
+      // brief is set before any grep/read/discovery, so an early guess
+      // can't yet know Low vs VeryHigh. Pinning freezes it for the
+      // worker's whole life, blocking the per-turn classifier from
+      // adapting as understanding accrues. `input.complexity` still seeds
+      // the worker's INITIAL model routing above (`routedModelFor`), but
+      // each turn re-classifies thereafter; `pinnedComplexity` stays the
+      // home for `request_escalation`'s earned, sticky bump only.
       workerConv <- host.newConversation(
         createdBy            = ctx.caller,
         label                = workerLabel,
         summary              = input.goal.getOrElse(brief).take(80),
         participants         = List(supervisor, workerAgent),
-        parentConversationId = Some(parentConvId),
-        // #335 — pin the delegated complexity on the worker conversation
-        // so its per-turn routing honors the tier the caller asked for
-        // instead of re-inferring it (which biases Low) on every turn.
-        pinnedComplexity     = input.complexity
+        parentConversationId = Some(parentConvId)
       )
       // Activate the supervisor bridge guidance on the caller's projection
       // in the worker conversation (renders only while it acts there).
