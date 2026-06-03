@@ -6099,7 +6099,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 // a productive turn as "no tool call".
                 Task.pure(true)
               else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart)
-            shouldIterate.flatMap {
+            shouldIterate
+              // #355 — instrument the post-drain decision so a silent stall
+              // is diagnosable. The trace "drain done" → "shouldIterate=X" →
+              // "committed; running continuation" → "iter N+1 enter" pinpoints
+              // WHERE a hang sits: no `shouldIterate` log = hung in the trigger
+              // query (the in-batch decision); `shouldIterate` but no
+              // `running continuation` = hung committing the batch; `running
+              // continuation` but no next `iter enter` = hung in the
+              // continuation (recurse / intra-turn compaction).
+              .flatMap { si =>
+                scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration " +
+                  s"shouldIterate=$si (iteration<max=${iteration < maxAgentIterations}, " +
+                  s"forceResponseSynthesis=$forceResponseSynthesis)")
+                Task.pure(si)
+              }
+              .flatMap {
             case true if iteration < maxAgentIterations =>
               // Bug #54 / #349 — un-stick the consumer's state at the
               // iteration boundary. Without a pulse, a multi-iteration
@@ -6398,7 +6413,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // iteration — or the terminal release — starts only once this
     // iteration's writes are committed, so independent reads see the
     // durable data.
-    withDB(_.withBatchedEvents(convId)(iterationStep)).flatMap(continuation => continuation)
+    withDB(_.withBatchedEvents(convId)(iterationStep)).flatMap { continuation =>
+      // #355 — the iteration's events are committed here; the continuation
+      // (next iteration's runAgentLoop, or the terminal release) runs next.
+      // Logging the handoff distinguishes a commit hang (this line never
+      // prints after `shouldIterate=…`) from a continuation hang (this line
+      // prints but the next `iter … enter` / terminal release never does).
+      scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration committed; running continuation")
+      continuation
+    }
   }
 
   /** Sigil bug #198 — assemble an [[AgentRunawayException]] whose
