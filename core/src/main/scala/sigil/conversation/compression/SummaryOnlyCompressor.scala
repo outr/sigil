@@ -72,7 +72,7 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
         // Bug #24 / #26 / #41 — route through a `SummarizationWork`
         // candidate sized for the input; fall back to the caller's
         // model when no strategy / candidate fits.
-        summarizationModel <- resolveSummarizationModel(sigil, callerModelId, chain, Some(estimatedInput))
+        summarizationModel <- resolveSummarizationModel(sigil, callerModelId, chain, Some(estimatedInput), conversationId)
         // Bug #41 — if even the picked model can't fit (e.g. fallback
         // path with `routedModelFor` returning the caller's model
         // unchanged), chunk the frames into pieces that fit and merge.
@@ -182,8 +182,10 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
   private def resolveSummarizationModel(sigil: Sigil,
                                         callerModelId: Id[Model],
                                         chain: List[ParticipantId],
-                                        estimatedInputTokens: Option[Long]): Task[Id[Model]] =
-    sigil.routedModelFor(
+                                        estimatedInputTokens: Option[Long],
+                                        conversationId: Id[Conversation]): Task[Id[Model]] =
+    sigil.auxModelFor(
+      conversationId,
       SummarizationWork,
       chain,
       fallback = callerModelId,

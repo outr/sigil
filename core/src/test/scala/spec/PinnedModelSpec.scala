@@ -13,13 +13,14 @@ import sigil.event.Event
 /**
  * Coverage for conversation-level model pinning.
  *
- * The contract: when `Conversation.pinnedModelId` is set, every
- * LLM dispatch in the conversation routes to that model — the
- * agent's main turn AND framework auxiliary calls. Mode-driven
- * strategy selection and space-level strategy assignment do NOT
- * override the pin.
+ * The contract (#357): a pin governs the agent's MAIN turn —
+ * mode-driven strategy selection and space-level strategy assignment
+ * do NOT override it. Framework auxiliary calls (topic classifier,
+ * memory extractor, progress checkpoint, curate compression) stay on
+ * the app's cost-first `routedModelFor` by default, and only follow
+ * the pin when `pinCoversAuxiliaryCalls` is set.
  *
- * Three locked invariants:
+ * Locked invariants:
  *   1. `pin_model` persists the pinned id on the Conversation
  *      record.
  *   2. `runAgentTurn`'s strategy resolution short-circuits to a
@@ -27,6 +28,8 @@ import sigil.event.Event
  *      (verified indirectly via the conversation row's value).
  *   3. `unpin_model` clears the pin so subsequent dispatch reverts
  *      to mode/space strategies.
+ *   4. `auxModelFor` ignores the pin by default (#357) and honors it
+ *      when `pinCoversAuxiliaryCalls` is true.
  */
 class PinnedModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -122,6 +125,47 @@ class PinnedModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(orphan), Event.id()).toList.map { events =>
         events should not be empty
       }
+    }
+  }
+
+  "auxModelFor (#357)" should {
+    // A distinct fallback id so we can tell "honored the pin" from
+    // "fell back to cost-first routing" unambiguously. No provider
+    // strategy is wired, so routedModelFor returns this fallback.
+    val auxFallback = Model.id("test", "aux-fallback")
+
+    "ignore the pin by default (cost-first auxiliary routing)" in {
+      TestSigil.pinCoversAuxiliaryCallsOverride.set(None)
+      for {
+        conv     <- freshConversation()
+        _        <- PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(conv), Event.id()).toList
+        resolved <- TestSigil.auxModelFor(conv.id, sigil.provider.SummarizationWork, List(TestUser, TestAgent), auxFallback)
+      } yield {
+        // Pin is set on the conversation, but the default keeps aux
+        // calls on the cheap fallback — not the pinned model.
+        resolved shouldBe auxFallback
+      }
+    }
+
+    "follow the pin when pinCoversAuxiliaryCalls is true" in {
+      TestSigil.pinCoversAuxiliaryCallsOverride.set(Some(true))
+      (for {
+        conv     <- freshConversation()
+        _        <- PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(conv), Event.id()).toList
+        resolved <- TestSigil.auxModelFor(conv.id, sigil.provider.SummarizationWork, List(TestUser, TestAgent), auxFallback)
+      } yield {
+        resolved shouldBe pinnedModelId
+      }).guarantee(Task(TestSigil.pinCoversAuxiliaryCallsOverride.set(None)))
+    }
+
+    "fall back to cost-first routing for an unpinned conversation even when the knob is on" in {
+      TestSigil.pinCoversAuxiliaryCallsOverride.set(Some(true))
+      (for {
+        conv     <- freshConversation()  // never pinned
+        resolved <- TestSigil.auxModelFor(conv.id, sigil.provider.SummarizationWork, List(TestUser, TestAgent), auxFallback)
+      } yield {
+        resolved shouldBe auxFallback
+      }).guarantee(Task(TestSigil.pinCoversAuxiliaryCallsOverride.set(None)))
     }
   }
 

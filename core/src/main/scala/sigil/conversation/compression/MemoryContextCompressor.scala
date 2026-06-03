@@ -112,7 +112,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                               tokenizer.count(summarizationSystemPrompt) +
                               tokenizer.count(extractionSystemPrompt) +
                               promptOverheadTokens).toLong
-          summarizationModel <- sigil.routedModelFor(
+          summarizationModel <- sigil.auxModelFor(
+                                  conversationId,
                                   SummarizationWork,
                                   chain,
                                   fallback = callerModelId,
@@ -291,7 +292,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
     else for {
       ctx               <- loadContext(sigil, conversationId)
       transcript         = renderTranscript(frames, ctx._1, ctx._2)
-      summarizationModel <- sigil.routedModelFor(
+      summarizationModel <- sigil.auxModelFor(
+                              conversationId,
                               SummarizationWork,
                               chain,
                               fallback = callerModelId,
@@ -366,7 +368,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       ctx <- loadContext(sigil, conversationId)
       // Route once for the whole hierarchical pass — every chunk
       // and every epoch fold goes through the same model.
-      summarizationModel <- sigil.routedModelFor(
+      summarizationModel <- sigil.auxModelFor(
+                              conversationId,
                               SummarizationWork,
                               chain,
                               fallback = callerModelId,

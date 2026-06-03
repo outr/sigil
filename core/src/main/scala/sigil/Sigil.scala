@@ -1397,6 +1397,42 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
+  /** #357 — whether a conversation's
+    * [[sigil.conversation.Conversation.pinnedModelId]] also governs the
+    * framework's auxiliary LLM calls (topic classifier, memory
+    * extractor, progress checkpoint, curate compression).
+    *
+    * Default `false` (cost-first): a pin governs only the agent's main
+    * turn; auxiliary calls route through [[routedModelFor]] to the
+    * cheapest viable tier for their work type, independent of the pin —
+    * which is usually the right default (classification / extraction /
+    * summarization don't need a frontier model). Apps that want a pin to
+    * mean "every LLM call in this conversation" override to `true`. */
+  def pinCoversAuxiliaryCalls: Boolean = false
+
+  /** #357 — auxiliary-call model resolution. When
+    * [[pinCoversAuxiliaryCalls]] is `false` (default) this is exactly
+    * [[routedModelFor]] — cost-first routing for `workType`, ignoring any
+    * conversation pin. When `true` and the conversation carries a
+    * [[sigil.conversation.Conversation.pinnedModelId]], the pin wins
+    * (honoring the "pin = every LLM call" contract); otherwise it falls
+    * back to `routedModelFor`. The conversation read only happens when
+    * the knob is on, so the default path adds no DB cost. */
+  def auxModelFor(conversationId: Id[Conversation],
+                  workType: sigil.provider.WorkType,
+                  chain: List[ParticipantId],
+                  fallback: Id[Model],
+                  estimatedInputTokens: Option[Long] = None,
+                  reservedOutputTokens: Long = 1024L,
+                  complexity: Option[sigil.provider.Complexity] = None): Task[Id[Model]] =
+    if (!pinCoversAuxiliaryCalls)
+      routedModelFor(workType, chain, fallback, estimatedInputTokens, reservedOutputTokens, complexity)
+    else
+      withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
+        case Some(conv) if conv.pinnedModelId.isDefined => Task.pure(conv.pinnedModelId.get)
+        case _ => routedModelFor(workType, chain, fallback, estimatedInputTokens, reservedOutputTokens, complexity)
+      }
+
   private final lazy val defaultFindTools: sigil.tool.ToolFinder = {
     val staticInputs = staticTools.map(_.inputRW).distinctBy(_.definition.className)
     val allInputs = (staticInputs ++ toolInputRegistrations).distinctBy(_.definition.className)
@@ -4528,7 +4564,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                          priors: List[TopicEntry],
                          proposedLabel: String,
                          proposedSummary: String,
-                         userMessage: String): Task[TopicShiftResult] = {
+                         userMessage: String,
+                         // #357 — when supplied, the classifier consult routes via
+                         // `auxModelFor` so an app that set `pinCoversAuxiliaryCalls`
+                         // sends this aux call to the conversation's pinned model.
+                         // `None` keeps the cost-first `routedModelFor` path.
+                         conversationId: Option[Id[Conversation]] = None): Task[TopicShiftResult] = {
     // Bug #89 — strip reserved labels (agent name, "Greeting",
     // "Initial setup", etc.) from the prior list before the
     // classifier sees them. The `priors` parameter is the
@@ -4586,7 +4627,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // consultSettings (bounded output + reasoning off); temperature is
     // stamped when the routed model accepts it for deterministic
     // classification.
-    routedModelFor(tool.consultWorkType, chain, modelId).flatMap { routedModelId =>
+    val resolveClassifierModel = conversationId match {
+      case Some(cid) => auxModelFor(cid, tool.consultWorkType, chain, modelId)
+      case None      => routedModelFor(tool.consultWorkType, chain, modelId)
+    }
+    resolveClassifierModel.flatMap { routedModelId =>
       val classifierSettings = {
         val base = ConsultTool.settingsFor(tool)
         if (supportsParameter(routedModelId, "temperature")) base.copy(temperature = Some(0.0))
@@ -4712,7 +4757,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case Some(prior) =>
         Task.pure(List(buildSwitch(caller, conversation._id, currentTopic.id, prior.id, prior.label, prior.summary)))
       case None =>
-        classifyTopicShift(modelId, chain, currentTopic, previousTopics, proposedLabel, proposedSummary, userMessage).flatMap {
+        classifyTopicShift(modelId, chain, currentTopic, previousTopics, proposedLabel, proposedSummary, userMessage,
+                           conversationId = Some(conversation._id)).flatMap {
           case TopicShiftResult.NoChange       => Task.pure(Nil)
           case TopicShiftResult.Refine         => resolveRenameTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
           case TopicShiftResult.New            => resolveNewTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
@@ -6628,9 +6674,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             |current status looks identical to the prior status, set meaningfulProgress = false
             |so the framework can intervene.""".stripMargin
         val userPrompt = renderCheckpointPrompt(ctx, priorStatus, iteration)
+        // #357 — the reflection normally judges on the agent's own model
+        // (#320/#321). When `pinCoversAuxiliaryCalls` is set and the
+        // conversation is pinned, the pin wins; otherwise the default
+        // path is untouched (no conversation read).
+        val resolveCheckpointModel: Task[Id[Model]] =
+          if (!pinCoversAuxiliaryCalls) Task.pure(progressReflectionModelFor(agent))
+          else withDB(_.conversations.transaction(_.get(convId)))
+            .map(_.flatMap(_.pinnedModelId).getOrElse(progressReflectionModelFor(agent)))
+        resolveCheckpointModel.flatMap { checkpointModelId =>
         sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ProgressReflectionInput](
           sigil = this,
-          modelId = progressReflectionModelFor(agent),
+          modelId = checkpointModelId,
           chain = List(agent.id),
           systemPrompt = systemPrompt,
           userPrompt = userPrompt,
@@ -6717,6 +6772,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }.handleError { e =>
         Task(scribe.warn(s"runProgressCheckpoint failed for ${agent.id.value}/${convId.value} iter=$iteration: ${e.getMessage}"))
           .map(_ => None)
+      }
       }
       }
     }

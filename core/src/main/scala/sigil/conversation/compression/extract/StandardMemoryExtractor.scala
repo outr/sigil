@@ -71,7 +71,7 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
              |USER: $userMessage
              |
              |AGENT: $agentResponse""".stripMargin
-        sigil.routedModelFor(ExtractMemoriesTool.consultWorkType, chain, modelId).flatMap { routedModelId =>
+        sigil.auxModelFor(conversationId, ExtractMemoriesTool.consultWorkType, chain, modelId).flatMap { routedModelId =>
           // Reasoning-off + tool name come from `ExtractMemoriesTool`'s
           // canonical consultSettings; the cap is stamped per-extractor
           // from [[maxExtractionTokens]] so apps can tune it without

@@ -270,6 +270,13 @@ object TestSigil extends Sigil {
   val narrowRosterByRecentUseOverride =
     new AtomicReference[Option[Boolean]](None)
 
+  /** #357 — per-spec override of `pinCoversAuxiliaryCalls`. `None`
+    * (default) uses the framework default (`false`, cost-first);
+    * `Some(b)` forces the flag. Used by PinnedModelSpec to exercise
+    * both sides of `auxModelFor` without mutating shared state. */
+  val pinCoversAuxiliaryCallsOverride =
+    new AtomicReference[Option[Boolean]](None)
+
   // ---- hook overrides delegate to refs ----
 
   override def modelResolver: sigil.provider.ModelResolver = new sigil.provider.ModelResolver {
@@ -392,6 +399,9 @@ object TestSigil extends Sigil {
 
   override def narrowRosterByRecentUse: Boolean =
     narrowRosterByRecentUseOverride.get().getOrElse(super.narrowRosterByRecentUse)
+
+  override def pinCoversAuxiliaryCalls: Boolean =
+    pinCoversAuxiliaryCallsOverride.get().getOrElse(super.pinCoversAuxiliaryCalls)
 
   // ---- setters (per-test overrides) ----
 
@@ -532,6 +542,7 @@ object TestSigil extends Sigil {
     resolveProviderStrategyRef.set(None)
     accessibleSpacesRef.set((_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId]))
     healingModeRef.set(sigil.heal.HealingMode.Strict)
+    pinCoversAuxiliaryCallsOverride.set(None)
   }
 
   /** Expose the in-memory information store that backs `getInformation`
