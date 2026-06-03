@@ -14,7 +14,7 @@ import sigil.participant.{AgentParticipantId, ParticipantId, Participant, Defaul
 import sigil.provider.{ConversationMode, GenerationSettings, Instructions, Provider}
 import sigil.signal.Signal
 import sigil.tool.core.CoreTools
-import sigil.workflow.{JobStepInput, WorkflowCollections, WorkflowHost, WorkflowSigil, WorkflowTemplate}
+import sigil.workflow.{JobStepInput, LoopStepInput, WorkflowCollections, WorkflowHost, WorkflowSigil, WorkflowTemplate}
 import sigil.workflow.event.{WorkflowRunCompleted, WorkflowRunStarted, WorkflowStepCompleted}
 
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -97,6 +97,65 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         steps.head.success shouldBe true
         ends should have size 1
         ends.head.workflowName shouldBe "noop"
+      }
+    }
+
+    "publish a WorkflowStepCompleted for each loop body iteration (#353)" in {
+      val convId = Conversation.id("workflow-e2e-loop-conv")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals
+        .evalMap(s => Task { recorded.add(s); () })
+        .takeWhile(_ => running)
+        .drain
+        .startUnit()
+      Thread.sleep(100)
+
+      val template = WorkflowTemplate(
+        name = "loop-noop",
+        description = Some("Loop over 3 items, each running a noop body step"),
+        steps = List(LoopStepInput(
+          id = "loop",
+          over = "items",
+          body = List(JobStepInput(id = "body", name = Some("body step")))
+        )),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(convId)
+      )
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId],
+          modelId = Model.id("test", "model"),
+          toolNames = Nil,
+          instructions = Instructions(),
+          generationSettings = GenerationSettings()
+        )),
+        currentMode = ConversationMode,
+        space = GlobalSpace,
+        _id = convId
+      )
+
+      for {
+        _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _ <- sigil.workflow.WorkflowScheduler.scheduleTemplate(
+               TestWorkflowSigil, template,
+               variables = Map("items" -> fabric.arr(str("a"), str("b"), str("c")))
+             )
+        _ <- waitForCompletion(recorded, 10.seconds)
+      } yield {
+        running = false
+        import scala.jdk.CollectionConverters.*
+        val all = recorded.iterator().asScala.toList
+        val steps = all.collect { case e: WorkflowStepCompleted => e }
+        val ends  = all.collect { case e: WorkflowRunCompleted  => e }
+        ends should have size 1
+        // #353 — before the fix a loop emitted ZERO step-completed events (start -> nothing -> end).
+        // Now each of the 3 iterations' body step surfaces one (plus the loop container), so per-item
+        // progress is observable in the activity bar.
+        steps.count(_.success) should be >= 3
       }
     }
   }
