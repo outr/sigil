@@ -158,6 +158,69 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         steps.count(_.success) should be >= 3
       }
     }
+
+    "thread a tool step's typed output into its `output` variable (#354)" in {
+      val convId = Conversation.id("workflow-e2e-tooloutput-conv")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals
+        .evalMap(s => Task { recorded.add(s); () })
+        .takeWhile(_ => running)
+        .drain
+        .startUnit()
+      Thread.sleep(100)
+
+      // echo_back returns a typed TextToolOutput("Echo: hi"). Before the fix the step
+      // coalesced only Messages (none here, since ToolResults folds into the invoke) and
+      // wrote {"ok":"done"}; and the top-level step's payload never reached a variable.
+      val template = WorkflowTemplate(
+        name = "tool-output",
+        description = Some("Single echo_back step writing into variable r"),
+        steps = List(JobStepInput(
+          id = "echo",
+          name = Some("echo step"),
+          tool = Some("echo_back"),
+          arguments = Some("""{"text":"hi"}"""),
+          output = Some("r")
+        )),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(convId)
+      )
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId],
+          modelId = Model.id("test", "model"),
+          toolNames = Nil,
+          instructions = Instructions(),
+          generationSettings = GenerationSettings()
+        )),
+        currentMode = ConversationMode,
+        space = GlobalSpace,
+        _id = convId
+      )
+
+      for {
+        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _   <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
+        _   <- waitForCompletion(recorded, 10.seconds)
+        run <- {
+          import scala.jdk.CollectionConverters.*
+          val runId = recorded.iterator().asScala.collectFirst { case e: WorkflowRunCompleted => e.runId }.get
+          TestWorkflowSigil.withDB(_.workflows.transaction(_.get(lightdb.id.Id[strider.Workflow](runId))))
+        }
+      } yield {
+        running = false
+        val wf = run.get
+        // The typed TextToolOutput rendered through outputRW — {"text":"Echo: hi"} — is the
+        // step payload (proves tool-output capture, not the old {"ok":"done"}) AND is threaded
+        // into the `r` variable for downstream {{r}} substitution (proves outputVariable).
+        wf.payloads.values.toList should contain(fabric.obj("text" -> str("Echo: hi")))
+        wf.variables.get("r") shouldBe Some(fabric.obj("text" -> str("Echo: hi")))
+      }
+    }
   }
 
   /** Poll the recorded queue until a `WorkflowRunCompleted` shows up

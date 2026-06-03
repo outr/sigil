@@ -8,9 +8,10 @@ import rapid.Task
 import sigil.{Sigil, TurnContext}
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message}
+import sigil.event.{Event, Message, ToolOutcome}
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent}
+import sigil.signal.{EventState, ToolDelta}
 import sigil.tool.{ToolInput, ToolName}
 import sigil.tool.model.ResponseContent
 import strider.Workflow
@@ -48,6 +49,11 @@ final case class SigilJobStep(input: JobStepInput,
   override def continueOnError: Boolean = input.continueOnError
   override def retryCount: Int = input.retryCount
   override def retryDelayMs: Long = input.retryDelayMs
+
+  /** #354 — thread a top-level step's result into the named workflow variable (in addition to
+    * `payloads`), so a later step can reference it via `{{output}}` substitution, exactly as a
+    * `Loop` collects into its output variable. */
+  override def outputVariable: Option[String] = input.output.map(_.trim).filter(_.nonEmpty)
 
   override def execute(workflow: Workflow, pm: ProgressManager): Task[Json] = {
     val host = WorkflowHost.get
@@ -88,12 +94,32 @@ final case class SigilJobStep(input: JobStepInput,
           case Right(decoded) =>
             SyntheticTurnContext.build(host, workflow).flatMap { ctx =>
               val typedInput = decoded.asInstanceOf[ToolInput]
-              tool.execute(typedInput, ctx, Event.id()).toList.map { evs =>
-                val texts = evs.collect { case m: Message =>
-                  m.content.collect { case ResponseContent.Text(text) => text }.mkString
-                }.filter(_.nonEmpty)
-                if (texts.isEmpty) obj("ok" -> str("done"))
-                else obj("results" -> fabric.Arr(texts.map(t => (str(t): Json)).toVector, None))
+              tool.execute(typedInput, ctx, Event.id()).toList.map { signals =>
+                // #354 — a tool's real result rides the settling `ToolDelta`'s `output` (the typed
+                // `ToolOutput`); `ToolResults` was folded into the invoke (#265), so tools like
+                // bash/grep/read_file emit no Message. Read that output first (rendered via the
+                // tool's `outputRW`); on a logical Failure surface the reason; only then fall back
+                // to coalesced Messages, then a generic marker.
+                val settle = signals.reverseIterator.collectFirst {
+                  case d: ToolDelta if d.state.contains(EventState.Complete) => d
+                }
+                def fromMessages: Json = {
+                  val texts = signals.collect { case m: Message =>
+                    m.content.collect { case ResponseContent.Text(text) => text }.mkString
+                  }.filter(_.nonEmpty)
+                  if (texts.isEmpty) obj("ok" -> str("done"))
+                  else obj("results" -> fabric.Arr(texts.map(t => (str(t): Json)).toVector, None))
+                }
+                settle match {
+                  case Some(d) if d.output.isDefined =>
+                    tool.outputRW.read(d.output.get.asInstanceOf[tool.Output])
+                  case Some(d) =>
+                    d.outcome match {
+                      case Some(f: ToolOutcome.Failure) => obj("error" -> str(f.reason))
+                      case _                            => fromMessages
+                    }
+                  case None => fromMessages
+                }
               }
             }
         }

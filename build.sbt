@@ -1,5 +1,5 @@
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "1.2.0-SNAPSHOT2"
+ThisBuild / version := "1.2.0-SNAPSHOT3"
 
 ThisBuild / scalaVersion := "3.8.3"
 
@@ -13,7 +13,7 @@ val scribeVersion: String = "3.19.0"
 
 val lightdbVersion: String = "4.40.0"
 
-val striderVersion: String = "1.1.1-SNAPSHOT"
+val striderVersion: String = "1.1.2-SNAPSHOT"
 
 val scalapassVersion: String = "1.4.2"
 
