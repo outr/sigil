@@ -6468,7 +6468,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private final def firePostTurnExtraction(agent: AgentParticipant,
                                            convId: Id[Conversation],
                                            turnStartTimestamp: Timestamp): Task[Unit] =
-    withDB(_.eventsTransaction(convId)(_.list)).flatMap { all =>
+    withDB(_.conversationEvents(convId)).flatMap { all =>
       val convEvents = all.iterator
         .filter(_.conversationId == convId)
         .filter(_.state == EventState.Complete)
@@ -6728,7 +6728,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * empty context rather than aborting the checkpoint. */
   private final def loadProgressContext(convId: Id[Conversation],
                                         agentId: ParticipantId): Task[ProgressContext] =
-    withDB(_.eventsTransaction(convId)(_.list)).map { all =>
+    withDB(_.conversationEvents(convId)).map { all =>
       val convEvents = all.iterator
         .collect { case e: Event if e.conversationId == convId => e }
         .toList
@@ -6802,7 +6802,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * signal rather than aborting the checkpoint. */
   private final def evaluateStall(convId: Id[Conversation],
                                   agentId: ParticipantId): Task[sigil.conversation.compression.StallDetector.Signal] =
-    withDB(_.eventsTransaction(convId)(_.list)).map { all =>
+    withDB(_.conversationEvents(convId)).map { all =>
       val convEvents = all.iterator
         .collect { case e: Event if e.conversationId == convId => e }
         .toList
@@ -7206,7 +7206,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * aborting the failure-publish path. */
   private final def latestCheckpointStatus(agentId: ParticipantId,
                                            convId: Id[Conversation]): Task[Option[String]] =
-    withDB(_.eventsTransaction(convId)(_.list)).map { events =>
+    withDB(_.conversationEvents(convId)).map { events =>
       events.collect {
         case cp: sigil.event.ProgressCheckpoint if cp.participantId == agentId => cp
       }.maxByOption(_.timestamp.value).map { cp =>

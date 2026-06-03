@@ -1479,7 +1479,7 @@ object Orchestrator {
                                       caller: ParticipantId,
                                       topicId: lightdb.id.Id[Topic]): Task[Option[List[Signal]]] = {
     if (!sigil.refusalDetector.isRefusal(content)) Task.pure(None)
-    else sigil.withDB(_.eventsTransaction(convId)(_.list)).map { allEvents =>
+    else sigil.withDB(_.conversationEvents(convId)).map { allEvents =>
       val convEvents = allEvents
         .filter(_.conversationId == convId)
         .sortBy(_.timestamp.value)
@@ -1551,7 +1551,7 @@ object Orchestrator {
                                    caller: ParticipantId,
                                    topicId: lightdb.id.Id[Topic]): Task[Option[List[Signal]]] = {
     val normalized = Orchestrator.normalizeQuery(keywords)
-    sigil.withDB(_.eventsTransaction(convId)(_.list)).map { allEvents =>
+    sigil.withDB(_.conversationEvents(convId)).map { allEvents =>
       val convEvents = allEvents
         .filter(_.conversationId == convId)
         .sortBy(_.timestamp.value)

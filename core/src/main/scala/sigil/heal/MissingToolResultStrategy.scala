@@ -87,7 +87,7 @@ object MissingToolResultStrategy extends HealingStrategy {
   override def apply(corruption: List[CorruptionEvidence],
                      convId: Id[Conversation],
                      host: Sigil): Task[HealResult] =
-    host.withDB(_.eventsTransaction(convId)(_.list)).flatMap { events =>
+    host.withDB(_.conversationEvents(convId)).flatMap { events =>
       // Sigil #314 — an orphan is a `ToolInvoke` whose paired result
       // never landed: its inlined `ContextFrame.ToolCall` is still
       // `Active`, or (defensively, for legacy rows that carry no

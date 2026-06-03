@@ -2,6 +2,7 @@ package sigil.db
 
 import lightdb.LightDB
 import lightdb.cache.CacheConfig
+import lightdb.filter.*
 import lightdb.id.Id
 import lightdb.store.CollectionManager
 import lightdb.upgrade.DatabaseUpgrade
@@ -175,9 +176,27 @@ abstract class SigilDB(override val directory: Option[Path],
    */
   def eventsTransaction[A](conversationId: Id[Conversation])(f: events.TX => Task[A]): Task[A] =
     batchedEventTx.get(conversationId) match {
-      case Some(scope) => f(scope.transaction)
+      // Sigil #355 — serialize every routed access to the shared scope transaction. The scope
+      // holds one backing connection; concurrent fibers (the turn plus foreign publishes to the
+      // same conversation) must not drive it at once or a completion is lost and the loop hangs.
+      case Some(scope) => scope.serialize(f(scope.transaction))
       case None        => events.transaction(f)
     }
+
+  /**
+   * All events for `conversationId`, scoped by the `conversationId` index — NOT a whole-store
+   * `_.list`. Runs through [[eventsTransaction]], so when a [[withBatchedEvents]] scope is open it
+   * executes on that same transaction and sees the turn's still-uncommitted writes (including
+   * direct frame-attach upserts) exactly as `_.list` did — just without materializing every event
+   * of every conversation into memory.
+   *
+   * Mid-turn decision logic (refusal-challenge, repeated-query intercept, self-heal, stall
+   * detection) previously read `eventsTransaction(convId)(_.list)` then filtered by id — loading the
+   * entire events store on each check. This bounds that footprint to one conversation while keeping
+   * identical read-your-writes semantics.
+   */
+  def conversationEvents(conversationId: Id[Conversation]): Task[List[Event]] =
+    eventsTransaction(conversationId)(_.query.filter(_ => Event.conversationId === conversationId.value).toList)
 
   /**
    * Apply a [[Signal]] to the events store. Events insert; Deltas
