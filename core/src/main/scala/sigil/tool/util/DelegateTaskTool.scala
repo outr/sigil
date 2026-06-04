@@ -142,6 +142,13 @@ case object DelegateTaskTool extends Tool {
     val workerId   = WorkerParticipantId(s"${role.name}-${rapid.Unique()}")
     val workerTools = input.toolNames.map(ToolName(_))
     val brief       = composeBrief(input)
+    // #355 — the worker inherits the spawning conversation's mode by default
+    // (a coding supervisor yields a coding worker, with its skill/roster), and
+    // an explicit `mode` name overrides. An unknown/blank name falls back to
+    // the inherited mode rather than the generic ConversationMode default.
+    val workerMode = input.mode.map(_.trim).filter(_.nonEmpty)
+      .flatMap(host.modeByName)
+      .getOrElse(ctx.conversation.currentMode)
 
     for {
       resolvedModel <- resolvedModelTask
@@ -170,6 +177,7 @@ case object DelegateTaskTool extends Tool {
         label                = workerLabel,
         summary              = input.goal.getOrElse(brief).take(80),
         participants         = List(supervisor, workerAgent),
+        currentMode          = workerMode,
         parentConversationId = Some(parentConvId)
       )
       // Activate the supervisor bridge guidance on the caller's projection

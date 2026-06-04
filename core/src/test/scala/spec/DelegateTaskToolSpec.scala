@@ -3,16 +3,20 @@ package spec
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
-import rapid.{AsyncTaskSpec, Task}
+import rapid.{AsyncTaskSpec, Stream, Task}
+import sigil.Sigil
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
+import sigil.db.Model
 import sigil.event.ToolOutcome
-import sigil.provider.AnalysisWork
+import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
+import sigil.provider.{AnalysisWork, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
 import sigil.role.Role
 import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.model.DelegateTaskInput
-import sigil.tool.util.DelegateTaskTool
+import sigil.tool.util.{DelegateTaskOutput, DelegateTaskTool}
 import sigil.event.Event
+import spice.http.HttpRequest
 
 /**
  * Coverage for `delegate_task`'s input round-trip and its caller
@@ -79,6 +83,58 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         d.summary.getOrElse(d.outcome.collect { case ToolOutcome.Failure(r, _) => r }.getOrElse(""))
     }.getOrElse("")
 
+  /** Any agent the spawned worker fires settles immediately — keeps the
+    * worker's first turn quiet so the spec asserts only on the created
+    * worker conversation, not on a real model round-trip. */
+  private object SilentProvider extends Provider {
+    override def `type`: ProviderType = ProviderType.LlamaCpp
+    override def models: List[Model] = Nil
+    override protected def sigil: Sigil = TestSigil
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+      Task.error(new UnsupportedOperationException("no wire"))
+    override def call(input: ProviderCall): Stream[ProviderEvent] =
+      Stream.emits(List(ProviderEvent.Done(StopReason.Complete)))
+  }
+  TestSigil.setProvider(Task.pure(SilentProvider))
+
+  /** A turn anchored as the agent supervisor `TestAgent` in a conversation
+    * whose mode is `mode` — the shape `delegate_task` needs to spawn a
+    * worker (the caller must be an agent participant of the conversation). */
+  private def supervisorContext(mode: sigil.provider.Mode): TurnContext = {
+    val cid = Conversation.id(s"delegate-mode-${rapid.Unique()}")
+    val conv = Conversation(
+      topics       = List(TopicEntry(TestTopicId, "test", "test")),
+      participants  = List(DefaultAgentParticipant(id = TestAgent, modelId = TestSigil.defaultTestModel._id)),
+      currentMode  = mode,
+      _id          = cid
+    )
+    TurnContext(
+      sigil        = TestSigil,
+      chain        = List(TestAgent),
+      conversation = conv,
+      turnInput    = TurnInput(ConversationView(conversationId = cid)),
+      model        = TestSigil.defaultTestModel
+    )
+  }
+
+  /** Spawn a worker via `delegate_task` and return the created worker
+    * conversation's resolved `currentMode` name. */
+  private def workerModeName(input: DelegateTaskInput, ctx: TurnContext): Task[String] =
+    DelegateTaskTool.execute(input, ctx, Event.id()).toList.flatMap { signals =>
+      val out = signals.collectFirst {
+        case d: ToolDelta if d.output.exists(_.isInstanceOf[DelegateTaskOutput]) =>
+          d.output.get.asInstanceOf[DelegateTaskOutput]
+      }.getOrElse(fail(s"no DelegateTaskOutput — got failure: ${failureText(signals)}"))
+      TestSigil.withDB(_.conversations.transaction(_.get(Id[Conversation](out.workerConvId))))
+        .map(_.getOrElse(fail("worker conversation not persisted")).currentMode.name)
+    }
+
+  private def modeInput: DelegateTaskInput = DelegateTaskInput(
+    role    = "impl",
+    brief   = "Implement the parser",
+    modelId = Some(TestSigil.defaultTestModel._id.value)
+  )
+
   "DelegateTaskInput" should {
     "round-trip through fabric RW" in {
       import fabric.rw.*
@@ -127,6 +183,27 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         DelegateTaskTool.execute(input, turnContextFor(sub), Event.id()).toList.map { signals =>
           failureText(signals).toLowerCase should include("depth cap")
         }
+      }
+    }
+
+    // #355 — worker mode inheritance + override.
+    "spawn the worker in the spawning conversation's mode by default (inherit)" in {
+      // Supervisor is in TestCodingMode (name "coding"); no `mode` on the input.
+      workerModeName(modeInput, supervisorContext(TestCodingMode)).map { m =>
+        m shouldBe "coding"
+      }
+    }
+
+    "spawn the worker in an explicitly-specified mode (override)" in {
+      // Supervisor in "coding" delegates a leg that should run in "skilled".
+      workerModeName(modeInput.copy(mode = Some("skilled")), supervisorContext(TestCodingMode)).map { m =>
+        m shouldBe "skilled"
+      }
+    }
+
+    "fall back to the inherited mode when the specified mode name is unknown" in {
+      workerModeName(modeInput.copy(mode = Some("no-such-mode")), supervisorContext(TestCodingMode)).map { m =>
+        m shouldBe "coding"
       }
     }
   }

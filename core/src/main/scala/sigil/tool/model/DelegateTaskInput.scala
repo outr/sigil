@@ -33,6 +33,13 @@ import sigil.tool.ToolInput
  * (the default) gives the worker just those essentials — it discovers
  * what it needs via capability search. The worker does NOT inherit the
  * caller's user-facing control surface.
+ *
+ * `mode` is the worker conversation's operating mode by name. Unset (the
+ * default) inherits the spawning conversation's `currentMode`, so a
+ * supervisor doing coding work yields a coding worker automatically. Set
+ * it to delegate a sub-task that should run in a different mode (e.g. a
+ * research supervisor spinning up a `coding` worker); an unknown/blank
+ * name falls back to the inherited mode.
  */
 case class DelegateTaskInput(role: String,
                              brief: String,
@@ -40,4 +47,5 @@ case class DelegateTaskInput(role: String,
                              roleDescription: Option[String] = None,
                              modelId: Option[String] = None,
                              complexity: Option[Complexity] = None,
+                             mode: Option[String] = None,
                              toolNames: List[String] = Nil) extends ToolInput derives RW
