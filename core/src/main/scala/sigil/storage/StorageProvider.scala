@@ -33,30 +33,38 @@ import rapid.Task
  */
 trait StorageProvider {
 
-  /** Write bytes for the given path. Returns the canonical path the
-    * provider stored them at — typically the input `path`, but
-    * implementations may normalize. */
+  /**
+   * Write bytes for the given path. Returns the canonical path the
+   * provider stored them at — typically the input `path`, but
+   * implementations may normalize.
+   */
   def upload(path: String, data: Array[Byte], contentType: String): Task[String]
 
-  /** Read bytes for the given path. `None` if the path doesn't exist. */
+  /**
+   * Read bytes for the given path. `None` if the path doesn't exist.
+   */
   def download(path: String): Task[Option[Array[Byte]]]
 
   def delete(path: String): Task[Unit]
 
   def exists(path: String): Task[Boolean]
 
-  /** Read the current contents and verification token. Default
-    * implementation hashes the downloaded bytes; backends with
-    * native version stamps (S3 ETag) override to use the backend
-    * value directly. */
+  /**
+   * Read the current contents and verification token. Default
+   * implementation hashes the downloaded bytes; backends with
+   * native version stamps (S3 ETag) override to use the backend
+   * value directly.
+   */
   def read(path: String): Task[Option[StorageContents]] =
     download(path).map(_.map(bytes => StorageContents(bytes, FileVersion.of(bytes))))
 
-  /** Conditional write — commit `data` iff the storage's current
-    * version still matches `expected`. Default implementation does
-    * a read-then-write that is NOT race-safe across concurrent
-    * callers; concrete providers should override using a backend
-    * lock or native CAS. */
+  /**
+   * Conditional write — commit `data` iff the storage's current
+   * version still matches `expected`. Default implementation does
+   * a read-then-write that is NOT race-safe across concurrent
+   * callers; concrete providers should override using a backend
+   * lock or native CAS.
+   */
   def writeIfMatch(path: String,
                    data: Array[Byte],
                    contentType: String,

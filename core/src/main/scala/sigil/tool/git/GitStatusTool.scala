@@ -13,11 +13,10 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * `workingDir`) and returns a typed [[GitStatusOutput]]. Replaces the
  * agent's previous "shell out and regex `M  path`" workflow.
  */
-final class GitStatusTool(context: FileSystemContext)
-  extends Tool with sigil.tool.ReadOnlyExternalTool {
-  type Input  = GitStatusInput
+final class GitStatusTool(context: FileSystemContext) extends Tool with sigil.tool.ReadOnlyExternalTool {
+  type Input = GitStatusInput
   type Output = GitStatusOutput
-  val inputRW  = summon[RW[GitStatusInput]]
+  val inputRW = summon[RW[GitStatusInput]]
   val outputRW = summon[RW[GitStatusOutput]]
   val name = ToolName("git_status")
   val description =
@@ -37,9 +36,9 @@ final class GitStatusTool(context: FileSystemContext)
         else {
           val (header, entries) = GitOps.parseStatus(r.stdout)
           GitStatusOutput.Reported(
-            branch  = header.branch,
-            ahead   = header.ahead,
-            behind  = header.behind,
+            branch = header.branch,
+            ahead = header.ahead,
+            behind = header.behind,
             entries = entries
           )
         }

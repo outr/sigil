@@ -17,7 +17,9 @@ import spice.http.HttpRequest
 class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** A real 1x1 transparent PNG. */
+  /**
+   * A real 1x1 transparent PNG.
+   */
   private val tinyPng: Array[Byte] = java.util.Base64.getDecoder.decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII="
   )
@@ -48,7 +50,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
 
   "normalizeStoredImages" should {
 
-    "rewrite an internally-stored image to inline ImageBytes" in {
+    "rewrite an internally-stored image to inline ImageBytes" in
       TestSigil.storeBytes(GlobalSpace, tinyPng, "image/png").flatMap { stored =>
         FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(TestSigil.storageUrl(stored)))).map { normalized =>
           imageContents(normalized) match {
@@ -59,7 +61,6 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
           }
         }
       }
-    }
 
     "leave a genuine public image URL untouched" in {
       val publicUrl = spice.net.URL.get("https://cdn.example.com/pic.png").toOption.get
@@ -69,18 +70,18 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
     }
 
     "leave a storage-shaped URL whose id does not resolve untouched" in {
-      val dangling = spice.net.URL.get("sigil://storage/no-such-file",
+      val dangling = spice.net.URL.get(
+        "sigil://storage/no-such-file",
         tldValidation = spice.net.TLDValidation.Off).toOption.get
       FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(dangling))).map { normalized =>
         imageContents(normalized) shouldBe Vector(MessageContent.Image(dangling))
       }
     }
 
-    "leave text content untouched" in {
+    "leave text content untouched" in
       FakeProvider.normalizeStoredImages(callWith(MessageContent.Text("hello"))).map { normalized =>
         imageContents(normalized) shouldBe Vector(MessageContent.Text("hello"))
       }
-    }
   }
 
   "tear down" should {

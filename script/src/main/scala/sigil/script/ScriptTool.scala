@@ -43,21 +43,23 @@ case class ScriptTool(name: ToolName,
                       override val examples: List[ToolExample] = Nil,
                       override val createdBy: Option[ParticipantId] = None,
                       override val created: Timestamp = Timestamp(Nowish()),
-                      override val modified: Timestamp = Timestamp(Nowish())) extends Tool derives RW {
+                      override val modified: Timestamp = Timestamp(Nowish()))
+  extends Tool derives RW {
 
-
-  /** Stable id derived from `(name, space)` so `Sigil.createTool`'s
-    * upsert overwrites in place when an agent re-creates a tool with
-    * the same name in the same space. Lives in the body (not the
-    * ctor) because Scala 3 doesn't let default values reference
-    * earlier params of the same parameter list. Round-trips cleanly:
-    * fabric's case-class RW serializes only ctor params; on load the
-    * body computes the same id from the persisted `(name, space)`. */
+  /**
+   * Stable id derived from `(name, space)` so `Sigil.createTool`'s
+   * upsert overwrites in place when an agent re-creates a tool with
+   * the same name in the same space. Lives in the body (not the
+   * ctor) because Scala 3 doesn't let default values reference
+   * earlier params of the same parameter list. Round-trips cleanly:
+   * fabric's case-class RW serializes only ctor params; on load the
+   * body computes the same id from the persisted `(name, space)`.
+   */
   override val _id: Id[Tool] = ScriptTool.id(name, space)
 
   override def kind: sigil.tool.ToolKind = ScriptKind
 
-  type Input  = JsonInput
+  type Input = JsonInput
   type Output = ScriptToolOutput
   override val inputRW: RW[JsonInput] = summon[RW[JsonInput]]
   override val outputRW: RW[ScriptToolOutput] = summon[RW[ScriptToolOutput]]
@@ -68,17 +70,17 @@ case class ScriptTool(name: ToolName,
                              context: ToolContext): Task[ToolResult[ScriptToolOutput]] =
     context.sigil match {
       case s: ScriptSigil => runOnExecutor(s.scriptExecutor, input.json, context)
-      case _              => Task.pure(ToolResult.Success(ScriptToolOutput(
-        error = Some("Sigil instance does not mix in ScriptSigil; cannot execute script tool."),
-        durationMs = 0L
-      )))
+      case _ => Task.pure(ToolResult.Success(ScriptToolOutput(
+          error = Some("Sigil instance does not mix in ScriptSigil; cannot execute script tool."),
+          durationMs = 0L
+        )))
     }
 
   private def runOnExecutor(executor: ScriptExecutor,
                             args: fabric.Json,
                             context: ToolContext): Task[ToolResult[ScriptToolOutput]] = {
     val bindings = ScriptTools.defaultBindings(context) ++ Map("args" -> args, "context" -> context)
-    val started  = System.currentTimeMillis()
+    val started = System.currentTimeMillis()
     // Bug #67 — wrap the construction in `Task.defer` so synchronous
     // throws during executor.execute argument evaluation surface as a
     // populated ScriptToolOutput.error. Mirror of ExecuteScriptTool's fix.
@@ -86,7 +88,7 @@ case class ScriptTool(name: ToolName,
       executor.execute(code, bindings)
         .map { output =>
           ToolResult.Success(ScriptToolOutput(
-            output     = Some(output),
+            output = Some(output),
             durationMs = System.currentTimeMillis() - started
           ))
         }
@@ -101,19 +103,21 @@ case class ScriptTool(name: ToolName,
       // an InvocationTargetException carrying a NoSuchMethodError,
       // common in reflective script paths) need the root cause to
       // be useful for the agent.
-      error      = Some(ExecuteScriptTool.formatThrowable(t)),
+      error = Some(ExecuteScriptTool.formatThrowable(t)),
       durationMs = System.currentTimeMillis() - started
     ))
 }
 
 object ScriptTool {
 
-  /** Stable record id derived from `(name, space)` so `Sigil.createTool`'s
-    * upsert actually overwrites in place when an agent re-creates a tool
-    * with the same name in the same space. Random ids would let
-    * collisions persist as duplicate rows; that contradicted
-    * [[CreateScriptToolTool]]'s docstring contract ("same name
-    * overwrites") and left agents with no way to disambiguate. */
+  /**
+   * Stable record id derived from `(name, space)` so `Sigil.createTool`'s
+   * upsert actually overwrites in place when an agent re-creates a tool
+   * with the same name in the same space. Random ids would let
+   * collisions persist as duplicate rows; that contradicted
+   * [[CreateScriptToolTool]]'s docstring contract ("same name
+   * overwrites") and left agents with no way to disambiguate.
+   */
   def id(name: ToolName, space: SpaceId): Id[Tool] =
     Id[Tool](s"script::${space.value}::${name.value}")
 }

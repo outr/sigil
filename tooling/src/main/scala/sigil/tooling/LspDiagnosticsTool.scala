@@ -9,7 +9,8 @@ import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 case class LspDiagnosticsInput(languageId: String,
                                filePath: String,
-                               waitMs: Long = 1500L) extends ToolInput derives RW
+                               waitMs: Long = 1500L)
+  extends ToolInput derives RW
 
 /**
  * Returns the language server's current diagnostics for a file —
@@ -29,11 +30,10 @@ case class LspDiagnosticsInput(languageId: String,
  * the typed list and pattern-match on severity instead of regex-
  * parsing rendered strings.
  */
-final class LspDiagnosticsTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
-  type Input  = LspDiagnosticsInput
+final class LspDiagnosticsTool(val manager: LspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input = LspDiagnosticsInput
   type Output = LspDiagnosticsResult
-  val inputRW  = summon[RW[LspDiagnosticsInput]]
+  val inputRW = summon[RW[LspDiagnosticsInput]]
   val outputRW = summon[RW[LspDiagnosticsResult]]
   val name = ToolName("lsp_diagnostics")
   val description =
@@ -47,21 +47,39 @@ final class LspDiagnosticsTool(val manager: LspManager) extends Tool
       |
       |Returns `{filePath, diagnostics: [{range:{start, end}, severity, message, code, source}]}`.""".stripMargin
   override val keywords = Set(
-    "lsp", "language", "diagnostics", "errors", "warnings", "problems",
-    "lint", "compile-check", "analyze", "examine", "inspect", "review",
-    "evaluate", "what's broken", "issues", "semantic",
-    "scala", "type", "fix", "code"
+    "lsp",
+    "language",
+    "diagnostics",
+    "errors",
+    "warnings",
+    "problems",
+    "lint",
+    "compile-check",
+    "analyze",
+    "examine",
+    "inspect",
+    "review",
+    "evaluate",
+    "what's broken",
+    "issues",
+    "semantic",
+    "scala",
+    "type",
+    "fix",
+    "code"
   )
-
 
   override def executeOutput(input: LspDiagnosticsInput, context: ToolContext): Task[LspDiagnosticsResult] =
     withOpenDocumentOrThrow[LspDiagnosticsResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       val wait = if (input.waitMs > 0) session.waitForDiagnostics(input.waitMs) else Task.unit
-      wait.map(_ => LspDiagnosticsResult(
-        filePath    = input.filePath,
-        diagnostics = session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _))
-      ))
+      wait.map(_ =>
+        LspDiagnosticsResult(
+          filePath = input.filePath,
+          diagnostics = session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _))
+        ))
     }
 }

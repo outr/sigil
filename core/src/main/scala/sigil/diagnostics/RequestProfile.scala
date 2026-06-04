@@ -19,12 +19,15 @@ import sigil.event.Event
 case class RequestProfile(total: Int,
                           sections: Map[ProfileSection, Int],
                           frames: Vector[FrameProfile],
-                          insights: List[ContextManagementInsight] = Nil) derives RW
+                          insights: List[ContextManagementInsight] = Nil)
+  derives RW
 
-/** Discriminator for the parts of a wire request a `RequestProfile`
-  * counts. Mirrors the section layout `Provider.renderSystem`
-  * produces, plus the framing pieces (frames, tool roster) that live
-  * outside the system prompt on the wire. */
+/**
+ * Discriminator for the parts of a wire request a `RequestProfile`
+ * counts. Mirrors the section layout `Provider.renderSystem`
+ * produces, plus the framing pieces (frames, tool roster) that live
+ * outside the system prompt on the wire.
+ */
 enum ProfileSection derives RW {
   case ToolFramingPrefix
   case ModeBlock
@@ -42,8 +45,11 @@ enum ProfileSection derives RW {
   case ToolRoster
 }
 
-/** Per-frame token contribution. `kind` is one of `Text`, `ToolCall`,
-  * `ToolResult`, `System`, `Reasoning` so reports can group by event type. */
+/**
+ * Per-frame token contribution. `kind` is one of `Text`, `ToolCall`,
+ * `ToolResult`, `System`, `Reasoning` so reports can group by event type.
+ */
 case class FrameProfile(kind: String,
                         sourceEventId: Id[Event],
-                        tokens: Int) derives RW
+                        tokens: Int)
+  derives RW

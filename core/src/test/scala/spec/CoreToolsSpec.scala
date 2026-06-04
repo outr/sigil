@@ -74,7 +74,8 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val events = CancelTool
         .execute(
           CancelInput(targetParticipantId = Some(TestAgent), force = true, reason = Some("too risky")),
-          turnContextFor(convId), Event.id()
+          turnContextFor(convId),
+          Event.id()
         )
         .toList
       events.map { list =>

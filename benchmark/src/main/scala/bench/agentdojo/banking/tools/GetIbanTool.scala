@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicReference
 
 final case class GetIbanInput() extends ToolInput derives RW
 
-/** `get_iban` — return the user's IBAN. */
+/**
+ * `get_iban` — return the user's IBAN.
+ */
 final class GetIbanTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = GetIbanInput
   type Output = TextToolOutput
@@ -21,7 +23,6 @@ final class GetIbanTool(state: AtomicReference[BankingEnvironment]) extends Tool
 
   val name: ToolName = ToolName("get_iban")
   val description: String = "Get the IBAN of the current bank account."
-
 
   override def executeResult(input: GetIbanInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val iban = state.get.bankAccount.iban

@@ -19,9 +19,9 @@ import sigil.tool.ToolContext
  * copy the script via `create_browser_script`.
  */
 case object UpdateBrowserScriptTool extends Tool {
-  type Input  = UpdateBrowserScriptInput
+  type Input = UpdateBrowserScriptInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[UpdateBrowserScriptInput]]
+  val inputRW = summon[RW[UpdateBrowserScriptInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("update_browser_script")
@@ -46,11 +46,11 @@ case object UpdateBrowserScriptTool extends Tool {
             else {
               val updated = existing.copy(
                 description = input.description.getOrElse(existing.description),
-                parameters  = input.parameters.fold(existing.parameters)(JsonSchemaToDefinition.apply),
-                steps       = input.steps.getOrElse(existing.steps),
-                keywords    = input.keywords.getOrElse(existing.keywords),
+                parameters = input.parameters.fold(existing.parameters)(JsonSchemaToDefinition.apply),
+                steps = input.steps.getOrElse(existing.steps),
+                keywords = input.keywords.getOrElse(existing.keywords),
                 cookieJarId = input.cookieJarId.map(s => Id[CookieJar](s)).orElse(existing.cookieJarId),
-                modified    = Timestamp(Nowish())
+                modified = Timestamp(Nowish())
               )
               tx.upsert(updated).map { stored =>
                 val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
@@ -68,6 +68,7 @@ case object UpdateBrowserScriptTool extends Tool {
               s"Tool '${input.name}' exists but is not a browser script."))
         }
       })
-    }.handleError(t => Task.pure(ToolResult.failure(
-      s"Failed to update browser script: ${t.getMessage}")))
+    }.handleError(t =>
+      Task.pure(ToolResult.failure(
+        s"Failed to update browser script: ${t.getMessage}")))
 }

@@ -24,18 +24,20 @@ import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolResul
  * arithmetic clamps).
  */
 final case class RequestEscalationInput(@description("Why escalation is needed — e.g. 'task spans 4 files; current model keeps producing inconsistent edits'. Stored on the conversation for transparency; rendered on the next checkpoint.")
-                                        reason: String)
+reason: String)
   extends ToolInput derives RW
 
-final case class RequestEscalationOutput(@description("The new complexity tier after the bump. Same as the previous tier when already at High (clamped).")
-                                          tier: Complexity,
-                                          @description("True when the call actually bumped the tier; false when already at High.")
-                                          bumped: Boolean) extends ToolOutput derives RW
+final case class RequestEscalationOutput(
+  @description("The new complexity tier after the bump. Same as the previous tier when already at High (clamped).")
+  tier: Complexity,
+  @description("True when the call actually bumped the tier; false when already at High.")
+  bumped: Boolean)
+  extends ToolOutput derives RW
 
 case object RequestEscalationTool extends Tool {
-  type Input  = RequestEscalationInput
+  type Input = RequestEscalationInput
   type Output = RequestEscalationOutput
-  val inputRW  = summon[RW[RequestEscalationInput]]
+  val inputRW = summon[RW[RequestEscalationInput]]
   val outputRW = summon[RW[RequestEscalationOutput]]
   val name = ToolName("request_escalation")
   val description =
@@ -63,7 +65,7 @@ case object RequestEscalationTool extends Tool {
   override def executeResult(input: RequestEscalationInput,
                              context: ToolContext): Task[ToolResult[RequestEscalationOutput]] =
     context.sigil.requestEscalation(context.conversation._id, input.reason).map {
-      case (newTier, true)  => ToolResult.success(RequestEscalationOutput(tier = newTier, bumped = true))
+      case (newTier, true) => ToolResult.success(RequestEscalationOutput(tier = newTier, bumped = true))
       case (newTier, false) => ToolResult.success(RequestEscalationOutput(tier = newTier, bumped = false))
     }
 }

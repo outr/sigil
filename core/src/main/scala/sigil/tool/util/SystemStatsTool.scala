@@ -20,11 +20,10 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * Diagnostic-only. Apps that want deeper observability should
  * surface metrics via their own provider.
  */
-final class SystemStatsTool(context: FileSystemContext)
-  extends Tool with sigil.tool.ReadOnlyExternalTool {
-  type Input  = SystemStatsInput
+final class SystemStatsTool(context: FileSystemContext) extends Tool with sigil.tool.ReadOnlyExternalTool {
+  type Input = SystemStatsInput
   type Output = SystemStatsOutput
-  val inputRW  = summon[RW[SystemStatsInput]]
+  val inputRW = summon[RW[SystemStatsInput]]
   val outputRW = summon[RW[SystemStatsOutput]]
   val name = ToolName("system_stats")
   val description = "Report system resource usage — CPU usage, memory, disk free, load average — by parsing standard Linux shell utilities."
@@ -54,7 +53,7 @@ final class SystemStatsTool(context: FileSystemContext)
         val idle = """(\d+\.\d+)\s+id""".r.findFirstMatchIn(cpuLine).flatMap(m => m.group(1).toDoubleOption).getOrElse(100.0)
         Some(CpuStats(
           usagePct = Math.round((100.0 - idle) * 10) / 10.0,
-          cores    = Runtime.getRuntime.availableProcessors()
+          cores = Runtime.getRuntime.availableProcessors()
         ))
       } else None
 
@@ -64,12 +63,12 @@ final class SystemStatsTool(context: FileSystemContext)
         val parts = memLine.split("\\s+")
         if (parts.length >= 4) {
           val total = parts(1).toLongOption.getOrElse(0L)
-          val used  = parts(2).toLongOption.getOrElse(0L)
+          val used = parts(2).toLongOption.getOrElse(0L)
           val avail = if (parts.length >= 7) parts(6).toLongOption.getOrElse(total - used) else total - used
           Some(MemoryStats(
-            totalMb  = total,
-            usedMb   = used,
-            availMb  = avail,
+            totalMb = total,
+            usedMb = used,
+            availMb = avail,
             usagePct = if (total > 0) Math.round(used.toDouble / total * 1000) / 10.0 else 0.0
           ))
         } else None
@@ -81,10 +80,10 @@ final class SystemStatsTool(context: FileSystemContext)
           val cols = line.trim.split("\\s+")
           if (cols.length >= 5) {
             Some(DiskStats(
-              mount    = cols(0),
-              size     = cols(1),
-              used     = cols(2),
-              avail    = cols(3),
+              mount = cols(0),
+              size = cols(1),
+              used = cols(2),
+              avail = cols(3),
               usagePct = cols(4)
             ))
           } else None
@@ -97,8 +96,8 @@ final class SystemStatsTool(context: FileSystemContext)
         val parts = line.split("\\s+")
         if (parts.length >= 3)
           Some(LoadAverage(
-            load1  = parts(0).toDoubleOption.getOrElse(0.0),
-            load5  = parts(1).toDoubleOption.getOrElse(0.0),
+            load1 = parts(0).toDoubleOption.getOrElse(0.0),
+            load5 = parts(1).toDoubleOption.getOrElse(0.0),
             load15 = parts(2).toDoubleOption.getOrElse(0.0)
           ))
         else None

@@ -13,9 +13,9 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * space.
  */
 case object ListScriptToolsTool extends Tool {
-  type Input  = ListScriptToolsInput
+  type Input = ListScriptToolsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ListScriptToolsInput]]
+  val inputRW = summon[RW[ListScriptToolsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("list_script_tools")
@@ -43,6 +43,5 @@ case object ListScriptToolsTool extends Tool {
   private def renderListing(tools: List[ScriptTool]): String =
     if (tools.isEmpty) "No script tools visible."
     else tools.map(t =>
-      s"- **${t.name.value}** _(space: ${t.space.value})_ — ${t.description}"
-    ).mkString("\n")
+      s"- **${t.name.value}** _(space: ${t.space.value})_ — ${t.description}").mkString("\n")
 }

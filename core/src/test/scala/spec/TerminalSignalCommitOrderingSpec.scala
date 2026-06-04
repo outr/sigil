@@ -59,16 +59,16 @@ class TerminalSignalCommitOrderingSpec extends AsyncWordSpec with AsyncTaskSpec 
         .takeWhile(_ => running)
         .evalMap {
           case d: AgentStateDelta
-            if d.conversationId == convId
-               && d.activity.contains(AgentActivity.Idle)
-               && d.state.contains(EventState.Complete) =>
+              if d.conversationId == convId
+                && d.activity.contains(AgentActivity.Idle)
+                && d.state.contains(EventState.Complete) =>
             for {
               committed <- TestSigil.withDB(_.events.transaction(_.stream.toList))
               scopeOpen <- TestSigil.withDB(db => Task(db.batchedEventScope(convId).isDefined))
             } yield {
               val respondCommitted = committed.exists {
                 case m: Message => m.participantId == TestAgent
-                case _          => false
+                case _ => false
               }
               observed.compareAndSet(None, Some((respondCommitted, scopeOpen)))
               ()
@@ -79,16 +79,16 @@ class TerminalSignalCommitOrderingSpec extends AsyncWordSpec with AsyncTaskSpec 
         .startUnit()
 
       for {
-        _    <- TestSigil.newConversation(createdBy = TestUser, participants = List(agent), conversationId = convId)
+        _ <- TestSigil.newConversation(createdBy = TestUser, participants = List(agent), conversationId = convId)
         conv <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
-                  .map(_.getOrElse(fail("conversation not created")))
-        _    <- TestSigil.publish(Message(
-                  participantId  = TestUser,
-                  conversationId = convId,
-                  topicId        = conv.currentTopicId,
-                  content        = Vector(ResponseContent.Text("hello")),
-                  state          = EventState.Complete
-                ))
+          .map(_.getOrElse(fail("conversation not created")))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = conv.currentTopicId,
+          content = Vector(ResponseContent.Text("hello")),
+          state = EventState.Complete
+        ))
         result <- pollUntilObserved(observed)
       } yield {
         running = false
@@ -110,9 +110,9 @@ class TerminalSignalCommitOrderingSpec extends AsyncWordSpec with AsyncTaskSpec 
                                 timeout: FiniteDuration = 15.seconds): Task[Option[(Boolean, Boolean)]] = {
     def loop(remainingMs: Long): Task[Option[(Boolean, Boolean)]] =
       observed.get() match {
-        case some @ Some(_)           => Task.pure(some)
+        case some @ Some(_) => Task.pure(some)
         case None if remainingMs <= 0 => Task.pure(None)
-        case None                     => Task.sleep(50.millis).flatMap(_ => loop(remainingMs - 50))
+        case None => Task.sleep(50.millis).flatMap(_ => loop(remainingMs - 50))
       }
     loop(timeout.toMillis)
   }
@@ -122,8 +122,10 @@ class TerminalSignalCommitOrderingSpec extends AsyncWordSpec with AsyncTaskSpec 
   }
 }
 
-/** Stub provider — emits a single atomic `respond` so the agent loop
-  * runs exactly one iteration and terminates cleanly. */
+/**
+ * Stub provider — emits a single atomic `respond` so the agent loop
+ * runs exactly one iteration and terminates cleanly.
+ */
 private object Bug255StubProvider extends Provider {
   val modelId: Id[Model] = Model.id("bug255-stub")
   TestSigil.testModel(modelId)
@@ -143,9 +145,14 @@ private object Bug255StubProvider extends Provider {
       val callId = CallId("bug255-respond")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, "respond"),
-        ProviderEvent.ToolCallComplete(callId, RespondInput(
-          topicLabel = "Reply", topicSummary = "Reply", content = "bug255-reply", endsTurn = true
-        )),
+        ProviderEvent.ToolCallComplete(
+          callId,
+          RespondInput(
+            topicLabel = "Reply",
+            topicSummary = "Reply",
+            content = "bug255-reply",
+            endsTurn = true
+          )),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

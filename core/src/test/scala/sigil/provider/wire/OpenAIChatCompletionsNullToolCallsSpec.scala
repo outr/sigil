@@ -20,7 +20,7 @@ class OpenAIChatCompletionsNullToolCallsSpec extends AsyncWordSpec with AsyncTas
 
   private val config = OpenAIChatCompletions.Config(
     providerNamespace = "test",
-    providerName      = "Test"
+    providerName = "Test"
   )
 
   private def freshState = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(Vector.empty))
@@ -32,13 +32,13 @@ class OpenAIChatCompletionsNullToolCallsSpec extends AsyncWordSpec with AsyncTas
         "choices" -> arr(
           obj(
             "delta" -> obj(
-              "role"              -> str("assistant"),
-              "content"           -> str(""),
+              "role" -> str("assistant"),
+              "content" -> str(""),
               "reasoning_content" -> Null,
-              "tool_calls"        -> Null
+              "tool_calls" -> Null
             ),
             "finish_reason" -> Null,
-            "index"         -> num(0)
+            "index" -> num(0)
           )
         )
       )
@@ -55,8 +55,8 @@ class OpenAIChatCompletionsNullToolCallsSpec extends AsyncWordSpec with AsyncTas
               "tool_calls" -> arr(
                 obj(
                   "index" -> num(0),
-                  "id"    -> str("call_abc"),
-                  "type"  -> str("function"),
+                  "id" -> str("call_abc"),
+                  "type" -> str("function"),
                   "function" -> obj("name" -> str("respond"), "arguments" -> str("{}"))
                 )
               )

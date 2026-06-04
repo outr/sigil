@@ -44,22 +44,22 @@ object TriggerFilter {
     // and SHOULD trigger the next iteration so the agent reads the
     // diagnostic and recovers.
     case m: Message
-      if m.role == MessageRole.Tool && m.participantId == p.id && m.content.isEmpty => false
-    case e if e.role == MessageRole.Tool                              => true
-    case _: AgentState                                                => false
-    case _: Stop                                                      => false
-    case m: Message if m.participantId == p.id                        => false
+        if m.role == MessageRole.Tool && m.participantId == p.id && m.content.isEmpty => false
+    case e if e.role == MessageRole.Tool => true
+    case _: AgentState => false
+    case _: Stop => false
+    case m: Message if m.participantId == p.id => false
     // #328 — addressed messages direct the wake. A non-empty addressee
     // set wakes ONLY the named participants; unaddressed (None/empty)
     // keeps broadcast semantics so co-residents that are never addressed
     // are woken zero times (passive co-residence). Orthogonal to
     // visibility (who can see) — this is who should act.
-    case m: Message                                                   => m.addressees match {
-      case Some(set) if set.nonEmpty => set.contains(p.id)
-      case _                         => true
-    }
-    case tc: TopicChange if tc.participantId == p.id                  => false
-    case _: ModeChange | _: TopicChange                               => true
-    case _                                                            => false
+    case m: Message => m.addressees match {
+        case Some(set) if set.nonEmpty => set.contains(p.id)
+        case _ => true
+      }
+    case tc: TopicChange if tc.participantId == p.id => false
+    case _: ModeChange | _: TopicChange => true
+    case _ => false
   }
 }

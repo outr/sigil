@@ -42,4 +42,5 @@ import spice.net.URL
  */
 case class ImageToolOutput(url: URL,
                            alt: String = "",
-                           text: Option[String] = None) extends ToolOutput derives RW
+                           text: Option[String] = None)
+  extends ToolOutput derives RW

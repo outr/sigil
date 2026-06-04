@@ -14,10 +14,10 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * enum constrains the LLM to a valid choice.
  */
 class TopicClassifierTool(priorLabels: List[String]) extends Tool with FrameworkConsult {
-  type Input  = TopicClassifierInput
+  type Input = TopicClassifierInput
   type Output = TextToolOutput
   val inputRW: RW[TopicClassifierInput] = summon[RW[TopicClassifierInput]]
-  val outputRW: RW[TextToolOutput]      = summon[RW[TextToolOutput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("classify_topic_shift")
   val description: String =
@@ -27,19 +27,24 @@ class TopicClassifierTool(priorLabels: List[String]) extends Tool with Framework
       |  - <prior label> — same subject as one of the prior topics; the user is returning.
       |  - "New"      — a subject genuinely different from Current and all priors.""".stripMargin
 
-
-  /** Categorical decision — routes through the cheap classification tier. */
+  /**
+   * Categorical decision — routes through the cheap classification tier.
+   */
   override def consultWorkType: WorkType = ClassificationWork
 
-  /** Output is a single enum string; 256 tokens covers the structured
-    * payload plus a reasoning-spill margin for thinking-capable models. */
+  /**
+   * Output is a single enum string; 256 tokens covers the structured
+   * payload plus a reasoning-spill margin for thinking-capable models.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(256),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 
-  /** Override the schema's input definition with one whose `kind` field
-    * has a dynamic enum populated from the per-call prior labels. */
+  /**
+   * Override the schema's input definition with one whose `kind` field
+   * has a dynamic enum populated from the per-call prior labels.
+   */
   override def inputDefinition: Definition = {
     val enumKeys: List[String] = "NoChange" :: "Refine" :: "New" :: priorLabels
     val polyValues: Map[String, Definition] =
@@ -49,8 +54,10 @@ class TopicClassifierTool(priorLabels: List[String]) extends Tool with Framework
     )))
   }
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   override def executeResult(input: TopicClassifierInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

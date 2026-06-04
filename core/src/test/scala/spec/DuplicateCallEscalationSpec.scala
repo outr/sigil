@@ -40,10 +40,12 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private val modelId: Id[Model] = Model.id("test", "model")
   TestSigil.testModel(modelId)
 
-  /** Stub provider that emits one `find_capability` tool call with
-    * the supplied keywords. Used to drive the orchestrator past the
-    * cap check; the cap inspects `request.turnInput.projectionFor`
-    * (pre-populated by the test setup), not the provider stream. */
+  /**
+   * Stub provider that emits one `find_capability` tool call with
+   * the supplied keywords. Used to drive the orchestrator past the
+   * cap check; the cap inspects `request.turnInput.projectionFor`
+   * (pre-populated by the test setup), not the provider stream.
+   */
   private class FindCapStubProvider(keywords: String) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -60,10 +62,12 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
     }
   }
 
-  /** Build a ConversationRequest whose turnInput pre-seeds the
-    * agent's `recentToolInvocations` with `priorIdentical` entries
-    * matching `(toolName, argsHash)`. This is what the orchestrator's
-    * cap check reads. */
+  /**
+   * Build a ConversationRequest whose turnInput pre-seeds the
+   * agent's `recentToolInvocations` with `priorIdentical` entries
+   * matching `(toolName, argsHash)`. This is what the orchestrator's
+   * cap check reads.
+   */
   private def requestWithPriorInvocations(convId: Id[Conversation],
                                           priorIdentical: Int,
                                           keywords: String,
@@ -72,29 +76,29 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
     val canonicalPreview = ToolInputCanonicalizer.argsPreview(FindCapabilityInput(keywords = keywords))
     val priorInvocations = (1 to priorIdentical).toList.map { _ =>
       RecentToolInvocation(
-        toolName    = FindCapabilityTool.name,
-        argsHash    = canonicalHash,
+        toolName = FindCapabilityTool.name,
+        argsHash = canonicalHash,
         argsPreview = canonicalPreview,
-        invokedAt   = Timestamp(Nowish()),
-        resulted    = resulted
+        invokedAt = Timestamp(Nowish()),
+        resulted = resulted
       )
     }
     val projection = ParticipantProjection.empty(TestAgent, convId)
       .copy(recentToolInvocations = priorInvocations)
     val turnInput = TurnInput(
-      conversationId         = convId,
+      conversationId = convId,
       participantProjections = Map(TestAgent -> projection)
     )
     ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = turnInput,
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = turnInput,
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = Vector(FindCapabilityTool),
-      chain              = List(TestUser, TestAgent)
+      tools = Vector(FindCapabilityTool),
+      chain = List(TestUser, TestAgent)
     )
   }
 
@@ -103,33 +107,36 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
   // `ProviderStrategy.shouldClassifyComplexity` return true (it
   // only matters when the chain can actually route differently
   // per tier). Register all three under the same nominal model id.
-  private val lowModelId    = Model.id("test", "low")
+  private val lowModelId = Model.id("test", "low")
   private val mediumModelId = Model.id("test", "medium")
-  private val highModelId   = Model.id("test", "high")
+  private val highModelId = Model.id("test", "high")
   TestSigil.testModel(lowModelId)
   TestSigil.testModel(mediumModelId)
   TestSigil.testModel(highModelId)
 
-  /** Routed strategy with three per-tier candidates so
-    * `shouldClassifyComplexity` is true; classifier returns the
-    * supplied tier so the escalation counter accumulates against a
-    * real classification memo. */
+  /**
+   * Routed strategy with three per-tier candidates so
+   * `shouldClassifyComplexity` is true; classifier returns the
+   * supplied tier so the escalation counter accumulates against a
+   * real classification memo.
+   */
   private def routedStrategy(calls: AtomicInteger,
                              classifyAs: Complexity): ProviderStrategy = ProviderStrategy.routed(
     default = List(
-      ModelCandidate(lowModelId,    supportedComplexity = Set(Complexity.Low)),
+      ModelCandidate(lowModelId, supportedComplexity = Set(Complexity.Low)),
       ModelCandidate(mediumModelId, supportedComplexity = Set(Complexity.Medium)),
-      ModelCandidate(highModelId,   supportedComplexity = Set(Complexity.High))
+      ModelCandidate(highModelId, supportedComplexity = Set(Complexity.High))
     ),
-    routes  = Map.empty,
-    inferWorkType   = Some((_, _) => Task.pure(ConversationWork)),
-    inferComplexity = Some((_, _) => Task {
-      calls.incrementAndGet()
-      classifyAs
-    })
+    routes = Map.empty,
+    inferWorkType = Some((_, _) => Task.pure(ConversationWork)),
+    inferComplexity = Some((_, _) =>
+      Task {
+        calls.incrementAndGet()
+        classifyAs
+      })
   )
 
-  override implicit val testTimeout: FiniteDuration = 30.seconds
+  implicit override val testTimeout: FiniteDuration = 30.seconds
 
   "Sigil bug #287 — duplicate-call cap + escalation" should {
 
@@ -141,7 +148,7 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val request = requestWithPriorInvocations(convId, priorIdentical = 2, keywords = "x")
       val provider = new FindCapStubProvider(keywords = "x")
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
       } yield {
         val invokes = signals.collect { case t: ToolInvoke => t }
@@ -163,7 +170,7 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         }.filter { m =>
           m.content.exists {
             case t: ResponseContent.Text => t.text.contains("Refused to dispatch")
-            case _                        => false
+            case _ => false
           }
         }
         withClue(s"expected a cap-refusal Failure to surface (outcomes: $failures, msgs: ${capMsgs.size}): ") {
@@ -184,7 +191,7 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val request = requestWithPriorInvocations(convId, priorIdentical = 5, keywords = "x", resulted = false)
       val provider = new FindCapStubProvider(keywords = "x")
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
       } yield {
         val capFailure = signals.collect { case d: ToolDelta => d.outcome }.flatten
@@ -193,7 +200,7 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         val capMsg = signals.collect { case m: Message if m.role == MessageRole.Tool && m.isFailure => m }
           .exists(_.content.exists {
             case t: ResponseContent.Text => t.text.contains("Refused to dispatch")
-            case _                        => false
+            case _ => false
           })
         withClue("race-induced retries (resulted=false priors) must NOT trip the duplicate-call cap: ") {
           (capFailure || capMsg) shouldBe false
@@ -202,7 +209,7 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
     }
 
     "ESCALATE the conversation's complexity tier when the cap fires" in {
-      val calls    = new AtomicInteger(0)
+      val calls = new AtomicInteger(0)
       val strategy = routedStrategy(calls, classifyAs = Complexity.Low)
       TestSigil.setResolveProviderStrategy(_ => Task.pure(Some(strategy)))
 
@@ -211,44 +218,59 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val request = requestWithPriorInvocations(convId, priorIdentical = 2, keywords = "x")
       val provider = new FindCapStubProvider(keywords = "x")
       val userMsg = Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        content        = Vector(ResponseContent.Text("hi")),
-        state          = EventState.Complete
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("hi")),
+        state = EventState.Complete
       )
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         // Prime the classifier so requestEscalation has a memo entry
         // to bump on top of.
-        _ <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg),
-               sigil.TurnContext(
-                 sigil        = TestSigil,
-                 chain        = List(TestUser, TestAgent),
-                 conversation = conv,
-                 turnInput    = TurnInput(conversationId = convId),
-                 model        = TestSigil.defaultTestModel
-               ))
+        _ <- TestSigil.classifyForRoute(
+          strategy,
+          ConversationWork,
+          conv,
+          Some(userMsg),
+          sigil.TurnContext(
+            sigil = TestSigil,
+            chain = List(TestUser, TestAgent),
+            conversation = conv,
+            turnInput = TurnInput(conversationId = convId),
+            model = TestSigil.defaultTestModel
+          )
+        )
         // Verify pre-trip tier.
-        before <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg),
-                    sigil.TurnContext(
-                      sigil        = TestSigil,
-                      chain        = List(TestUser, TestAgent),
-                      conversation = conv,
-                      turnInput    = TurnInput(conversationId = convId),
-                      model        = TestSigil.defaultTestModel
-                    ))
+        before <- TestSigil.classifyForRoute(
+          strategy,
+          ConversationWork,
+          conv,
+          Some(userMsg),
+          sigil.TurnContext(
+            sigil = TestSigil,
+            chain = List(TestUser, TestAgent),
+            conversation = conv,
+            turnInput = TurnInput(conversationId = convId),
+            model = TestSigil.defaultTestModel
+          )
+        )
         // Trip the cap.
         _ <- Orchestrator.process(TestSigil, provider, request, conv).toList
         // Re-classify — escalation should have bumped Low → Medium.
-        after <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg),
-                   sigil.TurnContext(
-                     sigil        = TestSigil,
-                     chain        = List(TestUser, TestAgent),
-                     conversation = conv,
-                     turnInput    = TurnInput(conversationId = convId),
-                     model        = TestSigil.defaultTestModel
-                   ))
+        after <- TestSigil.classifyForRoute(
+          strategy,
+          ConversationWork,
+          conv,
+          Some(userMsg),
+          sigil.TurnContext(
+            sigil = TestSigil,
+            chain = List(TestUser, TestAgent),
+            conversation = conv,
+            turnInput = TurnInput(conversationId = convId),
+            model = TestSigil.defaultTestModel
+          )
+        )
       } yield {
         before._2 shouldBe Complexity.Low
         after._2 shouldBe Complexity.Medium

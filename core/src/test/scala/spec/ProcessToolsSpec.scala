@@ -6,7 +6,10 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.model.{ProcessListInput, ProcessListOutput, ProcessListScope, ProcessOutputInput, ProcessOutputResult, ProcessRunStatus, ProcessSignal, ProcessSignalInput, ProcessSignalOutput, ProcessSpawnInput, ProcessSpawnOutput}
+import sigil.tool.model.{
+  ProcessListInput, ProcessListOutput, ProcessListScope, ProcessOutputInput, ProcessOutputResult, ProcessRunStatus, ProcessSignal,
+  ProcessSignalInput, ProcessSignalOutput, ProcessSpawnInput, ProcessSpawnOutput
+}
 import sigil.tool.process.{ProcessListTool, ProcessOutputTool, ProcessRegistry, ProcessSignalTool, ProcessSpawnTool, RingBuffer}
 
 import scala.reflect.ClassTag
@@ -33,13 +36,13 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private def turnContext(convId: lightdb.id.Id[Conversation]): TurnContext = {
     val conv = Conversation(
       topics = List(TopicEntry(TestTopicId, "test", "test")),
-      _id    = convId
+      _id = convId
     )
     TurnContext(
-      sigil            = TestSigil,
-      chain            = List(TestUser),
-      conversation     = conv,
-      turnInput        = TurnInput(ConversationView(conversationId = convId)),
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
       model = TestSigil.defaultTestModel
     )
   }
@@ -49,9 +52,11 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     body(reg).guarantee(Task(reg.terminateAll()))
   }
 
-  /** Recover the typed payload from the settling [[ToolDelta]]'s
-    * `output` — the same concrete instance the tool produced, no
-    * JSON round-trip. */
+  /**
+   * Recover the typed payload from the settling [[ToolDelta]]'s
+   * `output` — the same concrete instance the tool produced, no
+   * JSON round-trip.
+   */
   private def typed[T <: sigil.tool.ToolOutput](signals: List[Signal])(using ct: ClassTag[T]): T =
     signals.collectFirst {
       case d: ToolDelta if d.output.exists(o => ct.runtimeClass.isInstance(o)) =>
@@ -61,10 +66,14 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         signals.collect { case d: ToolDelta => d.output.map(_.getClass.getSimpleName) }.mkString(", ")
     ))
 
-  /** Poll `process_output` until either the predicate satisfies or the deadline expires. */
-  private def waitFor(reg: ProcessRegistry, handle: String, deadlineMs: Long)(pred: ProcessOutputResult => Boolean): Task[ProcessOutputResult] = {
+  /**
+   * Poll `process_output` until either the predicate satisfies or the deadline expires.
+   */
+  private def waitFor(reg: ProcessRegistry,
+                      handle: String,
+                      deadlineMs: Long)(pred: ProcessOutputResult => Boolean): Task[ProcessOutputResult] = {
     val tool = new ProcessOutputTool(reg)
-    val tc   = turnContext(convA)
+    val tc = turnContext(convA)
     def loop(): Task[ProcessOutputResult] =
       tool.execute(ProcessOutputInput(handle = handle), tc, Event.id()).toList.flatMap { signals =>
         val result = typed[ProcessOutputResult](signals)
@@ -90,9 +99,9 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val tc = turnContext(convA)
       val deadline = System.currentTimeMillis() + 5000L
       for {
-        spawn  <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "echo hello-stream; echo more"), tc, Event.id()).toList
-        handle  = typed[ProcessSpawnOutput](spawn).handle
-        out    <- waitFor(reg, handle, deadline)(_.stdout.contains("hello-stream"))
+        spawn <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "echo hello-stream; echo more"), tc, Event.id()).toList
+        handle = typed[ProcessSpawnOutput](spawn).handle
+        out <- waitFor(reg, handle, deadline)(_.stdout.contains("hello-stream"))
       } yield {
         out.stdout should include("hello-stream")
         out.status should (be(ProcessRunStatus.Running) or be(ProcessRunStatus.Exited))
@@ -103,14 +112,15 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val tc = turnContext(convA)
       val deadline = System.currentTimeMillis() + 5000L
       for {
-        spawn    <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "echo first; sleep 0.2; echo second"), tc, Event.id()).toList
-        handle    = typed[ProcessSpawnOutput](spawn).handle
+        spawn <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "echo first; sleep 0.2; echo second"), tc, Event.id()).toList
+        handle = typed[ProcessSpawnOutput](spawn).handle
         firstOut <- waitFor(reg, handle, deadline)(_.stdout.contains("first"))
-        cursor    = firstOut.nextCursor
+        cursor = firstOut.nextCursor
         // Wait a moment, then read again with the cursor.
         secondOut <- new ProcessOutputTool(reg).execute(
           ProcessOutputInput(handle = handle, sinceCursor = cursor, waitForPattern = Some("second"), waitTimeoutMs = 5000L),
-          tc, Event.id()
+          tc,
+          Event.id()
         ).toList.map(typed[ProcessOutputResult])
       } yield {
         secondOut.stdout should include("second")
@@ -123,9 +133,9 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val tc = turnContext(convA)
       val deadline = System.currentTimeMillis() + 5000L
       for {
-        spawn  <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "exit 7"), tc, Event.id()).toList
-        handle  = typed[ProcessSpawnOutput](spawn).handle
-        out    <- waitFor(reg, handle, deadline)(_.status == ProcessRunStatus.Exited)
+        spawn <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "exit 7"), tc, Event.id()).toList
+        handle = typed[ProcessSpawnOutput](spawn).handle
+        out <- waitFor(reg, handle, deadline)(_.status == ProcessRunStatus.Exited)
       } yield {
         out.status shouldBe ProcessRunStatus.Exited
         out.exitCode shouldBe Some(7)
@@ -136,9 +146,9 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val tc = turnContext(convA)
       val deadline = System.currentTimeMillis() + 5000L
       for {
-        spawn  <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "cat", stdin = Some("piped-stdin\n")), tc, Event.id()).toList
-        handle  = typed[ProcessSpawnOutput](spawn).handle
-        out    <- waitFor(reg, handle, deadline)(_.stdout.contains("piped-stdin"))
+        spawn <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "cat", stdin = Some("piped-stdin\n")), tc, Event.id()).toList
+        handle = typed[ProcessSpawnOutput](spawn).handle
+        out <- waitFor(reg, handle, deadline)(_.stdout.contains("piped-stdin"))
       } yield out.stdout should include("piped-stdin")
     }
   }
@@ -148,9 +158,10 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val tc = turnContext(convA)
       val deadline = System.currentTimeMillis() + 5000L
       for {
-        spawn  <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "sleep 30"), tc, Event.id()).toList
-        handle  = typed[ProcessSpawnOutput](spawn).handle
-        sigOut <- new ProcessSignalTool(reg).execute(ProcessSignalInput(handle = handle, signal = ProcessSignal.Kill), tc, Event.id()).toList
+        spawn <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "sleep 30"), tc, Event.id()).toList
+        handle = typed[ProcessSpawnOutput](spawn).handle
+        sigOut <-
+          new ProcessSignalTool(reg).execute(ProcessSignalInput(handle = handle, signal = ProcessSignal.Kill), tc, Event.id()).toList
         result <- waitFor(reg, handle, deadline)(_.status == ProcessRunStatus.Exited)
       } yield {
         typed[ProcessSignalOutput](sigOut).delivered shouldBe true
@@ -164,9 +175,9 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val tcA = turnContext(convA)
       val tcB = turnContext(convB)
       for {
-        _       <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "sleep 30"), tcA, Event.id()).toList
-        _       <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "sleep 30"), tcB, Event.id()).toList
-        listA   <- new ProcessListTool(reg).execute(ProcessListInput(scope = ProcessListScope.Current), tcA, Event.id()).toList
+        _ <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "sleep 30"), tcA, Event.id()).toList
+        _ <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "sleep 30"), tcB, Event.id()).toList
+        listA <- new ProcessListTool(reg).execute(ProcessListInput(scope = ProcessListScope.Current), tcA, Event.id()).toList
         listAll <- new ProcessListTool(reg).execute(ProcessListInput(scope = ProcessListScope.All), tcA, Event.id()).toList
       } yield {
         typed[ProcessListOutput](listA).processes.size shouldBe 1
@@ -178,12 +189,12 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   "RingBuffer" should {
     "report `dropped` when reading from a cursor that scrolled past" in {
       val buf = new RingBuffer(maxBytes = 16)
-      buf.append("0123456789")                       // 10 bytes — fits
-      buf.append("ABCDEFGHIJ")                       // 20 total written; first 4 scroll out
+      buf.append("0123456789") // 10 bytes — fits
+      buf.append("ABCDEFGHIJ") // 20 total written; first 4 scroll out
       val (text, cursor, dropped) = buf.readSince(0L)
-      text shouldBe "456789ABCDEFGHIJ"               // last 16 bytes retained
+      text shouldBe "456789ABCDEFGHIJ" // last 16 bytes retained
       cursor shouldBe 20L
-      dropped shouldBe true                          // cursor 0 < dropped count (4)
+      dropped shouldBe true // cursor 0 < dropped count (4)
       Task.pure(succeed)
     }
   }

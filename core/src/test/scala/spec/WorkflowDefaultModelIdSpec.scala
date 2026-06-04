@@ -21,11 +21,11 @@ class WorkflowDefaultModelIdSpec extends AnyWordSpec with Matchers {
 
   private def workflow(vars: Map[String, Json]): Workflow =
     Workflow(
-      name      = "default-model-test",
-      steps     = Nil,
+      name = "default-model-test",
+      steps = Nil,
       scheduled = 0L,
-      queue     = Nil,
-      sourceId  = Id[WorkflowParent]("source"),
+      queue = Nil,
+      sourceId = Id[WorkflowParent]("source"),
       variables = vars
     )
 

@@ -25,10 +25,11 @@ import sigil.tool.{JsonInput, JsonSchemaToDefinition, TextToolOutput, Tool, Tool
  */
 final class McpTool(manager: McpManager,
                     serverConfig: McpServerConfig,
-                    definition: McpToolDefinition) extends Tool {
-  type Input  = JsonInput
+                    definition: McpToolDefinition)
+  extends Tool {
+  type Input = JsonInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[JsonInput]]
+  val inputRW = summon[RW[JsonInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   override val name: ToolName = ToolName(serverConfig.prefix.getOrElse("") + definition.name)
@@ -74,7 +75,7 @@ final class McpTool(manager: McpManager,
     val t = block.get("type").map(_.asString).getOrElse("")
     t match {
       case "text" => block.get("text").map(_.asString)
-      case _      => Some(fabric.io.JsonFormatter.Compact(block))
+      case _ => Some(fabric.io.JsonFormatter.Compact(block))
     }
   }
 }

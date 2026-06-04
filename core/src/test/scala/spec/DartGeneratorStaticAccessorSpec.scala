@@ -25,7 +25,7 @@ class DartGeneratorStaticAccessorSpec extends AnyWordSpec with Matchers {
     spice.openapi.generator.dart.DurableSocketDartGenerator(
       spice.openapi.generator.dart.DurableSocketDartConfig(
         serviceName = "Test",
-        wireType    = ToolPolicyWire
+        wireType = ToolPolicyWire
       )
     ).generate()
 

@@ -78,10 +78,18 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
     "render a real ToolResult for a paired call and throw on the unpaired one (Sigil #313)" in {
       // callA paired (Complete state), callB unpaired (Active state).
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(nonAtomicName, """{"q":"a"}""", callA, agent,
+        ContextFrame.ToolCall(
+          nonAtomicName,
+          """{"q":"a"}""",
+          callA,
+          agent,
           sourceEventId = Id[Event]("frame-A"),
           state = ToolCallState.Complete("real-result-A")),
-        ContextFrame.ToolCall(nonAtomicName, """{"q":"b"}""", callB, agent,
+        ContextFrame.ToolCall(
+          nonAtomicName,
+          """{"q":"b"}""",
+          callB,
+          agent,
           sourceEventId = Id[Event]("frame-B"))
       )
       val thrown = intercept[sigil.heal.BrokenHistoryException] {
@@ -100,7 +108,7 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
       // Simulate that fallback at the renderer level.
       val frames = Vector[ContextFrame](
         ContextFrame.Text(
-          content       = s"[framework: orphan tool result for callId=${callC.value} — content: orphan-result]",
+          content = s"[framework: orphan tool result for callId=${callC.value} — content: orphan-result]",
           participantId = agent,
           sourceEventId = Id[Event]("result-C")
         )

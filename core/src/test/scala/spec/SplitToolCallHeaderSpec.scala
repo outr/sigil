@@ -31,9 +31,9 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
   case class Args(value: String) extends ToolInput derives RW
 
   private object Foo extends Tool {
-    type Input  = Args
+    type Input = Args
     type Output = TextToolOutput
-    val inputRW  = summon[RW[Args]]
+    val inputRW = summon[RW[Args]]
     val outputRW = summon[RW[TextToolOutput]]
     val name: ToolName = ToolName("foo")
     val description: String = "test"
@@ -73,13 +73,13 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
     "buffer arguments that arrive before the header is complete" in {
       val acc = newAcc
       acc.observeHeader(0, Some(CallId("call_x")), None)
-      acc.appendArgs(0, """{"value":""")     // arg fragment 1, before name
-      acc.appendArgs(0, """"hello"}""")      // arg fragment 2, still no name
-      acc.observeHeader(0, None, Some("foo"))  // name arrives last
+      acc.appendArgs(0, """{"value":""") // arg fragment 1, before name
+      acc.appendArgs(0, """"hello"}""") // arg fragment 2, still no name
+      acc.observeHeader(0, None, Some("foo")) // name arrives last
       val events = acc.complete()
       val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
       completes should have size 1
-      completes.head.input shouldBe a [Args]
+      completes.head.input shouldBe a[Args]
       completes.head.input.asInstanceOf[Args].value shouldBe "hello"
     }
 
@@ -99,11 +99,11 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
 
     "surface a diagnostic Error when the stream closes with a partial header" in {
       val acc = newAcc
-      acc.observeHeader(0, Some(CallId("call_x")), None)  // name never arrives
+      acc.observeHeader(0, Some(CallId("call_x")), None) // name never arrives
       val events = acc.complete()
       val errors = events.collect { case e: ProviderEvent.Error => e }
       errors should have size 1
-      errors.head.message should include ("incomplete at stream close")
+      errors.head.message should include("incomplete at stream close")
     }
   }
 }

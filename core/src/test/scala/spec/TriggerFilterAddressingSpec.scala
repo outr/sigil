@@ -28,10 +28,10 @@ class TriggerFilterAddressingSpec extends AnyWordSpec with Matchers {
 
   private def msgFrom(sender: ParticipantId, addressees: Option[Set[ParticipantId]]) =
     Message(
-      participantId  = sender,
+      participantId = sender,
       conversationId = convId,
-      topicId        = topicId,
-      addressees     = addressees
+      topicId = topicId,
+      addressees = addressees
     )
 
   "TriggerFilter addressing" should {

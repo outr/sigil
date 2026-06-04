@@ -20,7 +20,7 @@ class RoutedTierDegradationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private val llama: Id[Model] = Id[Model]("test/tier-llama-low")
   private val haiku: Id[Model] = Id[Model]("test/tier-haiku-medium")
   private val sonnet: Id[Model] = Id[Model]("test/tier-sonnet-high")
-  private val opus: Id[Model]  = Id[Model]("test/tier-opus-veryhigh")
+  private val opus: Id[Model] = Id[Model]("test/tier-opus-veryhigh")
   // Pinned fallback, deliberately NOT in any chain, so a test asserting
   // a chain model proves degradation rather than coinciding with fallback.
   private val pinned: Id[Model] = Id[Model]("test/tier-pinned-fallback")
@@ -28,8 +28,10 @@ class RoutedTierDegradationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private def candidate(id: Id[Model], tier: Complexity): ModelCandidate =
     ModelCandidate(id, supportedComplexity = Set(tier))
 
-  /** Wire a SummarizationWork chain into the test space and run `body`
-    * with the strategy in hand (for cooldown control). */
+  /**
+   * Wire a SummarizationWork chain into the test space and run `body`
+   * with the strategy in hand (for cooldown control).
+   */
   private def withChain[T](chain: List[ModelCandidate])(body: ProviderStrategy => Task[T]): Task[T] = {
     TestSigil.setAccessibleSpaces(_ => Task.pure(Set(TestSpace)))
     val strategy = ProviderStrategy.routed(
@@ -50,38 +52,33 @@ class RoutedTierDegradationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   "Sigil.routedModelFor tier degradation (#315)" should {
 
-    "degrade High → Medium when no High candidate exists but Medium is available" in {
+    "degrade High → Medium when no High candidate exists but Medium is available" in
       withChain(List(candidate(llama, Complexity.Low), candidate(haiku, Complexity.Medium), candidate(opus, Complexity.VeryHigh))) { _ =>
         route(Complexity.High).map(_ shouldBe haiku)
       }
-    }
 
-    "pick the exact tier when a High candidate is present (no degradation)" in {
+    "pick the exact tier when a High candidate is present (no degradation)" in
       withChain(List(candidate(llama, Complexity.Low), candidate(haiku, Complexity.Medium), candidate(sonnet, Complexity.High))) { _ =>
         route(Complexity.High).map(_ shouldBe sonnet)
       }
-    }
 
-    "degrade past a cooled-down Medium to Low" in {
+    "degrade past a cooled-down Medium to Low" in
       withChain(List(candidate(llama, Complexity.Low), candidate(haiku, Complexity.Medium))) { strategy =>
         strategy.reportFailure(haiku, SummarizationWork) // Medium enters cooldown
         route(Complexity.High).map(_ shouldBe llama)
       }
-    }
 
-    "fall back when nothing at or below the requested tier is available" in {
+    "fall back when nothing at or below the requested tier is available" in
       // Only VeryHigh available; request Low — VeryHigh is ABOVE Low, so
       // down-only degradation finds nothing ≤ Low.
       withChain(List(candidate(opus, Complexity.VeryHigh))) { _ =>
         route(Complexity.Low).map(_ shouldBe pinned)
       }
-    }
 
-    "not escalate up: High requested, only VeryHigh available → fallback, not VeryHigh" in {
+    "not escalate up: High requested, only VeryHigh available → fallback, not VeryHigh" in
       withChain(List(candidate(opus, Complexity.VeryHigh))) { _ =>
         route(Complexity.High).map(_ shouldBe pinned) // NOT opus
       }
-    }
   }
 
   "tear down" should {

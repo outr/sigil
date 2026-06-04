@@ -65,11 +65,13 @@ final case class DartGenerator(sigil: Sigil,
                                defTypes: List[(String, Definition)] = Nil,
                                storedEventMode: Boolean = true) {
 
-  /** Run the generator end-to-end: phase-1 registrations, generate
-    * source files, write to `outputPath`, log every emitted file plus
-    * a count summary. Defaults `outputPath` to `../app` if no CLI arg
-    * is supplied — matches the convention every Sigil consumer's
-    * `GenerateDart` shim uses today. */
+  /**
+   * Run the generator end-to-end: phase-1 registrations, generate
+   * source files, write to `outputPath`, log every emitted file plus
+   * a count summary. Defaults `outputPath` to `../app` if no CLI arg
+   * is supplied — matches the convention every Sigil consumer's
+   * `GenerateDart` shim uses today.
+   */
   def run(args: Array[String]): Unit = {
     val outputPath: Path =
       if (args.nonEmpty) Paths.get(args.head)
@@ -90,7 +92,7 @@ final case class DartGenerator(sigil: Sigil,
     val signalDef = summon[RW[Signal]].definition
     val registeredKeys: Set[String] = signalDef.defType match {
       case p: DefType.Poly => p.values.keySet.toSet
-      case _               => Set.empty
+      case _ => Set.empty
     }
     val coreKeys: Set[String] =
       CoreSignals.all.iterator.flatMap(_.definition.className).map(simpleNameOf).toSet
@@ -132,10 +134,12 @@ final case class DartGenerator(sigil: Sigil,
     println(s"[$tag:codegen] wrote ${files.size} file(s) under $outputPath")
   }
 
-  /** Extract the simple class name from a fabric-shaped className. Matches
-    * Fabric's `Definition.simpleClassName` for top-level classes (chain
-    * empty → leaf segment); for inner classes (e.g. `Outer.Inner`) returns
-    * the leaf. Used by the Signal poly registration cross-check above. */
+  /**
+   * Extract the simple class name from a fabric-shaped className. Matches
+   * Fabric's `Definition.simpleClassName` for top-level classes (chain
+   * empty → leaf segment); for inner classes (e.g. `Outer.Inner`) returns
+   * the leaf. Used by the Signal poly registration cross-check above.
+   */
   private def simpleNameOf(cn: String): String = {
     val cleaned = cn.replace("$", ".")
     val parts = cleaned.split('.').toList.filter(_.nonEmpty)

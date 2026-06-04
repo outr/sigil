@@ -10,7 +10,8 @@ import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 import scala.jdk.CollectionConverters.*
 
 case class LspPullDiagnosticsInput(languageId: String,
-                                   filePath: String) extends ToolInput derives RW
+                                   filePath: String)
+  extends ToolInput derives RW
 
 /**
  * Pull-model diagnostics — explicitly request fresh diagnostics for
@@ -27,11 +28,10 @@ case class LspPullDiagnosticsInput(languageId: String,
  *
  * Emits a typed [[LspDiagnosticsResult]].
  */
-final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
-  type Input  = LspPullDiagnosticsInput
+final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input = LspPullDiagnosticsInput
   type Output = LspDiagnosticsResult
-  val inputRW  = summon[RW[LspPullDiagnosticsInput]]
+  val inputRW = summon[RW[LspPullDiagnosticsInput]]
   val outputRW = summon[RW[LspDiagnosticsResult]]
 
   val name = ToolName("lsp_pull_diagnostics")
@@ -42,16 +42,32 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
       |Returns `{filePath, diagnostics: [...]}`. Servers without pull-model support fall back to
       |a push-snapshot.""".stripMargin
   override val keywords = Set(
-    "lsp", "diagnostics", "errors", "warnings", "problems", "lint",
-    "analyze", "examine", "inspect", "review", "what's broken",
-    "fresh", "sync", "synchronous",
-    "scala", "type", "fix", "code", "language"
+    "lsp",
+    "diagnostics",
+    "errors",
+    "warnings",
+    "problems",
+    "lint",
+    "analyze",
+    "examine",
+    "inspect",
+    "review",
+    "what's broken",
+    "fresh",
+    "sync",
+    "synchronous",
+    "scala",
+    "type",
+    "fix",
+    "code",
+    "language"
   )
-
 
   override def executeOutput(input: LspPullDiagnosticsInput, context: ToolContext): Task[LspDiagnosticsResult] =
     withOpenDocumentOrThrow[LspDiagnosticsResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       // Sigil bug #100 — gate the pull request on the server's
       // advertised capability. LSP 3.17 says clients MUST NOT call
@@ -70,7 +86,7 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
           session.pullDiagnostics(uri).map { report =>
             val items = report match {
               case Some(r) if r.isLeft => Option(r.getLeft.getItems).map(_.asScala.toList).getOrElse(Nil)
-              case _                   => Nil
+              case _ => Nil
             }
             items.map(LspDiagnostic.fromLsp4j(input.filePath, _))
           }

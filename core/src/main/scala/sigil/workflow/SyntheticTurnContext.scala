@@ -35,7 +35,7 @@ import strider.Workflow
  */
 object SyntheticTurnContext {
 
-  def build(host: Sigil, workflow: Workflow): Task[TurnContext] = {
+  def build(host: Sigil, workflow: Workflow): Task[TurnContext] =
     workflow.conversationId match {
       case None => Task.pure(emptyContext(host))
       case Some(convIdStr) =>
@@ -58,7 +58,7 @@ object SyntheticTurnContext {
             case _ => Task.pure(Nil)
           }
         } yield maybeConv match {
-          case None       => emptyContext(host)
+          case None => emptyContext(host)
           case Some(conv) =>
             val createdByValue = workflow.createdBy.getOrElse("")
             val matched = conv.participants.find(_.id.value == createdByValue).map(_.id)
@@ -74,52 +74,57 @@ object SyntheticTurnContext {
             )
         }
     }
-  }
 
-  /** Pick a registered Model to stamp onto the synthetic context. The
-    * workflow step is responsible for routing its own provider call so
-    * this Model is informational only — tool bodies that consult it
-    * (cost estimation, context-length heuristics) get a real record;
-    * tool bodies that don't are unaffected. Falls back to a placeholder
-    * record when the registry is empty (boot-time workflow firing). */
+  /**
+   * Pick a registered Model to stamp onto the synthetic context. The
+   * workflow step is responsible for routing its own provider call so
+   * this Model is informational only — tool bodies that consult it
+   * (cost estimation, context-length heuristics) get a real record;
+   * tool bodies that don't are unaffected. Falls back to a placeholder
+   * record when the registry is empty (boot-time workflow firing).
+   */
   private def syntheticModel(host: Sigil): Model =
     host.cache.all.headOption.getOrElse(syntheticPlaceholder)
 
-  /** In-memory placeholder used when the model registry hasn't been
-    * populated yet. Carries conservative defaults — short context,
-    * zero pricing — so any tool that does read model facts off the
-    * synthetic context doesn't get wildly wrong numbers. */
+  /**
+   * In-memory placeholder used when the model registry hasn't been
+   * populated yet. Carries conservative defaults — short context,
+   * zero pricing — so any tool that does read model facts off the
+   * synthetic context doesn't get wildly wrong numbers.
+   */
   private lazy val syntheticPlaceholder: Model = {
     val now = Timestamp()
     Model(
-      canonicalSlug       = "sigil/synthetic-workflow",
-      huggingFaceId       = "",
-      name                = "synthetic-workflow",
-      description         = "Placeholder Model for synthetic workflow TurnContexts; not an actual provider target.",
-      contextLength       = 0L,
-      architecture        = ModelArchitecture(
-        modality         = "text->text",
-        inputModalities  = List("text"),
+      canonicalSlug = "sigil/synthetic-workflow",
+      huggingFaceId = "",
+      name = "synthetic-workflow",
+      description = "Placeholder Model for synthetic workflow TurnContexts; not an actual provider target.",
+      contextLength = 0L,
+      architecture = ModelArchitecture(
+        modality = "text->text",
+        inputModalities = List("text"),
         outputModalities = List("text"),
-        tokenizer        = "Unknown",
-        instructType     = None
+        tokenizer = "Unknown",
+        instructType = None
       ),
-      pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
-      topProvider         = ModelTopProvider(contextLength = None, maxCompletionTokens = None, isModerated = false),
-      perRequestLimits    = None,
+      pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+      topProvider = ModelTopProvider(contextLength = None, maxCompletionTokens = None, isModerated = false),
+      perRequestLimits = None,
       supportedParameters = Set.empty,
-      knowledgeCutoff     = None,
-      expirationDate      = None,
-      links               = ModelLinks(details = ""),
-      created             = now,
-      _id                 = Model.id("sigil", "synthetic-workflow")
+      knowledgeCutoff = None,
+      expirationDate = None,
+      links = ModelLinks(details = ""),
+      created = now,
+      _id = Model.id("sigil", "synthetic-workflow")
     )
   }
 
-  /** Fallback when no conversation context exists — synthesize a
-    * placeholder conversation with no participants. Useful for
-    * cron-fired workflows whose tools don't need conversational
-    * grounding (e.g. the file-system or web-fetch tool families). */
+  /**
+   * Fallback when no conversation context exists — synthesize a
+   * placeholder conversation with no participants. Useful for
+   * cron-fired workflows whose tools don't need conversational
+   * grounding (e.g. the file-system or web-fetch tool families).
+   */
   private def emptyContext(host: Sigil): TurnContext = {
     val convId: Id[Conversation] = Conversation.id("workflow-synthetic-" + rapid.Unique())
     val now = lightdb.time.Timestamp()

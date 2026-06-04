@@ -23,7 +23,8 @@ import scala.jdk.CollectionConverters.*
  * framework runs it on its own background fiber.
  */
 final case class BrowserIdleReaper(idleTimeoutMs: Long,
-                                   interval: FiniteDuration = 30.seconds) extends MaintenanceTask {
+                                   interval: FiniteDuration = 30.seconds)
+  extends MaintenanceTask {
   override def name: String = "browser-idle-reaper"
 
   override def runOnce(host: Sigil): Task[Unit] = host match {

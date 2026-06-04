@@ -20,9 +20,9 @@ case class PinModelInput(modelId: String) extends ToolInput derives RW
  * to their `staticTools` list.
  */
 case object PinModelTool extends Tool {
-  type Input  = PinModelInput
+  type Input = PinModelInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[PinModelInput]]
+  val inputRW = summon[RW[PinModelInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("pin_model")
   val description =
@@ -36,8 +36,16 @@ case object PinModelTool extends Tool {
     ToolExample("Pin to a frontier model", PinModelInput("openai/gpt-5.5"))
   )
   override val keywords = Set(
-    "pin", "lock", "force", "stick", "fix", "always", "deterministic",
-    "model", "llm", "use"
+    "pin",
+    "lock",
+    "force",
+    "stick",
+    "fix",
+    "always",
+    "deterministic",
+    "model",
+    "llm",
+    "use"
   )
 
   override def executeResult(input: PinModelInput,
@@ -47,12 +55,12 @@ case object PinModelTool extends Tool {
         Task.pure(ToolResult.failure(guidance))
       case ModelResolutionResult.Resolved(modelId, via) =>
         val noteVia = via match {
-          case ModelResolutionResult.Resolution.Alias     => s" (resolved alias '${input.modelId}' → ${modelId.value})"
+          case ModelResolutionResult.Resolution.Alias => s" (resolved alias '${input.modelId}' → ${modelId.value})"
           case ModelResolutionResult.Resolution.BareModel => s" (interpreted '${input.modelId}' as ${modelId.value})"
-          case ModelResolutionResult.Resolution.ExactId   => ""
+          case ModelResolutionResult.Resolution.ExactId => ""
         }
         ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
-          case None       => Task.pure(None)
+          case None => Task.pure(None)
           case Some(conv) => Task.pure(Some(conv.copy(pinnedModelId = Some(modelId), modified = Timestamp())))
         })).map { _ =>
           ToolResult.Success(TextToolOutput(

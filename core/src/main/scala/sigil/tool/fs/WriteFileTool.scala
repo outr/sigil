@@ -20,11 +20,10 @@ import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolRe
  * — the legacy single-agent path returns [[WriteFileOutput.Success]]
  * with `hash = None`.
  */
-final class WriteFileTool(context: FileSystemContext)
-  extends Tool with sigil.tool.DestructiveExternalTool {
-  type Input  = WriteFileInput
+final class WriteFileTool(context: FileSystemContext) extends Tool with sigil.tool.DestructiveExternalTool {
+  type Input = WriteFileInput
   type Output = WriteFileOutput
-  val inputRW  = summon[RW[WriteFileInput]]
+  val inputRW = summon[RW[WriteFileInput]]
   val outputRW = summon[RW[WriteFileOutput]]
   val name = ToolName("write_file")
   val description =
@@ -48,7 +47,7 @@ final class WriteFileTool(context: FileSystemContext)
   override def executeResult(input: WriteFileInput, ctx: ToolContext): Task[ToolResult[WriteFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
-      case None        => runWrite(input, ctx).map(ToolResult.success(_))
+      case None => runWrite(input, ctx).map(ToolResult.success(_))
     }
 
   private def runWrite(input: WriteFileInput, ctx: ToolContext): Task[WriteFileOutput] =
@@ -62,8 +61,9 @@ final class WriteFileTool(context: FileSystemContext)
           val expected = FileVersion(hash, Timestamp())
           context.writeIfMatch(resolved, input.content, expected).map {
             case WriteResult.Written(version) =>
-              WriteFileOutput.Success(bytesWritten = input.content.getBytes("UTF-8").length.toLong,
-                                       hash         = Some(version.hash))
+              WriteFileOutput.Success(
+                bytesWritten = input.content.getBytes("UTF-8").length.toLong,
+                hash = Some(version.hash))
             case WriteResult.Stale(current) =>
               WriteFileOutput.Stale(currentHash = current.version.hash, currentContent = current.asText)
             case WriteResult.NotFound =>

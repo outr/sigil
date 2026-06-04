@@ -30,13 +30,13 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
   private def turnContext(): TurnContext = {
     val conv = Conversation(
       topics = List(TopicEntry(TestTopicId, "test", "test")),
-      _id    = convId
+      _id = convId
     )
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser),
+      sigil = TestSigil,
+      chain = List(TestUser),
       conversation = conv,
-      turnInput    = TurnInput(ConversationView(conversationId = convId)),
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
       model = TestSigil.defaultTestModel
     )
   }
@@ -56,7 +56,8 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
     signals.collectFirst {
       case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) =>
         d.summary.getOrElse(d.outcome.collect { case ToolOutcome.Failure(r, _) => r }.getOrElse(""))
-    }.getOrElse(fail(s"expected a settling ToolDelta carrying ToolOutcome.Failure; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
+    }.getOrElse(fail(
+      s"expected a settling ToolDelta carrying ToolOutcome.Failure; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
 
   "edit_file" should {
 
@@ -66,8 +67,8 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val tc = turnContext()
       tool.execute(EditFileInput(filePath = "string", oldString = "a", newString = "b"), tc, Event.id()).toList.map { signals =>
         val text = failureText(signals)
-        text should include ("JSON Schema type name")
-        text should include ("filePath")
+        text should include("JSON Schema type name")
+        text should include("filePath")
         // The tool never touched the filesystem — no temp-dir contents
         // mutated, no "file not found" diagnostic from the read path.
         Files.list(dir).iterator().asScala.toList shouldBe empty
@@ -83,18 +84,19 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val tc = turnContext()
       tool.execute(
         EditFileInput(
-          filePath  = "notes.txt",
+          filePath = "notes.txt",
           oldString = "string",
           newString = "String"
         ),
-        tc, Event.id()
+        tc,
+        Event.id()
       ).toList.map { signals =>
         // No failure-outcome ToolDelta: the edit succeeded.
         signals.collectFirst {
           case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
         } shouldBe None
         // File now contains the replacement.
-        Files.readString(target) should include ("String")
+        Files.readString(target) should include("String")
       }
     }
   }
@@ -103,7 +105,9 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
     "NOT reject `pattern = \"string\"` (pattern is whitelisted as user-supplied content)" in withTempDir { dir =>
       val src = dir.resolve("a.txt")
-      Files.writeString(src, "the word string appears here\nstring again\nno match here\n",
+      Files.writeString(
+        src,
+        "the word string appears here\nstring again\nno match here\n",
         StandardOpenOption.CREATE)
 
       val ctx = new LocalFileSystemContext(Some(dir))
@@ -127,8 +131,8 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val tc = turnContext()
       tool.execute(GrepInput(path = "string", pattern = "real-pattern"), tc, Event.id()).toList.map { signals =>
         val text = failureText(signals)
-        text should include ("JSON Schema type name")
-        text should include ("path")
+        text should include("JSON Schema type name")
+        text should include("path")
       }
     }
   }
@@ -141,8 +145,8 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val tc = turnContext()
       tool.execute(ReadFileInput(filePath = "integer"), tc, Event.id()).toList.map { signals =>
         val text = failureText(signals)
-        text should include ("JSON Schema type name")
-        text should include ("filePath")
+        text should include("JSON Schema type name")
+        text should include("filePath")
         Files.list(dir).iterator().asScala.toList shouldBe empty
       }
     }

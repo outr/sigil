@@ -24,4 +24,5 @@ import sigil.db.Model
 case class XmlToolCallLeak(conversationId: Id[Conversation],
                            modelId: Option[Id[Model]],
                            leakedSpanCount: Int,
-                           firstLeakedExcerpt: String) extends ConversationNotice derives RW
+                           firstLeakedExcerpt: String)
+  extends ConversationNotice derives RW

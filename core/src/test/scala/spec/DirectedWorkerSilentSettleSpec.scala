@@ -33,7 +33,7 @@ class DirectedWorkerSilentSettleSpec extends AsyncWordSpec with AsyncTaskSpec wi
 
   // Provider that emits no tool call (and no content) — the "I have
   // nothing to say" turn.
-  private final class SilentProvider extends Provider {
+  final private class SilentProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestWorkflowSigil

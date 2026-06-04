@@ -45,29 +45,34 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def writeFile(p: Path, text: String): Unit = {
     Files.createDirectories(p.getParent)
-    Files.write(p, text.getBytes(StandardCharsets.UTF_8),
-      StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+    Files.write(
+      p,
+      text.getBytes(StandardCharsets.UTF_8),
+      StandardOpenOption.CREATE,
+      StandardOpenOption.TRUNCATE_EXISTING)
     ()
   }
 
   private def turnContext(): TurnContext = {
-    val convId  = Conversation.id(s"grep-excl-${rapid.Unique()}")
+    val convId = Conversation.id(s"grep-excl-${rapid.Unique()}")
     val topicId = sigil.conversation.Topic.id(s"grep-excl-topic-${rapid.Unique()}")
     val conv = Conversation(
       topics = List(TopicEntry(topicId, "test", "test")),
-      _id    = convId
+      _id = convId
     )
     TurnContext(
-      sigil                = TestSigil,
-      chain                = List(TestUser),
-      conversation         = conv,
-      turnInput            = TurnInput(ConversationView(conversationId = convId)),
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
       model = TestSigil.defaultTestModel
     )
   }
 
-  /** Pull the grep tool's settling text output (default `FilesWithMatches`
-    * mode → one matching path per line) and parse it into the file list. */
+  /**
+   * Pull the grep tool's settling text output (default `FilesWithMatches`
+   * mode → one matching path per line) and parse it into the file list.
+   */
   private def matchedFiles(signals: List[Signal]): List[String] = {
     val out = signals.collectFirst {
       case d: ToolDelta if d.output.exists(_.isInstanceOf[TextToolOutput]) =>
@@ -79,8 +84,8 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def runGrep(root: Path, includeIgnored: Boolean): Task[List[String]] = {
     val callId = Event.id()
-    val ctx    = turnContext()
-    val fs     = new LocalFileSystemContext(basePath = Some(root))
+    val ctx = turnContext()
+    val fs = new LocalFileSystemContext(basePath = Some(root))
     new GrepTool(fs)
       .execute(GrepInput(path = ".", pattern = "TODO", includeIgnored = includeIgnored), ctx, callId)
       .toList
@@ -91,8 +96,9 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "skip .claude/worktrees/ duplicates by default (sole match: file outside .claude)" in withTempDir { root =>
       writeFile(root.resolve("src/main/scala/Foo.scala"), "object Foo { /* TODO real */ }")
-      writeFile(root.resolve(".claude/worktrees/agent-X/src/main/scala/Foo.scala"),
-                "object Foo { /* TODO worktree */ }")
+      writeFile(
+        root.resolve(".claude/worktrees/agent-X/src/main/scala/Foo.scala"),
+        "object Foo { /* TODO worktree */ }")
       runGrep(root, includeIgnored = false).map { files =>
         files shouldBe List("src/main/scala/Foo.scala")
       }
@@ -108,8 +114,9 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "return matches inside excluded directories when includeIgnored = true" in withTempDir { root =>
       writeFile(root.resolve("src/main/scala/Foo.scala"), "object Foo { /* TODO real */ }")
-      writeFile(root.resolve(".claude/worktrees/agent-X/src/main/scala/Foo.scala"),
-                "object Foo { /* TODO worktree */ }")
+      writeFile(
+        root.resolve(".claude/worktrees/agent-X/src/main/scala/Foo.scala"),
+        "object Foo { /* TODO worktree */ }")
       runGrep(root, includeIgnored = true).map { files =>
         files.toSet shouldBe Set(
           "src/main/scala/Foo.scala",

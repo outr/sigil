@@ -28,13 +28,13 @@ class ImageSupersessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     else
       ToolCallState.Complete(content = "ok", images = Nil)
     ContextFrame.ToolCall(
-      toolName       = ToolName(name),
-      argsJson       = "{}",
-      callId         = callId,
-      participantId  = TestAgent,
-      sourceEventId  = callId,
-      visibility     = MessageVisibility.All,
-      state          = state
+      toolName = ToolName(name),
+      argsJson = "{}",
+      callId = callId,
+      participantId = TestAgent,
+      sourceEventId = callId,
+      visibility = MessageVisibility.All,
+      state = state
     )
   }
 
@@ -42,9 +42,9 @@ class ImageSupersessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "keep the most-recent N image-bearing frames and stub older ones" in Task {
       val frames: Vector[ContextFrame] = Vector(
-        toolCallFrame("preview_theme", withImage = true),  // old — will stub
-        toolCallFrame("preview_theme", withImage = true),  // old — will stub
-        toolCallFrame("preview_theme", withImage = true)   // newest — kept
+        toolCallFrame("preview_theme", withImage = true), // old — will stub
+        toolCallFrame("preview_theme", withImage = true), // old — will stub
+        toolCallFrame("preview_theme", withImage = true) // newest — kept
       )
       val result = StandardContextCurator.supersedeOlderImages(frames, keepRecent = 1)
       result.size shouldBe 3
@@ -53,7 +53,7 @@ class ImageSupersessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val second = result(1).asInstanceOf[ContextFrame.ToolCall]
       val third = result(2).asInstanceOf[ContextFrame.ToolCall]
       first.state.asInstanceOf[ToolCallState.Complete].images shouldBe Nil
-      first.state.asInstanceOf[ToolCallState.Complete].content should include ("image suppressed")
+      first.state.asInstanceOf[ToolCallState.Complete].content should include("image suppressed")
       second.state.asInstanceOf[ToolCallState.Complete].images shouldBe Nil
       // Newest: original images + content preserved.
       third.state.asInstanceOf[ToolCallState.Complete].images shouldBe List(testUrl)
@@ -81,9 +81,9 @@ class ImageSupersessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "leave non-image ToolCall frames untouched" in Task {
       val frames: Vector[ContextFrame] = Vector(
-        toolCallFrame("preview_theme", withImage = true),     // image — older, will stub
-        toolCallFrame("read_theme_file", withImage = false),  // no image — untouched
-        toolCallFrame("preview_theme", withImage = true)      // image — kept
+        toolCallFrame("preview_theme", withImage = true), // image — older, will stub
+        toolCallFrame("read_theme_file", withImage = false), // no image — untouched
+        toolCallFrame("preview_theme", withImage = true) // image — kept
       )
       val result = StandardContextCurator.supersedeOlderImages(frames, keepRecent = 1)
       val second = result(1).asInstanceOf[ContextFrame.ToolCall]

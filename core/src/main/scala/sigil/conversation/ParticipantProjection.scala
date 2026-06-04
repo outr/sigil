@@ -43,17 +43,19 @@ case class ParticipantProjection(participantId: ParticipantId,
                                  discoverySkillMode: Option[Id[Mode]] = None,
                                  recentToolInvocations: List[RecentToolInvocation] = Nil,
                                  suggestedTools: List[ToolName] = Nil,
-                                 /** Per-conversation cache of the most recent provider-
-                                   * side response id. Today only OpenAI's Responses API
-                                   * uses it — `previous_response_id` chains the prior
-                                   * turn's server-side state so the next request can
-                                   * ship only the delta (new user input + tool outputs)
-                                   * rather than the full transcript. `latestProviderResponseMessageCount`
-                                   * is the rendered-message count that produced the
-                                   * cached id; on the next turn the provider drops that
-                                   * many messages from the head before sending. Both
-                                   * fields are cleared together on `previous_response_not_found`
-                                   * (the id expired upstream). */
+                                 /**
+                                  * Per-conversation cache of the most recent provider-
+                                  * side response id. Today only OpenAI's Responses API
+                                  * uses it — `previous_response_id` chains the prior
+                                  * turn's server-side state so the next request can
+                                  * ship only the delta (new user input + tool outputs)
+                                  * rather than the full transcript. `latestProviderResponseMessageCount`
+                                  * is the rendered-message count that produced the
+                                  * cached id; on the next turn the provider drops that
+                                  * many messages from the head before sending. Both
+                                  * fields are cleared together on `previous_response_not_found`
+                                  * (the id expired upstream).
+                                  */
                                  latestProviderResponseId: Option[String] = None,
                                  latestProviderResponseMessageCount: Option[Int] = None,
                                  extraContext: Map[ContextKey, String] = Map.empty,
@@ -65,9 +67,11 @@ case class ParticipantProjection(participantId: ParticipantId,
 object ParticipantProjection extends RecordDocumentModel[ParticipantProjection] with JsonConversion[ParticipantProjection] {
   implicit override def rw: RW[ParticipantProjection] = RW.gen
 
-  /** Compose a deterministic id from `(participantId, conversationId)`
-    * so lookups are O(1) and the same key always resolves to the same
-    * record. */
+  /**
+   * Compose a deterministic id from `(participantId, conversationId)`
+   * so lookups are O(1) and the same key always resolves to the same
+   * record.
+   */
   def idFor(participantId: ParticipantId, conversationId: Id[Conversation]): Id[ParticipantProjection] =
     Id(s"${conversationId.value}:${participantId.value}")
 
@@ -76,8 +80,10 @@ object ParticipantProjection extends RecordDocumentModel[ParticipantProjection] 
 
   override def id(value: String = rapid.Unique()): Id[ParticipantProjection] = Id(value)
 
-  /** Construct an empty projection for a (participantId, conversationId)
-    * pair using the deterministic id derived from the pair. */
+  /**
+   * Construct an empty projection for a (participantId, conversationId)
+   * pair using the deterministic id derived from the pair.
+   */
   def empty(participantId: ParticipantId, conversationId: Id[Conversation]): ParticipantProjection =
     ParticipantProjection(
       participantId = participantId,

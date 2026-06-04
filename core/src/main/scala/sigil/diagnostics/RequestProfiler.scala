@@ -19,11 +19,13 @@ import sigil.tool.Tool
  */
 object RequestProfiler {
 
-  /** Profile a request using a Sigil instance (typical Provider call site).
-    * `descriptionFor` calls hit `Tool.descriptionFor(currentMode, sigil)` —
-    * which is the wire-accurate string for tools like `change_mode` that
-    * fold runtime context into their description. Adds insights derived
-    * from the model's `contextLength` (looked up via `sigil.cache`). */
+  /**
+   * Profile a request using a Sigil instance (typical Provider call site).
+   * `descriptionFor` calls hit `Tool.descriptionFor(currentMode, sigil)` —
+   * which is the wire-accurate string for tools like `change_mode` that
+   * fold runtime context into their description. Adds insights derived
+   * from the model's `contextLength` (looked up via `sigil.cache`).
+   */
   def profile(request: ConversationRequest,
               resolved: ResolvedReferences,
               tokenizer: Tokenizer,
@@ -42,10 +44,12 @@ object RequestProfiler {
     raw.copy(insights = insights)
   }
 
-  /** Profile a request with an explicit description supplier. Used by
-    * synthetic benches that don't want to spin up a full Sigil — pass
-    * `_.description` to fall back to static descriptions, or supply a
-    * custom mapping for richer scenarios. */
+  /**
+   * Profile a request with an explicit description supplier. Used by
+   * synthetic benches that don't want to spin up a full Sigil — pass
+   * `_.description` to fall back to static descriptions, or supply a
+   * custom mapping for richer scenarios.
+   */
   def profileWith(request: ConversationRequest,
                   resolved: ResolvedReferences,
                   tokenizer: Tokenizer,
@@ -59,14 +63,18 @@ object RequestProfiler {
 
     // 1. Tool framing prefix
     if (request.tools.nonEmpty) {
-      add(ProfileSection.ToolFramingPrefix,
-        "You communicate exclusively through tool calls. Plain text output is never delivered to the user — always pick a tool.\n\n")
-      add(ProfileSection.ToolFramingPrefix,
+      add(
+        ProfileSection.ToolFramingPrefix,
+        "You communicate exclusively through tool calls. Plain text output is never delivered to the user — always pick a tool.\n\n"
+      )
+      add(
+        ProfileSection.ToolFramingPrefix,
         "Tool calls go through the JSON `tool_calls` protocol the API negotiates with you. " +
           "Never emit `<tool_call>`, `<function=…>`, or similar XML/tag syntax inside `content` or any " +
           "other string field — those will NOT be parsed as tool calls; they will leak to the user as " +
           "text. If you want to make a follow-up tool call after responding, set `respond.endsTurn = false` " +
-          "and issue the next call on the next iteration.\n\n")
+          "and issue the next call on the next iteration.\n\n"
+      )
     }
 
     // 2. Mode + topic block
@@ -197,7 +205,7 @@ object RequestProfiler {
     // 13. Frames (the message array)
     val frameProfiles = turn.frames.map { f =>
       val (kind, text, eventId) = f match {
-        case t: ContextFrame.Text      => ("Text", t.content, t.sourceEventId)
+        case t: ContextFrame.Text => ("Text", t.content, t.sourceEventId)
         case tc: ContextFrame.ToolCall =>
           // Sigil #261 — unified ToolCall(state) frame contributes
           // both its args AND (when Complete) the result content to
@@ -205,10 +213,10 @@ object RequestProfiler {
           // two separate Frame rows (ToolCall + ToolResult).
           val resultText = tc.state match {
             case sigil.conversation.ToolCallState.Complete(content, _) => "\n" + content
-            case sigil.conversation.ToolCallState.Active               => ""
+            case sigil.conversation.ToolCallState.Active => ""
           }
           ("ToolCall", tc.argsJson + resultText, tc.sourceEventId)
-        case s: ContextFrame.System    => ("System", s.content, s.sourceEventId)
+        case s: ContextFrame.System => ("System", s.content, s.sourceEventId)
         case r: ContextFrame.Reasoning => ("Reasoning", r.summary.mkString("\n"), r.sourceEventId)
       }
       FrameProfile(kind, eventId, tokenizer.count(text))
@@ -230,10 +238,12 @@ object RequestProfiler {
     RequestProfile(total = total, sections = sections.toMap, frames = frameProfiles)
   }
 
-  /** Mirrors `Provider.renderSystem`'s memory-render policy: prefer
-    * `summary` when set, fall back to `fact`. Apps writing concise
-    * pinned directives via the `summary` field shrink per-turn
-    * rendered cost; the full `fact` remains recoverable via `lookup`. */
+  /**
+   * Mirrors `Provider.renderSystem`'s memory-render policy: prefer
+   * `summary` when set, fall back to `fact`. Apps writing concise
+   * pinned directives via the `summary` field shrink per-turn
+   * rendered cost; the full `fact` remains recoverable via `lookup`.
+   */
   private def memoryRenderText(m: ContextMemory): String =
     if (m.summary.trim.nonEmpty) m.summary else m.fact
 }

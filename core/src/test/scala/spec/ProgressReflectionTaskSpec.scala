@@ -22,9 +22,13 @@ class ProgressReflectionTaskSpec extends AnyWordSpec with Matchers {
 
   private val convId = Conversation.id("progress-reflection")
   private def userMsg(text: String, ts: Long): Message = Message(
-    participantId = TestUser, conversationId = convId, topicId = TestTopicEntry.id,
-    role = MessageRole.Standard, content = Vector(ResponseContent.Text(text)),
-    state = EventState.Complete, timestamp = Timestamp(ts)
+    participantId = TestUser,
+    conversationId = convId,
+    topicId = TestTopicEntry.id,
+    role = MessageRole.Standard,
+    content = Vector(ResponseContent.Text(text)),
+    state = EventState.Complete,
+    timestamp = Timestamp(ts)
   )
   private def textOf(m: Message): String = m.content.collect { case ResponseContent.Text(t) => t }.mkString
 
@@ -62,14 +66,14 @@ class ProgressReflectionTaskSpec extends AnyWordSpec with Matchers {
   "renderCheckpointPrompt (#320)" should {
     "render the substantive objective as the request, not the continuation" in {
       val ctx = ProgressContext(
-        userTask        = Some("remove all references to bugs"),
-        toolHistory     = List("grep → OK", "dispatch_workers → OK"),
+        userTask = Some("remove all references to bugs"),
+        toolHistory = List("grep → OK", "dispatch_workers → OK"),
         latestDirective = Some("Proceed")
       )
       val prompt = TestSigil.renderCheckpointPrompt(ctx, priorStatus = None, iteration = 5)
-      prompt should include ("The user's request:\n\"remove all references to bugs\"")
-      prompt should not include ("The user's request:\n\"Proceed\"")
-      prompt should include ("Proceed") // present only as the continuation line
+      prompt should include("The user's request:\n\"remove all references to bugs\"")
+      prompt should not include "The user's request:\n\"Proceed\""
+      prompt should include("Proceed") // present only as the continuation line
     }
   }
 
@@ -78,8 +82,11 @@ class ProgressReflectionTaskSpec extends AnyWordSpec with Matchers {
       val modelId = Model.id("test", "reflection-agent")
       TestSigil.testModel(modelId)
       val agent = DefaultAgentParticipant(
-        id = TestAgent, modelId = modelId, toolNames = CoreTools.coreToolNames,
-        instructions = Instructions(), generationSettings = GenerationSettings()
+        id = TestAgent,
+        modelId = modelId,
+        toolNames = CoreTools.coreToolNames,
+        instructions = Instructions(),
+        generationSettings = GenerationSettings()
       )
       TestSigil.progressReflectionModelFor(agent) shouldBe modelId
     }

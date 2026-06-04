@@ -33,20 +33,20 @@ class ToolPriorityOrderingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   }
 
   private val agent = DefaultAgentParticipant(
-    id                = TestAgent,
-    modelId           = sigil.db.Model.id("test", "priority-model"),
-    toolNames         = List(ChangeModeTool.schema.name),
-    instructions      = Instructions(),
+    id = TestAgent,
+    modelId = sigil.db.Model.id("test", "priority-model"),
+    toolNames = List(ChangeModeTool.schema.name),
+    instructions = Instructions(),
     generationSettings = GenerationSettings(),
-    tools             = ToolPolicy.Standard,
-    roles             = List(GeneralistRole)
+    tools = ToolPolicy.Standard,
+    roles = List(GeneralistRole)
   )
 
   "Sigil.effectiveToolNames priority (sigil #302)" should {
 
     "place find_capability ahead of change_mode in the wire roster" in Task {
       val names = TestSigil.effectiveToolNames(agent, testMode, suggested = Nil)
-      val findIdx  = names.indexOf(FindCapabilityTool.schema.name)
+      val findIdx = names.indexOf(FindCapabilityTool.schema.name)
       val changeIdx = names.indexOf(ChangeModeTool.schema.name)
       findIdx should be >= 0
       changeIdx should be >= 0

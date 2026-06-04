@@ -10,7 +10,8 @@ import scala.jdk.CollectionConverters.*
 
 case class DapAttachInput(languageId: String,
                           sessionId: String,
-                          attachArguments: Map[String, Json] = Map.empty) extends ToolInput derives RW
+                          attachArguments: Map[String, Json] = Map.empty)
+  extends ToolInput derives RW
 
 /**
  * Spawn a debug adapter and attach to a running process. The
@@ -50,12 +51,12 @@ final class DapAttachTool(val manager: DapManager) extends Tool with DapToolSupp
     }.handleError(e => Task.pure(ToolResult.failure(s"DAP attach failed: ${e.getMessage}")))
 
   private def jsonToObject(j: Json): Object = j match {
-    case fabric.Str(s, _)   => s
-    case fabric.NumInt(n, _)  => java.lang.Long.valueOf(n)
+    case fabric.Str(s, _) => s
+    case fabric.NumInt(n, _) => java.lang.Long.valueOf(n)
     case fabric.NumDec(d, _) => d.bigDecimal.doubleValue.asInstanceOf[Object]
-    case fabric.Bool(b, _)  => java.lang.Boolean.valueOf(b)
-    case fabric.Null        => null
+    case fabric.Bool(b, _) => java.lang.Boolean.valueOf(b)
+    case fabric.Null => null
     case fabric.Arr(values, _) => values.toArray.map(jsonToObject)
-    case obj: fabric.Obj    => obj.value.map { case (k, v) => k -> jsonToObject(v) }.asJava
+    case obj: fabric.Obj => obj.value.map { case (k, v) => k -> jsonToObject(v) }.asJava
   }
 }

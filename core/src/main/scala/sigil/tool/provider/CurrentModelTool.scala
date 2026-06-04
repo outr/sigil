@@ -17,11 +17,12 @@ import sigil.tool.{Tool, ToolName}
  * `"current"` / `"this"` aliases to a real id without round-tripping
  * through rendered text.
  *
- * **Not auto-registered.** Apps add to `staticTools` to expose. */
+ * **Not auto-registered.** Apps add to `staticTools` to expose.
+ */
 case object CurrentModelTool extends Tool {
-  type Input  = CurrentModelInput
+  type Input = CurrentModelInput
   type Output = CurrentModelOutput
-  val inputRW  = summon[RW[CurrentModelInput]]
+  val inputRW = summon[RW[CurrentModelInput]]
   val outputRW = summon[RW[CurrentModelOutput]]
 
   val name = ToolName("current_model")
@@ -40,8 +41,17 @@ case object CurrentModelTool extends Tool {
       |Use when you need to tell the user which model is in effect, or to resolve
       |"the current model" / "this model" before changing model selection.""".stripMargin
   override val keywords = Set(
-    "current", "active", "running", "model", "what", "which",
-    "now", "introspect", "in", "use", "this"
+    "current",
+    "active",
+    "running",
+    "model",
+    "what",
+    "which",
+    "now",
+    "introspect",
+    "in",
+    "use",
+    "this"
   )
 
   override def executeOutput(input: CurrentModelInput, ctx: ToolContext): Task[CurrentModelOutput] = {
@@ -56,8 +66,8 @@ case object CurrentModelTool extends Tool {
         host.withDB(_.providerStrategies.transaction(_.get(strategyId))).map { recordOpt =>
           recordOpt.map { record =>
             AssignedStrategySummary(
-              id               = record._id.value,
-              label            = record.label,
+              id = record._id.value,
+              label = record.label,
               primaryCandidate = record.defaultCandidates.headOption.map(c => toReference(host, c.modelId))
             )
           }
@@ -70,19 +80,19 @@ case object CurrentModelTool extends Tool {
 
     for {
       assignedStrategy <- assignedStrategyTask
-      lastUsed         <- lastUsedTask
-      resolved         <- resolvedTask
+      lastUsed <- lastUsedTask
+      resolved <- resolvedTask
     } yield CurrentModelOutput(
-      pinned           = pinned,
+      pinned = pinned,
       assignedStrategy = assignedStrategy,
-      lastUsed         = lastUsed,
-      resolved         = resolved
+      lastUsed = lastUsed,
+      resolved = resolved
     )
   }
 
   private def toReference(host: _root_.sigil.Sigil, modelId: lightdb.id.Id[_root_.sigil.db.Model]): ModelReference =
     ModelReference(
-      id      = modelId.value,
+      id = modelId.value,
       summary = host.cache.findTolerant(modelId).map(ModelSummary.from)
     )
 }

@@ -28,14 +28,19 @@ import strider.Workflow
  * }}}
  */
 object SigilWorkflowVariables {
-  /** Reserved variable key for the workflow-level default model
-    * id. Steps fall back to the value at this key when their
-    * own `modelId` is empty. */
+
+  /**
+   * Reserved variable key for the workflow-level default model
+   * id. Steps fall back to the value at this key when their
+   * own `modelId` is empty.
+   */
   val DefaultModelId: String = "__sigil_defaultModelId"
 
-  /** Pull the default-model-id off a workflow's variables map,
-    * trimming and filtering out empties. Returns `None` when
-    * unset. */
+  /**
+   * Pull the default-model-id off a workflow's variables map,
+   * trimming and filtering out empties. Returns `None` when
+   * unset.
+   */
   def defaultModelIdOf(workflow: Workflow): Option[String] =
     workflow.variables.get(DefaultModelId)
       .filterNot(_.isNull)

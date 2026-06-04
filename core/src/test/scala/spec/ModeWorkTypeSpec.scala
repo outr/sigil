@@ -2,13 +2,13 @@ package spec
 
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.provider.{
-  AnalysisWork, CodingWork, ConversationMode, Mode, WorkType
-}
+import sigil.provider.{AnalysisWork, CodingWork, ConversationMode, Mode, WorkType}
 
-/** Coverage for sigil bug #17 — `Mode.workType` lets a mode override
-  * the agent's declared work shape so provider routing follows the
-  * mode's intent. */
+/**
+ * Coverage for sigil bug #17 — `Mode.workType` lets a mode override
+ * the agent's declared work shape so provider routing follows the
+ * mode's intent.
+ */
 class ModeWorkTypeSpec extends AnyWordSpec with Matchers {
 
   "Mode.workType" should {

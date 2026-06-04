@@ -10,7 +10,10 @@ import sigil.tool.ToolOutput
 case class DapStackFrameInfo(id: Int,
                              name: String,
                              source: Option[String],
-                             line: Option[Int]) derives RW
+                             line: Option[Int])
+  derives RW
 
-/** Typed result of `dap_stack_trace` — the requested call-stack window. */
+/**
+ * Typed result of `dap_stack_trace` — the requested call-stack window.
+ */
 case class DapStackTraceOutput(frames: List[DapStackFrameInfo]) extends ToolOutput derives RW

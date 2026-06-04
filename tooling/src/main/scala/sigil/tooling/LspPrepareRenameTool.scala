@@ -9,7 +9,8 @@ import sigil.tooling.types.{LspPrepareRenameResult, LspRange}
 case class LspPrepareRenameInput(languageId: String,
                                  filePath: String,
                                  line: Int,
-                                 character: Int) extends ToolInput derives RW
+                                 character: Int)
+  extends ToolInput derives RW
 
 /**
  * Test whether a symbol at a position can be renamed before
@@ -18,11 +19,10 @@ case class LspPrepareRenameInput(languageId: String,
  * this thing" attempts on positions that aren't valid symbols
  * (whitespace, keywords, etc.).
  */
-final class LspPrepareRenameTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
-  type Input  = LspPrepareRenameInput
+final class LspPrepareRenameTool(val manager: LspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input = LspPrepareRenameInput
   type Output = LspPrepareRenameResult
-  val inputRW  = summon[RW[LspPrepareRenameInput]]
+  val inputRW = summon[RW[LspPrepareRenameInput]]
   val outputRW = summon[RW[LspPrepareRenameResult]]
 
   val name = ToolName("lsp_prepare_rename")
@@ -34,13 +34,14 @@ final class LspPrepareRenameTool(val manager: LspManager) extends Tool
       |Returns `Renameable(range)` when yes, `NotRenameable` when no.""".stripMargin
   override val keywords = Set("lsp", "rename", "refactor", "can rename", "renameable", "prepare")
 
-
   override def executeOutput(input: LspPrepareRenameInput, context: ToolContext): Task[LspPrepareRenameResult] =
     withOpenDocumentOrThrow[LspPrepareRenameResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.prepareRename(uri, input.line, input.character).map {
-        case None        => LspPrepareRenameResult.NotRenameable
+        case None => LspPrepareRenameResult.NotRenameable
         case Some(range) => LspPrepareRenameResult.Renameable(LspRange.fromLsp4j(range))
       }
     }

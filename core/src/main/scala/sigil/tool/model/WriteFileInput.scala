@@ -14,4 +14,5 @@ import sigil.tool.ToolInput
  */
 case class WriteFileInput(filePath: String,
                           content: String,
-                          expectedHash: Option[String] = None) extends ToolInput derives RW
+                          expectedHash: Option[String] = None)
+  extends ToolInput derives RW

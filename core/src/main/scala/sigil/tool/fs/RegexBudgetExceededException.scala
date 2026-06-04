@@ -12,12 +12,15 @@ package sigil.tool.fs
  * post-filter, or anchor the alternation).
  */
 class RegexBudgetExceededException(val maxSteps: Long, pattern: String)
-    extends RuntimeException(RegexBudgetExceededException.message(maxSteps, pattern)) {
+  extends RuntimeException(RegexBudgetExceededException.message(maxSteps, pattern)) {
   def patternExcerpt: String = RegexBudgetExceededException.excerpt(pattern)
 }
 
 object RegexBudgetExceededException {
-  /** How many leading characters of the offending pattern to quote. */
+
+  /**
+   * How many leading characters of the offending pattern to quote.
+   */
   val ExcerptChars: Int = 200
 
   def excerpt(pattern: String): String =

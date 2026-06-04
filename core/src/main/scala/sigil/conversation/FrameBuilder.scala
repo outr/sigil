@@ -3,7 +3,10 @@ package sigil.conversation
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import fabric.{Json, Obj}
-import sigil.event.{AgentState, CapabilityResults, Event, Message, ModeChange, MessageRole, Reasoning, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome}
+import sigil.event.{
+  AgentState, CapabilityResults, Event, Message, ModeChange, MessageRole, Reasoning, Stop, TopicChange, TopicChangeKind, ToolInvoke,
+  ToolOutcome
+}
 import sigil.signal.EventState
 import sigil.tool.{ToolInput, ToolOutput}
 import sigil.tool.ToolInput.given
@@ -60,30 +63,32 @@ object FrameBuilder {
       case m: Message =>
         val images = m.content.collect { case ResponseContent.Image(url, _) => url }.toList
         val text = m.content.collect {
-          case ResponseContent.Text(t)            => t
-          case ResponseContent.Markdown(t)        => t
-          case ResponseContent.Heading(t)         => t
-          case ResponseContent.Code(c, lang)      => s"```${lang.getOrElse("")}\n$c\n```"
+          case ResponseContent.Text(t) => t
+          case ResponseContent.Markdown(t) => t
+          case ResponseContent.Heading(t) => t
+          case ResponseContent.Code(c, lang) => s"```${lang.getOrElse("")}\n$c\n```"
           case ResponseContent.ItemList(items, _) => items.mkString("\n")
-          case ResponseContent.Link(url, label)   => s"$label $url"
-          case img: ResponseContent.Image         => img.altText.map(a => s"[image: $a]").getOrElse("[image]")
-          case other                              => other.toString
+          case ResponseContent.Link(url, label) => s"$label $url"
+          case img: ResponseContent.Image => img.altText.map(a => s"[image: $a]").getOrElse("[image]")
+          case other => other.toString
         }.mkString("\n")
         (text, images)
       case other =>
         (JsonFormatter.Compact(stripEventBoilerplate(Event.rw.read(other))), Nil)
     }
 
-  /** Sigil #265 — render the settled tool transaction's content + image
-    * URLs from a `state = Complete` [[ToolInvoke]]. Success outcomes
-    * render the typed `output` via the polymorphic `RW[ToolOutput]` and
-    * use the result as the function_call_output text; failure outcomes
-    * surface the reason; pending outputs (Failure with no output) fall
-    * back to `ti.summary`. Sigil #280: framework-shipped
-    * [[sigil.tool.ImageToolOutput]] surfaces its URL into the
-    * `images` list so providers can render the image in the agent's
-    * next-turn visual context. Apps with custom multi-image output
-    * types override this hook to do the same for their own shapes. */
+  /**
+   * Sigil #265 — render the settled tool transaction's content + image
+   * URLs from a `state = Complete` [[ToolInvoke]]. Success outcomes
+   * render the typed `output` via the polymorphic `RW[ToolOutput]` and
+   * use the result as the function_call_output text; failure outcomes
+   * surface the reason; pending outputs (Failure with no output) fall
+   * back to `ti.summary`. Sigil #280: framework-shipped
+   * [[sigil.tool.ImageToolOutput]] surfaces its URL into the
+   * `images` list so providers can render the image in the agent's
+   * next-turn visual context. Apps with custom multi-image output
+   * types override this hook to do the same for their own shapes.
+   */
   private[sigil] def toolInvokePayload(ti: ToolInvoke): (String, List[spice.net.URL]) =
     ti.outcome match {
       case ToolOutcome.Failure(reason, _) =>
@@ -175,10 +180,10 @@ object FrameBuilder {
               s"Surfacing as a synthetic agents-only frame so the conversation continues."
           )
           return Some(ContextFrame.Text(
-            content       = s"[framework: skipped malformed Tool-role event ${event._id.value} (no origin)]",
+            content = s"[framework: skipped malformed Tool-role event ${event._id.value} (no origin)]",
             participantId = event.participantId,
             sourceEventId = event._id,
-            visibility    = sigil.event.MessageVisibility.Agents
+            visibility = sigil.event.MessageVisibility.Agents
           ))
       }
     }
@@ -248,7 +253,7 @@ object FrameBuilder {
           visibility = r.visibility
         ))
 
-      case _: AgentState | _: Stop                       => None
+      case _: AgentState | _: Stop => None
 
       // Sigil #313 — heal-pipeline audit events render as system
       // frames so the agent's next iteration reads them in context.
@@ -263,33 +268,33 @@ object FrameBuilder {
             s"${d.detectedCorruption.size} evidence row(s); " +
             s"original error: ${d.originalError.errorClass}: ${d.originalError.message}.",
           sourceEventId = d._id,
-          visibility    = d.visibility
+          visibility = d.visibility
         ))
       case h: sigil.event.ConversationHealed =>
         Some(ContextFrame.System(
           content = s"[framework-heal] ${h.strategyName} applied ${h.corrections.size} correction(s)" +
             (if (h.remainingIssues.isEmpty) "." else s"; remaining: ${h.remainingIssues.mkString("; ")}"),
           sourceEventId = h._id,
-          visibility    = h.visibility
+          visibility = h.visibility
         ))
       case ex: sigil.event.HealingExhausted =>
         Some(ContextFrame.System(
           content = s"[framework-heal] ${ex.strategyName} exhausted: retry failed with " +
             s"${ex.retryError.errorClass}: ${ex.retryError.message}",
           sourceEventId = ex._id,
-          visibility    = ex.visibility
+          visibility = ex.visibility
         ))
       // Bug #61 — Reaction is UI signal, not curator-visible
       // context. Reactions persist as durable events but never
       // render into the prompt; agents that care query the event
       // log explicitly.
-      case _: sigil.event.Reaction                       => None
+      case _: sigil.event.Reaction => None
       // Bug #62 — same rationale: read receipts are UI signal,
       // not prompt context. The ReadState row is per-(conv,
       // participant) state for delivery indicators, never seen
       // by the curator.
-      case _: sigil.event.ReadState                      => None
-      case _: sigil.event.ControlPlaneEvent              => None
+      case _: sigil.event.ReadState => None
+      case _: sigil.event.ControlPlaneEvent => None
 
       case other =>
         throw new RuntimeException(
@@ -367,10 +372,10 @@ object FrameBuilder {
       // already prevents this in fresh events, so this fallback only
       // covers legacy / replay scenarios.
       return existing :+ ContextFrame.Text(
-        content       = s"[framework: orphan tool result for callId=${callId.value} — content: $content]",
+        content = s"[framework: orphan tool result for callId=${callId.value} — content: $content]",
         participantId = event.participantId,
         sourceEventId = event._id,
-        visibility    = sigil.event.MessageVisibility.Agents
+        visibility = sigil.event.MessageVisibility.Agents
       )
     }
 

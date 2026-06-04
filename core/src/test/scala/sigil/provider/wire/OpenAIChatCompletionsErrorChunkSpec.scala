@@ -45,20 +45,20 @@ class OpenAIChatCompletionsErrorChunkSpec extends AsyncWordSpec with AsyncTaskSp
       // provider.
       val defaultConfig = OpenAIChatCompletions.Config(
         providerNamespace = "openrouter",
-        providerName      = "OpenRouter"
+        providerName = "OpenRouter"
       )
       val chunk = obj(
-        "id"      -> str("gen-1778934609-yxK1UHkKR86HNGVjs6l2"),
-        "object"  -> str("chat.completion.chunk"),
+        "id" -> str("gen-1778934609-yxK1UHkKR86HNGVjs6l2"),
+        "object" -> str("chat.completion.chunk"),
         "created" -> num(1778934609),
-        "model"   -> str("moonshotai/kimi-k2.6-20260420"),
+        "model" -> str("moonshotai/kimi-k2.6-20260420"),
         "provider" -> str("Io Net"),
         "choices" -> arr(),
-        "error"   -> obj(
-          "code"    -> num(502),
+        "error" -> obj(
+          "code" -> num(502),
           "message" -> str("Upstream idle timeout exceeded"),
           "metadata" -> obj(
-            "error_type"    -> str("provider_timeout"),
+            "error_type" -> str("provider_timeout"),
             "provider_name" -> str("Io Net")
           )
         )
@@ -67,7 +67,7 @@ class OpenAIChatCompletionsErrorChunkSpec extends AsyncWordSpec with AsyncTaskSp
         OpenAIChatCompletions.parseChunk(chunk, freshState, defaultConfig)
       }
       thrown.code shouldBe 502
-      thrown.getMessage should include ("Upstream idle timeout exceeded")
+      thrown.getMessage should include("Upstream idle timeout exceeded")
       rapid.Task.pure(succeed)
     }
 
@@ -76,13 +76,13 @@ class OpenAIChatCompletionsErrorChunkSpec extends AsyncWordSpec with AsyncTaskSp
       // pass `inlineErrorThrows = false` explicitly.
       val optedOut = OpenAIChatCompletions.Config(
         providerNamespace = "custom",
-        providerName      = "Custom",
+        providerName = "Custom",
         inlineErrorThrows = false
       )
       val chunk = obj(
         "choices" -> arr(),
-        "error"   -> obj(
-          "code"    -> num(502),
+        "error" -> obj(
+          "code" -> num(502),
           "message" -> str("Upstream idle timeout exceeded")
         )
       )
@@ -93,11 +93,11 @@ class OpenAIChatCompletionsErrorChunkSpec extends AsyncWordSpec with AsyncTaskSp
     "tolerate `error: null` (no throw, no events)" in {
       val cfg = OpenAIChatCompletions.Config(
         providerNamespace = "openrouter",
-        providerName      = "OpenRouter"
+        providerName = "OpenRouter"
       )
       val chunk = obj(
         "choices" -> arr(),
-        "error"   -> Null
+        "error" -> Null
       )
       val events = OpenAIChatCompletions.parseChunk(chunk, freshState, cfg)
       events shouldBe empty
@@ -107,7 +107,7 @@ class OpenAIChatCompletionsErrorChunkSpec extends AsyncWordSpec with AsyncTaskSp
     "still parse normal-shape chunks alongside the error path being enabled by default" in {
       val cfg = OpenAIChatCompletions.Config(
         providerNamespace = "openrouter",
-        providerName      = "OpenRouter"
+        providerName = "OpenRouter"
       )
       val chunk = obj(
         "choices" -> arr(obj(
@@ -115,7 +115,7 @@ class OpenAIChatCompletionsErrorChunkSpec extends AsyncWordSpec with AsyncTaskSp
             "content" -> str("hello")
           ),
           "finish_reason" -> Null,
-          "index"         -> num(0)
+          "index" -> num(0)
         ))
       )
       noException should be thrownBy OpenAIChatCompletions.parseChunk(chunk, freshState, cfg)

@@ -12,7 +12,8 @@ case class CreateWorkflowInput(name: String,
                                steps: List[WorkflowStepInput] = Nil,
                                triggers: List[WorkflowTrigger] = Nil,
                                variableDefs: List[strider.WorkflowVariable] = Nil,
-                               tags: List[String] = Nil) extends ToolInput derives RW
+                               tags: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Persist a new [[WorkflowTemplate]]. The agent supplies the
@@ -27,9 +28,9 @@ case class CreateWorkflowInput(name: String,
  * template is global.
  */
 final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = CreateWorkflowInput
+  type Input = CreateWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[CreateWorkflowInput]]
+  val inputRW = summon[RW[CreateWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("create_workflow")
   val description =

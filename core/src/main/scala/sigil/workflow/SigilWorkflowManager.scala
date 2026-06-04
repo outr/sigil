@@ -24,12 +24,15 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
                                  workflows: lightdb.store.Collection[Workflow, SigilWorkflowModel.type],
                                  maxConcurrent: Int = 1)
   extends AbstractWorkflowManager[WorkflowParent, SigilWorkflowModel.type](
-    workflows, maxConcurrent
+    workflows,
+    maxConcurrent
   ) {
 
-  /** Resolve sourceId to the persisted Sigil-side template. The
-    * mapping is direct: the Strider `sourceId` is the
-    * `WorkflowTemplate._id` value. */
+  /**
+   * Resolve sourceId to the persisted Sigil-side template. The
+   * mapping is direct: the Strider `sourceId` is the
+   * `WorkflowTemplate._id` value.
+   */
   override protected def resolveParent(sourceId: Id[WorkflowParent]): Task[Option[WorkflowParent]] =
     host.withDB(_.workflowTemplates.transaction(_.get(Id[WorkflowTemplate](sourceId.value))))
       .map(_.map(SigilWorkflowParent.apply))
@@ -37,8 +40,11 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
   override protected def onWorkflowStarted(workflow: Workflow): Task[Unit] =
     publishLifecycle(workflow) { case (caller, convId, topicId) =>
       WorkflowRunStarted(
-        participantId = caller, conversationId = convId, topicId = topicId,
-        workflowId = workflow.sourceId.value, workflowName = workflow.name,
+        participantId = caller,
+        conversationId = convId,
+        topicId = topicId,
+        workflowId = workflow.sourceId.value,
+        workflowName = workflow.name,
         runId = workflow._id.value
       )
     }
@@ -46,8 +52,11 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
   override protected def onWorkflowCompleted(workflow: Workflow): Task[Unit] =
     publishLifecycle(workflow) { case (caller, convId, topicId) =>
       WorkflowRunCompleted(
-        participantId = caller, conversationId = convId, topicId = topicId,
-        workflowId = workflow.sourceId.value, workflowName = workflow.name,
+        participantId = caller,
+        conversationId = convId,
+        topicId = topicId,
+        workflowId = workflow.sourceId.value,
+        workflowName = workflow.name,
         runId = workflow._id.value
       )
     }
@@ -56,9 +65,13 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
     val reason = SigilWorkflowManager.extractFailureReason(workflow)
     publishLifecycle(workflow) { case (caller, convId, topicId) =>
       WorkflowRunFailed(
-        participantId = caller, conversationId = convId, topicId = topicId,
-        workflowId = workflow.sourceId.value, workflowName = workflow.name,
-        runId = workflow._id.value, reason = reason
+        participantId = caller,
+        conversationId = convId,
+        topicId = topicId,
+        workflowId = workflow.sourceId.value,
+        workflowName = workflow.name,
+        runId = workflow._id.value,
+        reason = reason
       )
     }
   }
@@ -67,32 +80,38 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
     publishLifecycle(workflow) { case (caller, convId, topicId) =>
       val stepName = workflow.byStepId(stepId).map(_.name).getOrElse(stepId.value)
       WorkflowStepCompleted(
-        participantId = caller, conversationId = convId, topicId = topicId,
-        workflowId = workflow.sourceId.value, runId = workflow._id.value,
-        stepId = stepId.value, stepName = stepName, success = success
+        participantId = caller,
+        conversationId = convId,
+        topicId = topicId,
+        workflowId = workflow.sourceId.value,
+        runId = workflow._id.value,
+        stepId = stepId.value,
+        stepName = stepName,
+        success = success
       )
     }
 
-  /** Helper — when a workflow run carries a `conversationId`,
-    * publish the supplied lifecycle Event into that conversation
-    * via the host's `publish` pipeline. Cron-fired runs without a
-    * conversation context produce nothing (intentional silent
-    * background path).
-    *
-    * `participantId` resolution, in order of preference:
-    *   1. The workflow's `createdBy` matched against the source
-    *      conversation's participants list.
-    *   2. The source conversation's first participant.
-    *   3. For a participant-less conversation that descends from a
-    *      parent (`parentConversationId = Some(parent)`) — the parent
-    *      conversation's first participant, so a run anchored on such a
-    *      conversation still has an owner to attribute its lifecycle
-    *      events to.
-    *
-    * If no participant resolves through any of these, log a
-    * warning and skip — the workflow is genuinely unowned. */
-  private def publishLifecycle(workflow: Workflow)
-                              (build: (ParticipantId, Id[Conversation], Id[Topic]) => Event): Task[Unit] =
+  /**
+   * Helper — when a workflow run carries a `conversationId`,
+   * publish the supplied lifecycle Event into that conversation
+   * via the host's `publish` pipeline. Cron-fired runs without a
+   * conversation context produce nothing (intentional silent
+   * background path).
+   *
+   * `participantId` resolution, in order of preference:
+   *   1. The workflow's `createdBy` matched against the source
+   *      conversation's participants list.
+   *   2. The source conversation's first participant.
+   *   3. For a participant-less conversation that descends from a
+   *      parent (`parentConversationId = Some(parent)`) — the parent
+   *      conversation's first participant, so a run anchored on such a
+   *      conversation still has an owner to attribute its lifecycle
+   *      events to.
+   *
+   * If no participant resolves through any of these, log a
+   * warning and skip — the workflow is genuinely unowned.
+   */
+  private def publishLifecycle(workflow: Workflow)(build: (ParticipantId, Id[Conversation], Id[Topic]) => Event): Task[Unit] =
     workflow.conversationId match {
       case None => Task.unit
       case Some(convIdStr) =>
@@ -108,17 +127,18 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
               case Some(pid) =>
                 val event = build(pid, convId, conv.currentTopicId)
                 host.publish(event).handleError(t =>
-                  Task(scribe.warn(s"publishLifecycle: publish failed for run ${workflow._id.value}: ${t.getMessage}"))
-                )
+                  Task(scribe.warn(s"publishLifecycle: publish failed for run ${workflow._id.value}: ${t.getMessage}")))
             }
         }
     }
 
-  /** Locate a participant to attribute a workflow's lifecycle
-    * event to. Walks the resolution chain documented on
-    * [[publishLifecycle]] — `createdBy` match first, then the
-    * source conv's head participant, then (for a participant-less
-    * conversation) the parent conv's head participant. */
+  /**
+   * Locate a participant to attribute a workflow's lifecycle
+   * event to. Walks the resolution chain documented on
+   * [[publishLifecycle]] — `createdBy` match first, then the
+   * source conv's head participant, then (for a participant-less
+   * conversation) the parent conv's head participant.
+   */
   private def resolveCaller(workflow: Workflow,
                             conv: Conversation): Task[Option[ParticipantId]] = {
     val createdByValue = workflow.createdBy.getOrElse("")
@@ -142,26 +162,31 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
 }
 
 object SigilWorkflowManager {
-  /** Pull the most-recent `StepFailure` error message out of a
-    * workflow's history. Falls back to a generic marker when the
-    * workflow finished without a step-level failure entry (timed
-    * out before reaching the first step, cancelled, etc.). The
-    * `StepFailure.errorMessage` carries the exception's `getMessage`
-    * — kept short for client UI rendering; full stack trace stays
-    * in `log.log`. */
+
+  /**
+   * Pull the most-recent `StepFailure` error message out of a
+   * workflow's history. Falls back to a generic marker when the
+   * workflow finished without a step-level failure entry (timed
+   * out before reaching the first step, cancelled, etc.). The
+   * `StepFailure.errorMessage` carries the exception's `getMessage`
+   * — kept short for client UI rendering; full stack trace stays
+   * in `log.log`.
+   */
   def extractFailureReason(workflow: Workflow): String =
     workflow.history.iterator.map(_.activity).collectFirst {
       case WorkflowActivity.StepFailure(_, message) => message
-      case WorkflowActivity.TimedOut(_)             => "Workflow timed out"
-      case WorkflowActivity.Cancelled               => "Workflow cancelled"
+      case WorkflowActivity.TimedOut(_) => "Workflow timed out"
+      case WorkflowActivity.Cancelled => "Workflow cancelled"
     }.getOrElse("unknown")
 }
 
-/** Adapter: wraps a Sigil [[WorkflowTemplate]] as Strider's
-  * [[WorkflowParent]] so the engine's recycle / parent-resolution
-  * paths see the right `workflow` definition. The wrapped workflow
-  * is the empty placeholder — recycling rebuilds steps from the
-  * template each time. */
+/**
+ * Adapter: wraps a Sigil [[WorkflowTemplate]] as Strider's
+ * [[WorkflowParent]] so the engine's recycle / parent-resolution
+ * paths see the right `workflow` definition. The wrapped workflow
+ * is the empty placeholder — recycling rebuilds steps from the
+ * template each time.
+ */
 final case class SigilWorkflowParent(template: WorkflowTemplate) extends WorkflowParent {
   override def workflow: Workflow = Workflow(
     name = template.name,

@@ -21,9 +21,9 @@ import scala.concurrent.duration.*
  * streaming subscribers see the page state update without polling.
  */
 final class BrowserNavigateTool extends Tool {
-  type Input  = BrowserNavigateInput
+  type Input = BrowserNavigateInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[BrowserNavigateInput]]
+  val inputRW = summon[RW[BrowserNavigateInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("browser_navigate")
@@ -35,7 +35,8 @@ final class BrowserNavigateTool extends Tool {
       |for structural querying via `browser_xpath_query` / `browser_text_search`.""".stripMargin
   override val examples = List(
     ToolExample("Open a homepage", BrowserNavigateInput(url = "https://example.com/")),
-    ToolExample("Open with a longer wait for slow pages",
+    ToolExample(
+      "Open with a longer wait for slow pages",
       BrowserNavigateInput(url = "https://news.example/", waitForLoadSeconds = 30))
   )
   override val modes = Set(WebBrowserMode.id)
@@ -45,31 +46,31 @@ final class BrowserNavigateTool extends Tool {
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
-      title      <- controller.run { browser =>
-                      for {
-                        _ <- browser.navigate(input.url)
-                        _ <- browser.waitForLoaded(timeout = input.waitForLoadSeconds.seconds)
-                        // Pierce shadow DOMs so XPath queries see web-component content.
-                        // Failures are non-fatal — pages without shadow roots simply no-op.
-                        _ <- browser.shadowDOMFix().handleError(_ => rapid.Task.unit)
-                        t <- browser.title
-                      } yield t
-                    }
+      title <- controller.run { browser =>
+        for {
+          _ <- browser.navigate(input.url)
+          _ <- browser.waitForLoaded(timeout = input.waitForLoadSeconds.seconds)
+          // Pierce shadow DOMs so XPath queries see web-component content.
+          // Failures are non-fatal — pages without shadow roots simply no-op.
+          _ <- browser.shadowDOMFix().handleError(_ => rapid.Task.unit)
+          t <- browser.title
+        } yield t
+      }
       // Publish the BrowserStateDelta as a side effect — the framework
       // routes it through the signal hub + persists the mutation
       // against the controller's BrowserState target.
-      _          <- ctx.sigil.publish(BrowserStateDelta(
-                      target         = controller.stateId,
-                      conversationId = ctx.conversation.id,
-                      url            = Some(input.url),
-                      title          = Some(title),
-                      loading        = Some(false)
-                    ))
+      _ <- ctx.sigil.publish(BrowserStateDelta(
+        target = controller.stateId,
+        conversationId = ctx.conversation.id,
+        url = Some(input.url),
+        title = Some(title),
+        loading = Some(false)
+      ))
     } yield {
       val payload = obj(
-        "url"   -> str(input.url),
+        "url" -> str(input.url),
         "title" -> str(title),
-        "wait"  -> num(input.waitForLoadSeconds)
+        "wait" -> num(input.waitForLoadSeconds)
       )
       ToolResult.Success(BrowserToolBase.toolResult(payload))
     }

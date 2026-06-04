@@ -9,7 +9,9 @@ import sigil.tool.ToolOutput
  */
 enum GetWorkflowOutput extends ToolOutput derives RW {
 
-  /** The template was found and the caller is authorized for its space. */
+  /**
+   * The template was found and the caller is authorized for its space.
+   */
   case Found(workflowId: String,
              name: String,
              enabled: Boolean,
@@ -20,8 +22,10 @@ enum GetWorkflowOutput extends ToolOutput derives RW {
              variables: List[GetWorkflowVariable],
              tags: List[String])
 
-  /** No template with the given id is visible to the caller — either it
-    * doesn't exist or it lives in an inaccessible space (existence is
-    * hidden across space boundaries). */
+  /**
+   * No template with the given id is visible to the caller — either it
+   * doesn't exist or it lives in an inaccessible space (existence is
+   * hidden across space boundaries).
+   */
   case NotFound(workflowId: String)
 }

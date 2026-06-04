@@ -17,33 +17,43 @@ import sigil.orchestrator.SyntheticDiagnostic
  */
 class SyntheticDiagnosticFrameSpec extends AnyWordSpec with Matchers {
 
-  private val caller  = TestAgent
-  private val convId  = Conversation.id("synth-diag")
+  private val caller = TestAgent
+  private val convId = Conversation.id("synth-diag")
   private val topicId = Topic.id("synth-diag-topic")
-  private val reason  =
+  private val reason =
     "You already called `find_capability` with keywords `bug references`. Pick a different " +
       "tool from the prior results or search with different keywords."
 
   private def frameText(f: ContextFrame): String = f match {
     case tc: ContextFrame.ToolCall => tc.state match {
-      case ToolCallState.Complete(content, _) => content
-      case _                                  => ""
-    }
+        case ToolCallState.Complete(content, _) => content
+        case _ => ""
+      }
     case _ => ""
   }
 
   "SyntheticDiagnostic.apply" should {
     "stamp the reason onto the invoke's own outcome + summary (self-describing, #341)" in {
-      val invoke = SyntheticDiagnostic("_repeated_query_intercept", caller, convId, topicId,
-        reason = reason, disposition = MessageDisposition.Failure(recoverable = true))
+      val invoke = SyntheticDiagnostic(
+        "_repeated_query_intercept",
+        caller,
+        convId,
+        topicId,
+        reason = reason,
+        disposition = MessageDisposition.Failure(recoverable = true))
         .collectFirst { case ti: ToolInvoke => ti }.getOrElse(fail("no invoke produced"))
       invoke.outcome shouldBe ToolOutcome.Failure(reason, recoverable = true)
       invoke.summary shouldBe reason
     }
 
     "render the reason in the agent's frame from the invoke ALONE — no paired Message (#341)" in {
-      val invoke = SyntheticDiagnostic("_repeated_query_intercept", caller, convId, topicId,
-        reason = reason, disposition = MessageDisposition.Failure(recoverable = true))
+      val invoke = SyntheticDiagnostic(
+        "_repeated_query_intercept",
+        caller,
+        convId,
+        topicId,
+        reason = reason,
+        disposition = MessageDisposition.Failure(recoverable = true))
         .collectFirst { case ti: ToolInvoke => ti }.get
       // Frame the invoke WITHOUT its paired Message — the bug's scenario.
       val text = frameText(FrameBuilder.computeFrame(invoke).getOrElse(fail("no frame")))

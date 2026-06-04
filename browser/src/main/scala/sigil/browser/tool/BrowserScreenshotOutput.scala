@@ -13,4 +13,5 @@ import sigil.tool.ToolOutput
  */
 case class BrowserScreenshotOutput(fileId: String,
                                    url: String,
-                                   altText: String) extends ToolOutput derives RW
+                                   altText: String)
+  extends ToolOutput derives RW

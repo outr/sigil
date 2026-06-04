@@ -24,7 +24,9 @@ import java.nio.file.{Files, OpenOption, Path, StandardOpenOption}
  */
 trait ChunkLogger {
 
-  /** Called for each SSE data line received from the stream. */
+  /**
+   * Called for each SSE data line received from the stream.
+   */
   def chunk(requestId: String,
             url: String,
             chunkIndex: Int,
@@ -33,10 +35,12 @@ trait ChunkLogger {
             byteSize: Int,
             preview: String): Unit
 
-  /** Called once at stream termination — success or error — with
-    * accumulated stats. `terminatedBy` is one of `"clean"` (stream
-    * emitted [DONE] / completed normally) or `"error"` (stream
-    * raised mid-flight). */
+  /**
+   * Called once at stream termination — success or error — with
+   * accumulated stats. `terminatedBy` is one of `"clean"` (stream
+   * emitted [DONE] / completed normally) or `"error"` (stream
+   * raised mid-flight).
+   */
   def streamEnd(requestId: String,
                 url: String,
                 totalChunks: Int,
@@ -49,12 +53,20 @@ trait ChunkLogger {
 object ChunkLogger {
 
   val NoOp: ChunkLogger = new ChunkLogger {
-    override def chunk(requestId: String, url: String, chunkIndex: Int,
-                       elapsedSinceRequestMs: Long, elapsedSincePrevChunkMs: Long,
-                       byteSize: Int, preview: String): Unit = ()
-    override def streamEnd(requestId: String, url: String, totalChunks: Int,
-                           totalDurationMs: Long, longestInterChunkGapMs: Long,
-                           longestGapAtChunkIndex: Int, terminatedBy: String): Unit = ()
+    override def chunk(requestId: String,
+                       url: String,
+                       chunkIndex: Int,
+                       elapsedSinceRequestMs: Long,
+                       elapsedSincePrevChunkMs: Long,
+                       byteSize: Int,
+                       preview: String): Unit = ()
+    override def streamEnd(requestId: String,
+                           url: String,
+                           totalChunks: Int,
+                           totalDurationMs: Long,
+                           longestInterChunkGapMs: Long,
+                           longestGapAtChunkIndex: Int,
+                           terminatedBy: String): Unit = ()
   }
 }
 
@@ -69,44 +81,51 @@ case class FileChunkLogger(path: Path, previewBytes: Int = 200) extends ChunkLog
   private val parent = Option(path.getParent)
   private val writeOpts: Array[OpenOption] = Array(StandardOpenOption.CREATE, StandardOpenOption.APPEND)
 
-  override def chunk(requestId: String, url: String, chunkIndex: Int,
-                     elapsedSinceRequestMs: Long, elapsedSincePrevChunkMs: Long,
-                     byteSize: Int, preview: String): Unit = {
+  override def chunk(requestId: String,
+                     url: String,
+                     chunkIndex: Int,
+                     elapsedSinceRequestMs: Long,
+                     elapsedSincePrevChunkMs: Long,
+                     byteSize: Int,
+                     preview: String): Unit = {
     val truncated =
       if (previewBytes <= 0) ""
       else if (preview.length <= previewBytes) preview
       else preview.take(previewBytes)
     appendLine(obj(
-      "kind"                    -> str("chunk"),
-      "ts"                      -> str(Timestamp().toString),
-      "requestId"               -> str(requestId),
-      "url"                     -> str(url),
-      "chunkIndex"              -> num(chunkIndex),
-      "elapsedSinceRequestMs"   -> num(elapsedSinceRequestMs),
+      "kind" -> str("chunk"),
+      "ts" -> str(Timestamp().toString),
+      "requestId" -> str(requestId),
+      "url" -> str(url),
+      "chunkIndex" -> num(chunkIndex),
+      "elapsedSinceRequestMs" -> num(elapsedSinceRequestMs),
       "elapsedSincePrevChunkMs" -> num(elapsedSincePrevChunkMs),
-      "byteSize"                -> num(byteSize),
-      "preview"                 -> str(truncated)
+      "byteSize" -> num(byteSize),
+      "preview" -> str(truncated)
     ))
   }
 
-  override def streamEnd(requestId: String, url: String, totalChunks: Int,
-                         totalDurationMs: Long, longestInterChunkGapMs: Long,
-                         longestGapAtChunkIndex: Int, terminatedBy: String): Unit = {
+  override def streamEnd(requestId: String,
+                         url: String,
+                         totalChunks: Int,
+                         totalDurationMs: Long,
+                         longestInterChunkGapMs: Long,
+                         longestGapAtChunkIndex: Int,
+                         terminatedBy: String): Unit =
     appendLine(obj(
-      "kind"                    -> str("stream-end"),
-      "ts"                      -> str(Timestamp().toString),
-      "requestId"               -> str(requestId),
-      "url"                     -> str(url),
-      "totalChunks"             -> num(totalChunks),
-      "totalDurationMs"         -> num(totalDurationMs),
-      "longestInterChunkGapMs"  -> num(longestInterChunkGapMs),
-      "longestGapAtChunkIndex"  -> num(longestGapAtChunkIndex),
-      "terminatedBy"            -> str(terminatedBy)
+      "kind" -> str("stream-end"),
+      "ts" -> str(Timestamp().toString),
+      "requestId" -> str(requestId),
+      "url" -> str(url),
+      "totalChunks" -> num(totalChunks),
+      "totalDurationMs" -> num(totalDurationMs),
+      "longestInterChunkGapMs" -> num(longestInterChunkGapMs),
+      "longestGapAtChunkIndex" -> num(longestGapAtChunkIndex),
+      "terminatedBy" -> str(terminatedBy)
     ))
-  }
 
   private def appendLine(line: Json): Unit = synchronized {
-    parent.foreach { p => if (!Files.exists(p)) Files.createDirectories(p) }
+    parent.foreach(p => if (!Files.exists(p)) Files.createDirectories(p))
     val serialized = JsonFormatter.Compact(line) + "\n"
     Files.writeString(path, serialized, writeOpts*)
   }

@@ -6,21 +6,28 @@ import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolOutput}
 
 case class CancelFrameworkWorkflowInput(workflowId: String,
-                                        reason: Option[String] = None) extends ToolInput derives RW
+                                        reason: Option[String] = None)
+  extends ToolInput derives RW
 
 enum CancelFrameworkWorkflowOutput extends ToolOutput derives RW {
 
-  /** Cancellation flag flipped successfully — the workflow body
-    * will honour it at its next checkpoint and emit a
-    * `FrameworkWorkflowPhase.Failed("cancelled: …", …)` Notice. */
+  /**
+   * Cancellation flag flipped successfully — the workflow body
+   * will honour it at its next checkpoint and emit a
+   * `FrameworkWorkflowPhase.Failed("cancelled: …", …)` Notice.
+   */
   case Cancelled(workflowId: String, workflowType: String, label: String)
 
-  /** Workflow id wasn't found in the active set — either the
-    * workflow already finished, or the id is wrong. Idempotent
-    * shape so re-cancellation is a clean no-op. */
+  /**
+   * Workflow id wasn't found in the active set — either the
+   * workflow already finished, or the id is wrong. Idempotent
+   * shape so re-cancellation is a clean no-op.
+   */
   case NotActive(workflowId: String)
 
-  /** Workflow was already cancelled by an earlier call. */
+  /**
+   * Workflow was already cancelled by an earlier call.
+   */
   case AlreadyCancelled(workflowId: String, existingReason: String)
 }
 
@@ -41,9 +48,9 @@ enum CancelFrameworkWorkflowOutput extends ToolOutput derives RW {
  * ("framework workflow" vs "workflow run / strider").
  */
 case object CancelFrameworkWorkflowTool extends Tool {
-  type Input  = CancelFrameworkWorkflowInput
+  type Input = CancelFrameworkWorkflowInput
   type Output = CancelFrameworkWorkflowOutput
-  val inputRW  = summon[RW[CancelFrameworkWorkflowInput]]
+  val inputRW = summon[RW[CancelFrameworkWorkflowInput]]
   val outputRW = summon[RW[CancelFrameworkWorkflowOutput]]
   val name = ToolName("cancel_framework_workflow")
   val description =
@@ -52,7 +59,8 @@ case object CancelFrameworkWorkflowTool extends Tool {
       |internal checkpoint, so very short operations may complete before the cancel takes
       |effect. Idempotent.""".stripMargin
   override val examples = List(
-    ToolExample("Cancel a slow compress",
+    ToolExample(
+      "Cancel a slow compress",
       CancelFrameworkWorkflowInput(workflowId = "wf-abc-123", reason = Some("user clicked cancel")))
   )
   override val keywords = Set("cancel", "framework", "workflow", "abort", "stop", "preflight", "compress")

@@ -38,7 +38,9 @@ final class DurableFileChannel[C: RW, Info: RW](host: Sigil,
     }.start()
   }
 
-  /** Persist a received upload under its payload's space, then delete the receiver's temp spool. */
+  /**
+   * Persist a received upload under its payload's space, then delete the receiver's temp spool.
+   */
   def persist(received: ReceivedFile[StoredFileRef]): Task[StoredFile] = Task.defer {
     val bytes = Files.readAllBytes(received.path)
     val contentType = received.contentType.getOrElse("application/octet-stream")
@@ -53,8 +55,10 @@ final class DurableFileChannel[C: RW, Info: RW](host: Sigil,
     }
   }
 
-  /** Stream a stored file's bytes to the peer (server→client download), chunked over the binary
-    * channel. Fails if the file doesn't exist or `chain` isn't authorized for its space. */
+  /**
+   * Stream a stored file's bytes to the peer (server→client download), chunked over the binary
+   * channel. Fails if the file doesn't exist or `chain` isn't authorized for its space.
+   */
   def send(fileId: Id[StoredFile]): Task[String] =
     host.fetchStoredFile(fileId, chain).flatMap {
       case None => Task.error(new RuntimeException(s"Stored file $fileId not found or not accessible"))
@@ -69,6 +73,8 @@ final class DurableFileChannel[C: RW, Info: RW](host: Sigil,
         channel.send(file._id.value, file.contentType, Stream.emits(bytes.toIndexedSeq), ref)
     }
 
-  /** Route a [[RequestStoredFile]] pull to a chunked download. */
+  /**
+   * Route a [[RequestStoredFile]] pull to a chunked download.
+   */
   def handleRequest(request: RequestStoredFile): Task[Unit] = send(request.fileId).unit
 }

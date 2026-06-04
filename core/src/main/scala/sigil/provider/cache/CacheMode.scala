@@ -28,20 +28,24 @@ enum CacheMode derives RW {
 
 object CacheMode {
 
-  /** Environment-variable name that overrides the cache mode at
-    * runtime. Case-insensitive; unrecognised values fall back to
-    * [[RecordOrReplay]]. */
+  /**
+   * Environment-variable name that overrides the cache mode at
+   * runtime. Case-insensitive; unrecognised values fall back to
+   * [[RecordOrReplay]].
+   */
   val EnvName: String = "CACHE_MODE"
 
-  /** Resolve the mode from the [[EnvName]] environment variable.
-    * Accepted values (case-insensitive):
-    *
-    *   - `replay` -> [[ReplayOnly]]
-    *   - `record` -> [[RecordAlways]]
-    *   - any other / unset -> [[RecordOrReplay]] */
+  /**
+   * Resolve the mode from the [[EnvName]] environment variable.
+   * Accepted values (case-insensitive):
+   *
+   *   - `replay` -> [[ReplayOnly]]
+   *   - `record` -> [[RecordAlways]]
+   *   - any other / unset -> [[RecordOrReplay]]
+   */
   def fromEnv: CacheMode = sys.env.get(EnvName).map(_.trim.toLowerCase) match {
     case Some("replay") => ReplayOnly
     case Some("record") => RecordAlways
-    case _              => RecordOrReplay
+    case _ => RecordOrReplay
   }
 }

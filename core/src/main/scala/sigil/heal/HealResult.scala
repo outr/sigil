@@ -20,4 +20,5 @@ import fabric.rw.*
  *                        partial fix is visible, not hidden.
  */
 case class HealResult(corrections: List[HealAction],
-                      remainingIssues: List[String] = Nil) derives RW
+                      remainingIssues: List[String] = Nil)
+  derives RW

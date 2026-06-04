@@ -45,7 +45,7 @@ case class DbSkillFinder(sigil: Sigil, maxResults: Int = 10) {
   }
 
   private def passesAffinity(skill: Skill, request: DiscoveryRequest): Boolean = {
-    val passesModeAffinity  = skill.modes.isEmpty || skill.modes.contains(request.mode.id)
+    val passesModeAffinity = skill.modes.isEmpty || skill.modes.contains(request.mode.id)
     val passesSpaceAffinity = skill.space == GlobalSpace || request.callerSpaces.contains(skill.space)
     passesModeAffinity && passesSpaceAffinity
   }

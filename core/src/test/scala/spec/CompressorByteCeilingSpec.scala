@@ -26,17 +26,20 @@ class CompressorByteCeilingSpec extends AnyWordSpec with Matchers {
 
   private val ctx: (Option[sigil.provider.Mode], Option[TopicEntry]) = (None, None)
 
-  /** Renderer that emits each frame's content verbatim (one line). */
+  /**
+   * Renderer that emits each frame's content verbatim (one line).
+   */
   private val verbatim: SummaryOnlyCompressor.Renderer =
-    (frames, _, _) => frames.iterator.map {
-      case t: ContextFrame.Text                                              => t.content
-      case tc: ContextFrame.ToolCall                                         =>
-        tc.state match {
-          case ToolCallState.Complete(content, _) => content
-          case ToolCallState.Active               => ""
-        }
-      case _                                                                 => ""
-    }.mkString("\n")
+    (frames, _, _) =>
+      frames.iterator.map {
+        case t: ContextFrame.Text => t.content
+        case tc: ContextFrame.ToolCall =>
+          tc.state match {
+            case ToolCallState.Complete(content, _) => content
+            case ToolCallState.Active => ""
+          }
+        case _ => ""
+      }.mkString("\n")
 
   private def textFrame(content: String, idSuffix: String): ContextFrame =
     ContextFrame.Text(content, TestUser, Id[Event](s"e-$idSuffix"), MessageVisibility.All)
@@ -56,7 +59,7 @@ class CompressorByteCeilingSpec extends AnyWordSpec with Matchers {
         verbatim,
         HeuristicTokenizer,
         budgetTokens = Long.MaxValue,
-        maxBytes     = 200_000L
+        maxBytes = 200_000L
       )
       chunks should have size 2
       chunks.foreach(_.size shouldBe 2)
@@ -73,8 +76,8 @@ class CompressorByteCeilingSpec extends AnyWordSpec with Matchers {
         ctx,
         verbatim,
         HeuristicTokenizer,
-        budgetTokens = perFrameTokens + perFrameTokens - 1L,  // 2 frames just barely don't fit
-        maxBytes     = Long.MaxValue
+        budgetTokens = perFrameTokens + perFrameTokens - 1L, // 2 frames just barely don't fit
+        maxBytes = Long.MaxValue
       )
       chunks should have size 4
       chunks.foreach(_.size shouldBe 1)
@@ -87,7 +90,11 @@ class CompressorByteCeilingSpec extends AnyWordSpec with Matchers {
       // ceiling = MaxValue, so behaviour is identical to the legacy
       // path.
       val legacy = SummaryOnlyCompressor.chunkByTokens(
-        frames, ctx, verbatim, HeuristicTokenizer, budgetTokens = Long.MaxValue
+        frames,
+        ctx,
+        verbatim,
+        HeuristicTokenizer,
+        budgetTokens = Long.MaxValue
       )
       legacy should have size 1
       legacy.head.size shouldBe 3
@@ -106,7 +113,7 @@ class CompressorByteCeilingSpec extends AnyWordSpec with Matchers {
         verbatim,
         HeuristicTokenizer,
         budgetTokens = Long.MaxValue,
-        maxBytes     = 1_000_000L
+        maxBytes = 1_000_000L
       )
       chunks should have size 1
       chunks.head.size shouldBe 1

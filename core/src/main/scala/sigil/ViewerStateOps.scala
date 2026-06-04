@@ -43,11 +43,13 @@ trait ViewerStateOps { this: Sigil =>
    */
   protected def viewerStatePayloadRegistrations: List[RW[? <: sigil.viewer.ViewerStatePayload]] = Nil
 
-  /** Inbound-Notice arms for the viewer-state and stored-file
-    * vocabularies. [[Sigil.handleNotice]] consults this partial
-    * function for any Notice it doesn't handle directly; the Notice
-    * subtypes here are disjoint from the framework-level ones so
-    * dispatch order is irrelevant. */
+  /**
+   * Inbound-Notice arms for the viewer-state and stored-file
+   * vocabularies. [[Sigil.handleNotice]] consults this partial
+   * function for any Notice it doesn't handle directly; the Notice
+   * subtypes here are disjoint from the framework-level ones so
+   * dispatch order is irrelevant.
+   */
   protected def viewerStateNotices: PartialFunction[(sigil.signal.Notice, ParticipantId), Task[Unit]] = {
     case (sigil.signal.RequestViewerState(scope), fromViewer) =>
       val recordId = sigil.viewer.ViewerState.idFor(fromViewer, scope)
@@ -75,7 +77,7 @@ trait ViewerStateOps { this: Sigil =>
       val recordId = sigil.viewer.ViewerState.idFor(fromViewer, scope)
       for {
         _ <- withDB(_.viewerStates.transaction(_.delete(recordId).map(_ => ())))
-                .handleError(_ => Task.unit)
+          .handleError(_ => Task.unit)
         _ <- publishTo(fromViewer, sigil.signal.ViewerStateSnapshot(scope, None))
       } yield ()
 
@@ -101,15 +103,15 @@ trait ViewerStateOps { this: Sigil =>
             // instead.
             val priorJson = payloadRW.read(prior.payload)
             val patchJson = stripNulls(payloadRW.read(patch))
-            val merged    = priorJson.merge(patchJson)
+            val merged = priorJson.merge(patchJson)
             payloadRW.write(merged)
         }
         val record = sigil.viewer.ViewerState(
           participantId = fromViewer,
-          scope         = scope,
-          payload       = mergedPayload,
-          modified      = lightdb.time.Timestamp(),
-          _id           = recordId
+          scope = scope,
+          payload = mergedPayload,
+          modified = lightdb.time.Timestamp(),
+          _id = recordId
         )
         for {
           _ <- withDB(_.viewerStates.transaction(_.upsert(record)))
@@ -147,23 +149,29 @@ trait ViewerStateOps { this: Sigil =>
       externalizationSpaceForViewer(fromViewer).flatMap { space =>
         val bytes = java.util.Base64.getDecoder.decode(base64Data)
         storeBytes(space, bytes, contentType).flatMap { stored =>
-          publishTo(fromViewer, sigil.signal.StoredFileCreated(
-            sigil.signal.StoredFileSummary.fromStoredFile(stored)
-          ))
+          publishTo(
+            fromViewer,
+            sigil.signal.StoredFileCreated(
+              sigil.signal.StoredFileSummary.fromStoredFile(stored)
+            ))
         }
       }
   }
 
-  /** Resolve the [[SpaceId]] used when a viewer pushes a
-    * [[sigil.signal.SaveStoredFile]] without conversation scope.
-    * Default [[GlobalSpace]] — apps tune for per-user / per-tenant. */
+  /**
+   * Resolve the [[SpaceId]] used when a viewer pushes a
+   * [[sigil.signal.SaveStoredFile]] without conversation scope.
+   * Default [[GlobalSpace]] — apps tune for per-user / per-tenant.
+   */
   def externalizationSpaceForViewer(viewer: ParticipantId): Task[SpaceId] =
     Task.pure(GlobalSpace)
 
-  /** Resolve the list of [[sigil.signal.StoredFileSummary]] visible
-    * to a viewer, optionally filtered to a subset of spaces. Default
-    * walks `SigilDB.storedFiles` and filters by
-    * `accessibleSpaces(List(viewer))`. */
+  /**
+   * Resolve the list of [[sigil.signal.StoredFileSummary]] visible
+   * to a viewer, optionally filtered to a subset of spaces. Default
+   * walks `SigilDB.storedFiles` and filters by
+   * `accessibleSpaces(List(viewer))`.
+   */
   def listStoredFiles(viewer: ParticipantId,
                       spaces: Option[Set[SpaceId]] = None,
                       categories: Option[Set[sigil.storage.StoredFileCategory]] = None,
@@ -172,20 +180,23 @@ trait ViewerStateOps { this: Sigil =>
       val effective = spaces.fold(authorized)(_.intersect(authorized))
       val now = lightdb.time.Timestamp()
       withDB(_.storedFiles.transaction(_.list)).map(_.toList.collect {
-        case file if effective.contains(file.space)
-                  && categories.forall(_.contains(file.category))
-                  && (includeExpired || !file.isExpired(now)) =>
+        case file
+            if effective.contains(file.space)
+              && categories.forall(_.contains(file.category))
+              && (includeExpired || !file.isExpired(now)) =>
           sigil.signal.StoredFileSummary.fromStoredFile(file)
       })
     }
 
-  /** Recursively drop fields whose value is JSON `null`. Used to
-    * pre-process [[sigil.signal.UpdateViewerStateDelta]] patches —
-    * fabric's case-class RW emits `None` as `null`, and the default
-    * merge would otherwise overlay those nulls onto the prior
-    * payload, defeating the "untouched fields stay" intent.
-    * Non-object JSON values pass through unchanged. */
-  private final def stripNulls(json: fabric.Json): fabric.Json = json match {
+  /**
+   * Recursively drop fields whose value is JSON `null`. Used to
+   * pre-process [[sigil.signal.UpdateViewerStateDelta]] patches —
+   * fabric's case-class RW emits `None` as `null`, and the default
+   * merge would otherwise overlay those nulls onto the prior
+   * payload, defeating the "untouched fields stay" intent.
+   * Non-object JSON values pass through unchanged.
+   */
+  final private def stripNulls(json: fabric.Json): fabric.Json = json match {
     case obj: fabric.Obj =>
       val kept = obj.value.iterator.collect {
         case (k, v) if v != fabric.Null => (k, stripNulls(v))

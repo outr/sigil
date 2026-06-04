@@ -10,7 +10,7 @@ package sigil.tool.web
  * collapses excessive whitespace.
  */
 object HtmlToMarkdown {
-  def convert(html: String): String = {
+  def convert(html: String): String =
     if (html.isEmpty) ""
     else {
       var result = html
@@ -47,5 +47,4 @@ object HtmlToMarkdown {
       result = result.replaceAll("\\n\\s*\\n\\s*\\n+", "\n\n")
       result.trim
     }
-  }
 }

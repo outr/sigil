@@ -11,13 +11,12 @@ import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolRe
  * whether the file existed prior to deletion (`deleted = true` for
  * actually removed, `false` if the path did not exist).
  */
-final class DeleteFileTool(context: FileSystemContext)
-  extends Tool with sigil.tool.DestructiveExternalTool {
-  type Input  = DeleteFileInput
+final class DeleteFileTool(context: FileSystemContext) extends Tool with sigil.tool.DestructiveExternalTool {
+  type Input = DeleteFileInput
   type Output = DeleteFileOutput
-  val inputRW  = summon[RW[DeleteFileInput]]
+  val inputRW = summon[RW[DeleteFileInput]]
   val outputRW = summon[RW[DeleteFileOutput]]
-  val name        = ToolName("delete_file")
+  val name = ToolName("delete_file")
   val description = "Delete a file. Returns `{deleted: Boolean}` — true when the file existed and was removed; false when it did not exist."
   override val examples = List(
     ToolExample("Remove a temp file", DeleteFileInput(filePath = "/tmp/scratch.txt"))

@@ -15,7 +15,8 @@ case class UpdateWorkflowInput(workflowId: String,
                                triggers: Option[List[WorkflowTrigger]] = None,
                                variableDefs: Option[List[strider.WorkflowVariable]] = None,
                                tags: Option[List[String]] = None,
-                               enabled: Option[Boolean] = None) extends ToolInput derives RW
+                               enabled: Option[Boolean] = None)
+  extends ToolInput derives RW
 
 /**
  * Update a workflow template in place. Every field is optional —
@@ -26,9 +27,9 @@ case class UpdateWorkflowInput(workflowId: String,
  * scheduling.
  */
 final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = UpdateWorkflowInput
+  type Input = UpdateWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[UpdateWorkflowInput]]
+  val inputRW = summon[RW[UpdateWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("update_workflow")
   val description =
@@ -54,18 +55,17 @@ final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
           case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
           case Right(_) =>
             val updated = prior.copy(
-              name         = input.name.getOrElse(prior.name),
-              description  = input.description.orElse(prior.description),
-              steps        = input.steps.getOrElse(prior.steps),
-              triggers     = input.triggers.getOrElse(prior.triggers),
+              name = input.name.getOrElse(prior.name),
+              description = input.description.orElse(prior.description),
+              steps = input.steps.getOrElse(prior.steps),
+              triggers = input.triggers.getOrElse(prior.triggers),
               variableDefs = input.variableDefs.getOrElse(prior.variableDefs),
-              tags         = input.tags.map(_.toSet).getOrElse(prior.tags),
-              enabled      = input.enabled.getOrElse(prior.enabled),
-              modified     = Timestamp()
+              tags = input.tags.map(_.toSet).getOrElse(prior.tags),
+              enabled = input.enabled.getOrElse(prior.enabled),
+              modified = Timestamp()
             )
             host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map(_ =>
-              s"Workflow '${updated.name}' updated."
-            )
+              s"Workflow '${updated.name}' updated.")
         }
     }
   }

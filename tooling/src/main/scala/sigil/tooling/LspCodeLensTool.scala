@@ -8,7 +8,8 @@ import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspCodeLensItem, LspCodeLensResult, LspPosition}
 
 case class LspCodeLensInput(languageId: String,
-                            filePath: String) extends ToolInput derives RW
+                            filePath: String)
+  extends ToolInput derives RW
 
 /**
  * List code lenses in a file — the small "Run | Debug" / "N
@@ -17,11 +18,10 @@ case class LspCodeLensInput(languageId: String,
  * via `lsp_apply_code_lens` (TBD — currently just listed; the
  * command-runner path is out of scope for the proof-of-concept).
  */
-final class LspCodeLensTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
-  type Input  = LspCodeLensInput
+final class LspCodeLensTool(val manager: LspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input = LspCodeLensInput
   type Output = LspCodeLensResult
-  val inputRW  = summon[RW[LspCodeLensInput]]
+  val inputRW = summon[RW[LspCodeLensInput]]
   val outputRW = summon[RW[LspCodeLensResult]]
   val name = ToolName("lsp_code_lens")
   val description =
@@ -31,10 +31,11 @@ final class LspCodeLensTool(val manager: LspManager) extends Tool
       |Returns each lens's position, optional title, and whether it carries a runnable command.""".stripMargin
   override val keywords = Set("lsp", "code lens", "lens", "inline action", "above-line action")
 
-
   override def executeOutput(input: LspCodeLensInput, context: ToolContext): Task[LspCodeLensResult] =
     withOpenDocumentOrThrow[LspCodeLensResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.codeLens(uri).map { lenses =>
         LspCodeLensResult(filePath = input.filePath, items = lenses.map(toItem))
@@ -44,8 +45,8 @@ final class LspCodeLensTool(val manager: LspManager) extends Tool
   private def toItem(lens: CodeLens): LspCodeLensItem = {
     val cmd = Option(lens.getCommand)
     LspCodeLensItem(
-      position   = LspPosition.fromLsp4j(lens.getRange.getStart),
-      title      = cmd.flatMap(c => Option(c.getTitle)),
+      position = LspPosition.fromLsp4j(lens.getRange.getStart),
+      title = cmd.flatMap(c => Option(c.getTitle)),
       hasCommand = cmd.isDefined
     )
   }

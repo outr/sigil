@@ -86,12 +86,14 @@ enum ContextFrame derives RW {
                 participantId: ParticipantId,
                 sourceEventId: Id[Event],
                 visibility: MessageVisibility = MessageVisibility.All,
-                /** Wire-level `call_id` from the provider's response when
-                  * the upstream model emitted this call (e.g. OpenAI's
-                  * `call_<hash>`). Renderers prefer this over `callId.value`
-                  * so the wire's `tool_call.id` matches what the provider's
-                  * `previous_response_id` state remembers. `None` for
-                  * synthetic / framework-emitted calls. Sigil bug #167 r5. */
+                /**
+                 * Wire-level `call_id` from the provider's response when
+                 * the upstream model emitted this call (e.g. OpenAI's
+                 * `call_<hash>`). Renderers prefer this over `callId.value`
+                 * so the wire's `tool_call.id` matches what the provider's
+                 * `previous_response_id` state remembers. `None` for
+                 * synthetic / framework-emitted calls. Sigil bug #167 r5.
+                 */
                 wireCallId: Option[String] = None,
                 state: ToolCallState = ToolCallState.Active)
 

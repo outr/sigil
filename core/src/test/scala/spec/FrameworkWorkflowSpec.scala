@@ -18,8 +18,10 @@ import java.util.concurrent.atomic.AtomicReference
 class FrameworkWorkflowSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Subscribe + collect every FrameworkWorkflowNotice emitted while
-    * `body` runs. Returns the collected list in arrival order. */
+  /**
+   * Subscribe + collect every FrameworkWorkflowNotice emitted while
+   * `body` runs. Returns the collected list in arrival order.
+   */
   private def captureNotices[A](body: Task[A]): Task[(A, List[FrameworkWorkflowNotice])] = {
     val collected = new java.util.concurrent.ConcurrentLinkedQueue[FrameworkWorkflowNotice]()
     val streamFiber = TestSigil.signals.evalMap {
@@ -42,7 +44,7 @@ class FrameworkWorkflowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   "runAsFrameworkWorkflow" should {
 
-    "emit Started → Completed for a successful task" in {
+    "emit Started → Completed for a successful task" in
       captureNotices {
         TestSigil.runAsFrameworkWorkflow("test-success", "doing thing", None, Task.pure(42))
       }.map { case (result, notices) =>
@@ -54,9 +56,8 @@ class FrameworkWorkflowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         sameRun.last.phase shouldBe a[FrameworkWorkflowPhase.Completed]
         sameRun.head.workflowId shouldBe sameRun.last.workflowId
       }
-    }
 
-    "emit Started → Failed and re-raise the error" in {
+    "emit Started → Failed and re-raise the error" in
       captureNotices {
         TestSigil.runAsFrameworkWorkflow("test-failure", "doomed", None, Task.error[Int](new RuntimeException("boom")))
           .handleError(_ => Task.pure(-1))
@@ -70,9 +71,8 @@ class FrameworkWorkflowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         failed.reason should include("RuntimeException")
         failed.reason should include("boom")
       }
-    }
 
-    "emit intermediate Step phases when the body uses the step callback" in {
+    "emit intermediate Step phases when the body uses the step callback" in
       captureNotices {
         TestSigil.runAsFrameworkWorkflow("test-steps", "multi-step", None) { control =>
           for {
@@ -90,7 +90,6 @@ class FrameworkWorkflowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         sameRun.last.phase shouldBe a[FrameworkWorkflowPhase.Completed]
         sameRun.map(_.workflowId).distinct.size shouldBe 1
       }
-    }
   }
 
   "tear down" should {

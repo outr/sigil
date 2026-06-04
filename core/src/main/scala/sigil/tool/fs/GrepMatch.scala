@@ -10,4 +10,5 @@ case class GrepMatch(filePath: String,
                      lineNumber: Int,
                      content: String,
                      contextBefore: List[String] = Nil,
-                     contextAfter: List[String] = Nil) derives RW
+                     contextAfter: List[String] = Nil)
+  derives RW

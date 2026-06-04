@@ -24,4 +24,5 @@ import sigil.service.{Service, ServiceLogLevel}
 case class ServiceLogSignal(serviceId: Id[Service],
                             line: String,
                             level: ServiceLogLevel = ServiceLogLevel.Info,
-                            emittedAt: Timestamp = Timestamp(Nowish())) extends Notice derives RW
+                            emittedAt: Timestamp = Timestamp(Nowish()))
+  extends Notice derives RW

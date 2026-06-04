@@ -6,8 +6,10 @@ import sigil.tool.ToolContext
 import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.{ToolInput, ToolName, ToolOutput}
 
-/** Bound as `tools` in script scope. Invokes a host tool by name and
-  * decodes its typed result. */
+/**
+ * Bound as `tools` in script scope. Invokes a host tool by name and
+ * decodes its typed result.
+ */
 class ScriptTools(context: ToolContext) {
 
   def callTool[Out](name: String, input: ToolInput)(using RW[Out]): Out =

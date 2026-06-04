@@ -22,7 +22,8 @@ import spice.http.HttpRequest
 class ToolResultImageRenderingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  private val imageUrl = spice.net.URL.get("sigil://storage/tool-result-img",
+  private val imageUrl = spice.net.URL.get(
+    "sigil://storage/tool-result-img",
     tldValidation = spice.net.TLDValidation.Off).toOption.get
 
   private object FakeProvider extends Provider {
@@ -43,23 +44,23 @@ class ToolResultImageRenderingSpec extends AsyncWordSpec with AsyncTaskSpec with
       // `ToolCallState.Complete(content, images)`. FrameBuilder
       // computes this via `toolResultPayload` when folding the result.
       val invoke = sigil.event.ToolInvoke(
-        toolName       = ToolName("preview_theme"),
-        participantId  = TestAgent,
+        toolName = ToolName("preview_theme"),
+        participantId = TestAgent,
         conversationId = Conversation.id("conv-1"),
-        topicId        = Topic.id("topic-1"),
-        state          = EventState.Active
+        topicId = Topic.id("topic-1"),
+        state = EventState.Active
       )
       val toolMessage = Message(
-        participantId  = TestAgent,
+        participantId = TestAgent,
         conversationId = Conversation.id("conv-1"),
-        topicId        = Topic.id("topic-1"),
-        role           = MessageRole.Tool,
-        content        = Vector(
+        topicId = Topic.id("topic-1"),
+        role = MessageRole.Tool,
+        content = Vector(
           ResponseContent.Text("preview ready"),
           ResponseContent.Image(imageUrl, Some("storefront preview"))
         ),
-        origin         = Some(invoke._id),
-        state          = EventState.Complete
+        origin = Some(invoke._id),
+        state = EventState.Complete
       )
       // FrameBuilder.appendFor skips Active events, so seed the starter
       // vector with a ToolCall(Active) frame the Tool-role Message can
@@ -79,7 +80,7 @@ class ToolResultImageRenderingSpec extends AsyncWordSpec with AsyncTaskSpec with
       tc.state match {
         case ToolCallState.Complete(content, images) =>
           images shouldBe List(imageUrl)
-          content should include ("[image: storefront preview]")
+          content should include("[image: storefront preview]")
           content should not include "Image("
         case other => fail(s"expected ToolCallState.Complete, got $other")
       }
@@ -88,12 +89,12 @@ class ToolResultImageRenderingSpec extends AsyncWordSpec with AsyncTaskSpec with
     "emit tool-result images as a follow-up user message in renderFrames" in {
       val callId = Id[Event]("tool-call-2")
       val toolCall = ContextFrame.ToolCall(
-        toolName      = ToolName("preview_theme"),
-        argsJson      = "{}",
-        callId        = callId,
+        toolName = ToolName("preview_theme"),
+        argsJson = "{}",
+        callId = callId,
         participantId = TestAgent,
         sourceEventId = Id[Event]("tc-2"),
-        state         = ToolCallState.Complete("preview ready", List(imageUrl))
+        state = ToolCallState.Complete("preview ready", List(imageUrl))
       )
       val rendered = FakeProvider.renderFrames(Vector(toolCall), Some(TestAgent))
       val userImageUrls = rendered.collect {

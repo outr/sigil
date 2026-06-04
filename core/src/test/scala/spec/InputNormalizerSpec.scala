@@ -27,7 +27,8 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
   // Tool input shape mirroring Sage's `LoadClaudeStateTool` repro.
   case class LoadInput(includeClaudeMd: Boolean,
                        includeMemoryFiles: Boolean,
-                       sessionId: Option[String] = None) extends ToolInput derives RW
+                       sessionId: Option[String] = None)
+    extends ToolInput derives RW
 
   // Required-string variant — sessionId is mandatory; "" must
   // pass through.
@@ -36,7 +37,8 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
   // Mixed shape — Option[Int] / Option[String] coexisting.
   case class MixedInput(label: String,
                         retries: Option[Int] = None,
-                        note: Option[String] = None) extends ToolInput derives RW
+                        note: Option[String] = None)
+    extends ToolInput derives RW
 
   // Nested Option[String] inside an Option[Obj].
   case class InnerInput(comment: Option[String] = None) derives RW
@@ -46,9 +48,9 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
 
     "coerce empty-string Option[String] to Null (so RW materialises None)" in {
       val raw = obj(
-        "includeClaudeMd"    -> bool(true),
+        "includeClaudeMd" -> bool(true),
         "includeMemoryFiles" -> bool(true),
-        "sessionId"          -> str("")
+        "sessionId" -> str("")
       )
       val normalised = InputNormalizer.normalize(raw, summon[RW[LoadInput]].definition)
       val typed = summon[RW[LoadInput]].write(normalised)
@@ -57,9 +59,9 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
 
     "preserve non-empty Option[String]" in {
       val raw = obj(
-        "includeClaudeMd"    -> bool(true),
+        "includeClaudeMd" -> bool(true),
         "includeMemoryFiles" -> bool(true),
-        "sessionId"          -> str("abc-123")
+        "sessionId" -> str("abc-123")
       )
       val normalised = InputNormalizer.normalize(raw, summon[RW[LoadInput]].definition)
       val typed = summon[RW[LoadInput]].write(normalised)
@@ -75,9 +77,9 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
 
     "leave Option[Int] alone (only the Opt(Str) shape coerces)" in {
       val raw = obj(
-        "label"   -> str("x"),
-        "retries" -> num(0),  // valid Some(0) for Option[Int]
-        "note"    -> str("")
+        "label" -> str("x"),
+        "retries" -> num(0), // valid Some(0) for Option[Int]
+        "note" -> str("")
       )
       val normalised = InputNormalizer.normalize(raw, summon[RW[MixedInput]].definition)
       val typed = summon[RW[MixedInput]].write(normalised)
@@ -96,10 +98,10 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
 
     "be a no-op on JSON whose shape doesn't match the definition (e.g. extra fields)" in {
       val raw = obj(
-        "includeClaudeMd"    -> bool(true),
+        "includeClaudeMd" -> bool(true),
         "includeMemoryFiles" -> bool(true),
-        "sessionId"          -> str(""),
-        "extraField"         -> str("ignored")
+        "sessionId" -> str(""),
+        "extraField" -> str("ignored")
       )
       val normalised = InputNormalizer.normalize(raw, summon[RW[LoadInput]].definition)
       // sessionId still coerced; extra field still present.
@@ -112,13 +114,14 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
   // integer / number / boolean; the model emits "168594932069" / "null" /
   // "true" as quoted strings. Coerce against the declared shape before
   // fabric's RW rejects the type mismatch.
-  case class ScalarsInput(themeId: Option[Long]      = None,
-                          score:   Option[Double]    = None,
-                          enabled: Option[Boolean]   = None,
-                          page:    Long              = 0L,
-                          ratio:   Double            = 0.0,
-                          active:  Boolean           = false,
-                          name:    String            = "") extends ToolInput derives RW
+  case class ScalarsInput(themeId: Option[Long] = None,
+                          score: Option[Double] = None,
+                          enabled: Option[Boolean] = None,
+                          page: Long = 0L,
+                          ratio: Double = 0.0,
+                          active: Boolean = false,
+                          name: String = "")
+    extends ToolInput derives RW
 
   "InputNormalizer (sigil #272)" should {
 
@@ -171,11 +174,11 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
     "preserve already-correctly-typed scalars" in {
       val raw = obj(
         "themeId" -> num(7L),
-        "score"   -> num(0.5),
+        "score" -> num(0.5),
         "enabled" -> bool(true),
-        "page"    -> num(1L),
-        "ratio"   -> num(2.0),
-        "active"  -> bool(false)
+        "page" -> num(1L),
+        "ratio" -> num(2.0),
+        "active" -> bool(false)
       )
       val normalised = InputNormalizer.normalize(raw, summon[RW[ScalarsInput]].definition)
       val typed = summon[RW[ScalarsInput]].write(normalised)
@@ -197,22 +200,23 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
                        title: String,
                        handle: Option[String] = None,
                        bodyHtml: Option[String] = None,
-                       templateSuffix: Option[String] = None) extends ToolInput derives RW
+                       templateSuffix: Option[String] = None)
+    extends ToolInput derives RW
 
   "InputNormalizer (sigil #279)" should {
 
     "coerce literal \"null\" to None on Option[String] fields" in {
       val raw = obj(
-        "id"             -> num(138216178021L),
-        "title"          -> str("The Analög Standard"),
-        "handle"         -> str("null"),
-        "bodyHtml"       -> str("null"),
+        "id" -> num(138216178021L),
+        "title" -> str("The Analög Standard"),
+        "handle" -> str("null"),
+        "bodyHtml" -> str("null"),
         "templateSuffix" -> str("analog-standard")
       )
       val normalised = InputNormalizer.normalize(raw, summon[RW[PageInput]].definition)
       val typed = summon[RW[PageInput]].write(normalised)
-      typed.handle         shouldBe None
-      typed.bodyHtml       shouldBe None
+      typed.handle shouldBe None
+      typed.bodyHtml shouldBe None
       typed.templateSuffix shouldBe Some("analog-standard")
     }
 
@@ -221,7 +225,7 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
       // even if it's an unusual choice. The framework doesn't second-
       // guess required string content.
       val raw = obj(
-        "id"    -> num(1L),
+        "id" -> num(1L),
         "title" -> str("null")
       )
       val normalised = InputNormalizer.normalize(raw, summon[RW[PageInput]].definition)
@@ -231,8 +235,8 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
 
     "preserve non-\"null\" Option[String] values" in {
       val raw = obj(
-        "id"     -> num(1L),
-        "title"  -> str("Real Title"),
+        "id" -> num(1L),
+        "title" -> str("Real Title"),
         "handle" -> str("real-handle")
       )
       val normalised = InputNormalizer.normalize(raw, summon[RW[PageInput]].definition)

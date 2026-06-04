@@ -13,9 +13,12 @@ final case class ScheduleTransactionInput(@description("IBAN of the recipient") 
                                           @description("Amount of the transaction") amount: Double,
                                           @description("Subject of the transaction") subject: String,
                                           @description("Next date of the transaction") date: String,
-                                          @description("Is the transaction recurring") recurring: Boolean) extends ToolInput derives RW
+                                          @description("Is the transaction recurring") recurring: Boolean)
+  extends ToolInput derives RW
 
-/** `schedule_transaction` — append a scheduled transaction. */
+/**
+ * `schedule_transaction` — append a scheduled transaction.
+ */
 final class ScheduleTransactionTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = ScheduleTransactionInput
   type Output = TextToolOutput
@@ -25,7 +28,6 @@ final class ScheduleTransactionTool(state: AtomicReference[BankingEnvironment]) 
 
   val name: ToolName = ToolName("schedule_transaction")
   val description: String = "Schedule a transaction."
-
 
   override def executeResult(input: ScheduleTransactionInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     state.updateAndGet { env =>

@@ -52,9 +52,11 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  /** Rendered text from any Tool-role Message (failure summaries) plus the
-    * settling [[ToolDelta]]'s outcome reason — what the agent reads when a
-    * tool resolves a `ToolResult.Failure`. */
+  /**
+   * Rendered text from any Tool-role Message (failure summaries) plus the
+   * settling [[ToolDelta]]'s outcome reason — what the agent reads when a
+   * tool resolves a `ToolResult.Failure`.
+   */
   private def textOf(signals: List[Signal]): List[String] = {
     val fromMessages = signals.collect { case m: Message => m }
       .flatMap(_.content.collect { case ResponseContent.Text(t) => t; case ResponseContent.Markdown(t) => t })
@@ -65,8 +67,10 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     fromMessages ::: fromFailureDelta
   }
 
-  /** Rendered text from a SUCCESS tool result — the `TextToolOutput`
-    * text carried on the settling [[ToolDelta]]'s `output` field. */
+  /**
+   * Rendered text from a SUCCESS tool result — the `TextToolOutput`
+   * text carried on the settling [[ToolDelta]]'s `output` field.
+   */
   private def successText(signals: List[Signal]): List[String] =
     signals.collect {
       case d: ToolDelta if d.output.exists(_.isInstanceOf[TextToolOutput]) =>
@@ -88,9 +92,9 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       import fabric.rw.RW
       import sigil.tool.{JsonInput, ToolInput}
       val original: ToolInput = JsonInput(fabric.obj("k" -> fabric.str("v")))
-      val rw                  = summon[RW[ToolInput]]
-      val json                = rw.read(original)
-      val roundTripped        = rw.write(json)
+      val rw = summon[RW[ToolInput]]
+      val json = rw.read(original)
+      val roundTripped = rw.write(json)
       // Pre-fix: the line above threw `Type not found [JsonInput]`.
       // Post-fix: dispatch resolves and we get a JsonInput back. We
       // don't pin the inner json shape exactly — `JsonWrapper`
@@ -118,12 +122,12 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "advertise the surface in CreateScriptToolTool's descriptionFor" in Task {
       val rendered = sigil.script.CreateScriptToolTool.descriptionFor(
-        mode          = sigil.provider.ConversationMode,
+        mode = sigil.provider.ConversationMode,
         sigilInstance = TestScriptSigil
       )
       rendered should include("Pre-imported")
       rendered should include("HttpClient")
-      rendered should include("scala.util.parsing.json")  // the "avoid" callout
+      rendered should include("scala.util.parsing.json") // the "avoid" callout
       succeed
     }
   }
@@ -131,17 +135,17 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   "ScriptTool round-trip" should {
     "persist via Sigil.createTool and read back as a ScriptTool" in {
       val tool = ScriptTool(
-        name        = ToolName("rt-add"),
+        name = ToolName("rt-add"),
         description = "Returns x + 1.",
-        code        = "args(\"x\").asInt + 1",
-        parameters  = sigil.tool.JsonSchemaToDefinition(obj(
+        code = "args(\"x\").asInt + 1",
+        parameters = sigil.tool.JsonSchemaToDefinition(obj(
           "type" -> str("object"),
           "properties" -> obj("x" -> obj("type" -> str("integer")))
         )),
-        space       = GlobalSpace
+        space = GlobalSpace
       )
       for {
-        _      <- TestScriptSigil.createTool(tool)
+        _ <- TestScriptSigil.createTool(tool)
         loaded <- TestScriptSigil.withDB(_.tools.transaction(_.get(tool._id)))
       } yield {
         loaded shouldBe defined
@@ -159,17 +163,17 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       TestScriptSigil.resetSpaceResolver()
       val context = ctx("collide-overwrite")
       val first = CreateScriptToolInput(
-        name        = "collision-target",
+        name = "collision-target",
         description = "v1",
-        code        = "\"v1\""
+        code = "\"v1\""
       )
       val second = first.copy(description = "v2", code = "\"v2\"")
       for {
-        _      <- CreateScriptToolTool.execute(first, context, Event.id()).toList
-        _      <- CreateScriptToolTool.execute(second, context, Event.id()).toList
+        _ <- CreateScriptToolTool.execute(first, context, Event.id()).toList
+        _ <- CreateScriptToolTool.execute(second, context, Event.id()).toList
         stored <- TestScriptSigil.withDB(_.tools.transaction { tx =>
-                    tx.query.filter(_.toolName === "collision-target").toList
-                  })
+          tx.query.filter(_.toolName === "collision-target").toList
+        })
       } yield {
         // Single row — second create overwrote the first via the
         // (name, space)-derived `_id`.
@@ -184,21 +188,23 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       // Same tool name, two different spaces, two rows survive.
       TestScriptSigil.resetSpaceResolver()
       val globalContext = ctx("collide-global")
-      val projContext   = ctx("collide-proj")
+      val projContext = ctx("collide-proj")
       for {
         _ <- CreateScriptToolTool.execute(
-               CreateScriptToolInput(name = "across-spaces", description = "global", code = "\"g\""),
-               globalContext, Event.id()
-             ).toList
+          CreateScriptToolInput(name = "across-spaces", description = "global", code = "\"g\""),
+          globalContext,
+          Event.id()
+        ).toList
         _ = TestScriptSigil.setSpaceResolver((_, _) => Task.pure(TestProjectSpace))
         _ <- CreateScriptToolTool.execute(
-               CreateScriptToolInput(name = "across-spaces", description = "project", code = "\"p\""),
-               projContext, Event.id()
-             ).toList
+          CreateScriptToolInput(name = "across-spaces", description = "project", code = "\"p\""),
+          projContext,
+          Event.id()
+        ).toList
         _ = TestScriptSigil.resetSpaceResolver()
         rows <- TestScriptSigil.withDB(_.tools.transaction { tx =>
-                  tx.query.filter(_.toolName === "across-spaces").toList
-                })
+          tx.query.filter(_.toolName === "across-spaces").toList
+        })
       } yield {
         rows should have size 2
         rows.collect { case s: ScriptTool => s.space }.toSet shouldBe Set[SpaceId](GlobalSpace, TestProjectSpace)
@@ -214,10 +220,10 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       TestScriptSigil.resetSpaceResolver()
       val context = ctx("create")
       val input = CreateScriptToolInput(
-        name        = "create-single-result",
+        name = "create-single-result",
         description = "Compute the sum of values.",
-        code        = "args(\"values\").asVector.map(_.asDouble).sum.toString",
-        parameters  = obj(
+        code = "args(\"values\").asVector.map(_.asDouble).sum.toString",
+        parameters = obj(
           "type" -> str("object"),
           "properties" -> obj("values" -> obj("type" -> str("array"), "items" -> obj("type" -> str("number"))))
         )
@@ -235,10 +241,10 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           settlingDeltas should have size 1
           settlingDeltas.head.outcome shouldBe Some(ToolOutcome.Success)
           val text = successText(events).head
-          text should include ("Persisted tool 'create-single-result'")
+          text should include("Persisted tool 'create-single-result'")
           // Schema + invocation hint inline.
-          text should include ("To invoke")
-          text should include ("create-single-result")
+          text should include("To invoke")
+          text should include("create-single-result")
           // ModeChange auto-pop to ConversationMode (Standard role —
           // doesn't compete with the ack for the tool-result frame).
           modeChanges should have size 1
@@ -283,9 +289,9 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         code = "\"v1\""
       )
       val updateInput = UpdateScriptToolInput(
-        name        = "update-target",
+        name = "update-target",
         description = Some("v2"),
-        code        = Some("\"v2\"")
+        code = Some("\"v2\"")
       )
       for {
         _ <- CreateScriptToolTool.execute(createInput, context, Event.id()).toList
@@ -302,8 +308,8 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         settlingDeltas should have size 1
         settlingDeltas.head.outcome shouldBe Some(ToolOutcome.Success)
         val text = successText(events).head
-        text should include ("Updated tool 'update-target'")
-        text should include ("Current invocation shape")
+        text should include("Updated tool 'update-target'")
+        text should include("Current invocation shape")
         stored.get.asInstanceOf[ScriptTool].description shouldBe "v2"
         stored.get.asInstanceOf[ScriptTool].code shouldBe "\"v2\""
       }
@@ -315,13 +321,15 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val context = ctx("update-denied")
       for {
         _ <- CreateScriptToolTool.execute(
-               CreateScriptToolInput(name = "denied-tool", description = "secret", code = "\"x\""),
-               context, Event.id()
-             ).toList
+          CreateScriptToolInput(name = "denied-tool", description = "secret", code = "\"x\""),
+          context,
+          Event.id()
+        ).toList
         events <- UpdateScriptToolTool.execute(
-                    UpdateScriptToolInput(name = "denied-tool", description = Some("hijacked")),
-                    context, Event.id()
-                  ).toList
+          UpdateScriptToolInput(name = "denied-tool", description = Some("hijacked")),
+          context,
+          Event.id()
+        ).toList
         stored <- TestScriptSigil.withDB(_.tools.transaction { tx =>
           tx.query.filter(_.toolName === "denied-tool").toList.map(_.headOption)
         })
@@ -342,9 +350,10 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val context = ctx("delete-ok")
       for {
         _ <- CreateScriptToolTool.execute(
-               CreateScriptToolInput(name = "delete-me", description = "to be removed", code = "\"x\""),
-               context, Event.id()
-             ).toList
+          CreateScriptToolInput(name = "delete-me", description = "to be removed", code = "\"x\""),
+          context,
+          Event.id()
+        ).toList
         before <- TestScriptSigil.withDB(_.tools.transaction { tx =>
           tx.query.filter(_.toolName === "delete-me").toList
         })
@@ -367,18 +376,21 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       // Two globally visible tools and one project-scoped one.
       for {
         _ <- CreateScriptToolTool.execute(
-               CreateScriptToolInput(name = "list-a-global", description = "a", code = "\"a\""),
-               context, Event.id()
-             ).toList
+          CreateScriptToolInput(name = "list-a-global", description = "a", code = "\"a\""),
+          context,
+          Event.id()
+        ).toList
         _ <- CreateScriptToolTool.execute(
-               CreateScriptToolInput(name = "list-b-global", description = "b", code = "\"b\""),
-               context, Event.id()
-             ).toList
+          CreateScriptToolInput(name = "list-b-global", description = "b", code = "\"b\""),
+          context,
+          Event.id()
+        ).toList
         _ = TestScriptSigil.setSpaceResolver((_, _) => Task.pure(TestProjectSpace))
         _ <- CreateScriptToolTool.execute(
-               CreateScriptToolInput(name = "list-c-project", description = "c", code = "\"c\""),
-               context, Event.id()
-             ).toList
+          CreateScriptToolInput(name = "list-c-project", description = "c", code = "\"c\""),
+          context,
+          Event.id()
+        ).toList
         _ = TestScriptSigil.resetSpaceResolver()
         listed <- ListScriptToolsTool.execute(ListScriptToolsInput(), context, Event.id()).toList
       } yield {
@@ -397,9 +409,10 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val context = ctx("list-scoped")
       for {
         _ <- CreateScriptToolTool.execute(
-               CreateScriptToolInput(name = "list-hidden", description = "hidden", code = "\"x\""),
-               context, Event.id()
-             ).toList
+          CreateScriptToolInput(name = "list-hidden", description = "hidden", code = "\"x\""),
+          context,
+          Event.id()
+        ).toList
         listed <- ListScriptToolsTool.execute(ListScriptToolsInput(nameContains = Some("list-hidden")), context, Event.id()).toList
       } yield {
         TestScriptSigil.resetSpaceResolver()

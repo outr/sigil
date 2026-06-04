@@ -25,9 +25,9 @@ import sigil.tool.{Tool, ToolExample, ToolName}
 final class SaveMemoryTool(space: SpaceId,
                            source: MemorySource = MemorySource.Explicit)
   extends Tool with sigil.tool.DestructiveInternalTool {
-  type Input  = SaveMemoryInput
+  type Input = SaveMemoryInput
   type Output = SaveMemoryOutput
-  val inputRW  = summon[RW[SaveMemoryInput]]
+  val inputRW = summon[RW[SaveMemoryInput]]
   val outputRW = summon[RW[SaveMemoryOutput]]
   val name = ToolName("save_memory")
   val description =
@@ -60,22 +60,22 @@ final class SaveMemoryTool(space: SpaceId,
   override def executeOutput(input: SaveMemoryInput, ctx: ToolContext): Task[SaveMemoryOutput] =
     resolveSpace(input.space, ctx).flatMap { resolvedSpace =>
       val mem = ContextMemory(
-        fact         = input.fact,
-        label        = input.label,
-        summary      = input.summary,
-        source       = source,
-        spaceId      = resolvedSpace,
-        key          = input.key,
-        pinned       = input.permanence.contains(sigil.conversation.Permanence.Always),
-        keywords     = input.keywords,
-        memoryType   = input.memoryType,
+        fact = input.fact,
+        label = input.label,
+        summary = input.summary,
+        source = source,
+        spaceId = resolvedSpace,
+        key = input.key,
+        pinned = input.permanence.contains(sigil.conversation.Permanence.Always),
+        keywords = input.keywords,
+        memoryType = input.memoryType,
         modeAffinity = resolveModeAffinity(input.modeAffinity, ctx)
       )
       input.key match {
         case Some(_) =>
           ctx.sigil.upsertMemoryByKeyFor(mem, ctx.chain, ctx.conversation.id).map { r =>
             val outcome = r match {
-              case _: UpsertMemoryResult.Stored    => MemoryWriteOutcome.Stored
+              case _: UpsertMemoryResult.Stored => MemoryWriteOutcome.Stored
               case _: UpsertMemoryResult.Refreshed => MemoryWriteOutcome.Refreshed
               case _: UpsertMemoryResult.Versioned => MemoryWriteOutcome.Versioned
             }
@@ -87,10 +87,12 @@ final class SaveMemoryTool(space: SpaceId,
       }
     }
 
-  /** Resolve the agent's space hint to a concrete [[SpaceId]]. When
-    * the hint is omitted or doesn't match an accessible space, fall
-    * back to the tool's default `space` and let the framework's
-    * classifier decide if the caller left it at GlobalSpace. */
+  /**
+   * Resolve the agent's space hint to a concrete [[SpaceId]]. When
+   * the hint is omitted or doesn't match an accessible space, fall
+   * back to the tool's default `space` and let the framework's
+   * classifier decide if the caller left it at GlobalSpace.
+   */
   private def resolveSpace(hint: Option[String], ctx: ToolContext): Task[SpaceId] = hint match {
     case None => Task.pure(space)
     case Some(value) =>
@@ -99,10 +101,12 @@ final class SaveMemoryTool(space: SpaceId,
       }
   }
 
-  /** Resolve mode `name`s to `Id[Mode]`. Unknown names are dropped
-    * with a WARN — better to persist the memory as universal (empty
-    * set) than to lose it entirely on a typo. Sigil bug #195. */
-  private def resolveModeAffinity(names: Set[String], ctx: ToolContext): Set[Id[Mode]] = {
+  /**
+   * Resolve mode `name`s to `Id[Mode]`. Unknown names are dropped
+   * with a WARN — better to persist the memory as universal (empty
+   * set) than to lose it entirely on a typo. Sigil bug #195.
+   */
+  private def resolveModeAffinity(names: Set[String], ctx: ToolContext): Set[Id[Mode]] =
     if (names.isEmpty) Set.empty
     else {
       val known = ctx.sigil.availableModes.map(_.name).toSet
@@ -115,6 +119,5 @@ final class SaveMemoryTool(space: SpaceId,
         }
       }.toSet
     }
-  }
 
 }

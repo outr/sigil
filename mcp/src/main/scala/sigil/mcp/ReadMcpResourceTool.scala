@@ -8,11 +8,13 @@ import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class ReadMcpResourceInput(server: String, uri: String) extends ToolInput derives RW
 
-/** Read a resource from a registered MCP server by URI. */
+/**
+ * Read a resource from a registered MCP server by URI.
+ */
 final class ReadMcpResourceTool(manager: McpManager) extends Tool {
-  type Input  = ReadMcpResourceInput
+  type Input = ReadMcpResourceInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ReadMcpResourceInput]]
+  val inputRW = summon[RW[ReadMcpResourceInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("read_mcp_resource")

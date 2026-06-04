@@ -16,9 +16,9 @@ case class GetWorkflowInput(workflowId: String) extends ToolInput derives RW
  * existence across tenant boundaries).
  */
 final class GetWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = GetWorkflowInput
+  type Input = GetWorkflowInput
   type Output = GetWorkflowOutput
-  val inputRW  = summon[RW[GetWorkflowInput]]
+  val inputRW = summon[RW[GetWorkflowInput]]
   val outputRW = summon[RW[GetWorkflowOutput]]
   val name = ToolName("get_workflow")
   val description =
@@ -37,7 +37,7 @@ final class GetWorkflowTool extends Tool with WorkflowToolSupport {
           case None => Task.pure(ToolResult.success(GetWorkflowOutput.NotFound(input.workflowId)))
           case Some(template) =>
             authorizeAccess(host, template, ctx.chain).map {
-              case Left(_)  => ToolResult.success(GetWorkflowOutput.NotFound(input.workflowId)) // hide cross-space existence
+              case Left(_) => ToolResult.success(GetWorkflowOutput.NotFound(input.workflowId)) // hide cross-space existence
               case Right(t) => ToolResult.success(project(t))
             }
         }
@@ -45,14 +45,14 @@ final class GetWorkflowTool extends Tool with WorkflowToolSupport {
 
   private def project(t: WorkflowTemplate): GetWorkflowOutput.Found =
     GetWorkflowOutput.Found(
-      workflowId   = t._id.value,
-      name         = t.name,
-      enabled      = t.enabled,
-      description  = t.description,
-      space        = t.space.value,
-      stepIds      = t.steps.map(_.id),
+      workflowId = t._id.value,
+      name = t.name,
+      enabled = t.enabled,
+      description = t.description,
+      space = t.space.value,
+      stepIds = t.steps.map(_.id),
       triggerKinds = t.triggers.map(_.kind),
-      variables    = t.variableDefs.map(v => GetWorkflowVariable(v.name, v.required)),
-      tags         = t.tags.toList
+      variables = t.variableDefs.map(v => GetWorkflowVariable(v.name, v.required)),
+      tags = t.tags.toList
     )
 }

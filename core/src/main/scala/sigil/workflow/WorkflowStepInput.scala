@@ -21,14 +21,18 @@ import fabric.rw.PolyType
  */
 trait WorkflowStepInput {
 
-  /** Stable identifier the agent uses to refer to this step from
-    * later steps' variable substitutions, condition expressions,
-    * `branch` jumps, etc. Required and unique within a workflow. */
+  /**
+   * Stable identifier the agent uses to refer to this step from
+   * later steps' variable substitutions, condition expressions,
+   * `branch` jumps, etc. Required and unique within a workflow.
+   */
   def id: String
 
-  /** Optional human-readable name shown in the workflow's history
-    * and surfaced in the conversation as part of step lifecycle
-    * Events. Compilers fall back to `id` when None. */
+  /**
+   * Optional human-readable name shown in the workflow's history
+   * and surfaced in the conversation as part of step lifecycle
+   * Events. Compilers fall back to `id` when None.
+   */
   def name: Option[String]
 }
 

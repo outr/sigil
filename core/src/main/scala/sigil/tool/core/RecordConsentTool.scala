@@ -34,9 +34,9 @@ import sigil.tool.model.RecordConsentInput
  * `approved=true`.
  */
 case object RecordConsentTool extends Tool {
-  type Input  = RecordConsentInput
+  type Input = RecordConsentInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RecordConsentInput]]
+  val inputRW = summon[RW[RecordConsentInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("record_consent")
@@ -62,12 +62,16 @@ case object RecordConsentTool extends Tool {
   override val examples: List[ToolExample] = List(
     ToolExample(
       "load_claude_state was refused pending consent; the user approved the prompt",
-      RecordConsentInput(toolName = "load_claude_state", approved = true,
+      RecordConsentInput(
+        toolName = "load_claude_state",
+        approved = true,
         reason = Some("user approved loading prior Claude Code session state when the gate prompted"))
     ),
     ToolExample(
       "load_claude_state was refused pending consent; the user declined the prompt",
-      RecordConsentInput(toolName = "load_claude_state", approved = false,
+      RecordConsentInput(
+        toolName = "load_claude_state",
+        approved = false,
         reason = Some("user declined the state-load prompt"))
     )
   )
@@ -93,8 +97,8 @@ case object RecordConsentTool extends Tool {
         val candidates = (ctx.turn.offeredTools.iterator ++ ctx.sigil.staticTools.iterator).toList.distinct
         Task.pure(RefusalPayload.unknownTool(
           invokedName = input.toolName,
-          offered     = candidates,
-          carrier     = Some(RecordConsentTool)
+          offered = candidates,
+          carrier = Some(RecordConsentTool)
         ))
 
       case Some(tool) if !tool.requiresUserConsent =>
@@ -121,12 +125,12 @@ case object RecordConsentTool extends Tool {
         // emit it via `ctx.emit`. The tool's own result is the
         // confirmation text the framework pairs to the invoke.
         val approval = ToolApproval(
-          toolName       = targetName,
-          approved       = input.approved,
-          reason         = input.reason,
-          participantId  = ctx.caller,
+          toolName = targetName,
+          approved = input.approved,
+          reason = input.reason,
+          participantId = ctx.caller,
           conversationId = ctx.conversation.id,
-          topicId        = ctx.conversation.currentTopicId
+          topicId = ctx.conversation.currentTopicId
         )
         val verdict = if (input.approved) "approved" else "declined"
         val confirmationText = input.reason match {

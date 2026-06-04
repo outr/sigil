@@ -8,12 +8,14 @@ import sigil.tool.ToolContext
 import sigil.browser.WebBrowserMode
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
-/** Click the first element matching a CSS selector. Subsequent
-  * scrape / screenshot calls reflect the resulting page state. */
+/**
+ * Click the first element matching a CSS selector. Subsequent
+ * scrape / screenshot calls reflect the resulting page state.
+ */
 final class BrowserClickTool extends Tool {
-  type Input  = BrowserClickInput
+  type Input = BrowserClickInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[BrowserClickInput]]
+  val inputRW = summon[RW[BrowserClickInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("browser_click")
@@ -30,6 +32,6 @@ final class BrowserClickTool extends Tool {
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
-      _          <- controller.run(_(Selector(input.selector)).click)
+      _ <- controller.run(_(Selector(input.selector)).click)
     } yield ToolResult.Success(BrowserToolBase.toolResult(obj("clicked" -> str(input.selector))))
 }

@@ -23,10 +23,10 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  *      `list_memories(pinned=true)`).
  */
 case object UnpinMemoryTool extends Tool {
-  type Input  = UnpinMemoryInput
+  type Input = UnpinMemoryInput
   type Output = TextToolOutput
   val inputRW: RW[UnpinMemoryInput] = summon[RW[UnpinMemoryInput]]
-  val outputRW: RW[TextToolOutput]  = summon[RW[TextToolOutput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("unpin_memory")
   val description: String =
@@ -73,7 +73,7 @@ case object UnpinMemoryTool extends Tool {
           // Fallback: maybe the agent passed an _id (UUID-style) from list_memories(pinned=true)
           context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
             case some @ Some(m) if spaces.contains(m.spaceId) => some
-            case _                                            => None
+            case _ => None
           }
       }
     }

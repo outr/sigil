@@ -26,7 +26,8 @@ import strider.step.{Condition, Step}
 final case class SigilCondition(input: ConditionStepInput,
                                 onTrueId: Id[Step],
                                 onFalseId: Id[Step],
-                                id: Id[Step] = Step.id()) extends Condition derives RW {
+                                id: Id[Step] = Step.id())
+  extends Condition derives RW {
   override def name: String = input.name.getOrElse(input.id)
 
   override def onTrue: Id[Step] = onTrueId
@@ -44,15 +45,15 @@ object SigilCondition {
 
   private[workflow] def evaluateExpression(expr: String): Boolean = expr match {
     case "" | "false" | "0" | "null" => false
-    case "true"                       => true
+    case "true" => true
     case NumericPattern(left, op, right) =>
       val l = left.toDouble; val r = right.toDouble
       op match {
         case "==" => l == r
         case "!=" => l != r
-        case "<"  => l < r
+        case "<" => l < r
         case "<=" => l <= r
-        case ">"  => l > r
+        case ">" => l > r
         case ">=" => l >= r
       }
     case EqualityPattern(left, op, right) =>

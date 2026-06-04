@@ -71,57 +71,67 @@ case class TurnContext(sigil: Sigil,
                        chain: List[ParticipantId],
                        conversation: Conversation,
                        turnInput: TurnInput,
-                       /** Sigil #277 — required Model record. */
+                       /**
+                        * Sigil #277 — required Model record.
+                        */
                        model: Model,
                        currentAgentStateId: Option[Id[Event]] = None,
-                       /** Sigil #304 — wall-clock at which the active agent
-                         * loop claimed this turn (i.e. the AgentState lock's
-                         * timestamp). Threaded into
-                         * [[sigil.provider.ConversationRequest.turnStartedAt]]
-                         * so the orchestrator's duplicate-call cap counts
-                         * only invocations made during THIS turn — the
-                         * projection's rolling window persists across
-                         * turns to feed [[sigil.Sigil.narrowRosterByRecentUse]]
-                         * without inflating dedupe counts. `None` when no
-                         * agent loop drives the turn. */
+                       /**
+                        * Sigil #304 — wall-clock at which the active agent
+                        * loop claimed this turn (i.e. the AgentState lock's
+                        * timestamp). Threaded into
+                        * [[sigil.provider.ConversationRequest.turnStartedAt]]
+                        * so the orchestrator's duplicate-call cap counts
+                        * only invocations made during THIS turn — the
+                        * projection's rolling window persists across
+                        * turns to feed [[sigil.Sigil.narrowRosterByRecentUse]]
+                        * without inflating dedupe counts. `None` when no
+                        * agent loop drives the turn.
+                        */
                        turnStartedAt: Option[Timestamp] = None,
                        correlationId: String = TurnContext.freshCorrelationId(),
                        isGreeting: Boolean = false,
-                       /** Sigil bug #125 — when `true`, the framework forces
-                         * the provider's `tool_choice` to `respond` for this
-                         * turn so the model can't pick another tool. Set by
-                         * the iteration-cap soft-stop path to synthesise a
-                         * reply from the agent's gathered context rather than
-                         * discarding it via [[sigil.AgentRunawayException]]. */
+                       /**
+                        * Sigil bug #125 — when `true`, the framework forces
+                        * the provider's `tool_choice` to `respond` for this
+                        * turn so the model can't pick another tool. Set by
+                        * the iteration-cap soft-stop path to synthesise a
+                        * reply from the agent's gathered context rather than
+                        * discarding it via [[sigil.AgentRunawayException]].
+                        */
                        forceResponseSynthesis: Boolean = false,
-                       /** Per-agent-loop cache of `find_capability` matches,
-                         * keyed by the normalised query. Populated when the
-                         * agent invokes `find_capability`; rendered into the
-                         * "Capabilities you've already discovered" section of
-                         * the system prompt so subsequent iterations within
-                         * the same loop don't re-run discovery for tools the
-                         * agent has already seen.
-                         *
-                         * NOT persisted. The same `AtomicReference` is shared
-                         * across every iteration's `TurnContext` of one agent
-                         * loop, so an entry recorded in iteration 1 is
-                         * visible on iteration 2. When the loop terminates,
-                         * the reference goes out of scope and a new loop
-                         * starts with a fresh empty map — preventing the
-                         * cross-turn prompt pollution where unrelated tools
-                         * from a prior task surfaced on every subsequent
-                         * turn. */
+                       /**
+                        * Per-agent-loop cache of `find_capability` matches,
+                        * keyed by the normalised query. Populated when the
+                        * agent invokes `find_capability`; rendered into the
+                        * "Capabilities you've already discovered" section of
+                        * the system prompt so subsequent iterations within
+                        * the same loop don't re-run discovery for tools the
+                        * agent has already seen.
+                        *
+                        * NOT persisted. The same `AtomicReference` is shared
+                        * across every iteration's `TurnContext` of one agent
+                        * loop, so an entry recorded in iteration 1 is
+                        * visible on iteration 2. When the loop terminates,
+                        * the reference goes out of scope and a new loop
+                        * starts with a fresh empty map — preventing the
+                        * cross-turn prompt pollution where unrelated tools
+                        * from a prior task surfaced on every subsequent
+                        * turn.
+                        */
                        discoveredCapabilitiesRef: AtomicReference[Map[String, DiscoveredCapability]] =
                          new AtomicReference(Map.empty[String, DiscoveredCapability]),
-                       /** Snapshot of the offered tool roster for the turn the
-                         * orchestrator is currently driving. Populated at dispatch
-                         * by [[sigil.orchestrator.Orchestrator]] from
-                         * [[sigil.provider.ConversationRequest.tools]]; empty for
-                         * code paths that don't go through a roster (workflow
-                         * single-tool dispatch, unit-test fixtures). Tools that
-                         * build refusal payloads — `UnknownTool`, `record_consent`,
-                         * the validator-error path — read this to suggest the
-                         * closest-name match from what was actually offered. */
+                       /**
+                        * Snapshot of the offered tool roster for the turn the
+                        * orchestrator is currently driving. Populated at dispatch
+                        * by [[sigil.orchestrator.Orchestrator]] from
+                        * [[sigil.provider.ConversationRequest.tools]]; empty for
+                        * code paths that don't go through a roster (workflow
+                        * single-tool dispatch, unit-test fixtures). Tools that
+                        * build refusal payloads — `UnknownTool`, `record_consent`,
+                        * the validator-error path — read this to suggest the
+                        * closest-name match from what was actually offered.
+                        */
                        offeredTools: Vector[_root_.sigil.tool.Tool] = Vector.empty) {
 
   /**
@@ -138,47 +148,57 @@ case class TurnContext(sigil: Sigil,
    */
   def conversationView: _root_.sigil.conversation.ConversationView = turnInput.conversationView
 
-  /** Convenience — `model._id`. Use when only the id is needed (wire
-    * serialization, projection write-back, event stamping). */
+  /**
+   * Convenience — `model._id`. Use when only the id is needed (wire
+   * serialization, projection write-back, event stamping).
+   */
   def modelId: Id[Model] = model._id
 
-  /** Snapshot of the per-agent-loop `find_capability` cache. Renderers
-    * read this when assembling the "Capabilities you've already
-    * discovered" section of the system prompt. The map is empty on a
-    * fresh loop and grows as the agent invokes `find_capability`
-    * within the loop's iterations. */
+  /**
+   * Snapshot of the per-agent-loop `find_capability` cache. Renderers
+   * read this when assembling the "Capabilities you've already
+   * discovered" section of the system prompt. The map is empty on a
+   * fresh loop and grows as the agent invokes `find_capability`
+   * within the loop's iterations.
+   */
   def discoveredCapabilities: Map[String, DiscoveredCapability] =
     discoveredCapabilitiesRef.get()
 
-  /** Record a `find_capability` result against the per-loop cache.
-    * Called by [[sigil.tool.core.FindCapabilityTool]] after discovery
-    * runs; preserves `firstSeen` across re-issues of the same query
-    * and advances `lastSeen`. No-op when the query is empty (matches
-    * the prior persisted-projection behaviour). */
+  /**
+   * Record a `find_capability` result against the per-loop cache.
+   * Called by [[sigil.tool.core.FindCapabilityTool]] after discovery
+   * runs; preserves `firstSeen` across re-issues of the same query
+   * and advances `lastSeen`. No-op when the query is empty (matches
+   * the prior persisted-projection behaviour).
+   */
   def recordDiscovery(query: String, matches: List[ToolName]): Unit =
     if (query.nonEmpty) {
       val now = Timestamp()
       val _ = discoveredCapabilitiesRef.updateAndGet { current =>
         current.updatedWith(query) {
           case Some(existing) => Some(existing.copy(matches = matches, lastSeen = now))
-          case None           => Some(DiscoveredCapability(matches = matches, firstSeen = now, lastSeen = now))
+          case None => Some(DiscoveredCapability(matches = matches, firstSeen = now, lastSeen = now))
         }
       }
     }
 
-  /** Drop every entry from the per-loop `find_capability` cache.
-    * Invoked when the agent settles its turn via a terminal respond-
-    * family call so the next iteration (or, more typically, the next
-    * agent loop) starts with a clean prompt. The natural end-of-loop
-    * release also drops the cache implicitly because the
-    * `AtomicReference` goes out of scope; this explicit clear is the
-    * traceable in-loop signal. */
+  /**
+   * Drop every entry from the per-loop `find_capability` cache.
+   * Invoked when the agent settles its turn via a terminal respond-
+   * family call so the next iteration (or, more typically, the next
+   * agent loop) starts with a clean prompt. The natural end-of-loop
+   * release also drops the cache implicitly because the
+   * `AtomicReference` goes out of scope; this explicit clear is the
+   * traceable in-loop signal.
+   */
   def clearDiscoveredCapabilities(): Unit =
     discoveredCapabilitiesRef.set(Map.empty)
 }
 
 object TurnContext {
-  /** Generate a fresh correlation id for a turn that didn't inherit one
+
+  /**
+   * Generate a fresh correlation id for a turn that didn't inherit one
    * from an upstream context (HTTP request, queued job, etc.). The id
    * is opaque short-form — 8 chars sliced from `rapid.Unique()`; apps
    * that wire scribe MDC integration can read
@@ -189,6 +209,7 @@ object TurnContext {
    * bus) should construct `TurnContext` with a `correlationId`
    * derived from the inbound request id so the entire flow — wire
    * call → orchestrator → tool execution → settled effects — shares
-   * one trace id. */
+   * one trace id.
+   */
   def freshCorrelationId(): String = rapid.Unique().take(8)
 }

@@ -29,9 +29,11 @@ import spice.http.HttpRequest
 class PreFlightContextMarginSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Token estimator that counts 'x' characters across system + messages.
-    * Keeps the test's expected token math obvious — no jtokkit
-    * variance to reason about. */
+  /**
+   * Token estimator that counts 'x' characters across system + messages.
+   * Keeps the test's expected token math obvious — no jtokkit
+   * variance to reason about.
+   */
   private class CountingProvider(modelRecord: Model) extends Provider {
     override def `type`: ProviderType = ProviderType.OpenAI
     override def models: List[Model] = List(modelRecord)
@@ -39,22 +41,24 @@ class PreFlightContextMarginSpec extends AsyncWordSpec with AsyncTaskSpec with M
     override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
     override def call(input: ProviderCall): Stream[ProviderEvent] = Stream.empty
-    override protected def estimateRequest(call: ProviderCall): Int = {
+    override protected def estimateRequest(call: ProviderCall): Int =
       call.system.count(_ == 'x') + call.messages.foldLeft(0) { (acc, m) =>
-        acc + (m match {
-          case ProviderMessage.User(blocks) =>
-            blocks.iterator.collect { case t: MessageContent.Text => t.text.count(_ == 'x') }.sum
-          case ProviderMessage.Assistant(c, _)  => c.count(_ == 'x')
-          case ProviderMessage.ToolResult(_, c) => c.count(_ == 'x')
-          case ProviderMessage.System(c)        => c.count(_ == 'x')
-          case _                                => 0
-        })
+        acc +
+          (m match {
+            case ProviderMessage.User(blocks) =>
+              blocks.iterator.collect { case t: MessageContent.Text => t.text.count(_ == 'x') }.sum
+            case ProviderMessage.Assistant(c, _) => c.count(_ == 'x')
+            case ProviderMessage.ToolResult(_, c) => c.count(_ == 'x')
+            case ProviderMessage.System(c) => c.count(_ == 'x')
+            case _ => 0
+          })
       }
-    }
 
     def runGate(req: ProviderRequest, call: ProviderCall): Either[Throwable, ProviderCall] = {
       val m = classOf[Provider].getDeclaredMethod(
-        "preFlightGate", classOf[ProviderRequest], classOf[ProviderCall]
+        "preFlightGate",
+        classOf[ProviderRequest],
+        classOf[ProviderCall]
       )
       m.setAccessible(true)
       m.invoke(this, req, call).asInstanceOf[Either[Throwable, ProviderCall]]
@@ -62,43 +66,48 @@ class PreFlightContextMarginSpec extends AsyncWordSpec with AsyncTaskSpec with M
   }
 
   private def model(modelId: Id[Model], contextLength: Long): Model = Model(
-    canonicalSlug       = modelId.value,
-    huggingFaceId       = "",
-    name                = modelId.value,
-    description         = "",
-    contextLength       = contextLength,
-    architecture        = ModelArchitecture(
-      modality         = "text->text",
-      inputModalities  = List("text"),
+    canonicalSlug = modelId.value,
+    huggingFaceId = "",
+    name = modelId.value,
+    description = "",
+    contextLength = contextLength,
+    architecture = ModelArchitecture(
+      modality = "text->text",
+      inputModalities = List("text"),
       outputModalities = List("text"),
-      tokenizer        = "None",
-      instructType     = None
+      tokenizer = "None",
+      instructType = None
     ),
-    pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0),
-                                        webSearch = None, inputCacheRead = None),
-    topProvider         = ModelTopProvider(contextLength = Some(contextLength),
-                                            maxCompletionTokens = None, isModerated = false),
-    perRequestLimits    = None,
+    pricing = ModelPricing(
+      prompt = BigDecimal(0),
+      completion = BigDecimal(0),
+      webSearch = None,
+      inputCacheRead = None),
+    topProvider = ModelTopProvider(
+      contextLength = Some(contextLength),
+      maxCompletionTokens = None,
+      isModerated = false),
+    perRequestLimits = None,
     supportedParameters = Set.empty,
-    knowledgeCutoff     = None,
-    expirationDate      = None,
-    links               = ModelLinks(details = ""),
-    created             = lightdb.time.Timestamp(),
-    _id                 = modelId
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(details = ""),
+    created = lightdb.time.Timestamp(),
+    _id = modelId
   )
 
   private def callOf(m: Model,
                      system: String,
                      messages: Vector[ProviderMessage]): ProviderCall =
     ProviderCall(
-      model              = m,
-      system             = system,
-      messages           = messages,
-      tools              = Vector.empty,
-      builtInTools       = Set.empty,
-      toolChoice         = ToolChoice.None,
+      model = m,
+      system = system,
+      messages = messages,
+      tools = Vector.empty,
+      builtInTools = Set.empty,
+      toolChoice = ToolChoice.None,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      currentMode        = ConversationMode
+      currentMode = ConversationMode
     )
 
   private def oneShot(m: Model): ProviderRequest =
@@ -114,7 +123,7 @@ class PreFlightContextMarginSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val m = model(modelId, contextLength = 1000L)
       TestSigil.cache.merge(List(m)).sync()
       val provider = new CountingProvider(m)
-      val msgs = (1 to 19).map(_ => ProviderMessage.User("x" * 50)).toVector  // 950 tokens of messages
+      val msgs = (1 to 19).map(_ => ProviderMessage.User("x" * 50)).toVector // 950 tokens of messages
       val call = callOf(m, system = "", messages = msgs)
       val result = provider.runGate(oneShot(m), call)
       Task {
@@ -140,7 +149,7 @@ class PreFlightContextMarginSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val result = provider.runGate(oneShot(m), call)
       Task {
         result.isLeft shouldBe true
-        result.swap.toOption.get shouldBe a [RequestOverBudgetException]
+        result.swap.toOption.get shouldBe a[RequestOverBudgetException]
       }
     }
 

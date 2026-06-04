@@ -59,7 +59,8 @@ class ToolInputValidatorSpec extends AnyWordSpec with Matchers {
     }
 
     "recurse into arrays and report path with index" in {
-      val arrDef = Definition(DefType.Arr(stringDefWith(Constraints(pattern = Some("""^x"""))))
+      val arrDef = Definition(
+        DefType.Arr(stringDefWith(Constraints(pattern = Some("""^x"""))))
       )
       val violations = ToolInputValidator.validate(arr(str("xa"), str("yb"), str("xc")), arrDef)
       violations should have size 1

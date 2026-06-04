@@ -31,26 +31,28 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private def setup(convId: Id[Conversation]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-      topics       = TestTopicStack,
+      topics = TestTopicStack,
       participants = List(),
-      _id          = convId
+      _id = convId
     )))).unit
 
-  /** Publish a settled `ToolInvoke` carrying the typed output (or a
-    * placeholder TextToolOutput when `typed` is None). Sigil #265
-    * collapsed the tool transaction onto the invoke itself, so the
-    * projection-side machinery reads `ti.output` directly. */
+  /**
+   * Publish a settled `ToolInvoke` carrying the typed output (or a
+   * placeholder TextToolOutput when `typed` is None). Sigil #265
+   * collapsed the tool transaction onto the invoke itself, so the
+   * projection-side machinery reads `ti.output` directly.
+   */
   private def publishToolResults(convId: Id[Conversation],
                                  toolName: String,
                                  typed: Option[sigil.tool.ToolOutput] = None): Task[Unit] = {
     val invoke = ToolInvoke(
-      toolName       = ToolName(toolName),
-      participantId  = TestAgent,
+      toolName = ToolName(toolName),
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      output         = typed.getOrElse(sigil.tool.TextToolOutput("")),
-      outcome        = ToolOutcome.Success,
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      output = typed.getOrElse(sigil.tool.TextToolOutput("")),
+      outcome = ToolOutcome.Success,
+      state = EventState.Complete
     )
     TestSigil.publish(invoke).unit
   }
@@ -92,12 +94,12 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
     "ToolInvoke.input is a populated field, not just a delta-only carrier" in {
       case class ProbeInput(query: String) extends sigil.tool.ToolInput derives RW
       val invoke = ToolInvoke(
-        toolName       = ToolName("probe"),
-        participantId  = TestAgent,
+        toolName = ToolName("probe"),
+        participantId = TestAgent,
         conversationId = freshConvId(),
-        topicId        = TestTopicEntry.id,
-        input          = Some(ProbeInput("hello")),
-        state          = EventState.Active
+        topicId = TestTopicEntry.id,
+        input = Some(ProbeInput("hello")),
+        state = EventState.Active
       )
       invoke.input shouldBe Some(ProbeInput("hello"))
     }
@@ -113,22 +115,22 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
       // routed id to a Model record; the modelId accessor reflects it.
       val routedModelId = sigil.db.Model.id("openrouter", "frontier-model")
       val ctx = sigil.TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestUser),
+        sigil = TestSigil,
+        chain = List(TestUser),
         conversation = Conversation(topics = TestTopicStack, _id = freshConvId()),
-        turnInput    = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId())),
-        model        = TestSigil.testModel(routedModelId)
+        turnInput = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId())),
+        model = TestSigil.testModel(routedModelId)
       )
       ctx.modelId.value shouldBe "openrouter/frontier-model"
     }
 
     "TurnContext default model is the synthetic test fixture" in {
       val ctx = sigil.TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestUser),
+        sigil = TestSigil,
+        chain = List(TestUser),
         conversation = Conversation(topics = TestTopicStack, _id = freshConvId()),
-        turnInput    = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId())),
-        model        = TestSigil.defaultTestModel
+        turnInput = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId())),
+        model = TestSigil.defaultTestModel
       )
       ctx.modelId shouldBe TestSigil.defaultTestModel._id
     }

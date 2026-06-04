@@ -35,10 +35,12 @@ class OrchestratorValidatorErrorSpec extends AsyncWordSpec with AsyncTaskSpec wi
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider that emits a `ToolCallStart` then immediately a
-    * `ProviderEvent.Error` simulating a post-decode validator
-    * rejection (the args matched the wire schema but failed a
-    * `pattern` constraint, etc.). */
+  /**
+   * Provider that emits a `ToolCallStart` then immediately a
+   * `ProviderEvent.Error` simulating a post-decode validator
+   * rejection (the args matched the wire schema but failed a
+   * `pattern` constraint, etc.).
+   */
   private class ValidatorErrorProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -62,25 +64,25 @@ class OrchestratorValidatorErrorSpec extends AsyncWordSpec with AsyncTaskSpec wi
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val viewConvId = convId
     val request = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = viewConvId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = viewConvId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector(RespondTool)
+      chain = List(TestUser, TestAgent),
+      tools = Vector(RespondTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator (bug #50)" should {
-    "surface the validator error via a settling ToolDelta carrying the failure outcome" in {
+    "surface the validator error via a settling ToolDelta carrying the failure outcome" in
       runWith(new ValidatorErrorProvider, suffix = "validator").map { signals =>
         // Sigil #265 — the orphan invoke is self-settling: one ToolDelta
         // folds state = Complete + outcome = Failure(reason, …) onto
@@ -92,9 +94,9 @@ class OrchestratorValidatorErrorSpec extends AsyncWordSpec with AsyncTaskSpec wi
         // agent reads on its next iteration.
         val errorDeltas = signals.collect {
           case d: ToolDelta if d.outcome match {
-            case Some(ToolOutcome.Failure(reason, _)) => reason.contains("Provider error")
-            case _                                    => false
-          } => d
+                case Some(ToolOutcome.Failure(reason, _)) => reason.contains("Provider error")
+                case _ => false
+              } => d
         }
         errorDeltas should have size 1
         val d = errorDeltas.head
@@ -108,11 +110,10 @@ class OrchestratorValidatorErrorSpec extends AsyncWordSpec with AsyncTaskSpec wi
             fail(s"Expected ToolOutcome.Failure; saw $other")
         }
       }
-    }
   }
 
   "Orchestrator (bug #51)" should {
-    "carry the error text on the orphan-settle ToolDelta so client chips can render it" in {
+    "carry the error text on the orphan-settle ToolDelta so client chips can render it" in
       runWith(new ValidatorErrorProvider, suffix = "chip-error").map { signals =>
         val invoke = signals.collectFirst { case t: ToolInvoke => t }
           .getOrElse(fail("Expected a ToolInvoke; saw none"))
@@ -126,7 +127,6 @@ class OrchestratorValidatorErrorSpec extends AsyncWordSpec with AsyncTaskSpec wi
         terminalDelta.input shouldBe None
         terminalDelta.state shouldBe Some(EventState.Complete)
       }
-    }
   }
 
   "tear down" should {

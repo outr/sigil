@@ -21,13 +21,13 @@ class RandomToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private val convId = Conversation.id("random-tool-spec-conv")
   private val ctx: TurnContext = TurnContext(
-    sigil            = TestSigil,
-    chain            = List(TestUser),
-    conversation     = Conversation(
+    sigil = TestSigil,
+    chain = List(TestUser),
+    conversation = Conversation(
       topics = List(TopicEntry(TestTopicId, "test", "test")),
-      _id    = convId
+      _id = convId
     ),
-    turnInput        = TurnInput(ConversationView(conversationId = convId)),
+    turnInput = TurnInput(ConversationView(conversationId = convId)),
     model = TestSigil.defaultTestModel
   )
 
@@ -45,8 +45,10 @@ class RandomToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "produce identical values for the same seed" in {
       for {
-        a <- RandomIntTool.invoke(RandomIntInput(min = 0, max = 1_000_000, seed = Some(42L)), ToolContext(ctx, Event.id(), RandomIntTool.name))
-        b <- RandomIntTool.invoke(RandomIntInput(min = 0, max = 1_000_000, seed = Some(42L)), ToolContext(ctx, Event.id(), RandomIntTool.name))
+        a <-
+          RandomIntTool.invoke(RandomIntInput(min = 0, max = 1_000_000, seed = Some(42L)), ToolContext(ctx, Event.id(), RandomIntTool.name))
+        b <-
+          RandomIntTool.invoke(RandomIntInput(min = 0, max = 1_000_000, seed = Some(42L)), ToolContext(ctx, Event.id(), RandomIntTool.name))
       } yield {
         a.value shouldBe b.value
         a.seed shouldBe Some(42L)
@@ -55,18 +57,19 @@ class RandomToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "produce different values for distinct seeds (overwhelmingly likely)" in {
       for {
-        a <- RandomIntTool.invoke(RandomIntInput(min = 0, max = Int.MaxValue.toLong, seed = Some(1L)), ToolContext(ctx, Event.id(), RandomIntTool.name))
-        b <- RandomIntTool.invoke(RandomIntInput(min = 0, max = Int.MaxValue.toLong, seed = Some(2L)), ToolContext(ctx, Event.id(), RandomIntTool.name))
-      } yield {
-        a.value should not be b.value
-      }
+        a <- RandomIntTool.invoke(
+          RandomIntInput(min = 0, max = Int.MaxValue.toLong, seed = Some(1L)),
+          ToolContext(ctx, Event.id(), RandomIntTool.name))
+        b <- RandomIntTool.invoke(
+          RandomIntInput(min = 0, max = Int.MaxValue.toLong, seed = Some(2L)),
+          ToolContext(ctx, Event.id(), RandomIntTool.name))
+      } yield a.value should not be b.value
     }
 
-    "respect a degenerate min == max range" in {
+    "respect a degenerate min == max range" in
       RandomIntTool.invoke(RandomIntInput(min = 7, max = 7), ToolContext(ctx, Event.id(), RandomIntTool.name)).map { out =>
         out.value shouldBe 7L
       }
-    }
 
     "fail when min > max" in {
       val attempt = RandomIntTool.invoke(RandomIntInput(min = 10, max = 5), ToolContext(ctx, Event.id(), RandomIntTool.name)).attempt
@@ -77,7 +80,8 @@ class RandomToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   "RandomDoubleTool" should {
     "return values within `[min, max)`" in {
       val task = rapid.Task.sequence(
-        (1 to 200).toList.map(_ => RandomDoubleTool.invoke(RandomDoubleInput(min = -1.0, max = 1.0), ToolContext(ctx, Event.id(), RandomDoubleTool.name)))
+        (1 to 200).toList.map(_ =>
+          RandomDoubleTool.invoke(RandomDoubleInput(min = -1.0, max = 1.0), ToolContext(ctx, Event.id(), RandomDoubleTool.name)))
       )
       task.map { results =>
         all(results.map(_.value)) should (be >= -1.0 and be < 1.0)
@@ -96,7 +100,8 @@ class RandomToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "pick an element from `items` and report its index" in {
       val items = List("alpha", "beta", "gamma", "delta")
       val task = rapid.Task.sequence(
-        (1 to 100).toList.map(_ => RandomChoiceTool.invoke(RandomChoiceInput(items = items), ToolContext(ctx, Event.id(), RandomChoiceTool.name)))
+        (1 to 100).toList.map(_ =>
+          RandomChoiceTool.invoke(RandomChoiceInput(items = items), ToolContext(ctx, Event.id(), RandomChoiceTool.name)))
       )
       task.map { results =>
         all(results.map(_.itemCount)) shouldBe items.size
@@ -108,8 +113,10 @@ class RandomToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "be reproducible under a fixed seed" in {
       val items = List("a", "b", "c", "d", "e")
       for {
-        a <- RandomChoiceTool.invoke(RandomChoiceInput(items = items, seed = Some(99L)), ToolContext(ctx, Event.id(), RandomChoiceTool.name))
-        b <- RandomChoiceTool.invoke(RandomChoiceInput(items = items, seed = Some(99L)), ToolContext(ctx, Event.id(), RandomChoiceTool.name))
+        a <-
+          RandomChoiceTool.invoke(RandomChoiceInput(items = items, seed = Some(99L)), ToolContext(ctx, Event.id(), RandomChoiceTool.name))
+        b <-
+          RandomChoiceTool.invoke(RandomChoiceInput(items = items, seed = Some(99L)), ToolContext(ctx, Event.id(), RandomChoiceTool.name))
       } yield {
         a.chosen shouldBe b.chosen
         a.index shouldBe b.index

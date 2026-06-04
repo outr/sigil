@@ -11,10 +11,10 @@ import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
  * chronologically (oldest → newest).
  */
 case object MemoryHistoryTool extends Tool {
-  type Input  = MemoryHistoryInput
+  type Input = MemoryHistoryInput
   type Output = TextToolOutput
   val inputRW: RW[MemoryHistoryInput] = summon[RW[MemoryHistoryInput]]
-  val outputRW: RW[TextToolOutput]    = summon[RW[TextToolOutput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("memory_history")
   val description: String =
@@ -40,7 +40,7 @@ case object MemoryHistoryTool extends Tool {
   private def resolveSpace(input: MemoryHistoryInput, context: ToolContext) =
     input.spaceId match {
       case Some(s) => Task.pure(Some(s))
-      case None    => context.sigil.defaultMemorySpace(context.conversation.id)
+      case None => context.sigil.defaultMemorySpace(context.conversation.id)
     }
 
   private def render(key: String, versions: List[ContextMemory]): String =

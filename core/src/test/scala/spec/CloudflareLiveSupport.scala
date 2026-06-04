@@ -19,12 +19,12 @@ import spice.net.*
  * failures.
  */
 object CloudflareLiveSupport {
-  def apiToken: Option[String]  = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
+  def apiToken: Option[String] = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
   def accountId: Option[String] = sys.env.get("CLOUDFLARE_ACCOUNT_ID").filter(_.nonEmpty)
 
   private def probe(token: String, accountId: String): HttpRequest = HttpRequest(
     method = HttpMethod.Get,
-    url    = URL.parse(s"https://api.cloudflare.com/client/v4/accounts/$accountId/ai/models/search")
+    url = URL.parse(s"https://api.cloudflare.com/client/v4/accounts/$accountId/ai/models/search")
   ).withHeader("Authorization", s"Bearer $token")
 
   def runGated(suite: Suite, testName: Option[String], args: Args)(runBody: => Status): Status =

@@ -24,4 +24,5 @@ import sigil.tool.ToolKind
  * AND its `kind` matches the `kinds` filter (when both are set).
  */
 case class RequestToolList(spaces: Option[Set[SpaceId]] = None,
-                           kinds: Option[Set[ToolKind]] = None) extends Notice derives RW
+                           kinds: Option[Set[ToolKind]] = None)
+  extends Notice derives RW

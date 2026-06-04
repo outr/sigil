@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicReference
 
 final case class GetUserInfoInput() extends ToolInput derives RW
 
-/** `get_user_info` — return name + address fields (no password). */
+/**
+ * `get_user_info` — return name + address fields (no password).
+ */
 final class GetUserInfoTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = GetUserInfoInput
   type Output = TextToolOutput
@@ -21,7 +23,6 @@ final class GetUserInfoTool(state: AtomicReference[BankingEnvironment]) extends 
 
   val name: ToolName = ToolName("get_user_info")
   val description: String = "Get the user information."
-
 
   override def executeResult(input: GetUserInfoInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val u = state.get.userAccount

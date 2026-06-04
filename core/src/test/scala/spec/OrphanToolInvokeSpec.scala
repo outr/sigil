@@ -50,9 +50,11 @@ class OrphanToolInvokeSpec extends AnyWordSpec with Matchers {
   private val orphanCallId: Id[Event] = Id[Event]("call-orphan")
   private val pairedCallId: Id[Event] = Id[Event]("call-paired")
 
-  /** Force an orphan render path: one paired call (so the trail
-    * carries a real `results seen` entry) and one unpaired call
-    * (the renderer's fallback fires for it). */
+  /**
+   * Force an orphan render path: one paired call (so the trail
+   * carries a real `results seen` entry) and one unpaired call
+   * (the renderer's fallback fires for it).
+   */
   private def orphanFrames: Vector[ContextFrame] = Vector(
     ContextFrame.ToolCall(
       toolName = nonAtomicName,
@@ -72,9 +74,11 @@ class OrphanToolInvokeSpec extends AnyWordSpec with Matchers {
     )
   )
 
-  /** Install a [[CacheWriter]] on the root scribe logger for the
-    * scope of `body`, capture the emitted error-level messages,
-    * and restore the root logger on exit. */
+  /**
+   * Install a [[CacheWriter]] on the root scribe logger for the
+   * scope of `body`, capture the emitted error-level messages,
+   * and restore the root logger on exit.
+   */
   private def captureRootLog[A](body: => A): (A, List[String]) = {
     val previousRoot = scribe.Logger.root
     val cache = new CacheWriter()
@@ -84,9 +88,8 @@ class OrphanToolInvokeSpec extends AnyWordSpec with Matchers {
       val result = body
       val messages = cache.consumeMessages(identity)
       (result, messages)
-    } finally {
+    } finally
       scribe.Logger.replace(previousRoot)
-    }
   }
 
   "Provider.renderFrames with a dangling tool_call" should {
@@ -99,13 +102,13 @@ class OrphanToolInvokeSpec extends AnyWordSpec with Matchers {
       val danglingError = logged.find(_.contains("dangling tool_call"))
       danglingError shouldBe defined
       val text = danglingError.get
-      text should include ("framework bug")
-      text should include ("invokes seen:")
-      text should include ("results seen:")
+      text should include("framework bug")
+      text should include("invokes seen:")
+      text should include("results seen:")
       // The orphan wireId and the paired wireId both show up in the
       // forensic dump.
-      text should include (orphanCallId.value)
-      text should include (pairedCallId.value)
+      text should include(orphanCallId.value)
+      text should include(pairedCallId.value)
     }
 
     "throw BrokenHistoryException carrying typed corruption evidence" in {

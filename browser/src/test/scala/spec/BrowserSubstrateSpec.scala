@@ -42,16 +42,21 @@ class BrowserSubstrateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       WebBrowserMode.name shouldBe "web-browser"
       WebBrowserMode.skill shouldBe defined
       WebBrowserMode.skill.get.name shouldBe "web-browser"
-      WebBrowserMode.skill.get.content should include ("browser_navigate")
+      WebBrowserMode.skill.get.content should include("browser_navigate")
 
       val toolNames = WebBrowserMode.tools match {
         case sigil.provider.ToolPolicy.Exclusive(names) => names.map(_.value).toSet
         case _ => fail("WebBrowserMode.tools must be ToolPolicy.Exclusive")
       }
       toolNames should contain allOf (
-        "browser_navigate", "browser_screenshot", "browser_save_html",
-        "browser_xpath_query", "browser_text_search",
-        "browser_click", "browser_type", "browser_scroll"
+        "browser_navigate",
+        "browser_screenshot",
+        "browser_save_html",
+        "browser_xpath_query",
+        "browser_text_search",
+        "browser_click",
+        "browser_type",
+        "browser_scroll"
       )
       WebBrowserMode.builtInTools shouldBe Set.empty
     }
@@ -59,7 +64,7 @@ class BrowserSubstrateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   "BrowserState" should {
 
-    "round-trip through the polymorphic Signal RW (registered by BrowserSigil)" in {
+    "round-trip through the polymorphic Signal RW (registered by BrowserSigil)" in
       rapid.Task {
         val htmlId: Id[StoredFile] = Id("stored-html-1")
         val original = BrowserState(
@@ -76,25 +81,23 @@ class BrowserSubstrateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         val signalRW = summon[RW[Signal]]
         val json = signalRW.read(original.asInstanceOf[Signal])
         val back = signalRW.write(json)
-        back shouldBe a [BrowserState]
+        back shouldBe a[BrowserState]
         val recovered = back.asInstanceOf[BrowserState]
         recovered.url shouldBe Some("https://example.com/")
         recovered.title shouldBe Some("Example")
         recovered.htmlFileId shouldBe Some(htmlId)
         recovered.state shouldBe EventState.Complete
       }
-    }
 
-    "be discoverable in the framework's eventSubtypeNames" in {
+    "be discoverable in the framework's eventSubtypeNames" in
       rapid.Task {
-        TestBrowserSigil.eventSubtypeNames should contain ("BrowserState")
+        TestBrowserSigil.eventSubtypeNames should contain("BrowserState")
       }
-    }
   }
 
   "BrowserStateDelta" should {
 
-    "merge only the supplied fields onto a target BrowserState" in {
+    "merge only the supplied fields onto a target BrowserState" in
       rapid.Task {
         val target = BrowserState(
           participantId = SpecUser,
@@ -112,16 +115,14 @@ class BrowserSubstrateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         )
         val updated = delta.apply(target).asInstanceOf[BrowserState]
         updated.url shouldBe Some("https://new.example/")
-        updated.title shouldBe Some("Old")  // preserved (Option.orElse keeps Some)
+        updated.title shouldBe Some("Old") // preserved (Option.orElse keeps Some)
         updated.loading shouldBe false
       }
-    }
 
-    "be discoverable in the framework's deltaSubtypeNames" in {
+    "be discoverable in the framework's deltaSubtypeNames" in
       rapid.Task {
-        TestBrowserSigil.deltaSubtypeNames should contain ("BrowserStateDelta")
+        TestBrowserSigil.deltaSubtypeNames should contain("BrowserStateDelta")
       }
-    }
   }
 
   "tear down" should {

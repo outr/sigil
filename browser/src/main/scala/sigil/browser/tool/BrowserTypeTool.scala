@@ -8,12 +8,14 @@ import sigil.tool.ToolContext
 import sigil.browser.WebBrowserMode
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
-/** Type a value into the element matched by `selector`. `clearFirst`
-  * clears the field first so re-runs don't append. */
+/**
+ * Type a value into the element matched by `selector`. `clearFirst`
+ * clears the field first so re-runs don't append.
+ */
 final class BrowserTypeTool extends Tool {
-  type Input  = BrowserTypeInput
+  type Input = BrowserTypeInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[BrowserTypeInput]]
+  val inputRW = summon[RW[BrowserTypeInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("browser_type")
@@ -30,20 +32,20 @@ final class BrowserTypeTool extends Tool {
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
-      _          <- controller.run { browser =>
-                      val sel = browser(Selector(input.selector))
-                      // Selection.value(Json) sets value + fires input event.
-                      // Clear-first is the default semantic; appending requires
-                      // a JS evaluate that reads first.
-                      if (input.clearFirst) sel.value(Str(input.value))
-                      else browser.eval(
-                        s"""const els = document.querySelectorAll("${input.selector}");
+      _ <- controller.run { browser =>
+        val sel = browser(Selector(input.selector))
+        // Selection.value(Json) sets value + fires input event.
+        // Clear-first is the default semantic; appending requires
+        // a JS evaluate that reads first.
+        if (input.clearFirst) sel.value(Str(input.value))
+        else browser.eval(
+          s"""const els = document.querySelectorAll("${input.selector}");
                            |els.forEach(el => {
                            |  el.value = (el.value || '') + ${fabric.io.JsonFormatter.Compact(Str(input.value))};
                            |  el.dispatchEvent(new Event('input', { bubbles: true }));
                            |});""".stripMargin
-                      ).unit
-                    }
+        ).unit
+      }
     } yield ToolResult.Success(BrowserToolBase.toolResult(
       obj("typed" -> str(input.selector), "valueLength" -> fabric.num(input.value.length))
     ))

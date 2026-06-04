@@ -27,9 +27,9 @@ object DigitalOceanMessagesProvider {
              apiKey: String,
              baseUrl: URL = url"https://inference.do-ai.run"): Task[AnthropicProvider] =
     Task.pure(AnthropicProvider(
-      apiKey   = apiKey,
+      apiKey = apiKey,
       sigilRef = sigil,
-      baseUrl  = baseUrl,
+      baseUrl = baseUrl,
       authMode = AnthropicAuthMode.Bearer
     ))
 }

@@ -79,7 +79,7 @@ class WorkflowInitFailureLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec 
         name = "first-step-throws",
         description = Some("Single step that calls a missing tool."),
         steps = List(JobStepInput(
-          id   = "explode",
+          id = "explode",
           name = Some("Explode on first attempt"),
           tool = Some("definitely_not_a_real_tool")
         )),
@@ -94,16 +94,16 @@ class WorkflowInitFailureLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec 
         _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
         run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
         _ <- waitFor(recorded, 10.seconds)(_.exists {
-                case e: WorkflowRunFailed => e.runId == run._id.value
-                case _ => false
-              })
+          case e: WorkflowRunFailed => e.runId == run._id.value
+          case _ => false
+        })
       } yield {
         running = false
         import scala.jdk.CollectionConverters.*
         val all = recorded.iterator().asScala.toList
         val starts = all.collect { case e: WorkflowRunStarted if e.runId == run._id.value => e }
-        val fails  = all.collect { case e: WorkflowRunFailed  if e.runId == run._id.value => e }
-        val ok     = all.collect { case e: WorkflowRunCompleted if e.runId == run._id.value => e }
+        val fails = all.collect { case e: WorkflowRunFailed if e.runId == run._id.value => e }
+        val ok = all.collect { case e: WorkflowRunCompleted if e.runId == run._id.value => e }
 
         starts should have size 1
         fails should have size 1
@@ -120,12 +120,12 @@ class WorkflowInitFailureLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec 
       // underlying exception's getMessage, nothing more.
       val stepId = lightdb.id.Id[strider.step.Step]("step-1")
       val withFailure = strider.Workflow(
-        name      = "reason-extract",
-        steps     = Nil,
+        name = "reason-extract",
+        steps = Nil,
         scheduled = 0L,
-        queue     = Nil,
-        sourceId  = lightdb.id.Id[strider.WorkflowParent]("src"),
-        history   = List(
+        queue = Nil,
+        sourceId = lightdb.id.Id[strider.WorkflowParent]("src"),
+        history = List(
           strider.WorkflowHistory(strider.WorkflowActivity.Completed(false)),
           strider.WorkflowHistory(strider.WorkflowActivity.StepFailure(stepId, "boom: concrete details"))
         )
@@ -182,16 +182,16 @@ class WorkflowInitFailureLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec 
         _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
         run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
         _ <- waitFor(recorded, 10.seconds)(_.exists {
-                case e: WorkflowRunCompleted => e.runId == run._id.value
-                case _ => false
-              })
+          case e: WorkflowRunCompleted => e.runId == run._id.value
+          case _ => false
+        })
       } yield {
         running = false
         import scala.jdk.CollectionConverters.*
         val all = recorded.iterator().asScala.toList
-        val starts = all.collect { case e: WorkflowRunStarted   if e.runId == run._id.value => e }
-        val ok     = all.collect { case e: WorkflowRunCompleted if e.runId == run._id.value => e }
-        val fails  = all.collect { case e: WorkflowRunFailed    if e.runId == run._id.value => e }
+        val starts = all.collect { case e: WorkflowRunStarted if e.runId == run._id.value => e }
+        val ok = all.collect { case e: WorkflowRunCompleted if e.runId == run._id.value => e }
+        val fails = all.collect { case e: WorkflowRunFailed if e.runId == run._id.value => e }
 
         starts should have size 1
         ok should have size 1

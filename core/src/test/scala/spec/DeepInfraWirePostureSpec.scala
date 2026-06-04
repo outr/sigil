@@ -9,9 +9,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{ConversationView, ContextFrame, TurnInput}
 import sigil.db.Model
 import sigil.event.Event
-import sigil.provider.{
-  ConversationMode, ConversationRequest, GenerationSettings, Instructions, Provider, ProviderRequest
-}
+import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions, Provider, ProviderRequest}
 import sigil.provider.deepinfra.DeepInfraProvider
 import sigil.provider.openai.OpenAIProvider
 import sigil.tool.core.{FindCapabilityTool, RespondTool}
@@ -73,9 +71,9 @@ class DeepInfraWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   "DeepInfraProvider" should {
 
     val provider: Task[Provider] = DeepInfraProvider.create(TestSigil, "test-key").map(p => p: Provider)
-    val modelId  = Model.id(sigil.provider.deepinfra.DeepInfra.Provider, "moonshotai/Kimi-K2.5")
+    val modelId = Model.id(sigil.provider.deepinfra.DeepInfra.Provider, "moonshotai/Kimi-K2.5")
 
-    "omit per-function `strict: true` from the wire (honorsStrict = false)" in {
+    "omit per-function `strict: true` from the wire (honorsStrict = false)" in
       bodyOf(provider, modelId, forced = false).map { body =>
         val tools = body("tools").asVector
         tools should not be empty
@@ -87,9 +85,8 @@ class DeepInfraWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         }
         succeed
       }
-    }
 
-    "substitute response_format:json_schema for ToolChoice.Required (meta-schema)" in {
+    "substitute response_format:json_schema for ToolChoice.Required (meta-schema)" in
       bodyOf(provider, modelId, forced = false).map { body =>
         val bodyObj = body.asObj.value
         // No tool_choice at all (substituted by response_format).
@@ -110,9 +107,8 @@ class DeepInfraWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val oneOf = argsSchema("oneOf").asVector
         oneOf should have size 2
       }
-    }
 
-    "substitute response_format:json_schema with the respond-family meta-schema under forced response synthesis" in {
+    "substitute response_format:json_schema with the respond-family meta-schema under forced response synthesis" in
       bodyOf(provider, modelId, forced = true).map { body =>
         val bodyObj = body.asObj.value
         bodyObj.contains("tool_choice") shouldBe false
@@ -126,18 +122,17 @@ class DeepInfraWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val schema = js("schema")
         schema("type").asString shouldBe "object"
         val props = schema("properties").asObj.value
-        props.keys should contain ("tool_name")
-        props.keys should contain ("arguments")
+        props.keys should contain("tool_name")
+        props.keys should contain("arguments")
       }
-    }
   }
 
   "OpenAIProvider" should {
 
     val provider: Provider = OpenAIProvider(apiKey = "sk-test", sigilRef = TestSigil)
-    val modelId  = Model.id("openai", "gpt-4o-mini")
+    val modelId = Model.id("openai", "gpt-4o-mini")
 
-    "keep `strict: true` on the wire (honorsStrict default = true)" in {
+    "keep `strict: true` on the wire (honorsStrict default = true)" in
       // OpenAI honors `tool_choice` natively, so the standard path stays.
       // OpenAI uses the Responses API, not chat-completions — strict is
       // emitted directly there. Just verify per-tool strict survives:
@@ -146,9 +141,8 @@ class DeepInfraWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           case Some(c: StringContent) => c.value
           case _ => ""
         }
-        s should include ("\"strict\":true")
+        s should include("\"strict\":true")
       }
-    }
   }
 
   "tear down" should {

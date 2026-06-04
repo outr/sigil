@@ -30,13 +30,13 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   private def turnContext(): TurnContext = {
     val conv = Conversation(
       topics = List(TopicEntry(TestTopicId, "test", "test")),
-      _id    = convId
+      _id = convId
     )
     TurnContext(
-      sigil            = TestSigil,
-      chain            = List(TestUser),
-      conversation     = conv,
-      turnInput        = TurnInput(ConversationView(conversationId = convId)),
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
       model = TestSigil.defaultTestModel
     )
   }
@@ -51,20 +51,22 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   private def turnContextFor(cid: Id[Conversation]): TurnContext = {
     val conv = Conversation(topics = List(TopicEntry(TestTopicId, "test", "test")), _id = cid)
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser),
+      sigil = TestSigil,
+      chain = List(TestUser),
       conversation = conv,
-      turnInput    = TurnInput(ConversationView(conversationId = cid)),
-      model        = TestSigil.defaultTestModel
+      turnInput = TurnInput(ConversationView(conversationId = cid)),
+      model = TestSigil.defaultTestModel
     )
   }
 
-  /** Persist root (depth 0) → worker (depth 1) → sub-worker (depth 2). */
+  /**
+   * Persist root (depth 0) → worker (depth 1) → sub-worker (depth 2).
+   */
   private def persistChain(): Task[(Id[Conversation], Id[Conversation], Id[Conversation])] = {
     val topic = List(TopicEntry(TestTopicId, "t", "t"))
-    val root  = Conversation.id(s"d348-root-${rapid.Unique()}")
-    val wkr   = Conversation.id(s"d348-worker-${rapid.Unique()}")
-    val sub   = Conversation.id(s"d348-sub-${rapid.Unique()}")
+    val root = Conversation.id(s"d348-root-${rapid.Unique()}")
+    val wkr = Conversation.id(s"d348-worker-${rapid.Unique()}")
+    val sub = Conversation.id(s"d348-sub-${rapid.Unique()}")
     val up = (c: Conversation) => TestSigil.withDB(_.conversations.transaction(_.upsert(c)))
     for {
       _ <- up(Conversation(topics = topic, _id = root))
@@ -102,7 +104,7 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
 
     // Sigil #348 — structural depth cap.
-    "compute delegation depth by walking parentConversationId" in {
+    "compute delegation depth by walking parentConversationId" in
       persistChain().flatMap { case (root, worker, sub) =>
         for {
           d0 <- TestSigil.delegationDepth(root)
@@ -114,7 +116,6 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           d2 shouldBe 2
         }
       }
-    }
 
     "refuse a delegation that would exceed maxDelegationDepth (worker re-delegation runaway guard)" in {
       // From the depth-2 sub-worker, spawning another worker would be

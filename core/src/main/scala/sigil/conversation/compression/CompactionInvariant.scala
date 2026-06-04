@@ -19,45 +19,54 @@ import sigil.participant.{AgentParticipantId, ParticipantId}
  * context belong on [[TurnEventsContext]].
  */
 trait CompactionInvariant {
-  /** Stable identifier for diagnostics (logs, error messages). */
+
+  /**
+   * Stable identifier for diagnostics (logs, error messages).
+   */
   def name: String
 
-  /** Compute the set of event ids in `events` that this invariant
-    * protects from compaction given `ctx`. Implementations return an
-    * empty set when not applicable (e.g. claim-anchor when
-    * `ctx.claimedAt.isEmpty`). */
+  /**
+   * Compute the set of event ids in `events` that this invariant
+   * protects from compaction given `ctx`. Implementations return an
+   * empty set when not applicable (e.g. claim-anchor when
+   * `ctx.claimedAt.isEmpty`).
+   */
   def applicableIds(events: Vector[Event], ctx: TurnEventsContext): Set[Id[Event]]
 }
 
 object CompactionInvariant {
 
-  /** Protect the user task(s) the agent is working on — folding one
-    * leaves the model with no goal in scope (the #316 "reverted to a
-    * greeting" failure). With a claim in scope, protect every user-
-    * authored Standard Message at or after it (the #307 claim window,
-    * so a mid-turn follow-up is covered too). Without a claim — the
-    * curator's per-turn shed never threads one — fall back to
-    * protecting the MOST-RECENT user task. Safe-by-default: the
-    * invariant never silently protects nothing wherever it's used. */
+  /**
+   * Protect the user task(s) the agent is working on — folding one
+   * leaves the model with no goal in scope (the #316 "reverted to a
+   * greeting" failure). With a claim in scope, protect every user-
+   * authored Standard Message at or after it (the #307 claim window,
+   * so a mid-turn follow-up is covered too). Without a claim — the
+   * curator's per-turn shed never threads one — fall back to
+   * protecting the MOST-RECENT user task. Safe-by-default: the
+   * invariant never silently protects nothing wherever it's used.
+   */
   case object CurrentUserTaskMessage extends CompactionInvariant {
     override val name: String = "CurrentUserTaskMessage"
 
     override def applicableIds(events: Vector[Event], ctx: TurnEventsContext): Set[Id[Event]] = {
       val userTasks = events.collect {
         case m: Message
-          if m.role == MessageRole.Standard
-          && !m.participantId.isInstanceOf[AgentParticipantId] => m
+            if m.role == MessageRole.Standard
+              && !m.participantId.isInstanceOf[AgentParticipantId] => m
       }
       ctx.claimedAt match {
         case Some(claim) => userTasks.iterator.filter(_.timestamp.value >= claim.value).map(_._id).toSet
-        case None        => userTasks.sortBy(_.timestamp.value).lastOption.map(_._id).toSet
+        case None => userTasks.sortBy(_.timestamp.value).lastOption.map(_._id).toSet
       }
     }
   }
 
-  /** Protect the first event at or after `ctx.claimedAt` — the
-    * anchor event the current agent iteration is responding to.
-    * No-op when no claim timestamp is in scope. */
+  /**
+   * Protect the first event at or after `ctx.claimedAt` — the
+   * anchor event the current agent iteration is responding to.
+   * No-op when no claim timestamp is in scope.
+   */
   case object CurrentAgentClaimAnchor extends CompactionInvariant {
     override val name: String = "CurrentAgentClaimAnchor"
 
@@ -69,16 +78,18 @@ object CompactionInvariant {
       }
   }
 
-  /** Protect tool-call pairs so the wire prompt never carries a
-    * half-folded exchange. The default (`unsettledOnly = false`)
-    * protects invoke+result pairs only when BOTH halves are in the
-    * slice — splitting a pair leaves a half-rendered exchange on
-    * the wire; folding both is fine and the test that checks an
-    * older paired invoke gets folded relies on this behaviour.
-    * `unsettledOnly = true` flips the meaning: protect ONLY invokes
-    * whose result is absent from the slice (still-running tools
-    * whose return we haven't seen yet), and leave settled pairs to
-    * the shedder. */
+  /**
+   * Protect tool-call pairs so the wire prompt never carries a
+   * half-folded exchange. The default (`unsettledOnly = false`)
+   * protects invoke+result pairs only when BOTH halves are in the
+   * slice — splitting a pair leaves a half-rendered exchange on
+   * the wire; folding both is fine and the test that checks an
+   * older paired invoke gets folded relies on this behaviour.
+   * `unsettledOnly = true` flips the meaning: protect ONLY invokes
+   * whose result is absent from the slice (still-running tools
+   * whose return we haven't seen yet), and leave settled pairs to
+   * the shedder.
+   */
   case class PairedToolResult(unsettledOnly: Boolean = false) extends CompactionInvariant {
     override val name: String = s"PairedToolResult(unsettledOnly=$unsettledOnly)"
 
@@ -103,22 +114,25 @@ object CompactionInvariant {
     }
   }
 
-  /** Protect the last `n` events in the slice. The standard recent-
-    * tail invariant; apps tune `n` per-mode by supplying a different
-    * `RecentTail(n)` in their `compactionInvariants` override. */
+  /**
+   * Protect the last `n` events in the slice. The standard recent-
+   * tail invariant; apps tune `n` per-mode by supplying a different
+   * `RecentTail(n)` in their `compactionInvariants` override.
+   */
   case class RecentTail(n: Int) extends CompactionInvariant {
     override val name: String = s"RecentTail($n)"
 
-    override def applicableIds(events: Vector[Event], ctx: TurnEventsContext): Set[Id[Event]] = {
+    override def applicableIds(events: Vector[Event], ctx: TurnEventsContext): Set[Id[Event]] =
       if (n <= 0 || events.isEmpty) Set.empty
       else events.takeRight(n).map(_._id).toSet
-    }
   }
 
-  /** Default set: covers every protection the framework currently
-    * needs. Apps override [[sigil.Sigil.compactionInvariants]] to add
-    * or remove. `RecentTail` is not in the default set — the standard
-    * compactor and curator wire their own with the right `n`. */
+  /**
+   * Default set: covers every protection the framework currently
+   * needs. Apps override [[sigil.Sigil.compactionInvariants]] to add
+   * or remove. `RecentTail` is not in the default set — the standard
+   * compactor and curator wire their own with the right `n`.
+   */
   val standard: List[CompactionInvariant] = List(
     CurrentUserTaskMessage,
     CurrentAgentClaimAnchor,

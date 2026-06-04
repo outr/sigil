@@ -23,9 +23,9 @@ import scala.concurrent.duration.*
  * (local FS / S3 / future CDN) is invisible to the client.
  */
 final class BrowserScreenshotTool extends Tool {
-  type Input  = BrowserScreenshotInput
+  type Input = BrowserScreenshotInput
   type Output = BrowserScreenshotOutput
-  val inputRW  = summon[RW[BrowserScreenshotInput]]
+  val inputRW = summon[RW[BrowserScreenshotInput]]
   val outputRW = summon[RW[BrowserScreenshotOutput]]
 
   val name = ToolName("browser_screenshot")
@@ -44,39 +44,43 @@ final class BrowserScreenshotTool extends Tool {
     for {
       controller <- BrowserToolBase.resolveController(ctx)
       // Resize viewport if requested.
-      _          <- controller.run { browser =>
-                      (input.maxWidth, input.maxHeight) match {
-                        case (Some(w), Some(h)) => browser.setViewportSize(w, h)
-                        case _ => Task.unit
-                      }
-                    }
+      _ <- controller.run { browser =>
+        (input.maxWidth, input.maxHeight) match {
+          case (Some(w), Some(h)) => browser.setViewportSize(w, h)
+          case _ => Task.unit
+        }
+      }
       // Capture to a tempfile, read bytes, hand to Sigil.storeBytes.
-      bytes      <- controller.run { browser =>
-                      Task.defer {
-                        val tmp = Files.createTempFile("sigil-screenshot-", ".png")
-                        browser.screenshotAs(tmp, afterLoadDelay = Some(input.waitSeconds.seconds))
-                          .map { _ =>
-                            val read = Files.readAllBytes(tmp)
-                            try Files.deleteIfExists(tmp) catch { case _: Throwable => () }
-                            read
-                          }
-                      }
-                    }
-      stored     <- ctx.sigil.storeBytes(GlobalSpace, bytes, "image/png",
-                      metadata = Map(
-                        "kind" -> "browser-screenshot",
-                        "conversationId" -> ctx.conversation.id.value
-                      ))
+      bytes <- controller.run { browser =>
+        Task.defer {
+          val tmp = Files.createTempFile("sigil-screenshot-", ".png")
+          browser.screenshotAs(tmp, afterLoadDelay = Some(input.waitSeconds.seconds))
+            .map { _ =>
+              val read = Files.readAllBytes(tmp)
+              try Files.deleteIfExists(tmp)
+              catch { case _: Throwable => () }
+              read
+            }
+        }
+      }
+      stored <- ctx.sigil.storeBytes(
+        GlobalSpace,
+        bytes,
+        "image/png",
+        metadata = Map(
+          "kind" -> "browser-screenshot",
+          "conversationId" -> ctx.conversation.id.value
+        ))
       // Emit a delta on the BrowserState so subscribers see the new
       // screenshot reference.
-      _          <- ctx.sigil.publish(BrowserStateDelta(
-                      target           = controller.stateId,
-                      conversationId   = ctx.conversation.id,
-                      screenshotFileId = Some(stored._id)
-                    ))
+      _ <- ctx.sigil.publish(BrowserStateDelta(
+        target = controller.stateId,
+        conversationId = ctx.conversation.id,
+        screenshotFileId = Some(stored._id)
+      ))
     } yield ToolResult.Success(BrowserScreenshotOutput(
-      fileId  = stored._id.value,
-      url     = ctx.sigil.storageUrl(stored).toString,
+      fileId = stored._id.value,
+      url = ctx.sigil.storageUrl(stored).toString,
       altText = s"Browser screenshot at ${java.time.Instant.now}"
     ))
 }

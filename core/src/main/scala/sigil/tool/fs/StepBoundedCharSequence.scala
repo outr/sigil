@@ -16,7 +16,8 @@ package sigil.tool.fs
 final class StepBoundedCharSequence private (inner: CharSequence,
                                              maxSteps: Long,
                                              pattern: String,
-                                             counter: StepBoundedCharSequence.Counter) extends CharSequence {
+                                             counter: StepBoundedCharSequence.Counter)
+  extends CharSequence {
   def this(inner: CharSequence, maxSteps: Long, pattern: String) =
     this(inner, maxSteps, pattern, new StepBoundedCharSequence.Counter)
 
@@ -35,9 +36,12 @@ final class StepBoundedCharSequence private (inner: CharSequence,
 }
 
 object StepBoundedCharSequence {
-  /** Mutable shared step counter threaded through every `subSequence`
-    * view of one wrapped line. */
-  private final class Counter {
+
+  /**
+   * Mutable shared step counter threaded through every `subSequence`
+   * view of one wrapped line.
+   */
+  final private class Counter {
     var steps: Long = 0L
   }
 }

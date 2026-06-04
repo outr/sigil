@@ -6,7 +6,8 @@ import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapSetExceptionBreakpointsInput(sessionId: String,
-                                           filters: List[String]) extends ToolInput derives RW
+                                           filters: List[String])
+  extends ToolInput derives RW
 
 /**
  * Configure exception filters — pause execution when an exception

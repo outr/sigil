@@ -23,8 +23,10 @@ import fabric.define.Definition
  */
 object InputNormalizer {
 
-  /** Walk `json` alongside `definition` and apply both coercion families.
-    * Delegates to [[WireSurface]]'s shared walker. */
+  /**
+   * Walk `json` alongside `definition` and apply both coercion families.
+   * Delegates to [[WireSurface]]'s shared walker.
+   */
   def normalize(json: Json, definition: Definition): Json =
     WireSurface.normalize(json, definition.defType)
 }

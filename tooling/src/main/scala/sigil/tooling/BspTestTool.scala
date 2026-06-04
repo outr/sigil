@@ -9,7 +9,8 @@ import sigil.tooling.types.BspExecResult
 
 case class BspTestInput(projectRoot: String,
                         targets: List[String] = Nil,
-                        arguments: List[String] = Nil) extends ToolInput derives RW
+                        arguments: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Run tests for the given build targets via the BSP server. Captures
@@ -20,11 +21,10 @@ case class BspTestInput(projectRoot: String,
  * like `-z 'substring of test name'`, etc.). Empty `targets` means
  * "every workspace target that supports test".
  */
-final class BspTestTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
-  type Input  = BspTestInput
+final class BspTestTool(val manager: BspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input = BspTestInput
   type Output = BspExecResult
-  val inputRW  = summon[RW[BspTestInput]]
+  val inputRW = summon[RW[BspTestInput]]
   val outputRW = summon[RW[BspExecResult]]
 
   val name = ToolName("bsp_test")
@@ -36,14 +36,23 @@ final class BspTestTool(val manager: BspManager) extends Tool
       |`arguments` (optional) flows through to the test runner.
       |Returns `{status, targetCount, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED` / `NO_TARGETS`.""".stripMargin
   override val keywords = Set(
-    "bsp", "test", "run tests", "unit test", "execute tests", "verify",
-    "scala", "sbt", "project", "targets", "validate"
+    "bsp",
+    "test",
+    "run tests",
+    "unit test",
+    "execute tests",
+    "verify",
+    "scala",
+    "sbt",
+    "project",
+    "targets",
+    "validate"
   )
-
 
   override def executeOutput(input: BspTestInput, context: ToolContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](
-      input.projectRoot, context,
+      input.projectRoot,
+      context,
       onError = msg => BspExecResult(input.projectRoot, "ERROR", 0, "", msg)
     ) { session =>
       // Filter to test-capable targets so empty input doesn't expand
@@ -61,26 +70,26 @@ final class BspTestTool(val manager: BspManager) extends Tool
           session.client.drainRunOutput()
           session.test(resolved, input.arguments).map { result =>
             val status = result.getStatusCode match {
-              case StatusCode.OK        => "OK"
-              case StatusCode.ERROR     => "ERROR"
+              case StatusCode.OK => "OK"
+              case StatusCode.ERROR => "ERROR"
               case StatusCode.CANCELLED => "CANCELLED"
             }
             val (out, err) = session.client.drainRunOutput()
             BspExecResult(
               projectRoot = input.projectRoot,
-              status      = status,
+              status = status,
               targetCount = resolved.size,
-              stdout      = out.mkString,
-              stderr      = err.mkString
+              stdout = out.mkString,
+              stderr = err.mkString
             )
           }.handleError { t =>
             val (out, err) = session.client.drainRunOutput()
             Task.pure(BspExecResult(
               projectRoot = input.projectRoot,
-              status      = "ERROR",
+              status = "ERROR",
               targetCount = resolved.size,
-              stdout      = out.mkString,
-              stderr      = (err.mkString + "\nBSP test dispatch failed: " + t.getMessage).trim
+              stdout = out.mkString,
+              stderr = (err.mkString + "\nBSP test dispatch failed: " + t.getMessage).trim
             ))
           }
         }

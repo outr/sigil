@@ -47,9 +47,9 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * builds the paired tool-role failure Message.
  */
 case object CancelTool extends Tool {
-  type Input  = CancelInput
+  type Input = CancelInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[CancelInput]]
+  val inputRW = summon[RW[CancelInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("cancel")
@@ -68,29 +68,33 @@ case object CancelTool extends Tool {
       |in-flight call (use for monitor-agent intercepts).""".stripMargin
   override val keywords: Set[String] = Set("cancel", "halt", "abort", "user-stop", "interrupt", "stop")
 
-  /** Patterns that signal the caller meant a turn-flow operation
-    * (start something, fetch results, wait, advance to the next
-    * step) rather than a cancellation. A legitimate cancel reason
-    * is typically `"user requested halt"` / `"unrecoverable
-    * failure: ..."` and doesn't trip them.
-    *
-    * The first element of each pair names the heuristic so the
-    * refusal can tell the agent which pattern matched. */
+  /**
+   * Patterns that signal the caller meant a turn-flow operation
+   * (start something, fetch results, wait, advance to the next
+   * step) rather than a cancellation. A legitimate cancel reason
+   * is typically `"user requested halt"` / `"unrecoverable
+   * failure: ..."` and doesn't trip them.
+   *
+   * The first element of each pair names the heuristic so the
+   * refusal can tell the agent which pattern matched.
+   */
   val transitionPatterns: List[(String, scala.util.matching.Regex)] = List(
-    "start"      -> raw"(?i)\bstart(ing)?\b".r,
-    "need-to"    -> raw"(?i)\bneed to (read|fetch|get|run|check|see|look at|review|examine|process|analyze)\b".r,
-    "wait"       -> raw"(?i)\b(wait|waiting|pause|pausing)\b".r,
-    "next"       -> raw"(?i)\bnext (step|action|phase|tool|call|move|iteration|turn)\b".r,
-    "then"       -> raw"(?i)\bthen (i|we|the agent) (will|should|can|need|must)\b".r,
+    "start" -> raw"(?i)\bstart(ing)?\b".r,
+    "need-to" -> raw"(?i)\bneed to (read|fetch|get|run|check|see|look at|review|examine|process|analyze)\b".r,
+    "wait" -> raw"(?i)\b(wait|waiting|pause|pausing)\b".r,
+    "next" -> raw"(?i)\bnext (step|action|phase|tool|call|move|iteration|turn)\b".r,
+    "then" -> raw"(?i)\bthen (i|we|the agent) (will|should|can|need|must)\b".r,
     "transition" -> raw"(?i)\btransition(ing)?\b".r,
-    "yield"      -> raw"(?i)\byield(ing)?\b".r,
+    "yield" -> raw"(?i)\byield(ing)?\b".r,
     "checkpoint" -> raw"(?i)\bcheckpoint\b".r
   )
 
-  /** Returns the matching pattern's name when a transition shape is
-    * detected; `None` when the reason looks like a legitimate
-    * cancel. Public so apps that wrap the cancel surface (custom
-    * tool, server-side validator, etc.) can reuse the heuristic. */
+  /**
+   * Returns the matching pattern's name when a transition shape is
+   * detected; `None` when the reason looks like a legitimate
+   * cancel. Public so apps that wrap the cancel surface (custom
+   * tool, server-side validator, etc.) can reuse the heuristic.
+   */
   def detectTransition(reason: String): Option[String] =
     if (reason.isEmpty) None
     else transitionPatterns.collectFirst {
@@ -104,13 +108,13 @@ case object CancelTool extends Tool {
         Task.pure(refuse(input, matchedPattern))
       case None =>
         context.emit(Stop(
-          participantId       = context.caller,
-          conversationId      = context.conversation.id,
-          topicId             = context.conversation.currentTopicId,
+          participantId = context.caller,
+          conversationId = context.conversation.id,
+          topicId = context.conversation.currentTopicId,
           targetParticipantId = input.targetParticipantId,
-          force               = input.force,
-          reason              = input.reason,
-          role                = MessageRole.Tool
+          force = input.force,
+          reason = input.reason,
+          role = MessageRole.Tool
         )).map(_ => ToolResult.Success(TextToolOutput("Cancellation requested.")))
     }
   }

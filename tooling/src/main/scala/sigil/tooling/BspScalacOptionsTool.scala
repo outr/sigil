@@ -9,7 +9,8 @@ import sigil.tooling.types.{BspScalacOptionsResult, BspTargetScalacOptions}
 import scala.jdk.CollectionConverters.*
 
 case class BspScalacOptionsInput(projectRoot: String,
-                                 targets: List[String] = Nil) extends ToolInput derives RW
+                                 targets: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * List the scalac options + classpath for each target. The agent
@@ -18,9 +19,9 @@ case class BspScalacOptionsInput(projectRoot: String,
  * resolution issues.
  */
 final class BspScalacOptionsTool(val manager: BspManager) extends Tool with BspToolSupport {
-  type Input  = BspScalacOptionsInput
+  type Input = BspScalacOptionsInput
   type Output = BspScalacOptionsResult
-  val inputRW  = summon[RW[BspScalacOptionsInput]]
+  val inputRW = summon[RW[BspScalacOptionsInput]]
   val outputRW = summon[RW[BspScalacOptionsResult]]
 
   val name = ToolName("bsp_scalac_options")
@@ -31,11 +32,12 @@ final class BspScalacOptionsTool(val manager: BspManager) extends Tool with BspT
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
   override val keywords = Set("bsp", "scalac", "scalac options", "compiler options", "compile flags", "scala")
 
-
   override def executeOutput(input: BspScalacOptionsInput,
                              context: ToolContext): Task[BspScalacOptionsResult] =
     withTargets[BspScalacOptionsResult](
-      input.projectRoot, context, input.targets,
+      input.projectRoot,
+      context,
+      input.targets,
       onError = _ => BspScalacOptionsResult(input.projectRoot, Nil),
       emptyResult = BspScalacOptionsResult(input.projectRoot, Nil)
     ) { (session, targets) =>
@@ -44,10 +46,10 @@ final class BspScalacOptionsTool(val manager: BspManager) extends Tool with BspT
           projectRoot = input.projectRoot,
           items = items.map { item =>
             BspTargetScalacOptions(
-              target         = item.getTarget.getUri,
-              options        = Option(item.getOptions).map(_.asScala.toList).getOrElse(Nil),
+              target = item.getTarget.getUri,
+              options = Option(item.getOptions).map(_.asScala.toList).getOrElse(Nil),
               classDirectory = Option(item.getClassDirectory).filter(_.nonEmpty),
-              classpath      = Option(item.getClasspath).map(_.asScala.toList).getOrElse(Nil)
+              classpath = Option(item.getClasspath).map(_.asScala.toList).getOrElse(Nil)
             )
           }
         )

@@ -30,42 +30,57 @@ import fabric.rw.PolyType
  * shouldn't pretend it knows them all.
  */
 trait WorkType {
-  /** Stable string identifier — what `ProviderStrategyRecord.routes`
-    * keys on, and what the wire serialization round-trips through.
-    * Conventional kebab-case. Keep stable across renames; consumers
-    * persist this verbatim. */
+
+  /**
+   * Stable string identifier — what `ProviderStrategyRecord.routes`
+   * keys on, and what the wire serialization round-trips through.
+   * Conventional kebab-case. Keep stable across renames; consumers
+   * persist this verbatim.
+   */
   def value: String
 }
 
 object WorkType extends PolyType[WorkType]()(using scala.reflect.ClassTag(classOf[WorkType]))
 
-/** General chat / Q&A — the default work type for all agent turns
-  * unless an app overrides per-agent or per-mode. */
+/**
+ * General chat / Q&A — the default work type for all agent turns
+ * unless an app overrides per-agent or per-mode.
+ */
 case object ConversationWork extends WorkType {
   override val value: String = "conversation"
 }
 
-/** Code generation, editing, review. */
+/**
+ * Code generation, editing, review.
+ */
 case object CodingWork extends WorkType {
   override val value: String = "coding"
 }
 
-/** Reasoning, data analysis, complex problems. */
+/**
+ * Reasoning, data analysis, complex problems.
+ */
 case object AnalysisWork extends WorkType {
   override val value: String = "analysis"
 }
 
-/** Quick intent checks, relevance scoring, classification. */
+/**
+ * Quick intent checks, relevance scoring, classification.
+ */
 case object ClassificationWork extends WorkType {
   override val value: String = "classification"
 }
 
-/** Writing, brainstorming, synthesis, polishing. */
+/**
+ * Writing, brainstorming, synthesis, polishing.
+ */
 case object CreativeWork extends WorkType {
   override val value: String = "creative"
 }
 
-/** Condensing content, title generation, context compression. */
+/**
+ * Condensing content, title generation, context compression.
+ */
 case object SummarizationWork extends WorkType {
   override val value: String = "summarization"
 }

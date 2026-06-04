@@ -8,7 +8,8 @@ import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 case class DapStackTraceInput(sessionId: String,
                               threadId: Int,
                               startFrame: Int = 0,
-                              levels: Int = 20) extends ToolInput derives RW
+                              levels: Int = 20)
+  extends ToolInput derives RW
 
 /**
  * Fetch the call stack for a stopped thread. Returns each frame's

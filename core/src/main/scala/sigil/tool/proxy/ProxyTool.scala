@@ -38,31 +38,31 @@ import sigil.tool.{Tool, ToolExample, ToolName, ToolResult, ToolSchema}
  * persistence all work the same way they would for a local tool.
  */
 class ProxyTool(val wrapped: Tool, transport: ToolProxyTransport) extends Tool {
-  type Input  = wrapped.Input
+  type Input = wrapped.Input
   type Output = wrapped.Output
 
-  def inputRW: RW[Input]   = wrapped.inputRW
+  def inputRW: RW[Input] = wrapped.inputRW
   def outputRW: RW[Output] = wrapped.outputRW
 
-  def name: ToolName      = wrapped.name
+  def name: ToolName = wrapped.name
   def description: String = wrapped.description
 
   override def inputDefinition: fabric.define.Definition = wrapped.inputDefinition
   override def outputDefinition: Option[fabric.define.Definition] = wrapped.outputDefinition
-  override def modes: Set[Id[Mode]]             = wrapped.modes
-  override def space: SpaceId                   = wrapped.space
-  override def keywords: Set[String]            = wrapped.keywords
-  override def examples: List[ToolExample]      = wrapped.examples
+  override def modes: Set[Id[Mode]] = wrapped.modes
+  override def space: SpaceId = wrapped.space
+  override def keywords: Set[String] = wrapped.keywords
+  override def examples: List[ToolExample] = wrapped.examples
   override def createdBy: Option[ParticipantId] = wrapped.createdBy
-  override def _id: Id[Tool]                    = wrapped._id
-  override def created: Timestamp               = wrapped.created
-  override def modified: Timestamp              = wrapped.modified
-  override lazy val schema: ToolSchema          = wrapped.schema
+  override def _id: Id[Tool] = wrapped._id
+  override def created: Timestamp = wrapped.created
+  override def modified: Timestamp = wrapped.modified
+  override lazy val schema: ToolSchema = wrapped.schema
 
   override def executeResult(input: Input, context: ToolContext): Task[ToolResult[Output]] = {
     val rendered = inputRW.read(input)
     transport.dispatch(wrapped.name, rendered, context).map {
-      case ToolResult.Success(json)   => ToolResult.Success(outputRW.write(json))
+      case ToolResult.Success(json) => ToolResult.Success(outputRW.write(json))
       case failure: ToolResult.Failure => failure
     }
   }

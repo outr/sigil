@@ -29,19 +29,19 @@ class OpenAIOrphanFunctionCallSpec extends AsyncWordSpec with AsyncTaskSpec with
   TestSigil.initFor(getClass.getSimpleName)
 
   private val provider = OpenAIProvider(apiKey = "sk-test-placeholder", sigilRef = TestSigil)
-  private val convId   = Conversation.id("orphan-fc-spec")
+  private val convId = Conversation.id("orphan-fc-spec")
 
   private def renderBody(frames: Vector[ContextFrame]): String = {
     val req = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(Model.id("openai", "gpt-5.4-nano")),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId, frames = frames),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(Model.id("openai", "gpt-5.4-nano")),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId, frames = frames),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = CoreTools.all,
-      chain              = List(TestUser, TestAgent)
+      tools = CoreTools.all,
+      chain = List(TestUser, TestAgent)
     )
     provider.requestConverter(req).sync().content match {
       case Some(c: spice.http.content.StringContent) => c.value
@@ -53,7 +53,7 @@ class OpenAIOrphanFunctionCallSpec extends AsyncWordSpec with AsyncTaskSpec with
     val json = JsonParser(body)
     json.get("input") match {
       case Some(arr: fabric.Arr) => arr.value.toList
-      case _                     => fail(s"no `input` array in body: ${body.take(200)}")
+      case _ => fail(s"no `input` array in body: ${body.take(200)}")
     }
   }
 
@@ -66,17 +66,17 @@ class OpenAIOrphanFunctionCallSpec extends AsyncWordSpec with AsyncTaskSpec with
       // throws [[sigil.heal.BrokenHistoryException]] so the agent
       // loop's heal pipeline dispatches to the matching strategy.
       val orphanCallId = Id[Event]("orphan-call-7nTbS97zIPJe9PQo2sGTq6V7nX11hQsT")
-      val sourceId     = Id[Event]("source-1")
+      val sourceId = Id[Event]("source-1")
       val frames: Vector[ContextFrame] = Vector(
         ContextFrame.Text(
-          content       = "Help me",
+          content = "Help me",
           participantId = TestUser,
           sourceEventId = Id[Event]("user-msg-1")
         ),
         ContextFrame.ToolCall(
-          toolName      = ToolName("record_consent"),
-          argsJson      = """{"toolName":"load_claude_state","approved":true}""",
-          callId        = orphanCallId,
+          toolName = ToolName("record_consent"),
+          argsJson = """{"toolName":"load_claude_state","approved":true}""",
+          callId = orphanCallId,
           participantId = TestAgent,
           sourceEventId = sourceId
         )
@@ -89,27 +89,28 @@ class OpenAIOrphanFunctionCallSpec extends AsyncWordSpec with AsyncTaskSpec with
       val ids = thrown.corruption.collect {
         case m: sigil.heal.CorruptionEvidence.MissingToolResult => m.callId
       }
-      ids should contain (orphanCallId.value)
+      ids should contain(orphanCallId.value)
       succeed
     }
 
     "leave properly-paired function_calls / function_call_outputs untouched (no double-output)" in {
-      val callId   = Id[Event]("paired-call-1")
+      val callId = Id[Event]("paired-call-1")
       val frames: Vector[ContextFrame] = Vector(
         ContextFrame.ToolCall(
-          toolName      = ToolName("record_consent"),
-          argsJson      = """{"toolName":"x","approved":true}""",
-          callId        = callId,
+          toolName = ToolName("record_consent"),
+          argsJson = """{"toolName":"x","approved":true}""",
+          callId = callId,
           participantId = TestAgent,
           sourceEventId = callId,
-          state         = ToolCallState.Complete("Consent recorded: x approved")
+          state = ToolCallState.Complete("Consent recorded: x approved")
         )
       )
-      val body  = renderBody(frames)
+      val body = renderBody(frames)
       val items = inputItems(body)
 
-      val outputs = items.count(it => it.get("type").map(_.asString).contains("function_call_output")
-        && it.get("call_id").map(_.asString).contains(callId.value))
+      val outputs = items.count(it =>
+        it.get("type").map(_.asString).contains("function_call_output")
+          && it.get("call_id").map(_.asString).contains(callId.value))
       // Exactly ONE output for the call — safety net didn't add a duplicate.
       outputs shouldBe 1
     }

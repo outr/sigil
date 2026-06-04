@@ -38,11 +38,11 @@ class FindCapabilityPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
   private def ctxWith(ref: AtomicReference[Map[String, DiscoveredCapability]]): TurnContext =
     TurnContext(
-      sigil                     = TestSigil,
-      chain                     = List(TestAgent),
-      conversation              = Conversation(_id = convId, topics = List(TestTopicEntry)),
-      turnInput                 = TurnInput(conversationId = convId),
-      model                     = TestSigil.defaultTestModel,
+      sigil = TestSigil,
+      chain = List(TestAgent),
+      conversation = Conversation(_id = convId, topics = List(TestTopicEntry)),
+      turnInput = TurnInput(conversationId = convId),
+      model = TestSigil.defaultTestModel,
       discoveredCapabilitiesRef = ref
     )
 
@@ -113,19 +113,19 @@ class FindCapabilityPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec wit
         override def roles: List[sigil.role.Role] = List(sigil.role.GeneralistRole)
         override def displayName: String = "MergerAgent"
         override def avatarUrl: Option[String] = None
-        override def toolNames: List[ToolName] = Nil  // baseline empty
+        override def toolNames: List[ToolName] = Nil // baseline empty
         override def tools: sigil.provider.ToolPolicy = sigil.provider.ToolPolicy.Standard
       }
       val roster = TestSigil.effectiveToolNames(
-        agent             = agent,
-        mode              = sigil.provider.ConversationMode,
-        suggested         = discovered,
-        overlays          = Nil,
+        agent = agent,
+        mode = sigil.provider.ConversationMode,
+        suggested = discovered,
+        overlays = Nil,
         recentlyUsedTools = Set.empty
       )
       // Both discovered names present in the merged roster.
-      roster should contain (ToolName("dispatch_workers"))
-      roster should contain (ToolName("grep"))
+      roster should contain(ToolName("dispatch_workers"))
+      roster should contain(ToolName("grep"))
     }
   }
 
@@ -145,15 +145,15 @@ class FindCapabilityPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
   private def conv(id: String): Conversation = Conversation(
     topics = List(TopicEntry(TestTopicId, "test", "test")),
-    _id    = Conversation.id(id)
+    _id = Conversation.id(id)
   )
 
   private def turnContextFor(c: Conversation): TurnContext = TurnContext(
-    sigil        = TestSigil,
-    chain        = List(TestUser, TestAgent),
+    sigil = TestSigil,
+    chain = List(TestUser, TestAgent),
     conversation = c,
-    turnInput    = TurnInput(ConversationView(conversationId = c._id)),
-    model        = TestSigil.defaultTestModel
+    turnInput = TurnInput(ConversationView(conversationId = c._id)),
+    model = TestSigil.defaultTestModel
   )
 
   private def capabilityResults(convId: Id[Conversation],
@@ -162,23 +162,22 @@ class FindCapabilityPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec wit
     CapabilityResults(
       matches = names.map(n =>
         CapabilityMatch(
-          name           = n,
-          description    = s"stub: $n",
+          name = n,
+          description = s"stub: $n",
           capabilityType = CapabilityType.Tool,
-          score          = 1.0,
-          status         = CapabilityStatus.Ready
-        )
-      ),
-      participantId  = TestAgent,
+          score = 1.0,
+          status = CapabilityStatus.Ready
+        )),
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicId,
-      query          = query,
-      state          = EventState.Complete,
+      topicId = TestTopicId,
+      query = query,
+      state = EventState.Complete,
       // Tool-role events must point at a parent ToolInvoke. In real
       // dispatch the framework stamps this from `ctx.invokeId`; the
       // tests stamp a synthetic id so validateEventInvariants accepts
       // the synthetic event for projection-handler exercise.
-      origin         = Some(Event.id())
+      origin = Some(Event.id())
     )
 
   "FindCapabilityTool (sigil #301)" should {
@@ -208,25 +207,24 @@ class FindCapabilityPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val convId = c._id
       val cr = capabilityResults(convId, List("dispatch_workers", "grep"), query = "find grep files")
       for {
-        _    <- TestSigil.publish(cr)
+        _ <- TestSigil.publish(cr)
         proj <- TestSigil.projectionFor(TestAgent, convId)
-      } yield {
+      } yield
         // With the per-turn clearSuggestedTools call removed, the
         // projection retains the discoveries across turn boundaries —
         // the next find_capability is the only thing that replaces.
         proj.suggestedTools.map(_.value) should contain allOf ("dispatch_workers", "grep")
-      }
     }
 
     "REPLACE the prior matches when a new find_capability fires (not accumulate)" in {
       val c = conv(s"fc-replace-${rapid.Unique()}")
       val convId = c._id
-      val first  = capabilityResults(convId, List("dispatch_workers", "grep"), query = "find grep files")
+      val first = capabilityResults(convId, List("dispatch_workers", "grep"), query = "find grep files")
       val second = capabilityResults(convId, List("bsp_test", "bsp_compile"), query = "test compile build")
       for {
-        _           <- TestSigil.publish(first)
-        afterFirst  <- TestSigil.projectionFor(TestAgent, convId)
-        _           <- TestSigil.publish(second)
+        _ <- TestSigil.publish(first)
+        afterFirst <- TestSigil.projectionFor(TestAgent, convId)
+        _ <- TestSigil.publish(second)
         afterSecond <- TestSigil.projectionFor(TestAgent, convId)
       } yield {
         afterFirst.suggestedTools.map(_.value) should contain allOf ("dispatch_workers", "grep")
@@ -243,7 +241,7 @@ class FindCapabilityPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val cB = conv(s"fc-isolate-B-${rapid.Unique()}")
       val cr = capabilityResults(cA._id, List("dispatch_workers", "grep"), query = "find grep files")
       for {
-        _   <- TestSigil.publish(cr)
+        _ <- TestSigil.publish(cr)
         inA <- TestSigil.projectionFor(TestAgent, cA._id)
         inB <- TestSigil.projectionFor(TestAgent, cB._id)
       } yield {

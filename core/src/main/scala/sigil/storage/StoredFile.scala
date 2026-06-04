@@ -37,9 +37,11 @@ case class StoredFile(space: SpaceId,
                       _id: Id[StoredFile] = StoredFile.id())
   extends RecordDocument[StoredFile] {
 
-  /** True when `expiresAt` is set and not in the future. Used by
-    * [[sigil.maintenance.StoredFileExpirationSweep]] and by retrieval
-    * filters to skip records past their retention window. */
+  /**
+   * True when `expiresAt` is set and not in the future. Used by
+   * [[sigil.maintenance.StoredFileExpirationSweep]] and by retrieval
+   * filters to skip records past their retention window.
+   */
   def isExpired(now: Timestamp): Boolean =
     expiresAt.exists(_.value <= now.value)
 }
@@ -49,18 +51,26 @@ object StoredFile extends RecordDocumentModel[StoredFile] with JsonConversion[St
 
   override def id(value: String = Unique()): Id[StoredFile] = Id(value)
 
-  /** Tenant-key index — string form of `SpaceId.value` so authz
-    * filters can `space === "<value>"` without matching the trait
-    * itself. */
+  /**
+   * Tenant-key index — string form of `SpaceId.value` so authz
+   * filters can `space === "<value>"` without matching the trait
+   * itself.
+   */
   val spaceKey: I[String] = field.index("spaceKey", _.space.value)
   val path: I[String] = field.index(_.path)
   val createdAt: I[Long] = field.index("createdAt", _.created.value)
-  /** Filter index — apps' "files panel" UIs default to
-    * `categoryKey === UserAttachment` to hide tool-output noise. */
+
+  /**
+   * Filter index — apps' "files panel" UIs default to
+   * `categoryKey === UserAttachment` to hide tool-output noise.
+   */
   val categoryKey: I[String] = field.index("categoryKey", _.category.toString)
-  /** Expiration index — the maintenance sweep queries
-    * `expiresAtKey <= now` to find every reclaimable record in one
-    * pass. Records without expiry get `Long.MaxValue` so they sort
-    * past any real retention horizon. */
+
+  /**
+   * Expiration index — the maintenance sweep queries
+   * `expiresAtKey <= now` to find every reclaimable record in one
+   * pass. Records without expiry get `Long.MaxValue` so they sort
+   * past any real retention horizon.
+   */
   val expiresAtKey: I[Long] = field.index("expiresAtKey", _.expiresAt.map(_.value).getOrElse(Long.MaxValue))
 }

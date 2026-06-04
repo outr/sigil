@@ -45,11 +45,13 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
 
   private val modelId: Id[Model] = Model.id("test", "kimi-k2.5-0127")
 
-  /** Stub provider whose per-call behaviour is a per-attempt
-    * function — drives the framework's transient-retry wrapper
-    * through `Provider.apply`. Captures every per-attempt
-    * `ProviderCall` so tests can assert what `retryContext`
-    * carried. */
+  /**
+   * Stub provider whose per-call behaviour is a per-attempt
+   * function — drives the framework's transient-retry wrapper
+   * through `Provider.apply`. Captures every per-attempt
+   * `ProviderCall` so tests can assert what `retryContext`
+   * carried.
+   */
   private class StubProvider(perAttempt: Int => Stream[ProviderEvent]) extends Provider {
     val attemptCount: AtomicInteger = new AtomicInteger(0)
     val observedCalls: AtomicReference[List[ProviderCall]] =
@@ -68,9 +70,9 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
   }
 
   private def oneShot: OneShotRequest = OneShotRequest(
-    model            = TestSigil.testModel(modelId),
-    systemPrompt       = "test-system",
-    userPrompt         = "test-user",
+    model = TestSigil.testModel(modelId),
+    systemPrompt = "test-system",
+    userPrompt = "test-user",
     generationSettings = GenerationSettings()
   )
 
@@ -80,27 +82,31 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
       ProviderEvent.Done(StopReason.Complete)
     ))
 
-  /** Errors with a typed `ProviderStreamException` whose metadata
-    * names the failed upstream. Carries `errorType =
-    * provider_unavailable` so the default classifier promotes it
-    * to `Retry`. */
+  /**
+   * Errors with a typed `ProviderStreamException` whose metadata
+   * names the failed upstream. Carries `errorType =
+   * provider_unavailable` so the default classifier promotes it
+   * to `Retry`.
+   */
   private def midStream502(upstream: String): Stream[ProviderEvent] =
     Stream.emit(()).evalMap[ProviderEvent] { _ =>
       Task.error(new ProviderStreamException(
-        providerKey   = "openrouter",
-        code          = 502,
-        typ           = "error",
-        message_      = "Upstream idle timeout exceeded",
-        status        = Some(502),
+        providerKey = "openrouter",
+        code = 502,
+        typ = "error",
+        message_ = "Upstream idle timeout exceeded",
+        status = Some(502),
         errorMetadata = Some(ProviderErrorMetadata(
-          errorType        = Some("provider_unavailable"),
+          errorType = Some("provider_unavailable"),
           upstreamProvider = Some(upstream)
         ))
       ))
     }
 
-  /** Errors with a plain HTTP-401 RuntimeException — the default
-    * classifier marks this `Fatal` so no retry fires. */
+  /**
+   * Errors with a plain HTTP-401 RuntimeException — the default
+   * classifier marks this `Fatal` so no retry fires.
+   */
   private def auth401: Stream[ProviderEvent] =
     Stream.emit(()).evalMap[ProviderEvent] { _ =>
       Task.error(new RuntimeException("HTTP 401 Unauthorized — bad api key"))
@@ -111,11 +117,10 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
     "retry once when the first attempt fails with provider_unavailable mid-stream" in {
       val provider = new StubProvider(attempt =>
         if (attempt == 1) midStream502("Chutes")
-        else successStream
-      )
+        else successStream)
       provider(oneShot).toList.map { events =>
         provider.attemptCount.get() shouldBe 2
-        events.collect { case t: ProviderEvent.TextDelta => t.text } should contain ("hello")
+        events.collect { case t: ProviderEvent.TextDelta => t.text } should contain("hello")
         events.collect { case d: ProviderEvent.Done => d } should not be empty
       }
     }
@@ -123,8 +128,7 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
     "thread the failed upstream into RetryContext on the retry attempt" in {
       val provider = new StubProvider(attempt =>
         if (attempt == 1) midStream502("Chutes")
-        else successStream
-      )
+        else successStream)
       provider(oneShot).toList.map { _ =>
         val calls = provider.observedCalls.get()
         calls should have size 2
@@ -142,12 +146,12 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
       val routing = OpenRouterProviderRouting(ignore = Some(List("baseline-deny")))
       val provider = OpenRouterProvider(apiKey = "test-key", sigilRef = TestSigil, providerRouting = routing)
       val firstAttempt = ProviderCall(
-        model            = TestSigil.testModel(modelId),
-        system             = "s",
-        messages           = Vector.empty,
-        tools              = Vector.empty,
-        builtInTools       = Set.empty,
-        toolChoice         = _root_.sigil.provider.ToolChoice.None,
+        model = TestSigil.testModel(modelId),
+        system = "s",
+        messages = Vector.empty,
+        tools = Vector.empty,
+        builtInTools = Set.empty,
+        toolChoice = _root_.sigil.provider.ToolChoice.None,
         generationSettings = GenerationSettings()
       )
       val retryAttempt = firstAttempt.copy(retryContext = Some(
@@ -162,16 +166,16 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
         val firstIgnore = ignoreList(firstBody)
         val retryIgnore = ignoreList(retryBody)
         firstIgnore should contain only "baseline-deny"
-        retryIgnore should contain ("baseline-deny")
-        retryIgnore should contain ("Chutes")
+        retryIgnore should contain("baseline-deny")
+        retryIgnore should contain("Chutes")
       }
     }
 
     "keepalive silence past the configured budget raises a retryable upstream_silent exception" in {
       val now = new AtomicLong(0L)
       val state = new StreamState(
-        acc                       = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
-        nowNanos                  = () => now.get(),
+        acc = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        nowNanos = () => now.get(),
         streamingSilenceTimeoutMs = 30000L
       )
       val cfg = Config(providerNamespace = OpenRouter.Provider, providerName = "OpenRouter")
@@ -195,8 +199,8 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
     "meaningful chunks bump the silence anchor so legitimate slow generations don't false-fire" in {
       val now = new AtomicLong(0L)
       val state = new StreamState(
-        acc                       = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
-        nowNanos                  = () => now.get(),
+        acc = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        nowNanos = () => now.get(),
         streamingSilenceTimeoutMs = 30000L
       )
       val cfg = Config(providerNamespace = OpenRouter.Provider, providerName = "OpenRouter")
@@ -219,9 +223,9 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
     "a dead-on-arrival upstream (no content yet) fires upstream_silent on the shorter budget (#258)" in {
       val now = new AtomicLong(0L)
       val state = new StreamState(
-        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
-        nowNanos                        = () => now.get(),
-        streamingSilenceTimeoutMs       = 60000L,
+        acc = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        nowNanos = () => now.get(),
+        streamingSilenceTimeoutMs = 60000L,
         streamingDeadOnArrivalTimeoutMs = 20000L
       )
       val cfg = Config(providerNamespace = OpenRouter.Provider, providerName = "OpenRouter")
@@ -247,9 +251,9 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
     "the full silence budget applies once meaningful content has flowed, not the dead-on-arrival one (#258)" in {
       val now = new AtomicLong(0L)
       val state = new StreamState(
-        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
-        nowNanos                        = () => now.get(),
-        streamingSilenceTimeoutMs       = 60000L,
+        acc = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        nowNanos = () => now.get(),
+        streamingSilenceTimeoutMs = 60000L,
         streamingDeadOnArrivalTimeoutMs = 20000L
       )
       val cfg = Config(providerNamespace = OpenRouter.Provider, providerName = "OpenRouter")
@@ -279,18 +283,22 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
       provider(oneShot).toList.attempt.map { result =>
         result.isFailure shouldBe true
         provider.attemptCount.get() shouldBe 1
-        result.failed.get.getMessage should include ("401")
+        result.failed.get.getMessage should include("401")
       }
     }
   }
 
-  /** Extract the `provider.ignore` list from a rendered chat-completions body. */
+  /**
+   * Extract the `provider.ignore` list from a rendered chat-completions body.
+   */
   private def ignoreList(body: Json): List[String] = {
     val routing = body.get("provider").getOrElse(Obj.empty)
     routing.get("ignore").map(_.asVector.map(_.asString).toList).getOrElse(Nil)
   }
 
-  /** Pull the JSON body off the rendered [[HttpRequest]] for assertion. */
+  /**
+   * Pull the JSON body off the rendered [[HttpRequest]] for assertion.
+   */
   private def bodyJson(req: HttpRequest): Json = req.content match {
     case Some(c: spice.http.content.StringContent) => JsonParser(c.value)
     case other => fail(s"expected StringContent body, got: $other")

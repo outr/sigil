@@ -8,7 +8,8 @@ import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspCompileResult, BspDiagnostic}
 
 case class BspCompileInput(projectRoot: String,
-                           targets: List[String] = Nil) extends ToolInput derives RW
+                           targets: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Compile build targets via the project's BSP server (sbt or Bloop).
@@ -19,11 +20,10 @@ case class BspCompileInput(projectRoot: String,
  * ERROR / CANCELLED / NO_TARGETS) and any diagnostics the server
  * published.
  */
-final class BspCompileTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
-  type Input  = BspCompileInput
+final class BspCompileTool(val manager: BspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input = BspCompileInput
   type Output = BspCompileResult
-  val inputRW  = summon[RW[BspCompileInput]]
+  val inputRW = summon[RW[BspCompileInput]]
   val outputRW = summon[RW[BspCompileResult]]
 
   val name = ToolName("bsp_compile")
@@ -34,29 +34,46 @@ final class BspCompileTool(val manager: BspManager) extends Tool
       |`targets` (optional) is a list of target URIs; empty compiles every workspace target.
       |Returns `{projectRoot, status, targetCount, diagnostics: [{filePath, range, severity, message, code, source}]}`.""".stripMargin
   override val keywords = Set(
-    "bsp", "compile", "build", "type-check", "verify",
-    "errors", "warnings", "compile-check", "examine", "inspect",
-    "analyze", "review",
-    "scala", "sbt", "project", "targets", "evaluate", "validate",
-    "rebuild", "diagnostics", "fix"
+    "bsp",
+    "compile",
+    "build",
+    "type-check",
+    "verify",
+    "errors",
+    "warnings",
+    "compile-check",
+    "examine",
+    "inspect",
+    "analyze",
+    "review",
+    "scala",
+    "sbt",
+    "project",
+    "targets",
+    "evaluate",
+    "validate",
+    "rebuild",
+    "diagnostics",
+    "fix"
   )
-
 
   override def executeOutput(input: BspCompileInput, context: ToolContext): Task[BspCompileResult] =
     withTargets[BspCompileResult](
-      input.projectRoot, context, input.targets,
+      input.projectRoot,
+      context,
+      input.targets,
       onError = _ => BspCompileResult(input.projectRoot, "ERROR", 0, Nil),
       emptyResult = BspCompileResult(
         projectRoot = input.projectRoot,
-        status      = "NO_TARGETS",
+        status = "NO_TARGETS",
         targetCount = 0,
         diagnostics = Nil
       )
     ) { (session, targets) =>
       session.compile(targets).map { result =>
         val status = result.getStatusCode match {
-          case StatusCode.OK        => "OK"
-          case StatusCode.ERROR     => "ERROR"
+          case StatusCode.OK => "OK"
+          case StatusCode.ERROR => "ERROR"
           case StatusCode.CANCELLED => "CANCELLED"
         }
         val diags = session.client.diagnosticsSnapshot
@@ -69,7 +86,7 @@ final class BspCompileTool(val manager: BspManager) extends Tool
         }
         BspCompileResult(
           projectRoot = input.projectRoot,
-          status      = status,
+          status = status,
           targetCount = targets.size,
           diagnostics = typedDiags
         )

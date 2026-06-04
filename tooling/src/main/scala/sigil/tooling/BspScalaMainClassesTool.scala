@@ -9,7 +9,8 @@ import sigil.tooling.types.{BspMainClassEntry, BspMainClassesResult, BspTargetMa
 import scala.jdk.CollectionConverters.*
 
 case class BspScalaMainClassesInput(projectRoot: String,
-                                    targets: List[String] = Nil) extends ToolInput derives RW
+                                    targets: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * List discovered Scala `main` classes for each target — every
@@ -18,9 +19,9 @@ case class BspScalaMainClassesInput(projectRoot: String,
  * to run.
  */
 final class BspScalaMainClassesTool(val manager: BspManager) extends Tool with BspToolSupport {
-  type Input  = BspScalaMainClassesInput
+  type Input = BspScalaMainClassesInput
   type Output = BspMainClassesResult
-  val inputRW  = summon[RW[BspScalaMainClassesInput]]
+  val inputRW = summon[RW[BspScalaMainClassesInput]]
   val outputRW = summon[RW[BspMainClassesResult]]
 
   val name = ToolName("bsp_scala_main_classes")
@@ -31,11 +32,12 @@ final class BspScalaMainClassesTool(val manager: BspManager) extends Tool with B
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
   override val keywords = Set("bsp", "main classes", "main", "entry points", "scala", "runnable")
 
-
   override def executeOutput(input: BspScalaMainClassesInput,
                              context: ToolContext): Task[BspMainClassesResult] =
     withTargets[BspMainClassesResult](
-      input.projectRoot, context, input.targets,
+      input.projectRoot,
+      context,
+      input.targets,
       onError = _ => BspMainClassesResult(input.projectRoot, Nil),
       emptyResult = BspMainClassesResult(input.projectRoot, Nil)
     ) { (session, targets) =>

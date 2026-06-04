@@ -34,30 +34,38 @@ object MissingToolResultStrategy extends HealingStrategy {
 
   override val name: String = "MissingToolResultStrategy"
 
-  /** OpenAI Responses: "No tool output found for function call call_XXX".
-    * Tightened from `\S+` to `[A-Za-z0-9_\-]+` so JSON-body delimiters
-    * (`"`, `}`, `,`, …) don't get captured as part of the id. */
+  /**
+   * OpenAI Responses: "No tool output found for function call call_XXX".
+   * Tightened from `\S+` to `[A-Za-z0-9_\-]+` so JSON-body delimiters
+   * (`"`, `}`, `,`, …) don't get captured as part of the id.
+   */
   private val OpenAIMissing: Regex = """No tool output found for function call ([A-Za-z0-9_\-]+)""".r
 
-  /** Anthropic's pairing-violation envelope: `tool_use ids found in
-    * `assistant` … without `tool_result` blocks immediately after`. */
+  /**
+   * Anthropic's pairing-violation envelope: `tool_use ids found in
+   * `assistant` … without `tool_result` blocks immediately after`.
+   */
   private val AnthropicMissing: Regex =
     """tool_use ids? (?:found|"[^"]+")\s+.*?without\s+`?tool_result`?""".r
 
-  /** Gemini's functionCall-without-functionResponse phrasing. */
+  /**
+   * Gemini's functionCall-without-functionResponse phrasing.
+   */
   private val GeminiMissing: Regex =
     """functionCall\s+(?:without|missing)\s+functionResponse""".r
 
-  /** The phrases above are all 400-status bodies — match by status
-    * AND body content. Connection failures / 5xx / auth issues stay
-    * outside our scope. */
+  /**
+   * The phrases above are all 400-status bodies — match by status
+   * AND body content. Connection failures / 5xx / auth issues stay
+   * outside our scope.
+   */
   override def matches(error: Throwable): Boolean = error match {
     case _: BrokenHistoryException => true
     case e: spice.http.client.StreamingHttpFailedException if e.status == 400 =>
       val body = Option(e.body).getOrElse("")
       OpenAIMissing.findFirstIn(body).isDefined ||
-        AnthropicMissing.findFirstIn(body).isDefined ||
-        GeminiMissing.findFirstIn(body).isDefined
+      AnthropicMissing.findFirstIn(body).isDefined ||
+      GeminiMissing.findFirstIn(body).isDefined
     case _ => false
   }
 
@@ -73,14 +81,18 @@ object MissingToolResultStrategy extends HealingStrategy {
           // The Anthropic / Gemini regexes don't capture an id; the
           // detect pass on those paths returns an unlabelled marker
           // and apply() falls back to "settle every orphan invoke".
-          (if (AnthropicMissing.findFirstIn(body).isDefined ||
-                GeminiMissing.findFirstIn(body).isDefined) List("*") else Nil)
+          (if (
+             AnthropicMissing.findFirstIn(body).isDefined ||
+             GeminiMissing.findFirstIn(body).isDefined
+           ) List("*")
+           else Nil)
       ).distinct
-      callIds.map(cid => CorruptionEvidence.MissingToolResult(
-        invokeId = Id[Event](""),
-        callId   = cid,
-        toolName = ""
-      ))
+      callIds.map(cid =>
+        CorruptionEvidence.MissingToolResult(
+          invokeId = Id[Event](""),
+          callId = cid,
+          toolName = ""
+        ))
     case _ => Nil
   }
 
@@ -148,29 +160,32 @@ object MissingToolResultStrategy extends HealingStrategy {
         // here signals a no-op heal to the framework, which treats it
         // as a FAILED heal rather than publishing a misleading
         // `ConversationHealed` with zero corrections (Sigil #314).
-        Task.pure(HealResult(corrections = Nil, remainingIssues =
-          if (corruption.isEmpty) Nil
-          else List(s"No orphan ToolInvoke matched ${corruption.size} corruption row(s) for conversation ${convId.value}")
+        Task.pure(HealResult(
+          corrections = Nil,
+          remainingIssues =
+            if (corruption.isEmpty) Nil
+            else List(s"No orphan ToolInvoke matched ${corruption.size} corruption row(s) for conversation ${convId.value}")
         ))
       } else {
         val marker = "[orphan tool call — no recorded result; settled by framework-heal]"
         val publishes: Task[List[HealAction]] = Task.sequence(targets.map { invoke =>
           val delta = ToolDelta(
-            target         = invoke._id,
+            target = invoke._id,
             conversationId = convId,
-            state          = Some(EventState.Complete),
-            summary        = Some(marker),
-            outcome        = Some(ToolOutcome.Failure(marker, recoverable = false)),
-            output         = Some(TextToolOutput(marker)),
-            error          = Some(marker)
+            state = Some(EventState.Complete),
+            summary = Some(marker),
+            outcome = Some(ToolOutcome.Failure(marker, recoverable = false)),
+            output = Some(TextToolOutput(marker)),
+            error = Some(marker)
           )
           host.publish(delta).map { _ =>
             HealAction(
-              strategyName       = name,
-              precondition       = s"orphan ToolInvoke ${invoke._id.value} (callId=${invoke.callId.getOrElse("-")}, tool=${invoke.toolName.value})",
+              strategyName = name,
+              precondition =
+                s"orphan ToolInvoke ${invoke._id.value} (callId=${invoke.callId.getOrElse("-")}, tool=${invoke.toolName.value})",
               synthesisedEventId = invoke._id,
               synthesisedContent = marker,
-              caveats            = Nil
+              caveats = Nil
             )
           }
         })

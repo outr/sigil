@@ -42,43 +42,58 @@ import sigil.tool.ToolName
  * inspect history beyond the live tail can read it directly.
  */
 trait Service {
-  /** Stable, process-restart-safe identifier. The cache key for
-    * [[sigil.signal.ServiceStatusSignal]] latest-state replay. */
+
+  /**
+   * Stable, process-restart-safe identifier. The cache key for
+   * [[sigil.signal.ServiceStatusSignal]] latest-state replay.
+   */
   def id: Id[Service]
 
-  /** Display name for the chip. */
+  /**
+   * Display name for the chip.
+   */
   def name: String
 
-  /** Broad category — informs chip iconography / grouping. Default
-    * [[ServiceKind.Other]] with the service's `name` so apps that
-    * don't think about category at all still get a sensible label. */
+  /**
+   * Broad category — informs chip iconography / grouping. Default
+   * [[ServiceKind.Other]] with the service's `name` so apps that
+   * don't think about category at all still get a sensible label.
+   */
   def kind: ServiceKind = ServiceKind.Other(name)
 
-  /** Tool names surfaced as chip menu items. Default empty — the chip
-    * just renders the status, no actions. */
+  /**
+   * Tool names surfaced as chip menu items. Default empty — the chip
+   * just renders the status, no actions.
+   */
   def controls: List[ToolName] = Nil
 
-  /** When true, clients with a tail-attached log viewer should
-    * subscribe to [[sigil.signal.ServiceLogSignal]]s keyed to
-    * `id`. Default false — services that don't surface streaming
-    * logs don't get a log tab. */
+  /**
+   * When true, clients with a tail-attached log viewer should
+   * subscribe to [[sigil.signal.ServiceLogSignal]]s keyed to
+   * `id`. Default false — services that don't surface streaming
+   * logs don't get a log tab.
+   */
   def hasStreamingLog: Boolean = false
 
-  /** Optional path to an on-disk log file. Clients with file-system
-    * access can read it for history beyond the live tail. */
+  /**
+   * Optional path to an on-disk log file. Clients with file-system
+   * access can read it for history beyond the live tail.
+   */
   def logFilePath: Option[String] = None
 
-  /** Current state as reported by whichever subsystem owns the
-    * service. Read by the framework when a fresh client connects but
-    * the latest-status cache has no entry yet (the service has never
-    * emitted a status signal in this process lifetime). Implementations
-    * derive this from observable signals — for [[sigil.provider.Provider]]
-    * that's rate-limiter / capacity-gate availability; for an
-    * external subprocess it's `process.isAlive` plus the connection
-    * handshake state.
-    *
-    * Default [[ServiceState.Up]] so passive services that don't
-    * model lifecycle don't have to override. Services with real
-    * lifecycle override to compute from internal state. */
+  /**
+   * Current state as reported by whichever subsystem owns the
+   * service. Read by the framework when a fresh client connects but
+   * the latest-status cache has no entry yet (the service has never
+   * emitted a status signal in this process lifetime). Implementations
+   * derive this from observable signals — for [[sigil.provider.Provider]]
+   * that's rate-limiter / capacity-gate availability; for an
+   * external subprocess it's `process.isAlive` plus the connection
+   * handshake state.
+   *
+   * Default [[ServiceState.Up]] so passive services that don't
+   * model lifecycle don't have to override. Services with real
+   * lifecycle override to compute from internal state.
+   */
   def currentState: ServiceState = ServiceState.Up
 }

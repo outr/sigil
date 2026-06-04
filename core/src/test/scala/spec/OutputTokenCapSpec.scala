@@ -50,7 +50,7 @@ class OutputTokenCapSpec extends AnyWordSpec with Matchers {
     "let the deprecated field win when both are set (back-compat for pre-#276 callers)" in {
       @annotation.nowarn("cat=deprecation")
       val gen = GenerationSettings(
-        outputTokenCap  = OutputTokenCap.Below(500),
+        outputTokenCap = OutputTokenCap.Below(500),
         maxOutputTokens = Some(2000)
       )
       gen.effectiveCap shouldBe OutputTokenCap.Below(2000)

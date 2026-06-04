@@ -13,4 +13,5 @@ case class GitBranchEntry(name: String,
                           sha: String,
                           isCurrent: Boolean,
                           isRemote: Boolean,
-                          tracking: Option[String] = None) derives RW
+                          tracking: Option[String] = None)
+  derives RW

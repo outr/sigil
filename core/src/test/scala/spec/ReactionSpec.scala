@@ -33,24 +33,26 @@ class ReactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def upsertConv(): Task[Conversation] = {
     val convId = Conversation.id(s"react-${rapid.Unique()}")
-    val topic  = TopicEntry(id = Topic.id(s"topic-$convId"), label = "test", summary = "test")
-    val conv   = Conversation(_id = convId, topics = List(topic))
+    val topic = TopicEntry(id = Topic.id(s"topic-$convId"), label = "test", summary = "test")
+    val conv = Conversation(_id = convId, topics = List(topic))
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
   }
 
-  /** Capture every signal emitted while `body` runs. */
+  /**
+   * Capture every signal emitted while `body` runs.
+   */
   private def captureSignals[A](body: Task[A]): Task[(A, List[Signal])] = {
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
       .drain
       .startUnit()
     for {
-      _      <- Task.sleep(50.millis)
+      _ <- Task.sleep(50.millis)
       result <- body
-      _      <- Task.sleep(150.millis)
+      _ <- Task.sleep(150.millis)
     } yield {
       running.set(false)
       (result, recorded.iterator().asScala.toList)
@@ -64,11 +66,11 @@ class ReactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         conv <- upsertConv()
         msgId = Event.id()
         captured <- captureSignals(TestSigil.react(
-                      conversationId = conv._id,
-                      participantId  = TestUser,
-                      messageId      = msgId,
-                      emoji          = "👍"
-                    ))
+          conversationId = conv._id,
+          participantId = TestUser,
+          messageId = msgId,
+          emoji = "👍"
+        ))
         (_, signals) = captured
         listed <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
@@ -119,17 +121,17 @@ class ReactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "leave Reaction events as non-triggers — an emoji doesn't re-fire the agent" in Task {
       val agent: AgentParticipant = DefaultAgentParticipant(
-        id           = TestAgent,
-        modelId      = sigil.db.Model.id("test", "model")
+        id = TestAgent,
+        modelId = sigil.db.Model.id("test", "model")
       )
       val convId = Conversation.id("trigger-test")
       val topicId = Topic.id("topic-trigger-test")
       val reaction = Reaction(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = topicId,
-        messageId      = Event.id(),
-        emoji          = "🤔"
+        topicId = topicId,
+        messageId = Event.id(),
+        emoji = "🤔"
       )
       TriggerFilter.isTriggerFor(agent, reaction) shouldBe false
     }

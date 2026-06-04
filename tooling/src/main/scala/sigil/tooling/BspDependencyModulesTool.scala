@@ -12,7 +12,8 @@ import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*
 
 case class BspDependencyModulesInput(projectRoot: String,
-                                     targets: List[String] = Nil) extends ToolInput derives RW
+                                     targets: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * List each target's library dependencies as Maven coordinates
@@ -23,11 +24,10 @@ case class BspDependencyModulesInput(projectRoot: String,
  * paths; this returns the coordinates the build references. Useful
  * for "what version of X does this project pull in?"
  */
-final class BspDependencyModulesTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
-  type Input  = BspDependencyModulesInput
+final class BspDependencyModulesTool(val manager: BspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input = BspDependencyModulesInput
   type Output = BspDependencyModulesResult
-  val inputRW  = summon[RW[BspDependencyModulesInput]]
+  val inputRW = summon[RW[BspDependencyModulesInput]]
   val outputRW = summon[RW[BspDependencyModulesResult]]
 
   val name = ToolName("bsp_dependency_modules")
@@ -37,7 +37,6 @@ final class BspDependencyModulesTool(val manager: BspManager) extends Tool
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
   override val keywords = Set("bsp", "dependencies", "deps", "modules", "library deps")
-
 
   override def executeOutput(input: BspDependencyModulesInput,
                              context: ToolContext): Task[BspDependencyModulesResult] = {
@@ -64,7 +63,9 @@ final class BspDependencyModulesTool(val manager: BspManager) extends Tool
   private def compute(input: BspDependencyModulesInput,
                       context: ToolContext): Task[BspDependencyModulesResult] =
     withTargets[BspDependencyModulesResult](
-      input.projectRoot, context, input.targets,
+      input.projectRoot,
+      context,
+      input.targets,
       onError = _ => BspDependencyModulesResult(input.projectRoot, Nil),
       emptyResult = BspDependencyModulesResult(input.projectRoot, Nil)
     ) { (session, targets) =>
@@ -73,7 +74,7 @@ final class BspDependencyModulesTool(val manager: BspManager) extends Tool
           projectRoot = input.projectRoot,
           items = items.map { item =>
             BspTargetDependencyModules(
-              target  = item.getTarget.getUri,
+              target = item.getTarget.getUri,
               modules = Option(item.getModules).map(_.asScala.toList.map { m =>
                 BspDependencyModule(name = m.getName, version = m.getVersion)
               }).getOrElse(Nil)
@@ -86,29 +87,37 @@ final class BspDependencyModulesTool(val manager: BspManager) extends Tool
 
 object BspDependencyModulesTool {
 
-  /** Cache key — projectRoot + sorted target URIs + build.sbt
-    * mtime + content hash. `build.sbt` is the canonical dependency
-    * declaration for sbt projects; mtime + hash detects any change
-    * (including `// no-op` edits that bump only the mtime).
-    *
-    * For non-sbt projects with no recognizable build manifest the
-    * key is `None` and the cache is skipped entirely. */
+  /**
+   * Cache key — projectRoot + sorted target URIs + build.sbt
+   * mtime + content hash. `build.sbt` is the canonical dependency
+   * declaration for sbt projects; mtime + hash detects any change
+   * (including `// no-op` edits that bump only the mtime).
+   *
+   * For non-sbt projects with no recognizable build manifest the
+   * key is `None` and the cache is skipped entirely.
+   */
   final case class Key(projectRoot: String,
                        targets: List[String],
                        buildSbtMtime: Long,
                        buildSbtHash: String)
 
-  /** Process-wide cache. Entries live for the JVM's lifetime — apps
-    * with longer-than-process sessions can flush by replacing the
-    * map (testing) or by calling [[invalidate]]. */
+  /**
+   * Process-wide cache. Entries live for the JVM's lifetime — apps
+   * with longer-than-process sessions can flush by replacing the
+   * map (testing) or by calling [[invalidate]].
+   */
   val cache: ConcurrentHashMap[Key, BspDependencyModulesResult] = new ConcurrentHashMap()
 
-  /** Hard reset — used by specs and by ops "clear caches" flows. */
+  /**
+   * Hard reset — used by specs and by ops "clear caches" flows.
+   */
   def invalidate(): Unit = cache.clear()
 
-  /** Build a cache key for `projectRoot` + `targets`. Returns `None`
-    * when the project has no `build.sbt` (or it isn't readable) so
-    * the caller falls back to running the BSP call uncached. */
+  /**
+   * Build a cache key for `projectRoot` + `targets`. Returns `None`
+   * when the project has no `build.sbt` (or it isn't readable) so
+   * the caller falls back to running the BSP call uncached.
+   */
   def cacheKeyFor(projectRoot: String, targets: List[String]): Task[Option[Key]] = Task {
     val buildFile = Paths.get(projectRoot, "build.sbt")
     if (!Files.isRegularFile(buildFile)) None
@@ -118,10 +127,10 @@ object BspDependencyModulesTool {
       val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
       val hash = digest.iterator.map(b => f"${b & 0xff}%02x").mkString
       Some(Key(
-        projectRoot   = projectRoot,
-        targets       = targets.sorted,
+        projectRoot = projectRoot,
+        targets = targets.sorted,
         buildSbtMtime = mtime,
-        buildSbtHash  = hash
+        buildSbtHash = hash
       ))
     }
   }.handleError(_ => Task.pure(None))

@@ -9,7 +9,8 @@ import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolR
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
 case class RegisterTriggerInput(workflowId: String,
-                                trigger: WorkflowTrigger) extends ToolInput derives RW
+                                trigger: WorkflowTrigger)
+  extends ToolInput derives RW
 
 /**
  * Append a [[WorkflowTrigger]] to a persisted template's
@@ -21,9 +22,9 @@ case class RegisterTriggerInput(workflowId: String,
  * baseline four.
  */
 final class RegisterTriggerTool extends Tool with WorkflowToolSupport {
-  type Input  = RegisterTriggerInput
+  type Input = RegisterTriggerInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RegisterTriggerInput]]
+  val inputRW = summon[RW[RegisterTriggerInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("register_trigger")
   val description =
@@ -43,22 +44,23 @@ final class RegisterTriggerTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "trigger", "schedule", "register")
 
-  override def executeResult(input: RegisterTriggerInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
-    val id = Id[WorkflowTemplate](input.workflowId)
-    host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
-      case Some(prior) =>
-        authorizeAccess(host, prior, ctx.chain).flatMap {
-          case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
-          case Right(_) =>
-            val updated = prior.copy(
-              triggers = prior.triggers :+ input.trigger,
-              modified = Timestamp()
-            )
-            host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map { _ =>
-              s"Trigger '${input.trigger.kind}' registered on workflow '${prior.name}'."
-            }
-        }
+  override def executeResult(input: RegisterTriggerInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+    withHostResult(ctx) { host =>
+      val id = Id[WorkflowTemplate](input.workflowId)
+      host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
+        case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+        case Some(prior) =>
+          authorizeAccess(host, prior, ctx.chain).flatMap {
+            case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
+            case Right(_) =>
+              val updated = prior.copy(
+                triggers = prior.triggers :+ input.trigger,
+                modified = Timestamp()
+              )
+              host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map { _ =>
+                s"Trigger '${input.trigger.kind}' registered on workflow '${prior.name}'."
+              }
+          }
+      }
     }
-  }
 }

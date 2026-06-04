@@ -68,10 +68,10 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val convId = Conversation.id(s"pin-${rapid.Unique()}")
       val ctx = makeContext(convId)
       for {
-        m       <- seed("k.color", "User prefers blue.")
-        _        = m.pinned shouldBe false
-        events  <- PinMemoryTool.execute(PinMemoryInput(key = "k.color"), ctx, Event.id()).toList
-        after   <- reload(m._id)
+        m <- seed("k.color", "User prefers blue.")
+        _ = m.pinned shouldBe false
+        events <- PinMemoryTool.execute(PinMemoryInput(key = "k.color"), ctx, Event.id()).toList
+        after <- reload(m._id)
       } yield {
         after.map(_.pinned) shouldBe Some(true)
         events should have size 1
@@ -83,12 +83,12 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val convId = Conversation.id(s"pin-noop-${rapid.Unique()}")
       val ctx = makeContext(convId)
       for {
-        m       <- seed("k.already-pinned", "Already pinned.", pinned = true)
-        events  <- PinMemoryTool.execute(PinMemoryInput(key = "k.already-pinned"), ctx, Event.id()).toList
-        after   <- reload(m._id)
+        m <- seed("k.already-pinned", "Already pinned.", pinned = true)
+        events <- PinMemoryTool.execute(PinMemoryInput(key = "k.already-pinned"), ctx, Event.id()).toList
+        after <- reload(m._id)
       } yield {
         after.map(_.pinned) shouldBe Some(true)
-        events should have size 1  // emits a "nothing to do" message
+        events should have size 1 // emits a "nothing to do" message
       }
     }
 
@@ -118,10 +118,10 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val convId = Conversation.id(s"unpin-${rapid.Unique()}")
       val ctx = makeContext(convId)
       for {
-        m       <- seed("k.always-blue", "Always reply with blue.", pinned = true)
-        _        = m.pinned shouldBe true
-        events  <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.always-blue"), ctx, Event.id()).toList
-        after   <- reload(m._id)
+        m <- seed("k.always-blue", "Always reply with blue.", pinned = true)
+        _ = m.pinned shouldBe true
+        events <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.always-blue"), ctx, Event.id()).toList
+        after <- reload(m._id)
       } yield {
         after.map(_.pinned) shouldBe Some(false)
         events should have size 1
@@ -133,9 +133,9 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val convId = Conversation.id(s"unpin-noop-${rapid.Unique()}")
       val ctx = makeContext(convId)
       for {
-        m       <- seed("k.unpinned", "Not pinned.")
-        events  <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.unpinned"), ctx, Event.id()).toList
-        after   <- reload(m._id)
+        m <- seed("k.unpinned", "Not pinned.")
+        events <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.unpinned"), ctx, Event.id()).toList
+        after <- reload(m._id)
       } yield {
         after.map(_.pinned) shouldBe Some(false)
         events should have size 1
@@ -149,14 +149,14 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val convId = Conversation.id(s"roundtrip-${rapid.Unique()}")
       val ctx = makeContext(convId)
       for {
-        m         <- seed("k.cycle", "Round-trip me.")
-        afterSeed  = m.pinned
-        _         <- PinMemoryTool.execute(PinMemoryInput(key = "k.cycle"), ctx, Event.id()).toList
-        afterPin  <- reload(m._id).map(_.exists(_.pinned))
-        _         <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.cycle"), ctx, Event.id()).toList
+        m <- seed("k.cycle", "Round-trip me.")
+        afterSeed = m.pinned
+        _ <- PinMemoryTool.execute(PinMemoryInput(key = "k.cycle"), ctx, Event.id()).toList
+        afterPin <- reload(m._id).map(_.exists(_.pinned))
+        _ <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.cycle"), ctx, Event.id()).toList
         afterUnpin <- reload(m._id).map(_.exists(_.pinned))
         // Record itself is intact
-        present   <- reload(m._id).map(_.isDefined)
+        present <- reload(m._id).map(_.isDefined)
       } yield {
         afterSeed shouldBe false
         afterPin shouldBe true

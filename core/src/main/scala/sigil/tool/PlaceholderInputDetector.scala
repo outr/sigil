@@ -63,12 +63,11 @@ object PlaceholderInputDetector {
    * reason when `value` is exactly one of the spec's type-name tokens
    * AND `fieldName` is not in the user-supplied-content whitelist.
    */
-  def detectSchemaTypeNameLeak(fieldName: String, value: String): Option[String] = {
+  def detectSchemaTypeNameLeak(fieldName: String, value: String): Option[String] =
     if (UserSuppliedContentFieldNames.contains(fieldName)) None
     else if (JsonSchemaTypeNames.contains(value))
       Some(s"value '$value' is a JSON Schema type name, not a real $fieldName value")
     else None
-  }
 
   /**
    * Single-field entry point. Composes all detection passes (today

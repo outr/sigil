@@ -63,17 +63,15 @@ class BspDependencyModulesCacheSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val root = newProjectRoot()
       for {
         before <- BspDependencyModulesTool.cacheKeyFor(root.toString, Nil)
-        _      = Files.writeString(
-                   root.resolve("build.sbt"),
-                   "scalaVersion := \"3.8.3\"\nlibraryDependencies += \"org.foo\" %% \"bar\" % \"1.0\"\n",
-                   StandardOpenOption.TRUNCATE_EXISTING
-                 )
-        after  <- BspDependencyModulesTool.cacheKeyFor(root.toString, Nil)
-      } yield {
-        before.get.buildSbtHash should not equal after.get.buildSbtHash
-        // mtime *might* be the same (sub-millisecond), but the hash
-        // is the load-bearing invalidation signal.
-      }
+        _ = Files.writeString(
+          root.resolve("build.sbt"),
+          "scalaVersion := \"3.8.3\"\nlibraryDependencies += \"org.foo\" %% \"bar\" % \"1.0\"\n",
+          StandardOpenOption.TRUNCATE_EXISTING
+        )
+        after <- BspDependencyModulesTool.cacheKeyFor(root.toString, Nil)
+      } yield before.get.buildSbtHash should not equal after.get.buildSbtHash
+      // mtime *might* be the same (sub-millisecond), but the hash
+      // is the load-bearing invalidation signal.
     }
   }
 
@@ -82,10 +80,10 @@ class BspDependencyModulesCacheSpec extends AsyncWordSpec with AsyncTaskSpec wit
     "round-trip a result through put / get on the same key" in rapid.Task {
       BspDependencyModulesTool.invalidate()
       val key = BspDependencyModulesTool.Key(
-        projectRoot   = "/x/y",
-        targets       = Nil,
+        projectRoot = "/x/y",
+        targets = Nil,
         buildSbtMtime = 0L,
-        buildSbtHash  = "deadbeef"
+        buildSbtHash = "deadbeef"
       )
       val result = BspDependencyModulesResult("/x/y", Nil)
       BspDependencyModulesTool.cache.put(key, result)

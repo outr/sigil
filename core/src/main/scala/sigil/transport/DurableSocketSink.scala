@@ -30,5 +30,5 @@ final class DurableSocketSink[Id: RW, Info: RW](
 
   override def push(signal: Signal): Task[Unit] = session.protocol.push(signal).unit
 
-  override def close: Task[Unit] = Task { session.protocol.close() }
+  override def close: Task[Unit] = Task(session.protocol.close())
 }

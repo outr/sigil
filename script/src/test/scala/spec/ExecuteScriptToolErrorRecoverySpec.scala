@@ -39,8 +39,10 @@ import sigil.tool.{JsonInput, JsonSchemaToDefinition, ToolName}
 class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestScriptSigil.initFor(getClass.getSimpleName)
 
-  /** Executor whose `execute` returns a Task that fails — the
-    * standard "script threw a runtime exception" case. */
+  /**
+   * Executor whose `execute` returns a Task that fails — the
+   * standard "script threw a runtime exception" case.
+   */
   private object FailingExecutor extends ScriptExecutor {
     override def execute(code: String, bindings: Map[String, Any]): Task[String] =
       Task.error(new RuntimeException("synthetic script failure"))
@@ -50,12 +52,14 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
     override def advertisedSurface: Option[String] = None
   }
 
-  /** Executor whose `execute` THROWS synchronously before returning a
-    * Task. Covers the case where the executor's argument-binding /
-    * classloader-resolution path fails before reaching deferred Task
-    * machinery. Pre-fix, the throw escaped `Stream.force` and the
-    * orchestrator delivered `(no result recorded)`; post-fix the
-    * outer `handleError` catches it. */
+  /**
+   * Executor whose `execute` THROWS synchronously before returning a
+   * Task. Covers the case where the executor's argument-binding /
+   * classloader-resolution path fails before reaching deferred Task
+   * machinery. Pre-fix, the throw escaped `Stream.force` and the
+   * orchestrator delivered `(no result recorded)`; post-fix the
+   * outer `handleError` catches it.
+   */
   private object SyncThrowExecutor extends ScriptExecutor {
     override def execute(code: String, bindings: Map[String, Any]): Task[String] =
       throw new RuntimeException("synthetic synchronous throw before Task construction")
@@ -65,8 +69,10 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
     override def advertisedSurface: Option[String] = None
   }
 
-  /** Executor whose `execute` returns success — sanity check that the
-    * happy path still produces exactly one ScriptResult with output. */
+  /**
+   * Executor whose `execute` returns success — sanity check that the
+   * happy path still produces exactly one ScriptResult with output.
+   */
   private object SucceedingExecutor extends ScriptExecutor {
     override def execute(code: String, bindings: Map[String, Any]): Task[String] =
       Task.pure(s"ran:$code")
@@ -76,13 +82,16 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
     override def advertisedSurface: Option[String] = None
   }
 
-  /** Pull the `ScriptToolOutput` off the settling Success ToolDelta. */
+  /**
+   * Pull the `ScriptToolOutput` off the settling Success ToolDelta.
+   */
   private def scriptOutput(signals: List[Signal]): ScriptToolOutput =
     signals.collectFirst {
       case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>
         d.output.collect { case o: ScriptToolOutput => o }
     }.flatten
-      .getOrElse(fail(s"expected a settling Success ToolDelta carrying ScriptToolOutput; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
+      .getOrElse(fail(
+        s"expected a settling Success ToolDelta carrying ScriptToolOutput; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
 
   private def ctx(suffix: String): TurnContext = {
     val convId = Conversation.id(s"recover-$suffix-${rapid.Unique()}")
@@ -105,8 +114,8 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
       tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("task-failure"), Event.id()).toList.map { signals =>
         val out = scriptOutput(signals)
         out.error shouldBe defined
-        out.error.get should include ("RuntimeException")
-        out.error.get should include ("synthetic script failure")
+        out.error.get should include("RuntimeException")
+        out.error.get should include("synthetic script failure")
         out.output shouldBe empty
       }
     }
@@ -121,8 +130,8 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
       tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("sync-throw"), Event.id()).toList.map { signals =>
         val out = scriptOutput(signals)
         out.error shouldBe defined
-        out.error.get should include ("RuntimeException")
-        out.error.get should include ("synthetic synchronous throw")
+        out.error.get should include("RuntimeException")
+        out.error.get should include("synthetic synchronous throw")
         out.output shouldBe empty
       }
     }
@@ -144,7 +153,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
       val tool = new ExecuteScriptTool(FailingExecutor)
       tool.execute(ScriptInput(code = "x", summary = "test: stack-trace path"), ctx("stack-trace"), Event.id()).toList.map { signals =>
         val out = scriptOutput(signals)
-        out.error.get should include ("at ")
+        out.error.get should include("at ")
       }
     }
   }
@@ -162,8 +171,8 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
         val out = scriptOutput(signals)
         withClue(s"got error=${out.error}, output=${out.output}: ") {
           out.error shouldBe defined
-          out.error.get should include ("Exception")
-          out.error.get should include ("at ")
+          out.error.get should include("Exception")
+          out.error.get should include("at ")
           out.output shouldBe empty
         }
       }

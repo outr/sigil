@@ -15,7 +15,9 @@ final case class UpdateUserInfoInput(@description("First name of the user (optio
                                      @description("City of the user (optional)") city: Option[String] = None)
   extends ToolInput derives RW
 
-/** `update_user_info` — patch any subset of name / address fields. */
+/**
+ * `update_user_info` — patch any subset of name / address fields.
+ */
 final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = UpdateUserInfoInput
   type Output = TextToolOutput
@@ -25,7 +27,6 @@ final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment]) exten
 
   val name: ToolName = ToolName("update_user_info")
   val description: String = "Update the user information."
-
 
   override def executeResult(input: UpdateUserInfoInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val updated = state.updateAndGet { env =>

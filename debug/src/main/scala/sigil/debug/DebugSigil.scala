@@ -33,8 +33,10 @@ trait DebugSigil extends Sigil {
 
   def debugToolsEnabled: Boolean = true
 
-  /** Idle-sweep cadence — sessions whose idle time exceeds their
-    * config's `idleTimeoutMs` are torn down. */
+  /**
+   * Idle-sweep cadence — sessions whose idle time exceeds their
+   * config's `idleTimeoutMs` are torn down.
+   */
   def debugIdleSweepInterval: FiniteDuration = 1.minute
 
   final lazy val dapManager: DapManager =

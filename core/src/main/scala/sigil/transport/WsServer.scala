@@ -115,9 +115,11 @@ final class WsServer[Info: RW](sigil: Sigil,
                                  reconnectStrategy = ReconnectStrategy.none
                                )) {
 
-  /** The DurableSocket server. Public so apps can poke at sessions /
-    * channels for advanced scenarios (custom resume flows, channel
-    * introspection). */
+  /**
+   * The DurableSocket server. Public so apps can poke at sessions /
+   * channels for advanced scenarios (custom resume flows, channel
+   * introspection).
+   */
   val durableServer: DurableSocketServer[Id[Conversation], Signal, Info] =
     new DurableSocketServer[Id[Conversation], Signal, Info](
       config = config,
@@ -125,9 +127,11 @@ final class WsServer[Info: RW](sigil: Sigil,
       resolveChannel = resolveChannel
     )
 
-  /** The HTTP server. Public so apps can mount additional handlers
-    * (`/storage`, `/health`, custom REST endpoints) on the same
-    * listener without standing up a second one. */
+  /**
+   * The HTTP server. Public so apps can mount additional handlers
+   * (`/storage`, `/health`, custom REST endpoints) on the same
+   * listener without standing up a second one.
+   */
   val httpServer: MutableHttpServer = {
     val s = new MutableHttpServer
     val listenerPort: Option[Int] = if (port <= 0) None else Some(port)
@@ -142,16 +146,17 @@ final class WsServer[Info: RW](sigil: Sigil,
       // sever the session entirely — the app can still rebind via
       // the returned handle once it's resolved identity downstream.
       val resolveTask: Task[ParticipantId] = resolveViewer match {
-        case None      => Task.pure(viewer)
-        case Some(fn)  => fn(session.clientId, session.info).handleError { t =>
-          Task {
-            scribe.warn(
-              s"WsServer: resolveViewer failed for clientId=${session.clientId}; " +
-                s"falling back to default viewer=${viewer.value}: ${t.getMessage}", t
-            )
-            viewer
+        case None => Task.pure(viewer)
+        case Some(fn) => fn(session.clientId, session.info).handleError { t =>
+            Task {
+              scribe.warn(
+                s"WsServer: resolveViewer failed for clientId=${session.clientId}; " +
+                  s"falling back to default viewer=${viewer.value}: ${t.getMessage}",
+                t
+              )
+              viewer
+            }
           }
-        }
       }
       resolveTask.flatMap { resolved =>
         SessionBridge.attach(
@@ -166,18 +171,25 @@ final class WsServer[Info: RW](sigil: Sigil,
     s
   }
 
-  /** The actual bound port. After [[start]] this returns the
-    * assigned port (useful when `port = 0` requested an ephemeral
-    * one). */
+  /**
+   * The actual bound port. After [[start]] this returns the
+   * assigned port (useful when `port = 0` requested an ephemeral
+   * one).
+   */
   def serverPort: Int = httpServer.config.listeners().head.port.getOrElse(0)
 
-  /** Boot the HTTP server. Idempotent — repeat calls after the
-    * server is already up are no-ops. */
+  /**
+   * Boot the HTTP server. Idempotent — repeat calls after the
+   * server is already up are no-ops.
+   */
   def start(): Task[Unit] = httpServer.start().map(_ => ())
 
-  /** Stop the HTTP server. Best-effort — failures are swallowed
-    * since the typical caller is a `finally`-shaped shutdown path. */
+  /**
+   * Stop the HTTP server. Best-effort — failures are swallowed
+   * since the typical caller is a `finally`-shaped shutdown path.
+   */
   def stop(): Task[Unit] = Task {
-    try httpServer.stop().sync() catch { case _: Throwable => () }
+    try httpServer.stop().sync()
+    catch { case _: Throwable => () }
   }
 }

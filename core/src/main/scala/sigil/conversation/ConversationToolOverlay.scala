@@ -39,10 +39,12 @@ object ConversationToolOverlay extends RecordDocumentModel[ConversationToolOverl
   implicit override def rw: RW[ConversationToolOverlay] = RW.gen
 
   val conversationId: I[Id[Conversation]] = field.index(_.conversationId)
-  val source: I[String]                    = field.index(_.source)
+  val source: I[String] = field.index(_.source)
 
-  /** Deterministic id so a second install with the same `(conversationId,
-    * source)` upserts in place. */
+  /**
+   * Deterministic id so a second install with the same `(conversationId,
+   * source)` upserts in place.
+   */
   def idFor(conversationId: Id[Conversation], source: String): Id[ConversationToolOverlay] =
     Id(s"${conversationId.value}:$source")
 

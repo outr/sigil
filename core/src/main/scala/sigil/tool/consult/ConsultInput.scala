@@ -26,4 +26,5 @@ import sigil.tool.ToolInput
  */
 case class ConsultInput(modelId: Id[Model],
                         systemPrompt: String,
-                        userPrompt: String) extends ToolInput derives RW
+                        userPrompt: String)
+  extends ToolInput derives RW

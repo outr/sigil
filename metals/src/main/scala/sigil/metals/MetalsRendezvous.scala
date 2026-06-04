@@ -27,15 +27,19 @@ import java.nio.file.{Files, Path}
  */
 object MetalsRendezvous {
 
-  /** Resolved MCP endpoint Metals exposes — either an explicit URL or
-    * a localhost port the manager renders into the standard
-    * `http://127.0.0.1:<port>/mcp` form. */
+  /**
+   * Resolved MCP endpoint Metals exposes — either an explicit URL or
+   * a localhost port the manager renders into the standard
+   * `http://127.0.0.1:<port>/mcp` form.
+   */
   final case class Endpoint(url: String)
 
-  /** Read + parse `.metals/mcp.json` under `workspace`. Returns
-    * `None` for any of: file missing, malformed JSON, unrecognized
-    * shape. Errors are silent here — the watcher's retry loop is
-    * the right place to log a stuck startup. */
+  /**
+   * Read + parse `.metals/mcp.json` under `workspace`. Returns
+   * `None` for any of: file missing, malformed JSON, unrecognized
+   * shape. Errors are silent here — the watcher's retry loop is
+   * the right place to log a stuck startup.
+   */
   def read(workspace: Path): Option[Endpoint] = {
     val file = workspace.resolve(".metals").resolve("mcp.json")
     if (!Files.exists(file)) None

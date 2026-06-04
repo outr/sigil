@@ -1,6 +1,9 @@
 package spec
 
-import org.eclipse.lsp4j.{Diagnostic, DiagnosticSeverity, DiagnosticRegistrationOptions, Position, PublishDiagnosticsParams, Range, ServerCapabilities, WorkspaceEdit}
+import org.eclipse.lsp4j.{
+  Diagnostic, DiagnosticSeverity, DiagnosticRegistrationOptions, Position, PublishDiagnosticsParams, Range, ServerCapabilities,
+  WorkspaceEdit
+}
 import org.eclipse.lsp4j.jsonrpc.messages.{Either => LspEither}
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
@@ -30,20 +33,22 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class LspPullDiagnosticsCapabilitySpec extends AnyWordSpec with Matchers {
 
-  /** Construct an [[LspSession]] without spinning up a real LSP4J
-    * launcher. The session's mutable surface (push-diagnostics
-    * cache via `client.publishDiagnostics`, capability check via
-    * `serverCapabilities`) is what the tool's pull/push routing
-    * reads — those don't need a live server proxy. */
+  /**
+   * Construct an [[LspSession]] without spinning up a real LSP4J
+   * launcher. The session's mutable surface (push-diagnostics
+   * cache via `client.publishDiagnostics`, capability check via
+   * `serverCapabilities`) is what the tool's pull/push routing
+   * reads — those don't need a live server proxy.
+   */
   private def synthSession(caps: ServerCapabilities): (LspSession, LspRecordingClient) = {
     val client = new LspRecordingClient(PermissiveWorkspaceEditApplier)
     val session = new LspSession(
-      config              = LspServerConfig(languageId = "scala", command = "fake", args = Nil),
-      projectRoot         = "/tmp/fake-project",
-      process             = null.asInstanceOf[Process],
-      server              = null.asInstanceOf[org.eclipse.lsp4j.services.LanguageServer],
-      client              = client,
-      serverCapabilities  = caps
+      config = LspServerConfig(languageId = "scala", command = "fake", args = Nil),
+      projectRoot = "/tmp/fake-project",
+      process = null.asInstanceOf[Process],
+      server = null.asInstanceOf[org.eclipse.lsp4j.services.LanguageServer],
+      client = client,
+      serverCapabilities = caps
     )
     (session, client)
   }
@@ -96,7 +101,7 @@ class LspPullDiagnosticsCapabilitySpec extends AnyWordSpec with Matchers {
     "route to the push-cache (NOT pull) when server doesn't advertise diagnosticProvider" in {
       val (session, client) = synthSession(new ServerCapabilities())
       val uri = "file:///tmp/fake-project/Main.scala"
-      val d  = synthDiagnostic(0, 0, "broken", DiagnosticSeverity.Error)
+      val d = synthDiagnostic(0, 0, "broken", DiagnosticSeverity.Error)
       client.publishDiagnostics(new PublishDiagnosticsParams(uri, java.util.List.of(d)))
 
       // The exact gate the tool runs.
@@ -108,7 +113,7 @@ class LspPullDiagnosticsCapabilitySpec extends AnyWordSpec with Matchers {
       // the server pushed, including a non-empty list.
       val pushed = session.diagnosticsFor(uri)
       pushed should not be empty
-      pushed.map(d => d.getMessage.getLeft) should contain ("broken")
+      pushed.map(d => d.getMessage.getLeft) should contain("broken")
     }
 
     "report the gate as `true` when the server advertises support — tool would route to pull" in {

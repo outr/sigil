@@ -53,7 +53,7 @@ class ToolListNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         // Set.empty by default — fail-closed posture). The point
         // here is that handleNotice routed the reply correctly: a
         // snapshot LANDED on the requester's signal stream.
-        snap.tools shouldBe a [List[?]]
+        snap.tools shouldBe a[List[?]]
       }
     }
 
@@ -71,14 +71,14 @@ class ToolListNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       } yield {
         stop()
         val snap = snapshot(recorded).getOrElse(fail("no ToolListSnapshot received"))
-        snap.tools.map(_.kind).distinct shouldBe Nil  // empty list since TestUser has no spaces
+        snap.tools.map(_.kind).distinct shouldBe Nil // empty list since TestUser has no spaces
       }
     }
   }
 
   "Sigil.listTools (helper invoked by the Notice arm)" should {
 
-    "honor the spaces filter — empty `spaces` ∩ authorized = nothing" in {
+    "honor the spaces filter — empty `spaces` ∩ authorized = nothing" in
       // TestSigil.accessibleSpaces returns Set.empty by default. Even
       // requesting GlobalSpace explicitly produces an empty result —
       // GlobalSpace isn't part of the viewer's authorized set unless
@@ -87,7 +87,6 @@ class ToolListNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       TestSigil.listTools(TestUser, spaces = Some(Set(GlobalSpace))).map { result =>
         result shouldBe empty
       }
-    }
   }
 
   "tear down" should {

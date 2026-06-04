@@ -33,4 +33,5 @@ case class JobStepInput(id: String,
                         tools: List[String] = Nil,
                         continueOnError: Boolean = false,
                         retryCount: Int = 0,
-                        retryDelayMs: Long = 5000L) extends WorkflowStepInput derives RW
+                        retryDelayMs: Long = 5000L)
+  extends WorkflowStepInput derives RW

@@ -9,9 +9,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{ConversationView, ContextFrame, TurnInput}
 import sigil.db.Model
 import sigil.event.Event
-import sigil.provider.{
-  ConversationMode, ConversationRequest, GenerationSettings, Instructions, Provider, ProviderRequest
-}
+import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions, Provider, ProviderRequest}
 import sigil.provider.openrouter.{OpenRouter, OpenRouterProvider, OpenRouterProviderRouting}
 import sigil.tool.core.{FindCapabilityTool, RespondTool}
 import spice.http.content.StringContent
@@ -66,9 +64,9 @@ class OpenRouterWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     // OpenRouter slugs are `<vendor>/<model>` ids (e.g. `openai/gpt-5.2`).
     // The cache stores them under that exact form; the provider sends
     // the id verbatim as the wire `model` field.
-    val modelId  = Model.id("openai", "gpt-5.2")
+    val modelId = Model.id("openai", "gpt-5.2")
 
-    "emit per-function `strict: true` on the wire (honorsStrict = true)" in {
+    "emit per-function `strict: true` on the wire (honorsStrict = true)" in
       bodyOf(provider, modelId, forced = false).map { body =>
         val tools = body("tools").asVector
         tools should not be empty
@@ -81,18 +79,16 @@ class OpenRouterWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         }
         succeed
       }
-    }
 
-    "keep `tool_choice: \"required\"` end-to-end for ToolChoice.Required" in {
+    "keep `tool_choice: \"required\"` end-to-end for ToolChoice.Required" in
       bodyOf(provider, modelId, forced = false).map { body =>
         val bodyObj = body.asObj.value
         // No response_format substitution — OpenRouter honors tool_choice natively.
         bodyObj.contains("response_format") shouldBe false
         body("tool_choice").asString shouldBe "required"
       }
-    }
 
-    "emit tool_choice: required with the tool roster filtered to the respond family (forced response synthesis)" in {
+    "emit tool_choice: required with the tool roster filtered to the respond family (forced response synthesis)" in
       bodyOf(provider, modelId, forced = true).map { body =>
         val bodyObj = body.asObj.value
         bodyObj.contains("response_format") shouldBe false
@@ -105,19 +101,22 @@ class OpenRouterWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
           .map(_.asObj.value("function").asObj.value("name").asString)
         // Every offered tool is in the atomic-content family.
         val respondFamily = Set(
-          "respond", "respond_options", "respond_field", "respond_failure",
-          "respond_card", "respond_cards", "no_response"
+          "respond",
+          "respond_options",
+          "respond_field",
+          "respond_failure",
+          "respond_card",
+          "respond_cards",
+          "no_response"
         )
-        toolNames.foreach(n => respondFamily should contain (n))
+        toolNames.foreach(n => respondFamily should contain(n))
         succeed
       }
-    }
 
-    "send the OpenRouter-canonical model id verbatim (no provider-prefix stripping when not present)" in {
+    "send the OpenRouter-canonical model id verbatim (no provider-prefix stripping when not present)" in
       bodyOf(provider, modelId, forced = false).map { body =>
         body("model").asString shouldBe "openai/gpt-5.2"
       }
-    }
 
     "strip the `openrouter/` namespace prefix when the model id carries it explicitly" in {
       val prefixed = Model.id(OpenRouter.Provider, "openai/gpt-5.2")
@@ -128,27 +127,24 @@ class OpenRouterWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       }
     }
 
-    "POST to /api/v1/chat/completions" in {
+    "POST to /api/v1/chat/completions" in
       httpRequestOf(provider, modelId).map { req =>
-        req.url.toString should endWith ("/api/v1/chat/completions")
+        req.url.toString should endWith("/api/v1/chat/completions")
       }
-    }
 
-    "carry the Authorization: Bearer header" in {
+    "carry the Authorization: Bearer header" in
       httpRequestOf(provider, modelId).map { req =>
         val auth = req.headers.first(spice.http.StringHeaderKey("Authorization")).getOrElse("")
         auth shouldBe "Bearer test-key"
       }
-    }
 
-    "omit attribution headers by default" in {
+    "omit attribution headers by default" in
       httpRequestOf(provider, modelId).map { req =>
         req.headers.first(spice.http.StringHeaderKey("HTTP-Referer")) shouldBe None
         req.headers.first(spice.http.StringHeaderKey("X-Title")) shouldBe None
       }
-    }
 
-    "emit the geographic-restriction `provider.ignore` deny-list by default" in {
+    "emit the geographic-restriction `provider.ignore` deny-list by default" in
       bodyOf(provider, modelId, forced = false).map { body =>
         // The default routing (`OpenRouterProviderRouting.noChineseHosting`)
         // populates `ignore` with every slug in `OpenRouter.ChineseHostedSlugs`.
@@ -161,7 +157,6 @@ class OpenRouterWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         routing.contains("only") shouldBe false
         routing.contains("order") shouldBe false
       }
-    }
   }
 
   "OpenRouterProvider with attribution headers" should {
@@ -174,12 +169,11 @@ class OpenRouterWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     ).map(p => p: Provider)
     val modelId = Model.id("openai", "gpt-5.2")
 
-    "emit HTTP-Referer and X-Title when configured" in {
+    "emit HTTP-Referer and X-Title when configured" in
       httpRequestOf(provider, modelId).map { req =>
         req.headers.first(spice.http.StringHeaderKey("HTTP-Referer")) shouldBe Some("https://example.org/sigil")
         req.headers.first(spice.http.StringHeaderKey("X-Title")) shouldBe Some("Sigil Test Suite")
       }
-    }
   }
 
   "OpenRouterProvider with explicit routing override" should {

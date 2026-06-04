@@ -31,7 +31,8 @@ import sigil.conversation.MemoryType.given
  *   - `limit`       — hard cap on the returned list. Default 100.
  */
 case class RequestMemoryList(query: Option[String] = None,
-                              memoryType: Option[MemoryType] = None,
-                              pinned: Option[Boolean] = None,
-                              hasLocation: Boolean = false,
-                              limit: Int = 100) extends Notice derives RW
+                             memoryType: Option[MemoryType] = None,
+                             pinned: Option[Boolean] = None,
+                             hasLocation: Boolean = false,
+                             limit: Int = 100)
+  extends Notice derives RW

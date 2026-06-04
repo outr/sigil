@@ -23,10 +23,10 @@ import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
  * [[RecallMemoryTool]] (search) for the full memory CRUD surface.
  */
 case object ForgetMemoryTool extends Tool {
-  type Input  = ForgetMemoryInput
+  type Input = ForgetMemoryInput
   type Output = TextToolOutput
   val inputRW: RW[ForgetMemoryInput] = summon[RW[ForgetMemoryInput]]
-  val outputRW: RW[TextToolOutput]   = summon[RW[TextToolOutput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("forget_memory")
   val description: String =
@@ -35,9 +35,11 @@ case object ForgetMemoryTool extends Tool {
       |memory in the caller's default space. Use sparingly — most "I changed my mind" updates
       |are better expressed by saving a new memory under the same key (versioned upsert).""".stripMargin
   override val examples: List[ToolExample] = List(
-    ToolExample("Reject a single auto-extracted memory",
+    ToolExample(
+      "Reject a single auto-extracted memory",
       ForgetMemoryInput(memoryId = Some(lightdb.id.Id("mem-12345")))),
-    ToolExample("Hard-delete every version of a keyed memory",
+    ToolExample(
+      "Hard-delete every version of a keyed memory",
       ForgetMemoryInput(key = Some("user.units")))
   )
   override val keywords: Set[String] = Set("memory", "forget", "delete", "remove")
@@ -49,7 +51,7 @@ case object ForgetMemoryTool extends Tool {
 
       case (Some(id), None) =>
         context.sigil.rejectMemory(id).map {
-          case None    => s"[forget_memory] no memory with id ${id.value}."
+          case None => s"[forget_memory] no memory with id ${id.value}."
           case Some(_) => s"[forget_memory] rejected memory ${id.value}."
         }
 

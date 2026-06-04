@@ -36,4 +36,5 @@ case class HealAction(strategyName: String,
                       precondition: String,
                       synthesisedEventId: Id[Event],
                       synthesisedContent: String,
-                      caveats: List[String] = Nil) derives RW
+                      caveats: List[String] = Nil)
+  derives RW

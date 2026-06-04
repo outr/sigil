@@ -35,7 +35,7 @@ class DelegationBridgeSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   // The brief fires the worker; a silent provider (no tool call) lets it
   // rest cleanly (chat-fidelity) instead of failing for lack of a wired
   // provider — keeps the structural assertions free of background noise.
-  private final class SilentProvider extends Provider {
+  final private class SilentProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestWorkflowSigil
@@ -54,39 +54,41 @@ class DelegationBridgeSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val supervisor = DefaultAgentParticipant(id = supervisorId, modelId = modelId)
       for {
         parent <- TestWorkflowSigil.newConversation(
-          createdBy = supervisorId, label = "bridge-parent", participants = List(supervisor)
+          createdBy = supervisorId,
+          label = "bridge-parent",
+          participants = List(supervisor)
         )
         ctx = ToolContext(
           TurnContext(
-            sigil        = TestWorkflowSigil,
-            chain        = List(supervisorId),
+            sigil = TestWorkflowSigil,
+            chain = List(supervisorId),
             conversation = parent,
-            turnInput    = TurnInput(ConversationView(conversationId = parent._id)),
-            model        = TestWorkflowSigil.cache.find(modelId).get
+            turnInput = TurnInput(ConversationView(conversationId = parent._id)),
+            model = TestWorkflowSigil.cache.find(modelId).get
           ),
           Event.id(),
           ToolName("delegate_task")
         )
         result <- DelegateTaskTool.executeResult(
           DelegateTaskInput(
-            role    = "calculator",
+            role = "calculator",
             roleDescription = Some("Compute simple arithmetic."),
-            brief   = "Compute 2 + 2 and report the result.",
+            brief = "Compute 2 + 2 and report the result.",
             modelId = Some(modelId.value)
           ),
           ctx
         )
         output = result match {
           case ToolResult.Success(o: DelegateTaskOutput) => o
-          case other                                     => fail(s"expected DelegateTaskOutput success, got $other")
+          case other => fail(s"expected DelegateTaskOutput success, got $other")
         }
         workerConvId = Conversation.id(output.workerConvId)
         workerConv <- TestWorkflowSigil.withDB(_.conversations.transaction(_.get(workerConvId))).map(_.get)
-        proj       <- TestWorkflowSigil.projectionFor(supervisorId, workerConvId)
-        workerPid   = workerConv.participants.map(_.id).collectFirst { case w: WorkerParticipantId => w }
+        proj <- TestWorkflowSigil.projectionFor(supervisorId, workerConvId)
+        workerPid = workerConv.participants.map(_.id).collectFirst { case w: WorkerParticipantId => w }
           .getOrElse(fail("no worker participant in the sub-conversation"))
         workerProj <- TestWorkflowSigil.projectionFor(workerPid, workerConvId)
-        events     <- TestWorkflowSigil.withDB(_.eventsTransaction(workerConvId)(_.list))
+        events <- TestWorkflowSigil.withDB(_.eventsTransaction(workerConvId)(_.list))
           .map(_.filter(_.conversationId == workerConvId))
         // The brief fires the worker on a background fiber; the silent
         // provider lets it rest immediately. Let that settle before the
@@ -95,7 +97,7 @@ class DelegationBridgeSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       } yield {
         // Two real agents in the sub-conversation, linked to the parent.
         workerConv.parentConversationId shouldBe Some(parent._id)
-        workerConv.participants.map(_.id) should contain (supervisorId)
+        workerConv.participants.map(_.id) should contain(supervisorId)
         workerConv.participants.exists(_.id.isInstanceOf[WorkerParticipantId]) shouldBe true
         // Supervisor bridge skill active on the supervisor's projection there.
         proj.activeSkills.get(SkillSource.Supervisor).map(_.name) shouldBe Some("worker_supervisor")

@@ -42,18 +42,21 @@ case class CloudflareProvider(apiToken: String,
                               accountId: String,
                               sigilRef: Sigil,
                               baseUrl: URL = url"https://api.cloudflare.com",
-                              /** Per-read idle timeout for the SSE stream. Fires
-                                * only when no bytes arrive for the duration —
-                                * slow-but-working streams keep going. */
-                              tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
+                              /**
+                               * Per-read idle timeout for the SSE stream. Fires
+                               * only when no bytes arrive for the duration —
+                               * slow-but-working streams keep going.
+                               */
+                              tokenIdleTimeout: FiniteDuration = 120.seconds)
+  extends Provider {
   override def `type`: ProviderType = ProviderType.Cloudflare
   override val providerKey: String = Cloudflare.Provider
   override protected def sigil: Sigil = sigilRef
 
   private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = Cloudflare.Provider,
-    providerName      = "Cloudflare",
-    path              = s"/client/v4/accounts/$accountId/ai/v1/chat/completions",
+    providerName = "Cloudflare",
+    path = s"/client/v4/accounts/$accountId/ai/v1/chat/completions",
     // Cloudflare's OpenAI-compat layer documents structured outputs
     // (`response_format`, strict JSON schema). Strict shaping engages
     // by default; live tests will tell us if it's honored end-to-end.
@@ -63,12 +66,12 @@ case class CloudflareProvider(apiToken: String,
     // Cloudflare hosts Kimi on the upstream-supported stack, so we
     // don't expect DeepInfra's bug #165 tool-call regression on `Off`
     // here — but live coverage will verify.
-    reasoningPolicy   = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
+    reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
     // Kimi-K2.6 on Cloudflare rejects `reasoning_effort:"none"` (AiError →
     // empty completion); disable thinking via the vLLM `enable_thinking`
     // toggle instead. Verified live. On/Auto still use reasoning_effort.
     reasoningOffUsesThinkingToggle = true,
-    multimodalPolicy  = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
+    multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
     // Defensive: Kimi can still degenerate even under more capable
     // hosting. Throwing on the empty-budget burn pattern lets a
     // ProviderStrategy route to the next candidate when it fires.
@@ -86,16 +89,19 @@ case class CloudflareProvider(apiToken: String,
 }
 
 object CloudflareProvider {
-  /** Construct a [[CloudflareProvider]] and seed its Workers AI model
-    * catalog into [[sigil.cache.ModelRegistry]] from Cloudflare's
-    * `/client/v4/accounts/<accountId>/ai/models/search` endpoint.
-    * Mirrors [[sigil.provider.llamacpp.LlamaCppProvider.apply]]'s
-    * contract — the registry is the source of truth for the
-    * pre-flight budget gate, routed model selection, and the
-    * post-#311 boundary check on tool inputs that accept a
-    * `modelId`. Any Workers AI model the provider can serve must
-    * land in the cache before a turn runs against it; this factory
-    * is the documented path. */
+
+  /**
+   * Construct a [[CloudflareProvider]] and seed its Workers AI model
+   * catalog into [[sigil.cache.ModelRegistry]] from Cloudflare's
+   * `/client/v4/accounts/<accountId>/ai/models/search` endpoint.
+   * Mirrors [[sigil.provider.llamacpp.LlamaCppProvider.apply]]'s
+   * contract — the registry is the source of truth for the
+   * pre-flight budget gate, routed model selection, and the
+   * post-#311 boundary check on tool inputs that accept a
+   * `modelId`. Any Workers AI model the provider can serve must
+   * land in the cache before a turn runs against it; this factory
+   * is the documented path.
+   */
   def apply(sigil: Sigil,
             apiToken: String,
             accountId: String): Task[CloudflareProvider] =
@@ -110,12 +116,14 @@ object CloudflareProvider {
       CloudflareProvider(apiToken, accountId, sigil, baseUrl, tokenIdleTimeout)
     }
 
-  /** Backwards-compat no-auto-load construction. Use when an app
-    * wires its own [[Model]] records via `cache.merge` (e.g. a
-    * pinned single-model deployment that doesn't need the full
-    * catalog walk, an offline test fixture, an app that already
-    * fetched the catalog elsewhere). New code should prefer
-    * [[apply]] which auto-loads. */
+  /**
+   * Backwards-compat no-auto-load construction. Use when an app
+   * wires its own [[Model]] records via `cache.merge` (e.g. a
+   * pinned single-model deployment that doesn't need the full
+   * catalog walk, an offline test fixture, an app that already
+   * fetched the catalog elsewhere). New code should prefer
+   * [[apply]] which auto-loads.
+   */
   def create(sigil: Sigil,
              apiToken: String,
              accountId: String,

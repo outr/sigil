@@ -26,9 +26,9 @@ import sigil.tool.model.ChangeModeInput
  * available" prompt block needed.
  */
 case object ChangeModeTool extends Tool {
-  type Input  = ChangeModeInput
+  type Input = ChangeModeInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ChangeModeInput]]
+  val inputRW = summon[RW[ChangeModeInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("change_mode")
@@ -57,8 +57,16 @@ case object ChangeModeTool extends Tool {
   // prose and accidentally match tier-shaped queries (sigil bug
   // #158).
   override val keywords: Set[String] = Set(
-    "mode", "modes", "switch", "change", "transition",
-    "operating", "posture", "kit", "toolset", "tools"
+    "mode",
+    "modes",
+    "switch",
+    "change",
+    "transition",
+    "operating",
+    "posture",
+    "kit",
+    "toolset",
+    "tools"
   )
 
   override val examples: List[sigil.tool.ToolExample] = List(
@@ -111,9 +119,11 @@ case object ChangeModeTool extends Tool {
         ))
     }
 
-  /** Append the live set of switchable modes to the static
-    * description so the LLM sees the available targets without a
-    * separate prompt-rendering pass. */
+  /**
+   * Append the live set of switchable modes to the static
+   * description so the LLM sees the available targets without a
+   * separate prompt-rendering pass.
+   */
   override def descriptionFor(mode: Mode, sigil: Sigil): String = {
     val others = sigil.availableModes.filterNot(_.name == mode.name)
     if (others.isEmpty) description

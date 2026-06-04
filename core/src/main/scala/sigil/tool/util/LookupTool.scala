@@ -33,9 +33,9 @@ import sigil.tool.model.{LookupInput, LookupOutput}
  * whichever shape matches `capabilityType`.
  */
 case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
-  type Input  = LookupInput
+  type Input = LookupInput
   type Output = LookupOutput
-  val inputRW  = summon[RW[LookupInput]]
+  val inputRW = summon[RW[LookupInput]]
   val outputRW = summon[RW[LookupOutput]]
   val name = ToolName("lookup")
   val description =
@@ -55,14 +55,18 @@ case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
   override def executeOutput(input: LookupInput, context: ToolContext): Task[LookupOutput] = {
     val typeName = input.capabilityType.toString
     input.capabilityType match {
-      case CapabilityType.Memory      => resolveMemory(input.name, typeName, context)
+      case CapabilityType.Memory => resolveMemory(input.name, typeName, context)
       case CapabilityType.Information => resolveInformation(input.name, typeName, context)
-      case CapabilityType.Skill       => resolveSkill(input.name, typeName, context)
+      case CapabilityType.Skill => resolveSkill(input.name, typeName, context)
       case CapabilityType.Tool =>
-        Task.pure(LookupOutput.NotRetrievable(typeName, input.name,
+        Task.pure(LookupOutput.NotRetrievable(
+          typeName,
+          input.name,
           s"tools are not retrievable — call '${input.name}' directly."))
       case CapabilityType.Mode =>
-        Task.pure(LookupOutput.NotRetrievable(typeName, input.name,
+        Task.pure(LookupOutput.NotRetrievable(
+          typeName,
+          input.name,
           s"modes are not retrievable — call change_mode(\"${input.name}\") to enter it."))
     }
   }
@@ -89,12 +93,12 @@ case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
   private def resolveInformation(name: String, typeName: String, context: ToolContext): Task[LookupOutput] =
     context.sigil.getInformation(Id[Information](name)).map {
       case Some(full) => LookupOutput.Found(typeName, name, summon[RW[Information]].read(full))
-      case None       => LookupOutput.NotFound(typeName, name)
+      case None => LookupOutput.NotFound(typeName, name)
     }
 
   private def resolveSkill(name: String, typeName: String, context: ToolContext): Task[LookupOutput] =
     context.sigil.withDB(_.skills.transaction(_.get(Id[Skill](name)))).map {
       case Some(skill) => LookupOutput.Found(typeName, name, summon[RW[Skill]].read(skill))
-      case None        => LookupOutput.NotFound(typeName, name)
+      case None => LookupOutput.NotFound(typeName, name)
     }
 }

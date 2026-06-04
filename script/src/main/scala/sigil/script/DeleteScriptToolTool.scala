@@ -13,9 +13,9 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * deleted there's nothing to act on.
  */
 case object DeleteScriptToolTool extends Tool {
-  type Input  = DeleteScriptToolInput
+  type Input = DeleteScriptToolInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[DeleteScriptToolInput]]
+  val inputRW = summon[RW[DeleteScriptToolInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("delete_script_tool")

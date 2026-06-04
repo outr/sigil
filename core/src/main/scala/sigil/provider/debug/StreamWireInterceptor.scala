@@ -40,23 +40,24 @@ import scala.util.{Failure, Success, Try}
  */
 object StreamWireInterceptor {
 
-  /** Attach the wire-log capture + result-aware finalizer to a
-    * line-stream pipeline. The transformer `f` is the provider's
-    * existing `parseLine`-style logic; this helper stays neutral on
-    * what each line means and just buffers + finalizes.
-    *
-    * `chunkLogger` (default [[ChunkLogger.NoOp]]) gets a per-line
-    * pulse with arrival timing — used by [[FileChunkLogger]] for
-    * post-hoc forensics on streaming responses that stall mid-flight
-    * (sigil bug #194). Non-SSE-data lines (`""` separators, comments,
-    * etc.) are skipped — only `data:`-prefixed lines count toward
-    * the chunk index. Stream termination emits a final summary call
-    * with the longest inter-chunk gap. */
+  /**
+   * Attach the wire-log capture + result-aware finalizer to a
+   * line-stream pipeline. The transformer `f` is the provider's
+   * existing `parseLine`-style logic; this helper stays neutral on
+   * what each line means and just buffers + finalizes.
+   *
+   * `chunkLogger` (default [[ChunkLogger.NoOp]]) gets a per-line
+   * pulse with arrival timing — used by [[FileChunkLogger]] for
+   * post-hoc forensics on streaming responses that stall mid-flight
+   * (sigil bug #194). Non-SSE-data lines (`""` separators, comments,
+   * etc.) are skipped — only `data:`-prefixed lines count toward
+   * the chunk index. Stream termination emits a final summary call
+   * with the longest inter-chunk gap.
+   */
   def attach[T](lines: Stream[String],
                 interceptor: Interceptor,
                 request: HttpRequest,
-                chunkLogger: ChunkLogger = ChunkLogger.NoOp)
-               (f: String => Stream[T]): Stream[T] = {
+                chunkLogger: ChunkLogger = ChunkLogger.NoOp)(f: String => Stream[T]): Stream[T] = {
     val bodyBuf = new StringBuilder
     val errorRef: AtomicReference[Option[Throwable]] = new AtomicReference(None)
     val requestId = UUID.randomUUID().toString
@@ -77,19 +78,19 @@ object StreamWireInterceptor {
         if (line.startsWith("data:")) {
           val nowNanos = System.nanoTime()
           val sinceRequestMs = (nowNanos - startNanos) / 1_000_000L
-          val sincePrevMs    = (nowNanos - prevChunkNanos) / 1_000_000L
+          val sincePrevMs = (nowNanos - prevChunkNanos) / 1_000_000L
           if (sincePrevMs > longestGapMs) {
             longestGapMs = sincePrevMs
             longestGapAtIndex = chunkIndex
           }
           chunkLogger.chunk(
-            requestId               = requestId,
-            url                     = url,
-            chunkIndex              = chunkIndex,
-            elapsedSinceRequestMs   = sinceRequestMs,
+            requestId = requestId,
+            url = url,
+            chunkIndex = chunkIndex,
+            elapsedSinceRequestMs = sinceRequestMs,
             elapsedSincePrevChunkMs = sincePrevMs,
-            byteSize                = line.length,
-            preview                 = line
+            byteSize = line.length,
+            preview = line
           )
           prevChunkNanos = nowNanos
           chunkIndex += 1
@@ -108,20 +109,20 @@ object StreamWireInterceptor {
         val totalMs = (System.nanoTime() - startNanos) / 1_000_000L
         val terminatedBy = errorRef.get() match {
           case Some(_) => "error"
-          case None    => "clean"
+          case None => "clean"
         }
         chunkLogger.streamEnd(
-          requestId              = requestId,
-          url                    = url,
-          totalChunks            = totalChunks,
-          totalDurationMs        = totalMs,
+          requestId = requestId,
+          url = url,
+          totalChunks = totalChunks,
+          totalDurationMs = totalMs,
           longestInterChunkGapMs = longestGapMs,
           longestGapAtChunkIndex = longestGapAtIndex,
-          terminatedBy           = terminatedBy
+          terminatedBy = terminatedBy
         )
         val tryResponse: Try[HttpResponse] = errorRef.get() match {
           case Some(t) => Failure(t)
-          case None    =>
+          case None =>
             Success(HttpResponse(
               status = HttpStatus.OK,
               content = Some(StringContent(bodyBuf.toString, ContentType("text", "event-stream")))

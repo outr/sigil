@@ -26,10 +26,10 @@ import sigil.tool.model.ResponseContent
  * (typically by calling `find_capability` or `respond`) on its next iteration.
  */
 case object UnknownTool extends sigil.tool.Tool {
-  type Input  = JsonInput
+  type Input = JsonInput
   type Output = TextToolOutput
 
-  val inputRW  = summon[RW[JsonInput]]
+  val inputRW = summon[RW[JsonInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("_unknown_tool")
@@ -44,18 +44,18 @@ case object UnknownTool extends sigil.tool.Tool {
     // a real tool on its next iteration without re-running discovery.
     val failure = RefusalPayload.unknownTool(
       invokedName = invokedName,
-      offered     = context.turn.offeredTools
+      offered = context.turn.offeredTools
     )
     context.emit(Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      role           = MessageRole.Tool,
-      content        = Vector(ResponseContent.Text(failure.message)),
-      state          = EventState.Complete,
-      disposition    = MessageDisposition.Failure(recoverable = true),
-      visibility     = MessageVisibility.Agents,
-      origin         = Some(context.invokeId)
+      topicId = context.conversation.currentTopicId,
+      role = MessageRole.Tool,
+      content = Vector(ResponseContent.Text(failure.message)),
+      state = EventState.Complete,
+      disposition = MessageDisposition.Failure(recoverable = true),
+      visibility = MessageVisibility.Agents,
+      origin = Some(context.invokeId)
     )).map(_ => failure)
   }
 }

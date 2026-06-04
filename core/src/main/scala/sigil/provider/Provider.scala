@@ -39,51 +39,63 @@ import spice.http.HttpRequest
 trait Provider extends Service with ModelResolver {
   def `type`: ProviderType
 
-  /** This provider's namespace key — matches the prefix on
-    * `Model.canonicalSlug` and `Model._id`. Default derives from the
-    * `type` enum value's lowercased name (`OpenAI` → `"openai"`).
-    * Override only when a provider's models live under a different
-    * namespace. */
+  /**
+   * This provider's namespace key — matches the prefix on
+   * `Model.canonicalSlug` and `Model._id`. Default derives from the
+   * `type` enum value's lowercased name (`OpenAI` → `"openai"`).
+   * Override only when a provider's models live under a different
+   * namespace.
+   */
   def providerKey: String = `type`.toString.toLowerCase
 
   // --- Service implementation ---
 
-  /** Stable [[sigil.service.Service.id]] derived from [[providerKey]].
-    * Apps that run multiple providers of the same `type` (e.g. two
-    * OpenAI keys) override to disambiguate (`provider.openai.dev` vs
-    * `provider.openai.prod`); the default keys per `type`. */
+  /**
+   * Stable [[sigil.service.Service.id]] derived from [[providerKey]].
+   * Apps that run multiple providers of the same `type` (e.g. two
+   * OpenAI keys) override to disambiguate (`provider.openai.dev` vs
+   * `provider.openai.prod`); the default keys per `type`.
+   */
   override def id: Id[Service] = Id[Service](s"provider.$providerKey")
 
-  /** Display name for the chip — the provider's `type` enum case. */
+  /**
+   * Display name for the chip — the provider's `type` enum case.
+   */
   override def name: String = `type`.toString
 
-  /** Providers serve models — they're [[ServiceKind.ModelServer]]
-    * unless overridden. */
+  /**
+   * Providers serve models — they're [[ServiceKind.ModelServer]]
+   * unless overridden.
+   */
   override def kind: ServiceKind = ServiceKind.ModelServer
 
-  /** Derive a current health snapshot from observable signals:
-    *
-    *   - [[ServiceState.Degraded]] when the rate limiter advertises
-    *     a measurable rate-limit pressure (apps that feed the
-    *     limiter from response headers).
-    *   - [[ServiceState.Degraded]] when [[capacityGate]] has zero
-    *     permits available (every slot is in flight; new requests
-    *     will queue).
-    *   - [[ServiceState.Up]] otherwise.
-    *
-    * Providers with stronger telemetry (auth failure flag, recent
-    * 5xx rate, last-error timestamp) override and compute richer
-    * state. The default never enters [[ServiceState.Down]] /
-    * [[ServiceState.Error]] — those require explicit knowledge the
-    * trait can't infer. */
+  /**
+   * Derive a current health snapshot from observable signals:
+   *
+   *   - [[ServiceState.Degraded]] when the rate limiter advertises
+   *     a measurable rate-limit pressure (apps that feed the
+   *     limiter from response headers).
+   *   - [[ServiceState.Degraded]] when [[capacityGate]] has zero
+   *     permits available (every slot is in flight; new requests
+   *     will queue).
+   *   - [[ServiceState.Up]] otherwise.
+   *
+   * Providers with stronger telemetry (auth failure flag, recent
+   * 5xx rate, last-error timestamp) override and compute richer
+   * state. The default never enters [[ServiceState.Down]] /
+   * [[ServiceState.Error]] — those require explicit knowledge the
+   * trait can't infer.
+   */
   override def currentState: ServiceState = {
     val capacityExhausted = capacityGate.availablePermits() <= 0
     if (capacityExhausted) ServiceState.Degraded("capacity-exhausted")
     else ServiceState.Up
   }
 
-  /** DB / configuration access for the shared translation pass. Wired
-    * by each provider implementation (typically as a constructor arg). */
+  /**
+   * DB / configuration access for the shared translation pass. Wired
+   * by each provider implementation (typically as a constructor arg).
+   */
   protected def sigil: Sigil
 
   /**
@@ -101,23 +113,28 @@ trait Provider extends Service with ModelResolver {
    */
   def models: List[Model] = sigil.cache.find(provider = Some(providerKey))
 
-  /** A single provider serves any model the registry holds — resolution
-    * just pairs this provider with the record. Namespace dispatch across
-    * *multiple* providers is [[ProviderRegistry]]'s job, which gates by
-    * `providerKey` before delegating here, so this stays deliberately
-    * lenient. `None` only when the id isn't registered at all. */
+  /**
+   * A single provider serves any model the registry holds — resolution
+   * just pairs this provider with the record. Namespace dispatch across
+   * *multiple* providers is [[ProviderRegistry]]'s job, which gates by
+   * `providerKey` before delegating here, so this stays deliberately
+   * lenient. `None` only when the id isn't registered at all.
+   */
   override def resolve(modelId: Id[Model]): Option[ProviderModel] =
     sigil.cache.find(modelId).map(ProviderModel(this, _))
 
-  /** Tokenizer used by the framework's budget-validation pass to
-    * estimate request size before sending. Default is the
-    * char-count [[sigil.tokenize.HeuristicTokenizer]]; concrete
-    * providers override to wire their model's actual tokenizer
-    * (e.g. `OpenAIProvider` returns
-    * [[sigil.tokenize.JtokkitTokenizer.OpenAIChatGpt]]). */
+  /**
+   * Tokenizer used by the framework's budget-validation pass to
+   * estimate request size before sending. Default is the
+   * char-count [[sigil.tokenize.HeuristicTokenizer]]; concrete
+   * providers override to wire their model's actual tokenizer
+   * (e.g. `OpenAIProvider` returns
+   * [[sigil.tokenize.JtokkitTokenizer.OpenAIChatGpt]]).
+   */
   def tokenizer: Tokenizer = HeuristicTokenizer
 
-  /** Proactive [[RateLimiter]] consulted before each outgoing request.
+  /**
+   * Proactive [[RateLimiter]] consulted before each outgoing request.
    * The framework's `apply` awaits [[RateLimiter.acquire]] before
    * dispatching to [[call]]. Apps wire concrete observers separately:
    * spice's `streamLines()` doesn't surface response headers, so the
@@ -132,61 +149,70 @@ trait Provider extends Service with ModelResolver {
    * The default [[RateLimiter.NoOp]] is zero-cost. Distinct from
    * [[ProviderStrategy]]'s reactive cooldown — the strategy decides
    * what to do AFTER a failure; the rate limiter tries to stop the
-   * failure from happening, IF the app feeds it data. */
+   * failure from happening, IF the app feeds it data.
+   */
   def rateLimiter: RateLimiter = RateLimiter.NoOp
 
-  /** Maximum concurrent in-flight pre-flight passes this provider
-    * dispatches. The backend's slot count for local providers
-    * (llama.cpp's `total_slots`), `Int.MaxValue` (the default) for
-    * cloud providers whose binding constraint is rate-limit (RPM /
-    * TPM) rather than slot count.
-    *
-    * Bug #49 — the framework gates [[apply]]'s pre-flight pass
-    * (which includes provider-specific HTTP work like
-    * `/apply-template`, `/tokenize`) through this cap so agents
-    * sharing a backend serialize advisory work instead of
-    * multiplying retry-stall latency. The streaming
-    * chat-completions phase itself runs ungated — it's a different
-    * shape (the cap isn't sized for long-running streams; the
-    * backend serializes its own slots).
-    *
-    * Live agent turns inherit pre-flight priority by virtue of
-    * acquiring the gate — advisory off-band tools (e.g. an
-    * arbitrary `/tokenize` call from a tool author) that want
-    * gating wrap themselves with [[withCapacity]] explicitly. */
+  /**
+   * Maximum concurrent in-flight pre-flight passes this provider
+   * dispatches. The backend's slot count for local providers
+   * (llama.cpp's `total_slots`), `Int.MaxValue` (the default) for
+   * cloud providers whose binding constraint is rate-limit (RPM /
+   * TPM) rather than slot count.
+   *
+   * Bug #49 — the framework gates [[apply]]'s pre-flight pass
+   * (which includes provider-specific HTTP work like
+   * `/apply-template`, `/tokenize`) through this cap so agents
+   * sharing a backend serialize advisory work instead of
+   * multiplying retry-stall latency. The streaming
+   * chat-completions phase itself runs ungated — it's a different
+   * shape (the cap isn't sized for long-running streams; the
+   * backend serializes its own slots).
+   *
+   * Live agent turns inherit pre-flight priority by virtue of
+   * acquiring the gate — advisory off-band tools (e.g. an
+   * arbitrary `/tokenize` call from a tool author) that want
+   * gating wrap themselves with [[withCapacity]] explicitly.
+   */
   def maxConcurrent: Int = Int.MaxValue
 
-  /** Per-provider fair semaphore enforcing [[maxConcurrent]]. Lazy
-    * so subclass `maxConcurrent` overrides take effect. Bug #49. */
+  /**
+   * Per-provider fair semaphore enforcing [[maxConcurrent]]. Lazy
+   * so subclass `maxConcurrent` overrides take effect. Bug #49.
+   */
   final lazy val capacityGate: java.util.concurrent.Semaphore =
     new java.util.concurrent.Semaphore(maxConcurrent, /* fair */ true)
 
-  /** Wall-clock cap on `capacityGate.acquire()`. Bug #57 — the
-    * original `acquire()` blocks the calling fiber's thread
-    * indefinitely if a previous holder leaked the permit (task
-    * never settled, fiber interrupted abnormally, etc.). For an
-    * agent-loop hot path that produces zero HTTP traffic and zero
-    * CPU when this happens, the symptom is "agent parked on
-    * `thinking` forever." Bounding the wait surfaces the leak as
-    * a [[CapacityAcquireTimeoutException]] the agent loop's error
-    * handler can catch — fail loud rather than silent hang. */
+  /**
+   * Wall-clock cap on `capacityGate.acquire()`. Bug #57 — the
+   * original `acquire()` blocks the calling fiber's thread
+   * indefinitely if a previous holder leaked the permit (task
+   * never settled, fiber interrupted abnormally, etc.). For an
+   * agent-loop hot path that produces zero HTTP traffic and zero
+   * CPU when this happens, the symptom is "agent parked on
+   * `thinking` forever." Bounding the wait surfaces the leak as
+   * a [[CapacityAcquireTimeoutException]] the agent loop's error
+   * handler can catch — fail loud rather than silent hang.
+   */
   protected def capacityAcquireTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.FiniteDuration(60, "seconds")
 
-  /** Run a [[Task]] with a capacity-gate permit acquired from this
-    * provider. The permit releases on completion (success or
-    * failure) via `guarantee`. Used by the framework to gate
-    * [[apply]]'s pre-flight pass; available to providers that want
-    * to gate their own advisory paths (e.g. wrapping a separate
-    * `/tokenize` call from outside `apply`'s flow). Bug #49.
-    *
-    * Bug #57 — bounded `tryAcquire(timeout)` instead of unbounded
-    * `acquire()` so a permit leak in another fiber surfaces as a
-    * fail-fast `CapacityAcquireTimeoutException` rather than an
-    * indefinite thread park. The 60s default is generous enough
-    * that legit slow translates (large prompts, slow tokenizer
-    * backend) don't false-trigger; tighten via override only if a
-    * specific deployment knows its translates always finish faster. */
+  /**
+   * Run a [[Task]] with a capacity-gate permit acquired from this
+   * provider. The permit releases on completion (success or
+   * failure) via `guarantee`. Used by the framework to gate
+   * [[apply]]'s pre-flight pass; available to providers that want
+   * to gate their own advisory paths (e.g. wrapping a separate
+   * `/tokenize` call from outside `apply`'s flow). Bug #49.
+   *
+   * Bug #57 — bounded `tryAcquire(timeout)` instead of unbounded
+   * `acquire()` so a permit leak in another fiber surfaces as a
+   * fail-fast `CapacityAcquireTimeoutException` rather than an
+   * indefinite thread park. The 60s default is generous enough
+   * that legit slow translates (large prompts, slow tokenizer
+   * backend) don't false-trigger; tighten via override only if a
+   * specific deployment knows its translates always finish faster.
+   */
   protected def withCapacity[A](task: Task[A]): Task[A] =
     Task.defer {
       val timeoutMs = capacityAcquireTimeout.toMillis
@@ -235,7 +261,7 @@ trait Provider extends Service with ModelResolver {
     // already drive client rendering.
     val convId = request match {
       case c: ConversationRequest => Some(c.conversationId)
-      case _                      => None
+      case _ => None
     }
     Stream.force(
       sigil.runAsFrameworkWorkflow(
@@ -275,18 +301,22 @@ trait Provider extends Service with ModelResolver {
     )
   }
 
-  /** Sigil #283 — per-(provider, modelId) [[TokenWindowTracker]]
-    * registry. Lazy: a model with `inputTokensPerMinute = None` never
-    * allocates a tracker. Apps wiring cross-provider tracker sharing
-    * (one upstream account fronted by two Provider instances) override
-    * [[tokenWindowTracker]] to return a shared instance keyed on the
-    * API key rather than the modelId. */
+  /**
+   * Sigil #283 — per-(provider, modelId) [[TokenWindowTracker]]
+   * registry. Lazy: a model with `inputTokensPerMinute = None` never
+   * allocates a tracker. Apps wiring cross-provider tracker sharing
+   * (one upstream account fronted by two Provider instances) override
+   * [[tokenWindowTracker]] to return a shared instance keyed on the
+   * API key rather than the modelId.
+   */
   private val tokenWindowTrackers: java.util.concurrent.ConcurrentHashMap[lightdb.id.Id[Model], TokenWindowTracker] =
     new java.util.concurrent.ConcurrentHashMap()
 
-  /** Resolve (or lazily construct) the [[TokenWindowTracker]] for
-    * `modelId`. Returns `None` when the model record has no
-    * `inputTokensPerMinute` — pacing is disabled. */
+  /**
+   * Resolve (or lazily construct) the [[TokenWindowTracker]] for
+   * `modelId`. Returns `None` when the model record has no
+   * `inputTokensPerMinute` — pacing is disabled.
+   */
   protected def tokenWindowTracker(modelId: lightdb.id.Id[Model]): Option[TokenWindowTracker] =
     sigil.cache.find(modelId).flatMap(_.inputTokensPerMinute).map { ipm =>
       tokenWindowTrackers.computeIfAbsent(
@@ -298,65 +328,71 @@ trait Provider extends Service with ModelResolver {
   private def admitToWindow(modelId: lightdb.id.Id[Model], estimatedTokens: Int): Task[Unit] =
     tokenWindowTracker(modelId) match {
       case Some(tracker) => tracker.admit(estimatedTokens)
-      case None          => Task.unit
+      case None => Task.unit
     }
 
   // ---- batch (sigil #299) ----
 
-  /** Sigil #299 — whether this provider has a native bulk surface
-    * worth routing batchable workloads through. `true` means
-    * [[batch]] is overridden to use the upstream's
-    * batch endpoint (OpenAI Batch / Anthropic Message Batches /
-    * Gemini Batch — typically a ~50% cost discount with a 24-hour
-    * SLA, effectively unlimited per-batch rate). `false` means
-    * `batch` falls through to per-request `apply` calls — same
-    * wall-clock as N parallel syncs, no discount.
-    *
-    * Consumers running offline bulk pipelines (RAG corpus rebuilds,
-    * bulk classification, periodic re-summarization) read this to
-    * decide whether the workload is worth chunking through `batch`
-    * at all; interactive paths ignore it and call `apply` directly.
-    *
-    * Default `false` — opt-in per provider so the trait stays honest
-    * about what's actually batchable on the wire. */
+  /**
+   * Sigil #299 — whether this provider has a native bulk surface
+   * worth routing batchable workloads through. `true` means
+   * [[batch]] is overridden to use the upstream's
+   * batch endpoint (OpenAI Batch / Anthropic Message Batches /
+   * Gemini Batch — typically a ~50% cost discount with a 24-hour
+   * SLA, effectively unlimited per-batch rate). `false` means
+   * `batch` falls through to per-request `apply` calls — same
+   * wall-clock as N parallel syncs, no discount.
+   *
+   * Consumers running offline bulk pipelines (RAG corpus rebuilds,
+   * bulk classification, periodic re-summarization) read this to
+   * decide whether the workload is worth chunking through `batch`
+   * at all; interactive paths ignore it and call `apply` directly.
+   *
+   * Default `false` — opt-in per provider so the trait stays honest
+   * about what's actually batchable on the wire.
+   */
   def batchSupported: Boolean = false
 
-  /** Sigil #299 — bulk-submit a stream of [[OneShotRequest]]s against
-    * the provider's native batch API. Responses stream back as each
-    * underlying batch completes (out-of-order across batches;
-    * in-order within a single batch's result file).
-    *
-    * Providers with a wire-level batch surface (OpenAI Batch,
-    * Anthropic Message Batches, Gemini Batch) override to get the
-    * ~50% cost reduction + higher throughput + async SLA. The
-    * default sequential-fallback runs each request through `apply`
-    * and collects the events into a [[OneShotResponse]] — correct
-    * everywhere, optimal nowhere a native batch exists. Apps that
-    * want to decide based on capability check [[batchSupported]]
-    * before routing; calling `batch` on a non-batching provider is
-    * not an error, just no discount.
-    *
-    * The input is a Stream so consumers can produce millions of
-    * requests without holding them all in memory; the output is a
-    * Stream so responses begin flowing as soon as the first
-    * underlying batch completes. Native overrides chunk the input
-    * internally per provider's per-batch size limit (OpenAI: 50K
-    * requests / 200MB file).
-    *
-    * Failure semantics: per-request errors surface as `OneShotResponse`
-    * with `error` populated (the rest of the stream keeps flowing).
-    * Whole-batch upstream failures (network blip, batch-endpoint
-    * 5xx) propagate as a stream error after best-effort cleanup of
-    * the failed chunk's responses. */
+  /**
+   * Sigil #299 — bulk-submit a stream of [[OneShotRequest]]s against
+   * the provider's native batch API. Responses stream back as each
+   * underlying batch completes (out-of-order across batches;
+   * in-order within a single batch's result file).
+   *
+   * Providers with a wire-level batch surface (OpenAI Batch,
+   * Anthropic Message Batches, Gemini Batch) override to get the
+   * ~50% cost reduction + higher throughput + async SLA. The
+   * default sequential-fallback runs each request through `apply`
+   * and collects the events into a [[OneShotResponse]] — correct
+   * everywhere, optimal nowhere a native batch exists. Apps that
+   * want to decide based on capability check [[batchSupported]]
+   * before routing; calling `batch` on a non-batching provider is
+   * not an error, just no discount.
+   *
+   * The input is a Stream so consumers can produce millions of
+   * requests without holding them all in memory; the output is a
+   * Stream so responses begin flowing as soon as the first
+   * underlying batch completes. Native overrides chunk the input
+   * internally per provider's per-batch size limit (OpenAI: 50K
+   * requests / 200MB file).
+   *
+   * Failure semantics: per-request errors surface as `OneShotResponse`
+   * with `error` populated (the rest of the stream keeps flowing).
+   * Whole-batch upstream failures (network blip, batch-endpoint
+   * 5xx) propagate as a stream error after best-effort cleanup of
+   * the failed chunk's responses.
+   */
   def batch(requests: Stream[OneShotRequest]): Stream[OneShotResponse] =
     requests.evalMap(applyOneShot)
 
-  /** Sigil #299 — single-request shape used by the default `batch`
-    * fallback. Drains [[apply]]'s event stream into a
-    * [[OneShotResponse]] by accumulating text deltas, usage, and
-    * any stream-level error. Native-batch overrides bypass this
-    * helper entirely — they go straight from JSONL line → typed
-    * response without the streaming detour. */
+  /**
+   * Sigil #299 — single-request shape used by the default `batch`
+   * fallback. Drains [[apply]]'s event stream into a
+   * [[OneShotResponse]] by accumulating text deltas, usage, and
+   * any stream-level error. Native-batch overrides bypass this
+   * helper entirely — they go straight from JSONL line → typed
+   * response without the streaming detour.
+   */
   protected def applyOneShot(request: OneShotRequest): Task[OneShotResponse] = {
     val text = new StringBuilder
     val usageRef = new java.util.concurrent.atomic.AtomicReference[Option[TokenUsage]](None)
@@ -364,12 +400,12 @@ trait Provider extends Service with ModelResolver {
     apply(request).evalMap { ev =>
       Task {
         ev match {
-          case ProviderEvent.TextDelta(t)              => val _ = text.append(t)
-          case ProviderEvent.ContentBlockDelta(_, t)   => val _ = text.append(t)
-          case ProviderEvent.Usage(u)                  => usageRef.set(Some(u))
-          case ProviderEvent.Error(msg)                =>
+          case ProviderEvent.TextDelta(t) => val _ = text.append(t)
+          case ProviderEvent.ContentBlockDelta(_, t) => val _ = text.append(t)
+          case ProviderEvent.Usage(u) => usageRef.set(Some(u))
+          case ProviderEvent.Error(msg) =>
             errorRef.set(Some(OneShotResponse.Error(message = msg)))
-          case _                                       => ()
+          case _ => ()
         }
         ()
       }
@@ -379,71 +415,77 @@ trait Provider extends Service with ModelResolver {
         else Vector(_root_.sigil.tool.model.ResponseContent.Text(text.toString))
       OneShotResponse(
         requestId = request.requestId,
-        content   = content,
-        usage     = usageRef.get(),
-        error     = errorRef.get()
+        content = content,
+        usage = usageRef.get(),
+        error = errorRef.get()
       )
     }.handleError { t =>
       Task.pure(OneShotResponse(
         requestId = request.requestId,
-        error     = Some(OneShotResponse.Error(
-          message     = Option(t.getMessage).getOrElse(t.getClass.getSimpleName),
+        error = Some(OneShotResponse.Error(
+          message = Option(t.getMessage).getOrElse(t.getClass.getSimpleName),
           recoverable = false
         ))
       ))
     }
   }
 
-  /** Sigil bug #211 — framework-level retry on `Retry`-classified
-    * transient provider errors. The framework already classifies
-    * network timeouts / 502 / 503 / rate-limits as `Retry`
-    * (see [[ErrorClassifier.Default]]); this method ACTS on that
-    * classification by re-attempting the wire call (up to
-    * [[providerRetryAttempts]] times) before
-    * propagating, so a single TLS handshake hiccup / OpenRouter
-    * edge RST / brief rate-limit spike doesn't terminate the user's
-    * turn.
-    *
-    * **Retry-only-on-empty-emission.** Each attempt drains the
-    * call's stream via an evalTap-captured buffer. If the stream
-    * completes successfully the buffered events replay through the
-    * returned stream. If the stream errors:
-    *
-    *   - With zero events emitted AND the classifier returns
-    *     `Retry` AND retries remain → wait `providerRetryDelay`
-    *     and retry the call (re-drains a fresh stream).
-    *   - With at least one event emitted → flush the buffered
-    *     events as a stream prefix, then propagate the error.
-    *     Mid-stream errors aren't retryable — downstream consumers
-    *     (orchestrator's `onErrorFinalize`, the corruption-
-    *     resistance `guarantee` block) need to see the partial
-    *     state and the error to do orphan-settle cleanup.
-    *   - Non-`Retry` error → propagate immediately (with any
-    *     buffered events flushed first).
-    *
-    * Tradeoff: events are buffered for the duration of each
-    * attempt, so streaming-text responses appear in one chunk
-    * instead of progressively. Tool-call-only responses (the bug
-    * repro case) are unaffected — they're a single batch anyway.
-    *
-    * Apps that prefer streaming over retry-correctness override
-    * [[providerRetryAttempts]] to `0` to disable. */
+  /**
+   * Sigil bug #211 — framework-level retry on `Retry`-classified
+   * transient provider errors. The framework already classifies
+   * network timeouts / 502 / 503 / rate-limits as `Retry`
+   * (see [[ErrorClassifier.Default]]); this method ACTS on that
+   * classification by re-attempting the wire call (up to
+   * [[providerRetryAttempts]] times) before
+   * propagating, so a single TLS handshake hiccup / OpenRouter
+   * edge RST / brief rate-limit spike doesn't terminate the user's
+   * turn.
+   *
+   * **Retry-only-on-empty-emission.** Each attempt drains the
+   * call's stream via an evalTap-captured buffer. If the stream
+   * completes successfully the buffered events replay through the
+   * returned stream. If the stream errors:
+   *
+   *   - With zero events emitted AND the classifier returns
+   *     `Retry` AND retries remain → wait `providerRetryDelay`
+   *     and retry the call (re-drains a fresh stream).
+   *   - With at least one event emitted → flush the buffered
+   *     events as a stream prefix, then propagate the error.
+   *     Mid-stream errors aren't retryable — downstream consumers
+   *     (orchestrator's `onErrorFinalize`, the corruption-
+   *     resistance `guarantee` block) need to see the partial
+   *     state and the error to do orphan-settle cleanup.
+   *   - Non-`Retry` error → propagate immediately (with any
+   *     buffered events flushed first).
+   *
+   * Tradeoff: events are buffered for the duration of each
+   * attempt, so streaming-text responses appear in one chunk
+   * instead of progressively. Tool-call-only responses (the bug
+   * repro case) are unaffected — they're a single batch anyway.
+   *
+   * Apps that prefer streaming over retry-correctness override
+   * [[providerRetryAttempts]] to `0` to disable.
+   */
   protected def providerRetryAttempts: Int = 3
 
-  /** Per-retry backoff. Transient transport flakes typically
-    * resolve in < 1 s; longer waits delay the user without
-    * changing the outcome. */
+  /**
+   * Per-retry backoff. Transient transport flakes typically
+   * resolve in < 1 s; longer waits delay the user without
+   * changing the outcome.
+   */
   protected def providerRetryDelay: scala.concurrent.duration.FiniteDuration = {
     import scala.concurrent.duration.*
     500.millis
   }
 
-  /** Classifier used to decide which thrown errors are
-    * transient-and-retryable. Defaults to [[ErrorClassifier.Default]]
-    * (matches the system-prompt instruction agents read for the
-    * tool-call layer). Providers with stronger typing
-    * (provider-specific exception types) override and compose via
-    * `.orElse(ErrorClassifier.Default)`. */
+  /**
+   * Classifier used to decide which thrown errors are
+   * transient-and-retryable. Defaults to [[ErrorClassifier.Default]]
+   * (matches the system-prompt instruction agents read for the
+   * tool-call layer). Providers with stronger typing
+   * (provider-specific exception types) override and compose via
+   * `.orElse(ErrorClassifier.Default)`.
+   */
   protected def providerErrorClassifier: ErrorClassifier = ErrorClassifier.Default
 
   private def callWithTransientRetry(safe: ProviderCall): Stream[ProviderEvent] = {
@@ -512,54 +554,60 @@ trait Provider extends Service with ModelResolver {
     }
   }
 
-  /** Whether the event represents committed work the downstream
-    * consumer may have started rendering. Reasoning is transient — the
-    * consumer renders it as a "thinking..." placeholder, and a failed
-    * attempt's buffered events are dropped entirely when retry fires
-    * (the orchestrator only ever sees the final attempt's stream), so
-    * a fresh reasoning chain on retry is invisible / desirable rather
-    * than a duplicate. Usage / Error / Done are bookkeeping. Anything
-    * else (text, tool calls, image generation, response-state capture,
-    * server-tool lifecycle) is committed work that retry would shadow. */
+  /**
+   * Whether the event represents committed work the downstream
+   * consumer may have started rendering. Reasoning is transient — the
+   * consumer renders it as a "thinking..." placeholder, and a failed
+   * attempt's buffered events are dropped entirely when retry fires
+   * (the orchestrator only ever sees the final attempt's stream), so
+   * a fresh reasoning chain on retry is invisible / desirable rather
+   * than a duplicate. Usage / Error / Done are bookkeeping. Anything
+   * else (text, tool calls, image generation, response-state capture,
+   * server-tool lifecycle) is committed work that retry would shadow.
+   */
   private def isMeaningfulProviderEvent(ev: ProviderEvent): Boolean = ev match {
-    case _: ProviderEvent.Usage              => false
-    case _: ProviderEvent.Error              => false
-    case _: ProviderEvent.Done               => false
-    case _: ProviderEvent.ThinkingDelta      => false
-    case _: ProviderEvent.ReasoningItem      => false
-    case _                                   => true
+    case _: ProviderEvent.Usage => false
+    case _: ProviderEvent.Error => false
+    case _: ProviderEvent.Done => false
+    case _: ProviderEvent.ThinkingDelta => false
+    case _: ProviderEvent.ReasoningItem => false
+    case _ => true
   }
 
-  /** Derive the next attempt's [[RetryContext]] from the failure that
-    * triggered the retry. Pulls the upstream-provider name out of a
-    * typed [[ProviderStreamException]] when present so providers like
-    * OpenRouter can append it to their `provider.ignore` request
-    * block. Unknown errors yield an empty context. */
+  /**
+   * Derive the next attempt's [[RetryContext]] from the failure that
+   * triggered the retry. Pulls the upstream-provider name out of a
+   * typed [[ProviderStreamException]] when present so providers like
+   * OpenRouter can append it to their `provider.ignore` request
+   * block. Unknown errors yield an empty context.
+   */
   private def nextRetryContext(t: Throwable): RetryContext = t match {
     case e: ProviderStreamException =>
       RetryContext(lastErrorUpstreamProvider = e.errorMetadata.flatMap(_.upstreamProvider))
     case _ => RetryContext()
   }
 
-  /** Sigil #283 — extract the upstream's requested `retry-after`
-    * delta when the failing call carried one. Two carriers, in
-    * priority order:
-    *
-    *   1. [[ProviderStreamException]] with `errorMetadata.retryAfterMs`
-    *      populated — providers that detect a mid-stream 429 inline (an
-    *      `error` event on a 200-OK SSE stream) lift the explicit
-    *      `retry-after`-equivalent payload into the typed metadata.
-    *   2. [[spice.http.client.StreamingHttpFailedException]] — when the
-    *      upstream returned a non-2xx HTTP status, spice's streaming
-    *      path now throws a typed exception carrying the response
-    *      headers. The framework extracts `retry-after` directly so
-    *      every provider gets retry-after honoring for free, without
-    *      each provider's `call` having to translate the exception.
-    *
-    * Parses the `retry-after` header per RFC 7231: an integer delta
-    * in seconds or an HTTP-date (absolute timestamp). Returns `None`
-    * when the failure has no upstream guidance — the retry loop falls
-    * back to `providerRetryDelay`. */
+  /**
+   * Sigil #283 — extract the upstream's requested `retry-after`
+   * delta when the failing call carried one. Two carriers, in
+   * priority order:
+   *
+   *   1. [[ProviderStreamException]] with `errorMetadata.retryAfterMs`
+   *      populated — providers that detect a mid-stream 429 inline (an
+   *      `error` event on a 200-OK SSE stream) lift the explicit
+   *      `retry-after`-equivalent payload into the typed metadata.
+   *   2. [[spice.http.client.StreamingHttpFailedException]] — when the
+   *      upstream returned a non-2xx HTTP status, spice's streaming
+   *      path now throws a typed exception carrying the response
+   *      headers. The framework extracts `retry-after` directly so
+   *      every provider gets retry-after honoring for free, without
+   *      each provider's `call` having to translate the exception.
+   *
+   * Parses the `retry-after` header per RFC 7231: an integer delta
+   * in seconds or an HTTP-date (absolute timestamp). Returns `None`
+   * when the failure has no upstream guidance — the retry loop falls
+   * back to `providerRetryDelay`.
+   */
   private def retryAfterFrom(t: Throwable): Option[scala.concurrent.duration.FiniteDuration] = t match {
     case e: ProviderStreamException =>
       e.errorMetadata.flatMap(_.retryAfterMs).map { ms =>
@@ -570,11 +618,13 @@ trait Provider extends Service with ModelResolver {
     case _ => None
   }
 
-  /** Parse a `Retry-After` HTTP header (RFC 7231 §7.1.3) into a
-    * [[FiniteDuration]]. Accepts both formats: `Retry-After: 120`
-    * (delta-seconds) and `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT`
-    * (HTTP-date — clamped to non-negative). Returns `None` when the
-    * header is absent or unparseable. Sigil #283. */
+  /**
+   * Parse a `Retry-After` HTTP header (RFC 7231 §7.1.3) into a
+   * [[FiniteDuration]]. Accepts both formats: `Retry-After: 120`
+   * (delta-seconds) and `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT`
+   * (HTTP-date — clamped to non-negative). Returns `None` when the
+   * header is absent or unparseable. Sigil #283.
+   */
   private def parseRetryAfter(headers: spice.http.Headers): Option[scala.concurrent.duration.FiniteDuration] = {
     val raw = headers.map.get("Retry-After").flatMap(_.headOption).map(_.trim).filter(_.nonEmpty)
     raw.flatMap { value =>
@@ -596,27 +646,29 @@ trait Provider extends Service with ModelResolver {
     }
   }
 
-  /** Pre-flight budget validation. Two layered checks against the
-    * model record:
-    *
-    *   1. **Context-length** (`Model.contextLength`) — the static
-    *      window the model accepts on a single request. Failure mode
-    *      raised as [[RequestOverBudgetException]].
-    *   2. **Per-minute input rate** (`Model.inputTokensPerMinute`,
-    *      sigil #283) — the provider's published per-minute token
-    *      ceiling. A single request larger than
-    *      `rate * Sigil.rateLimitSafetyMargin` (default 0.85) can't
-    *      succeed against the per-minute budget by itself, so
-    *      retrying after a 429 is wasted work. Failure mode raised
-    *      as [[RequestExceedsRateLimitException]].
-    *
-    * Both checks apply emergency shedding (tool-roster trim →
-    * last-resort frame drop) before failing; the tighter of the two
-    * effective limits drives the shed target. Critical memories live
-    * in the system prompt and are never shed by this path.
-    *
-    * Returns `Right(call)` when the request fits both checks
-    * (possibly after shedding), `Left(exception)` when it can't. */
+  /**
+   * Pre-flight budget validation. Two layered checks against the
+   * model record:
+   *
+   *   1. **Context-length** (`Model.contextLength`) — the static
+   *      window the model accepts on a single request. Failure mode
+   *      raised as [[RequestOverBudgetException]].
+   *   2. **Per-minute input rate** (`Model.inputTokensPerMinute`,
+   *      sigil #283) — the provider's published per-minute token
+   *      ceiling. A single request larger than
+   *      `rate * Sigil.rateLimitSafetyMargin` (default 0.85) can't
+   *      succeed against the per-minute budget by itself, so
+   *      retrying after a 429 is wasted work. Failure mode raised
+   *      as [[RequestExceedsRateLimitException]].
+   *
+   * Both checks apply emergency shedding (tool-roster trim →
+   * last-resort frame drop) before failing; the tighter of the two
+   * effective limits drives the shed target. Critical memories live
+   * in the system prompt and are never shed by this path.
+   *
+   * Returns `Right(call)` when the request fits both checks
+   * (possibly after shedding), `Left(exception)` when it can't.
+   */
   private def preFlightGate(request: ProviderRequest, providerCall: ProviderCall): Either[Throwable, ProviderCall] = {
     val modelRecord = sigil.cache.find(request.modelId)
     // Sigil #301 — tighten by `contextLengthSafetyMargin` so the
@@ -629,7 +681,7 @@ trait Provider extends Service with ModelResolver {
     val ratePerMinute = modelRecord.flatMap(_.inputTokensPerMinute)
     val rateLimit = ratePerMinute match {
       case Some(rpm) => math.max(1, (rpm * sigil.rateLimitSafetyMargin).toInt)
-      case None      => Int.MaxValue
+      case None => Int.MaxValue
     }
     val effectiveLimit = math.min(contextLimit, rateLimit)
     if (effectiveLimit == Int.MaxValue) Right(providerCall) // no model record AND no rate ceiling — can't validate
@@ -642,26 +694,28 @@ trait Provider extends Service with ModelResolver {
         if (shedEstimate <= effectiveLimit) Right(shed)
         else if (shedEstimate > contextLimit) Left(new RequestOverBudgetException(shedEstimate, contextLimit, request.modelId))
         else Left(new RequestExceedsRateLimitException(
-          estimatedTokens      = shedEstimate,
+          estimatedTokens = shedEstimate,
           inputTokensPerMinute = ratePerMinute.getOrElse(0L),
-          safetyMargin         = sigil.rateLimitSafetyMargin,
-          modelId              = request.modelId
+          safetyMargin = sigil.rateLimitSafetyMargin,
+          modelId = request.modelId
         ))
       }
     }
   }
 
-  /** Estimate the wire-rendered token count for `call`. Bug #46 —
-    * exposed as a `protected` hook so providers whose wire is built
-    * by composing a chat template (every chat-completions-style
-    * provider) can override with an exact backend-rendered count
-    * (e.g. `LlamaCppProvider` calls `/apply-template` + `/tokenize`).
-    *
-    * Default: piecewise sum of system + per-message + roster. Correct
-    * within ~7-15% for chat-template providers; the gap is the
-    * template glue between messages that piecewise summing misses.
-    * Providers with large context windows tolerate the gap; tight
-    * `n_ctx` configs don't, and override accordingly. */
+  /**
+   * Estimate the wire-rendered token count for `call`. Bug #46 —
+   * exposed as a `protected` hook so providers whose wire is built
+   * by composing a chat template (every chat-completions-style
+   * provider) can override with an exact backend-rendered count
+   * (e.g. `LlamaCppProvider` calls `/apply-template` + `/tokenize`).
+   *
+   * Default: piecewise sum of system + per-message + roster. Correct
+   * within ~7-15% for chat-template providers; the gap is the
+   * template glue between messages that piecewise summing misses.
+   * Providers with large context windows tolerate the gap; tight
+   * `n_ctx` configs don't, and override accordingly.
+   */
   protected def estimateRequest(call: ProviderCall): Int = {
     val tok = tokenizer
     // Sigil #302 — count both stable and volatile system segments;
@@ -673,29 +727,31 @@ trait Provider extends Service with ModelResolver {
       estimateRoster(call.tools, tok)
   }
 
-  /** Best-effort token count for a single [[ProviderMessage]] as it
-    * lands on the wire — covers User text + Assistant tool-call args
-    * + ToolResult content + Reasoning summaries + per-message
-    * role/envelope overhead.
-    *
-    * Bug #44 — counts the JSON-RPC wrapper around each Assistant
-    * tool call (`{"id": "...", "type": "function", "function":
-    * {"name": "...", "arguments": "..."}}`) and the role/content
-    * envelope on every ToolResult, plus the Reasoning body
-    * (previously `=> 0`). Tool-using conversations accumulate
-    * dozens of these wrappers per turn; under-counting accumulates
-    * to 1-3K of unaccounted wire tokens.
-    *
-    * Per-message envelope is `+4` (was `+3`) — OpenAI's chat format
-    * adds ~4 tokens for the role + content envelope. */
+  /**
+   * Best-effort token count for a single [[ProviderMessage]] as it
+   * lands on the wire — covers User text + Assistant tool-call args
+   * + ToolResult content + Reasoning summaries + per-message
+   * role/envelope overhead.
+   *
+   * Bug #44 — counts the JSON-RPC wrapper around each Assistant
+   * tool call (`{"id": "...", "type": "function", "function":
+   * {"name": "...", "arguments": "..."}}`) and the role/content
+   * envelope on every ToolResult, plus the Reasoning body
+   * (previously `=> 0`). Tool-using conversations accumulate
+   * dozens of these wrappers per turn; under-counting accumulates
+   * to 1-3K of unaccounted wire tokens.
+   *
+   * Per-message envelope is `+4` (was `+3`) — OpenAI's chat format
+   * adds ~4 tokens for the role + content envelope.
+   */
   protected def estimateMessage(m: ProviderMessage, tok: Tokenizer): Int = m match {
-    case ProviderMessage.System(c)            => tok.count(c) + 4
-    case ProviderMessage.User(blocks)         => blocks.iterator.map {
-      case MessageContent.Text(t)          => tok.count(t)
-      case _: MessageContent.Image         => 85 // standard low-detail image overhead per OpenAI's docs
-      case _: MessageContent.ImageBytes    => 85
-    }.sum + 4
-    case ProviderMessage.Assistant(c, calls)  =>
+    case ProviderMessage.System(c) => tok.count(c) + 4
+    case ProviderMessage.User(blocks) => blocks.iterator.map {
+        case MessageContent.Text(t) => tok.count(t)
+        case _: MessageContent.Image => 85 // standard low-detail image overhead per OpenAI's docs
+        case _: MessageContent.ImageBytes => 85
+      }.sum + 4
+    case ProviderMessage.Assistant(c, calls) =>
       // Each tool call ships as a JSON-RPC wrapper:
       //   {"id":"...","type":"function","function":{"name":"...","arguments":"..."}}
       // Wrapper keys + braces + quotes + commas approximate +18 tokens
@@ -719,54 +775,60 @@ trait Provider extends Service with ModelResolver {
       summaryTokens + cotTokens + 4
   }
 
-  /** Token cost of the wire tool roster — name + description + the
-    * rendered JSON parameter schema body that actually ships on the
-    * wire. Bug #43 — the prior implementation approximated schema
-    * cost as a fixed +30 per tool, which severely undercounted any
-    * non-trivial input schema (often hundreds-to-thousands of
-    * tokens per tool for realistic agents). With the schema body
-    * undercounted, the pre-flight gate let requests through that
-    * subsequently overflowed at the provider.
-    *
-    * `DefinitionToSchema` produces the canonical JSON schema each
-    * provider then post-processes (strict-mode rewrites,
-    * provider-specific keyword stripping). Provider-side variations
-    * are second-order in size; counting the canonical schema gives
-    * an estimate within tokenization-noise of the actually-sent
-    * payload. Providers whose wire shape diverges materially can
-    * override [[estimateToolBytes]] for higher fidelity. */
+  /**
+   * Token cost of the wire tool roster — name + description + the
+   * rendered JSON parameter schema body that actually ships on the
+   * wire. Bug #43 — the prior implementation approximated schema
+   * cost as a fixed +30 per tool, which severely undercounted any
+   * non-trivial input schema (often hundreds-to-thousands of
+   * tokens per tool for realistic agents). With the schema body
+   * undercounted, the pre-flight gate let requests through that
+   * subsequently overflowed at the provider.
+   *
+   * `DefinitionToSchema` produces the canonical JSON schema each
+   * provider then post-processes (strict-mode rewrites,
+   * provider-specific keyword stripping). Provider-side variations
+   * are second-order in size; counting the canonical schema gives
+   * an estimate within tokenization-noise of the actually-sent
+   * payload. Providers whose wire shape diverges materially can
+   * override [[estimateToolBytes]] for higher fidelity.
+   */
   protected def estimateRoster(tools: Vector[Tool], tok: Tokenizer): Int =
     tools.iterator.map(estimateToolBytes(_, tok)).sum
 
-  /** Per-tool wire-shape estimate. Default counts name + description +
-    * the JSON-formatted parameter schema. Override for providers with
-    * extra per-tool metadata (Anthropic's `cache_control`, OpenAI's
-    * `strict` flag, etc.) — the framework's default already counts
-    * the schema body which is the dominant cost.
-    *
-    * Bug #47 — concatenates the per-tool wire bytes into ONE
-    * tokenizer call instead of three (name / description / schema).
-    * For providers whose tokenizer makes an HTTP round-trip
-    * (`LlamaCppTokenizer`), this drops the per-tool HTTP cost from
-    * 3 to 1 — material when the agent has a dozen tools. */
+  /**
+   * Per-tool wire-shape estimate. Default counts name + description +
+   * the JSON-formatted parameter schema. Override for providers with
+   * extra per-tool metadata (Anthropic's `cache_control`, OpenAI's
+   * `strict` flag, etc.) — the framework's default already counts
+   * the schema body which is the dominant cost.
+   *
+   * Bug #47 — concatenates the per-tool wire bytes into ONE
+   * tokenizer call instead of three (name / description / schema).
+   * For providers whose tokenizer makes an HTTP round-trip
+   * (`LlamaCppTokenizer`), this drops the per-tool HTTP cost from
+   * 3 to 1 — material when the agent has a dozen tools.
+   */
   protected def estimateToolBytes(tool: Tool, tok: Tokenizer): Int = {
-    val name        = tool.schema.name.value
+    val name = tool.schema.name.value
     val description = tool.descriptionFor(ConversationMode, sigil)
-    val schemaJson  = fabric.io.JsonFormatter.Compact(
+    val schemaJson = fabric.io.JsonFormatter.Compact(
       _root_.sigil.tool.DefinitionToSchema(tool.schema.input)
     )
     // Wrapper overhead: `{"type":"function","name":"...","description":"...","parameters":{...}}`
     // — keys + braces + colons. ~10 tokens depending on tokenizer.
-    val wrapper     = 12
+    val wrapper = 12
     tok.count(s"$name\n$description\n$schemaJson") + wrapper
   }
 
-  /** Emergency-shed: trim tool roster (cap descriptions or drop
-    * un-essential tools) and drop oldest frames until the request
-    * fits. Stops when nothing more can be safely cut — caller raises
-    * [[RequestOverBudgetException]] in that case. Does NOT call the
-    * LLM (compression already happened in the curator); pure
-    * truncation. */
+  /**
+   * Emergency-shed: trim tool roster (cap descriptions or drop
+   * un-essential tools) and drop oldest frames until the request
+   * fits. Stops when nothing more can be safely cut — caller raises
+   * [[RequestOverBudgetException]] in that case. Does NOT call the
+   * LLM (compression already happened in the curator); pure
+   * truncation.
+   */
   private def emergencyShed(initial: ProviderCall,
                             limit: Int,
                             tok: Tokenizer,
@@ -787,8 +849,16 @@ trait Provider extends Service with ModelResolver {
     // change_mode-loop failure mode in the field. Keeping the
     // advertised names means the agent can act on what the prompt
     // tells it is available; truly unused catalog bulk still drops.
-    val essentials = Set("respond", "find_capability", "stop", "change_mode", "no_response",
-      "respond_options", "respond_field", "respond_failure", "activate_skill")
+    val essentials = Set(
+      "respond",
+      "find_capability",
+      "stop",
+      "change_mode",
+      "no_response",
+      "respond_options",
+      "respond_field",
+      "respond_failure",
+      "activate_skill")
     val keep: _root_.sigil.tool.ToolName => Boolean = n =>
       essentials.contains(n.value) || initial.preservedToolNames.contains(n)
     if (estimateOf(current) > limit && current.tools.exists(t => !keep(t.schema.name))) {
@@ -816,25 +886,26 @@ trait Provider extends Service with ModelResolver {
       current = bulkDropMessages(current, limit, tok, estimateOf)
       // Convergence step — at most a handful of iterations after
       // the bulk drop's heuristic-based jump.
-      while (estimateOf(current) > limit && current.messages.nonEmpty) {
+      while (estimateOf(current) > limit && current.messages.nonEmpty)
         current = current.copy(messages = current.messages.tail)
-      }
     }
 
     current
   }
 
-  /** Bulk-drop oldest messages from the call using a local
-    * heuristic to compute the drop count, sized so the post-drop
-    * message bytes fit under `limit` minus the system-prompt
-    * overhead. Local-only — no HTTP round-trips even when the
-    * provider's `tokenizer` would. Returns the trimmed call;
-    * caller follows up with one `estimateOf` confirmation. Bug #59. */
+  /**
+   * Bulk-drop oldest messages from the call using a local
+   * heuristic to compute the drop count, sized so the post-drop
+   * message bytes fit under `limit` minus the system-prompt
+   * overhead. Local-only — no HTTP round-trips even when the
+   * provider's `tokenizer` would. Returns the trimmed call;
+   * caller follows up with one `estimateOf` confirmation. Bug #59.
+   */
   private def bulkDropMessages(call: ProviderCall,
                                limit: Int,
                                tok: Tokenizer,
                                estimateOf: ProviderCall => Int): ProviderCall = {
-    val msgs    = call.messages
+    val msgs = call.messages
     val perMsg: Vector[Int] = msgs.map(m => _root_.sigil.tokenize.HeuristicTokenizer.count(renderMessageForHeuristic(m)))
     val msgSum: Int = perMsg.sum
     // Approximate the system-prompt + tool-roster overhead the
@@ -847,8 +918,8 @@ trait Provider extends Service with ModelResolver {
     // Conservative 5% margin so the post-drop confirm doesn't
     // trip the per-step convergence loop just because the
     // heuristic underestimated by a few tokens.
-    val margin     = (limit * 0.05).toInt
-    val msgBudget  = math.max(0, limit - overhead - margin)
+    val margin = (limit * 0.05).toInt
+    val msgBudget = math.max(0, limit - overhead - margin)
     val needToShed = math.max(0, msgSum - msgBudget)
     if (needToShed <= 0) call
     else {
@@ -857,26 +928,28 @@ trait Provider extends Service with ModelResolver {
       // messages we can drop without crossing the budget.
       val cum = perMsg.scanLeft(0)(_ + _)
       val idx = cum.indices.find(i => cum(i) >= needToShed).getOrElse(perMsg.size)
-      val k   = math.min(idx, msgs.size)
+      val k = math.min(idx, msgs.size)
       call.copy(messages = msgs.drop(k))
     }
   }
 
-  /** Best-effort textual rendering of a [[ProviderMessage]] for
-    * the local heuristic tokenizer's per-message estimate. Bug #59
-    * — exact wire-byte fidelity isn't needed here since the
-    * caller follows up with `estimateOf` confirmation; this only
-    * has to be a stable proxy for relative message size. */
+  /**
+   * Best-effort textual rendering of a [[ProviderMessage]] for
+   * the local heuristic tokenizer's per-message estimate. Bug #59
+   * — exact wire-byte fidelity isn't needed here since the
+   * caller follows up with `estimateOf` confirmation; this only
+   * has to be a stable proxy for relative message size.
+   */
   private def renderMessageForHeuristic(m: ProviderMessage): String = m match {
-    case ProviderMessage.System(c)            => c
-    case ProviderMessage.User(blocks)         => blocks.iterator.map {
-      case t: MessageContent.Text  => t.text
-      case _                       => ""
-    }.mkString("\n")
-    case ProviderMessage.Assistant(c, calls)  =>
+    case ProviderMessage.System(c) => c
+    case ProviderMessage.User(blocks) => blocks.iterator.map {
+        case t: MessageContent.Text => t.text
+        case _ => ""
+      }.mkString("\n")
+    case ProviderMessage.Assistant(c, calls) =>
       val callsText = calls.iterator.map(tc => s"${tc.name}:${tc.argsJson}").mkString("\n")
       s"$c\n$callsText"
-    case ProviderMessage.ToolResult(_, c)     => c
+    case ProviderMessage.ToolResult(_, c) => c
     case ProviderMessage.Reasoning(_, summary, encryptedContent) =>
       summary.mkString("\n") + encryptedContent.getOrElse("")
   }
@@ -941,7 +1014,7 @@ trait Provider extends Service with ModelResolver {
 
   private def translate(req: ProviderRequest): Task[ProviderCall] = req match {
     case c: ConversationRequest => translateConversation(c)
-    case s: OneShotRequest      => Task.pure(translateOneShot(s))
+    case s: OneShotRequest => Task.pure(translateOneShot(s))
   }
 
   private def translateConversation(c: ConversationRequest): Task[ProviderCall] =
@@ -968,85 +1041,93 @@ trait Provider extends Service with ModelResolver {
                                         agentId: Option[ParticipantId],
                                         previousResponseId: Option[String],
                                         priorMessageCount: Option[Int]): Task[ProviderCall] = {
-      // Sigil #274 — the same wire-roster filter the Orchestrator's
-      // `toolsByName` uses, so both ends of the dispatch agree on what's
-      // in scope. See [[ConversationRequest.effectiveTools]].
-      val effectiveTools = c.effectiveTools
-      val toolChoice: ToolChoice =
-        if (effectiveTools.isEmpty) ToolChoice.None
-        else ToolChoice.Required
-      val gen = tightenMaxTokensForParaphrase(c)
-      val messages = nonEmptyMessages(c, agentId)
-      // Sigil #305 — preserved-tool set: the tools the prompt's own
-      // sections advertise to the model. emergencyShed honors this set
-      // so the wire roster never drops below what the prompt promises,
-      // closing the divergence behind the field's change_mode loop.
-      val preserved: Set[_root_.sigil.tool.ToolName] = agentId match {
-        case Some(pid) =>
-          val proj = c.turnInput.projectionFor(pid)
-          proj.suggestedTools.toSet ++
-            proj.recentToolInvocations.iterator.map(_.toolName).toSet
-        case None => Set.empty
-      }
-      val renderedSystem = renderSystem(c, resolved)
-      val providerCall = ProviderCall(
-        model = c.model,
-        system = renderedSystem.stable,
-        systemVolatile = renderedSystem.volatile,
-        messages = messages,
-        tools = effectiveTools,
-        builtInTools = c.builtInTools,
-        toolChoice = toolChoice,
-        generationSettings = gen,
-        currentMode = c.currentMode,
-        conversationId = Some(c.conversationId),
-        agentId = agentId,
-        previousResponseId = previousResponseId,
-        priorMessageCount = priorMessageCount,
-        preservedToolNames = preserved
-      )
-      emitWireProfile(c, resolved, agentId).map(_ => providerCall)
+    // Sigil #274 — the same wire-roster filter the Orchestrator's
+    // `toolsByName` uses, so both ends of the dispatch agree on what's
+    // in scope. See [[ConversationRequest.effectiveTools]].
+    val effectiveTools = c.effectiveTools
+    val toolChoice: ToolChoice =
+      if (effectiveTools.isEmpty) ToolChoice.None
+      else ToolChoice.Required
+    val gen = tightenMaxTokensForParaphrase(c)
+    val messages = nonEmptyMessages(c, agentId)
+    // Sigil #305 — preserved-tool set: the tools the prompt's own
+    // sections advertise to the model. emergencyShed honors this set
+    // so the wire roster never drops below what the prompt promises,
+    // closing the divergence behind the field's change_mode loop.
+    val preserved: Set[_root_.sigil.tool.ToolName] = agentId match {
+      case Some(pid) =>
+        val proj = c.turnInput.projectionFor(pid)
+        proj.suggestedTools.toSet ++
+          proj.recentToolInvocations.iterator.map(_.toolName).toSet
+      case None => Set.empty
     }
+    val renderedSystem = renderSystem(c, resolved)
+    val providerCall = ProviderCall(
+      model = c.model,
+      system = renderedSystem.stable,
+      systemVolatile = renderedSystem.volatile,
+      messages = messages,
+      tools = effectiveTools,
+      builtInTools = c.builtInTools,
+      toolChoice = toolChoice,
+      generationSettings = gen,
+      currentMode = c.currentMode,
+      conversationId = Some(c.conversationId),
+      agentId = agentId,
+      previousResponseId = previousResponseId,
+      priorMessageCount = priorMessageCount,
+      preservedToolNames = preserved
+    )
+    emitWireProfile(c, resolved, agentId).map(_ => providerCall)
+  }
 
   // Sigil #274 — `filterToolsForForcedSynthesis` moved to
   // [[ConversationRequest.effectiveTools]] so the wire path and the
   // dispatch path share one source of truth for the in-scope roster.
 
-  /** Adaptive max_tokens — when the paraphrase detector has flagged a
-    * planning-without-acting loop on this turn (signal lives in
-    * `turnInput.extraContext`), cap the per-call generation budget so
-    * a degenerate model can't run all the way to its default
-    * `maxOutputTokens` producing kilobytes of repeated text. Damage
-    * bounded; the agent's next iteration reads the loop diagnostic and
-    * can self-correct. */
+  /**
+   * Adaptive max_tokens — when the paraphrase detector has flagged a
+   * planning-without-acting loop on this turn (signal lives in
+   * `turnInput.extraContext`), cap the per-call generation budget so
+   * a degenerate model can't run all the way to its default
+   * `maxOutputTokens` producing kilobytes of repeated text. Damage
+   * bounded; the agent's next iteration reads the loop diagnostic and
+   * can self-correct.
+   */
   private def tightenMaxTokensForParaphrase(c: ConversationRequest): GenerationSettings =
-    if (c.turnInput.extraContext.exists { case (k, _) =>
-          k.value == _root_.sigil.conversation.compression.ParaphraseLoopDetector.ContextKeyValue
-        }) c.generationSettings.tightenedTo(Provider.ParaphraseLoopMaxOutputTokensCap)
+    if (
+      c.turnInput.extraContext.exists { case (k, _) =>
+        k.value == _root_.sigil.conversation.compression.ParaphraseLoopDetector.ContextKeyValue
+      }
+    ) c.generationSettings.tightenedTo(Provider.ParaphraseLoopMaxOutputTokensCap)
     else c.generationSettings
 
-  /** Agent-initiated turns (greeting / scheduled / autonomous /
-    * worker-spawn) reach this code path with no user message in the
-    * conversation history — `renderFrames` returns empty and providers
-    * would emit an empty `input` / `messages` array, which OpenAI
-    * Responses, Anthropic Messages, and Google generateContent all
-    * reject with HTTP 400 (each requires non-empty input). Synthesize
-    * a single user-role placeholder so the wire shape is always
-    * well-formed. The placeholder is request-only — never persists to
-    * events; the agent's emitted reply is what gets stored. */
+  /**
+   * Agent-initiated turns (greeting / scheduled / autonomous /
+   * worker-spawn) reach this code path with no user message in the
+   * conversation history — `renderFrames` returns empty and providers
+   * would emit an empty `input` / `messages` array, which OpenAI
+   * Responses, Anthropic Messages, and Google generateContent all
+   * reject with HTTP 400 (each requires non-empty input). Synthesize
+   * a single user-role placeholder so the wire shape is always
+   * well-formed. The placeholder is request-only — never persists to
+   * events; the agent's emitted reply is what gets stored.
+   */
   private def nonEmptyMessages(c: ConversationRequest, agentId: Option[ParticipantId]): Vector[ProviderMessage] = {
     val rendered = renderFrames(c.turnInput.frames, agentId)
     if (rendered.nonEmpty) rendered
     else Vector(ProviderMessage.User(Provider.AgentInitiatedTurnTrigger))
   }
 
-  /** Diagnostic profiling — gated on `Sigil.profileWireRequests`
-    * (default on; apps override to false to skip). Runs the tokenizer
-    * once per turn over every section of the about-to-be-sent request
-    * and broadcasts the breakdown as a `WireRequestProfile` Notice.
-    * Cheap (jtokkit milliseconds for typical request sizes) — supports
-    * the always-visible context-utilisation gauge downstream apps
-    * render without further opt-in. */
+  /**
+   * Diagnostic profiling — gated on `Sigil.profileWireRequests`
+   * (default on; apps override to false to skip). Runs the tokenizer
+   * once per turn over every section of the about-to-be-sent request
+   * and broadcasts the breakdown as a `WireRequestProfile` Notice.
+   * Cheap (jtokkit milliseconds for typical request sizes) — supports
+   * the always-visible context-utilisation gauge downstream apps
+   * render without further opt-in.
+   */
   private def emitWireProfile(c: ConversationRequest,
                               resolved: ResolvedReferences,
                               agentId: Option[ParticipantId]): Task[Unit] =
@@ -1076,19 +1157,21 @@ trait Provider extends Service with ModelResolver {
     )
   }
 
-  /** Project the public [[ResponseContent]] vocabulary onto the
-    * narrower wire-level [[MessageContent]] used in
-    * [[ProviderMessage.User]]. `Text` and `Image` map directly;
-    * structured variants (Code, Diff, Table, Heading, …) render to
-    * a `Text` block via `toString` so the model still sees the
-    * content even on text-only providers. Image blocks survive into
-    * the wire layer; per-provider serialization there decides
-    * whether to send or drop based on the target API's multimodal
-    * support. */
+  /**
+   * Project the public [[ResponseContent]] vocabulary onto the
+   * narrower wire-level [[MessageContent]] used in
+   * [[ProviderMessage.User]]. `Text` and `Image` map directly;
+   * structured variants (Code, Diff, Table, Heading, …) render to
+   * a `Text` block via `toString` so the model still sees the
+   * content even on text-only providers. Image blocks survive into
+   * the wire layer; per-provider serialization there decides
+   * whether to send or drop based on the target API's multimodal
+   * support.
+   */
   private def toMessageContent(content: Vector[ResponseContent]): Vector[MessageContent] =
     content.map {
-      case ResponseContent.Text(t)                 => MessageContent.Text(t)
-      case ResponseContent.Image(url, alt)         => MessageContent.Image(url, alt)
+      case ResponseContent.Text(t) => MessageContent.Text(t)
+      case ResponseContent.Image(url, alt) => MessageContent.Image(url, alt)
       // Sigil #296 — inline bytes path. Apps that have transient
       // image data (PDF page renders, screen captures) avoid both
       // spice's URL.parse mangling of `data:` URIs AND the
@@ -1096,28 +1179,30 @@ trait Provider extends Service with ModelResolver {
       // ImageBytes directly; the wire layer's MessageContent.ImageBytes
       // is already supported by every multimodal provider.
       case ResponseContent.ImageBytes(mt, b64, alt) => MessageContent.ImageBytes(mt, b64, alt)
-      case ResponseContent.Markdown(t)             => MessageContent.Text(t)
-      case ResponseContent.Code(c, lang)           => MessageContent.Text(s"```${lang.getOrElse("")}\n$c\n```")
-      case other                                    => MessageContent.Text(MarkdownRenderer.renderBlock(other))
+      case ResponseContent.Markdown(t) => MessageContent.Text(t)
+      case ResponseContent.Code(c, lang) => MessageContent.Text(s"```${lang.getOrElse("")}\n$c\n```")
+      case other => MessageContent.Text(MarkdownRenderer.renderBlock(other))
     }
 
-  /** Materialize internally-stored images for the wire. A
-    * [[MessageContent.Image]] whose URL points at a Sigil
-    * [[sigil.storage.StoredFile]] (path shape `…/storage/<id>`) is
-    * rewritten to [[MessageContent.ImageBytes]] carrying the file's
-    * bytes — the default local-storage URL is not reachable by the
-    * provider's servers, so a fetchable URL can't be assumed.
-    * Genuinely public URLs (signed S3, CDN) — whose path segment does
-    * not resolve to a StoredFile — pass through unchanged. Runs once
-    * over the translated call so every provider benefits. */
+  /**
+   * Materialize internally-stored images for the wire. A
+   * [[MessageContent.Image]] whose URL points at a Sigil
+   * [[sigil.storage.StoredFile]] (path shape `…/storage/<id>`) is
+   * rewritten to [[MessageContent.ImageBytes]] carrying the file's
+   * bytes — the default local-storage URL is not reachable by the
+   * provider's servers, so a fetchable URL can't be assumed.
+   * Genuinely public URLs (signed S3, CDN) — whose path segment does
+   * not resolve to a StoredFile — pass through unchanged. Runs once
+   * over the translated call so every provider benefits.
+   */
   private[provider] def normalizeStoredImages(call: ProviderCall): Task[ProviderCall] = {
     def normalizeContent(mc: MessageContent): Task[MessageContent] = mc match {
       case MessageContent.Image(url, altText) =>
         storedFileIdFrom(url) match {
-          case None     => Task.pure(mc)
+          case None => Task.pure(mc)
           case Some(id) =>
             sigil.withDB(_.storedFiles.transaction(_.get(id))).flatMap {
-              case None       => Task.pure(mc)
+              case None => Task.pure(mc)
               case Some(file) =>
                 sigil.storageProvider.download(file.path).map {
                   case Some(bytes) =>
@@ -1139,10 +1224,12 @@ trait Provider extends Service with ModelResolver {
     }).map(messages => call.copy(messages = messages.toVector))
   }
 
-  /** Extract a [[sigil.storage.StoredFile]] id from a URL of shape
-    * `…/storage/<id>` — covers the default `sigil://storage/<id>` and
-    * an app override to an `http(s)://host/storage/<id>` form. `None`
-    * when the URL is not storage-shaped. */
+  /**
+   * Extract a [[sigil.storage.StoredFile]] id from a URL of shape
+   * `…/storage/<id>` — covers the default `sigil://storage/<id>` and
+   * an app override to an `http(s)://host/storage/<id>` form. `None`
+   * when the URL is not storage-shaped.
+   */
   private def storedFileIdFrom(url: spice.net.URL): Option[Id[_root_.sigil.storage.StoredFile]] = {
     val marker = "/storage/"
     val s = url.toString
@@ -1154,9 +1241,11 @@ trait Provider extends Service with ModelResolver {
     }
   }
 
-  /** Resolve the ids on `TurnInput.criticalMemories` / `.memories` /
-    * `.summaries` to full records via the DB. Ids that don't resolve are
-    * dropped silently. */
+  /**
+   * Resolve the ids on `TurnInput.criticalMemories` / `.memories` /
+   * `.summaries` to full records via the DB. Ids that don't resolve are
+   * dropped silently.
+   */
   private def resolveReferences(turn: TurnInput): Task[ResolvedReferences] = {
     // Sigil bug #170 — collapse the prior per-id transaction fan into
     // two transactions total (one memories, one summaries). On every
@@ -1167,7 +1256,7 @@ trait Provider extends Service with ModelResolver {
         Task.pure((Nil, Nil))
       else sigil.withDB(_.memories.transaction { tx =>
         for {
-          crit    <- Task.sequence(turn.criticalMemories.toList.map(tx.get))
+          crit <- Task.sequence(turn.criticalMemories.toList.map(tx.get))
           regular <- Task.sequence(turn.memories.toList.map(tx.get))
         } yield (crit, regular)
       })
@@ -1178,7 +1267,7 @@ trait Provider extends Service with ModelResolver {
       })
     for {
       (crit, regular) <- memTask
-      summaries       <- sumTask
+      summaries <- sumTask
     } yield ResolvedReferences(
       criticalMemories = crit.flatten.toVector,
       memories = regular.flatten.toVector,
@@ -1186,31 +1275,40 @@ trait Provider extends Service with ModelResolver {
     )
   }
 
-  /** Compose the system prompt body from every contextually relevant
-    * field on a [[ConversationRequest]]. Each section is omitted
-    * when its source is empty. Every Model-visible field on `TurnInput`
-    * MUST appear here. The companion
-    * [[spec.LlamaCppRequestCoverageSpec]] is the regression guard. */
-  /** Compose the system prompt body, stable content first, volatile
-    * content last.
-    *
-    * Section ordering is cache-aware: the prefix sections (tool
-    * framing, mode + topic, instructions, roles, skills, pinned
-    * directives, summaries, referenced content) change rarely across
-    * turns within one conversation, so providers with prompt caching
-    * (Anthropic's `cache_control` breakpoints, OpenAI / DeepSeek's
-    * automatic prefix caches) can serve them from a cache hit. The
-    * tail sections (retrieved non-critical memories, recently used
-    * tools, repeated-call diagnostics, discovered capabilities,
-    * per-turn budget warnings, the greeting hint) shift every turn —
-    * placing them last keeps the cacheable prefix stable. */
-  /** Sigil #302 — split system prompt return shape. Anthropic uses the
-    * two segments as distinct cache-control breakpoints (stable gets
-    * cached; volatile lands as a second segment without a marker so
-    * its per-turn churn doesn't invalidate the cached prefix). Other
-    * providers concat via [[RenderedSystem.combined]]. */
+  /**
+   * Compose the system prompt body from every contextually relevant
+   * field on a [[ConversationRequest]]. Each section is omitted
+   * when its source is empty. Every Model-visible field on `TurnInput`
+   * MUST appear here. The companion
+   * [[spec.LlamaCppRequestCoverageSpec]] is the regression guard.
+   */
+  /**
+   * Compose the system prompt body, stable content first, volatile
+   * content last.
+   *
+   * Section ordering is cache-aware: the prefix sections (tool
+   * framing, mode + topic, instructions, roles, skills, pinned
+   * directives, summaries, referenced content) change rarely across
+   * turns within one conversation, so providers with prompt caching
+   * (Anthropic's `cache_control` breakpoints, OpenAI / DeepSeek's
+   * automatic prefix caches) can serve them from a cache hit. The
+   * tail sections (retrieved non-critical memories, recently used
+   * tools, repeated-call diagnostics, discovered capabilities,
+   * per-turn budget warnings, the greeting hint) shift every turn —
+   * placing them last keeps the cacheable prefix stable.
+   */
+  /**
+   * Sigil #302 — split system prompt return shape. Anthropic uses the
+   * two segments as distinct cache-control breakpoints (stable gets
+   * cached; volatile lands as a second segment without a marker so
+   * its per-turn churn doesn't invalidate the cached prefix). Other
+   * providers concat via [[RenderedSystem.combined]].
+   */
   protected case class RenderedSystem(stable: String, volatile: String) {
-    /** Single-string form used by providers that don't split. */
+
+    /**
+     * Single-string form used by providers that don't split.
+     */
     def combined: String =
       if (volatile.isEmpty) stable
       else if (stable.isEmpty) volatile
@@ -1274,11 +1372,11 @@ trait Provider extends Service with ModelResolver {
     // the model handles multi-role identity explicitly even when each
     // role's description was written self-contained.
     c.roles match {
-      case Nil           => ()
-      case List(single)  =>
+      case Nil => ()
+      case List(single) =>
         if (single.description.nonEmpty)
           sb.append("\n").append(single.description).append("\n")
-      case multi         =>
+      case multi =>
         sb.append("\nYou serve the following roles:\n")
         multi.foreach { r =>
           sb.append(s"- ${r.name}")
@@ -1477,34 +1575,37 @@ trait Provider extends Service with ModelResolver {
     RenderedSystem(stable = stable, volatile = sb.toString)
   }
 
-  /** What to render for a memory in the system prompt's `Critical
-    * directives` / `Memories` sections. Prefers `summary` when set so
-    * apps that author tight directives keep per-turn cost down; the
-    * full `fact` is always recoverable via the `lookup` tool. */
+  /**
+   * What to render for a memory in the system prompt's `Critical
+   * directives` / `Memories` sections. Prefers `summary` when set so
+   * apps that author tight directives keep per-turn cost down; the
+   * full `fact` is always recoverable via the `lookup` tool.
+   */
   private def memoryRenderText(m: ContextMemory): String =
     if (m.summary.trim.nonEmpty) m.summary else m.fact
 
-  /** Render a conversation's [[ContextFrame]]s into format-neutral
-    * [[ProviderMessage]]s. Mapping rules:
-    *
-    *   - `Text` from the agent itself        → `Assistant`
-    *   - `Text` from anyone else             → `User`
-    *   - `ToolCall` from the agent for any
-    *     tool *other than* `respond`         → `Assistant` with `toolCalls`
-    *     The `respond` tool's call is filtered because the following
-    *     `Text` frame IS the response — emitting both would yield a
-    *     tool_call without a matching tool_result.
-    *   - `ToolCall` from someone else        → skipped
-    *   - `ToolResult`                        → `ToolResult` paired by callId
-    *   - `System`                            → `ToolResult` if a tool call
-    *     is open; otherwise `System`
-    *
-    * Only model-visible events become frames in the first place (see
-    * [[sigil.conversation.FrameBuilder]]), so UI-only history never
-    * reaches this renderer.
-    */
+  /**
+   * Render a conversation's [[ContextFrame]]s into format-neutral
+   * [[ProviderMessage]]s. Mapping rules:
+   *
+   *   - `Text` from the agent itself        → `Assistant`
+   *   - `Text` from anyone else             → `User`
+   *   - `ToolCall` from the agent for any
+   *     tool *other than* `respond`         → `Assistant` with `toolCalls`
+   *     The `respond` tool's call is filtered because the following
+   *     `Text` frame IS the response — emitting both would yield a
+   *     tool_call without a matching tool_result.
+   *   - `ToolCall` from someone else        → skipped
+   *   - `ToolResult`                        → `ToolResult` paired by callId
+   *   - `System`                            → `ToolResult` if a tool call
+   *     is open; otherwise `System`
+   *
+   * Only model-visible events become frames in the first place (see
+   * [[sigil.conversation.FrameBuilder]]), so UI-only history never
+   * reaches this renderer.
+   */
   protected[provider] def renderFrames(frames: Vector[ContextFrame],
-                           agentId: Option[ParticipantId]): Vector[ProviderMessage] = {
+                                       agentId: Option[ParticipantId]): Vector[ProviderMessage] = {
     val out = Vector.newBuilder[ProviderMessage]
     // Bug #167 — track ALL unpaired tool_call ids, not just the most-
     // recent one. The previous `Option[String]` overwrote when two
@@ -1627,16 +1728,19 @@ trait Provider extends Service with ModelResolver {
               // after the agent's turn has settled). Track as pending
               // so the post-walk invariant check surfaces it loudly.
               pendingToolCallIds.add(wireId)
-              pendingOrphans.update(wireId, _root_.sigil.heal.CorruptionEvidence.MissingToolResult(
-                // `sourceEventId` is definitionally the durable
-                // `ToolInvoke` row id (Sigil #314) — use it for
-                // `invokeId` so the heal's id-based resolution lands
-                // on the real row regardless of how `callId` was
-                // historically populated.
-                invokeId = tc.sourceEventId,
-                callId   = wireId,
-                toolName = tc.toolName.value
-              ))
+              pendingOrphans.update(
+                wireId,
+                _root_.sigil.heal.CorruptionEvidence.MissingToolResult(
+                  // `sourceEventId` is definitionally the durable
+                  // `ToolInvoke` row id (Sigil #314) — use it for
+                  // `invokeId` so the heal's id-based resolution lands
+                  // on the real row regardless of how `callId` was
+                  // historically populated.
+                  invokeId = tc.sourceEventId,
+                  callId = wireId,
+                  toolName = tc.toolName.value
+                )
+              )
           }
           i += 1
 
@@ -1683,17 +1787,19 @@ trait Provider extends Service with ModelResolver {
     mergeAdjacentAssistantContent(out.result())
   }
 
-  /** Bug #74 — merge consecutive content-only `ProviderMessage.Assistant`
-    * entries into a single message whose content is the run joined with
-    * `\n\n`. OpenAI-compatible providers (incl. llama.cpp) reject two
-    * adjacent `role=assistant` content messages with HTTP 400 ("Cannot
-    * have 2 or more assistant messages at the end of the list"); the
-    * canonical multi-respond turn (`endsTurn = false` followed by a
-    * settling `endsTurn = true` respond) produces exactly that shape.
-    *
-    * Only content-only assistants merge — tool-call assistant messages
-    * pass through untouched (they're paired with their `tool` result
-    * messages and provider wire formats accept them). */
+  /**
+   * Bug #74 — merge consecutive content-only `ProviderMessage.Assistant`
+   * entries into a single message whose content is the run joined with
+   * `\n\n`. OpenAI-compatible providers (incl. llama.cpp) reject two
+   * adjacent `role=assistant` content messages with HTTP 400 ("Cannot
+   * have 2 or more assistant messages at the end of the list"); the
+   * canonical multi-respond turn (`endsTurn = false` followed by a
+   * settling `endsTurn = true` respond) produces exactly that shape.
+   *
+   * Only content-only assistants merge — tool-call assistant messages
+   * pass through untouched (they're paired with their `tool` result
+   * messages and provider wire formats accept them).
+   */
   private def mergeAdjacentAssistantContent(messages: Vector[ProviderMessage]): Vector[ProviderMessage] = {
     val out = Vector.newBuilder[ProviderMessage]
     var pending: Option[ProviderMessage.Assistant] = None
@@ -1709,7 +1815,7 @@ trait Provider extends Service with ModelResolver {
         pending match {
           case Some(prev) =>
             pending = Some(ProviderMessage.Assistant(
-              content   = prev.content + joiner + a.content,
+              content = prev.content + joiner + a.content,
               toolCalls = Nil
             ))
           case None =>
@@ -1727,56 +1833,66 @@ trait Provider extends Service with ModelResolver {
 
 object Provider {
 
-  /** Sigil #343 — map a tool-call id to the portable charset every
-    * provider accepts (`[A-Za-z0-9_-]`, Anthropic's `tool_use.id` rule).
-    * Cloudflare/OpenAI mint `functions.<name>:<n>` ids whose `.` and `:`
-    * Anthropic 400-rejects when a mixed-provider conversation later routes
-    * to it. Deterministic (so a call id and its paired result id map to
-    * the same value) and idempotent (already-portable ids pass through). */
+  /**
+   * Sigil #343 — map a tool-call id to the portable charset every
+   * provider accepts (`[A-Za-z0-9_-]`, Anthropic's `tool_use.id` rule).
+   * Cloudflare/OpenAI mint `functions.<name>:<n>` ids whose `.` and `:`
+   * Anthropic 400-rejects when a mixed-provider conversation later routes
+   * to it. Deterministic (so a call id and its paired result id map to
+   * the same value) and idempotent (already-portable ids pass through).
+   */
   def portableToolCallId(id: String): String = {
     val mapped = id.replaceAll("[^A-Za-z0-9_-]", "-")
     if (mapped.isEmpty) "tool-call" else mapped
   }
 
-  /** Adaptive `max_tokens` cap applied when the paraphrase loop
-    * detector has flagged this turn — bounds the damage when a
-    * degenerate model is about to retry the same content. Default
-    * 500 is informed by the live wire-log scenario where
-    * `qwen3.6-35b` produced ~200k chars of repeated output before
-    * hitting `max_tokens = 4096`. Smaller cap means the next
-    * iteration sees the failure quickly and can self-correct via
-    * the Failure-block diagnostic the orchestrator emits. */
+  /**
+   * Adaptive `max_tokens` cap applied when the paraphrase loop
+   * detector has flagged this turn — bounds the damage when a
+   * degenerate model is about to retry the same content. Default
+   * 500 is informed by the live wire-log scenario where
+   * `qwen3.6-35b` produced ~200k chars of repeated output before
+   * hitting `max_tokens = 4096`. Smaller cap means the next
+   * iteration sees the failure quickly and can self-correct via
+   * the Failure-block diagnostic the orchestrator emits.
+   */
   val ParaphraseLoopMaxOutputTokensCap: Int = 500
 
-  /** Bug #132 — synthetic user message used when an agent-initiated
-    * turn (greeting / scheduled / autonomous wake-up / worker spawn)
-    * reaches the provider with no user message in the conversation
-    * history. Every provider's API (OpenAI Responses, Anthropic
-    * Messages, Google generateContent) requires non-empty input;
-    * without this placeholder the request would be rejected with
-    * HTTP 400 ("input must be provided"). The placeholder rides the
-    * request only — never persists to the conversation event store.
-    * The agent's emitted reply is what gets stored. Tagged so a
-    * model that pattern-matches the trigger knows it's responding
-    * to a framework-initiated turn rather than user input. */
+  /**
+   * Bug #132 — synthetic user message used when an agent-initiated
+   * turn (greeting / scheduled / autonomous wake-up / worker spawn)
+   * reaches the provider with no user message in the conversation
+   * history. Every provider's API (OpenAI Responses, Anthropic
+   * Messages, Google generateContent) requires non-empty input;
+   * without this placeholder the request would be rejected with
+   * HTTP 400 ("input must be provided"). The placeholder rides the
+   * request only — never persists to the conversation event store.
+   * The agent's emitted reply is what gets stored. Tagged so a
+   * model that pattern-matches the trigger knows it's responding
+   * to a framework-initiated turn rather than user input.
+   */
   val AgentInitiatedTurnTrigger: String =
     "(agent-initiated turn — no user input yet; produce your greeting or scheduled output)"
 
-  /** Cap on entries emitted under the "Recently used tools" prompt
-    * section. The full rolling window may carry more than this; the
-    * renderer takes the most-recent distinct (toolName, argsHash)
-    * subset so the prompt stays bounded and the agent still sees
-    * what's pertinent. */
+  /**
+   * Cap on entries emitted under the "Recently used tools" prompt
+   * section. The full rolling window may carry more than this; the
+   * renderer takes the most-recent distinct (toolName, argsHash)
+   * subset so the prompt stays bounded and the agent still sees
+   * what's pertinent.
+   */
   val RecentToolsPromptCap: Int = 15
 
-  /** Render an elapsed-millis interval as a coarse "ago" string --
-    * one of "just now", "moments ago", "recently", "earlier today",
-    * "earlier this week", or "a while ago". The agent doesn't need
-    * stopwatch precision for duplicate-call detection; categorical
-    * recency is the load-bearing signal. Stable bucket strings also
-    * keep the rendered system prompt deterministic across short
-    * replay windows, which lets recorded fixtures match on the second
-    * turn of a multi-turn run. */
+  /**
+   * Render an elapsed-millis interval as a coarse "ago" string --
+   * one of "just now", "moments ago", "recently", "earlier today",
+   * "earlier this week", or "a while ago". The agent doesn't need
+   * stopwatch precision for duplicate-call detection; categorical
+   * recency is the load-bearing signal. Stable bucket strings also
+   * keep the rendered system prompt deterministic across short
+   * replay windows, which lets recorded fixtures match on the second
+   * turn of a multi-turn run.
+   */
   def humanizeAgo(elapsedMs: Long): String = {
     val seconds = math.max(0L, elapsedMs / 1000L)
     if (seconds < 60) "just now"

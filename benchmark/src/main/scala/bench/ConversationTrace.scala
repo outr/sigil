@@ -25,14 +25,20 @@ final case class ConversationTrace(conversationId: Id[Conversation],
                                    turns: List[TurnTrace],
                                    finalConversation: Conversation) {
 
-  /** Tool invocations across every turn in fire order. */
+  /**
+   * Tool invocations across every turn in fire order.
+   */
   def allToolInvokes: Vector[ToolInvoke] = turns.toVector.flatMap(_.toolInvokes)
 
-  /** All mode changes across every turn in chronological order. */
+  /**
+   * All mode changes across every turn in chronological order.
+   */
   def allModeChanges: Vector[ModeChange] = turns.toVector.flatMap(_.modeChanges)
 
-  /** The agent's most-recent settled reply across the conversation, or
-    * `None` if no turn produced one (typically a no-response path). */
+  /**
+   * The agent's most-recent settled reply across the conversation, or
+   * `None` if no turn produced one (typically a no-response path).
+   */
   def lastReply: Option[Message] = turns.reverse.flatMap(_.finalReply).headOption
 }
 
@@ -59,42 +65,48 @@ final case class TurnTrace(userMessage: Message,
                            modeChanges: Vector[ModeChange],
                            finalReply: Option[Message]) {
 
-  /** Concatenated text content of the final reply, or empty string. */
+  /**
+   * Concatenated text content of the final reply, or empty string.
+   */
   def replyText: String = finalReply.map(TurnTrace.textOf).getOrElse("")
 
-  /** Names of the tools called this turn, in fire order. */
+  /**
+   * Names of the tools called this turn, in fire order.
+   */
   def toolCallNames: Vector[ToolName] = toolInvokes.map(_.toolName)
 }
 
 object TurnTrace {
 
-  /** Concatenate the user-visible textual content of a Message into a
-    * single trimmed string. Covers every [[ResponseContent]] variant
-    * via an exhaustive match — adding a new variant to the enum will
-    * surface a non-exhaustive-match warning here so the rendering rule
-    * is decided deliberately. Mirrors `ConversationSession.textOf`. */
+  /**
+   * Concatenate the user-visible textual content of a Message into a
+   * single trimmed string. Covers every [[ResponseContent]] variant
+   * via an exhaustive match — adding a new variant to the enum will
+   * surface a non-exhaustive-match warning here so the rendering rule
+   * is decided deliberately. Mirrors `ConversationSession.textOf`.
+   */
   def textOf(m: Message): String =
     m.content.map {
-      case ResponseContent.Text(text)                => text
-      case ResponseContent.Markdown(text)            => text
-      case ResponseContent.Heading(text)             => text
-      case ResponseContent.Code(code, _)             => code
-      case ResponseContent.Diff(diff, _)             => diff
-      case ResponseContent.Citation(source, exc, _)  => exc.fold(source)(e => s"$source: $e")
-      case ResponseContent.ItemList(items, _)        => items.mkString("\n")
-      case ResponseContent.Table(headers, rows)      =>
+      case ResponseContent.Text(text) => text
+      case ResponseContent.Markdown(text) => text
+      case ResponseContent.Heading(text) => text
+      case ResponseContent.Code(code, _) => code
+      case ResponseContent.Diff(diff, _) => diff
+      case ResponseContent.Citation(source, exc, _) => exc.fold(source)(e => s"$source: $e")
+      case ResponseContent.ItemList(items, _) => items.mkString("\n")
+      case ResponseContent.Table(headers, rows) =>
         (headers :: rows).map(_.mkString(" | ")).mkString("\n")
-      case ResponseContent.Link(url, label)          => s"$label ($url)"
-      case ResponseContent.Image(url, alt)           => alt.fold(url.toString)(a => s"$a ($url)")
-      case ResponseContent.Field(label, value, _)    => s"$label: $value"
-      case ResponseContent.Options(prompt, opts, _)  =>
+      case ResponseContent.Link(url, label) => s"$label ($url)"
+      case ResponseContent.Image(url, alt) => alt.fold(url.toString)(a => s"$a ($url)")
+      case ResponseContent.Field(label, value, _) => s"$label: $value"
+      case ResponseContent.Options(prompt, opts, _) =>
         s"$prompt\n" + opts.map(o => s"${o.label}: ${o.value}").mkString("\n")
       case ResponseContent.TextInput(label, _, _, _) => label
-      case ResponseContent.SecretInput(label, _, _)  => label
-      case ResponseContent.SecretRef(_, label)       => label
-      case ResponseContent.Divider                   => ""
-      case sf: ResponseContent.StoredFileReference   => sf.title
-      case card: ResponseContent.Card                =>
+      case ResponseContent.SecretInput(label, _, _) => label
+      case ResponseContent.SecretRef(_, label) => label
+      case ResponseContent.Divider => ""
+      case sf: ResponseContent.StoredFileReference => sf.title
+      case card: ResponseContent.Card =>
         // Cards nest other content blocks; render their typed
         // sections recursively. The rare empty-card case
         // contributes nothing.
@@ -102,26 +114,28 @@ object TurnTrace {
           .map(child => textOfBlock(child)).filter(_.nonEmpty).mkString("\n")
     }.filter(_.nonEmpty).mkString("\n").trim
 
-  /** Single-block variant — used by Card's recursive render. */
+  /**
+   * Single-block variant — used by Card's recursive render.
+   */
   private def textOfBlock(c: ResponseContent): String = c match {
-    case ResponseContent.Text(text)                => text
-    case ResponseContent.Markdown(text)            => text
-    case ResponseContent.Heading(text)             => text
-    case ResponseContent.Code(code, _)             => code
-    case ResponseContent.Diff(diff, _)             => diff
-    case ResponseContent.Citation(source, exc, _)  => exc.fold(source)(e => s"$source: $e")
-    case ResponseContent.ItemList(items, _)        => items.mkString("\n")
-    case ResponseContent.Table(headers, rows)      => (headers :: rows).map(_.mkString(" | ")).mkString("\n")
-    case ResponseContent.Link(url, label)          => s"$label ($url)"
-    case ResponseContent.Image(url, alt)           => alt.fold(url.toString)(a => s"$a ($url)")
-    case ResponseContent.Field(label, value, _)    => s"$label: $value"
-    case ResponseContent.Options(prompt, opts, _)  => s"$prompt\n" + opts.map(o => s"${o.label}: ${o.value}").mkString("\n")
+    case ResponseContent.Text(text) => text
+    case ResponseContent.Markdown(text) => text
+    case ResponseContent.Heading(text) => text
+    case ResponseContent.Code(code, _) => code
+    case ResponseContent.Diff(diff, _) => diff
+    case ResponseContent.Citation(source, exc, _) => exc.fold(source)(e => s"$source: $e")
+    case ResponseContent.ItemList(items, _) => items.mkString("\n")
+    case ResponseContent.Table(headers, rows) => (headers :: rows).map(_.mkString(" | ")).mkString("\n")
+    case ResponseContent.Link(url, label) => s"$label ($url)"
+    case ResponseContent.Image(url, alt) => alt.fold(url.toString)(a => s"$a ($url)")
+    case ResponseContent.Field(label, value, _) => s"$label: $value"
+    case ResponseContent.Options(prompt, opts, _) => s"$prompt\n" + opts.map(o => s"${o.label}: ${o.value}").mkString("\n")
     case ResponseContent.TextInput(label, _, _, _) => label
-    case ResponseContent.SecretInput(label, _, _)  => label
-    case ResponseContent.SecretRef(_, label)       => label
-    case ResponseContent.Divider                   => ""
-    case sf: ResponseContent.StoredFileReference   => sf.title
-    case card: ResponseContent.Card                =>
+    case ResponseContent.SecretInput(label, _, _) => label
+    case ResponseContent.SecretRef(_, label) => label
+    case ResponseContent.Divider => ""
+    case sf: ResponseContent.StoredFileReference => sf.title
+    case card: ResponseContent.Card =>
       sigil.tool.model.Card.typedSections(card)
         .map(child => textOfBlock(child)).filter(_.nonEmpty).mkString("\n")
   }

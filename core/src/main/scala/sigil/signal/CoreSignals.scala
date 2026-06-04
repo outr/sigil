@@ -1,7 +1,10 @@
 package sigil.signal
 
 import fabric.rw.*
-import sigil.event.{AgentState, CapabilityResults, ComplexityChange, ConversationCorruptionDetected, ConversationHealed, Event, HealingExhausted, Message, ModeChange, ProgressCheckpoint, Reaction, Reasoning, ReadState, RouteResolved, Stop, TopicChange, ToolApproval, ToolInvoke, ToolLog}
+import sigil.event.{
+  AgentState, CapabilityResults, ComplexityChange, ConversationCorruptionDetected, ConversationHealed, Event, HealingExhausted, Message,
+  ModeChange, ProgressCheckpoint, Reaction, Reasoning, ReadState, RouteResolved, Stop, TopicChange, ToolApproval, ToolInvoke, ToolLog
+}
 
 /**
  * The framework's built-in Signal subtypes, split into typed sublists so

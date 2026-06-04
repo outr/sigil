@@ -19,6 +19,8 @@ final class StopFlag {
   val force: AtomicBoolean = new AtomicBoolean(false)
   val graceful: AtomicBoolean = new AtomicBoolean(false)
 
-  /** True when either flag is set — short-circuit for "should the loop exit?" */
+  /**
+   * True when either flag is set — short-circuit for "should the loop exit?"
+   */
   def requested: Boolean = force.get() || graceful.get()
 }

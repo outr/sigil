@@ -21,9 +21,9 @@ import sigil.tool.ToolContext
  * that summarizes headings, landmarks, link clusters, and totals.
  */
 final class BrowserSaveHtmlTool extends Tool {
-  type Input  = BrowserSaveHtmlInput
+  type Input = BrowserSaveHtmlInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[BrowserSaveHtmlInput]]
+  val inputRW = summon[RW[BrowserSaveHtmlInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("browser_save_html")
@@ -41,26 +41,29 @@ final class BrowserSaveHtmlTool extends Tool {
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
-      capture    <- controller.run { browser =>
-                      for {
-                        html <- browser(Selector("html")).outerHTML.map(_.headOption.getOrElse(""))
-                      } yield (html, browser.url())
-                    }
+      capture <- controller.run { browser =>
+        for {
+          html <- browser(Selector("html")).outerHTML.map(_.headOption.getOrElse(""))
+        } yield (html, browser.url())
+      }
       (rawHtml, currentUrl) = capture
-      doc        = Jsoup.parse(rawHtml)
+      doc = Jsoup.parse(rawHtml)
       normalized = doc.outerHtml()
-      bytes      = normalized.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-      stored     <- ctx.sigil.storeBytes(GlobalSpace, bytes, "text/html",
-                      metadata = Map(
-                        "kind" -> "browser-html",
-                        "conversationId" -> ctx.conversation.id.value,
-                        "url" -> currentUrl
-                      ))
-      _          <- ctx.sigil.publish(BrowserStateDelta(
-                      target         = controller.stateId,
-                      conversationId = ctx.conversation.id,
-                      htmlFileId     = Some(stored._id)
-                    ))
+      bytes = normalized.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+      stored <- ctx.sigil.storeBytes(
+        GlobalSpace,
+        bytes,
+        "text/html",
+        metadata = Map(
+          "kind" -> "browser-html",
+          "conversationId" -> ctx.conversation.id.value,
+          "url" -> currentUrl
+        ))
+      _ <- ctx.sigil.publish(BrowserStateDelta(
+        target = controller.stateId,
+        conversationId = ctx.conversation.id,
+        htmlFileId = Some(stored._id)
+      ))
     } yield {
       val payload = BrowserHtmlOverview.overview(doc, stored._id.value, currentUrl)
       ToolResult.Success(BrowserToolBase.toolResult(payload))

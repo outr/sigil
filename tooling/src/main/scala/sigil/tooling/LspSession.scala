@@ -31,65 +31,77 @@ final class LspSession(val config: LspServerConfig,
                        process: Process,
                        server: LanguageServer,
                        client: LspRecordingClient,
-                       /** The server's capabilities snapshot from `initialize`'s
-                         * response. Tools consult this BEFORE issuing optional
-                         * LSP requests (`textDocument/diagnostic` / pull
-                         * diagnostics, code lens, inlay hints, etc.) so they
-                         * fall back to alternative protocols when the server
-                         * doesn't advertise support. Sigil bug #100 — pre-fix
-                         * `LspPullDiagnosticsTool` called the pull method
-                         * unconditionally and Metals (which only supports the
-                         * legacy push flow) returned `MethodNotFound`. */
+                       /**
+                        * The server's capabilities snapshot from `initialize`'s
+                        * response. Tools consult this BEFORE issuing optional
+                        * LSP requests (`textDocument/diagnostic` / pull
+                        * diagnostics, code lens, inlay hints, etc.) so they
+                        * fall back to alternative protocols when the server
+                        * doesn't advertise support. Sigil bug #100 — pre-fix
+                        * `LspPullDiagnosticsTool` called the pull method
+                        * unconditionally and Metals (which only supports the
+                        * legacy push flow) returned `MethodNotFound`.
+                        */
                        val serverCapabilities: ServerCapabilities) {
 
   private val lastUseAt: AtomicLong = new AtomicLong(System.currentTimeMillis())
   private val versions: ConcurrentHashMap[String, AtomicLong] = new ConcurrentHashMap()
 
-  /** The most recent code-action set returned to a tool, keyed by URI.
-    * `lsp_apply_code_action` looks up by index here so agents can pick
-    * an action without serializing the action object across the tool
-    * boundary. Replaced wholesale on each `codeAction` call. */
+  /**
+   * The most recent code-action set returned to a tool, keyed by URI.
+   * `lsp_apply_code_action` looks up by index here so agents can pick
+   * an action without serializing the action object across the tool
+   * boundary. Replaced wholesale on each `codeAction` call.
+   */
   private val lastCodeActions: ConcurrentHashMap[String, List[LspEither[Command, CodeAction]]] = new ConcurrentHashMap()
 
   def cachedCodeActions(uri: String): List[LspEither[Command, CodeAction]] =
     Option(lastCodeActions.get(uri)).getOrElse(Nil)
 
-  /** Install (or clear with `None`) a per-call status callback. The
-    * client routes server-extension status notifications (Metals'
-    * `metals/status` etc.) into this callback so the active tool's
-    * chip can surface live progress. Sigil bug #98 — typically wired
-    * by [[LspToolSupport.withSessionTyped]] around the tool body. */
+  /**
+   * Install (or clear with `None`) a per-call status callback. The
+   * client routes server-extension status notifications (Metals'
+   * `metals/status` etc.) into this callback so the active tool's
+   * chip can surface live progress. Sigil bug #98 — typically wired
+   * by [[LspToolSupport.withSessionTyped]] around the tool body.
+   */
   def setStatusCallback(cb: Option[String => Unit]): Unit =
     client.setStatusCallback(cb)
 
   def touch(): Unit = lastUseAt.set(System.currentTimeMillis())
   def idleSince: Long = lastUseAt.get()
 
-  /** Default silence window for LSP requests. LSP queries are
-    * typically fast (sub-second for completion, definition, hover,
-    * etc.); the 60-second default covers slow cases like workspace
-    * symbols on a cold index. Long operations are protected from
-    * tripping the detector by the recording client's
-    * `lastActivityAtMillis` — any incoming progress notification
-    * or log message resets the clock. */
+  /**
+   * Default silence window for LSP requests. LSP queries are
+   * typically fast (sub-second for completion, definition, hover,
+   * etc.); the 60-second default covers slow cases like workspace
+   * symbols on a cold index. Long operations are protected from
+   * tripping the detector by the recording client's
+   * `lastActivityAtMillis` — any incoming progress notification
+   * or log message resets the clock.
+   */
   protected def defaultSilenceWindow: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(60).seconds
 
-  /** Wrap an LSP request in [[DurableJsonRpc.issueDurable]] so a
-    * lost JSON-RPC response is recovered via idempotent retry
-    * rather than stranding the calling Task forever (bug
-    * [[JsonRpcTransportException]] notes). LSP queries Sigil
-    * performs are idempotent — the retry re-asks for the cached
-    * result. */
+  /**
+   * Wrap an LSP request in [[DurableJsonRpc.issueDurable]] so a
+   * lost JSON-RPC response is recovered via idempotent retry
+   * rather than stranding the calling Task forever (bug
+   * [[JsonRpcTransportException]] notes). LSP queries Sigil
+   * performs are idempotent — the retry re-asks for the cached
+   * result.
+   */
   protected def issueDurable[T](operation: String,
-                                silenceWindow: scala.concurrent.duration.FiniteDuration = defaultSilenceWindow)
-                               (makeRequest: () => CompletableFuture[T]): Task[T] =
+                                silenceWindow: scala.concurrent.duration.FiniteDuration =
+                                  defaultSilenceWindow)(makeRequest: () => CompletableFuture[T]): Task[T] =
     DurableJsonRpc.issueDurable(
-      operation     = operation,
+      operation = operation,
       silenceWindow = silenceWindow
     )(activitySource = () => client.lastActivityAtMillis)(makeRequest)
 
-  /** Get the next document version for a URI; first access seeds at 1. */
+  /**
+   * Get the next document version for a URI; first access seeds at 1.
+   */
   private def nextVersion(uri: String): Int =
     versions.computeIfAbsent(uri, _ => new AtomicLong(0L)).incrementAndGet().toInt
 
@@ -101,15 +113,19 @@ final class LspSession(val config: LspServerConfig,
   def allDiagnostics: Map[String, List[Diagnostic]] =
     client.diagnostics.asScala.view.mapValues(_.asScala.toList).toMap
 
-  /** WorkDoneProgress tokens still in-flight. Agents wait on this
-    * before issuing index-dependent queries — `Sage` picks up "Metals
-    * is indexing your build" by checking this set. */
+  /**
+   * WorkDoneProgress tokens still in-flight. Agents wait on this
+   * before issuing index-dependent queries — `Sage` picks up "Metals
+   * is indexing your build" by checking this set.
+   */
   def inFlightProgress: Set[String] = client.progressTokens.keySet().asScala.toSet
 
-  /** Block until no progress tokens remain or until the deadline.
-    * Implemented as polling — the lsp4j `WorkDoneProgress` end
-    * notification doesn't expose a future per token, and most servers
-    * settle within a few hundred ms anyway. */
+  /**
+   * Block until no progress tokens remain or until the deadline.
+   * Implemented as polling — the lsp4j `WorkDoneProgress` end
+   * notification doesn't expose a future per token, and most servers
+   * settle within a few hundred ms anyway.
+   */
   def waitForIdle(timeoutMs: Long, pollMs: Long = 100L): Task[Unit] = {
     val deadline = System.currentTimeMillis() + timeoutMs
     def loop: Task[Unit] = Task.defer {
@@ -124,8 +140,10 @@ final class LspSession(val config: LspServerConfig,
 
   // ---- document lifecycle ----
 
-  /** Open a document with the server. Idempotent in practice — most
-    * servers tolerate a re-open as a `didChange`-equivalent. */
+  /**
+   * Open a document with the server. Idempotent in practice — most
+   * servers tolerate a re-open as a `didChange`-equivalent.
+   */
   def didOpen(uri: String, languageId: String, text: String): Task[Unit] = Task {
     touch()
     val v = nextVersion(uri)
@@ -133,10 +151,12 @@ final class LspSession(val config: LspServerConfig,
     server.getTextDocumentService.didOpen(new DidOpenTextDocumentParams(item))
   }
 
-  /** Notify the server that a document's full text has changed.
-    * The simple "send full content each time" path; works with
-    * every server's default `textDocumentSync.change = Full` and
-    * is the safest contract for an agent that just rewrote a file. */
+  /**
+   * Notify the server that a document's full text has changed.
+   * The simple "send full content each time" path; works with
+   * every server's default `textDocumentSync.change = Full` and
+   * is the safest contract for an agent that just rewrote a file.
+   */
   def didChangeFull(uri: String, text: String): Task[Unit] = Task {
     touch()
     val v = nextVersion(uri)
@@ -160,9 +180,11 @@ final class LspSession(val config: LspServerConfig,
     server.getTextDocumentService.didClose(new DidCloseTextDocumentParams(id))
   }
 
-  /** Forwarded to the server as `workspace/didChangeWatchedFiles`.
-    * Apps wire this from their `EditFileTool` (etc.) so the server's
-    * index stays current after framework-side writes. */
+  /**
+   * Forwarded to the server as `workspace/didChangeWatchedFiles`.
+   * Apps wire this from their `EditFileTool` (etc.) so the server's
+   * index stays current after framework-side writes.
+   */
   def didChangeWatchedFiles(events: List[FileEvent]): Task[Unit] = Task {
     touch()
     server.getWorkspaceService.didChangeWatchedFiles(new DidChangeWatchedFilesParams(events.asJava))
@@ -351,9 +373,12 @@ final class LspSession(val config: LspServerConfig,
   // ---- shutdown ----
 
   def shutdown(): Task[Unit] = Task {
-    try { server.shutdown().get(2, java.util.concurrent.TimeUnit.SECONDS); () } catch { case _: Throwable => () }
-    try { server.exit() } catch { case _: Throwable => () }
-    try { process.destroy() } catch { case _: Throwable => () }
+    try { server.shutdown().get(2, java.util.concurrent.TimeUnit.SECONDS); () }
+    catch { case _: Throwable => () }
+    try server.exit()
+    catch { case _: Throwable => () }
+    try process.destroy()
+    catch { case _: Throwable => () }
     if (process.isAlive) {
       process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
       if (process.isAlive) process.destroyForcibly()
@@ -407,9 +432,11 @@ object LspSession {
     }
   }
 
-  /** Capability declarations for every feature this module exposes
-    * as a tool. Servers gate behaviors on these — Metals only sends
-    * inlay hints when the client says it supports them, etc. */
+  /**
+   * Capability declarations for every feature this module exposes
+   * as a tool. Servers gate behaviors on these — Metals only sends
+   * inlay hints when the client says it supports them, etc.
+   */
   private def buildClientCapabilities(): ClientCapabilities = {
     val caps = new ClientCapabilities()
 
@@ -460,7 +487,7 @@ object LspSession {
       if (error != null) {
         val unwrapped = error match {
           case ce: java.util.concurrent.CompletionException if ce.getCause != null => ce.getCause
-          case other                                                               => other
+          case other => other
         }
         completable.failure(unwrapped)
       } else completable.success(value)
@@ -468,9 +495,11 @@ object LspSession {
     completable
   }
 
-  /** Coalesce `Either<List[Location], List[LocationLink]>` into a flat
-    * `List[Location]`. LSP-3.14 servers can return either shape; the
-    * agent only cares about the URI + range, so we collapse early. */
+  /**
+   * Coalesce `Either<List[Location], List[LocationLink]>` into a flat
+   * `List[Location]`. LSP-3.14 servers can return either shape; the
+   * agent only cares about the URI + range, so we collapse early.
+   */
   def flattenLocations(either: LspEither[java.util.List[? <: Location], java.util.List[? <: LocationLink]]): List[Location] =
     if (either == null) Nil
     else if (either.isLeft) either.getLeft.asScala.toList.map(identity[Location])
