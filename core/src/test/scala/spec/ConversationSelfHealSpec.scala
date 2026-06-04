@@ -386,9 +386,17 @@ class ConversationSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           content        = Vector(ResponseContent.Text("hello exhaust")),
           state          = EventState.Complete
         ))
+        // Wait for HealingExhausted AND the original error's Failure-
+        // disposition Message (published on a background fiber via
+        // handleError, after the exhaustion notice). The latter is what
+        // line 422 inspects; awaiting only the notice raced an empty
+        // snapshot — same hardening as the StrictRefused sibling above.
         _ <- waitFor(System.currentTimeMillis() + 20_000L)(
           recorded.iterator().asScala.exists {
             case _: HealingExhausted => true
+            case _ => false
+          } && recorded.iterator().asScala.exists {
+            case m: Message if m.participantId == agent.id && m.isFailure => true
             case _ => false
           }
         )
