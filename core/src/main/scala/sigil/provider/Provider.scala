@@ -1289,7 +1289,14 @@ trait Provider extends Service with ModelResolver {
 
     val skills = turn.aggregatedSkills(chain)
     val roleSkills = c.roles.flatMap(_.skill.toList)
-    val allSkills = (skills ++ roleSkills).distinctBy(_.name)
+    // Skill presence is state-coupled to the current mode, not coupled to a
+    // ModeChange event having fired. A conversation created already in its
+    // working mode never publishes a ModeChange, so `activeSkills[Mode]` is
+    // empty — fold the current mode's skill in directly. `distinctBy(_.name)`
+    // keeps this idempotent with the ModeChange-driven path (a switched-into
+    // mode's slot is already in `activeSkills` under the same name).
+    val modeSkill = c.currentMode.skill.toList
+    val allSkills = (skills ++ roleSkills ++ modeSkill).distinctBy(_.name)
     if (allSkills.nonEmpty) {
       sb.append("\n== Active skills ==\n")
       allSkills.foreach { s =>
