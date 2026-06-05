@@ -73,6 +73,10 @@ case class LlamaCppProvider(url: URL,
     providerName = "LlamaCpp",
     nonStrictSchemaTransform = identity,
     reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ChatTemplateEnableThinking,
+    // #360 — a local thinking model (Qwen3) can reason for a while on a
+    // hard problem; extend the idle timeout for reasoning requests so the
+    // reasoning→answer gap doesn't cut it at the 120s base.
+    reasoningIdleTimeout = Some(6.minutes),
     multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.TextOnlyWithWarning,
     preprocess = preprocessForLlamaCpp,
     toolCallIdNormalizer = LlamaCppProvider.normalizeWireId,

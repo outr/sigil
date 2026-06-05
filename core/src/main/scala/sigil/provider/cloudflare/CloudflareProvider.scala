@@ -64,6 +64,10 @@ case class CloudflareProvider(apiToken: String,
     // don't expect DeepInfra's bug #165 tool-call regression on `Off`
     // here — but live coverage will verify.
     reasoningPolicy   = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
+    // #360 — Kimi-K2.6 can fall silent for >2min between the reasoning
+    // and answer phases; give reasoning requests a longer idle timeout
+    // than the 120s base so a slow-but-alive planner isn't guillotined.
+    reasoningIdleTimeout = Some(6.minutes),
     // Kimi-K2.6 on Cloudflare rejects `reasoning_effort:"none"` (AiError →
     // empty completion); disable thinking via the vLLM `enable_thinking`
     // toggle instead. Verified live. On/Auto still use reasoning_effort.

@@ -134,6 +134,16 @@ object OpenAIChatCompletions {
       * use `reasoning_effort`. */
     reasoningOffUsesThinkingToggle: Boolean = false,
 
+    /** Sigil #360 — per-chunk idle/read timeout to use for a *reasoning*
+      * request (reasoning policy active AND `reasoningMode != Off`), in
+      * place of the provider's base `tokenIdleTimeout`. Reasoning models
+      * (Kimi K2.6, o-series, Qwen3 thinking) can fall silent for a while
+      * between the reasoning phase and the answer / tool-call phase; the
+      * base ~120s idle timeout guillotines a slow-but-alive planner
+      * mid-think, dropping an expensive frontier turn. `None` (default)
+      * leaves every request on `tokenIdleTimeout`. */
+    reasoningIdleTimeout: Option[FiniteDuration] = None,
+
     /** Multimodal rendering policy. */
     multimodalPolicy: MultimodalPolicy = MultimodalPolicy.TextOnlyWithWarning,
 
@@ -291,11 +301,19 @@ object OpenAIChatCompletions {
       streamingSilenceTimeoutMs = sigil.streamingSilenceTimeoutMs,
       streamingDeadOnArrivalTimeoutMs = sigil.streamingDeadOnArrivalTimeoutMs
     )
+    // Sigil #360 — reasoning requests get the extended idle timeout (if
+    // configured) so the reasoning→answer silence gap doesn't cut a
+    // slow-but-alive planner; everything else stays on the base timeout.
+    val idleTimeout =
+      config.reasoningIdleTimeout match {
+        case Some(extended) if isReasoningRequest(input, config) => extended
+        case _                                                   => tokenIdleTimeout
+      }
     Stream.force(
       for {
         raw         <- buildHttpRequest(input, sigil, baseUrl, auth, config)
         intercepted <- sigil.wireInterceptor.before(raw)
-        handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLinesHandle()
+        handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(idleTimeout).streamLinesHandle()
       } yield {
         // `track` registers the stream's cancel handle so a `Stop`
         // aborts the in-flight call mid-flight instead of draining it.
@@ -311,6 +329,17 @@ object OpenAIChatCompletions {
       }
     )
   }
+
+  /** Sigil #360 — does this call engage the model's reasoning phase? True
+    * when the provider forwards a reasoning policy AND the request hasn't
+    * explicitly turned reasoning off. `Auto` counts (the model/template
+    * default may reason), so the extended idle timeout is applied
+    * conservatively — better a longer wait than a guillotined planner.
+    * Mirrors the on/off determination in [[buildBody]]'s reasoning
+    * fields. */
+  def isReasoningRequest(input: ProviderCall, config: Config): Boolean =
+    config.reasoningPolicy != ReasoningPolicy.None &&
+      input.generationSettings.reasoningMode != ReasoningMode.Off
 
   // ---- body construction ----
 

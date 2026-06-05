@@ -36,6 +36,10 @@ case class DeepSeekProvider(apiKey: String,
     providerName = "DeepSeek",
     strictModeCapable = true,
     reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
+    // #360 — reasoning models pause between the reasoning and answer
+    // phases; extend the idle timeout for reasoning requests so a
+    // slow-but-alive planner isn't cut at the 120s base.
+    reasoningIdleTimeout = Some(6.minutes),
     multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.TextOnlyWithWarning,
     cacheKeys = CacheKeys.DeepSeek
   )

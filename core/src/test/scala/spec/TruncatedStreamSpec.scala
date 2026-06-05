@@ -4,7 +4,10 @@ import fabric.{Json, Null, arr, num, obj, str}
 import fabric.io.JsonFormatter
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.provider.{ProviderStreamException, ToolCallAccumulator}
+import sigil.db.Model
+import sigil.provider.{
+  GenerationSettings, ProviderCall, ProviderStreamException, ReasoningMode, ToolCallAccumulator, ToolChoice
+}
 import sigil.provider.wire.OpenAIChatCompletions
 
 /**
@@ -20,6 +23,7 @@ import sigil.provider.wire.OpenAIChatCompletions
  * Drives the wire object's `parseLine` / `closeStream` directly; no HTTP.
  */
 class TruncatedStreamSpec extends AnyWordSpec with Matchers {
+  TestSigil.initFor(getClass.getSimpleName)
 
   private val cfg: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace        = "cloudflare",
@@ -78,6 +82,35 @@ class TruncatedStreamSpec extends AnyWordSpec with Matchers {
       val state = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(Vector.empty))
       OpenAIChatCompletions.parseLine("data: " + JsonFormatter.Compact(reasoningChunk), state, lenientCfg)
       noException should be thrownBy state.closeStream(lenientCfg)
+    }
+  }
+
+  "OpenAIChatCompletions.isReasoningRequest (sigil #360 — idle-timeout gate)" should {
+    val model = TestSigil.testModel(Model.id("test", "reasoner-360"))
+    def call(mode: ReasoningMode): ProviderCall =
+      ProviderCall(
+        model              = model,
+        system             = "",
+        messages           = Vector.empty,
+        tools              = Vector.empty,
+        builtInTools       = Set.empty,
+        toolChoice         = ToolChoice.None,
+        generationSettings = GenerationSettings(reasoningMode = mode)
+      )
+    val reasoningCfg = cfg.copy(reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ChatTemplateEnableThinking)
+
+    "be true when a reasoning policy is active and reasoning isn't Off (On / Auto)" in {
+      OpenAIChatCompletions.isReasoningRequest(call(ReasoningMode.On), reasoningCfg)   shouldBe true
+      OpenAIChatCompletions.isReasoningRequest(call(ReasoningMode.Auto), reasoningCfg) shouldBe true
+    }
+
+    "be false when reasoning is explicitly Off" in {
+      OpenAIChatCompletions.isReasoningRequest(call(ReasoningMode.Off), reasoningCfg) shouldBe false
+    }
+
+    "be false when the provider forwards no reasoning policy" in {
+      // cfg's reasoningPolicy defaults to None.
+      OpenAIChatCompletions.isReasoningRequest(call(ReasoningMode.On), cfg) shouldBe false
     }
   }
 }

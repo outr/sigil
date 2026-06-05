@@ -149,6 +149,10 @@ case class OpenRouterProvider(apiKey: String,
     // ReasoningMode (Auto/On/Off) + optional Effort to the right
     // enum value.
     reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
+    // #360 — reasoning models pause between the reasoning and answer
+    // phases; extend the idle timeout for reasoning requests so a
+    // slow-but-alive planner isn't guillotined at the 120s base.
+    reasoningIdleTimeout = Some(6.minutes),
     // Multimodal models on OpenRouter accept the OpenAI content-
     // array shape. Text-only models on the gateway tolerate it as
     // a long-form text input.

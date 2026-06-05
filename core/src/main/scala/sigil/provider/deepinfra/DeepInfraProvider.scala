@@ -85,6 +85,10 @@ case class DeepInfraProvider(apiKey: String,
     // GenerationSettings.reasoningMode (Auto/On/Off) + optional
     // Effort into the right `reasoning_effort` value.
     reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
+    // #360 — extend the idle timeout for reasoning requests so the
+    // reasoning→answer silence gap doesn't cut a slow-but-alive planner
+    // at the 120s base.
+    reasoningIdleTimeout = Some(6.minutes),
     multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm
   )
 
