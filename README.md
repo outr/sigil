@@ -10,7 +10,7 @@ A Scala 3 framework for building multi-agent LLM conversations with tool use, ca
 ## Features
 
 - **Provider-agnostic** — Anthropic, OpenAI (chat-completions + Responses), DeepSeek, Google Gemini, local llama.cpp, plus app-defined; routed `ProviderStrategy` chains with per-mode pinning, per-space assignment, and cooldown-aware fallback
-- **Event-sourced conversations** — `Event`s persisted via LightDB; `ConversationView` is a derived projection produced by a user-supplied curator with no implicit truncation
+- **Event-sourced conversations** — `Event`s persisted via LightDB are the source of truth; the per-turn context is a derived projection of `ContextFrame`s produced by a user-supplied curator with no implicit truncation
 - **Strongly-typed tools** — `Tool[Input]` with JSON schema auto-derived via fabric `derives RW`; grammar-constrained tool args per provider plus post-decode `ToolInputValidator` re-checking every constraint
 - **Capability discovery** — `find_capability` searches a persisted tool collection (queryable by mode / space / keyword) at runtime; static + user-created tools share one store
 - **Multi-agent fan-out** — `Participant`s on `Conversation`, dispatched statelessly via DB-atomic `AgentState` locks; `Role` (per-agent identity) + `Mode` (per-conversation tool policy) shape behavior

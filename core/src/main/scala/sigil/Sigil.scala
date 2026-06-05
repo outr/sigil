@@ -3441,7 +3441,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   }
 
   /** If this signal settles a [[ModeChange]] to `Complete`, resolve the
-    * Mode-source [[ActiveSkillSlot]] (via [[modeSkill]]) and write it into
+    * Mode-source [[ActiveSkillSlot]] (via [[sigil.provider.Mode.skill]]) and write it into
     * the acting participant's projection on the view. */
   private final def maybeApplyModeSkill(signal: Signal): Task[Unit] = signal match {
     case mc: ModeChange if mc.state == EventState.Complete => applyModeSkill(mc)
@@ -3937,7 +3937,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   /** Convenience: set (or replace) a skill slot for a participant. Discovery
     * and User sources are driven through here by tools that want to activate
     * a skill; Mode-source slots are maintained by the framework via
-    * [[modeSkill]] on `ModeChange`. */
+    * [[sigil.provider.Mode.skill]] on `ModeChange`. */
   def activateSkill(conversationId: Id[Conversation],
                     participantId: ParticipantId,
                     source: SkillSource,
@@ -5953,7 +5953,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // by reading the server log for missing exit lines. The cost
     // of these scribe.debug calls is negligible compared to the
     // turn's actual work; volume is ~3 lines per iteration.
-    scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration enter")
+    scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration enter")
     // Batch this iteration's `events` writes into one transaction so
     // the Lucene-indexed event store commits once per iteration
     // instead of once per streamed Delta. `iterationStep` is a
@@ -5990,14 +5990,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // (handled in `terminate()` above) or a new `find_capability` /
         // suggestion-emitting tool result replaces the list.
         {
-          scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
+          scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
           buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, claimedTimestamp = claimed.timestamp, isGreeting = greeting && iteration == 1, discoveredCapabilitiesRef = discoveredCapabilitiesRef, healedThisTurn = Some(healedThisTurn)).flatMap {
             case (rawCtx, triggers) =>
               // Sigil bug #125 — propagate the cap-hit soft-stop flag
               // through the TurnContext so runAgentTurn → ConversationRequest →
               // Provider's tool_choice all reflect it.
               val ctx = if (forceResponseSynthesis) rawCtx.copy(forceResponseSynthesis = true) else rawCtx
-              scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext done; dispatching agent.process")
+              scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext done; dispatching agent.process")
               // Wrap the agent's signal stream with a force-stop check so a
               // Stop(force=true) mid-iteration terminates the stream promptly.
               // Greeting mode (only on iteration == 1): dispatch only behaviors
@@ -6094,7 +6094,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 .drain
           }
         }.flatMap { _ =>
-          scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration drain done")
+          scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration drain done")
           // After the iteration drains, check stop flags before anything
           // else — a Stop that fired mid-stream means exit now, don't
           // continue looping even if there are new triggers.
@@ -6155,7 +6155,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // continuation` but no next `iter enter` = hung in the
               // continuation (recurse / intra-turn compaction).
               .flatMap { si =>
-                scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration " +
+                scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration " +
                   s"shouldIterate=$si (iteration<max=${iteration < maxAgentIterations}, " +
                   s"forceResponseSynthesis=$forceResponseSynthesis)")
                 Task.pure(si)
@@ -6465,7 +6465,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // Logging the handoff distinguishes a commit hang (this line never
       // prints after `shouldIterate=…`) from a continuation hang (this line
       // prints but the next `iter … enter` / terminal release never does).
-      scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration committed; running continuation")
+      scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration committed; running continuation")
       continuation
     }
   }

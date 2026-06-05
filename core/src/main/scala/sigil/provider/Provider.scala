@@ -782,13 +782,13 @@ trait Provider extends Service with ModelResolver {
     // Sigil #305 — `preservedToolNames` adds the tools the prompt's
     // own sections (Suggested tools, Recently used) advertise to the
     // model. Without it, the shed could leave the wire carrying
-    // ONLY the 9-name essentials set while the prompt still promised
+    // ONLY the essentials set while the prompt still promised
     // the agent's discovered roster — the divergence that drove the
     // change_mode-loop failure mode in the field. Keeping the
     // advertised names means the agent can act on what the prompt
     // tells it is available; truly unused catalog bulk still drops.
     val essentials = Set("respond", "find_capability", "stop", "change_mode", "no_response",
-      "respond_options", "respond_field", "respond_failure", "activate_skill")
+      "respond_options", "activate_skill")
     val keep: _root_.sigil.tool.ToolName => Boolean = n =>
       essentials.contains(n.value) || initial.preservedToolNames.contains(n)
     if (estimateOf(current) > limit && current.tools.exists(t => !keep(t.schema.name))) {

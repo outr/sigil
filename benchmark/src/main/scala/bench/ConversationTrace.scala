@@ -86,6 +86,7 @@ object TurnTrace {
         (headers :: rows).map(_.mkString(" | ")).mkString("\n")
       case ResponseContent.Link(url, label)          => s"$label ($url)"
       case ResponseContent.Image(url, alt)           => alt.fold(url.toString)(a => s"$a ($url)")
+      case ResponseContent.ImageBytes(mt, _, alt)    => alt.getOrElse(s"[$mt image]")
       case ResponseContent.Field(label, value, _)    => s"$label: $value"
       case ResponseContent.Options(prompt, opts, _)  =>
         s"$prompt\n" + opts.map(o => s"${o.label}: ${o.value}").mkString("\n")
@@ -114,6 +115,7 @@ object TurnTrace {
     case ResponseContent.Table(headers, rows)      => (headers :: rows).map(_.mkString(" | ")).mkString("\n")
     case ResponseContent.Link(url, label)          => s"$label ($url)"
     case ResponseContent.Image(url, alt)           => alt.fold(url.toString)(a => s"$a ($url)")
+    case ResponseContent.ImageBytes(mt, _, alt)    => alt.getOrElse(s"[$mt image]")
     case ResponseContent.Field(label, value, _)    => s"$label: $value"
     case ResponseContent.Options(prompt, opts, _)  => s"$prompt\n" + opts.map(o => s"${o.label}: ${o.value}").mkString("\n")
     case ResponseContent.TextInput(label, _, _, _) => label

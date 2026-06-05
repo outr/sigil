@@ -51,7 +51,7 @@ object Orchestrator {
     * in [[Sigil.runAgentLoop]]) recognizes as a closing signal for
     * the turn. Used for bug #46's silent-completion fallback. */
   val UserVisibleTerminalTools: Set[String] =
-    Set("respond", "respond_options", "respond_field", "respond_failure", "no_response")
+    Set("respond", "respond_options", "no_response")
 
   /** Canonicalise a `find_capability` keywords string for repeated-
     * query detection (sigil bug #159). Lowercases, trims, and
@@ -710,8 +710,8 @@ object Orchestrator {
                     s"Refused to dispatch `$toolName` -- you have already called this tool with " +
                       s"these exact args $priorIdentical times in the recent window (this would " +
                       s"be call #$attemptedCount).$previewText The result will not change. Try a " +
-                      "different approach: narrow the pattern, paginate via `query_tool_output`, switch " +
-                      "to a different tool, or ask the user for clarification." + escalationText
+                      "different approach: narrow the pattern, switch to a different tool, or ask " +
+                      "the user for clarification." + escalationText
                   val capMsg = Message(
                     participantId  = caller,
                     conversationId = convId,
@@ -1225,8 +1225,8 @@ object Orchestrator {
             val reason =
               "Your previous reply was plain text and was dropped — every reply must be a " +
                 "tool call. Wrap your answer in one of the respond-family tools " +
-                "(`respond`, `respond_options`, `respond_field`, `respond_failure`, " +
-                "`no_response`) appropriate to your situation. When a tool result IS the " +
+                "(`respond`, `respond_options`, `no_response`) appropriate to your situation. " +
+                "When a tool result IS the " +
                 s"user-facing answer, call `respond` with that content. Dropped text was: $snippet"
             SyntheticDiagnostic("_plain_text_reply", caller, convId, topicId,
               reason      = reason,

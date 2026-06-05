@@ -58,20 +58,13 @@ class ToolDescriptionAuditSpec extends AnyWordSpec with Matchers {
   }
 
   private val allowed: Set[(String, String)] = {
-    val respondFam = Set("respond", "respond_options", "respond_field", "respond_failure",
+    val respondFam = Set("respond", "respond_options",
       "respond_card", "respond_cards", "no_response")
     val cross = for (a <- respondFam; b <- respondFam if a != b) yield (a, b)
     cross ++ Set(
       "pin_complexity" -> "unpin_complexity", "unpin_complexity" -> "pin_complexity",
       "pin_memory" -> "unpin_memory", "unpin_memory" -> "pin_memory",
       "pin_model" -> "unpin_model", "unpin_model" -> "pin_model",
-      // #336 — the bulk-output ladder tools name their sibling
-      // reference-operating tools (the intended next steps) by design.
-      "summarize_output" -> "query_tool_output",
-      "summarize_output" -> "dispatch_workers",
-      "summarize_output" -> "filter_container",
-      "query_tool_output" -> "summarize_output",
-      "query_tool_output" -> "dispatch_workers",
       // #344 — record_consent's description names respond_options to tell
       // the agent that an options selection is NOT a reason to pre-consent.
       "record_consent" -> "respond_options"
