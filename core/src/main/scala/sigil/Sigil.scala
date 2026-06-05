@@ -766,9 +766,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // Score per keyword: take the strongest signal. Curated keyword
         // set match (8) beats exact-word match in haystack (5) beats
         // substring (2). Sum across input keywords.
+        // `haystack`'s word set is loop-invariant — split once, not per keyword.
+        val words = haystack.split("\\W+").toSet
         val score = needles.foldLeft(0.0) { (acc, kw) =>
           val curated = if (curatedKeywords.contains(kw)) 8.0 else 0.0
-          val words = haystack.split("\\W+").toSet
           val exact = if (words.contains(kw)) 5.0 else 0.0
           val sub   = if (haystack.contains(kw)) 2.0 else 0.0
           acc + math.max(curated, math.max(exact, sub))
