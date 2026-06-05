@@ -70,6 +70,14 @@ class ErrorClassifierSpec extends AnyWordSpec with Matchers {
       ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Fallthrough
     }
 
+    "classify truncated_stream as Retry — a dropped transport, not model degeneration (#360)" in {
+      val ex = new sigil.provider.ProviderStreamException(
+        providerKey = "cloudflare", code = 200, typ = "truncated_stream",
+        message_ = "closed the stream mid-flight with no finish_reason and no [DONE]"
+      )
+      ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Retry
+    }
+
     "classify CapacityAcquireTimeoutException as Fallthrough (this candidate is saturated)" in {
       val ex = new sigil.provider.CapacityAcquireTimeoutException(
         maxConcurrent = 4, waited = scala.concurrent.duration.FiniteDuration(60, "s")

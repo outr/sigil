@@ -300,9 +300,14 @@ object OpenAIChatCompletions {
         // `track` registers the stream's cancel handle so a `Stop`
         // aborts the in-flight call mid-flight instead of draining it.
         val lines = sigil.providerStreams.track(input, handle)
-        StreamWireInterceptor.attach(lines, sigil.wireInterceptor, intercepted, sigil.chunkLogger) { line =>
+        val events = StreamWireInterceptor.attach(lines, sigil.wireInterceptor, intercepted, sigil.chunkLogger) { line =>
           Stream.emits(parseLine(line, state, config))
         }
+        // Sigil #360 — when the line stream terminates (gracefully or via
+        // a dropped socket), run the connection-close check so a
+        // truncated stream that never carried `[DONE]` / `finish_reason`
+        // fails loudly instead of yielding a silent empty turn.
+        events ++ Stream.force(Task(Stream.emits(state.closeStream(config))))
       }
     )
   }
@@ -584,7 +589,7 @@ object OpenAIChatCompletions {
     state.checkStreamingSilence(config)
     SSELineParser.dispatch(line)(
       onData = json => parseChunk(json, state, config),
-      onDone = state.flushDone(config)
+      onDone = { state.sawDoneMarker = true; state.flushDone(config) }
     )
   }
 
@@ -861,6 +866,14 @@ object OpenAIChatCompletions {
                             * applies. `0` disables this shorter budget. */
                           val streamingDeadOnArrivalTimeoutMs: Long = 0L) {
     var pendingDone: Option[StopReason] = None
+
+    /** Sigil #360 — set when the `[DONE]` SSE marker is dispatched (the
+      * normal terminal). [[closeStream]] consults it at connection-close
+      * to tell a clean end-of-stream from a mid-flight truncation: a
+      * stream that closes WITHOUT `[DONE]` never ran [[flushDone]], so a
+      * gateway dropping the socket after only `reasoning_content` (no
+      * finish_reason, no content) used to yield a silent empty turn. */
+    var sawDoneMarker: Boolean = false
     val responseFormatBuf: StringBuilder = new StringBuilder
 
     /** Accumulates `delta.refusal` text. OpenAI streams this as a
@@ -1005,6 +1018,34 @@ object OpenAIChatCompletions {
         }
         Vector.empty
     }
+
+    /** Sigil #360 — run once when the line stream terminates, regardless
+      * of `[DONE]`. The empty-turn / failure detectors all hang off
+      * `[DONE]` ([[flushDone]] via `onDone`) or a `finish_reason` chunk;
+      * a gateway that drops the socket mid-flight carries neither. Such a
+      * stream — no `[DONE]`, no `finish_reason`, and only
+      * `reasoning_content` (so `hasUsefulOutput == false`) — used to
+      * yield a silent empty assistant turn: no message, no error, no
+      * retry. That's a truncated transport, not an empty answer; raise a
+      * typed exception so the agent loop surfaces a Failure and
+      * `ProviderStrategy` can retry. A `[DONE]` already drove `flushDone`
+      * (no-op here); a `finish_reason` without `[DONE]` still gets its
+      * `Done` synthesized so the terminal event isn't lost. */
+    def closeStream(config: Config): Vector[ProviderEvent] =
+      if (sawDoneMarker) Vector.empty
+      else pendingDone match {
+        case Some(_) => flushDone(config)
+        case None =>
+          if (config.emptyBudgetBurnThrows && !hasUsefulOutput)
+            throw new ProviderStreamException(
+              providerKey = config.providerNamespace,
+              code = 200,
+              typ = "truncated_stream",
+              message_ = s"${config.providerName} closed the stream mid-flight with no finish_reason and no " +
+                "[DONE] after emitting no content or tool calls (reasoning only, if any) — truncated transport."
+            )
+          else Vector.empty
+      }
   }
 
   /** Sigil bug #173 — at end-of-stream in response_format mode, parse

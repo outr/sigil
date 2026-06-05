@@ -104,13 +104,16 @@ object ErrorClassifier {
         // `Fallthrough` (degenerate model output — no use re-running the
         // same candidate). Two flavors promote to `Retry`: typed
         // metadata names a transient upstream category
-        // (`provider_unavailable`, `upstream_silent`, `rate_limited`)
-        // OR the wire-level status is a transient 5xx. Both signal a
-        // sick upstream behind the gateway; the same candidate with a
-        // rotated upstream-provider preference typically clears.
+        // (`provider_unavailable`, `upstream_silent`, `rate_limited`,
+        // `truncated_stream`) OR the wire-level status is a transient
+        // 5xx. Both signal a sick upstream / dropped transport behind the
+        // gateway; the same candidate typically clears. Sigil #360 — a
+        // truncated stream (socket dropped mid-flight, no finish_reason /
+        // [DONE]) is the textbook auto-retry case: re-run the same
+        // candidate rather than downgrading the planner to a lesser one.
         case e: ProviderStreamException =>
           val transientErrorTypes: Set[String] =
-            Set("provider_unavailable", "upstream_silent", "rate_limited")
+            Set("provider_unavailable", "upstream_silent", "rate_limited", "truncated_stream")
           val typedTransient: Boolean =
             e.errorMetadata.flatMap(_.errorType).exists(transientErrorTypes.contains) ||
               transientErrorTypes.contains(e.typ)
