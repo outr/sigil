@@ -147,7 +147,15 @@ object WireSurface {
   }
 
   private def objectSchema(map: Map[String, Definition]): fabric.Json = {
-    val required = map.collect { case (key, d) if !d.isOpt => str(key) }.toList
+    // A field is required only if it's non-optional AND has no declared
+    // default. A Scala default (`disposition: ResponseDisposition =
+    // Success`, `keywords: List[String] = Nil`) means the model may omit
+    // the field — fabric fills the default for an absent field on read.
+    // Marking such fields `required` forces the model to emit a value
+    // even where none is semantically warranted (e.g. `disposition` on an
+    // `endsTurn:false` continuation), which pushes weak models to
+    // fabricate one. Omission is honored; only a sent value is binding.
+    val required = map.collect { case (key, d) if !d.isOpt && d.defaultValue.isEmpty => str(key) }.toList
     obj(
       "type" -> str("object"),
       "properties" -> obj(map.map { case (key, d) => key -> emitSchema(d) }.toList*),

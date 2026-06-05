@@ -26,9 +26,15 @@ import spice.http.HttpRequest
  * Fix: the orchestrator's `ProviderEvent.Error` handler AND
  * `onErrorFinalize` (catching thrown ProviderStreamException etc.)
  * both call `settleOrphanMessage` to emit a terminal MessageDelta
- * with `state = Complete` and `disposition = Failure(recoverable)`.
- * Chat history then shows the failed-attempt bubble as a settled
- * Failure rather than a stuck typing indicator.
+ * with `state = Complete` and `disposition = Failure(recoverable)`,
+ * so the bubble settles rather than hanging as a typing indicator.
+ *
+ * Sigil #360 — on the `ProviderEvent.Error` path the same failure is
+ * ALSO routed to the agent as a recoverable Tool failure (it retries
+ * and produces the real reply), so the streamed placeholder settles
+ * with EMPTY content (collapsed) instead of a user-facing "failed to
+ * produce a valid reply" dead-end. The settle-to-Complete + Failure
+ * disposition (the #171 anti-typing-hang guarantee) is unchanged.
  */
 class OrphanStreamingMessageSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -114,18 +120,17 @@ class OrphanStreamingMessageSpec extends AsyncWordSpec with AsyncTaskSpec with M
       }
     }
 
-    "replace content with a failure-reason block on settle" in {
+    "settle the streamed placeholder with empty content — failure routed to the agent (#360)" in {
       runOrchestrator().map { signals =>
         val streamingMsg = signals.collectFirst { case m: Message => m }
           .getOrElse(fail("expected a streaming Message"))
         val terminal = signals.collect {
           case d: MessageDelta if d.target == streamingMsg._id && d.state.contains(EventState.Complete) => d
         }.headOption.getOrElse(fail("no terminal delta for streaming Message"))
-        terminal.contentReplacement shouldBe defined
-        val text = terminal.contentReplacement.get.collect {
-          case t: sigil.tool.model.ResponseContent.Text => t.text
-        }.mkString
-        text should include ("Failed to parse args for tool respond")
+        // #360 — no user-facing dead-end text; the agent receives the
+        // recoverable Tool failure and retries. The placeholder collapses
+        // to empty content (still Complete + Failure so typing stops).
+        terminal.contentReplacement shouldBe Some(Vector.empty)
       }
     }
   }

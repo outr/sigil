@@ -1249,7 +1249,10 @@ object Orchestrator {
         // ToolDelta so the user-visible chip can render
         // "(invalid args: …)" instead of "(input pending)".
         val orphanSettle = settleOrphanToolInvoke(state, convId, caller, topicId, error = Some(msg))
-        val orphanMessageSettle = settleOrphanMessage(state, convId, error = Some(msg))
+        // #360 — the failure is routed to the agent below (recoverable
+        // Tool failure + retry); don't ALSO dead-end the user with the
+        // streamed placeholder's "failed to produce a valid reply".
+        val orphanMessageSettle = settleOrphanMessage(state, convId, error = Some(msg), routedToAgent = true)
         // Bug #69 — Tool-role Message MUST have origin. Pair to the
         // active ToolInvoke if one is open (the typical case — the
         // provider's error came mid-tool-call); otherwise fall back
@@ -1426,10 +1429,24 @@ object Orchestrator {
    * the chat bubble stops rendering as "agent is still typing" and
    * shows the failure inline. Idempotent — returns empty when no
    * Message was streamed. Always clears `state.activeMessageId`.
+   *
+   * `routedToAgent` — when the same failure is ALSO being routed to the
+   * agent as a recoverable Tool failure (the `ProviderEvent.Error` path:
+   * the agent retries and produces the real reply), the streamed
+   * placeholder must NOT surface a user-facing "failed to produce a
+   * valid reply" dead-end — that's the failure leaking to the user as a
+   * respond message instead of being handled by the agent. The Message
+   * still settles to `Complete` (so the "typing" indicator stops and
+   * live clients don't hang) but with empty content + a recoverable
+   * Failure disposition, which clients collapse — leaving only the
+   * agent's retried respond visible. Genuine unrecovered turn failures
+   * (`reconcileInflight`) keep `routedToAgent = false` and show the
+   * diagnostic inline.
    */
   private def settleOrphanMessage(state: State,
                                   convId: lightdb.id.Id[Conversation],
-                                  error: Option[String] = None): List[Signal] =
+                                  error: Option[String] = None,
+                                  routedToAgent: Boolean = false): List[Signal] =
     // Only settle when a Message was actually emitted — a thinking-
     // reserved id without `activeMessageCreated` points at no event.
     state.activeMessageId.filter(_ => state.activeMessageCreated) match {
@@ -1441,12 +1458,13 @@ object Orchestrator {
         state.activeMessageId = None
         state.activeMessageCreated = false
         val reason = error.getOrElse("Tool call failed before settling")
+        val replacement =
+          if (routedToAgent) Vector.empty[ResponseContent]
+          else Vector(ResponseContent.Text(s"Model output failed to produce a valid reply: $reason"))
         val delta: Signal = MessageDelta(
           target             = msgId,
           conversationId     = convId,
-          contentReplacement = Some(Vector(ResponseContent.Text(
-            s"Model output failed to produce a valid reply: $reason"
-          ))),
+          contentReplacement = Some(replacement),
           state              = Some(EventState.Complete),
           disposition        = Some(sigil.event.MessageDisposition.Failure(recoverable = true))
         )

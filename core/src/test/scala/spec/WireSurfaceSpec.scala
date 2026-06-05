@@ -51,6 +51,31 @@ class WireSurfaceSpec extends AnyWordSpec with Matchers {
     }
   }
 
+  "WireSurface required-field derivation (sigil #359)" should {
+
+    def requiredOf(rw: RW[?]): Set[String] = {
+      val surface = WireSurface.fromDefinition(rw.definition, rw)
+      surface.schema("required").asVector.map(_.asString).toSet
+    }
+
+    "exclude defaulted and optional fields, keep mandatory ones" in {
+      // MultiField: label (mandatory) | complexity = Medium (default) |
+      // retries = 0 (default) | optional: Option = None (opt + default).
+      requiredOf(summon[RW[MultiField]]) shouldBe Set("label")
+    }
+
+    "not force `respond` to emit defaulted disposition/keywords" in {
+      // The #359 trigger: disposition (= Success) and keywords (= Nil) were
+      // marked required, forcing weak models to fabricate a disposition on
+      // endsTurn:false continuations. content/topicLabel/topicSummary/
+      // endsTurn have no default and stay required.
+      val required = requiredOf(summon[RW[sigil.tool.model.RespondInput]])
+      required should contain allOf ("content", "topicLabel", "topicSummary", "endsTurn")
+      required should not contain "disposition"
+      required should not contain "keywords"
+    }
+  }
+
   "WireSurface normalize parity" should {
 
     "coerce empty-string Opt(Str) to Null" in {
