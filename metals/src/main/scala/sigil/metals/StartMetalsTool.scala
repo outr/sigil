@@ -80,15 +80,21 @@ final class StartMetalsTool extends Tool {
                 .handleError { t =>
                   Task(scribe.warn(s"start_metals: LspServerConfig upsert for 'scala' failed: ${t.getMessage}"))
                 }
-              // Bug #97 — pin the LSP/BSP/metals_* tool family to
-              // this conversation so subsequent turns can call
-              // them directly without a `find_capability` round-
-              // trip. `stop_metals` removes the overlay.
+              // Make the LSP/BSP/metals_* tool family DISCOVERABLE for
+              // this conversation — surfaced by `find_capability` on
+              // intent, NOT pinned into the per-turn roster. Pinning all
+              // ~41 (the earlier `Active` policy) defeated the lean-roster
+              // design, bloated every request, and on reasoning models
+              // over some gateways the oversized tool payload tipped the
+              // stream into truncation. Discovery-only keeps the roster at
+              // the 4-tool baseline; the agent pays one `find_capability`
+              // hop before first use of a family. `stop_metals` removes
+              // the overlay.
               val overlayInstall = sigil.addConversationToolOverlay(
                 _root_.sigil.conversation.ConversationToolOverlay(
                   conversationId = context.conversation.id,
                   source         = MetalsBoostedToolNames.OverlaySource,
-                  policy         = _root_.sigil.provider.ToolPolicy.Active(MetalsBoostedToolNames.all)
+                  policy         = _root_.sigil.provider.ToolPolicy.Discoverable(MetalsBoostedToolNames.all)
                 )
               ).handleError { t =>
                 Task(scribe.warn(s"start_metals: ConversationToolOverlay install failed: ${t.getMessage}"))
