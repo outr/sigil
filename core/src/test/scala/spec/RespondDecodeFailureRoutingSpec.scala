@@ -61,7 +61,7 @@ class RespondDecodeFailureRoutingSpec extends AsyncWordSpec with AsyncTaskSpec w
   }
 
   /** Same failure, but the respond content pre-streams as `ContentBlockDelta`
-    * (a Message is born) — the frontier-provider shape. #361: the streamed
+    * (a Message is born) — the frontier-provider shape. The streamed
     * placeholder must NOT settle into a user-facing dead-end. */
   private class StreamedRespondDecodeFailureProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -173,7 +173,7 @@ class RespondDecodeFailureRoutingSpec extends AsyncWordSpec with AsyncTaskSpec w
       }
     }
 
-    "not dead-end the user with a streamed respond placeholder on decode failure (#361)" in {
+    "not dead-end the user with a streamed respond placeholder on decode failure" in {
       val convId = Conversation.id("respond-decode-fail-streamed")
       val conv   = Conversation(topics = TestTopicStack, _id = convId)
       val task = for {

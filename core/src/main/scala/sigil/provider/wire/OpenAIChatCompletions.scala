@@ -134,6 +134,12 @@ object OpenAIChatCompletions {
       * use `reasoning_effort`. */
     reasoningOffUsesThinkingToggle: Boolean = false,
 
+    /** Treat `ReasoningMode.Auto` as `Off` at the wire. Cloudflare Workers AI
+      * leaves Auto-mode reasoning unbounded (Kimi K2.6 reasons indefinitely
+      * and never transitions to the tool call); an explicit `On`/`Off` is
+      * still honored. */
+    treatAutoAsReasoningOff: Boolean = false,
+
     /** Sigil #360 — per-chunk idle/read timeout to use for a *reasoning*
       * request (reasoning policy active AND `reasoningMode != Off`), in
       * place of the provider's base `tokenIdleTimeout`. Reasoning models
@@ -399,6 +405,9 @@ object OpenAIChatCompletions {
     }
 
     val gen = input.generationSettings
+    val reasoningMode =
+      if (config.treatAutoAsReasoningOff && gen.reasoningMode == ReasoningMode.Auto) ReasoningMode.Off
+      else gen.reasoningMode
     val reasoningFields: Vector[(String, Json)] = config.reasoningPolicy match {
       case ReasoningPolicy.None => Vector.empty
       case ReasoningPolicy.ReasoningEffortField =>
@@ -413,7 +422,7 @@ object OpenAIChatCompletions {
         // an AiError and must disable via the vLLM `enable_thinking:false`
         // chat-template toggle (also verified). On/Auto always use
         // `reasoning_effort`.
-        gen.reasoningMode match {
+        reasoningMode match {
           case ReasoningMode.Off if config.reasoningOffUsesThinkingToggle =>
             Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(false)))
           case ReasoningMode.Off  => Vector("reasoning_effort" -> str("none"))
@@ -428,7 +437,7 @@ object OpenAIChatCompletions {
         // Read ReasoningMode (the user-facing abstraction), not the
         // orthogonal effort axis. Auto → omit (let template default
         // fire); On/Off → explicit boolean.
-        gen.reasoningMode match {
+        reasoningMode match {
           case ReasoningMode.Auto => Vector.empty
           case ReasoningMode.On   => Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(true)))
           case ReasoningMode.Off  => Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(false)))

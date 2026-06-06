@@ -1249,7 +1249,7 @@ object Orchestrator {
         // ToolDelta so the user-visible chip can render
         // "(invalid args: …)" instead of "(input pending)".
         val orphanSettle = settleOrphanToolInvoke(state, convId, caller, topicId, error = Some(msg))
-        // #361 — the failure is routed to the agent below (recoverable
+        // The failure is routed to the agent below (recoverable
         // Tool failure + retry); don't ALSO dead-end the user with the
         // streamed placeholder's "failed to produce a valid reply".
         val orphanMessageSettle = settleOrphanMessage(state, convId, error = Some(msg), routedToAgent = true)
