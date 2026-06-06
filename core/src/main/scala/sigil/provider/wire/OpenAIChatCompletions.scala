@@ -301,10 +301,10 @@ object OpenAIChatCompletions {
       streamingSilenceTimeoutMs = sigil.streamingSilenceTimeoutMs,
       streamingDeadOnArrivalTimeoutMs = sigil.streamingDeadOnArrivalTimeoutMs
     )
-    // Sigil #360 — reasoning requests get the extended idle timeout (if
-    // configured) so the reasoning→answer silence gap doesn't cut a
-    // slow-but-alive planner; everything else stays on the base timeout.
-    val idleTimeout =
+    // Reasoning requests get the extended streaming budget (if configured)
+    // so the reasoning→answer silence gap doesn't cut a slow-but-alive
+    // planner; everything else stays on the base timeout.
+    val streamingBudget =
       config.reasoningIdleTimeout match {
         case Some(extended) if isReasoningRequest(input, config) => extended
         case _                                                   => tokenIdleTimeout
@@ -313,7 +313,10 @@ object OpenAIChatCompletions {
       for {
         raw         <- buildHttpRequest(input, sigil, baseUrl, auth, config)
         intercepted <- sigil.wireInterceptor.before(raw)
-        handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(idleTimeout).streamLinesHandle()
+        handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus
+                         .timeout(tokenIdleTimeout)
+                         .streamingTimeout(streamingBudget)
+                         .streamLinesHandle()
       } yield {
         // `track` registers the stream's cancel handle so a `Stop`
         // aborts the in-flight call mid-flight instead of draining it.
