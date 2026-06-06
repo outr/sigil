@@ -1257,14 +1257,20 @@ trait Provider extends Service with ModelResolver {
     // creates a dead loop — strip the block in that case. When
     // `find_capability` IS available but `respond` ISN'T (PureDiscovery
     // active), swap to the pure-discovery variant so the prompt
-    // doesn't describe `respond` as immediately callable.
+    // doesn't describe `respond` as immediately callable. When
+    // `change_mode` isn't in the roster (a single registered mode), the
+    // default block's `change_mode` triage points at a tool the model
+    // can't call — swap to the single-mode variant.
     val findCapabilityAvailable =
       c.tools.exists(_.schema.name.value == "find_capability")
     val respondAvailable =
       c.tools.exists(_.schema.name.value == "respond")
+    val changeModeAvailable =
+      c.tools.exists(_.schema.name.value == "change_mode")
     val instr =
       if (!findCapabilityAvailable) c.instructions.renderWithoutTools
       else if (!respondAvailable) c.instructions.forPureDiscovery.render
+      else if (!changeModeAvailable) c.instructions.forSingleMode.render
       else c.instructions.render
     if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
 
