@@ -1,7 +1,7 @@
 ThisBuild / organization := "com.outr"
 ThisBuild / version := "1.2.0-SNAPSHOT3"
 
-ThisBuild / scalaVersion := "3.8.3"
+ThisBuild / scalaVersion := "3.8.4"
 
 val rapidVersion: String = "2.9.6"
 
