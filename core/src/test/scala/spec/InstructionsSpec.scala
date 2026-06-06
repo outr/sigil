@@ -24,10 +24,17 @@ class InstructionsSpec extends AnyWordSpec with Matchers {
       rendered should include ("BEHAVIOR")
     }
 
-    "include the TOOLS discovery block" in {
+    "include the TOOLS discovery block (tool-agnostic — teaches the behaviour, names no tool)" in {
       rendered should include ("TOOLS")
-      rendered should include ("find_capability")
       rendered should include ("discovery-first")
+    }
+
+    "name no specific tool — tool-specific guidance lives in each tool's description" in {
+      rendered should not include ("find_capability")
+      rendered should not include ("change_mode")
+      rendered should not include ("no_response")
+      rendered should not include ("respond_options")
+      rendered should not include ("STEP 0")
     }
   }
 
@@ -97,46 +104,6 @@ class InstructionsSpec extends AnyWordSpec with Matchers {
       val r = Instructions().withToolsTrailer(custom).render
       r should include ("custom trailer.")
       r should not include ("plain text")
-    }
-  }
-
-  "Instructions().render (default, multi-mode)" should {
-    "retain the change_mode triage" in {
-      val r = Instructions().render
-      r should include ("change_mode")
-      r should include ("STEP 0")
-    }
-  }
-
-  "Instructions.forSingleMode.render" should {
-    val r = Instructions().forSingleMode.render
-
-    "lead with discovery-first find_capability" in {
-      r should include ("TOOLS — discovery-first")
-      r should include ("find_capability")
-    }
-
-    "never reference change_mode or the multi-mode triage" in {
-      r should not include ("change_mode")
-      r should not include ("STEP 0")
-      r should not include ("STEP A")
-      r should not include ("STEP B")
-    }
-
-    "reuse the shared discovery mechanics and failure guidance" in {
-      r should include ("results are RANKED by relevance")
-      r should include ("Tool failures carry structured context")
-    }
-
-    "keep the trailing recap without naming change_mode" in {
-      r should include ("REMINDER:")
-      val trailer = r.substring(r.lastIndexOf("REMINDER:"))
-      trailer should not include ("change_mode")
-    }
-
-    "preserve a custom trailer instead of swapping it" in {
-      val custom = "REMINDER: this is a custom trailer."
-      Instructions().withToolsTrailer(custom).forSingleMode.render should include ("custom trailer.")
     }
   }
 }

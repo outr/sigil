@@ -1250,27 +1250,18 @@ trait Provider extends Service with ModelResolver {
       c.previousTopics.foreach(t => sb.append(s"  - \"${t.label}\" — ${t.summary}\n"))
     }
 
-    // Instructions' TOOLS discovery block tells the model to call
-    // `find_capability` first for actions outside its tool roster. If
-    // that tool isn't actually available (e.g. the active mode uses
-    // `ToolPolicy.None` or `Exclusive`), pointing the model at it
-    // creates a dead loop — strip the block in that case. When
-    // `find_capability` IS available but `respond` ISN'T (PureDiscovery
-    // active), swap to the pure-discovery variant so the prompt
-    // doesn't describe `respond` as immediately callable. When
-    // `change_mode` isn't in the roster (a single registered mode), the
-    // default block's `change_mode` triage points at a tool the model
-    // can't call — swap to the single-mode variant.
+    // The TOOLS discovery block teaches the discovery-first behaviour
+    // generically — it names no specific tool, so tool-specific guidance
+    // (how to query discovery, when to switch mode, how a reply renders)
+    // travels with each tool's own description. The one gate left is
+    // whether discovery itself is available: if `find_capability` isn't
+    // in the roster (e.g. the active mode uses `ToolPolicy.None` or
+    // `Exclusive` with a fixed set), telling the model to discover is a
+    // dead loop, so strip the block.
     val findCapabilityAvailable =
       c.tools.exists(_.schema.name.value == "find_capability")
-    val respondAvailable =
-      c.tools.exists(_.schema.name.value == "respond")
-    val changeModeAvailable =
-      c.tools.exists(_.schema.name.value == "change_mode")
     val instr =
       if (!findCapabilityAvailable) c.instructions.renderWithoutTools
-      else if (!respondAvailable) c.instructions.forPureDiscovery.render
-      else if (!changeModeAvailable) c.instructions.forSingleMode.render
       else c.instructions.render
     if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
 

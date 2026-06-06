@@ -81,10 +81,8 @@ object RequestProfiler {
 
     // 3. Instructions (variant matches Provider.renderSystem branching)
     val findCapabilityAvailable = request.tools.exists(_.schema.name.value == "find_capability")
-    val respondAvailable = request.tools.exists(_.schema.name.value == "respond")
     val instr =
       if (!findCapabilityAvailable) request.instructions.renderWithoutTools
-      else if (!respondAvailable) request.instructions.forPureDiscovery.render
       else request.instructions.render
     add(ProfileSection.Instructions, instr)
 

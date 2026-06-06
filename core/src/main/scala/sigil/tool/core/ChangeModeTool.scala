@@ -44,6 +44,11 @@ case object ChangeModeTool extends Tool {
       |Skip the switch only when no listed mode's domain fits — then use
       |find_capability directly.
       |
+      |Re-check the fit each turn: modes are per-turn fits, not sticky goals.
+      |If the work has moved on and the current mode no longer covers the task,
+      |switch away (to a better-matching mode, or back to the default) rather
+      |than forcing every operation through discovery.
+      |
       |`mode` is the target's stable name from the available-modes list below.
       |After change_mode succeeds, the new mode's tools are directly callable
       |on the next turn.""".stripMargin

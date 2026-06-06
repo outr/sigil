@@ -63,24 +63,6 @@ case class Instructions private (safety: String = Instructions.ConfirmingSafety,
     * orchestrator's consent-gate behaviour. */
   def withPosture(posture: SafetyPosture): Instructions = copy(posture = posture)
 
-  /** Swap in the pure-discovery tools text. Used by `Provider.renderSystem`
-    * when the active roster has stripped the respond family — the default
-    * tools text references `respond` as if it were callable, which misleads
-    * the model when it isn't. */
-  def forPureDiscovery: Instructions = copy(tools = Instructions.PureDiscoveryToolsGuidance)
-
-  /** Swap in the single-mode tools text. Used by `Provider.renderSystem` when
-    * `change_mode` isn't in the roster — the default tools text builds its
-    * triage around `change_mode`, which misleads the model when only one mode
-    * is registered and the tool can't be called. The trailer swaps too, unless
-    * the caller set a custom one. */
-  def forSingleMode: Instructions = copy(
-    tools = Instructions.SingleModeToolsGuidance,
-    toolsTrailer =
-      if (toolsTrailer == Instructions.DefaultToolsTrailer) Instructions.SingleModeToolsTrailer
-      else toolsTrailer
-  )
-
   /**
    * Operational core — concatenation of safety + behavior + tools.
    * Empty slots drop out so callers can disable one by passing `""`.
@@ -152,170 +134,63 @@ object Instructions {
       |- Ask for clarification only when a request is genuinely ambiguous, not to confirm obvious intent.""".stripMargin
 
   /**
-   * Default tool-discovery framing. Bug #48 — establishes
-   * discovery-first as the framework's CORE ideology, not a tip.
+   * Default tool-discovery framing — establishes discovery-first as the
+   * framework's CORE ideology, not a tip.
    *
-   * Triage framing (1 / 2 / 3) is what finally moves smaller
-   * quantised models off the "I'll just respond" default. The
-   * earlier softer phrasings positioned `find_capability` as
-   * appropriate "for specialized work", which the model read as a
-   * narrow case it could route around for short prompts like
-   * "wait 200ms then respond done" — splitting the action half
-   * away and answering only the final-reply half via `respond`.
+   * Deliberately TOOL-AGNOSTIC: it teaches the discovery-first BEHAVIOR
+   * and names no specific tool. Every tool-specific instruction (how to
+   * query the discovery tool, when to switch mode, how a reply tool
+   * renders) lives in that tool's own `description`, which the model
+   * already receives whenever the tool is in its roster — so the prompt
+   * never points the model at a capability that isn't present.
    *
-   * Three load-bearing rules:
-   *   - "Even ONE word of action means action" — closes the
-   *     "this seems trivial enough to fake" loophole.
-   *   - "If the user bundles an action AND a final reply, the action
-   *     half is still an action" — closes the "wait 200ms then
-   *     respond done" loophole specifically.
-   *   - "When in doubt, choose action" — biases the model toward
-   *     discovery; the cost of an unnecessary `find_capability` is
-   *     one extra turn, the cost of skipping is silently degrading
-   *     the user's task.
+   * Triage framing (1 / 2) is what moves smaller quantised models off
+   * the "I'll just answer" default. Load-bearing rules: "even ONE word
+   * of action means action" closes the trivial-fake loophole; "when in
+   * doubt, choose action" biases toward discovery.
    */
-  /** find_capability ranking + query-shape patterns; shared by the
-    * multi-mode and single-mode tools guidance. */
-  private val DiscoveryMechanics: String =
-    """**`find_capability` results are RANKED by relevance.** The top match is the framework's recommendation for your query — not a buffet to scroll through. Default to invoking the rank-1 tool unless its description makes it clearly inappropriate. Do NOT scroll past LSP/BSP/typed/domain-specific tools to pick a generic primitive (`grep`, `glob`, `bash`, `read_file`, `execute_script`) just because you're more familiar with it. The ranked tool is at the top because the framework knows it's the better answer for the query you typed; trust the rank. Generic primitives are scored to sit BELOW the domain-specific tool when both apply — that's not a rendering quirk, it's the framework telling you "use the typed tool when available."
+  val DefaultToolsGuidance: String =
+    """TOOLS — discovery-first is the framework's CORE ideology. Internalize this.
       |
-      |**Discovery-query patterns — `find_capability` is a TOOL-SHAPE search, not a CONTENT search.** Strip user content (filenames, project terms, business jargon); keep only the action shape. Templates by intent:
+      |Most of your capabilities are NOT preloaded. The visible roster is intentionally small; the full catalog is large, and almost every action the user asks for has a dedicated capability you reach by DISCOVERING it — not by faking it through a plain-text reply.
       |
-      |  - **Read a file** → `view file source contents read code lines`
-      |  - **Search files** → `grep search find text pattern match`
-      |  - **List paths** → `glob files directory paths list discover`
-      |  - **Run shell** → `bash shell command execute run`
-      |  - **Navigate code symbols** → `lsp definition reference symbol type implementation`
-      |  - **Edit a file** → `edit modify update file patch change`
-      |  - **HTTP fetch** → `http fetch download url web request`
-      |  - **Switch the model** → `model switch pin change llm`
-      |  - **Save / recall memory** → `memory save recall persist note remember`
-      |  - **Schedule / wait** → `sleep wait delay timer schedule cron`
+      |Triage every user message:
       |
-      |Bad query: `"find references search symbol password reset"` (mixes shape with project content). Good: `"lsp reference symbol definition"` (pure shape — what the ranker scores).
+      |1. The user asked you to DO something — wait, fetch, save, look up, send, run, edit, search, write code, anything action-shaped. Even ONE word of action means action.
+      |   → Discover the capability that fits the task, then use it. The discovery tool in your roster explains how to search; each capability it surfaces carries its own usage in its own description.
+      |   → Self-referential requests ("switch models", "what can you do", anything you're tempted to treat as out-of-scope) are STILL actions. Don't refuse based on assumed limits — the catalog usually has what's needed. A refusal not preceded by a discovery search is a bug.
+      |   → **Ambiguity is NOT a reason to skip discovery.** If you're tempted to ask the user to clarify before acting, search first with your best-guess terms — a matching capability often resolves the ambiguity on the spot. Fall through to a clarifying question only after discovery surfaces nothing relevant, and say what you searched for.
       |
-      |Long-tail intent without a template above? Default to 3-5 keywords describing the action SHAPE (`<verb> <noun> <category>`), not the subject. Multi-word queries match better than single-word ones — the registry scores per-keyword and accumulates.""".stripMargin
-
-  private val ToolFailureContext: String =
-    """**Tool failures carry structured context.** When a tool result has disposition `Failure`
-      |with `errorContext`, read `classification` to pick a response shape:
+      |2. The user is chatting / asking a knowledge question / following up and no action is needed.
+      |   → Reply directly.
+      |
+      |When in doubt between 1 and 2, choose 1. The cost of an unnecessary search is one extra turn; the cost of skipping it is silently degrading the user's task.
+      |
+      |**Your roster is EPHEMERAL** — the capabilities offered this turn may differ from earlier turns, and a record of what you used before does not guarantee current availability. If a capability you relied on earlier isn't offered now, rediscover it rather than giving up or improvising a worse path.
+      |
+      |**Every reply MUST be a tool call.** Plain text output is dropped silently — everything you do, including delivering a message to the user, happens through a tool. If the tool you need isn't in the current roster, discover it first.
+      |
+      |**Tool failures carry structured context.** When a tool result has disposition `Failure` with `errorContext`, read `classification` to pick a response shape:
       |  - `UserInputError` — fix the args and retry, or explain the expected input shape.
       |  - `TransientError` — retry once before giving up.
       |  - `ResourceExhausted` — narrow / page the inputs, not a retry.
-      |  - `FrameworkBug` (high `frameworkBugLikelihood`) — surface the class + message to
-      |    the user; don't keep retrying.
+      |  - `FrameworkBug` (high `frameworkBugLikelihood`) — surface the class + message to the user; don't keep retrying.
       |  - `ProviderError` — report the upstream issue verbatim.
       |  - `Unknown` — explain what failed; defer to the user.""".stripMargin
 
-  val DefaultToolsGuidance: String =
-    List(
-      """TOOLS — discovery-first is the framework's CORE ideology. Internalize this.
-        |
-        |The catalog is large. Your visible roster (`find_capability`, `respond`, `stop`, …) is intentionally tiny. Almost every action the user asks for has a dedicated tool — your job is to find it, not to fake it through `respond`.
-        |
-        |Triage every user message into one of these:
-        |
-        |1. The user asked you to DO something — wait, fetch, save, look up, send, run, edit, search, write code, anything action-shaped. Even ONE word of action means action.
-        |   → **STEP 0: AUDIT THE CURRENT MODE.** Before STEP A/B, check the "Current mode" line above against what you're actually about to do this turn. Each mode's description spells out "Enter when…", "Don't enter for…", and "Exit when…". If the current mode's "Exit when…" clause matches your current task — even mid-session, even after many turns in that mode — call `change_mode("<name>")` to switch FIRST. Modes are per-turn fits, not sticky goals; staying in a wrong mode costs you the right tool roster for the work at hand. Default back to 'conversation' if no other listed mode fits.
-        |   → **STEP A: IF STEP 0 left you in a mode that doesn't fit the user's current task,** check the available-modes list (in `change_mode`'s description below). When the user's task lands in a listed mode's domain — writing code, web research, whatever each mode covers — call `change_mode("<name>")` FIRST, even for a one-shot ask. The mode loads tools, instructions, and behavior tuned for that work; staying in a non-matching mode forces find_capability discovery on every operation. Honor each mode's "Enter when…" / "Don't enter for…" clauses when they're specified. Only skip to STEP B when no listed mode's domain matches.
-        |   → **STEP B: when no listed mode's domain matches,** call `find_capability` with keywords describing the task. Most tools (filesystem, LSP, BSP, memory, web fetch, MCP, set_workspace) are universally discoverable regardless of the active mode.
-        |   → After `find_capability` returns, if the top match is itself a Mode, call `change_mode("<name>")` to enter it; otherwise call the matched Tool directly.
-        |   → Self-referential requests ("switch models", "what skills do you have", anything you're pattern-matching as out-of-scope) are STILL action requests. Don't refuse based on assumed limits — the catalog usually has the tool. A refusal not preceded by `find_capability` is a bug.
-        |   → **Ambiguity is NOT a reason to skip discovery.** If you're tempted to ask the user "could you clarify what you mean by X" before calling any tool, STOP — first call `find_capability` with your best-guess keywords. A matching tool, skill, or memory often disambiguates the request on the spot ("medium complexity" → `pin_complexity` exists; "save this" → `save_memory` exists). Only fall through to a clarification respond AFTER discovery returns nothing relevant, and the respond should state what you searched and what wasn't there so the user knows exactly what to disambiguate.
-        |
-        |2. The user is chatting / asking a knowledge question / following up in the current mode and no action is needed.
-        |   → `respond` with the answer.
-        |
-        |3. The user has indicated the conversation is over.
-        |   → `stop`.
-        |
-        |When in doubt between 1 and 2, choose 1. The cost of an unnecessary `find_capability` is one extra turn; the cost of skipping discovery is silently degrading the user's task.
-        |
-        |After `change_mode` succeeds, your visible roster is FRESH. Do NOT call `find_capability` again before invoking a tool — the new mode's tools are now directly callable. Pick a tool from the roster and run it. Only re-search if you've actually called a roster tool and it returned a structural failure (`RequiresSetup`, `NotApplicable`, missing precondition). Re-searching after `change_mode` without trying the roster first burns iterations on discovery the framework just handed you.
-        |
-        |**Tool availability is ephemeral.** The tools offered to you in this iteration may not match prior iterations. The `Recently used tools` section reflects history, not current availability. If you remember using a tool (e.g. `grep`, `dispatch_workers`) earlier and it's not in your current offered set, your first move is `find_capability` to recover it — not `change_mode`, not `respond`. Re-discovery is the recovery path the framework is designed around.""".stripMargin,
-      DiscoveryMechanics,
-      """**TURN-FLOW DISCIPLINE.** Two tools end your turn:
-        |  - `respond` — deliver text to the user. For asking the user to pick from a closed
-        |    set of choices, use `respond_options` instead (its options render as clickable
-        |    controls; markdown bullets in `respond.content` are inert).
-        |  - `cancel` — abandon the turn. ONLY when the user has explicitly halted you, or
-        |    you've hit an unrecoverable failure. NOT for pausing, transitioning, or "waiting"
-        |    between tool calls — call the next tool directly.""".stripMargin,
-      ToolFailureContext
-    ).mkString("\n\n")
-
-  /** Single-mode variant — used when `change_mode` isn't in the roster (a
-    * single registered mode). Drops the multi-mode `change_mode` triage and
-    * never names tools the model can't call. */
-  val SingleModeToolsGuidance: String =
-    List(
-      """TOOLS — discovery-first is the framework's CORE ideology. Internalize this.
-        |
-        |The catalog is large. Your visible roster (`find_capability`, `respond`, …) is intentionally tiny. Almost every action the user asks for has a dedicated tool — your job is to find it, not to fake it through `respond`.
-        |
-        |Triage every user message:
-        |
-        |1. The user asked you to DO something — wait, fetch, save, look up, send, run, edit, search, write code, anything action-shaped. Even ONE word of action means action.
-        |   → Call `find_capability` with 3-5 keywords describing the action SHAPE, then call the returned tool directly. Most tools (filesystem, LSP, BSP, memory, web fetch, MCP, set_workspace) are discoverable this way.
-        |   → Self-referential requests ("switch models", "what skills do you have", anything you're pattern-matching as out-of-scope) are STILL action requests. Don't refuse based on assumed limits — the catalog usually has the tool. A refusal not preceded by `find_capability` is a bug.
-        |   → **Ambiguity is NOT a reason to skip discovery.** If you're tempted to ask the user "could you clarify what you mean by X" before calling any tool, STOP — first call `find_capability` with your best-guess keywords. A matching tool, skill, or memory often disambiguates the request on the spot. Only fall through to a clarification `respond` AFTER discovery returns nothing relevant.
-        |
-        |2. The user is chatting / asking a knowledge question / following up and no action is needed.
-        |   → `respond` with the answer.
-        |
-        |When in doubt between 1 and 2, choose 1. The cost of an unnecessary `find_capability` is one extra turn; the cost of skipping discovery is silently degrading the user's task.
-        |
-        |**Tool availability is ephemeral.** The tools offered to you in this iteration may not match prior iterations. The `Recently used tools` section reflects history, not current availability. If you remember using a tool earlier and it's not in your current offered set, your first move is `find_capability` to recover it. Re-discovery is the recovery path the framework is designed around.""".stripMargin,
-      DiscoveryMechanics,
-      """**TURN-FLOW DISCIPLINE.** `respond` delivers text to the user; for asking the user to pick from a closed set of choices, use `respond_options` instead (its options render as clickable controls; markdown bullets in `respond.content` are inert).""".stripMargin,
-      ToolFailureContext
-    ).mkString("\n\n")
-
   /**
-   * Pure-discovery variant of the TOOLS guidance — used when [[ToolPolicy.PureDiscovery]]
-   * has stripped the respond family from the immediate roster. The model sees only
-   * `find_capability`, `cancel`, plus any explicit Active tools — so the prompt teaches
-   * it to discover `respond` itself rather than expecting it in the roster.
-   */
-  val PureDiscoveryToolsGuidance: String =
-    """TOOLS
-      |- You operate in pure-discovery mode. Your immediate tool list is intentionally minimal (`find_capability`, `cancel`, plus any tools your mode/role explicitly added). The full capability catalog — including the user-facing reply tool `respond`, focused modes (coding, planning, …), and specialized tools — is reachable only via `find_capability`.
-      |- To produce ANY user-facing reply, you MUST first call `find_capability` with relevant keywords (e.g. `find_capability("respond")` for a plain reply, or keywords describing the task). The returned matches will surface `respond` (and other reply variants), which then become callable on the next turn.
-      |- Do NOT call `cancel` unless the user has explicitly halted you or you've hit an unrecoverable failure — `cancel` is for cancellation, NOT for ending a normal turn or transitioning between steps. The right path for "I should answer this" is `find_capability` → call the discovered reply tool.
-      |- For specialized work (code, scripts, plans, workflows, etc.), `find_capability` will surface a focused mode — call `change_mode` to switch into it before producing content.
-      |- Do NOT answer from memory. Every reply path routes through `find_capability` first.
-      |
-      |**Query patterns — `find_capability` is a TOOL-SHAPE search, not a CONTENT search.** Use action-shape keywords (`view file source contents read code` for read-file intent; `grep search find text pattern match` for search-file intent; `lsp reference symbol definition` for code navigation). Strip user content (filenames, project terms) out — those don't score against any tool's keywords. 3-5 action-shape words beats one project term every time.""".stripMargin
-
-  /**
-   * Tail recap of the "every reply MUST be a tool call" rule —
-   * rendered LAST so it sits within the model's recency-biased
-   * attention even after long histories push the front-of-prompt
-   * TOOLS guidance out of view. Smaller / quantised models drift to
-   * plain-text output without it.
+   * Tail recap of the "every reply MUST be a tool call" rule — rendered
+   * LAST so it sits within the model's recency-biased attention even
+   * after long histories push the front-of-prompt guidance out of view.
+   * Smaller / quantised models drift to plain-text output without it.
    *
-   * Deliberately minimal and tool-neutral: the trailer prevents
-   * plain-text drift; it does NOT prescribe which tool. Naming
-   * specific tool families biases the model away from the others.
-   * Discovery and selection live in [[DefaultToolsGuidance]] and in
-   * `find_capability`'s results.
-   *
-   * Suppress with `Instructions(toolsTrailer = "")`.
+   * Tool-agnostic by design: it prevents plain-text drift without naming
+   * any specific tool. Suppress with `Instructions(toolsTrailer = "")`.
    */
   val DefaultToolsTrailer: String =
     """REMINDER: every reply MUST be a tool call. For ACTIONS (anything the user asked you to DO),
-      |route per the triage above (`change_mode` first when a listed mode matches; otherwise
-      |`find_capability`). `respond` comes after the action runs, not instead of it. Plain text
-      |output is dropped silently — wrap your output in whichever tool fits.""".stripMargin
-
-  /** Single-mode recap — no `change_mode` reference, since the tool isn't in
-    * the roster. Paired with [[SingleModeToolsGuidance]] by `forSingleMode`. */
-  val SingleModeToolsTrailer: String =
-    """REMINDER: every reply MUST be a tool call. For ACTIONS (anything the user asked you to DO),
-      |call `find_capability` with the action shape, then call the returned tool. `respond` comes
-      |after the action runs, not instead of it. Plain text output is dropped silently — wrap your
-      |output in whichever tool fits.""".stripMargin
+      |discover the capability that fits and use it; deliver any reply only once the action has run,
+      |not instead of it. Plain text output is dropped silently — route everything through a tool.""".stripMargin
 
   // -- back-compat aliases --
   // Older code referenced `SafetyGuidance` / `BehaviorGuidance` / `DefaultCore` directly.

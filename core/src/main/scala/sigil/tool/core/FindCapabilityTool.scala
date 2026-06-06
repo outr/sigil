@@ -25,12 +25,14 @@ case object FindCapabilityTool extends Tool {
   val name = ToolName("find_capability")
   val description =
     """Search the capability catalog for a tool, mode, or skill that fits the user's task.
-      |Call when no listed mode obviously matches (otherwise switch to a matching mode
-      |first — modes are pre-curated and more precise than a free-form search).
+      |CALL THIS FIRST whenever the user asks for an action and nothing in your current
+      |roster obviously covers it — discovery is how you reach the full catalog, which is
+      |far larger than your visible roster. (When a listed mode obviously matches, switch
+      |to it first — modes are pre-curated and more precise than a free-form search.)
       |
       |Returns matches across every capability kind:
       |  - Tools — call the matched name directly on your next turn.
-      |  - Modes — match carries a hint for switching mode; switch to enter, then the
+      |  - Modes — the match carries a hint for switching mode; switch to enter, then the
       |    mode's tools and skill become active. Prefer mode entry when a Mode matches
       |    the user's task — modes are designed end-to-end for their work shape.
       |
@@ -39,8 +41,27 @@ case object FindCapabilityTool extends Tool {
       |nothing, only THEN may you tell the user it isn't available.
       |
       |`keywords` — space-separated lowercase terms describing the action SHAPE (verb +
-      |category), not project content. See the system prompt's "Discovery-query patterns"
-      |section for template queries by intent.""".stripMargin
+      |category), not project content. This is a TOOL-SHAPE search, not a CONTENT search:
+      |strip filenames, project terms, and business jargon; keep the shape. 3-5 words match
+      |better than one. Templates by intent:
+      |  - Read a file → `view file source contents read code lines`
+      |  - Search files → `grep search find text pattern match`
+      |  - List paths → `glob files directory paths list discover`
+      |  - Run shell → `bash shell command execute run`
+      |  - Navigate code symbols → `lsp definition reference symbol type implementation`
+      |  - Edit a file → `edit modify update file patch change`
+      |  - HTTP fetch → `http fetch download url web request`
+      |  - Switch the model → `model switch pin change llm`
+      |  - Save / recall memory → `memory save recall persist note remember`
+      |  - Schedule / wait → `sleep wait delay timer schedule cron`
+      |Bad query: `find references search symbol password reset` (mixes shape with project
+      |content). Good: `lsp reference symbol definition` (pure shape — what the ranker scores).
+      |
+      |Results are RANKED by relevance — the top match is the framework's recommendation, not
+      |a buffet to scroll. Default to the rank-1 result unless its description is clearly
+      |inappropriate; don't scroll past a domain-specific match to a generic primitive just
+      |because it's more familiar. If a capability you used earlier isn't in your current
+      |roster, re-run this search to recover it — that's the intended recovery path.""".stripMargin
 
   override val examples: List[ToolExample] = List(
     ToolExample("Send a message",          FindCapabilityInput("send slack channel message")),

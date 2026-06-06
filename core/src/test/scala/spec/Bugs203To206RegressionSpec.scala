@@ -73,11 +73,16 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
       desc should include("find_capability discovery on every operation")
     }
 
-    "DefaultToolsGuidance now contains a STEP 0 audit-current-mode block" in {
+    "ChangeModeTool.description carries the audit-current-mode / per-turn-fit guidance" in {
+      val desc = sigil.tool.core.ChangeModeTool.description
+      desc should include("per-turn fits")
+      desc should include("switch away")
+    }
+
+    "the system prompt's tools guidance stays tool-agnostic (no change_mode triage)" in {
       val guidance = sigil.provider.Instructions.DefaultToolsGuidance
-      guidance should include("STEP 0")
-      guidance should include("AUDIT THE CURRENT MODE")
-      guidance should include("Exit when")
+      guidance should not include "change_mode"
+      guidance should not include "STEP 0"
     }
   }
 
