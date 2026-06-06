@@ -3,7 +3,7 @@ package sigil.provider.wire
 import fabric.*
 import fabric.io.JsonFormatter
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.{Pull, Step, Stream, Task}
 import sigil.Sigil
 import sigil.provider.*
 import sigil.provider.debug.StreamWireInterceptor
@@ -330,14 +330,36 @@ object OpenAIChatCompletions {
         val events = StreamWireInterceptor.attach(lines, sigil.wireInterceptor, intercepted, sigil.chunkLogger) { line =>
           Stream.emits(parseLine(line, state, config))
         }
-        // Sigil #360 — when the line stream terminates (gracefully or via
-        // a dropped socket), run the connection-close check so a
-        // truncated stream that never carried `[DONE]` / `finish_reason`
-        // fails loudly instead of yielding a silent empty turn.
-        events ++ Stream.force(Task(Stream.emits(state.closeStream(config))))
+        // When the line stream terminates (gracefully or via a dropped
+        // socket), run the connection-close check so a truncated stream
+        // that never carried `[DONE]` / `finish_reason` fails loudly
+        // instead of yielding a silent empty turn. The check inspects the
+        // accumulated `state`, so it must run only AFTER `events` drains —
+        // see [[appendTerminal]].
+        appendTerminal(events)(state.closeStream(config))
       }
     )
   }
+
+  /** Append a terminal batch that is evaluated by-need, only AFTER `events`
+    * has fully drained.
+    *
+    * `Stream.++`/`append` resolves the right operand's `task` eagerly — at
+    * the moment the combined stream begins streaming, before the left side
+    * has produced anything. So `events ++ Stream.force(Task(terminal))`
+    * runs `terminal` against pre-stream state, not terminal state. Carrying
+    * the thunk inside the Pull's step function defers it to pull time,
+    * which `append` reaches only after the left side stops — so a
+    * state-inspecting terminal (the streaming close check) sees the real
+    * end-of-stream state rather than firing on an empty one. */
+  def appendTerminal[T](events: Stream[T])(terminal: => Iterable[T]): Stream[T] =
+    events ++ Stream[T](Task {
+      var pending: Iterator[T] = null
+      Pull.fromFunction[T] { () =>
+        if (pending == null) pending = terminal.iterator
+        if (pending.hasNext) Step.Emit(pending.next()) else Step.Stop
+      }
+    })
 
   /** Sigil #360 — does this call engage the model's reasoning phase? True
     * when the provider forwards a reasoning policy AND the request hasn't
