@@ -7484,6 +7484,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _ = ParticipantId.register((summon[RW[sigil.participant.WorkerParticipantId]] :: participantIds).distinctBy(_.definition.className)*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
       _ = sigil.provider.WorkType.register(workTypes.map(w => RW.static(w))*)
+      // Mixin hook — runs AFTER the framework leaf polytypes (SpaceId,
+      // ParticipantId, Mode, WorkType, …) register but BEFORE any aggregate
+      // that walks tool / participant / signal Definitions. A mixin polytype
+      // referenced by a tool input (e.g. a `WorkflowStepInput` in
+      // `create_workflow`'s `steps` schema) MUST be registered before the
+      // `ToolInput.register` below forces those input Definitions via
+      // `.distinctBy(_.definition.className)` — accessing `.definition`
+      // freezes the lazy-val snapshot, so a subtype registered afterward never
+      // appears in the rendered schema (the field collapses to `array<string>`
+      // and no agent can fill it). WorkflowSigil registers `WorkflowTrigger`
+      // first, then `WorkflowStepInput` (which references it), so the leaf-poly
+      // ordering #18 guards against is preserved here too.
+      _ <- mixinPolymorphicRegistrations
       // Bug #53 — `toolInputRegistrations` is the mixin extension
       // point for non-static tools whose `inputRW` isn't reachable
       // through the static-roster scan (notably `JsonInput`, used by
@@ -7515,16 +7528,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               summon[RW[sigil.heal.CorruptionEvidence.OrphanSummaryCoverage]]
             ) ++ corruptionEvidenceRegistrations).distinct*
           )
-      // Mixin hook — runs AFTER all framework leaf polytypes register but
-      // BEFORE the aggregates that walk Participant/Tool/Signal definitions.
-      // Mixins that register polytypes whose subtype RWs reach into framework
-      // leaves (e.g. a mixin subtype carrying a Role → WorkType, or a
-      // WorkflowStepInput referencing the WorkflowTrigger poly) MUST run here,
-      // not at trait-init time — otherwise
-      // the subtype lazy-val Definitions cache empty leaf-poly snapshots and
-      // downstream codegen sees empty dispatchers despite the leaf register
-      // calls succeeding (sigil bug #18).
-      _ <- mixinPolymorphicRegistrations
       // Aggregates after leaves + mixins.
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
