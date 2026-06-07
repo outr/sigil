@@ -2915,10 +2915,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                   e.origin match {
                     case Some(invokeId) =>
                       tx.get(invokeId).flatMap {
-                        case Some(ti) =>
+                        case Some(ti: ToolInvoke) =>
                           ti.contextFrame match {
+                            // Settle the invoke's frame from its paired Tool-role
+                            // result when the frame is still Active OR the invoke
+                            // is still Pending. The second case covers the
+                            // refuse paths (duplicate-call cap, tool-fan-out cap,
+                            // …) whose `toolDeltaPrefix` already flipped the frame
+                            // to Complete with the #354 "raced past" placeholder
+                            // before the paired Failure Message arrives — without
+                            // this, that placeholder stuck and told the agent to
+                            // retry a call the framework deliberately refused.
                             case Some(tc: ContextFrame.ToolCall)
-                                if tc.state == ToolCallState.Active =>
+                                if tc.state == ToolCallState.Active ||
+                                   ti.outcome == sigil.event.ToolOutcome.Pending =>
                               val (content, images) = FrameBuilder.toolResultPayload(e)
                               val updated = tc.copy(
                                 state = ToolCallState.Complete(content, images)
@@ -2926,7 +2936,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                               tx.upsert(ti.withContextFrame(Some(updated))).unit
                             case _ => Task.unit
                           }
-                        case None => Task.unit
+                        case _ => Task.unit
                       }
                     case None => Task.unit
                   }

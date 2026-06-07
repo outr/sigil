@@ -1036,7 +1036,26 @@ object Orchestrator {
                   // `maxAgentIterations`.
                   return Stream.force(repeatedQueryOutcome(sigil, fc.keywords, convId, caller, topicId).map {
                     case Some(interceptSignals) =>
-                      Stream.emits(toolDeltaPrefix ::: interceptSignals)
+                      // Settle the find_capability invoke itself with a
+                      // recoverable Failure so its frame renders the
+                      // suppression — NOT the #354 "result raced past the
+                      // prompt" placeholder. Emitting only `toolDeltaPrefix`
+                      // (input delta, no outcome) left the invoke Complete-but-
+                      // Pending, whose frame told the agent the result hadn't
+                      // arrived and retrying was reasonable — driving the exact
+                      // re-query loop this intercept exists to stop.
+                      val note =
+                        "Suppressed -- this repeats a `find_capability` query you already ran this turn. " +
+                          "The ranker is deterministic; see the guidance that follows."
+                      val settle = ToolDelta(
+                        target         = invokeId,
+                        conversationId = convId,
+                        output         = Some(_root_.sigil.tool.TextToolOutput(note)),
+                        outcome        = Some(ToolOutcome.Failure(note, recoverable = true)),
+                        state          = Some(EventState.Complete),
+                        internal       = isInternal
+                      )
+                      Stream.emits(toolDeltaPrefix ::: List[Signal](settle) ::: interceptSignals)
                     case None =>
                       proceedWithAtomicDispatch()
                   })

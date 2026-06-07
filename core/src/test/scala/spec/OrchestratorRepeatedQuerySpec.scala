@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, ToolInvoke}
+import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
 import sigil.provider.{
   CallId, GenerationSettings, Instructions, Provider, ProviderCall,
@@ -134,6 +134,25 @@ class OrchestratorRepeatedQuerySpec extends AsyncWordSpec with AsyncTaskSpec wit
         }
         failures should not be empty
         failures.head.origin shouldBe Some(intercepts.head._id)
+      }
+    }
+
+    "settle the intercepted find_capability invoke — never leave it Pending (the #354 'raced past' placeholder)" in {
+      // The intercepted duplicate used to be emitted with only its input
+      // delta (state Complete, outcome still Pending), so its frame rendered
+      // the "result did not reach this turn — calling again is reasonable"
+      // placeholder. The agent read that as "retry" and re-queried, which is
+      // exactly the loop the intercept exists to stop.
+      val provider = new ScriptedProvider({
+        case 1 => findCapability(1, keywords)
+        case 2 => findCapability(2, keywords)
+      })
+      runScenario(provider, "intercept-settle").map { case (_, evs) =>
+        val fcInvokes = evs.collect { case ti: ToolInvoke if ti.toolName.value == "find_capability" => ti }
+        withClue(s"find_capability outcomes: ${fcInvokes.map(_.outcome)}: ") {
+          fcInvokes should not be empty
+          fcInvokes.map(_.outcome) should not contain ToolOutcome.Pending
+        }
       }
     }
 
