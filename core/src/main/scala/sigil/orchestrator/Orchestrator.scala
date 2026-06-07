@@ -546,6 +546,39 @@ object Orchestrator {
             )
             (Some(active.toolName), input) match {
               case (Some("respond"), r: RespondInput) =>
+                // Suppress an in-turn repeated respond. `respond(endsTurn =
+                // false)` keeps the turn open; a small model that re-emits
+                // the SAME content on the next iteration — instead of
+                // progressing with a real tool call — would otherwise stream
+                // the identical user-facing message again, because the
+                // streaming-settle path bypasses the atomic duplicate-call
+                // cap. When this respond's content matches the caller's
+                // immediately-preceding message (no intervening user input),
+                // settle the birthed Message empty and force the turn to end
+                // so the user never sees the duplicate and the loop can't
+                // spin.
+                val priorCallerText = request.turnInput.frames.reverseIterator.collectFirst {
+                  case t: ContextFrame.Text => t
+                }
+                val isInTurnRepeat = priorCallerText.exists(t =>
+                  t.participantId == caller &&
+                    Orchestrator.normalizeForDedup(t.content) == Orchestrator.normalizeForDedup(r.content))
+                if (isInTurnRepeat) {
+                  val endTurnSettle = ToolDelta(
+                    target         = invokeId,
+                    conversationId = convId,
+                    input          = Some(r.copy(endsTurn = true)),
+                    state          = Some(EventState.Complete),
+                    internal       = isInternal
+                  )
+                  val suppress = MessageDelta(
+                    target             = msgId,
+                    conversationId     = convId,
+                    contentReplacement = Some(Vector.empty),
+                    state              = Some(EventState.Complete)
+                  )
+                  return Stream.emits(closeBlock ::: List[Signal](deferredInvoke, endTurnSettle, suppress, streamingSettleDelta))
+                }
                 val sanitized = XmlToolCallSanitizer.sanitize(r.content)
                 // Sigil #304 — when sanitization fires, publish the
                 // existing diagnostic Notice AND synthesise an
@@ -1832,6 +1865,14 @@ object Orchestrator {
       catch { case _: Throwable => input.toString }
     s"$toolName:$argsJson"
   }
+
+  /** Whitespace-normalised form used to compare a streaming respond's
+    * content against the caller's preceding message. Collapses runs of
+    * whitespace and trims so markdown paragraph-join differences (a
+    * rendered frame joins blocks with single newlines; the raw arg may
+    * use blank lines) don't mask an otherwise-identical repeat. */
+  private[orchestrator] def normalizeForDedup(s: String): String =
+    s.trim.replaceAll("\\s+", " ")
 
   /**
    * Emit a `MessageDelta` with `MessageContentDelta(complete = true, delta = full
