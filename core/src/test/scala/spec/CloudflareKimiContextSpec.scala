@@ -1,10 +1,13 @@
 package spec
 
+import java.util.concurrent.atomic.AtomicReference
+import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
+import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.{GlobalSpace, Sigil}
-import sigil.provider.{ConversationMode, ModelResolver, ProviderModel}
+import sigil.provider.{ConversationMode, ModelResolver, Provider, ProviderModel}
 import sigil.tool.{DiscoveryRequest, Tool}
 import sigil.tool.fs.{GlobTool, GrepTool, LocalFileSystemContext}
 import sigil.tool.util.{SearchConversationTool, SemanticSearchTool}
@@ -67,9 +70,52 @@ object KimiContextSigil extends Sigil {
   override def testMode: Boolean = true
   override def loadOpenRouterModels: Boolean = false
 
+  override protected def participantIds: List[fabric.rw.RW[? <: sigil.participant.ParticipantId]] =
+    List(fabric.rw.RW.static(TestUser), fabric.rw.RW.static(TestAgent))
+
+  // No provider by default — the deterministic discovery spec never
+  // calls the model. The live harness ([[CloudflareKimiLiveContextSpec]])
+  // wires a real CloudflareProvider via `setProvider` and registers the
+  // Kimi model via `registerModel`, so the agent loop resolves it.
+  private val providerRef = new AtomicReference[Option[() => Provider]](None)
+  def setProvider(p: => Provider): Unit = providerRef.set(Some(() => p))
+
   override def modelResolver: ModelResolver = new ModelResolver {
-    def resolve(modelId: lightdb.id.Id[sigil.db.Model]): Option[ProviderModel] = None
+    def resolve(modelId: Id[Model]): Option[ProviderModel] =
+      providerRef.get().flatMap(p => cache.find(modelId).map(ProviderModel(p(), _)))
   }
+
+  /** Register a Model record so the agent loop can resolve the live
+    * Kimi id against the cache. Idempotent. */
+  def registerModel(modelId: Id[Model]): Model =
+    cache.find(modelId).getOrElse {
+      val now = lightdb.time.Timestamp()
+      val m = Model(
+        canonicalSlug       = modelId.value,
+        huggingFaceId       = "",
+        name                = modelId.value,
+        description         = s"Live model fixture for ${modelId.value}.",
+        contextLength       = 131072L,
+        architecture        = ModelArchitecture(
+          modality         = "text->text",
+          inputModalities  = List("text"),
+          outputModalities = List("text"),
+          tokenizer        = "GPT",
+          instructType     = None
+        ),
+        pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+        topProvider         = ModelTopProvider(contextLength = Some(131072L), maxCompletionTokens = Some(16000L), isModerated = false),
+        perRequestLimits    = None,
+        supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
+        knowledgeCutoff     = None,
+        expirationDate      = None,
+        links               = ModelLinks(details = ""),
+        created             = now,
+        _id                 = modelId
+      )
+      cache.merge(List(m)).sync()
+      m
+    }
 
   private val fs = LocalFileSystemContext(basePath = None)
 
