@@ -108,6 +108,42 @@ object StallDetector {
     }
   }
 
+  /** Input-only identical-call streak — counts consecutive tail calls
+    * sharing `(toolName, inputJson)`, IGNORING output. The output-sensitive
+    * [[identicalStreak]] deliberately distinguishes "same call, different
+    * answer" (a legitimate re-query) from a true stall; but a model that
+    * re-emits a byte-identical call every iteration while the framework
+    * refuses it defeats that check, because each refusal Message carries a
+    * varying attempt count so the outputs differ. This input-only variant —
+    * used ONLY at a high threshold as a model-independent hard-stop signal —
+    * catches that pathology: N identical inputs in one turn is stuck no
+    * matter what comes back. */
+  def identicalInputStreak(tail: List[CallRecord], threshold: Int): Signal = {
+    if (threshold <= 0 || tail.size < threshold) Signal.Empty
+    else {
+      val fingerprints = tail.reverseIterator.map(r => (r.invoke.toolName.value, inputFingerprint(r.invoke))).toList
+      var run = 1
+      var head = fingerprints.head
+      val it = fingerprints.iterator
+      it.next()
+      while (it.hasNext && run < threshold) {
+        val next = it.next()
+        if (next == head) run += 1
+        else { head = next; run = 1 }
+      }
+      if (run >= threshold) {
+        val (name, _) = head
+        Signal(
+          detected = true,
+          reason   = Some(
+            s"You've called `$name` $run times this turn with identical arguments without making progress. " +
+              "Stop now — call `respond` with what you've gathered so far, or `cancel` the task."
+          )
+        )
+      } else Signal.Empty
+    }
+  }
+
   private def identicalStreak(tail: List[CallRecord], threshold: Int): Signal = {
     if (tail.size < threshold) Signal.Empty
     else {

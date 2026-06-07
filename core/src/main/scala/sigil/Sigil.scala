@@ -5610,6 +5610,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * loop); higher values give the agent more rope. */
   protected def consecutiveNoProgressLimit: Int = 2
 
+  /** Objective identical-call streak (same tool, same args, within one turn)
+    * at which the framework force-ends the turn — MODEL-INDEPENDENTLY — by
+    * triggering the forced-synthesis recovery early. Every cooperative stall
+    * guard ([[maxIdenticalToolCallsInWindow]], the repeated-query intercept,
+    * the progress checkpoint) only NUDGES the model to stop; a model that
+    * ignores them all keeps re-emitting the same call until
+    * [[maxAgentIterations]] and throws [[AgentRunawayException]]. This is the
+    * backstop that detects the pathological repeat and ends the turn in a
+    * handful of iterations instead. Higher than the duplicate-call cap and
+    * the checkpoint stall threshold so the cooperative nudges get their
+    * chance first. 0 disables. */
+  protected def hardStallIdenticalCallLimit: Int = 6
+
   /** Sigil #257 / #273 — how many times the agent loop retries with the
     * FULL tool roster when a turn emits ZERO `tool_use` blocks (genuine
     * empty response) before falling back to the respond-only forced
@@ -6236,7 +6249,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                   if (progressCheckpointInterval > 0 && nextIteration % progressCheckpointInterval == 0)
                     runProgressCheckpoint(agent, convId, claimed, nextIteration)
                   else
-                    Task.pure(None)
+                    // Off-interval iterations skip the LLM reflection but still
+                    // run the cheap, model-independent hard-stall check at every
+                    // boundary: a model re-emitting the same call past
+                    // `hardStallIdenticalCallLimit` has ignored every cooperative
+                    // guard, so surface it as an intervention (the handler below
+                    // forces synthesis) instead of letting it grind to
+                    // `maxAgentIterations` and throw.
+                    evaluateHardStall(convId, agent.id).map(_.map(reason =>
+                      CheckpointIntervention(
+                        message = Message(
+                          participantId  = agent.id,
+                          conversationId = convId,
+                          topicId        = conv.currentTopicId,
+                          content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
+                          state          = EventState.Complete,
+                          role           = MessageRole.Standard
+                        ),
+                        askingUser = false
+                      )))
                 checkpointTask.flatMap {
                   case Some(intervention) =>
                     // Bug #133 / #332 / #353 — a checkpoint intervention
@@ -6881,8 +6912,33 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * Folds into the progress checkpoint's `meaningfulProgress`
     * computation. Best-effort: failures fall through to the empty
     * signal rather than aborting the checkpoint. */
+  /** Model-independent hard-stall check. Runs the input-only identical-call
+    * streak at [[hardStallIdenticalCallLimit]] over the same since-checkpoint
+    * tail [[evaluateStall]] uses. Returns the intervention reason when the
+    * model has emitted the same call that many times in one turn — the signal
+    * that every cooperative guard has been ignored and the turn must be force-
+    * ended rather than ground to [[maxAgentIterations]]. Cheap (one event
+    * read, no LLM), so it can run at every iteration boundary. */
+  private final def evaluateHardStall(convId: Id[Conversation],
+                                      agentId: ParticipantId): Task[Option[String]] =
+    if (hardStallIdenticalCallLimit <= 0) Task.pure(None)
+    else loadStallRecords(convId, agentId).map { records =>
+      sigil.conversation.compression.StallDetector
+        .identicalInputStreak(records, hardStallIdenticalCallLimit)
+        .reason
+    }.handleError(_ => Task.pure(None))
+
   private final def evaluateStall(convId: Id[Conversation],
                                   agentId: ParticipantId): Task[sigil.conversation.compression.StallDetector.Signal] =
+    loadStallRecords(convId, agentId)
+      .map(sigil.conversation.compression.StallDetector.evaluate(_))
+      .handleError(_ => Task.pure(sigil.conversation.compression.StallDetector.Signal.Empty))
+
+  /** Build the chronological tail of non-internal tool calls since the prior
+    * checkpoint (falling back to the most recent user Message, then 0) that
+    * both [[evaluateStall]] and [[evaluateHardStall]] evaluate. */
+  private final def loadStallRecords(convId: Id[Conversation],
+                                     agentId: ParticipantId): Task[List[sigil.conversation.compression.StallDetector.CallRecord]] =
     withDB(_.conversationEvents(convId)).map { all =>
       val convEvents = all.iterator
         .collect { case e: Event if e.conversationId == convId => e }
@@ -6922,8 +6978,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           resultMessage = messagesByOrigin.get(ti._id)
         )
       }
-      sigil.conversation.compression.StallDetector.evaluate(records)
-    }.handleError(_ => Task.pure(sigil.conversation.compression.StallDetector.Signal.Empty))
+      records
+    }
 
   /** Concatenate textual ResponseContent blocks; used to derive a
     * one-line view of a Message for the reflection prompt. */
