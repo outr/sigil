@@ -135,16 +135,22 @@ trait Tool extends RecordDocument[Tool] {
         val typedJson = outputRW.read(value)
         val rendered  = JsonFormatter.Compact(typedJson)
         val threshold = context.sigil.inlineContentThreshold
-        val summaryTask: Task[Option[String]] =
-          if (boundsOutputItself || rendered.length.toLong <= threshold) Task.pure(None)
-          else buildOverflowSummary(value, rendered, threshold, context).map(Some(_))
-        summaryTask.map { summaryOpt =>
+        // On overflow, the full result is written to a file and the bounded
+        // head (with the recovery path) becomes BOTH the summary AND the
+        // invoke's `output`. Leaving the full `value` on `output` defeated the
+        // overflow: `FrameBuilder` renders `output.text` in full, so the whole
+        // result still bloated the prompt (a 106KB grep settled inline despite
+        // the file write). `boundsOutputItself` tools deliver verbatim.
+        val resolved: Task[(Option[String], ToolOutput)] =
+          if (boundsOutputItself || rendered.length.toLong <= threshold) Task.pure((None, value))
+          else buildOverflowSummary(value, rendered, threshold, context).map(s => (Some(s), TextToolOutput(s)))
+        resolved.map { case (summaryOpt, outputValue) =>
           ToolDelta(
             target         = invokeId,
             conversationId = context.conversation.id,
             state          = Some(EventState.Complete),
             summary        = summaryOpt,
-            output         = Some(value),
+            output         = Some(outputValue),
             outcome        = Some(ToolOutcome.Success)
           )
         }
