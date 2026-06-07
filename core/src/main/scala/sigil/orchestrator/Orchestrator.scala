@@ -848,8 +848,22 @@ object Orchestrator {
               // The `handleError` keeps the corruption-resistance invariant
               // if `executeAtomic`'s consent / precondition stream
               // errors mid-pull.
+              // #317 — broadcast the Active ToolInvoke to live subscribers
+              // the moment dispatch begins, then drain the (possibly
+              // long-running) tool and emit its events. The broadcast is
+              // sequenced BEFORE the drain via `flatMap` so a slow tool
+              // doesn't delay the Active chip — and so ordering does NOT
+              // depend on `++` forcing the right side eagerly. Stream is
+              // lazy: `++` defers the right operand until the left drains,
+              // so the old `eagerPrefix ++ finalStream` shape (which relied
+              // on `++` running `executed.toList` at subscription) is wrong.
+              // `toolDeltaPrefix` (the invoke + its Active delta) is emitted
+              // for durable persist; `publish` sees the eager-broadcast
+              // marker and suppresses the hub re-emit, so the invoke
+              // broadcasts once and persists once.
               val finalStream: Stream[Signal] = Stream.force(
-                executed.toList.handleError { err =>
+                sigil.broadcastEager(deferredInvoke).flatMap { _ =>
+                  executed.toList.handleError { err =>
                   scribe.error(
                     s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) stream " +
                       s"errored mid-dispatch (${err.getClass.getSimpleName}: ${err.getMessage}). " +
@@ -901,26 +915,11 @@ object Orchestrator {
                   collected.reverseIterator.collectFirst {
                     case m: Message if m.role != MessageRole.Tool => m._id
                   }.foreach(id => state.lastUserVisibleMessageId = Some(id))
-                  Stream.emits(collected)
+                  Stream.emits(toolDeltaPrefix ::: collected)
+                  }
                 }
               )
-              // #317 — broadcast the Active ToolInvoke to live wire
-              // subscribers the moment dispatch begins, BEFORE
-              // `finalStream` forces the (possibly long-running) tool
-              // execution. `++` evaluates `finalStream`'s outer task —
-              // which drains `executed.toList`, i.e. runs the whole tool
-              // — right after the left stream's outer task resolves, so
-              // for a slow tool the prefix would otherwise reach the
-              // wire only at drain-end. Doing the broadcast in the left
-              // stream's outer task gets the chip on screen at tool-start.
-              // The same invoke still flows through the batched
-              // `.evalTap(publish)` below for durable persist; `publish`
-              // sees the eager-broadcast marker and suppresses its hub
-              // re-emit, so the event broadcasts once and persists once.
-              val eagerPrefix: Stream[Signal] = Stream.force(
-                sigil.broadcastEager(deferredInvoke).map(_ => Stream.emits(toolDeltaPrefix))
-              )
-              eagerPrefix ++ finalStream
+              finalStream
             }
 
             if (active.toolName == "respond") {
