@@ -5,7 +5,9 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
-import sigil.workflow.WorkflowTemplate
+import sigil.workflow.{WorkflowSigil, WorkflowTemplate}
+
+import scala.concurrent.duration.*
 
 case class GetWorkflowInput(workflowId: String) extends ToolInput derives RW
 
@@ -29,11 +31,18 @@ final class GetWorkflowTool extends Tool with WorkflowToolSupport {
   override val examples = List(ToolExample("fetch by id", GetWorkflowInput(workflowId = "wf-abc")))
   override val keywords = Set("workflow", "get", "describe")
 
+  /** Internal retry budget for the not-yet-visible window. A template fetched
+    * right after `create_workflow` may not be queryable for a few hundred ms;
+    * retrying inside the call absorbs that window rather than returning a
+    * `NotFound` the agent re-fetches across a whole LLM turn. `0` disables. */
+  protected def fetchAttempts: Int = 5
+  protected def fetchRetryDelay: FiniteDuration = 150.millis
+
   override def executeResult(input: GetWorkflowInput, ctx: ToolContext): Task[ToolResult[GetWorkflowOutput]] =
     workflowHost(ctx) match {
       case Left(err) => Task.pure(ToolResult.failure(err))
       case Right(host) =>
-        host.withDB(_.workflowTemplates.transaction(_.get(Id[WorkflowTemplate](input.workflowId)))).flatMap {
+        fetchTemplate(host, Id[WorkflowTemplate](input.workflowId), math.max(1, fetchAttempts)).flatMap {
           case None => Task.pure(ToolResult.success(GetWorkflowOutput.NotFound(input.workflowId)))
           case Some(template) =>
             authorizeAccess(host, template, ctx.chain).map {
@@ -41,6 +50,17 @@ final class GetWorkflowTool extends Tool with WorkflowToolSupport {
               case Right(t) => ToolResult.success(project(t))
             }
         }
+    }
+
+  /** Read the template, retrying past a brief not-yet-visible window before
+    * giving up. Only a genuine miss (after all attempts) yields `None`. */
+  private def fetchTemplate(host: WorkflowSigil,
+                            id: Id[WorkflowTemplate],
+                            attemptsLeft: Int): Task[Option[WorkflowTemplate]] =
+    host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
+      case found @ Some(_)            => Task.pure(found)
+      case None if attemptsLeft > 1   => Task.sleep(fetchRetryDelay).flatMap(_ => fetchTemplate(host, id, attemptsLeft - 1))
+      case None                       => Task.pure(None)
     }
 
   private def project(t: WorkflowTemplate): GetWorkflowOutput.Found =
