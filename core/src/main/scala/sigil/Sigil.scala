@@ -726,9 +726,33 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           status = CapabilityStatus.RequiresSetup(s"""lookup(capabilityType="Memory", name="$displayName")""")
         )
       }
-      (toolMatches ++ modeMatches ++ skillMatches ++ memoryMatches).sortBy(-_.score)
+      // Relevance trim — drop tool matches scoring far below the best tool
+      // match. `DiscoveryFilter.score` weights a generic keyword ("search",
+      // "find") the same as a distinctive one, so a code-search query like
+      // "grep search find text pattern match" otherwise surfaces
+      // conversation/semantic-search tools that matched ONLY the generic
+      // words (grep=57, glob=25 vs search_conversation=20, semantic_search=20).
+      // Those noise tools land in the prompt's "Suggested tools" / discovered
+      // sections and steer the model toward irrelevant calls (the
+      // `search_conversation` runaway). Always keep the best tool; require the
+      // rest to clear `discoveryRelevanceFloor` × top so the agent's discovery
+      // and the rendered suggestions stay on-task.
+      val rankedTools = toolMatches.sortBy(-_.score)
+      val relevantTools = rankedTools match {
+        case top :: rest if top.score > 0.0 =>
+          top :: rest.filter(_.score >= top.score * discoveryRelevanceFloor)
+        case other => other
+      }
+      (relevantTools ++ modeMatches ++ skillMatches ++ memoryMatches).sortBy(-_.score)
     }
   }
+
+  /** Relevance floor for [[findCapabilities]] tool matches: a tool below
+    * `discoveryRelevanceFloor × topScore` is dropped (the best tool is always
+    * kept). Keeps `find_capability` results and the prompt's "Suggested tools"
+    * on-task instead of surfacing tools that matched only generic query words.
+    * Apps that want the full ranked roster set this to `0.0`. */
+  def discoveryRelevanceFloor: Double = 0.4
 
   /** Maximum number of modes [[findModes]] returns. Mode catalogs are
     * typically small (3-10), so a tight cap prevents `find_capability`

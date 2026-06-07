@@ -1418,7 +1418,7 @@ trait Provider extends Service with ModelResolver {
       .filter(wireToolNames.contains)
     if (suggestedTools.nonEmpty) {
       sb.append("\n== Suggested tools ==\n")
-      suggestedTools.foreach(t => sb.append(s"- $t\n"))
+      suggestedTools.foreach(t => sb.append(s"- ${t.value}\n"))
     }
 
     // Tools the agent has already discovered via `find_capability`
