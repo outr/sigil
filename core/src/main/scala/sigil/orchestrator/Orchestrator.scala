@@ -318,6 +318,13 @@ object Orchestrator {
     val dispatchedResultContent: scala.collection.mutable.Map[lightdb.id.Id[Event], Vector[ResponseContent]] =
       scala.collection.mutable.Map.empty
 
+    /** #369 — count of non-essential (action) tool calls dispatched in THIS
+      * response. Once it reaches `Sigil.maxToolCallsPerResponse`, further
+      * action calls in the same completion are refused with a corrective note
+      * — a model that fired a whole discovered family when it needed the
+      * rank-1 tool. The respond family / no_response / stop never count. */
+    var dispatchedActionCount: Int = 0
+
     /** Wire `callId`s whose `ToolCallComplete` has already been
       * processed in this provider stream. Some OpenAI-compat backends
       * occasionally emit two complete chunks for the same call (parser
@@ -677,6 +684,40 @@ object Orchestrator {
             // refusal passes through (that IS the answer).
             def proceedWithAtomicDispatch(): Stream[Signal] = {
               val toolName = active.toolName
+              // #369 — per-response cap on TOTAL action-tool calls. A model
+              // that fires a whole discovered family in one completion (10
+              // `bsp_*` when it needed the rank-1) has the excess refused with
+              // a corrective note. The respond family / no_response / stop are
+              // the turn's delivery and never count. Distinct from the
+              // identical-call cap below (which targets REPEATED calls).
+              val perResponseCap = sigil.maxToolCallsPerResponse
+              val isEssentialTool =
+                Orchestrator.UserVisibleTerminalTools.contains(toolName) ||
+                  toolName == "no_response" || toolName == "stop"
+              if (perResponseCap > 0 && !isEssentialTool) {
+                if (state.dispatchedActionCount >= perResponseCap) {
+                  val body =
+                    s"Refused `$toolName` -- you invoked more than $perResponseCap tools in this single " +
+                      "response. `find_capability` results are RANKED; call the rank-1 tool for your goal, " +
+                      "not the whole family. Re-issue just the one you need."
+                  val capMsg = Message(
+                    participantId  = caller,
+                    conversationId = convId,
+                    topicId        = topicId,
+                    role           = MessageRole.Tool,
+                    content        = Vector(ResponseContent.Text(body)),
+                    state          = EventState.Complete,
+                    disposition    = MessageDisposition.Failure(recoverable = true),
+                    visibility     = MessageVisibility.Agents,
+                    origin         = Some(invokeId)
+                  )
+                  return Stream.emits(toolDeltaPrefix ::: List[Signal](
+                    capMsg,
+                    StateDelta(target = capMsg._id, conversationId = convId, state = EventState.Complete)
+                  ))
+                }
+                state.dispatchedActionCount += 1
+              }
               // Hard cap on identical (toolName + canonical args)
               // dispatches across the recent-invocations window. When
               // the projection already holds N-1 entries matching this

@@ -5666,6 +5666,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * Default 3. */
   def maxIdenticalToolCallsInWindow: Int = 3
 
+  /** Cap on the number of non-essential (action) tool calls the framework
+    * dispatches from a SINGLE model response. A model that fires a whole
+    * discovered tool family in one completion (e.g. all 10 `bsp_*` when it
+    * needed one) has the excess refused with a corrective note, while
+    * legitimate parallelism — a handful of distinct calls, such as reading
+    * several files at once — still passes. The respond family, `no_response`,
+    * and `stop` are the turn's delivery and never count toward the cap. `0`
+    * disables. Distinct from [[maxIdenticalToolCallsInWindow]], which caps
+    * REPEATED identical calls across the turn; this caps TOTAL distinct calls
+    * within one response. Default 8. */
+  def maxToolCallsPerResponse: Int = 8
+
   /** Cap on `discoveredCapabilities` entries surfaced in the
     * agent's prompt — keeps the prompt bounded even within a long
     * agent loop that issues many distinct `find_capability` queries.
