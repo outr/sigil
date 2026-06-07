@@ -133,7 +133,7 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
       touch(serverName)
       val agentMap = inFlight.computeIfAbsent(agentId, _ => new ConcurrentHashMap[(String, Long), Boolean]())
       val wireRef = new AtomicLong(-1L)
-      client.callTool(toolName, arguments, wireId => {
+      val call = client.callTool(toolName, arguments, wireId => {
         wireRef.set(wireId)
         agentMap.put((serverName, wireId), true)
       })
@@ -143,6 +143,33 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
           if (agentMap.isEmpty) inFlight.remove(agentId)
           touch(serverName)
         })
+      withCallTimeout(serverName, toolName, client.config.callTimeoutMs)(call)
+    }
+
+  /** Bound a tool call to the server's [[McpServerConfig.callTimeoutMs]] so a
+    * wedged or slow-importing server can't hang the agent's turn forever. On
+    * expiry the call fails with [[McpCallTimeoutException]] (surfaced to the
+    * agent as a recoverable tool failure); the orphaned underlying call is
+    * left to finish on its own fiber — its in-flight bookkeeping is cleaned up
+    * by the `guarantee` above, and a `Stop` still cancels it via
+    * [[cancelInFlight]]. `0` disables the bound. */
+  private def withCallTimeout(serverName: String, toolName: String, timeoutMs: Long)(task: Task[Json]): Task[Json] =
+    if (timeoutMs <= 0) task
+    else task.start.flatMap { fiber =>
+      Task {
+        val cf = new java.util.concurrent.CompletableFuture[Json]()
+        fiber.onComplete {
+          case scala.util.Success(j) => cf.complete(j); ()
+          case scala.util.Failure(e) => cf.completeExceptionally(e); ()
+        }
+        try cf.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        catch {
+          case _: java.util.concurrent.TimeoutException =>
+            throw new McpCallTimeoutException(serverName, toolName, timeoutMs)
+          case e: java.util.concurrent.ExecutionException =>
+            throw Option(e.getCause).getOrElse(e)
+        }
+      }
     }
 
   /** Cancel every in-flight tool call owned by `agentId`. Called
