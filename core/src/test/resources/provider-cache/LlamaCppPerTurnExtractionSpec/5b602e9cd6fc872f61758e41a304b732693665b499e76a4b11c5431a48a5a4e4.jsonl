@@ -1,0 +1,5 @@
+{"requestHash":"5b602e9cd6fc872f61758e41a304b732693665b499e76a4b11c5431a48a5a4e4","recordedAt":1780799238381}
+{"callId":"0112b6e17","toolName":"extract_memories","type":"ProviderEvent.ToolCallStart"}
+{"callId":"0112b6e17","input":{"memories":[{"content":"User's name is Alice.","label":"User's name","key":"user.name","tags":["identity"]},{"content":"User lives in Brooklyn.","label":"User's location","key":"user.location","tags":["identity"]},{"content":"User prefers dark-mode interfaces.","label":"Preferred interface theme","key":"user.preferred_theme","tags":["preference"]},{"content":"User's preferred programming language is Scala.","label":"Preferred programming language","key":"user.preferred_language","tags":["preference"]}],"type":"ExtractMemoriesInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":986,"completionTokens":165,"totalTokens":1151,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}
