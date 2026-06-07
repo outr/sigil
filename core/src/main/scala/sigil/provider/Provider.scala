@@ -1544,7 +1544,32 @@ trait Provider extends Service with ModelResolver {
     // wire call id and tool result content in one frame; the prior
     // `wireCallIdByEvent` lookup map and `mergeAdjacentToolResults`
     // pre-pass exist only in pre-refactor history.
-    val merged = frames
+    //
+    // Streaming-respond order normalization. The #210 merge below only
+    // collapses a ToolCall-then-Text pair (the atomic path, where the
+    // ToolInvoke is created before `RespondTool`'s reply Message). The
+    // STREAMING path births the user-facing Message from ContentBlockDelta
+    // BEFORE the respond ToolInvoke settles, so the frames arrive
+    // Text-then-ToolCall and the merge misses — rendering two consecutive
+    // assistant messages with duplicated content. Swap each adjacent
+    // (agent Text, atomic-content ToolCall from the same agent) into
+    // ToolCall-then-Text so the existing merge fires.
+    val merged = {
+      val arr = frames.toArray
+      var k = 0
+      while (k + 1 < arr.length) {
+        (arr(k), arr(k + 1)) match {
+          case (t: ContextFrame.Text, tc: ContextFrame.ToolCall)
+              if agentId.contains(t.participantId) && agentId.contains(tc.participantId)
+                && atomicContentToolNames.contains(tc.toolName) =>
+            arr(k) = tc
+            arr(k + 1) = t
+            k += 2
+          case _ => k += 1
+        }
+      }
+      arr.toVector
+    }
 
     // Walk with explicit index so we can consume the optional
     // adjacent `Text` frame that follows an atomic-content

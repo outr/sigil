@@ -80,6 +80,42 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
       toolResults.head.toolCallId shouldBe callId.value
     }
 
+    "collapse a STREAMING respond (agent Text BEFORE its ToolCall) into ONE assistant message" in {
+      // The streaming-respond path births the user-facing Message (Text)
+      // from ContentBlockDelta BEFORE the respond ToolInvoke settles, so the
+      // frame order is Text-then-ToolCall — the opposite of the atomic path.
+      // Pre-fix the #210 merge (which only handled ToolCall-then-Text) missed
+      // it, rendering two consecutive assistant messages with duplicated
+      // content (observed live on Cloudflare/Kimi).
+      val replyText = "Hello! I'm Sage, a Scala coding agent."
+      val frames = Vector[ContextFrame](
+        ContextFrame.Text(
+          content       = "Hi",
+          participantId = spec.TestUser,
+          sourceEventId = Id[Event]("user-msg-stream")
+        ),
+        ContextFrame.Text(
+          content       = replyText,
+          participantId = agent,
+          sourceEventId = Id[Event]("message-respond-stream")
+        ),
+        ContextFrame.ToolCall(
+          toolName      = RespondTool.schema.name,
+          argsJson      = s"""{"topicLabel":"x","topicSummary":"y","content":"$replyText","disposition":"Success","endsTurn":true}""",
+          callId        = Id[Event]("call-respond-stream"),
+          participantId = agent,
+          sourceEventId = Id[Event]("toolinvoke-respond-stream"),
+          state         = ToolCallState.Complete("""{"text":""}""")
+        )
+      )
+
+      val rendered = TestProvider.render(frames, agent)
+      val assistants = rendered.collect { case a: ProviderMessage.Assistant => a }
+      assistants should have size 1
+      assistants.head.content shouldBe replyText
+      assistants.head.toolCalls.map(_.name) should contain (RespondTool.schema.name.value)
+    }
+
     "merge regardless of which respond-family variant fired" in {
       val replyText = "I cannot complete this task."
       val frames = Vector[ContextFrame](
