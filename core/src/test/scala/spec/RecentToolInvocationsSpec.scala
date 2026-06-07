@@ -68,6 +68,11 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   ToolInput.register(summon[RW[SearchInput]])
 
+  /** Input with a long leading field, so the distinguishing trailing field
+    * lands past the preview budget unless the preview is wide enough. */
+  case class LongFirstInput(path: String, pattern: String) extends ToolInput derives RW
+  ToolInput.register(summon[RW[LongFirstInput]])
+
   // ---- Layer 1: projection rolling-window invariants ----
 
   "ParticipantProjection.recentToolInvocations" should {
@@ -169,6 +174,43 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         // abandoning the turn.
         body should not include "Don't re-issue"
         body should not include "try a different approach"
+      }
+    }
+
+    "state the duplicate-call explanation ONCE, not repeated per group" in {
+      val convId = Conversation.id(s"repeat-dedup-${rapid.Unique()}")
+      val now = System.currentTimeMillis()
+      def inv(pattern: String, ageMs: Long): RecentToolInvocation = {
+        val a = SearchInput(pattern = pattern, glob = "**/*.scala")
+        RecentToolInvocation(SearchTool.name, ToolInputCanonicalizer.argsHash(a),
+          ToolInputCanonicalizer.argsPreview(a), Timestamp(now - ageMs))
+      }
+      // Two DISTINCT (tool, args) groups, each repeated twice.
+      val invocations = List(inv("AAA", 50_000), inv("AAA", 5_000), inv("BBB", 40_000), inv("BBB", 4_000))
+      val proj = ParticipantProjection.empty(TestAgent, convId).copy(recentToolInvocations = invocations)
+      renderSystem(requestWith(proj, convId)).map { body =>
+        val explanations = body.split("Identical inputs yield identical results").length - 1
+        withClue(s"explanation appeared $explanations times in the prompt: ") {
+          explanations shouldBe 1   // a single header, not one paragraph per group
+        }
+        body should include("AAA")
+        body should include("BBB")
+      }
+    }
+
+    "render previews that distinguish calls differing only past a long leading field" in {
+      // grep's args are `{"path":"<workspace>","pattern":"…"}` — the path
+      // alone can exceed the preview budget, hiding the pattern (the only
+      // thing that differs), so distinct calls render identical previews.
+      val longPath = "/home/mhicks/projects/open/sigil/core/src/main/scala"
+      val a = LongFirstInput(path = longPath, pattern = "PATTERN_ALPHA")
+      val b = LongFirstInput(path = longPath, pattern = "PATTERN_BETA")
+      val pa = ToolInputCanonicalizer.argsPreview(a)
+      val pb = ToolInputCanonicalizer.argsPreview(b)
+      Task.pure {
+        withClue(s"previewA=$pa previewB=$pb: ") {
+          pa should not equal pb
+        }
       }
     }
 

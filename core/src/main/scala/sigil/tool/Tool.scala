@@ -200,8 +200,17 @@ trait Tool extends RecordDocument[Tool] {
   /** Inline summary text rendered when the typed payload exceeds
     * `inlineContentThreshold`. Default: truncate the JSON at 200 chars.
     * Tools with richer summary semantics override. */
-  protected def summarize(output: Output, jsonRendered: String): String =
-    if (jsonRendered.length <= 200) jsonRendered else jsonRendered.take(200) + " …"
+  protected def summarize(output: Output, jsonRendered: String): String = {
+    // Prefer the unwrapped text for text outputs (#305) — the inner text IS
+    // the result; previewing the `{"text":"…"}` JSON envelope wraps the bounded
+    // head, making it inconsistent with non-overflow results and wasting the
+    // envelope on the prompt.
+    val source = output match {
+      case t: TextToolOutput => t.text
+      case _                 => jsonRendered
+    }
+    if (source.length <= 200) source else source.take(200) + " …"
+  }
 
   /** Render the failing input to compact JSON for a [[ToolResult.Failure]]'s
     * `args`. Best-effort — never a hard failure of the error path. */

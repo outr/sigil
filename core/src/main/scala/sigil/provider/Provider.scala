@@ -1375,18 +1375,21 @@ trait Provider extends Service with ModelResolver {
       .sortBy(-_._2.maxBy(_.invokedAt.value).invokedAt.value)
     if (duplicateGroups.nonEmpty) {
       sb.append("\n== Repeated tool calls ==\n")
+      // State the explanation ONCE — repeating the full paragraph per group
+      // (4+ identical ~350-char blocks observed live) bloats the prompt and
+      // reads as noise. The per-group lines below carry only the facts.
+      sb.append(
+        "Identical inputs yield identical results UNLESS your tool roster has changed since " +
+          "(compare your current offered tools against what you remember). If a tool you used before isn't in " +
+          "your offer now, re-call `find_capability` even with the same keywords; the framework's cache state " +
+          "may have changed.\n"
+      )
       val summary = duplicateGroups.map { case ((toolName, _), occurrences) =>
         val preview = occurrences.head.argsPreview
         val latest = occurrences.maxBy(_.invokedAt.value).invokedAt.value
         val ago = Provider.humanizeAgo(now - latest)
         val previewText = if (preview.nonEmpty) s" `$preview`" else ""
-        sb.append(
-          s"- `${toolName.value}` called ${occurrences.size}x with identical args " +
-            s"(most recent $ago):$previewText. Identical inputs yield identical results " +
-            "UNLESS your tool roster has changed since (compare your current offered tools against what you remember). " +
-            "If a tool you used before isn't in your offer now, re-call `find_capability` even with the same keywords; " +
-            "the framework's cache state may have changed.\n"
-        )
+        sb.append(s"- `${toolName.value}` called ${occurrences.size}x with identical args (most recent $ago):$previewText\n")
         s"${toolName.value}=${occurrences.size}x"
       }.mkString(", ")
       // Mirror the prompt insertion to the backend log so forensics

@@ -48,9 +48,13 @@ class ToolOverflowFrameSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       BigOutputTool.execute(OverflowProbeInput(), ctx, Event.id()).toList.map { signals =>
         val delta = signals.collect { case d: ToolDelta if d.output.isDefined => d }.last
         val outText = delta.output.collect { case t: TextToolOutput => t.text }.getOrElse(bigText)
-        withClue(s"settled output length=${outText.length} (full=${bigText.length}): ") {
+        withClue(s"settled output length=${outText.length} (full=${bigText.length}) head=${outText.take(40)}: ") {
           outText.length should be < bigText.length
           outText.toLowerCase should (include("truncated").or(include("written to")))
+          // The bounded head must be the UNWRAPPED text, not the JSON
+          // envelope — `summarize` previewing `{"text":"…"}` poisons the
+          // prompt (inconsistent with non-overflow results, wastes tokens).
+          outText should not include "{\"text\""
         }
       }
     }

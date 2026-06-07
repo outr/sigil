@@ -31,7 +31,12 @@ import java.nio.charset.StandardCharsets
  * crashing the orchestrator.
  */
 object ToolInputCanonicalizer {
-  private val PreviewLimit: Int = 60
+  // Wide enough that the distinguishing argument is usually visible — a tool
+  // with a long leading field (e.g. grep's `path` is the workspace root) would
+  // otherwise truncate before the field that actually varies (the `pattern`),
+  // rendering distinct calls as identical previews in the prompt's "Recently
+  // used / Repeated tool calls" sections.
+  private val PreviewLimit: Int = 160
 
   /** Canonical sorted-key Json string for `input`. Returns
     * `Right(canonical)` on the structured path, `Left(fallback)` when
