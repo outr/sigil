@@ -5,21 +5,21 @@ import rapid.Task
 import sigil.{GlobalSpace, SpaceId}
 import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
-import sigil.workflow.{WorkflowStepInput, WorkflowTemplate, WorkflowTrigger}
+import sigil.workflow.{WorkflowStepKind, WorkflowStepSpec, WorkflowTemplate, WorkflowTrigger}
 
 case class CreateWorkflowInput(name: String,
                                description: Option[String] = None,
-                               steps: List[WorkflowStepInput] = Nil,
+                               steps: List[WorkflowStepSpec] = Nil,
                                triggers: List[WorkflowTrigger] = Nil,
                                variableDefs: List[strider.WorkflowVariable] = Nil,
-                               tags: List[String] = Nil) extends ToolInput derives RW
+                               tags: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
- * Persist a new [[WorkflowTemplate]]. The agent supplies the
- * step shapes + triggers via the typed [[WorkflowStepInput]] /
- * [[WorkflowTrigger]] polymorphic types — fabric round-trips
- * them through the LLM's tool-call wire format with full
- * field schema.
+ * Persist a new [[WorkflowTemplate]]. The agent supplies the steps as flat,
+ * `kind`-tagged [[WorkflowStepSpec]]s (lowered to the engine's
+ * [[sigil.workflow.WorkflowStepInput]] IR), plus [[WorkflowTrigger]]s — fabric
+ * round-trips them through the tool-call wire format with full field schema.
  *
  * The created template is scoped to the calling agent's caller
  * space (the head of the chain's `accessibleSpaces`). For
@@ -27,53 +27,70 @@ case class CreateWorkflowInput(name: String,
  * template is global.
  */
 final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = CreateWorkflowInput
+  type Input = CreateWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[CreateWorkflowInput]]
+  val inputRW = summon[RW[CreateWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("create_workflow")
   val description =
     """Create a new workflow template.
       |
-      |`name` is the template's identifier. `steps` is the typed step list (Job / Condition /
-      |Approval / Parallel / Loop / SubWorkflow / Trigger). `triggers` registers external
-      |firing conditions (conversation message, time / cron, webhook, cross-workflow event,
-      |plus app-defined ones).
+      |`name` is the template's identifier. `steps` is a flat list of steps; each step has a
+      |`kind` (Job / Condition / Approval / Parallel / Loop / SubWorkflow / Trigger) and fills the
+      |fields for that kind. Job: `tool` + `arguments` (a JSON string) or `prompt`, capturing into
+      |`output`. Loop: `over` (a variable — e.g. a prior Job's `output`, coerced from text) plus
+      |`bodyStepIds` (ids of steps in this same list to run per item, binding `itemVariable`).
+      |Parallel: `branchStepIds`. Reference {{output}} variables in later steps' arguments/prompts.
+      |`triggers` registers external firing conditions (conversation message, time / cron, webhook,
+      |cross-workflow event, plus app-defined ones).
       |
       |Returns the persisted template's id.""".stripMargin
   override val examples = List(
     ToolExample(
-      "minimal LLM-prompt workflow",
+      "discovery-as-a-stage: find files, act on each",
       CreateWorkflowInput(
-        name = "summarize-input",
-        steps = List(sigil.workflow.JobStepInput(
-          id = "summarize",
-          prompt = Some("Summarize: {{input}}"),
-          modelId = Some("openai/gpt-5.4-mini"),
-          output = Some("summary")
-        ))
+        name = "process-matches",
+        steps = List(
+          WorkflowStepSpec(
+            id = "find",
+            kind = WorkflowStepKind.Job,
+            tool = Some("grep"),
+            arguments = Some("""{"pattern":"TODO","path":"/src"}"""),
+            output = Some("hits")),
+          WorkflowStepSpec(
+            id = "each",
+            kind = WorkflowStepKind.Loop,
+            over = Some("hits"),
+            itemVariable = Some("file"),
+            bodyStepIds = List("act")),
+          WorkflowStepSpec(id = "act", kind = WorkflowStepKind.Job, tool = Some("read_file"), arguments = Some("""{"path":"{{file}}"}"""))
+        )
       )
     )
   )
   override val keywords = Set("workflow", "create", "compose", "automation")
 
-  override def executeResult(input: CreateWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
-    host.accessibleSpaces(ctx.chain).flatMap { spaces =>
-      val callerSpace: SpaceId = spaces.headOption.getOrElse(GlobalSpace)
-      val template = WorkflowTemplate(
-        name = input.name,
-        description = input.description,
-        steps = input.steps,
-        triggers = input.triggers,
-        variableDefs = input.variableDefs,
-        space = callerSpace,
-        createdBy = Some(ctx.caller),
-        conversationId = Some(ctx.conversation.id),
-        tags = input.tags.toSet
-      )
-      host.withDB(_.workflowTemplates.transaction(_.insert(template))).map { stored =>
-        s"Workflow '${input.name}' created with id ${stored._id.value}."
-      }
+  override def executeResult(input: CreateWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
+    WorkflowStepSpec.lower(input.steps, input.variableDefs.map(_.name).toSet) match {
+      case Left(errors) => Task.pure(ToolResult.failure(WorkflowStepSpec.violationMessage(errors)))
+      case Right(steps) =>
+        host.accessibleSpaces(ctx.chain).flatMap { spaces =>
+          val callerSpace: SpaceId = spaces.headOption.getOrElse(GlobalSpace)
+          val template = WorkflowTemplate(
+            name = input.name,
+            description = input.description,
+            steps = steps,
+            triggers = input.triggers,
+            variableDefs = input.variableDefs,
+            space = callerSpace,
+            createdBy = Some(ctx.caller),
+            conversationId = Some(ctx.conversation.id),
+            tags = input.tags.toSet
+          )
+          host.withDB(_.workflowTemplates.transaction(_.insert(template))).map { stored =>
+            ToolResult.success(TextToolOutput(s"Workflow '${input.name}' created with id ${stored._id.value}."))
+          }
+        }
     }
   }
 }

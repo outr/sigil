@@ -15,15 +15,17 @@ object WorkflowBuilderSkill {
       |
       |WORKFLOW MODEL
       |
-      |A workflow is a list of typed steps that the engine executes in order. Each step is one of these shapes:
+      |A workflow is a FLAT list of steps the engine runs in order. Each step is one object with a unique `id`, a `kind`, and the fields for that kind. You do NOT nest objects — Loop and Parallel reference their inner steps by id, and those inner steps are ordinary entries in the same flat list.
       |
-      |  - JobStepInput — runs an LLM prompt or a tool call. `prompt` (with `{{var}}` substitutions from earlier outputs) plus `modelId` runs the prompt and stores the model reply at `output`. Set `tool` instead to invoke a tool with `arguments` parsed as JSON.
-      |  - ConditionStepInput — branches execution. `expression` is a small DSL: `{{var}} == "literal"`, `{{count}} > 0`, etc. `onTrue` / `onFalse` reference other step ids.
-      |  - ApprovalStepInput — pauses for a human decision. `prompt` is the question; `options` is the list of acceptable answers (defaults to ["approve", "reject"]). The user resolves with `resume_workflow`. `timeoutMs` (optional) bounds the wait; `timeoutAction` (default `Fail`, also `Proceed` or `Skip`) controls what happens when the timeout fires.
-      |  - ParallelStepInput — forks into N branches and joins. `branches` is a list of step lists; `joinMode = All` waits for everyone, `Any` returns the first finisher.
-      |  - LoopStepInput — iterates `body` over a workflow variable. `over` names a list-typed variable; `itemVariable` (default `"item"`) binds each element inside `body`. `output` (optional) collects iteration outputs into a new list.
-      |  - SubWorkflowStepInput — invokes another persisted workflow inline. `workflowId` is the target template id; `variables` (optional) overrides its inputs with `{{var}}` substitution from the parent.
-      |  - TriggerStepInput — waits for an external event. Wraps a typed `WorkflowTrigger` (see below). The wrapped trigger owns its own continue / branch behaviour and timeout policy (see each trigger's docs).
+      |  - kind = "Job" — runs a tool or an LLM prompt. Set `tool` + `arguments` (a JSON string of the tool's args) to invoke a tool, OR `prompt` (+ optional `modelId`) to run an LLM prompt. `output` names the variable the result is written to. `tools` (optional) restricts an LLM step's tool roster.
+      |  - kind = "Condition" — branches. `expression` is a small DSL: `{{var}} == "literal"`, `{{count}} > 0`. `onTrue` / `onFalse` name step ids to jump to.
+      |  - kind = "Approval" — pauses for a human decision. `prompt` is the question; `options` defaults to ["approve","reject"]. `timeoutMs` / `timeoutAction` (Fail | Proceed | Skip) bound the wait. The user resolves with `resume_workflow`.
+      |  - kind = "Parallel" — forks and joins. `branchStepIds` is a list of branches, each a list of step ids (defined elsewhere in the flat list). `joinMode = All` waits for all, `Any` returns the first finisher.
+      |  - kind = "Loop" — iterates. `over` names the variable to iterate; it is COERCED — a discovery step's TEXT output (e.g. grep's newline-separated paths captured into a variable) is split into items automatically, so you do NOT hand-build an array. `itemVariable` (default "item") binds each element; reference it as {{item}} in body steps. `bodyStepIds` lists the step ids to run per item. `output` (optional) collects per-iteration outputs.
+      |  - kind = "SubWorkflow" — invokes another persisted workflow. `workflowId` is the target template id; `variables` (optional) overrides its inputs.
+      |  - kind = "Trigger" — waits for an external event; set the optional `trigger` object (see TRIGGERS).
+      |
+      |WORKFLOW-FIRST: when the work shape is known — find X, then act on each — author the WHOLE workflow up front. Make discovery the FIRST stage: a Job step that runs a discovery tool (grep / glob / lsp) capturing into `output`, then a Loop whose `over` is that variable. The engine finds the particulars at run time; never enumerate the items yourself in this conversation. Example: Job{id:"find", tool:"grep", arguments:"{\"pattern\":\"bug #\",\"path\":\"/src\"}", output:"hits"} ; Loop{id:"each", over:"hits", itemVariable:"f", bodyStepIds:["fix"]} ; Job{id:"fix", tool:"edit_file", arguments:"{\"path\":\"{{f}}\"}"}.
       |
       |VARIABLE SUBSTITUTION
       |
@@ -44,7 +46,7 @@ object WorkflowBuilderSkill {
       |
       |AUTHORING LOOP
       |
-      |  1. Use `create_workflow` to persist a new template. The `steps` and `triggers` fields are typed — fabric round-trips them with full schema, no raw JSON.
+      |  1. Use `create_workflow` to persist a new template. `steps` is the flat `kind`-tagged list above; `triggers` is typed — fabric round-trips both with full schema, no raw JSON. If a step is malformed (a Loop missing `over`, a body id that doesn't exist) the tool returns the exact violations — fix and resend.
       |  2. Use `list_workflows` to see what's already registered. `tag` filters narrow the view.
       |  3. Use `get_workflow` to see a template's current shape before editing.
       |  4. Use `update_workflow` to incrementally edit. Only set fields are overwritten; pass `enabled = false` to disable without deleting.
