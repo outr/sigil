@@ -132,8 +132,15 @@ trait Tool extends RecordDocument[Tool] {
     val invokeId = context.invokeId
     result match {
       case ToolResult.Success(value) =>
-        val typedJson = outputRW.read(value)
-        val rendered  = JsonFormatter.Compact(typedJson)
+        // Measure + externalize the UNWRAPPED text for a TextToolOutput (#305):
+        // the inner text IS the result, so the overflow file holds clean content
+        // (e.g. newline-separated paths) a later grep/read_file consumes, not a
+        // one-line `{"text":"…"}` envelope that re-overflows and reads badly
+        // (#370). Structured outputs externalize their compact JSON as before.
+        val rendered  = value match {
+          case t: TextToolOutput => t.text
+          case _                 => JsonFormatter.Compact(outputRW.read(value))
+        }
         val threshold = context.sigil.inlineContentThreshold
         // On overflow, the full result is written to a file and the bounded
         // head (with the recovery path) becomes BOTH the summary AND the

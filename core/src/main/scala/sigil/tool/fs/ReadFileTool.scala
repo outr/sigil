@@ -40,12 +40,44 @@ final class ReadFileTool(context: FileSystemContext)
   // Generic primitive: ranks below domain-specific tools when both match a query.
   override def preferIfNoBetter: Boolean = true
 
+  // read_file bounds its OWN output: a read whose content exceeds the inline
+  // cap is truncated inline with offset/limit continuation guidance, never spilled
+  // to another overflow file. This is what makes reading an externalized result
+  // safe — the read-back can't cascade into yet another `.sigil/output` file
+  // (sigil #370).
+  override def boundsOutputItself: Boolean = true
+
   override def executeResult(input: ReadFileInput, ctx: ToolContext): Task[ToolResult[ReadFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        =>
-        WorkspacePathResolver.resolve(ctx, input.filePath).flatMap(operate(input, _)).map(ToolResult.success(_))
+        WorkspacePathResolver.resolve(ctx, input.filePath)
+          .flatMap(operate(input, _))
+          .map(out => capInline(out, input, ctx.sigil.inlineContentThreshold))
+          .map(ToolResult.success(_))
     }
+
+  /** Cap an over-cap read to the inline limit at a line boundary, appending a
+    * single consistent continuation note (`read_file` with `offset`/`limit`) —
+    * so reading a large file (including an externalized overflow file) returns a
+    * bounded, retrievable window instead of re-overflowing. */
+  private def capInline(out: ReadFileOutput, input: ReadFileInput, threshold: Long): ReadFileOutput = {
+    if (out.content.length.toLong <= threshold) out
+    else {
+      val keep       = out.content.take(threshold.toInt)
+      val atBoundary = keep.lastIndexOf('\n') match {
+        case -1 => keep
+        case i  => keep.take(i)
+      }
+      val shown      = if (atBoundary.isEmpty) 1 else atBoundary.count(_ == '\n') + 1
+      val baseOffset = input.offset.getOrElse(0)
+      val note =
+        s"\n\n[read_file: showing lines ${baseOffset + 1}-${baseOffset + shown} of ${out.totalLines} " +
+          s"(${atBoundary.length}/${out.content.length} bytes; capped at the $threshold-byte inline limit). " +
+          s"Call read_file again with offset=${baseOffset + shown} (and a limit) to read more.]"
+      out.copy(content = atBoundary + note, linesRead = shown, hash = None)
+    }
+  }
 
   private def operate(input: ReadFileInput, resolved: String): Task[ReadFileOutput] = (input.offset, input.limit) match {
     case (None, None) =>
@@ -72,7 +104,4 @@ final class ReadFileTool(context: FileSystemContext)
           )
       }
   }
-
-  override protected def summarize(out: ReadFileOutput, jsonRendered: String): String =
-    s"[read_file ${out.linesRead}/${out.totalLines} lines, ${out.content.length} chars — externalized; call tool_output_get to read]"
 }
