@@ -67,7 +67,8 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private def requestWithPriorInvocations(convId: Id[Conversation],
                                           priorIdentical: Int,
                                           keywords: String,
-                                          resulted: Boolean = true): ConversationRequest = {
+                                          resulted: Boolean = true,
+                                          failed: Boolean = false): ConversationRequest = {
     val canonicalHash = ToolInputCanonicalizer.argsHash(FindCapabilityInput(keywords = keywords))
     val canonicalPreview = ToolInputCanonicalizer.argsPreview(FindCapabilityInput(keywords = keywords))
     val priorInvocations = (1 to priorIdentical).toList.map { _ =>
@@ -76,7 +77,8 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         argsHash    = canonicalHash,
         argsPreview = canonicalPreview,
         invokedAt   = Timestamp(Nowish()),
-        resulted    = resulted
+        resulted    = resulted,
+        failed      = failed
       )
     }
     val projection = ParticipantProjection.empty(TestAgent, convId)
@@ -252,6 +254,58 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
       } yield {
         before._2 shouldBe Complexity.Low
         after._2 shouldBe Complexity.Medium
+        // #371 — the escalation is no longer silent: its reason (trigger +
+        // from→to tier) is recorded for surfacing on RouteResolved / UIs.
+        val reason = TestSigil.escalationReasonFor(convId)
+        withClue(s"escalation reason: $reason\n") {
+          reason.isDefined shouldBe true
+          reason.get should include("duplicate-call cap")
+          reason.get should include("Low→Medium")
+        }
+      }
+    }
+
+    "NOT escalate when the prior identical calls all FAILED — a tooling-seam loop, not capability (#371)" in {
+      val calls    = new AtomicInteger(0)
+      val strategy = routedStrategy(calls, classifyAs = Complexity.Low)
+      TestSigil.setResolveProviderStrategy(_ => Task.pure(Some(strategy)))
+
+      val convId = Conversation.id(s"dup-cap-seam-${rapid.Unique()}")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
+      // Priors are identical AND all FAILED — the same call hitting the same
+      // recoverable failure. A stronger model can't change a deterministic tool
+      // failure, so the cap must refuse WITHOUT escalating the tier.
+      val request = requestWithPriorInvocations(convId, priorIdentical = 2, keywords = "x", failed = true)
+      val provider = new FindCapStubProvider(keywords = "x")
+      val userMsg = Message(
+        participantId  = TestUser,
+        conversationId = convId,
+        topicId        = TestTopicEntry.id,
+        content        = Vector(ResponseContent.Text("hi")),
+        state          = EventState.Complete
+      )
+      val tc = sigil.TurnContext(
+        sigil = TestSigil, chain = List(TestUser, TestAgent), conversation = conv,
+        turnInput = TurnInput(conversationId = convId), model = TestSigil.defaultTestModel
+      )
+      for {
+        _      <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _      <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), tc)
+        before <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), tc)
+        signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
+        after  <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), tc)
+      } yield {
+        // The cap still REFUSES the duplicate...
+        val capMsgs = signals.collect { case m: Message if m.role == MessageRole.Tool && m.isFailure => m }
+          .flatMap(_.content.collect { case t: ResponseContent.Text => t.text })
+        withClue(s"cap messages: $capMsgs\n") {
+          capMsgs.exists(_.contains("Refused to dispatch")) shouldBe true
+          // ...but does NOT escalate the tier, and the guidance points at the seam.
+          capMsgs.exists(_.contains("keeps failing on these exact args")) shouldBe true
+          capMsgs.exists(_.contains("Next iteration will run on the")) shouldBe false
+        }
+        before._2 shouldBe Complexity.Low
+        after._2 shouldBe Complexity.Low // no escalation
       }
     }
   }

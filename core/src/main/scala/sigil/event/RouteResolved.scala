@@ -28,6 +28,11 @@ import sigil.signal.EventState
   *     consult, when one ran.
   *   - `escalationCount` — how many `request_escalation` bumps have
   *     been applied to this user turn.
+  *   - `escalationReason` — when an escalation bumped the tier this
+  *     turn, a human-readable note of what triggered it and the
+  *     from→to tier (e.g. "duplicate-call cap on `grep` (tier
+  *     High→VeryHigh, escalation #1)"). `None` when no escalation
+  *     applied — so a frontier engagement is never silent (sigil #371).
   */
 case class RouteResolved(participantId: ParticipantId,
                          conversationId: Id[Conversation],
@@ -40,6 +45,7 @@ case class RouteResolved(participantId: ParticipantId,
                          skipReasons: Map[Id[Model], String],
                          classifierLatencyMs: Option[Long],
                          escalationCount: Int,
+                         escalationReason: Option[String] = None,
                          topicIndex: Int = 0,
                          state: EventState = EventState.Complete,
                          timestamp: Timestamp = Timestamp(Nowish()),

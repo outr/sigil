@@ -137,6 +137,7 @@ class RouteResolvedSignalSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         rr.inferredComplexity shouldBe None
       }
     }
+
   }
 
   "tear down" should {

@@ -739,10 +739,10 @@ object Orchestrator {
                 // counts every recent invocation for one-shot / synthetic
                 // requests that have no owning turn.
                 val turnStartMs = request.turnStartedAt.map(_.value).getOrElse(Long.MinValue)
-                val priorIdentical = request.turnInput
+                val matchingPrior = request.turnInput
                   .projectionFor(caller)
                   .recentToolInvocations
-                  .count(inv => inv.toolName.value == toolName
+                  .filter(inv => inv.toolName.value == toolName
                              && inv.argsHash == canonicalHash
                              && inv.invokedAt.value >= turnStartMs
                              // Sigil #354 — only count invocations that actually
@@ -753,10 +753,17 @@ object Orchestrator {
                              // rational and must not trip the cap → escalation →
                              // roster-restriction spiral.
                              && inv.resulted)
+                val priorIdentical = matchingPrior.size
                 if (priorIdentical >= identicalLimit - 1) {
                   val attemptedCount = priorIdentical + 1
                   val preview = _root_.sigil.tool.ToolInputCanonicalizer.argsPreview(input)
                   val previewText = if (preview.nonEmpty) s" `$preview`" else ""
+                  // Sigil #371 — a duplicate-call loop whose prior identical
+                  // calls ALL failed is a tooling-seam loop, not a capability
+                  // gap: a stronger model issues the same call and hits the same
+                  // failure. Refuse the duplicate (the Failure guides a different
+                  // approach) but don't burn a frontier tier escalating on it.
+                  val seamLoop = matchingPrior.nonEmpty && matchingPrior.forall(_.failed)
                   // Sigil bug #287 — detection alone doesn't help when the
                   // same small/weak model that produced the duplicate
                   // keeps producing it. Bump the per-turn complexity
@@ -769,13 +776,16 @@ object Orchestrator {
                   // that don't want the auto-bump set
                   // `escalateOnDuplicateCallCap = false`.
                   val (newTier, escalated) =
-                    if (sigil.escalateOnDuplicateCallCap)
+                    if (sigil.escalateOnDuplicateCallCap && !seamLoop)
                       sigil.requestEscalation(convId, reason = s"duplicate-call cap on `$toolName`").sync()
                     else (_root_.sigil.provider.Complexity.Medium, false)
                   val escalationText =
                     if (escalated)
                       s" Next iteration will run on the ${newTier.toString} tier — re-read this " +
                         "Failure and pick a different next move."
+                    else if (seamLoop)
+                      s" `$toolName` keeps failing on these exact args — a different model won't change " +
+                        "that. Switch tool or arguments, or ask the user for direction."
                     else if (sigil.escalateOnDuplicateCallCap)
                       " Already on the top tier — if you can't make progress, call `respond_options` " +
                         "asking the user for direction."

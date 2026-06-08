@@ -1087,6 +1087,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private val perTurnEscalations: java.util.concurrent.ConcurrentHashMap[Id[Conversation], (Id[Event], Int)] =
     new java.util.concurrent.ConcurrentHashMap()
 
+  // #371 — the human-readable reason (trigger + from→to tier) of the most
+  // recent tier escalation, keyed by conversation and tagged with the turn's
+  // userMessageId so a stale prior-turn reason isn't surfaced. Read by
+  // `publishRouteResolved` so a frontier engagement is never silent.
+  private val perTurnEscalationReason: java.util.concurrent.ConcurrentHashMap[Id[Conversation], (Id[Event], String)] =
+    new java.util.concurrent.ConcurrentHashMap()
+
+  /** The most recent tier-escalation reason recorded for `conversationId`
+    * (trigger + from→to tier, e.g. "duplicate-call cap on `grep` (tier
+    * High→VeryHigh, escalation #1)"), or `None` if no escalation has bumped the
+    * tier. Surfaced on [[sigil.event.RouteResolved.escalationReason]] and
+    * available to UIs that show WHY a frontier model was engaged — a frontier
+    * engagement is never silent (sigil #371). */
+  def escalationReasonFor(conversationId: Id[Conversation]): Option[String] =
+    Option(perTurnEscalationReason.get(conversationId)).map(_._2)
+
   /** When `true`, the iteration-cap soft-stop (sigil bug #125) auto-
     * bumps complexity one tier up for the forced-synthesis turn —
     * giving the recovery attempt the strongest available reasoning
@@ -1226,7 +1242,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       val currentEffective = (1 to count).foldLeft(classifierCx)((acc, _) => Complexity.bumpUp(acc))
       val nextEffective = Complexity.bumpUp(currentEffective)
       val bumped = nextEffective != currentEffective
-      if (bumped) perTurnEscalations.put(conversationId, (msgId, count + 1))
+      if (bumped) {
+        perTurnEscalations.put(conversationId, (msgId, count + 1))
+        perTurnEscalationReason.put(conversationId,
+          (msgId, s"$reason (tier $currentEffective→$nextEffective, escalation #${count + 1})"))
+      }
       scribe.info(s"requestEscalation conv=${conversationId.value} from=$currentEffective to=$nextEffective bumped=$bumped reason=$reason")
       (nextEffective, bumped)
     }
@@ -1269,7 +1289,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       chosenModelId       = chosenModelId,
       skipReasons         = skipReasons,
       classifierLatencyMs = None,
-      escalationCount     = Option(perTurnEscalations.get(conversation._id)).map(_._2).getOrElse(0)
+      escalationCount     = Option(perTurnEscalations.get(conversation._id)).map(_._2).getOrElse(0),
+      // Surface the escalation reason only when it belongs to THIS turn (its
+      // stored userMessageId matches), so a stale prior-turn note never leaks.
+      escalationReason    = Option(perTurnEscalationReason.get(conversation._id))
+        .filter { case (mid, _) => userMessage.map(_._id).contains(mid) }
+        .map(_._2)
     )
     publish(event).map(_ => ()).handleError(_ => Task.unit)
   }
@@ -3583,20 +3608,29 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // never-resulted call as a spinning duplicate (which escalated the
         // tier to the ceiling and restricted the tool out of the roster).
         val resulted = ti.outcome != sigil.event.ToolOutcome.Pending
+        // #371 — a recoverable Failure marks a tooling-seam result. The
+        // duplicate-call cap reads this to avoid escalating a tier on a loop of
+        // identical FAILING calls (a stronger model hits the same failure).
+        val failed = ti.outcome match {
+          case _: sigil.event.ToolOutcome.Failure => true
+          case _                                  => false
+        }
         val invocation = ti.input match {
           case Some(in) => sigil.conversation.RecentToolInvocation(
             toolName    = ti.toolName,
             argsHash    = sigil.tool.ToolInputCanonicalizer.argsHash(in),
             argsPreview = sigil.tool.ToolInputCanonicalizer.argsPreview(in),
             invokedAt   = ti.timestamp,
-            resulted    = resulted
+            resulted    = resulted,
+            failed      = failed
           )
           case None => sigil.conversation.RecentToolInvocation(
             toolName    = ti.toolName,
             argsHash    = "",
             argsPreview = "",
             invokedAt   = ti.timestamp,
-            resulted    = resulted
+            resulted    = resulted,
+            failed      = failed
           )
         }
         updateProjection(ti.conversationId, ti.participantId) { proj =>

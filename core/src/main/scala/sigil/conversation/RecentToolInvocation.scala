@@ -34,9 +34,17 @@ import sigil.tool.ToolName
  *                    duplicate-call cap counts only `resulted` invocations
  *                    so a retry of a never-resulted slow tool isn't
  *                    punished as a spinning duplicate.
+ * @param failed      whether this invocation settled with a
+ *                    [[sigil.event.ToolOutcome.Failure]]. A duplicate-call
+ *                    loop whose prior identical calls all `failed` is a
+ *                    tooling-seam loop, not a capability gap — the
+ *                    orchestrator refuses the duplicate but does NOT escalate
+ *                    the tier on it (a stronger model issues the same call and
+ *                    hits the same failure; sigil #371). Defaults `false`.
  */
 case class RecentToolInvocation(toolName: ToolName,
                                 argsHash: String,
                                 argsPreview: String,
                                 invokedAt: Timestamp,
-                                resulted: Boolean = true) derives RW
+                                resulted: Boolean = true,
+                                failed: Boolean = false) derives RW
