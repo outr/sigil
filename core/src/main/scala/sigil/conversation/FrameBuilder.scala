@@ -59,17 +59,7 @@ object FrameBuilder {
     event match {
       case m: Message =>
         val images = m.content.collect { case ResponseContent.Image(url, _) => url }.toList
-        val text = m.content.collect {
-          case ResponseContent.Text(t)            => t
-          case ResponseContent.Markdown(t)        => t
-          case ResponseContent.Heading(t)         => t
-          case ResponseContent.Code(c, lang)      => s"```${lang.getOrElse("")}\n$c\n```"
-          case ResponseContent.ItemList(items, _) => items.mkString("\n")
-          case ResponseContent.Link(url, label)   => s"$label $url"
-          case img: ResponseContent.Image         => img.altText.map(a => s"[image: $a]").getOrElse("[image]")
-          case other                              => other.toString
-        }.mkString("\n")
-        (text, images)
+        (renderContentText(m.content), images)
       case other =>
         (JsonFormatter.Compact(stripEventBoilerplate(Event.rw.read(other))), Nil)
     }
@@ -462,15 +452,25 @@ object FrameBuilder {
   // collection. Frame-derivation itself is per-event via
   // [[computeFrame]].
 
-  private def renderMessageText(m: Message): String =
-    m.content
-      .map {
-        case ResponseContent.Text(t) => t
-        case ResponseContent.Markdown(t) => t
-        case ResponseContent.Code(c, lang) => s"```${lang.getOrElse("")}\n$c\n```"
-        case other => other.toString
-      }
-      .mkString("\n")
+  private def renderMessageText(m: Message): String = renderContentText(m.content)
+
+  /** Render content blocks to clean prompt text. Delegates to the exhaustive
+    * [[sigil.render.MarkdownRenderer]] so EVERY [[ResponseContent]] variant has
+    * a real textual form — a partial match's `case other => other.toString` was
+    * leaking raw case-class renderings (`ItemList(List(...),false)`,
+    * `Options(...,List(SelectOption(...)))`) into the assistant history, teaching
+    * the model to emit them. Images are reduced to a short alt-text placeholder
+    * so a `data:` URL or base64 bytes don't bloat the prompt (image bytes ride
+    * the provider's own multimodal channel, not the frame text). */
+  private def renderContentText(content: Vector[ResponseContent]): String =
+    sigil.render.MarkdownRenderer.render(content.map {
+      case ResponseContent.Image(_, alt)         => ResponseContent.Text(imagePlaceholder(alt))
+      case ResponseContent.ImageBytes(_, _, alt) => ResponseContent.Text(imagePlaceholder(alt))
+      case other                                 => other
+    })
+
+  private def imagePlaceholder(alt: Option[String]): String =
+    alt.map(a => s"[image: $a]").getOrElse("[image]")
 
   /**
    * Strip the `ToolInput` poly discriminator so the `arguments` JSON
