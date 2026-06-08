@@ -142,7 +142,8 @@ trait Tool extends RecordDocument[Tool] {
         // result still bloated the prompt (a 106KB grep settled inline despite
         // the file write). `boundsOutputItself` tools deliver verbatim.
         val resolved: Task[(Option[String], ToolOutput)] =
-          if (boundsOutputItself || rendered.length.toLong <= threshold) Task.pure((None, value))
+          if (boundsOutputItself || !context.overflowLargeResults || rendered.length.toLong <= threshold)
+            Task.pure((None, value))
           else buildOverflowSummary(value, rendered, threshold, context).map(s => (Some(s), TextToolOutput(s)))
         resolved.map { case (summaryOpt, outputValue) =>
           ToolDelta(

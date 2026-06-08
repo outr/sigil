@@ -70,7 +70,11 @@ object SyntheticTurnContext {
               chain = chain,
               conversation = conv,
               turnInput = TurnInput(conversationId = convId),
-              model = syntheticModel(host)
+              model = syntheticModel(host),
+              // A workflow step's tool output feeds a variable, not the agent's
+              // prompt — capture it in full so a Loop over a discovery step's
+              // result iterates the whole set, not the bounded inline head.
+              overflowLargeResults = false
             )
         }
     }
@@ -137,7 +141,8 @@ object SyntheticTurnContext {
       chain = Nil,
       conversation = conv,
       turnInput = TurnInput(conversationId = convId),
-      model = syntheticModel(host)
+      model = syntheticModel(host),
+      overflowLargeResults = false
     )
   }
 }

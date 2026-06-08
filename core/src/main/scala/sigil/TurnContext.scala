@@ -122,7 +122,14 @@ case class TurnContext(sigil: Sigil,
                          * build refusal payloads — `UnknownTool`, `record_consent`,
                          * the validator-error path — read this to suggest the
                          * closest-name match from what was actually offered. */
-                       offeredTools: Vector[_root_.sigil.tool.Tool] = Vector.empty) {
+                       offeredTools: Vector[_root_.sigil.tool.Tool] = Vector.empty,
+                       /** Whether a tool result that exceeds `inlineContentThreshold`
+                         * is bounded + externalized (true, the agent path — keeps the
+                         * prompt small) or captured in FULL (false). Workflow step
+                         * execution sets this false: a discovery step's output feeds a
+                         * Loop variable, not the agent's prompt, so bounding it would
+                         * silently truncate the set the loop iterates. */
+                       overflowLargeResults: Boolean = true) {
 
   /**
    * The participant currently acting — `chain.last`.

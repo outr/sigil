@@ -223,6 +223,122 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
   }
 
+    "compose discovery as a workflow STAGE — a Loop consumes a discovery step's output, no hand-built array (#372 / workflow-first)" in {
+      // The keystone of workflow-first: the agent composes
+      //   discover -> Loop[act on each] -> verify
+      // up front, knowing only the SHAPE; the engine finds the particulars at
+      // runtime. The discovery step's text output (grep/glob-shaped) must feed
+      // the Loop with NO pre-built array and NO enumeration in the agent's
+      // context. This drives exactly that: a `discovery_probe` step emits 3
+      // items into `found`, and the Loop iterates its body over them.
+      val convId = Conversation.id(s"workflow-first-${rapid.Unique()}")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals.evalMap(s => Task { recorded.add(s); () }).takeWhile(_ => running).drain.startUnit()
+      Thread.sleep(100)
+
+      val template = WorkflowTemplate(
+        name = "find-then-act",
+        description = Some("Discovery-as-a-stage: probe -> Loop over its output -> echo each"),
+        steps = List(
+          JobStepInput(id = "discover", tool = Some("discovery_probe"),
+            arguments = Some("""{"count":3}"""), output = Some("found")),
+          LoopStepInput(id = "loop", over = "found", itemVariable = "item", output = Some("processed"),
+            body = List(JobStepInput(id = "act", tool = Some("echo_back"),
+              arguments = Some("""{"text":"{{item}}"}"""))))
+        ),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(convId)
+      )
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId], modelId = Model.id("test", "model"),
+          toolNames = Nil, instructions = Instructions(), generationSettings = GenerationSettings())),
+        currentMode = ConversationMode, space = GlobalSpace, _id = convId
+      )
+
+      for {
+        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        // NOTE: no seeded `variables` — `found` is produced by the discovery STEP.
+        _   <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
+        _   <- waitForCompletion(recorded, 15.seconds)
+        run <- {
+          import scala.jdk.CollectionConverters.*
+          val runId = recorded.iterator().asScala.collectFirst { case e: WorkflowRunCompleted => e.runId }.get
+          TestWorkflowSigil.withDB(_.workflows.transaction(_.get(lightdb.id.Id[strider.Workflow](runId))))
+        }
+      } yield {
+        running = false
+        import scala.jdk.CollectionConverters.*
+        val all = recorded.iterator().asScala.toList
+        val bodyCompletions = all.collect { case e: WorkflowStepCompleted if e.success => e }
+        val wf = run.get
+        val processed = wf.variables.get("processed")
+        withClue(s"processed=$processed; stepCompletions=${bodyCompletions.size}: ") {
+          // The Loop iterated the body once per DISCOVERED item — discovery,
+          // not a hand-built array, drove the loop.
+          val items = processed.collect { case fabric.Arr(v, _) => v }.getOrElse(Vector.empty)
+          items should have size 3
+          items.map(_.toString).mkString should (include("item-1").and(include("item-2")).and(include("item-3")))
+        }
+      }
+    }
+
+    "iterate over a LARGE discovery output without the inline-overflow truncating it (#370/#372)" in {
+      // The live failure was a ~65-path grep that overflowed inlineContentThreshold.
+      // Inside a workflow the discovery output feeds a Loop variable, NOT the
+      // agent's prompt — so the inline cap must not bound it, or the Loop sees
+      // only the bounded head and silently processes a fraction of the set.
+      val convId = Conversation.id(s"workflow-first-large-${rapid.Unique()}")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals.evalMap(s => Task { recorded.add(s); () }).takeWhile(_ => running).drain.startUnit()
+      Thread.sleep(100)
+
+      val bigCount = 50 // wide (path-shaped) items → ~12 KB, over the 8 KB inline cap
+      val template = WorkflowTemplate(
+        name = "find-then-act-large",
+        description = Some("Large discovery-as-a-stage"),
+        steps = List(
+          JobStepInput(id = "discover", tool = Some("discovery_probe"),
+            arguments = Some(s"""{"count":$bigCount}"""), output = Some("found")),
+          LoopStepInput(id = "loop", over = "found", itemVariable = "item", output = Some("processed"),
+            body = List(JobStepInput(id = "act", tool = Some("echo_back"),
+              arguments = Some("""{"text":"{{item}}"}"""))))
+        ),
+        space = GlobalSpace, createdBy = Some(WorkflowTestUser), conversationId = Some(convId)
+      )
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId], modelId = Model.id("test", "model"),
+          toolNames = Nil, instructions = Instructions(), generationSettings = GenerationSettings())),
+        currentMode = ConversationMode, space = GlobalSpace, _id = convId
+      )
+
+      for {
+        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _   <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
+        _   <- waitForCompletion(recorded, 30.seconds)
+        run <- {
+          import scala.jdk.CollectionConverters.*
+          val runId = recorded.iterator().asScala.collectFirst { case e: WorkflowRunCompleted => e.runId }.get
+          TestWorkflowSigil.withDB(_.workflows.transaction(_.get(lightdb.id.Id[strider.Workflow](runId))))
+        }
+      } yield {
+        running = false
+        val processed = run.get.variables.get("processed")
+        val items = processed.collect { case fabric.Arr(v, _) => v }.getOrElse(Vector.empty)
+        withClue(s"processed ${items.size} items (expected $bigCount) — overflow truncated the discovery output: ") {
+          items should have size bigCount
+        }
+      }
+    }
+
   /** Poll the recorded queue until a `WorkflowRunCompleted` shows up
     * (or the timeout fires). Cheaper than a fixed sleep for fast
     * runs and bounded for slow ones. */
@@ -295,6 +411,7 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
     super.staticTools ++ List(
       EchoBackTool,
       FailingTool,
+      DiscoveryProbeTool,
       sigil.tool.util.DelegateTaskTool,
       sigil.tool.util.RelayMessageTool
     )

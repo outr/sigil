@@ -48,6 +48,9 @@ final case class ToolContext(turn: TurnContext,
   // ---- pass-throughs for fields every tool body reads ----
 
   def sigil: _root_.sigil.Sigil               = turn.sigil
+  /** Whether large results are bounded/externalized (agent path) or captured
+    * in full (workflow step execution). See [[TurnContext.overflowLargeResults]]. */
+  def overflowLargeResults: Boolean           = turn.overflowLargeResults
   def chain: List[ParticipantId]              = turn.chain
   def caller: ParticipantId                   = turn.caller
   def conversation: Conversation              = turn.conversation
