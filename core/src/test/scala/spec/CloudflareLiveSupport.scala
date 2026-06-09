@@ -27,6 +27,28 @@ object CloudflareLiveSupport {
     url    = URL.parse(s"https://api.cloudflare.com/client/v4/accounts/$accountId/ai/models/search")
   ).withHeader("Authorization", s"Bearer $token")
 
+  /** Signatures of "the live Workers AI service is unavailable RIGHT NOW" —
+    * distinct from a real test failure. The suite-start probe catches a drained
+    * quota up front, but mid-run the free tier also returns capacity throttles
+    * (`429 Capacity temporarily exceeded`, code 3040) or hangs under load. Per-test
+    * error handlers pass a caught throwable here and `cancel(...)` on a match, so
+    * external throttling self-skips instead of failing the suite. */
+  private val unavailableMarkers: List[String] = List(
+    "used up your daily free allocation",
+    "Capacity temporarily exceeded",
+    "HTTP 429",
+    "\"code\":3040",
+    "ReadTimeoutException",
+    "timed out",
+    "Connection refused",
+    "Connection reset"
+  )
+
+  def isServiceUnavailable(t: Throwable): Boolean = {
+    val msg = Option(t.getMessage).getOrElse("") + " " + Option(t.getCause).map(_.toString).getOrElse("")
+    unavailableMarkers.exists(msg.contains)
+  }
+
   def runGated(suite: Suite, testName: Option[String], args: Args)(runBody: => Status): Status =
     LiveProbe.requireLiveEnabled(suite).getOrElse {
       (apiToken, accountId) match {

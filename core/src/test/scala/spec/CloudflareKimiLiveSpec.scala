@@ -98,13 +98,6 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     )
   )
 
-  /** Substring the Cloudflare Workers AI API surfaces on its free-tier
-    * quota wall (HTTP 429). When the daily neuron allocation is gone,
-    * every request fails identically — there's no point asserting
-    * "the provider behaves correctly under no provider." Tests that
-    * catch this on the wire `cancel(...)` rather than fail. */
-  private val NeuronsExhaustedMarker: String = "used up your daily free allocation"
-
   /** Run `provider.call(pc).toList`, but translate "neurons
     * exhausted" responses (HTTP 429 from Cloudflare's free-tier
     * quota wall) into a cancelled test rather than letting the
@@ -113,9 +106,11 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     * unavailable. */
   private def runScenarioOnce(pc: ProviderCall): Task[List[ProviderEvent]] =
     provider.call(pc).toList.handleError { t =>
-      val msg = Option(t.getMessage).getOrElse("")
-      if (msg.contains(NeuronsExhaustedMarker))
-        Task(cancel(s"Cloudflare daily free-tier neuron quota exhausted — skipping live spec. ($msg)"))
+      // Self-skip on ANY live-service-unavailable signal — the daily-quota wall
+      // AND the mid-run capacity throttle (`429 Capacity temporarily exceeded`)
+      // / timeouts the free tier returns under load (sigil live-spec convention).
+      if (CloudflareLiveSupport.isServiceUnavailable(t))
+        Task(cancel(s"Cloudflare Workers AI unavailable (throttle/timeout) — skipping live spec. (${Option(t.getMessage).getOrElse(t.toString)})"))
       else Task.error(t)
     }
 

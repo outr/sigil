@@ -122,9 +122,8 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
           generationSettings = GenerationSettings(maxOutputTokens = Some(16000), temperature = Some(0.0), reasoningMode = ReasoningMode.Auto)
         )
         provider.call(pc).toList.handleError { t =>
-          val msg = Option(t.getMessage).getOrElse("")
-          if (msg.contains("used up your daily free allocation"))
-            Task(cancel(s"Cloudflare daily free-tier neuron quota exhausted — skipping live spec. ($msg)"))
+          if (CloudflareLiveSupport.isServiceUnavailable(t))
+            Task(cancel(s"Cloudflare Workers AI unavailable (throttle/timeout) — skipping live spec. (${Option(t.getMessage).getOrElse(t.toString)})"))
           else Task.error(t)
         }.map { events =>
           events.collectFirst { case ProviderEvent.ToolCallComplete(_, in: CreateWorkflowInput) => in }
