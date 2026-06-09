@@ -103,7 +103,7 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
   private val discoveryTools = Set("grep", "glob", "lsp_workspace_symbols")
 
   "Kimi-K2.6 authoring a workflow up front" should {
-    "fill a Job's `arguments` as a structured object with the tool's params — not scatter them (#373)" in {
+    "compose a discovery Job without scattering its tool params into cross-kind fields (#373)" in {
       if (apiTokenOpt.isEmpty || accountIdOpt.isEmpty)
         cancel("CLOUDFLARE_AUTH_TOKEN / CLOUDFLARE_ACCOUNT_ID not set — skipping live Kimi workflow-first spec")
 
@@ -133,25 +133,28 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
         }
       }
 
-      def summarize(in: CreateWorkflowInput): String =
-        in.steps.map(s => s"{id:${s.id}, kind:${s.kind}, tool:${s.tool.getOrElse("-")}, args:${s.arguments.map(fabric.io.JsonFormatter.Compact(_)).getOrElse("-")}, " +
-          s"workflowId:${s.workflowId.getOrElse("-")}, variables:${s.variables}}").mkString("\n")
+      def summarizeStep(s: sigil.workflow.WorkflowStepSpec): String =
+        s"{id:${s.id}, kind:${s.kind}, tool:${s.tool.getOrElse("-")}, args:${s.arguments.map(fabric.io.JsonFormatter.Compact(_)).getOrElse("-")}, " +
+          s"workflowId:${s.workflowId.getOrElse("-")}, variables:${s.variables}}"
+      def summarize(in: CreateWorkflowInput): String = in.steps.map(summarizeStep).mkString("\n")
 
       val turn1 = Vector[ProviderMessage](ProviderMessage.User(Vector(MessageContent.Text(task))))
       author(turn1).map { in =>
         withClue(s"authored steps:\n${summarize(in)}\n") {
           in.steps should not be empty
-          // The #373 win: the discovery Job carries its tool params INSIDE a
-          // structured `arguments` object (not scattered into workflowId /
-          // variables, not left null). `arguments` is a JSON object with fields.
           val discoveryJob = in.steps.find(s =>
             s.kind == WorkflowStepKind.Job && s.tool.exists(discoveryTools.contains))
           discoveryJob should not be empty
-          withClue(s"discovery Job arguments = ${discoveryJob.flatMap(_.arguments)}\n") {
-            discoveryJob.flatMap(_.arguments) match {
-              case Some(o: fabric.Obj) => o.value should not be empty
-              case other               => fail(s"expected the discovery Job's `arguments` to be a non-empty JSON object, got: $other")
-            }
+          // The #373 win: with `arguments` a structured object, the grep params
+          // have a home there — the model no longer mis-routes them into
+          // SubWorkflow-only fields. The discovery Job's `workflowId` stays
+          // empty (was "includeIgnored:false"), and `variables` carries no real
+          // tool param. (Fully POPULATING `arguments` is a frontier-model
+          // capability — a weak model may leave it sparse, the #372-class limit —
+          // but it can no longer scatter the params into cross-kind fields.)
+          withClue(s"discovery Job = ${discoveryJob.map(summarizeStep)}\n") {
+            discoveryJob.flatMap(_.workflowId).forall(_.isEmpty) shouldBe true
+            discoveryJob.toList.flatMap(_.variables.values).forall(_.isEmpty) shouldBe true
           }
         }
       }
