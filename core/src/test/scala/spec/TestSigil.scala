@@ -23,6 +23,7 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex}
 import spice.net.*
 
 import java.util.concurrent.atomic.AtomicReference
+import scala.concurrent.duration.*
 
 /**
  * Shared test Sigil — one singleton reused across every spec to avoid
@@ -126,6 +127,26 @@ object TestSigil extends Sigil {
                    path: Option[java.nio.file.Path]): Unit = path match {
     case Some(p) => workspaceOverrides.put(conversationId, p); ()
     case None    => workspaceOverrides.remove(conversationId); ()
+  }
+
+  /** Poll until the agent's self-loop for `convId` has released its claim — the
+    * `agentlock:` AgentState event settles to `Complete` when the loop's
+    * `releaseClaim` runs, a deterministic "the loop finished" signal. Replaces
+    * fixed `Task.sleep`s in async self-loop assertions so a slow / contended CI
+    * runner can't snapshot mid-loop (the source of the timing-flake cluster).
+    * Falls through after `timeout` so a turn that never claims doesn't hang. */
+  def awaitSettled(convId: lightdb.id.Id[sigil.conversation.Conversation],
+                   agentId: AgentParticipantId = TestAgent,
+                   timeout: FiniteDuration = 15.seconds): Task[Unit] = {
+    val lockId = Id[Event](s"agentlock:${agentId.value}:${convId.value}")
+    val deadline = System.currentTimeMillis() + timeout.toMillis
+    def loop: Task[Unit] =
+      withDB(_.events.transaction(_.get(lockId))).flatMap {
+        case Some(s: sigil.event.AgentState) if s.state == sigil.signal.EventState.Complete => Task.unit
+        case _ if System.currentTimeMillis() > deadline                                     => Task.unit
+        case _ => Task.sleep(40.millis).flatMap(_ => loop)
+      }
+    loop
   }
 
   /** Spec hook for sigil bug #172 — invoke the boot-time stale-Active

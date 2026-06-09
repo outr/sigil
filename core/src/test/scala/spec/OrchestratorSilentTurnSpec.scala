@@ -104,7 +104,7 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
              content        = Vector(ResponseContent.Text("hi")),
              state          = EventState.Complete
            ))
-      _ <- Task.sleep(1500.millis)
+      _ <- TestSigil.awaitSettled(convId)
     } yield {
       running.set(false)
       recorded.iterator().asScala.toList

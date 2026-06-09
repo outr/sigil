@@ -125,7 +125,7 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
              content        = Vector(ResponseContent.Text("Say hi.")),
              state          = EventState.Complete
            ))
-      _ <- Task.sleep(3.seconds)
+      _ <- TestSigil.awaitSettled(convId)
     } yield convId
   }
 

@@ -118,7 +118,7 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       // forced-synthesis turn + the handleError failure publish; under
       // full-suite fork concurrency the 3s this used to wait could
       // expire before the AgentRunaway Failure Message landed.
-      _   <- Task.sleep(8.seconds)
+      _   <- TestSigil.awaitSettled(convId)
       evs <- eventsFor(convId)
     } yield (recorder, convId, evs)
   }

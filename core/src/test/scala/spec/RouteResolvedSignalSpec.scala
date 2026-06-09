@@ -91,7 +91,7 @@ class RouteResolvedSignalSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
                  content        = Vector(ResponseContent.Text("Audit this auth flow for vulnerabilities")),
                  state          = EventState.Complete
                ))
-        _   <- Task.sleep(2.seconds)
+        _   <- TestSigil.awaitSettled(convId)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val rrs = evs.collect { case rr: RouteResolved if rr.conversationId == convId => rr }
@@ -127,7 +127,7 @@ class RouteResolvedSignalSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
                  content        = Vector(ResponseContent.Text("Hi")),
                  state          = EventState.Complete
                ))
-        _   <- Task.sleep(2.seconds)
+        _   <- TestSigil.awaitSettled(convId)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val rrs = evs.collect { case rr: RouteResolved if rr.conversationId == convId => rr }

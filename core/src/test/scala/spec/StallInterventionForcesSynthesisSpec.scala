@@ -144,7 +144,7 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
                  content        = Vector(ResponseContent.Text("Evaluate the X system")),
                  state          = EventState.Complete
                ))
-        _   <- Task.sleep(6.seconds) // generous window for the loop + checkpoint + forced-synth
+        _   <- TestSigil.awaitSettled(convId) // generous window for the loop + checkpoint + forced-synth
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val convEvs = evs.filter(_.conversationId == convId)

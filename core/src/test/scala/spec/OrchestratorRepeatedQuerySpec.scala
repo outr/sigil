@@ -104,7 +104,7 @@ class OrchestratorRepeatedQuerySpec extends AsyncWordSpec with AsyncTaskSpec wit
                content        = Vector(ResponseContent.Text("Switch to medium complexity")),
                state          = EventState.Complete
              ))
-      _   <- Task.sleep(4.seconds)
+      _   <- TestSigil.awaitSettled(convId)
       evs <- TestSigil.withDB(_.events.transaction(_.list))
     } yield (convId, evs.filter(_.conversationId == convId).sortBy(_.timestamp.value))
   }

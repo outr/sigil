@@ -99,7 +99,7 @@ class OrchestratorStreamingRespondDedupSpec extends AsyncWordSpec with AsyncTask
                  content        = Vector(ResponseContent.Text("Connect my project at /home/u/projects/demo")),
                  state          = EventState.Complete
                ))
-        _   <- Task.sleep(4.seconds)
+        _   <- TestSigil.awaitSettled(convId)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val agentMessages = evs.collect {

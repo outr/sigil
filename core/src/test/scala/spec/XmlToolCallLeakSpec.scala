@@ -102,7 +102,7 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
                content        = Vector(ResponseContent.Text("hi")),
                state          = sigil.signal.EventState.Complete
              ))
-        _ <- Task.sleep(1.second)
+        _ <- TestSigil.awaitSettled(convId)
       } yield {
         captured.asScala.toList should not be empty
         val systemPrompt = captured.asScala.toList.head.system
@@ -141,7 +141,7 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
                content        = Vector(ResponseContent.Text("test")),
                state          = sigil.signal.EventState.Complete
              ))
-        _ <- Task.sleep(2.seconds)
+        _ <- TestSigil.awaitSettled(convId)
         _ <- Task { running = false; () }
       } yield {
         val signals = recorded.asScala.toList
@@ -196,7 +196,7 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
                content        = Vector(ResponseContent.Text("test")),
                state          = sigil.signal.EventState.Complete
              ))
-        _ <- Task.sleep(2.seconds)
+        _ <- TestSigil.awaitSettled(convId)
         _ <- Task { running = false; () }
       } yield {
         val signals = recorded.asScala.toList

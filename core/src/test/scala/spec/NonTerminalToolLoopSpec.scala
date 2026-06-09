@@ -114,7 +114,7 @@ class NonTerminalToolLoopSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
            ))
       // Generous wait — the loop should run up to maxAgentIterations
       // before the cap-hit forced-synthesis turn + failure publish lands.
-      _   <- Task.sleep(10.seconds)
+      _   <- TestSigil.awaitSettled(convId)
       evs <- TestSigil.withDB(_.events.transaction(_.list)).map(_.filter(_.conversationId == convId))
     } yield (provider, convId, evs)
   }

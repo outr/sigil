@@ -136,7 +136,7 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
                content        = Vector(ResponseContent.Text("switch to gpt-5.5")),
                state          = EventState.Complete
              ))
-      _   <- Task.sleep(3.seconds)
+      _   <- TestSigil.awaitSettled(convId)
       evs <- TestSigil.withDB(_.events.transaction(_.list))
     } yield (convId, evs.filter(_.conversationId == convId))
   }
