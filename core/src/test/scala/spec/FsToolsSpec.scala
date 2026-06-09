@@ -203,10 +203,9 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
                   ).toList
       } yield {
         typed[WriteFileOutput](ok) shouldBe a[WriteFileOutput.Success]
-        typed[WriteFileOutput](stale) match {
-          case WriteFileOutput.Stale(_, content) => content shouldBe "v2"
-          case other                             => fail(s"expected Stale, got $other")
-        }
+        // A stale write (old expectedHash) is now a recoverable Failure
+        // the agent reads, not a Success-shaped Stale payload.
+        failureText(stale) should include ("file changed since")
       }
     }
   }

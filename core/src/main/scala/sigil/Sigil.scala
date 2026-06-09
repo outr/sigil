@@ -7695,8 +7695,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // app-defined output subtypes so `ToolInvoke` RW round-trips
       // cleanly through persistence and the wire.
       staticOutputRWs = staticTools.map(_.outputRW.asInstanceOf[RW[? <: sigil.tool.ToolOutput]])
+      // A tool whose `Output` is the open `ToolOutput` itself (e.g. an
+      // MCP tool that returns text OR an image) carries the base
+      // PolyType RW as its `outputRW`. Registering that base RW would
+      // re-expand the whole hierarchy and collide every already-listed
+      // leaf — so drop it here (no concrete leaf is named `ToolOutput`).
+      baseToolOutputClassName = summon[RW[sigil.tool.ToolOutput]].definition.className
       _ = sigil.tool.ToolOutput.register(
             (sigil.tool.ToolOutput.frameworkOutputRWs ++ staticOutputRWs ++ toolOutputRegistrations)
+              .filterNot(_.definition.className == baseToolOutputClassName)
               .distinctBy(_.definition.className)*
           )
       _ = sigil.viewer.ViewerStatePayload.register(viewerStatePayloadRegistrations.distinct*)
