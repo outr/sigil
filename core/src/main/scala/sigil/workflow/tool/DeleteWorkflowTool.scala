@@ -11,8 +11,9 @@ case class DeleteWorkflowInput(workflowId: String) extends ToolInput derives RW
 
 /**
  * Delete a workflow template by id. Subject to `accessibleSpaces`
- * authz. Idempotent — deleting a non-existent template is a no-op
- * with a clear message.
+ * authz. A delete that can't land — the template doesn't exist, or the
+ * caller's chain isn't authorized for its space — is a recoverable
+ * failure (nothing was removed), not a silent success.
  *
  * Active runs of the deleted template continue to completion;
  * future runs (cron / trigger fires) won't find the template and
@@ -33,16 +34,16 @@ final class DeleteWorkflowTool extends Tool with WorkflowToolSupport {
   override val examples = List(ToolExample("delete by id", DeleteWorkflowInput(workflowId = "wf-abc")))
   override val keywords = Set("workflow", "delete", "remove")
 
-  override def executeResult(input: DeleteWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: DeleteWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+      case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
       case Some(template) =>
         authorizeAccess(host, template, ctx.chain).flatMap {
-          case Left(reason) => Task.pure(s"Workflow '${input.workflowId}' not found.")
+          case Left(_) => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
           case Right(_) =>
             host.withDB(_.workflowTemplates.transaction(_.delete(id))).map(_ =>
-              s"Workflow '${template.name}' deleted (id=${input.workflowId})."
+              ToolResult.success(TextToolOutput(s"Workflow '${template.name}' deleted (id=${input.workflowId})."))
             )
         }
     }

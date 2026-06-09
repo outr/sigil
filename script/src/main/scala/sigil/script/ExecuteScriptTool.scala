@@ -95,11 +95,12 @@ class ExecuteScriptTool(executor: ScriptExecutor,
   override def executeResult(input: ScriptInput,
                              context: ToolContext): Task[ToolResult[ScriptToolOutput]] = {
     val started = System.currentTimeMillis()
-    // Bug #67 — wrap the whole construction in an outer `Task.defer`
-    // and `.handleError` it so synchronous throws during evaluation
-    // of `bindings(context)` (or anywhere in the executor's call-site
-    // arg path) become a Task error and surface as a populated
-    // `ScriptToolOutput.error` rather than an unrecoverable crash.
+    // Wrap the whole construction in an outer `Task.defer` and
+    // `.handleError` it so synchronous throws during evaluation of
+    // `bindings(context)` (or anywhere in the executor's call-site arg
+    // path), a compile error, or a runtime throw become a recoverable
+    // `ToolResult.failure` the agent can read and fix, rather than an
+    // unrecoverable crash or a success that hides the error.
     Task.defer {
       executor.execute(input.code, bindings(context))
         .map { output =>
@@ -108,22 +109,22 @@ class ExecuteScriptTool(executor: ScriptExecutor,
             durationMs = System.currentTimeMillis() - started
           ))
         }
-        .handleError(t => Task.pure(errorResult(started, t)))
-    }.handleError(t => Task.pure(errorResult(started, t)))
+        .handleError(t => Task.pure(errorResult(t)))
+    }.handleError(t => Task.pure(errorResult(t)))
   }
 
-  private def errorResult(started: Long, t: Throwable): ToolResult[ScriptToolOutput] =
-    ToolResult.Success(ScriptToolOutput(
-      // Bug #67 — include the abbreviated stack trace so wrapped
-      // exceptions (`RuntimeException` carrying an
-      // `InvocationTargetException` carrying a `NoSuchMethodError`,
-      // common with reflective script execution) carry their root
-      // cause through to the agent. Trim to the first 8 lines —
-      // enough framing for the model to reason about; not the full
-      // ~80-line JVM stack.
-      error      = Some(ExecuteScriptTool.formatThrowable(t)),
-      durationMs = System.currentTimeMillis() - started
-    ))
+  private def errorResult(t: Throwable): ToolResult[ScriptToolOutput] =
+    // A compile error or a runtime throw is a real failure — surface
+    // it as a recoverable `ToolResult.failure` so the framework's
+    // failure disposition engages and a model can't mistake it for a
+    // successful run. The abbreviated stack trace carries the root
+    // cause (wrapped exceptions — `RuntimeException` → `InvocationTargetException`
+    // → `NoSuchMethodError`, common with reflective execution) so the
+    // agent has enough to fix the script.
+    ToolResult.failure(
+      message = ExecuteScriptTool.formatThrowable(t),
+      hint    = Some("fix the script and re-run")
+    )
 }
 
 object ExecuteScriptTool {

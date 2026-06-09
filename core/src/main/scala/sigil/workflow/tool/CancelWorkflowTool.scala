@@ -31,17 +31,17 @@ final class CancelWorkflowTool extends Tool with WorkflowToolSupport {
   override val examples = List(ToolExample("cancel by run id", CancelWorkflowInput(runId = "run-abc")))
   override val keywords = Set("workflow", "cancel", "stop", "abort")
 
-  override def executeResult(input: CancelWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: CancelWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {
-      case None => Task.pure(s"Workflow run '${input.runId}' not found.")
+      case None => Task.pure(ToolResult.failure(s"Workflow run '${input.runId}' not found."))
       case Some(wf) =>
         authorizeRun(host, wf, ctx.chain).flatMap {
-          case Left(_) => Task.pure(s"Workflow run '${input.runId}' not found.")
+          case Left(_) => Task.pure(ToolResult.failure(s"Workflow run '${input.runId}' not found."))
           case Right(_) =>
             host.workflowManager.cancel(workflowId)
-              .map(_ => s"Workflow run '${input.runId}' cancelled.")
-              .handleError(e => Task.pure(s"Cancel failed: ${e.getMessage}"))
+              .map(_ => ToolResult.success(TextToolOutput(s"Workflow run '${input.runId}' cancelled.")))
+              .handleError(e => Task.pure(ToolResult.failure(s"Cancel failed: ${e.getMessage}")))
         }
     }
   }

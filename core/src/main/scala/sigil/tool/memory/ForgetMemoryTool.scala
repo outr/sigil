@@ -42,32 +42,44 @@ case object ForgetMemoryTool extends Tool {
   )
   override val keywords: Set[String] = Set("memory", "forget", "delete", "remove")
 
-  override def executeResult(input: ForgetMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
-    val textTask: Task[String] = (input.memoryId, input.key) match {
+  override def executeResult(input: ForgetMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    (input.memoryId, input.key) match {
       case (Some(_), Some(_)) =>
-        Task.pure("[forget_memory] supply either memoryId OR key, not both.")
+        Task.pure(ToolResult.failure(
+          "[forget_memory] supply either memoryId OR key, not both.",
+          hint = Some("Call again with exactly one of memoryId or key.")
+        ))
 
       case (Some(id), None) =>
         context.sigil.rejectMemory(id).map {
-          case None    => s"[forget_memory] no memory with id ${id.value}."
-          case Some(_) => s"[forget_memory] rejected memory ${id.value}."
+          case None =>
+            ToolResult.failure(
+              s"[forget_memory] no memory with id ${id.value}.",
+              hint = Some("Confirm the id via list_memories, or pass `key` to hard-delete by stable key.")
+            )
+          case Some(_) =>
+            ToolResult.Success(TextToolOutput(s"[forget_memory] rejected memory ${id.value}."))
         }
 
       case (None, Some(key)) =>
         resolveSpace(context).flatMap {
           case None =>
-            Task.pure(s"[forget_memory] no memory space available for key $key.")
+            Task.pure(ToolResult.failure(
+              s"[forget_memory] no memory space available for key $key.",
+              hint = Some("This conversation has no default memory space; nothing could be forgotten.")
+            ))
           case Some(space) =>
             context.sigil.forgetMemory(key, space).map { count =>
-              s"[forget_memory] removed $count record(s) for key $key."
+              ToolResult.Success(TextToolOutput(s"[forget_memory] removed $count record(s) for key $key."))
             }
         }
 
       case (None, None) =>
-        Task.pure("[forget_memory] supply memoryId or key.")
+        Task.pure(ToolResult.failure(
+          "[forget_memory] supply memoryId or key.",
+          hint = Some("Pass `memoryId` to soft-delete one record, or `key` to hard-delete every version.")
+        ))
     }
-    textTask.map(text => ToolResult.Success(TextToolOutput(text)))
-  }
 
   private def resolveSpace(context: ToolContext): Task[Option[SpaceId]] =
     context.sigil.defaultMemorySpace(context.conversation.id)

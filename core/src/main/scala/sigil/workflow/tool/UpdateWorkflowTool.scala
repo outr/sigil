@@ -60,10 +60,10 @@ final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
       case Right(stepsOpt) =>
         val id = Id[WorkflowTemplate](input.workflowId)
         host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-          case None => Task.pure(ToolResult.success(TextToolOutput(s"Workflow '${input.workflowId}' not found.")))
+          case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
           case Some(prior) =>
             authorizeAccess(host, prior, ctx.chain).flatMap {
-              case Left(_) => Task.pure(ToolResult.success(TextToolOutput(s"Workflow '${input.workflowId}' not found.")))
+              case Left(_) => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
               case Right(_) =>
                 val updated = prior.copy(
                   name = input.name.getOrElse(prior.name),

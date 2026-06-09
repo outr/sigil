@@ -42,24 +42,29 @@ case object UnpinMemoryTool extends Tool {
   override val requiresAccessibleSpaces: Boolean = true
 
   override def executeResult(input: UnpinMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
-    unpin(input, context).map(text => ToolResult.Success(TextToolOutput(text)))
-
-  private def unpin(input: UnpinMemoryInput, context: ToolContext): Task[String] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       val effective = input.space.map(s => Set(s).intersect(accessible)).getOrElse(accessible)
       if (effective.isEmpty)
-        Task.pure(s"[unpin_memory] no accessible memory spaces; cannot unpin '${input.key}'.")
+        Task.pure(ToolResult.failure(
+          s"[unpin_memory] no accessible memory spaces; cannot unpin '${input.key}'.",
+          hint = Some("The caller has no accessible memory spaces — authorize a space before unpinning.")
+        ))
       else
         findTarget(input.key, effective, context).flatMap {
           case Some(memory) if memory.pinned =>
             val unpinned = memory.copy(pinned = false)
             context.sigil.withDB(_.memories.transaction(_.upsert(unpinned))).map { _ =>
-              s"[unpin_memory] unpinned memory '${displayKey(memory)}'. The record remains accessible via topical retrieval, lookup, and recall_memory."
+              ToolResult.Success(TextToolOutput(
+                s"[unpin_memory] unpinned memory '${displayKey(memory)}'. The record remains accessible via topical retrieval, lookup, and recall_memory."))
             }
           case Some(memory) =>
-            Task.pure(s"[unpin_memory] memory '${displayKey(memory)}' is not pinned; nothing to do.")
+            Task.pure(ToolResult.Success(TextToolOutput(
+              s"[unpin_memory] memory '${displayKey(memory)}' is not pinned; nothing to do.")))
           case None =>
-            Task.pure(s"[unpin_memory] no pinned memory found matching key '${input.key}' in accessible spaces.")
+            Task.pure(ToolResult.failure(
+              s"[unpin_memory] no pinned memory found matching key '${input.key}' in accessible spaces.",
+              hint = Some("List currently pinned memories with list_memories(pinned=true) to confirm the key.")
+            ))
         }
     }
 

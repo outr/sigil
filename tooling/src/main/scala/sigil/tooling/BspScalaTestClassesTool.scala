@@ -41,7 +41,7 @@ final class BspScalaTestClassesTool(val manager: BspManager) extends Tool with B
                              context: ToolContext): Task[BspTestClassesResult] =
     withTargets[BspTestClassesResult](
       input.projectRoot, context, input.targets,
-      onError = _ => BspTestClassesResult(input.projectRoot, Nil),
+      onError = msg => BspTestClassesResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspTestClassesResult(input.projectRoot, Nil)
     ) { (session, targets) =>
       session.scalaTestClasses(targets).map { items =>

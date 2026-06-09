@@ -1,5 +1,6 @@
 package sigil.tool.fs
 
+import fabric.io.JsonFormatter
 import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
@@ -45,29 +46,51 @@ final class WriteFileTool(context: FileSystemContext)
   )
   override val keywords = Set("file", "write", "save", "create", "output")
 
+  /** Non-Success WriteFileOutputs (Stale, NotFound) are logical failures of
+    * the WRITE operation — the commit did NOT land. Surfacing them through
+    * `executeResult` lets the agent's frame projection render them as
+    * Tool-role Failure Messages with actionable hints, instead of a
+    * Success-shaped `ToolResults` the agent might gloss over and incorrectly
+    * report as "I saved the file." */
   override def executeResult(input: WriteFileInput, ctx: ToolContext): Task[ToolResult[WriteFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
-      case None        => runWrite(input, ctx).map(ToolResult.success(_))
+      case None        => runWrite(input, ctx)
     }
 
-  private def runWrite(input: WriteFileInput, ctx: ToolContext): Task[WriteFileOutput] =
+  private def renderInputArgs(input: WriteFileInput): Option[String] =
+    try Some(JsonFormatter.Compact(inputRW.read(input)))
+    catch { case _: Throwable => None }
+
+  private def runWrite(input: WriteFileInput, ctx: ToolContext): Task[ToolResult[WriteFileOutput]] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
+      val argsJson = renderInputArgs(input)
       input.expectedHash match {
         case None =>
           context.writeFile(resolved, input.content).map { bytes =>
-            WriteFileOutput.Success(bytesWritten = bytes, hash = None)
+            ToolResult.success(WriteFileOutput.Success(bytesWritten = bytes, hash = None))
           }
         case Some(hash) =>
           val expected = FileVersion(hash, Timestamp())
           context.writeIfMatch(resolved, input.content, expected).map {
             case WriteResult.Written(version) =>
-              WriteFileOutput.Success(bytesWritten = input.content.getBytes("UTF-8").length.toLong,
-                                       hash         = Some(version.hash))
+              ToolResult.success(WriteFileOutput.Success(bytesWritten = input.content.getBytes("UTF-8").length.toLong,
+                                                         hash         = Some(version.hash)))
             case WriteResult.Stale(current) =>
-              WriteFileOutput.Stale(currentHash = current.version.hash, currentContent = current.asText)
+              ToolResult.failure(
+                message = s"write_file: file changed since `expectedHash` was issued (resolved: $resolved).",
+                hint = Some(
+                  s"Re-read the file (current hash ${current.version.hash}) and decide whether the " +
+                    "intended write still applies, then retry with the fresh hash."
+                ),
+                args = argsJson
+              )
             case WriteResult.NotFound =>
-              WriteFileOutput.NotFound
+              ToolResult.failure(
+                message = s"write_file: file not found at $resolved.",
+                hint = Some("Check the path or list the directory; the file may have been removed."),
+                args = argsJson
+              )
           }
       }
     }

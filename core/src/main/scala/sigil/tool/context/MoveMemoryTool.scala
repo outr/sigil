@@ -48,26 +48,34 @@ case object MoveMemoryTool extends Tool {
   override val requiresAccessibleSpaces: Boolean = true
 
   override def executeResult(input: MoveMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
-    move(input, context).map(text => ToolResult.Success(TextToolOutput(text)))
-
-  private def move(input: MoveMemoryInput, context: ToolContext): Task[String] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       if (!accessible.contains(input.newSpace))
-        Task.pure(s"[move_memory] target space '${input.newSpace.value}' is not in this caller's accessible spaces; cannot move.")
+        Task.pure(ToolResult.failure(
+          s"[move_memory] target space '${input.newSpace.value}' is not in this caller's accessible spaces; cannot move.",
+          hint = Some("Choose a newSpace the caller can access; check accessible spaces before moving.")
+        ))
       else {
         val sourceSpaces = input.fromSpace.map(s => Set(s).intersect(accessible)).getOrElse(accessible)
         if (sourceSpaces.isEmpty)
-          Task.pure(s"[move_memory] no accessible source spaces; cannot find '${input.key}'.")
+          Task.pure(ToolResult.failure(
+            s"[move_memory] no accessible source spaces; cannot find '${input.key}'.",
+            hint = Some("The supplied fromSpace is not accessible — omit it or pass an accessible space.")
+          ))
         else findTarget(input.key, sourceSpaces, context).flatMap {
           case Some(memory) if memory.spaceId == input.newSpace =>
-            Task.pure(s"[move_memory] memory '${displayKey(memory)}' is already in space '${input.newSpace.value}'; nothing to do.")
+            Task.pure(ToolResult.Success(TextToolOutput(
+              s"[move_memory] memory '${displayKey(memory)}' is already in space '${input.newSpace.value}'; nothing to do.")))
           case Some(memory) =>
             val moved = memory.copy(spaceId = input.newSpace, modified = lightdb.time.Timestamp())
             context.sigil.withDB(_.memories.transaction(_.upsert(moved))).map { _ =>
-              s"[move_memory] moved memory '${displayKey(memory)}' from space '${memory.spaceId.value}' to '${input.newSpace.value}'."
+              ToolResult.Success(TextToolOutput(
+                s"[move_memory] moved memory '${displayKey(memory)}' from space '${memory.spaceId.value}' to '${input.newSpace.value}'."))
             }
           case None =>
-            Task.pure(s"[move_memory] no memory found matching key '${input.key}' in accessible spaces.")
+            Task.pure(ToolResult.failure(
+              s"[move_memory] no memory found matching key '${input.key}' in accessible spaces.",
+              hint = Some("Confirm the key with list_memories, or pass fromSpace to disambiguate.")
+            ))
         }
       }
     }

@@ -30,8 +30,12 @@ case object UnpinModelTool extends Tool {
     ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
       case None       => Task.pure(None)
       case Some(conv) => Task.pure(Some(conv.copy(pinnedModelId = None, modified = Timestamp())))
-    })).map { _ =>
-      ToolResult.Success(TextToolOutput(
-        "Cleared the conversation's pinned model. Dispatch reverts to the normal strategy stack."))
+    })).map {
+      case None =>
+        ToolResult.failure(
+          "Could not unpin model: conversation row not found. Try again from a live session.")
+      case Some(_) =>
+        ToolResult.Success(TextToolOutput(
+          "Cleared the conversation's pinned model. Dispatch reverts to the normal strategy stack."))
     }
 }

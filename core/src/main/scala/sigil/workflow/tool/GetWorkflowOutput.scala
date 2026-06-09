@@ -2,6 +2,7 @@ package sigil.workflow.tool
 
 import fabric.rw.*
 import sigil.tool.ToolOutput
+import sigil.workflow.{WorkflowStepSpec, WorkflowTrigger}
 
 /**
  * Structured result of `get_workflow` — the fetched template's
@@ -9,14 +10,19 @@ import sigil.tool.ToolOutput
  */
 enum GetWorkflowOutput extends ToolOutput derives RW {
 
-  /** The template was found and the caller is authorized for its space. */
+  /** The template was found and the caller is authorized for its space.
+    *
+    * `steps` and `triggers` carry the full step / trigger bodies in the
+    * same flat [[WorkflowStepSpec]] / [[WorkflowTrigger]] shapes that
+    * `create_workflow` / `update_workflow` consume, so a fetched template
+    * round-trips directly back into an edit. */
   case Found(workflowId: String,
              name: String,
              enabled: Boolean,
              description: Option[String],
              space: String,
-             stepIds: List[String],
-             triggerKinds: List[String],
+             steps: List[WorkflowStepSpec],
+             triggers: List[WorkflowTrigger],
              variables: List[GetWorkflowVariable],
              tags: List[String])
 

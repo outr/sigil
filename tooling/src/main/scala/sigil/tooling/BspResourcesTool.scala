@@ -36,7 +36,7 @@ final class BspResourcesTool(val manager: BspManager) extends Tool
   override def executeOutput(input: BspResourcesInput, context: ToolContext): Task[BspResourcesResult] =
     withTargets[BspResourcesResult](
       input.projectRoot, context, input.targets,
-      onError = _ => BspResourcesResult(input.projectRoot, Nil),
+      onError = msg => BspResourcesResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspResourcesResult(input.projectRoot, Nil)
     ) { (session, targets) =>
       session.resources(targets).map { items =>

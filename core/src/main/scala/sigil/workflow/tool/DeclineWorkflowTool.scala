@@ -44,18 +44,18 @@ final class DeclineWorkflowTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "decline", "reject", "no", "deny", "refuse")
 
-  override def executeResult(input: DeclineWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: DeclineWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     val payload: Json = input.reason.filter(_.nonEmpty).fold[Json](str("decline"))(r => str(s"decline: $r"))
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {
-      case None => Task.pure(s"Workflow run '${input.runId}' not found.")
+      case None => Task.pure(ToolResult.failure(s"Workflow run '${input.runId}' not found."))
       case Some(wf) =>
         authorizeRun(host, wf, ctx.chain).flatMap {
-          case Left(_) => Task.pure(s"Workflow run '${input.runId}' not found.")
+          case Left(_) => Task.pure(ToolResult.failure(s"Workflow run '${input.runId}' not found."))
           case Right(_) =>
             host.workflowManager.resume(workflowId, Id[Step](input.stepId), payload)
-              .map(_ => s"Workflow run '${input.runId}' declined at step '${input.stepId}'.")
-              .handleError(e => Task.pure(s"Decline failed: ${e.getMessage}"))
+              .map(_ => ToolResult.success(TextToolOutput(s"Workflow run '${input.runId}' declined at step '${input.stepId}'.")))
+              .handleError(e => Task.pure(ToolResult.failure(s"Decline failed: ${e.getMessage}")))
         }
     }
   }

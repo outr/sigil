@@ -37,14 +37,23 @@ private[process] final class ProcessEntry(val handle: ProcessHandle,
 
   def exitCode: Option[Int] = if (process.isAlive) None else Some(process.exitValue())
 
-  def terminate(graceMs: Long): Unit = {
-    if (!process.isAlive) return
-    process.destroy()                                  // SIGTERM
-    val exited = process.waitFor(graceMs, java.util.concurrent.TimeUnit.MILLISECONDS)
-    if (!exited) process.destroyForcibly()             // SIGKILL
-  }
+  /** SIGTERM (grace, then SIGKILL). Returns `true` when the process
+    * was alive and actually signaled, `false` when it was already
+    * dead (no-op). */
+  def terminate(graceMs: Long): Boolean =
+    if (!process.isAlive) false
+    else {
+      process.destroy()                                // SIGTERM
+      val exited = process.waitFor(graceMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+      if (!exited) process.destroyForcibly()           // SIGKILL
+      true
+    }
 
-  def kill(): Unit = if (process.isAlive) process.destroyForcibly()
+  /** SIGKILL. Returns `true` when the process was alive and actually
+    * signaled, `false` when it was already dead (no-op). */
+  def kill(): Boolean =
+    if (!process.isAlive) false
+    else { process.destroyForcibly(); true }
 
   private def drain(in: java.io.InputStream, target: RingBuffer): Unit = {
     val reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))

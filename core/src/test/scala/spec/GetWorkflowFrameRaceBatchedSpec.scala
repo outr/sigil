@@ -43,7 +43,7 @@ class GetWorkflowFrameRaceBatchedSpec extends AsyncWordSpec with AsyncTaskSpec w
       )
       val foundOutput = GetWorkflowOutput.Found(
         workflowId = "wf-race", name = "race-target", enabled = true, description = None,
-        space = "global", stepIds = List("init"), triggerKinds = Nil, variables = Nil, tags = Nil
+        space = "global", steps = Nil, triggers = Nil, variables = Nil, tags = Nil
       )
       val inputDelta = ToolDelta(
         target = invokeId, conversationId = convId,

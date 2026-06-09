@@ -92,17 +92,21 @@ class ProcessRegistry(val ringBytes: Int = 1024 * 1024,
   /** Send a signal. [[ProcessSignal.Terminate]] sends SIGTERM with
     * grace then SIGKILL; [[ProcessSignal.Interrupt]] is a
     * best-effort SIGINT via `Process.destroy`; [[ProcessSignal.Kill]]
-    * is an immediate SIGKILL. */
+    * is an immediate SIGKILL.
+    *
+    * Throws [[NoSuchElementException]] when the handle is unknown (the
+    * caller distinguishes that from a delivery outcome). Returns
+    * `true` when a live process was actually signaled, `false` when
+    * the process was already dead (nothing delivered). */
   def signal(handle: String, signal: ProcessSignal): Task[Boolean] = Task {
     val entry = entries.get(handle)
-    if (entry == null) false
-    else {
+    if (entry == null) throw new NoSuchElementException(s"No process handle: $handle")
+    else
       signal match {
-        case ProcessSignal.Terminate => entry.terminate(terminateGraceMs); true
-        case ProcessSignal.Interrupt => entry.terminate(terminateGraceMs); true
-        case ProcessSignal.Kill      => entry.kill(); true
+        case ProcessSignal.Terminate => entry.terminate(terminateGraceMs)
+        case ProcessSignal.Interrupt => entry.terminate(terminateGraceMs)
+        case ProcessSignal.Kill      => entry.kill()
       }
-    }
   }
 
   /** List handles. `filterByConversation = Some(convId)` restricts to

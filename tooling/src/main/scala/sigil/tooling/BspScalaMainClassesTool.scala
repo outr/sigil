@@ -36,7 +36,7 @@ final class BspScalaMainClassesTool(val manager: BspManager) extends Tool with B
                              context: ToolContext): Task[BspMainClassesResult] =
     withTargets[BspMainClassesResult](
       input.projectRoot, context, input.targets,
-      onError = _ => BspMainClassesResult(input.projectRoot, Nil),
+      onError = msg => BspMainClassesResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspMainClassesResult(input.projectRoot, Nil)
     ) { (session, targets) =>
       session.scalaMainClasses(targets).map { items =>

@@ -65,7 +65,7 @@ final class BspDependencyModulesTool(val manager: BspManager) extends Tool
                       context: ToolContext): Task[BspDependencyModulesResult] =
     withTargets[BspDependencyModulesResult](
       input.projectRoot, context, input.targets,
-      onError = _ => BspDependencyModulesResult(input.projectRoot, Nil),
+      onError = msg => BspDependencyModulesResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspDependencyModulesResult(input.projectRoot, Nil)
     ) { (session, targets) =>
       session.dependencyModules(targets).map { items =>

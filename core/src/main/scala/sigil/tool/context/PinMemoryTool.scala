@@ -46,24 +46,29 @@ case object PinMemoryTool extends Tool {
   override val requiresAccessibleSpaces: Boolean = true
 
   override def executeResult(input: PinMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
-    pin(input, context).map(text => ToolResult.Success(TextToolOutput(text)))
-
-  private def pin(input: PinMemoryInput, context: ToolContext): Task[String] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       val effective = input.space.map(s => Set(s).intersect(accessible)).getOrElse(accessible)
       if (effective.isEmpty)
-        Task.pure(s"[pin_memory] no accessible memory spaces; cannot pin '${input.key}'.")
+        Task.pure(ToolResult.failure(
+          s"[pin_memory] no accessible memory spaces; cannot pin '${input.key}'.",
+          hint = Some("The caller has no accessible memory spaces — authorize a space before pinning.")
+        ))
       else
         findTarget(input.key, effective, context).flatMap {
           case Some(memory) if !memory.pinned =>
             val pinned = memory.copy(pinned = true)
             context.sigil.withDB(_.memories.transaction(_.upsert(pinned))).map { _ =>
-              s"[pin_memory] pinned memory '${displayKey(memory)}'. It will now render every turn until unpinned."
+              ToolResult.Success(TextToolOutput(
+                s"[pin_memory] pinned memory '${displayKey(memory)}'. It will now render every turn until unpinned."))
             }
           case Some(memory) =>
-            Task.pure(s"[pin_memory] memory '${displayKey(memory)}' is already pinned; nothing to do.")
+            Task.pure(ToolResult.Success(TextToolOutput(
+              s"[pin_memory] memory '${displayKey(memory)}' is already pinned; nothing to do.")))
           case None =>
-            Task.pure(s"[pin_memory] no memory found matching key '${input.key}' in accessible spaces.")
+            Task.pure(ToolResult.failure(
+              s"[pin_memory] no memory found matching key '${input.key}' in accessible spaces.",
+              hint = Some("Check the key via list_memories, or save the memory first with save_memory.")
+            ))
         }
     }
 

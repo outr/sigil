@@ -44,19 +44,19 @@ final class ResumeWorkflowTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "resume", "approve", "continue")
 
-  override def executeResult(input: ResumeWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: ResumeWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {
-      case None => Task.pure(s"Workflow run '${input.runId}' not found.")
+      case None => Task.pure(ToolResult.failure(s"Workflow run '${input.runId}' not found."))
       case Some(wf) =>
         authorizeRun(host, wf, ctx.chain).flatMap {
-          case Left(_) => Task.pure(s"Workflow run '${input.runId}' not found.")
+          case Left(_) => Task.pure(ToolResult.failure(s"Workflow run '${input.runId}' not found."))
           case Right(_) =>
             val payloadJson: Json = input.payload.filter(_.nonEmpty).fold[Json](Null)(str)
             val payloadDisplay = input.payload.getOrElse("")
             host.workflowManager.resume(workflowId, Id[Step](input.stepId), payloadJson)
-              .map(_ => s"Workflow run '${input.runId}' resumed at step '${input.stepId}' with payload '$payloadDisplay'.")
-              .handleError(e => Task.pure(s"Resume failed: ${e.getMessage}"))
+              .map(_ => ToolResult.success(TextToolOutput(s"Workflow run '${input.runId}' resumed at step '${input.stepId}' with payload '$payloadDisplay'.")))
+              .handleError(e => Task.pure(ToolResult.failure(s"Resume failed: ${e.getMessage}")))
         }
     }
   }

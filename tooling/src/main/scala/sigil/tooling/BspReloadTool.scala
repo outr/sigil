@@ -32,7 +32,7 @@ final class BspReloadTool(val manager: BspManager) extends Tool
   override def executeOutput(input: BspReloadInput, context: ToolContext): Task[BspReloadResult] =
     withSessionTyped[BspReloadResult](
       input.projectRoot, context,
-      onError = _ => BspReloadResult(input.projectRoot)
+      onError = msg => BspReloadResult(input.projectRoot, error = Some(msg))
     ) { session =>
       session.reload.map(_ => BspReloadResult(input.projectRoot))
     }

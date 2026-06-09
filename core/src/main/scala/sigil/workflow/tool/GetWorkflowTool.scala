@@ -5,7 +5,7 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
-import sigil.workflow.{WorkflowSigil, WorkflowTemplate}
+import sigil.workflow.*
 
 import scala.concurrent.duration.*
 
@@ -65,14 +65,96 @@ final class GetWorkflowTool extends Tool with WorkflowToolSupport {
 
   private def project(t: WorkflowTemplate): GetWorkflowOutput.Found =
     GetWorkflowOutput.Found(
-      workflowId   = t._id.value,
-      name         = t.name,
-      enabled      = t.enabled,
-      description  = t.description,
-      space        = t.space.value,
-      stepIds      = t.steps.map(_.id),
-      triggerKinds = t.triggers.map(_.kind),
-      variables    = t.variableDefs.map(v => GetWorkflowVariable(v.name, v.required)),
-      tags         = t.tags.toList
+      workflowId  = t._id.value,
+      name        = t.name,
+      enabled     = t.enabled,
+      description = t.description,
+      space       = t.space.value,
+      steps       = t.steps.flatMap(toSpec),
+      triggers    = t.triggers,
+      variables   = t.variableDefs.map(v => GetWorkflowVariable(v.name, v.required)),
+      tags        = t.tags.toList
     )
+
+  /** Reverse of [[WorkflowStepSpec.lower]]: project a stored
+    * [[WorkflowStepInput]] IR node back to the flat, `kind`-tagged
+    * [[WorkflowStepSpec]](s) `update_workflow` accepts. Nested Loop bodies /
+    * Parallel branches are flattened back out as their own top-level entries,
+    * referenced by id — the same flat shape the agent originally authored.
+    * App-defined `WorkflowStepInput` subtypes (no `WorkflowStepKind`) can't be
+    * expressed as a spec and are omitted. */
+  private def toSpec(step: WorkflowStepInput): List[WorkflowStepSpec] = step match {
+    case s: JobStepInput =>
+      List(WorkflowStepSpec(
+        id = s.id,
+        kind = WorkflowStepKind.Job,
+        name = s.name,
+        prompt = s.prompt,
+        tool = s.tool,
+        arguments = s.arguments.flatMap(a => scala.util.Try(fabric.io.JsonParser(a)).toOption),
+        output = s.output,
+        modelId = s.modelId,
+        tools = s.tools,
+        continueOnError = s.continueOnError,
+        retryCount = s.retryCount,
+        retryDelayMs = s.retryDelayMs
+      ))
+    case s: ConditionStepInput =>
+      List(WorkflowStepSpec(
+        id = s.id,
+        kind = WorkflowStepKind.Condition,
+        name = s.name,
+        expression = Some(s.expression),
+        onTrue = Some(s.onTrue),
+        onFalse = Some(s.onFalse)
+      ))
+    case s: ApprovalStepInput =>
+      List(WorkflowStepSpec(
+        id = s.id,
+        kind = WorkflowStepKind.Approval,
+        name = s.name,
+        prompt = Some(s.prompt),
+        options = s.options,
+        output = s.output,
+        timeoutMs = s.timeoutMs,
+        timeoutAction = Some(s.timeoutAction)
+      ))
+    case s: ParallelStepInput =>
+      WorkflowStepSpec(
+        id = s.id,
+        kind = WorkflowStepKind.Parallel,
+        name = s.name,
+        branchStepIds = s.branches.map(_.map(_.id)),
+        joinMode = Some(s.joinMode),
+        output = s.output
+      ) :: s.branches.flatten.flatMap(toSpec)
+    case s: LoopStepInput =>
+      WorkflowStepSpec(
+        id = s.id,
+        kind = WorkflowStepKind.Loop,
+        name = s.name,
+        over = Some(s.over),
+        itemVariable = Some(s.itemVariable),
+        bodyStepIds = s.body.map(_.id),
+        output = s.output
+      ) :: s.body.flatMap(toSpec)
+    case s: SubWorkflowStepInput =>
+      List(WorkflowStepSpec(
+        id = s.id,
+        kind = WorkflowStepKind.SubWorkflow,
+        name = s.name,
+        workflowId = Some(s.workflowId),
+        variables = s.variables,
+        output = s.output
+      ))
+    case s: TriggerStepInput =>
+      List(WorkflowStepSpec(
+        id = s.id,
+        kind = WorkflowStepKind.Trigger,
+        name = s.name,
+        trigger = Some(s.trigger),
+        output = s.output
+      ))
+    case _ => Nil
+  }
 }

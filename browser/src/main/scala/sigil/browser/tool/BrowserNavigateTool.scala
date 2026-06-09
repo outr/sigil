@@ -45,32 +45,44 @@ final class BrowserNavigateTool extends Tool {
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
-      title      <- controller.run { browser =>
+      outcome    <- controller.run { browser =>
                       for {
-                        _ <- browser.navigate(input.url)
-                        _ <- browser.waitForLoaded(timeout = input.waitForLoadSeconds.seconds)
+                        frame  <- browser.navigate(input.url)
+                        loaded <- browser.waitForLoaded(timeout = input.waitForLoadSeconds.seconds)
                         // Pierce shadow DOMs so XPath queries see web-component content.
                         // Failures are non-fatal — pages without shadow roots simply no-op.
-                        _ <- browser.shadowDOMFix().handleError(_ => rapid.Task.unit)
-                        t <- browser.title
-                      } yield t
+                        _      <- browser.shadowDOMFix().handleError(_ => Task.unit)
+                        title  <- browser.title
+                      } yield (frame.nonEmpty, loaded, browser.url(), title)
                     }
-      // Publish the BrowserStateDelta as a side effect — the framework
-      // routes it through the signal hub + persists the mutation
-      // against the controller's BrowserState target.
-      _          <- ctx.sigil.publish(BrowserStateDelta(
-                      target         = controller.stateId,
-                      conversationId = ctx.conversation.id,
-                      url            = Some(input.url),
-                      title          = Some(title),
-                      loading        = Some(false)
-                    ))
-    } yield {
-      val payload = obj(
-        "url"   -> str(input.url),
-        "title" -> str(title),
-        "wait"  -> num(input.waitForLoadSeconds)
-      )
-      ToolResult.Success(BrowserToolBase.toolResult(payload))
-    }
+      (navigated, loaded, landedUrl, title) = outcome
+      result     <- if (!navigated)
+                      Task.pure(ToolResult.failure(
+                        s"Navigation to '${input.url}' failed (DNS/HTTP error) — no page was loaded",
+                        hint = Some("Verify the URL is well-formed and the host is reachable, then retry.")
+                      ))
+                    else if (!loaded)
+                      Task.pure(ToolResult.failure(
+                        s"Navigation to '${input.url}' did not finish loading within ${input.waitForLoadSeconds}s (timeout)",
+                        hint = Some("Increase waitForLoadSeconds for slow pages, or confirm the page actually renders.")
+                      ))
+                    else
+                      // Publish the BrowserStateDelta as a side effect — the framework
+                      // routes it through the signal hub + persists the mutation against
+                      // the controller's BrowserState target. Report the actual landed
+                      // URL (post-redirect), not the requested input.url.
+                      ctx.sigil.publish(BrowserStateDelta(
+                        target         = controller.stateId,
+                        conversationId = ctx.conversation.id,
+                        url            = Some(landedUrl),
+                        title          = Some(title),
+                        loading        = Some(false)
+                      )).map { _ =>
+                        ToolResult.Success(BrowserToolBase.toolResult(obj(
+                          "url"   -> str(landedUrl),
+                          "title" -> str(title),
+                          "wait"  -> num(input.waitForLoadSeconds)
+                        )))
+                      }
+    } yield result
 }

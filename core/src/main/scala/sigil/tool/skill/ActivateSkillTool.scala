@@ -49,18 +49,20 @@ case object ActivateSkillTool extends Tool {
   override val keywords: Set[String] = Set("activate", "skill", "load", "enable", "use")
 
   override def executeResult(input: ActivateSkillInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
-    activate(input, context).map(text => ToolResult.Success(TextToolOutput(text)))
-
-  private def activate(input: ActivateSkillInput, context: ToolContext): Task[String] =
     context.sigil.withDB(_.skills.transaction(_.get(lightdb.id.Id[Skill](input.name)))).flatMap {
       case None =>
-        Task.pure(s"[activate_skill] no Skill found with name '${input.name}'.")
+        Task.pure(ToolResult.failure(
+          message = s"[activate_skill] no Skill found with name '${input.name}'.",
+          hint = Some("Call find_capability to discover an available Skill, then activate it by its exact name.")
+        ))
       case Some(skill) =>
         val currentMode = context.conversation.currentMode
         val modeOk = skill.modes.isEmpty || skill.modes.contains(currentMode.id)
-        if (!modeOk) Task.pure(
-          s"[activate_skill] Skill '${skill.name}' is not available in mode '${currentMode.name}'."
-        )
+        if (!modeOk)
+          Task.pure(ToolResult.failure(
+            message = s"[activate_skill] Skill '${skill.name}' is not available in mode '${currentMode.name}'.",
+            hint = Some("Switch to a mode this skill supports via change_mode, or pick a skill available in the current mode.")
+          ))
         else {
           val slot = ActiveSkillSlot(name = skill.name, content = skill.content)
           context.sigil.updateProjection(context.conversation.id, context.caller) { proj =>
@@ -68,7 +70,7 @@ case object ActivateSkillTool extends Tool {
               activeSkills = proj.activeSkills + (SkillSource.Discovery -> slot),
               discoverySkillMode = Some(currentMode.id)
             )
-          }.map(_ => s"[activate_skill] Skill '${skill.name}' is now active.")
+          }.map(_ => ToolResult.Success(TextToolOutput(s"[activate_skill] Skill '${skill.name}' is now active.")))
         }
     }
 }

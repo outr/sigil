@@ -38,16 +38,16 @@ final class UnregisterTriggerTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "trigger", "remove", "unregister")
 
-  override def executeResult(input: UnregisterTriggerInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: UnregisterTriggerInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+      case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
       case Some(prior) =>
         authorizeAccess(host, prior, ctx.chain).flatMap {
-          case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
+          case Left(_) => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
           case Right(_) =>
             if (input.index < 0 || input.index >= prior.triggers.size)
-              Task.pure(s"Trigger index ${input.index} out of range (workflow has ${prior.triggers.size} trigger(s)).")
+              Task.pure(ToolResult.failure(s"Trigger index ${input.index} out of range (workflow has ${prior.triggers.size} trigger(s))."))
             else {
               val removed = prior.triggers(input.index)
               val updated = prior.copy(
@@ -55,7 +55,7 @@ final class UnregisterTriggerTool extends Tool with WorkflowToolSupport {
                 modified = Timestamp()
               )
               host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map { _ =>
-                s"Trigger '${removed.kind}' (index ${input.index}) removed from workflow '${prior.name}'."
+                ToolResult.success(TextToolOutput(s"Trigger '${removed.kind}' (index ${input.index}) removed from workflow '${prior.name}'."))
               }
             }
         }

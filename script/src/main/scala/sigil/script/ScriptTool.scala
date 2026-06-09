@@ -68,10 +68,9 @@ case class ScriptTool(name: ToolName,
                              context: ToolContext): Task[ToolResult[ScriptToolOutput]] =
     context.sigil match {
       case s: ScriptSigil => runOnExecutor(s.scriptExecutor, input.json, context)
-      case _              => Task.pure(ToolResult.Success(ScriptToolOutput(
-        error = Some("Sigil instance does not mix in ScriptSigil; cannot execute script tool."),
-        durationMs = 0L
-      )))
+      case _              => Task.pure(ToolResult.failure(
+        "Sigil instance does not mix in ScriptSigil; cannot execute script tool."
+      ))
     }
 
   private def runOnExecutor(executor: ScriptExecutor,
@@ -79,9 +78,10 @@ case class ScriptTool(name: ToolName,
                             context: ToolContext): Task[ToolResult[ScriptToolOutput]] = {
     val bindings = ScriptTools.defaultBindings(context) ++ Map("args" -> args, "context" -> context)
     val started  = System.currentTimeMillis()
-    // Bug #67 — wrap the construction in `Task.defer` so synchronous
-    // throws during executor.execute argument evaluation surface as a
-    // populated ScriptToolOutput.error. Mirror of ExecuteScriptTool's fix.
+    // Wrap the construction in `Task.defer` so synchronous throws
+    // during executor.execute argument evaluation, a compile error, or
+    // a runtime throw surface as a recoverable `ToolResult.failure`.
+    // Mirror of ExecuteScriptTool's fix.
     Task.defer {
       executor.execute(code, bindings)
         .map { output =>
@@ -90,20 +90,20 @@ case class ScriptTool(name: ToolName,
             durationMs = System.currentTimeMillis() - started
           ))
         }
-        .handleError(t => Task.pure(errorResult(started, t)))
-    }.handleError(t => Task.pure(errorResult(started, t)))
+        .handleError(t => Task.pure(errorResult(t)))
+    }.handleError(t => Task.pure(errorResult(t)))
   }
 
-  private def errorResult(started: Long, t: Throwable): ToolResult[ScriptToolOutput] =
-    ToolResult.Success(ScriptToolOutput(
-      // Bug #67 — include the abbreviated stack trace, not just
-      // `getMessage`. Wrapped exceptions (RuntimeException carrying
-      // an InvocationTargetException carrying a NoSuchMethodError,
-      // common in reflective script paths) need the root cause to
-      // be useful for the agent.
-      error      = Some(ExecuteScriptTool.formatThrowable(t)),
-      durationMs = System.currentTimeMillis() - started
-    ))
+  private def errorResult(t: Throwable): ToolResult[ScriptToolOutput] =
+    // A compile error or a runtime throw is a real failure — surface
+    // it as a recoverable `ToolResult.failure` so the framework's
+    // failure disposition engages. The abbreviated stack trace carries
+    // the root cause (wrapped reflective exceptions) so the agent can
+    // fix the script.
+    ToolResult.failure(
+      message = ExecuteScriptTool.formatThrowable(t),
+      hint    = Some("fix the script and re-run")
+    )
 }
 
 object ScriptTool {

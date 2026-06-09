@@ -49,18 +49,18 @@ final class ApproveWorkflowTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "approve", "ok", "yes", "continue")
 
-  override def executeResult(input: ApproveWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: ApproveWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     val payload: Json = input.comment.filter(_.nonEmpty).fold[Json](str("approve"))(c => str(s"approve: $c"))
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {
-      case None => Task.pure(s"Workflow run '${input.runId}' not found.")
+      case None => Task.pure(ToolResult.failure(s"Workflow run '${input.runId}' not found."))
       case Some(wf) =>
         authorizeRun(host, wf, ctx.chain).flatMap {
-          case Left(_) => Task.pure(s"Workflow run '${input.runId}' not found.")
+          case Left(_) => Task.pure(ToolResult.failure(s"Workflow run '${input.runId}' not found."))
           case Right(_) =>
             host.workflowManager.resume(workflowId, Id[Step](input.stepId), payload)
-              .map(_ => s"Workflow run '${input.runId}' approved at step '${input.stepId}'.")
-              .handleError(e => Task.pure(s"Approve failed: ${e.getMessage}"))
+              .map(_ => ToolResult.success(TextToolOutput(s"Workflow run '${input.runId}' approved at step '${input.stepId}'.")))
+              .handleError(e => Task.pure(ToolResult.failure(s"Approve failed: ${e.getMessage}")))
         }
     }
   }

@@ -13,9 +13,9 @@ case class LspCodeLensInput(languageId: String,
 /**
  * List code lenses in a file — the small "Run | Debug" / "N
  * references" / etc. annotations editors render above method
- * declarations. Each lens carries a Command the agent can execute
- * via `lsp_apply_code_lens` (TBD — currently just listed; the
- * command-runner path is out of scope for the proof-of-concept).
+ * declarations. Informational only: each lens's title and position
+ * are surfaced for the agent's awareness; there is no execution path
+ * for the lens's underlying command.
  */
 final class LspCodeLensTool(val manager: LspManager) extends Tool
   with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
@@ -28,7 +28,8 @@ final class LspCodeLensTool(val manager: LspManager) extends Tool
     """List code lenses in a file (run / debug / N-references / etc. annotations).
       |
       |`languageId` + `filePath` identify the document.
-      |Returns each lens's position, optional title, and whether it carries a runnable command.""".stripMargin
+      |Informational only: returns each lens's position and optional title for awareness.
+      |There is no tool to execute a lens's command.""".stripMargin
   override val keywords = Set("lsp", "code lens", "lens", "inline action", "above-line action")
 
 

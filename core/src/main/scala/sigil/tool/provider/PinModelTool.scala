@@ -63,9 +63,13 @@ case object PinModelTool extends Tool {
         ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
           case None       => Task.pure(None)
           case Some(conv) => Task.pure(Some(conv.copy(pinnedModelId = Some(modelId), modified = Timestamp())))
-        })).map { _ =>
-          ToolResult.Success(TextToolOutput(
-            s"Pinned to '${modelId.value}'$noteVia. The agent's turns in this conversation will use this model until `unpin_model` is called."))
+        })).map {
+          case None =>
+            ToolResult.failure(
+              "Could not pin model: conversation row not found. Try again from a live session.")
+          case Some(_) =>
+            ToolResult.Success(TextToolOutput(
+              s"Pinned to '${modelId.value}'$noteVia. The agent's turns in this conversation will use this model until `unpin_model` is called."))
         }
     }
 }

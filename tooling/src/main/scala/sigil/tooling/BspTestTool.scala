@@ -59,6 +59,7 @@ final class BspTestTool(val manager: BspManager) extends Tool
         if (resolved.isEmpty) Task.pure(BspExecResult(input.projectRoot, "NO_TARGETS", 0, "", ""))
         else {
           session.client.drainRunOutput()
+          session.client.drainLogs()
           session.test(resolved, input.arguments).map { result =>
             val status = result.getStatusCode match {
               case StatusCode.OK        => "OK"
@@ -70,7 +71,7 @@ final class BspTestTool(val manager: BspManager) extends Tool
               projectRoot = input.projectRoot,
               status      = status,
               targetCount = resolved.size,
-              stdout      = out.mkString,
+              stdout      = mergeDetail(out.mkString, session),
               stderr      = err.mkString
             )
           }.handleError { t =>
@@ -79,11 +80,20 @@ final class BspTestTool(val manager: BspManager) extends Tool
               projectRoot = input.projectRoot,
               status      = "ERROR",
               targetCount = resolved.size,
-              stdout      = out.mkString,
+              stdout      = mergeDetail(out.mkString, session),
               stderr      = (err.mkString + "\nBSP test dispatch failed: " + t.getMessage).trim
             ))
           }
         }
       }
     }
+
+  /** sbt-bsp reports which suite / test failed and the assertion text
+    * via `onBuildLogMessage` (the client's `logs` queue), separate from
+    * the program's run stdout/stderr. Append that detail so the agent
+    * sees the failure cause, not just the ERROR verdict. */
+  private def mergeDetail(runOut: String, session: BspSession): String = {
+    val detail = session.client.drainLogs().flatMap(l => Option(l.getMessage)).map(_.trim).filter(_.nonEmpty)
+    (List(runOut).filter(_.nonEmpty) ++ detail).mkString("\n")
+  }
 }

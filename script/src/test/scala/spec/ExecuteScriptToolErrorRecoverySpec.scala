@@ -25,10 +25,14 @@ import sigil.tool.{JsonInput, JsonSchemaToDefinition, ToolName}
  *
  * Post-fix:
  *   - Both tools wrap stream construction in `Task.defer { … }`
- *     plus an outer `.handleError` so even synchronous throws become
- *     a populated `ScriptResult.error`.
- *   - The error string carries an abbreviated stack trace, not just
- *     `getMessage` — wrapped exceptions surface their root cause.
+ *     plus an outer `.handleError` so even synchronous throws are
+ *     caught and the call still settles with a paired result.
+ *   - A compile / runtime error now settles as a recoverable
+ *     [[sigil.tool.ToolResult.Failure]] — the framework renders it as
+ *     a settling `ToolDelta` whose `outcome` is
+ *     [[ToolOutcome.Failure]] carrying the error text (with an
+ *     abbreviated stack trace, not just `getMessage`). The agent reads
+ *     it as a recoverable failure rather than a success-shaped result.
  *   - The `Provider.scala` placeholder is reworded to be diagnostic
  *     rather than blandly true.
  *
@@ -84,6 +88,12 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
     }.flatten
       .getOrElse(fail(s"expected a settling Success ToolDelta carrying ScriptToolOutput; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
 
+  /** Pull the error text off the settling recoverable-Failure ToolDelta. */
+  private def scriptFailureBody(signals: List[Signal]): String =
+    signals.iterator.collect { case d: ToolDelta => d.outcome }.flatten.collectFirst {
+      case ToolOutcome.Failure(reason, _) => reason
+    }.getOrElse(fail(s"expected a settling Failure ToolDelta; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
+
   private def ctx(suffix: String): TurnContext = {
     val convId = Conversation.id(s"recover-$suffix-${rapid.Unique()}")
     val topic = Topic(conversationId = convId, label = "Recovery", summary = "Test", createdBy = TestScriptUser)
@@ -100,30 +110,26 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
   }
 
   "ExecuteScriptTool (bug #67)" should {
-    "emit a ScriptToolOutput with `error` populated when the executor's Task fails" in {
+    "settle a recoverable Failure carrying the error when the executor's Task fails" in {
       val tool = new ExecuteScriptTool(FailingExecutor)
       tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("task-failure"), Event.id()).toList.map { signals =>
-        val out = scriptOutput(signals)
-        out.error shouldBe defined
-        out.error.get should include ("RuntimeException")
-        out.error.get should include ("synthetic script failure")
-        out.output shouldBe empty
+        val body = scriptFailureBody(signals)
+        body should include ("RuntimeException")
+        body should include ("synthetic script failure")
       }
     }
 
-    "emit a ScriptToolOutput with `error` populated when the executor THROWS synchronously" in {
+    "settle a recoverable Failure when the executor THROWS synchronously" in {
       // Pre-fix: this case would emit no events (sync throw escaped
       // Stream.force) and the orchestrator's dangling-tool-call
       // fallback would later inject `(no result recorded)`.
       // Post-fix: the outer Task.defer + handleError catches the
-      // throw and emits a populated ScriptToolOutput.
+      // throw and the call settles with a paired recoverable Failure.
       val tool = new ExecuteScriptTool(SyncThrowExecutor)
       tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("sync-throw"), Event.id()).toList.map { signals =>
-        val out = scriptOutput(signals)
-        out.error shouldBe defined
-        out.error.get should include ("RuntimeException")
-        out.error.get should include ("synthetic synchronous throw")
-        out.output shouldBe empty
+        val body = scriptFailureBody(signals)
+        body should include ("RuntimeException")
+        body should include ("synthetic synchronous throw")
       }
     }
 
@@ -136,21 +142,20 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
       }
     }
 
-    "format the error with stack-trace context, not just getMessage" in {
+    "format the failure with stack-trace context, not just getMessage" in {
       // Assertion checks that the formatted error includes "at "
       // (a stack-frame line marker) — the post-fix `formatThrowable`
       // takes the first 8 lines of `printStackTrace`, which always
       // starts with the throwable line followed by `at` frames.
       val tool = new ExecuteScriptTool(FailingExecutor)
       tool.execute(ScriptInput(code = "x", summary = "test: stack-trace path"), ctx("stack-trace"), Event.id()).toList.map { signals =>
-        val out = scriptOutput(signals)
-        out.error.get should include ("at ")
+        scriptFailureBody(signals) should include ("at ")
       }
     }
   }
 
   "ScriptTool (bug #67) — same recovery in the persisted-tool path" should {
-    "emit a ScriptToolOutput with `error` populated when the executor's Task fails" in {
+    "settle a recoverable Failure carrying the error when the script body throws" in {
       val tool = ScriptTool(
         name = ToolName("recover-test-throws"),
         description = "A script that throws a runtime exception.",
@@ -159,12 +164,10 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
         space = GlobalSpace
       )
       tool.execute(JsonInput(obj()), ctx("script-tool-throw"), Event.id()).toList.map { signals =>
-        val out = scriptOutput(signals)
-        withClue(s"got error=${out.error}, output=${out.output}: ") {
-          out.error shouldBe defined
-          out.error.get should include ("Exception")
-          out.error.get should include ("at ")
-          out.output shouldBe empty
+        val body = scriptFailureBody(signals)
+        withClue(s"got failure body=$body: ") {
+          body should include ("Exception")
+          body should include ("at ")
         }
       }
     }

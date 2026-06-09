@@ -37,7 +37,7 @@ final class BspDependencySourcesTool(val manager: BspManager) extends Tool
                              context: ToolContext): Task[BspDependencySourcesResult] =
     withTargets[BspDependencySourcesResult](
       input.projectRoot, context, input.targets,
-      onError = _ => BspDependencySourcesResult(input.projectRoot, Nil),
+      onError = msg => BspDependencySourcesResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspDependencySourcesResult(input.projectRoot, Nil)
     ) { (session, targets) =>
       session.dependencySources(targets).map { items =>

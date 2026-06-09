@@ -28,7 +28,8 @@ final class DapSetExceptionBreakpointsTool(val manager: DapManager) extends Tool
       |
       |`sessionId` selects the active session.
       |`filters` is a list of adapter-defined filter ids (e.g. "uncaught", "all", "raised").
-      |Empty list disables exception breakpoints.""".stripMargin
+      |Empty list disables exception breakpoints.
+      |Returns each filter's verified state and any message the adapter reported.""".stripMargin
   override val examples = List(
     ToolExample(
       "break on uncaught exceptions",
@@ -40,10 +41,18 @@ final class DapSetExceptionBreakpointsTool(val manager: DapManager) extends Tool
                              context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.setExceptionBreakpoints(input.filters).map { bps =>
-        val text =
-          if (input.filters.isEmpty) "Cleared exception breakpoints."
-          else s"Exception breakpoints set: ${input.filters.mkString(", ")} (${bps.size} state entries returned)."
-        ToolResult.success(TextToolOutput(text))
+        if (input.filters.isEmpty) ToolResult.success(TextToolOutput("Cleared exception breakpoints."))
+        else {
+          val rows = input.filters.zipAll(bps, "", null).collect { case (filter, b) if filter.nonEmpty =>
+            val verified = Option(b).exists(_.isVerified)
+            val state = if (verified) "verified" else "unverified"
+            val msg = Option(b).flatMap(bp => Option(bp.getMessage)).map(m => s" — $m").getOrElse("")
+            (filter, verified, s"  $filter: $state$msg")
+          }
+          val text = rows.map(_._3).mkString("\n")
+          if (rows.exists(_._2)) ToolResult.success(TextToolOutput(text))
+          else ToolResult.failure(s"No exception filter was verified by the adapter:\n$text")
+        }
       }
     }
 }

@@ -43,20 +43,20 @@ final class RegisterTriggerTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "trigger", "schedule", "register")
 
-  override def executeResult(input: RegisterTriggerInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: RegisterTriggerInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+      case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
       case Some(prior) =>
         authorizeAccess(host, prior, ctx.chain).flatMap {
-          case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
+          case Left(_) => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
           case Right(_) =>
             val updated = prior.copy(
               triggers = prior.triggers :+ input.trigger,
               modified = Timestamp()
             )
             host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map { _ =>
-              s"Trigger '${input.trigger.kind}' registered on workflow '${prior.name}'."
+              ToolResult.success(TextToolOutput(s"Trigger '${input.trigger.kind}' registered on workflow '${prior.name}'."))
             }
         }
     }

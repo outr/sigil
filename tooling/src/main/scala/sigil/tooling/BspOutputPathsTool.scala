@@ -37,7 +37,7 @@ final class BspOutputPathsTool(val manager: BspManager) extends Tool
                              context: ToolContext): Task[BspOutputPathsResult] =
     withTargets[BspOutputPathsResult](
       input.projectRoot, context, input.targets,
-      onError = _ => BspOutputPathsResult(input.projectRoot, Nil),
+      onError = msg => BspOutputPathsResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspOutputPathsResult(input.projectRoot, Nil)
     ) { (session, targets) =>
       session.outputPaths(targets).map { items =>

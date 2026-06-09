@@ -36,7 +36,7 @@ final class BspScalacOptionsTool(val manager: BspManager) extends Tool with BspT
                              context: ToolContext): Task[BspScalacOptionsResult] =
     withTargets[BspScalacOptionsResult](
       input.projectRoot, context, input.targets,
-      onError = _ => BspScalacOptionsResult(input.projectRoot, Nil),
+      onError = msg => BspScalacOptionsResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspScalacOptionsResult(input.projectRoot, Nil)
     ) { (session, targets) =>
       session.scalacOptions(targets).map { items =>

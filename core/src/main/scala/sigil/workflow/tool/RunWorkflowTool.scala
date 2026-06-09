@@ -42,18 +42,18 @@ final class RunWorkflowTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "run", "schedule", "execute", "trigger")
 
-  override def executeResult(input: RunWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: RunWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+      case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
       case Some(template) =>
         authorizeAccess(host, template, ctx.chain).flatMap {
-          case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
+          case Left(_) => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
           case Right(_) =>
             val vars: Map[String, fabric.Json] = input.variables.map { case (k, v) => k -> (fabric.str(v): fabric.Json) }
             WorkflowScheduler.scheduleTemplate(host, template, vars, Some(ctx.caller))
-              .map(wf => s"Workflow '${template.name}' scheduled (runId=${wf._id.value}).")
-              .handleError(e => Task.pure(s"Failed to schedule workflow: ${e.getMessage}"))
+              .map(wf => ToolResult.success(TextToolOutput(s"Workflow '${template.name}' scheduled (runId=${wf._id.value}).")))
+              .handleError(e => Task.pure(ToolResult.failure(s"Failed to schedule workflow: ${e.getMessage}")))
         }
     }
   }

@@ -31,19 +31,21 @@ final class ListTriggersTool extends Tool with WorkflowToolSupport {
   override val examples = List(ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc")))
   override val keywords = Set("workflow", "trigger", "list")
 
-  override def executeResult(input: ListTriggersInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: ListTriggersInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+      case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
       case Some(template) =>
         authorizeAccess(host, template, ctx.chain).map {
-          case Left(_) => s"Workflow '${input.workflowId}' not found."
+          case Left(_) => ToolResult.failure(s"Workflow '${input.workflowId}' not found.")
           case Right(_) =>
-            if (template.triggers.isEmpty) s"Workflow '${template.name}' has no triggers — manual-run only."
-            else template.triggers.zipWithIndex.map { case (t, idx) =>
-              val rendered = JsonFormatter.Compact(summon[RW[WorkflowTrigger]].read(t))
-              s"  [$idx] [${t.kind}] $rendered"
-            }.mkString("\n")
+            val text =
+              if (template.triggers.isEmpty) s"Workflow '${template.name}' has no triggers — manual-run only."
+              else template.triggers.zipWithIndex.map { case (t, idx) =>
+                val rendered = JsonFormatter.Compact(summon[RW[WorkflowTrigger]].read(t))
+                s"  [$idx] [${t.kind}] $rendered"
+              }.mkString("\n")
+            ToolResult.success(TextToolOutput(text))
         }
     }
   }

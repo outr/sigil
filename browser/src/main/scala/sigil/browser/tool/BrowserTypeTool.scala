@@ -1,7 +1,7 @@
 package sigil.browser.tool
 
 import fabric.rw.*
-import fabric.{Str, obj, str}
+import fabric.{Str, num, obj, str}
 import rapid.Task
 import robobrowser.select.Selector
 import sigil.tool.ToolContext
@@ -30,21 +30,34 @@ final class BrowserTypeTool extends Tool {
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
-      _          <- controller.run { browser =>
+      result     <- controller.run[ToolResult[TextToolOutput]] { browser =>
                       val sel = browser(Selector(input.selector))
-                      // Selection.value(Json) sets value + fires input event.
-                      // Clear-first is the default semantic; appending requires
-                      // a JS evaluate that reads first.
-                      if (input.clearFirst) sel.value(Str(input.value))
-                      else browser.eval(
-                        s"""const els = document.querySelectorAll("${input.selector}");
-                           |els.forEach(el => {
-                           |  el.value = (el.value || '') + ${fabric.io.JsonFormatter.Compact(Str(input.value))};
-                           |  el.dispatchEvent(new Event('input', { bubbles: true }));
-                           |});""".stripMargin
-                      ).unit
+                      sel.count.flatMap {
+                        case 0 =>
+                          Task.pure(ToolResult.failure(
+                            s"No element matches selector '${input.selector}' — nothing was typed",
+                            hint = Some("Save the page with browser_save_html, then use browser_text_search / " +
+                              "browser_xpath_query to find an input/textarea selector that actually exists.")
+                          ))
+                        case n =>
+                          // Selection.value(Json) sets value + fires input event on every match.
+                          // Clear-first is the default semantic; appending requires a JS evaluate
+                          // that reads the existing value first.
+                          val fill =
+                            if (input.clearFirst) sel.value(Str(input.value))
+                            else browser.eval(
+                              s"""const els = document.querySelectorAll("${input.selector}");
+                                 |els.forEach(el => {
+                                 |  el.value = (el.value || '') + ${fabric.io.JsonFormatter.Compact(Str(input.value))};
+                                 |  el.dispatchEvent(new Event('input', { bubbles: true }));
+                                 |});""".stripMargin
+                            ).unit
+                          fill.map { _ =>
+                            ToolResult.Success(BrowserToolBase.toolResult(
+                              obj("typed" -> str(input.selector), "filled" -> num(n), "valueLength" -> num(input.value.length))
+                            ))
+                          }
+                      }
                     }
-    } yield ToolResult.Success(BrowserToolBase.toolResult(
-      obj("typed" -> str(input.selector), "valueLength" -> fabric.num(input.value.length))
-    ))
+    } yield result
 }
