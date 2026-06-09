@@ -3500,6 +3500,48 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     case _ => Task.unit
   }
 
+  /** Settle any tool invoke left `Active` + `Pending` in `conversationId`
+    * for `caller` — the dangling-on-Stop case.
+    *
+    * A `Stop(force = true)` truncates the agent's signal stream via
+    * `takeWhile(_ => !force)` in `runAgentLoop`. When the cut lands
+    * between a tool's `ToolInvoke` element and its paired settle element
+    * (the window during which a slow atomic tool — a browser screenshot,
+    * an HTTP fetch — is executing), the settle is dropped before it
+    * persists. The orchestrator's in-memory reconcile can't recover it:
+    * its `activeCalls` entry was already cleared when the now-dropped
+    * settle signal was generated. The invoke is then stuck `Active` in
+    * the event store — clients render it "running" forever and the next
+    * turn's wire renderer treats it as a dangling `tool_call`.
+    *
+    * Run after the truncated drain (the loop's stop-exit): read the
+    * durable store and fold a terminal Failure `ToolDelta` onto each
+    * still-pending invoke so it reaches `Complete`. Scoped to `caller`
+    * so a co-resident agent's in-flight calls in the same conversation
+    * are untouched. Idempotent — a clean turn leaves nothing pending. */
+  def settleDanglingToolInvokes(conversationId: Id[Conversation], caller: ParticipantId): Task[Unit] =
+    withDB(_.conversationEvents(conversationId)).flatMap { events =>
+      val dangling = events.collect {
+        case ti: ToolInvoke
+          if ti.participantId == caller
+            && ti.state == EventState.Active
+            && ti.outcome == sigil.event.ToolOutcome.Pending =>
+          ti
+      }
+      dangling.foldLeft(Task.unit) { (acc, ti) =>
+        val reason = "Stopped before the tool produced a result."
+        val settle = ToolDelta(
+          target         = ti._id,
+          conversationId = conversationId,
+          input          = None,
+          state          = Some(EventState.Complete),
+          summary        = Some(reason),
+          outcome        = Some(sigil.event.ToolOutcome.Failure(reason, recoverable = true))
+        )
+        acc.flatMap(_ => publish(settle).handleError(_ => Task.unit))
+      }
+    }
+
   /** If this signal settles a [[ModeChange]] to `Complete`, resolve the
     * Mode-source [[ActiveSkillSlot]] (via [[sigil.provider.Mode.skill]]) and write it into
     * the acting participant's projection on the view. */
@@ -6191,9 +6233,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration drain done")
           // After the iteration drains, check stop flags before anything
           // else — a Stop that fired mid-stream means exit now, don't
-          // continue looping even if there are new triggers.
+          // continue looping even if there are new triggers. A force Stop
+          // may have truncated the stream between a tool's invoke and its
+          // settle (`takeWhile(!force)` above) — settle any invoke left
+          // dangling before releasing the claim so it doesn't render
+          // "running" forever / poison the next turn's wire render.
           if (stopFlag.exists(_.requested))
-            Task(terminate(skipFallback = true))
+            settleDanglingToolInvokes(convId, agent.id).flatMap(_ => Task(terminate(skipFallback = true)))
           else if (forceResponseSynthesis) {
             // Sigil bug #125 — the cap-hit soft-stop ran. With
             // `tool_choice: respond` the model SHOULD have called
