@@ -628,8 +628,14 @@ class ConversationSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           state          = EventState.Complete
         ))
         _ <- waitFor(System.currentTimeMillis() + 20_000L)(
+          // Wait for BOTH the Failed notice AND the user-facing Failure Message
+          // — they settle on separate paths, so waiting only on the notice let a
+          // slower runner snapshot before the Failure Message landed (CI flake).
           recorded.iterator().asScala.exists {
             case n: HealingActivityNotice => n.outcome == HealingOutcome.Failed
+            case _ => false
+          } && recorded.iterator().asScala.exists {
+            case m: Message => m.participantId == agent.id && m.isFailure
             case _ => false
           }
         )
