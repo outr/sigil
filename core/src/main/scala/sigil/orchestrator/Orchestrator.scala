@@ -999,7 +999,32 @@ object Orchestrator {
                   collected.reverseIterator.collectFirst {
                     case m: Message if m.role != MessageRole.Tool => m._id
                   }.foreach(id => state.lastUserVisibleMessageId = Some(id))
-                  Stream.emits(toolDeltaPrefix ::: collected)
+                  // Sigil #354 — guarantee the invoke settles with an OUTCOME.
+                  // `toolDeltaPrefix` already flipped it to `Complete` (the input
+                  // settle), so if the tool's execution produced no settling
+                  // event — an empty / interrupted result stream — the invoke
+                  // dangles Complete-but-Pending and the agent reads the
+                  // ambiguous "raced past, retry" placeholder (the materialized
+                  // grep frame-race). Synthesize a recoverable Failure so it
+                  // settles definitively with an actionable message instead.
+                  val outcomeSettled = collected.exists {
+                    case td: ToolDelta if td.target == invokeId            => td.outcome.isDefined
+                    case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) => true
+                    case _                                                  => false
+                  }
+                  val settleGuard: List[Signal] =
+                    if (outcomeSettled) Nil
+                    else List[Signal](ToolDelta(
+                      target         = invokeId,
+                      conversationId = convId,
+                      output         = Some(_root_.sigil.tool.TextToolOutput("")),
+                      outcome        = Some(_root_.sigil.event.ToolOutcome.Failure(
+                        s"Tool `${active.toolName}` returned no result (its execution produced no output — likely interrupted mid-run). Re-issue it if you still need the result.",
+                        recoverable = true)),
+                      state          = Some(EventState.Complete),
+                      internal       = isInternal
+                    ))
+                  Stream.emits(toolDeltaPrefix ::: collected ::: settleGuard)
                   }
                 }
               )
