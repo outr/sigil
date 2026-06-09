@@ -125,6 +125,17 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
+  /** Poll `cond` until true or `timeout` elapses — replaces fixed sleeps in
+    * async agent-loop assertions so a slow CI runner doesn't snapshot before the
+    * loop's later iterations land. */
+  private def waitUntil(timeout: scala.concurrent.duration.FiniteDuration)(cond: => Boolean): Task[Unit] = {
+    val deadline = System.currentTimeMillis() + timeout.toMillis
+    def loop: Task[Unit] =
+      if (cond || System.currentTimeMillis() > deadline) Task.unit
+      else Task.sleep(50.millis).flatMap(_ => loop)
+    loop
+  }
+
   "respond(endsTurn = false)" should {
 
     "iterate the loop without waiting for new triggers, then settle on respond(endsTurn = true)" in {
@@ -143,7 +154,11 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
                content        = Vector(ResponseContent.Text("Evaluate the admin services.")),
                state          = EventState.Complete
              ))
-        _ <- Task.sleep(2.seconds) // wait for both iterations to settle
+        // Poll for both iterations rather than a fixed sleep — the 2nd
+        // iteration can land later than a flat 2s on a slow/contended CI runner
+        // (was `1 was not equal to 2`).
+        _ <- waitUntil(20.seconds)(provider.callCount.get() >= 2)
+        _ <- Task.sleep(250.millis) // let the 2nd respond's Message settle
         events <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val agentMessages = events.collect {
