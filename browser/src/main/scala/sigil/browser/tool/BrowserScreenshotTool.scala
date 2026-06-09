@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.browser.BrowserStateDelta
 import sigil.browser.WebBrowserMode
-import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{ImageToolOutput, Tool, ToolExample, ToolName, ToolResult}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
@@ -13,20 +13,22 @@ import scala.concurrent.duration.*
 
 /**
  * Capture a PNG screenshot of the current page, persist it via
- * [[sigil.Sigil.storeBytes]] under [[GlobalSpace]], and resolve to a
- * [[BrowserScreenshotOutput]] carrying the stored file id and a
- * storage-route URL.
+ * [[sigil.Sigil.storeBytes]] under [[GlobalSpace]], and resolve to an
+ * [[ImageToolOutput]] so the framework lifts the capture into the
+ * agent's visual context (Sigil #280) — the agent SEES the screenshot
+ * on its next turn, matching this tool's contract, instead of a bare
+ * file reference it can't render.
  *
- * The capture is surfaced live to subscribers via the
+ * The capture is also surfaced live to subscribers via the
  * [[BrowserStateDelta]] published during execution; the URL resolves
  * through the framework's storage route filter, so the backend
  * (local FS / S3 / future CDN) is invisible to the client.
  */
 final class BrowserScreenshotTool extends Tool {
   type Input  = BrowserScreenshotInput
-  type Output = BrowserScreenshotOutput
+  type Output = ImageToolOutput
   val inputRW  = summon[RW[BrowserScreenshotInput]]
-  val outputRW = summon[RW[BrowserScreenshotOutput]]
+  val outputRW = summon[RW[ImageToolOutput]]
 
   val name = ToolName("browser_screenshot")
   val description =
@@ -40,7 +42,7 @@ final class BrowserScreenshotTool extends Tool {
   override val keywords = Set("browser", "screenshot", "image", "capture", "render")
 
   override def executeResult(input: BrowserScreenshotInput,
-                             ctx: ToolContext): Task[ToolResult[BrowserScreenshotOutput]] =
+                             ctx: ToolContext): Task[ToolResult[ImageToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
       // Resize viewport if requested.
@@ -74,9 +76,10 @@ final class BrowserScreenshotTool extends Tool {
                       conversationId   = ctx.conversation.id,
                       screenshotFileId = Some(stored._id)
                     ))
-    } yield ToolResult.Success(BrowserScreenshotOutput(
-      fileId  = stored._id.value,
-      url     = ctx.sigil.storageUrl(stored).toString,
-      altText = s"Browser screenshot at ${java.time.Instant.now}"
+    } yield ToolResult.Success(ImageToolOutput(
+      url  = ctx.sigil.storageUrl(stored),
+      alt  = s"Browser screenshot at ${java.time.Instant.now}",
+      text = Some("Screenshot of the current browser page. Examine the rendered page for " +
+        "layout, content, error states, or differences from what you expected.")
     ))
 }
