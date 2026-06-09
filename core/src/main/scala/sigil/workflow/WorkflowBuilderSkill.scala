@@ -17,7 +17,7 @@ object WorkflowBuilderSkill {
       |
       |A workflow is a FLAT list of steps the engine runs in order. Each step is one object with a unique `id`, a `kind`, and the fields for that kind. You do NOT nest objects — Loop and Parallel reference their inner steps by id, and those inner steps are ordinary entries in the same flat list.
       |
-      |  - kind = "Job" — runs a tool or an LLM prompt. Set `tool` + `arguments` (a JSON string of the tool's args) to invoke a tool, OR `prompt` (+ optional `modelId`) to run an LLM prompt. `output` names the variable the result is written to. `tools` (optional) restricts an LLM step's tool roster.
+      |  - kind = "Job" — runs a tool or an LLM prompt. Set `tool` + `arguments` (a JSON OBJECT holding every tool parameter — not a string) to invoke a tool, OR `prompt` (+ optional `modelId`) to run an LLM prompt. `output` names the variable the result is written to. `tools` (optional) restricts an LLM step's tool roster.
       |  - kind = "Condition" — branches. `expression` is a small DSL: `{{var}} == "literal"`, `{{count}} > 0`. `onTrue` / `onFalse` name step ids to jump to.
       |  - kind = "Approval" — pauses for a human decision. `prompt` is the question; `options` defaults to ["approve","reject"]. `timeoutMs` / `timeoutAction` (Fail | Proceed | Skip) bound the wait. The user resolves with `resume_workflow`.
       |  - kind = "Parallel" — forks and joins. `branchStepIds` is a list of branches, each a list of step ids (defined elsewhere in the flat list). `joinMode = All` waits for all, `Any` returns the first finisher.
@@ -25,7 +25,7 @@ object WorkflowBuilderSkill {
       |  - kind = "SubWorkflow" — invokes another persisted workflow. `workflowId` is the target template id; `variables` (optional) overrides its inputs.
       |  - kind = "Trigger" — waits for an external event; set the optional `trigger` object (see TRIGGERS).
       |
-      |WORKFLOW-FIRST: when the work shape is known — find X, then act on each — author the WHOLE workflow up front. Make discovery the FIRST stage: a Job step that runs a discovery tool (grep / glob / lsp) capturing into `output`, then a Loop whose `over` is that variable. The engine finds the particulars at run time; never enumerate the items yourself in this conversation. Example: Job{id:"find", tool:"grep", arguments:"{\"pattern\":\"bug #\",\"path\":\"/src\"}", output:"hits"} ; Loop{id:"each", over:"hits", itemVariable:"f", bodyStepIds:["fix"]} ; Job{id:"fix", tool:"edit_file", arguments:"{\"path\":\"{{f}}\"}"}.
+      |WORKFLOW-FIRST: when the work shape is known — find X, then act on each — author the WHOLE workflow up front. Make discovery the FIRST stage: a Job step that runs a discovery tool (grep / glob / lsp) capturing into `output`, then a Loop whose `over` is that variable. The engine finds the particulars at run time; never enumerate the items yourself in this conversation. Example: Job{id:"find", tool:"grep", arguments:{"pattern":"bug #","path":"/src"}, output:"hits"} ; Loop{id:"each", over:"hits", itemVariable:"f", bodyStepIds:["fix"]} ; Job{id:"fix", tool:"edit_file", arguments:{"path":"{{f}}"}}.
       |
       |VARIABLE SUBSTITUTION
       |

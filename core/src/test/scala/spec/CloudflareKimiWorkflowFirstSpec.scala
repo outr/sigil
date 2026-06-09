@@ -15,32 +15,30 @@ import sigil.workflow.tool.{CreateWorkflowInput, CreateWorkflowTool}
 import scala.concurrent.duration.*
 
 /**
- * Live proof that the flat `WorkflowStepSpec` authoring surface is fillable over
- * the real wire by a small model (#338/#372): asked to compose a known-shape
- * `find → act on each` workflow, Kimi-K2.6 calls `create_workflow` with steps
- * that decode into typed `WorkflowStepSpec`s carrying REAL content — a `Job`
- * naming an actual discovery tool. The prior `oneOf`-of-seven `WorkflowStepInput`
- * union could not be filled at all: the model collapsed to a single sub-workflow
- * step with placeholder values ("string", {key:"string"}). That this no longer
- * happens — a meaningful, decodable step with a real tool — is the redesign's win
- * and what this guards against regressing.
+ * Live proof of the #373 fix: a Job's `arguments` is a STRUCTURED OBJECT, so a
+ * small model puts every tool parameter inside it — instead of, with the prior
+ * stringified-JSON `arguments`, spilling the grep params into sibling fields
+ * (`workflowId` / `variables`) and leaving `arguments` null. Asked to compose a
+ * known-shape `find → act on each` workflow, Kimi-K2.6 fills the discovery Job's
+ * `arguments` as a non-empty JSON object.
  *
- * Scope: a small model fills the schema with real content, but does NOT reliably
- * author the full discovery→loop WIRING (a Job's `output` equal to the Loop's
- * `over`, a non-empty `bodyStepIds`) — across escalating guidance and explicit
- * recoverable-error feedback, Kimi K2.6 gets individual steps right but not the
- * cross-step dataflow, and its step count even varies run to run. Sage's design
- * has a frontier model author workflows; the wiring, the framework's recoverable
- * validation of it (dangling `over`, empty loop body), and the engine execution
- * are proven deterministically in WorkflowStepSpecLoweringSpec and
- * WorkflowEndToEndSpec.
+ * Why the flat schema (not the `oneOf`-by-kind #373 proposed): a discriminated
+ * union of per-kind variants re-triggers #372 — Kimi degenerates to the
+ * lowest-friction variant (a single placeholder SubWorkflow step). The flat
+ * schema is the one Kimi fills structurally; structured `arguments` removes the
+ * scatter incentive (#373's root cause) without that regression.
+ *
+ * Scope: this guards the schema's fillability — a discovery Job carries its
+ * params in a real `arguments` object. The full discovery→loop WIRING is a
+ * frontier-planner concern proven deterministically in WorkflowStepSpecLoweringSpec
+ * / WorkflowEndToEndSpec.
  *
  * **Self-skips** without `SIGIL_LIVE` + Cloudflare credentials.
  */
 class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestWorkflowSigil.initFor(getClass.getSimpleName)
 
-  override protected val testTimeout: FiniteDuration = 4.minutes
+  override protected val testTimeout: FiniteDuration = 2.minutes
 
   private val apiTokenOpt: Option[String]  = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
   private val accountIdOpt: Option[String] = sys.env.get("CLOUDFLARE_ACCOUNT_ID").filter(_.nonEmpty)
@@ -70,8 +68,9 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
       |and those steps are ordinary entries in the same flat list.
       |
       |Use these kinds:
-      |- kind "Job":  runs ONE tool. Set `tool` (a tool name), `arguments` (a JSON STRING of its
-      |  args), and `output` (a variable name capturing the result).
+      |- kind "Job":  runs ONE tool. Set `tool` (a tool name), `arguments` (a JSON OBJECT holding
+      |  EVERY parameter of that tool — NOT a string), and `output` (a variable name capturing the
+      |  result).
       |- kind "Loop": iterates. `over` names the variable to iterate — when it names a tool's text
       |  output (e.g. grep's newline paths) the engine splits it into items automatically, so you
       |  do NOT hand-build an array. `itemVariable` (default "item") binds each element; reference
@@ -87,11 +86,11 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
       |engine finds the particulars at run time; never enumerate the items yourself.
       |
       |Worked example (a DIFFERENT task — find error logs, act on each):
-      |  { "id":"scan",  "kind":"Job",  "tool":"grep", "arguments":"{\"pattern\":\"ERROR\",\"path\":\"/logs\"}", "output":"errorFiles" }
+      |  { "id":"scan",  "kind":"Job",  "tool":"grep", "arguments":{"pattern":"ERROR","path":"/logs"}, "output":"errorFiles" }
       |  { "id":"per",   "kind":"Loop", "over":"errorFiles", "itemVariable":"file", "bodyStepIds":["note"] }
-      |  { "id":"note",  "kind":"Job",  "tool":"echo_back", "arguments":"{\"text\":\"{{file}}\"}" }
-      |Note: the Loop's `over` is EXACTLY the first Job's `output` variable, and `bodyStepIds` lists
-      |the id of the per-item step. Wire those three together or the loop has nothing to iterate.
+      |  { "id":"note",  "kind":"Job",  "tool":"echo_back", "arguments":{"text":"{{file}}"} }
+      |Note: `arguments` is a JSON object (all the tool's params go inside it), the Loop's `over` is
+      |EXACTLY the first Job's `output`, and `bodyStepIds` lists the per-item step's id.
       |
       |Reply ONLY by calling the `create_workflow` tool.""".stripMargin
 
@@ -104,12 +103,15 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
   private val discoveryTools = Set("grep", "glob", "lsp_workspace_symbols")
 
   "Kimi-K2.6 authoring a workflow up front" should {
-    "fill the flat step schema with a real discovery-tool Job, not the union's placeholder junk (#338/#372)" in {
+    "fill a Job's `arguments` as a structured object with the tool's params — not scatter them (#373)" in {
       if (apiTokenOpt.isEmpty || accountIdOpt.isEmpty)
         cancel("CLOUDFLARE_AUTH_TOKEN / CLOUDFLARE_ACCOUNT_ID not set — skipping live Kimi workflow-first spec")
 
       val model = registerKimiModel()
-      val provider = CloudflareProvider(apiTokenOpt.get, accountIdOpt.get, TestWorkflowSigil)
+      // Short idle timeout so a throttled/hung Cloudflare stream throws (and
+      // self-skips via isServiceUnavailable) rather than blocking to the test
+      // timeout.
+      val provider = CloudflareProvider(apiTokenOpt.get, accountIdOpt.get, TestWorkflowSigil, tokenIdleTimeout = 45.seconds)
 
       def author(messages: Vector[ProviderMessage]): Task[CreateWorkflowInput] = {
         val pc = ProviderCall(
@@ -132,16 +134,25 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
       }
 
       def summarize(in: CreateWorkflowInput): String =
-        in.steps.map(s => s"{id:${s.id}, kind:${s.kind}, tool:${s.tool.getOrElse("-")}, output:${s.output.getOrElse("-")}, over:${s.over.getOrElse("-")}, bodyStepIds:${s.bodyStepIds.mkString("[", ",", "]")}}").mkString("\n")
+        in.steps.map(s => s"{id:${s.id}, kind:${s.kind}, tool:${s.tool.getOrElse("-")}, args:${s.arguments.map(fabric.io.JsonFormatter.Compact(_)).getOrElse("-")}, " +
+          s"workflowId:${s.workflowId.getOrElse("-")}, variables:${s.variables}}").mkString("\n")
 
       val turn1 = Vector[ProviderMessage](ProviderMessage.User(Vector(MessageContent.Text(task))))
       author(turn1).map { in =>
         withClue(s"authored steps:\n${summarize(in)}\n") {
-          // The schema is filled with REAL content: at least one Job names an
-          // actual discovery tool — not the placeholder ("string") the unfillable
-          // union forced. Every step decodes to a typed kind by construction.
           in.steps should not be empty
-          in.steps.exists(s => s.kind == WorkflowStepKind.Job && s.tool.exists(discoveryTools.contains)) shouldBe true
+          // The #373 win: the discovery Job carries its tool params INSIDE a
+          // structured `arguments` object (not scattered into workflowId /
+          // variables, not left null). `arguments` is a JSON object with fields.
+          val discoveryJob = in.steps.find(s =>
+            s.kind == WorkflowStepKind.Job && s.tool.exists(discoveryTools.contains))
+          discoveryJob should not be empty
+          withClue(s"discovery Job arguments = ${discoveryJob.flatMap(_.arguments)}\n") {
+            discoveryJob.flatMap(_.arguments) match {
+              case Some(o: fabric.Obj) => o.value should not be empty
+              case other               => fail(s"expected the discovery Job's `arguments` to be a non-empty JSON object, got: $other")
+            }
+          }
         }
       }
     }

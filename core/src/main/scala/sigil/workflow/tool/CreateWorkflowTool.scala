@@ -1,5 +1,6 @@
 package sigil.workflow.tool
 
+import fabric.{obj, str}
 import fabric.rw.*
 import rapid.Task
 import sigil.{GlobalSpace, SpaceId}
@@ -37,8 +38,9 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
       |
       |`name` is the template's identifier. `steps` is a flat list of steps; each step has a
       |`kind` (Job / Condition / Approval / Parallel / Loop / SubWorkflow / Trigger) and fills the
-      |fields for that kind. Job: `tool` + `arguments` (a JSON string) or `prompt`, capturing into
-      |`output`. Loop: `over` (a variable — e.g. a prior Job's `output`, coerced from text) plus
+      |fields for that kind. Job: `tool` + `arguments` (a JSON OBJECT holding every tool parameter)
+      |or `prompt`, capturing into `output`. Loop: `over` (a variable — e.g. a prior Job's `output`,
+      |coerced from text) plus
       |`bodyStepIds` (ids of steps in this same list to run per item, binding `itemVariable`).
       |Parallel: `branchStepIds`. Reference {{output}} variables in later steps' arguments/prompts.
       |`triggers` registers external firing conditions (conversation message, time / cron, webhook,
@@ -55,7 +57,7 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
             id = "find",
             kind = WorkflowStepKind.Job,
             tool = Some("grep"),
-            arguments = Some("""{"pattern":"TODO","path":"/src"}"""),
+            arguments = Some(obj("pattern" -> str("TODO"), "path" -> str("/src"))),
             output = Some("hits")),
           WorkflowStepSpec(
             id = "each",
@@ -63,7 +65,7 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
             over = Some("hits"),
             itemVariable = Some("file"),
             bodyStepIds = List("act")),
-          WorkflowStepSpec(id = "act", kind = WorkflowStepKind.Job, tool = Some("read_file"), arguments = Some("""{"path":"{{file}}"}"""))
+          WorkflowStepSpec(id = "act", kind = WorkflowStepKind.Job, tool = Some("read_file"), arguments = Some(obj("path" -> str("{{file}}"))))
         )
       )
     )

@@ -1,5 +1,6 @@
 package spec
 
+import fabric.{obj, str}
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
@@ -20,11 +21,11 @@ class WorkflowStepSpecLoweringSpec extends AnyWordSpec with Matchers {
     "lower discovery-as-a-stage: a Job's output feeds a Loop; the body step nests, not top-level" in {
       val specs = List(
         WorkflowStepSpec(id = "find", kind = WorkflowStepKind.Job, tool = Some("grep"),
-          arguments = Some("""{"pattern":"bug #","path":"/src"}"""), output = Some("hits")),
+          arguments = Some(obj("pattern" -> str("bug #"), "path" -> str("/src"))), output = Some("hits")),
         WorkflowStepSpec(id = "each", kind = WorkflowStepKind.Loop, over = Some("hits"),
           itemVariable = Some("f"), bodyStepIds = List("act")),
         WorkflowStepSpec(id = "act", kind = WorkflowStepKind.Job, tool = Some("echo_back"),
-          arguments = Some("""{"text":"{{f}}"}"""))
+          arguments = Some(obj("text" -> str("{{f}}"))))
       )
       WorkflowStepSpec.lower(specs) match {
         case Left(errors) => fail(s"expected success, got: $errors")
@@ -104,10 +105,10 @@ class WorkflowStepSpecLoweringSpec extends AnyWordSpec with Matchers {
         name = "process-matches",
         steps = List(
           WorkflowStepSpec(id = "find", kind = WorkflowStepKind.Job, tool = Some("grep"),
-            arguments = Some("""{"pattern":"TODO","path":"/src"}"""), output = Some("hits")),
+            arguments = Some(obj("pattern" -> str("TODO"), "path" -> str("/src"))), output = Some("hits")),
           WorkflowStepSpec(id = "each", kind = WorkflowStepKind.Loop, over = Some("hits"), bodyStepIds = List("act")),
           WorkflowStepSpec(id = "act", kind = WorkflowStepKind.Job, tool = Some("read_file"),
-            arguments = Some("""{"path":"{{item}}"}"""))
+            arguments = Some(obj("path" -> str("{{item}}"))))
         )
       )
       val rw = summon[RW[CreateWorkflowInput]]

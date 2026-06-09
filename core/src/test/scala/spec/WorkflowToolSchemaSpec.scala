@@ -43,21 +43,26 @@ class WorkflowToolSchemaSpec extends AnyWordSpec with Matchers {
   }
 
   "create_workflow schema" should {
-    "render `steps` as a flat object with a `kind` discriminator, NOT a oneOf union" in {
-      arrayItems("create_workflow", "steps") match {
+    "render a step's `arguments` as a structured object, NOT a stringified-JSON string (#373)" in {
+      val items = arrayItems("create_workflow", "steps")
+      val argsSchema = items match {
         case Obj(m) =>
-          withClue(s"steps.items keys = ${m.keySet}: ") {
-            m.keySet should not contain "oneOf"
-            m.keySet should not contain "anyOf"
-          }
-          val props = get(Obj(m), "properties")
-          withClue(s"steps.items.properties = $props: ") {
-            props match {
-              case Obj(p) => p.keySet should contain allOf ("kind", "tool", "over", "bodyStepIds")
-              case other => fail(s"steps.items.properties is not an object: $other")
-            }
+          get(Obj(m), "properties") match {
+            case Obj(p) => p.getOrElse("arguments", fail(s"steps.items has no `arguments` property: ${p.keySet}"))
+            case other  => fail(s"steps.items.properties is not an object: $other")
           }
         case other => fail(s"steps.items is not an object: $other")
+      }
+      // A stringified-JSON `arguments` is the #373 footgun — the model can't nest
+      // a tool's params into a string, so it spills them into sibling fields
+      // (workflowId / variables). The field must accept a JSON OBJECT so every
+      // tool parameter has a home.
+      val ty = argsSchema match {
+        case Obj(m) => m.get("type").map(_.toString.replace("\"", ""))
+        case _      => None
+      }
+      withClue(s"arguments schema = $argsSchema (type=$ty)\n") {
+        ty should not be Some("string")
       }
     }
 

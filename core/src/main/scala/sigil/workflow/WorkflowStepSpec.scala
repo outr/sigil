@@ -1,5 +1,7 @@
 package sigil.workflow
 
+import fabric.Json
+import fabric.io.JsonFormatter
 import fabric.rw.*
 import strider.step.{JoinMode, TimeoutAction}
 
@@ -32,8 +34,8 @@ case class WorkflowStepSpec(@description("Unique id for this step within the wor
                             prompt: Option[String] = None,
                             @description("Job only: the name of the tool to invoke (e.g. grep, read_file). Alternative to `prompt`.")
                             tool: Option[String] = None,
-                            @description("Job only: a JSON STRING of the tool's arguments, e.g. {\"pattern\":\"TODO\",\"path\":\"/src\"}. Reference earlier outputs / the loop item as {{var}}.")
-                            arguments: Option[String] = None,
+                            @description("Job only: the tool's arguments as a JSON OBJECT (not a string), e.g. {\"pattern\":\"TODO\",\"path\":\"/src\"}. Put EVERY tool parameter inside this object. Reference earlier outputs / the loop item as {{var}} in the values.")
+                            arguments: Option[Json] = None,
                             @description("The variable name this step writes its result to. A discovery Job that feeds a Loop MUST set this; the Loop's `over` then names this exact variable.")
                             output: Option[String] = None,
                             modelId: Option[String] = None,
@@ -134,7 +136,10 @@ object WorkflowStepSpec {
     * reached for fields `validate` already proved present. */
   private def build(s: WorkflowStepSpec, byId: Map[String, WorkflowStepSpec]): WorkflowStepInput = s.kind match {
     case Job =>
-      JobStepInput(s.id, s.name, s.prompt, s.tool, s.arguments, s.output, s.modelId, s.tools, s.continueOnError, s.retryCount, s.retryDelayMs)
+      // The IR carries `arguments` as a JSON string (the engine's variable
+      // substitution + tool-arg decode run on it); the model authors a structured
+      // object, which we compact to that string here (#373).
+      JobStepInput(s.id, s.name, s.prompt, s.tool, s.arguments.map(JsonFormatter.Compact(_)), s.output, s.modelId, s.tools, s.continueOnError, s.retryCount, s.retryDelayMs)
     case Condition =>
       ConditionStepInput(s.id, s.expression.get, s.onTrue.get, s.onFalse.get, s.name)
     case Approval =>
