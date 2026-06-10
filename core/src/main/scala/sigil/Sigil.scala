@@ -2023,14 +2023,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // we want field-by-field merge later that lives here).
         genSettings  = chosen.map(_.settings).getOrElse(agent.generationSettings)
         rawTools    <- Task.sequence(effectiveNames.map(n => findTools.byName(n))).map(_.flatten.toVector)
+        // Sigil #378 — `record_consent` is a no-op unless some tool in
+        // scope sets `requiresUserConsent`. It's no longer in the default
+        // roster (dropped from `CoreTools.all`); keep it only when a
+        // consent-gated tool is actually present, so on apps with no
+        // consent-gated tools it's never a dead-end attractor the model
+        // loops on.
+        withConsent  = Sigil.reconcileConsentTool(rawTools)
         // Filter out memory tools when the chain has no accessible
         // spaces — surfacing `save_memory` / `unpin_memory` /
         // `list_memories` to an agent that has nowhere to write
         // would just waste tokens on tool descriptions the agent
         // would fail to use.
         accessible  <- accessibleSpaces(effectiveChain, context.conversation.id)
-        t            = if (accessible.isEmpty) rawTools.filterNot(_.requiresAccessibleSpaces)
-                        else rawTools
+        t            = if (accessible.isEmpty) withConsent.filterNot(_.requiresAccessibleSpaces)
+                        else withConsent
         // Resolve the agent's roles for this turn. Static agents return
         // their declared `roles` field; DB-backed agents (e.g. apps
         // with persona records) consult persistence here. Empty result
@@ -5675,10 +5682,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * framework runs an out-of-band reflection turn that compares the
     * current task state against the prior checkpoint's status and
     * decides whether to continue / intervene / ask the user. Default
-    * 15 — long enough to amortise the extra LLM call across real
-    * work, short enough to catch sustained loops within ~30
-    * iterations. Set to 0 to disable checkpointing. */
-  protected def progressCheckpointInterval: Int = 15
+    * 8 — the checkpoint is a NON-TERMINAL reflection nudge (sigil #379:
+    * it lets the agent continue rather than forcing a respond), so it's
+    * cheap to self-evaluate earlier; the second consecutive no-progress
+    * checkpoint (~16 iterations) carries the prior status so the agent
+    * is forced to evaluate while still allowed to move forward. Set to 0
+    * to disable checkpointing. */
+  protected def progressCheckpointInterval: Int = 8
 
   /** #321 — model for the out-of-band progress reflection. The reflection
     * can cancel an in-flight workflow (its `shouldAskUser` / stall verdict
@@ -6368,7 +6378,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                           state          = EventState.Complete,
                           role           = MessageRole.Standard
                         ),
-                        askingUser = false
+                        askingUser = false,
+                        // Sigil #379 — the HARD stall (an identical-call streak
+                        // past `hardStallIdenticalCallLimit` that ignored every
+                        // cooperative checkpoint nudge) is a genuine runaway:
+                        // force a terminal synthesis early rather than grind to
+                        // `maxAgentIterations`. The cooperative checkpoint path
+                        // (`runProgressCheckpoint`) leaves this false so it just
+                        // nudges-and-continues.
+                        terminal = true
                       )))
                 checkpointTask.flatMap {
                   case Some(intervention) =>
@@ -6416,7 +6434,41 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                     )
                     publish(syntheticInvoke)
                       .flatMap(_ => publish(taggedDirective))
-                      .map(_ => recurseForced(ForcedSynthesisReason.StallIntervention))
+                      .map(_ =>
+                        if (intervention.terminal || isDirectedWorkerConversation(conv))
+                          // Sigil #379 — force a terminal synthesis early when:
+                          //   - HARD stall: an identical-call streak past
+                          //     `hardStallIdenticalCallLimit` that ignored every
+                          //     cooperative nudge — a genuine runaway, don't grind
+                          //     to the cap; OR
+                          //   - a directed WORKER: it can't ask the user, so a
+                          //     stall escalates by reporting to its supervisor
+                          //     (who decides how to proceed) rather than flailing
+                          //     silently in a sub-conversation.
+                          recurseForced(ForcedSynthesisReason.StallIntervention)
+                        else
+                          // Sigil #379 — for the main agent a cooperative
+                          // checkpoint directive is a NON-TERMINAL nudge: publish
+                          // it, then let the agent continue with its FULL roster
+                          // so it reflects and either changes approach or asks the
+                          // user ITSELF via respond_options. Previously this forced
+                          // a terminal respond (recurseForced), which (post-#375)
+                          // pinned tool_choice to `respond` — blocking
+                          // respond_options — and, on an `endsTurn:false` reply,
+                          // wedged the turn so the stall counters never cleared and
+                          // every "continue" re-fired the stale stall. Forced
+                          // synthesis now fires only on a hard stall, in a worker,
+                          // or at the maxAgentIterations ceiling, so a cooperative
+                          // main-agent stall no longer guillotines legitimate
+                          // long-running work.
+                          maybeIntraTurnCompact(agent, convId, claimed)
+                            .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
+                              userVisibleSeen = userVisibleSeen,
+                              turnExtractorFired = turnExtractorFired,
+                              failurePublished = failurePublished,
+                              discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+                              healedThisTurn = healedThisTurn,
+                              healCorrelationId = healCorrelationId)))
                   case None =>
                     // Sigil #285 — consult the intra-turn compactor
                     // before the next iteration. When budget pressure
@@ -6737,7 +6789,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * The previous return shape (`Option[Message]`) collapsed both
     * cases into one path and unconditionally terminated the loop;
     * the agent never got to act on stall directives. */
-  private final case class CheckpointIntervention(message: Message, askingUser: Boolean)
+  private final case class CheckpointIntervention(message: Message, askingUser: Boolean, terminal: Boolean = false)
 
   /** Sigil #285 — consult [[intraTurnCompactor]] at an iteration
     * boundary and, if it fires, run [[intraTurnCompressor.compressCovering]]
@@ -8399,6 +8451,21 @@ object Sigil {
     * genuine crashes (tool throws, projection failures, transform
     * blow-ups, …) stay non-recoverable. */
   def isStallFailure(t: Throwable): Boolean = t.isInstanceOf[AgentRunawayException]
+
+  /** Sigil #378 — `record_consent` is a no-op unless some tool in scope
+    * sets `requiresUserConsent`. Keep it in the per-turn roster only when
+    * a consent-gated tool is actually present (injecting it if absent),
+    * and drop it otherwise — so on apps with no consent-gated tools it's
+    * never a dead-end attractor the model loops on. It stays
+    * DB-registered (resolvable) regardless; this only governs the
+    * per-turn roster surfaced to the model. */
+  def reconcileConsentTool(tools: Vector[sigil.tool.Tool]): Vector[sigil.tool.Tool] = {
+    val consent = sigil.tool.core.RecordConsentTool
+    val needsConsent = tools.exists(t => t.requiresUserConsent && t.schema.name != consent.schema.name)
+    if (needsConsent) {
+      if (tools.exists(_.schema.name == consent.schema.name)) tools else tools :+ consent
+    } else tools.filterNot(_.schema.name == consent.schema.name)
+  }
 
   /** Sigil #290 — USD cost of a settled provider call from its
     * [[TokenUsage]] and the model's [[sigil.db.ModelPricing]].

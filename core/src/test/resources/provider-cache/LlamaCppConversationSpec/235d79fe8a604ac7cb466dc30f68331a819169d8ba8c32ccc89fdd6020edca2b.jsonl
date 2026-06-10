@@ -1,0 +1,16 @@
+{"requestHash":"235d79fe8a604ac7cb466dc30f68331a819169d8ba8c32ccc89fdd6020edca2b","recordedAt":1781130628043}
+{"callId":"6686f8143","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"6686f8143","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"6686f8143","text":"Blue","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"6686f8143","text":" is","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"6686f8143","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"6686f8143","text":" great","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"6686f8143","text":" choice","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"6686f8143","text":" for","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"6686f8143","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"6686f8143","text":" favorite","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"6686f8143","text":" color","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"6686f8143","text":"!","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"6686f8143","input":{"topicLabel":"Favorite Color","topicSummary":"User shared their favorite color.","content":"Blue is a great choice for a favorite color!","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":3811,"completionTokens":93,"totalTokens":3904,"isEstimated":false,"cacheReadTokens":3786,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

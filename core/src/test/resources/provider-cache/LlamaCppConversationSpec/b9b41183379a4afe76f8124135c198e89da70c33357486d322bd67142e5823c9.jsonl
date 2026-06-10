@@ -1,0 +1,10 @@
+{"requestHash":"b9b41183379a4afe76f8124135c198e89da70c33357486d322bd67142e5823c9","recordedAt":1781130631845}
+{"text":"Blue","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"callId":"9fadfd878","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":1,"totalTokens":1,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"9fadfd878","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"9fadfd878","text":"Blue","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"9fadfd878","input":{"topicLabel":"Favorite Color","topicSummary":"User shared their favorite color.","content":"Blue","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4149,"completionTokens":86,"totalTokens":4235,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

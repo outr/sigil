@@ -7,7 +7,7 @@ import org.scalatest.BeforeAndAfterAll
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, MessageVisibility, ToolInvoke}
+import sigil.event.{Message, MessageRole, MessageVisibility, ToolInvoke}
 import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
 import sigil.provider.{
   CallId, GenerationSettings, Instructions, Provider, ProviderCall,
@@ -20,64 +20,58 @@ import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondInput}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic
-import scala.concurrent.duration.*
 
 /**
- * Coverage for sigil bug #133 — when the progress checkpoint trips
- * on a stall (`StallDetector` detected an identical-call streak,
- * empty-payload streak, or low-information streak), the framework
- * used to publish a Standard-role directive then immediately release
- * the agent's claim. The agent never got to act on the guidance.
+ * Sigil #379 — a stall/progress-checkpoint intervention is a
+ * NON-TERMINAL nudge, not a forced terminal respond. When the checkpoint
+ * trips on a stall it publishes a Tool-role `_stall_detected` directive
+ * (Agents visibility, bug #133) and then lets the agent CONTINUE with
+ * its full roster — so it can change approach or ask the user itself via
+ * `respond_options`. Forced synthesis (the narrowed respond-family
+ * roster + the #375 `tool_choice = Specific(respond)` pin) fires ONLY at
+ * the `maxAgentIterations` ceiling.
  *
- * Post-fix the stall case publishes Tool-role + `MessageVisibility.Agents`
- * under a synthetic `_stall_detected` parent invoke, then runs ONE
- * forced-synthesis iteration so the agent settles via `respond`.
- * Same shape as #125's cap-hit.
+ * Before #379 the stall path immediately forced a respond, which blocked
+ * `respond_options` and, on an `endsTurn:false` reply, wedged the turn so
+ * every "continue" re-fired the stale stall.
  */
-class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers with BeforeAndAfterAll {
+class StallInterventionContinuesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers with BeforeAndAfterAll {
   TestSigil.initFor(getClass.getSimpleName)
-  // Checkpoint every 2 iterations — fast loop into the stall path.
+  // Checkpoint every 2 iterations; cap at 6 so the test terminates via
+  // the ceiling (the only place that still forces synthesis).
   TestSigil.setProgressCheckpointInterval(2)
+  TestSigil.setMaxAgentIterations(6)
 
   override protected def afterAll(): Unit = {
     TestSigil.resetProgressCheckpointInterval()
+    TestSigil.resetMaxAgentIterations()
     super.afterAll()
   }
 
-  private val modelId: Id[Model] = Model.id("test", "stall-soft-stop")
+  private val modelId: Id[Model] = Model.id("test", "stall-continue")
   TestSigil.testModel(modelId)
 
-  /** Always emits the same `grep` call (identical input + empty
-    * output) so `StallDetector.identicalStreak` fires after a few
-    * iterations. On the forced-synthesis turn (signalled by
-    * `tool_choice = Specific(respond)`), emits respond instead so
-    * the soft-stop completes cleanly. */
-  private final class StallThenSynthesizeProvider extends Provider {
-    val callCount = new atomic.AtomicInteger(0)
-    val toolChoices: atomic.AtomicReference[Vector[ToolChoice]] =
+  /** Emits an identical `change_mode` every main-loop turn so
+    * `StallDetector` fires. On the checkpoint reflector call reports
+    * `meaningfulProgress = false`. Only the iteration-cap forced turn
+    * (signalled by `tool_choice = Specific(respond)`) gets a respond —
+    * so the agent settles ONLY at the ceiling, never at a stall. */
+  private final class StallEveryTurnProvider extends Provider {
+    /** Per-call (toolChoice, rosterHasChangeMode). */
+    val calls: atomic.AtomicReference[Vector[(ToolChoice, Boolean)]] =
       new atomic.AtomicReference(Vector.empty)
     override def `type`: ProviderType = ProviderType.LlamaCpp
-    override def models: List[_root_.sigil.db.Model] = Nil
+    override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
     override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
-      callCount.incrementAndGet()
-      toolChoices.updateAndGet(prev => prev :+ input.toolChoice)
+      val hasChangeMode = input.tools.exists(_.schema.name == ChangeModeTool.schema.name)
+      calls.updateAndGet(_ :+ (input.toolChoice, hasChangeMode))
       val callId = CallId(s"call-${rapid.Unique()}")
-      // Discriminate by tool roster:
-      //   - Single-tool roster containing `report_progress` → the
-      //     checkpoint reflector. Emit a ProgressReflectionInput with
-      //     `meaningfulProgress = false` and `stuckOn` so the
-      //     framework's intervention path fires.
-      //   - tool_choice Specific(respond) → forced-synthesis turn.
-      //     Emit the synthesised respond.
-      //   - Otherwise → the agent's main loop; emit a non-terminal
-      //     `change_mode` so the loop iterates AND StallDetector
-      //     sees an identical-call streak.
       val isReflectorCall = input.tools.exists(_.name.value == "report_progress")
       val emits: List[ProviderEvent] =
-        if (isReflectorCall) {
+        if (isReflectorCall)
           List(
             ProviderEvent.ToolCallStart(callId, "report_progress"),
             ProviderEvent.ToolCallComplete(
@@ -92,16 +86,16 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
             ),
             ProviderEvent.Done(StopReason.Complete)
           )
-        } else input.toolChoice match {
+        else input.toolChoice match {
           case ToolChoice.Specific(name) if name == RespondTool.schema.name =>
             List(
               ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
               ProviderEvent.ToolCallComplete(
                 callId,
                 RespondInput(
-                  topicLabel   = "Stall-synth",
-                  topicSummary = "forced-synthesis after stall",
-                  content      = "Synthesised from gathered context after stall intercept.",
+                  topicLabel   = "Cap-synth",
+                  topicSummary = "forced-synthesis at the ceiling",
+                  content      = "Synthesised at the iteration ceiling.",
                   endsTurn     = true
                 )
               ),
@@ -110,7 +104,12 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
           case _ =>
             List(
               ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
-              ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
+              // Vary the reason each turn so inputs differ: this drives a
+              // COOPERATIVE no-progress checkpoint (the reflector reports
+              // false) WITHOUT an identical-call streak — so the HARD-stall
+              // (terminal) path never fires and we exercise the #379 continue
+              // path, not the genuine-runaway force path.
+              ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding", reason = Some(s"step-${rapid.Unique()}"))),
               ProviderEvent.Done(StopReason.ToolCall)
             )
         }
@@ -127,10 +126,10 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
-  "Stall-detected intervention" should {
+  "Stall-detected intervention (sigil #379)" should {
 
-    "publish a `_stall_detected` synthetic ToolInvoke and run one forced-synthesis iteration" in {
-      val provider = new StallThenSynthesizeProvider
+    "publish a `_stall_detected` directive and let the agent CONTINUE with its full roster, forcing only at the cap" in {
+      val provider = new StallEveryTurnProvider
       TestSigil.setProvider(Task.pure(provider))
       val convId = Conversation.id(s"stall-${rapid.Unique()}")
       val agent  = makeAgent()
@@ -144,34 +143,42 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
                  content        = Vector(ResponseContent.Text("Evaluate the X system")),
                  state          = EventState.Complete
                ))
-        _   <- TestSigil.awaitSettled(convId) // generous window for the loop + checkpoint + forced-synth
+        _   <- TestSigil.awaitSettled(convId)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val convEvs = evs.filter(_.conversationId == convId)
 
-        // The synthetic `_stall_detected` ToolInvoke must land.
+        // The stall intervention still fires: a `_stall_detected`
+        // Tool-role directive (Agents visibility) lands.
         val stallInvokes = convEvs.collect {
           case ti: ToolInvoke if ti.toolName.value == "_stall_detected" => ti
         }
         withClue(s"events: ${convEvs.map(_.getClass.getSimpleName).mkString(", ")}: ") {
           stallInvokes should not be empty
         }
-
-        // The directive paired to it must be Tool-role + Agents
-        // visibility (user doesn't see it raw).
-        val syntheticId = stallInvokes.head._id
         val directives = convEvs.collect {
-          case m: Message if m.role == MessageRole.Tool && m.origin.contains(syntheticId) => m
+          case m: Message if m.role == MessageRole.Tool && m.origin.contains(stallInvokes.head._id) => m
         }
         directives should not be empty
         directives.head.visibility shouldBe MessageVisibility.Agents
 
-        // The forced-synthesis turn ran — provider saw tool_choice:
-        // required with the tool roster filtered to the respond family.
-        val seenChoices = provider.toolChoices.get().toList
-        seenChoices should contain (ToolChoice.Required)
+        val recorded = provider.calls.get().toList
+        // #379 — the agent kept running FULL-roster main-loop iterations
+        // (change_mode in scope) across the stall directives rather than
+        // being forced to respond at the first stall. Pre-#379 it would
+        // have been narrowed + forced after the first checkpoint (~2
+        // full-roster calls); here it runs the budget up to the cap.
+        val fullRosterCalls = recorded.count(_._2)
+        withClue(s"toolChoices=${recorded.map(_._1).mkString(",")}: ") {
+          fullRosterCalls should be >= 4
+        }
+        // The only Specific(respond) is the ceiling's forced synthesis,
+        // and it carries the NARROWED roster (no change_mode) — no stall
+        // ever pinned tool_choice to respond before the cap.
+        recorded.filter(_._1 == ToolChoice.Specific(RespondTool.schema.name))
+          .foreach { case (_, hasChangeMode) => hasChangeMode shouldBe false }
 
-        // Forced-synthesis emitted a Standard-role respond from the agent.
+        // The agent ultimately settles — via the cap's forced synthesis.
         val agentReplies = convEvs.collect {
           case m: Message if m.participantId == TestAgent && m.role == MessageRole.Standard => m
         }

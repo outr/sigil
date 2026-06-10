@@ -92,9 +92,13 @@ object CoreTools {
     Vector(
       RespondTool,
       RespondOptionsTool,
-      FindCapabilityTool,
-      RecordConsentTool
+      FindCapabilityTool
     )
+  // Sigil #378 — `RecordConsentTool` is intentionally NOT in the default
+  // set. It's a no-op unless some tool in scope sets `requiresUserConsent`,
+  // so on apps where none do it was pure dead weight a model could loop
+  // on. The framework injects it into the per-turn roster only when a
+  // consent-gated tool is actually present (see `Sigil.defaultProcess`).
 
   /** The ToolInput RWs for polymorphic registration. Sigil registers these
     * automatically during `instance.sync()`; apps don't need to touch this.
