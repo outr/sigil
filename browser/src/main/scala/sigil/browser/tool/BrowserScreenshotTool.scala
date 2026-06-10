@@ -1,7 +1,9 @@
 package sigil.browser.tool
 
+import fabric.*
 import fabric.rw.*
 import rapid.Task
+import robobrowser.RoboBrowser
 import sigil.browser.BrowserStateDelta
 import sigil.browser.WebBrowserMode
 import sigil.tool.{ImageToolOutput, Tool, ToolExample, ToolName, ToolResult}
@@ -9,6 +11,7 @@ import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
 import java.nio.file.Files
+import java.util.Base64
 import scala.concurrent.duration.*
 
 /**
@@ -33,10 +36,12 @@ final class BrowserScreenshotTool extends Tool {
   val name = ToolName("browser_screenshot")
   val description =
     """Take a screenshot of the current page. Returns the rendered image as part of the chat (both you and the user see it).
-      |Use when text-only scraping isn't enough — graphical UIs, layout-dependent pages, error states.""".stripMargin
+      |Use when text-only scraping isn't enough — graphical UIs, layout-dependent pages, error states.
+      |Set `fullPage = true` to capture the entire scrollable page instead of just the visible viewport.""".stripMargin
   override val examples = List(
     ToolExample("Default screenshot", BrowserScreenshotInput()),
-    ToolExample("Wait 5s for animations", BrowserScreenshotInput(waitSeconds = 5))
+    ToolExample("Wait 5s for animations", BrowserScreenshotInput(waitSeconds = 5)),
+    ToolExample("Full-page capture", BrowserScreenshotInput(fullPage = true))
   )
   override val modes = Set(WebBrowserMode.id)
   override val keywords = Set("browser", "screenshot", "image", "capture", "render")
@@ -52,9 +57,14 @@ final class BrowserScreenshotTool extends Tool {
                         case _ => Task.unit
                       }
                     }
-      // Capture to a tempfile, read bytes, hand to Sigil.storeBytes.
+      // Capture bytes. `fullPage` goes straight through CDP
+      // (captureBeyondViewport + content-size clip); the viewport case
+      // captures to a tempfile via robobrowser's helper.
       bytes      <- controller.run { browser =>
-                      Task.defer {
+                      if (input.fullPage)
+                        Task.sleep(input.waitSeconds.seconds)
+                          .flatMap(_ => BrowserScreenshotTool.captureFullPage(browser))
+                      else Task.defer {
                         val tmp = Files.createTempFile("sigil-screenshot-", ".png")
                         browser.screenshotAs(tmp, afterLoadDelay = Some(input.waitSeconds.seconds))
                           .map { _ =>
@@ -82,4 +92,29 @@ final class BrowserScreenshotTool extends Tool {
       text = Some("Screenshot of the current browser page. Examine the rendered page for " +
         "layout, content, error states, or differences from what you expected.")
     ))
+}
+
+object BrowserScreenshotTool {
+
+  /** Full-page capture via raw CDP: size the clip to the page's CSS
+    * content box (from `Page.getLayoutMetrics`) and pass
+    * `captureBeyondViewport` so Chrome renders past the visible
+    * viewport — the same mechanism Playwright/Puppeteer use for their
+    * `fullPage` option. Returns the decoded PNG bytes. */
+  private[tool] def captureFullPage(browser: RoboBrowser): Task[Array[Byte]] =
+    browser.send(method = "Page.getLayoutMetrics").flatMap { metrics =>
+      val content = metrics.result("cssContentSize")
+      val width   = content("width").asDouble
+      val height  = content("height").asDouble
+      browser.send(
+        method = "Page.captureScreenshot",
+        params = obj(
+          "format"                -> "png".json,
+          "captureBeyondViewport" -> true.json,
+          "clip" -> obj(
+            "x" -> 0.json, "y" -> 0.json, "width" -> width.json, "height" -> height.json, "scale" -> 1.json
+          )
+        )
+      ).map(shot => Base64.getDecoder.decode(shot.result("data").asString))
+    }
 }
