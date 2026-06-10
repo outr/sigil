@@ -25,6 +25,9 @@ import fabric.rw.*
  *                               agent's next-turn visual context so
  *                               the agent can actually see what the
  *                               tool produced.
+ *   - [[UnknownToolOutput]]  — opaque fallback an unregistered/renamed
+ *                               discriminator is rewritten to at boot so
+ *                               a type rename can't brick the event store.
  *
  * Apps define their own subtypes as `case class FooOutput(...) extends
  * ToolOutput derives RW` and register the `RW` via
@@ -64,6 +67,7 @@ object ToolOutput extends PolyType[ToolOutput]()(using scala.reflect.ClassTag(cl
     summon[RW[Progress]],
     summon[RW[TextToolOutput]],
     summon[RW[ImageToolOutput]],
+    summon[RW[UnknownToolOutput]],
 
     // core/
     summon[RW[sigil.tool.core.FindCapabilityOutput]],

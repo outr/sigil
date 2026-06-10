@@ -7771,6 +7771,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // their own poly-typed records) can't trip the same
           // dead-discriminator path on a downstream collection.
           new sigil.upgrade.ContextFrameToolResultMigrationUpgrade,
+          // Sigil #374 — rescue boot for databases whose stored
+          // `ToolInvoke.output` names a renamed/removed `ToolOutput`
+          // subtype: rewrite the orphaned block to `UnknownToolOutput`
+          // (lossless) so the typed events read can't abort startup.
+          // Runs after the ContextFrame migration so a dead-ToolResult
+          // frame on a ToolInvoke row is already nulled.
+          new sigil.upgrade.ToolOutputReconcileUpgrade,
           new sigil.tool.StaticToolSyncUpgrade(staticTools),
           new sigil.skill.StaticSkillSyncUpgrade(staticSkills)
         )
