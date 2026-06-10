@@ -7428,7 +7428,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               topicId        = topic.id,
               content        = Vector(sigil.tool.model.ResponseContent.Text(body)),
               disposition    = sigil.event.MessageDisposition.Failure(
-                recoverable  = false,
+                // Sigil #376 — a runaway/stall terminal hands back as
+                // recoverable (a follow-up user message re-engages the
+                // agent); a genuine crash stays non-recoverable.
+                recoverable  = Sigil.isStallFailure(t),
                 errorContext = Some(ec)
               ),
               state          = EventState.Complete,
@@ -8387,6 +8390,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 }
 
 object Sigil {
+
+  /** Sigil #376 — an [[AgentRunawayException]] is a STALL terminal (the
+    * agent hit the iteration cap or a progress-checkpoint stall and the
+    * forced-synthesis recovery still failed), not a crash. Its failure
+    * Message is published `recoverable` so a follow-up user message
+    * re-engages the agent instead of dead-ending the conversation;
+    * genuine crashes (tool throws, projection failures, transform
+    * blow-ups, …) stay non-recoverable. */
+  def isStallFailure(t: Throwable): Boolean = t.isInstanceOf[AgentRunawayException]
 
   /** Sigil #290 — USD cost of a settled provider call from its
     * [[TokenUsage]] and the model's [[sigil.db.ModelPricing]].

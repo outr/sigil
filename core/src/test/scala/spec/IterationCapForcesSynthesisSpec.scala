@@ -73,13 +73,13 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
       recorder.record(input)
       val n = recorder.callCount.get()
       val callId = CallId(s"call-$n")
-      // Forced-synthesis turn: tool_choice = Required with the tool
-      // roster filtered to the respond family (atomic-content tools).
-      // Detect it via "respond is in the roster AND no other
-      // non-respond-family tools are exposed".
+      // Forced-synthesis turn (sigil #375): tool_choice = Specific(respond)
+      // with the tool roster filtered to the respond family (atomic-content
+      // tools). Detect it via "tool_choice pins respond AND only
+      // respond-family tools are exposed".
       val isForcedRespondTurn: Boolean = {
         val respondFamily = _root_.sigil.tool.core.CoreTools.atomicContentToolNames
-        input.toolChoice == ToolChoice.Required &&
+        input.toolChoice == ToolChoice.Specific(RespondTool.schema.name) &&
           input.tools.exists(_.schema.name == RespondTool.schema.name) &&
           input.tools.forall(t => respondFamily.contains(t.schema.name))
       }
@@ -183,10 +183,10 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
                }
       } yield {
         // The forced-synthesis turn ran exactly one call with the
-        // Forced-respond pin: tool_choice: required with c.tools
-        // filtered to the respond family (the synthesised respond
-        // Message lands).
-        recorder.toolChoices.get().toList should contain (ToolChoice.Required)
+        // forced-respond pin: tool_choice: Specific(respond) with c.tools
+        // filtered to the respond family (the synthesised respond Message
+        // lands). Sigil #375.
+        recorder.toolChoices.get().toList should contain (ToolChoice.Specific(RespondTool.schema.name))
 
         // The synthesised respond produced a Message authored by the agent.
         val agentMessages = evs.collect {

@@ -93,7 +93,14 @@ private[browser] object BrowserHtmlOverview {
       val cur = current.asInstanceOf[Element]
       val parent = cur.parent()
       if (parent == null) {
-        segments.prepend(cur.tagName())
+        // Top of the tree. jSoup's Document is an Element whose tagName
+        // is the synthetic "#root" — never a real XPath step. Emitting it
+        // produced paths like "/#root/html/body/…" that selectXpath then
+        // rejects ("Extra illegal tokens: '#root'") when the agent
+        // round-trips a returned xpath back in. Skip it so paths start at
+        // the document element (`/html/…`).
+        val tag = cur.tagName()
+        if (tag != "#root") segments.prepend(tag)
         current = null
       } else {
         val tag = cur.tagName()

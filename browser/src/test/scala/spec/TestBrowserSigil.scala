@@ -10,7 +10,6 @@ import sigil.browser.{BrowserCollections, BrowserSigil, WebBrowserMode}
 import sigil.conversation.{TurnInput}
 import sigil.db.{Model, SigilDB}
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
-import sigil.information.Information
 import sigil.participant.{Participant, ParticipantId}
 import sigil.provider.{Mode, Provider}
 import sigil.secrets.SecretsCollections
@@ -108,8 +107,10 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
                       chain: List[ParticipantId]): Task[TurnInput] =
     sigil.conversation.compression.StandardContextCurator(this).curate(conversationId, modelId, chain)
 
-  override def getInformation(id: lightdb.id.Id[Information]): Task[Option[Information]] = Task.pure(None)
-  override def putInformation(information: Information): Task[Unit] = Task.unit
+  // getInformation / putInformation use the framework defaults
+  // (StoredInformation-backed via db.storedInformations) — browser_save_html
+  // registers a lookup-able Information (sigil #377), and the e2e spec
+  // reads it back through this path.
   override def compressionMemorySpace(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): Task[Option[SpaceId]] =
     Task.pure(None)
 

@@ -974,6 +974,22 @@ trait Provider extends Service with ModelResolver {
       val effectiveTools = c.effectiveTools
       val toolChoice: ToolChoice =
         if (effectiveTools.isEmpty) ToolChoice.None
+        else if (c.forceResponseSynthesis)
+          // Sigil #375 — pin the forced-synthesis recovery turn to a
+          // specific terminal tool. `Required` (Anthropic {type:"any"})
+          // only constrains the model to call SOME tool, so a
+          // tool-saturated model emits one OUTSIDE the narrowed respond
+          // roster (observed Opus 4.8 answering a respond-family-only
+          // turn with browser_screenshot); the recovery check then fails
+          // and the loop throws AgentRunawayException. {type:"tool",
+          // name:"respond"} forces exactly respond via constrained
+          // decoding. forceResponseSynthesis already sets
+          // reasoningMode=Off, so the thinking/forced-tool_choice
+          // incompatibility doesn't apply.
+          effectiveTools.find(_.schema.name == RespondTool.schema.name)
+            .orElse(effectiveTools.headOption)
+            .map(t => ToolChoice.Specific(t.schema.name))
+            .getOrElse(ToolChoice.Required)
         else ToolChoice.Required
       val gen = tightenMaxTokensForParaphrase(c)
       val messages = nonEmptyMessages(c, agentId)
@@ -995,7 +1011,12 @@ trait Provider extends Service with ModelResolver {
         systemVolatile = renderedSystem.volatile,
         messages = messages,
         tools = effectiveTools,
-        builtInTools = c.builtInTools,
+        // Sigil #375 — built-in/server tools (web_search, …) bypass the
+        // `effectiveTools` roster filter, so on a forced-synthesis turn
+        // they'd reappear as a non-terminal escape hatch on the very
+        // turn meant to force a terminal `respond`. Drop them for that
+        // turn so the only callable tool is the pinned respond family.
+        builtInTools = if (c.forceResponseSynthesis) Set.empty else c.builtInTools,
         toolChoice = toolChoice,
         generationSettings = gen,
         currentMode = c.currentMode,

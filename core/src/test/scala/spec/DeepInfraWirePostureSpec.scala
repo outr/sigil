@@ -112,22 +112,25 @@ class DeepInfraWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
     }
 
-    "substitute response_format:json_schema with the respond-family meta-schema under forced response synthesis" in {
+    "substitute response_format:json_schema with the respond tool's schema under forced response synthesis" in {
       bodyOf(provider, modelId, forced = true).map { body =>
         val bodyObj = body.asObj.value
         bodyObj.contains("tool_choice") shouldBe false
-        // Force now leaves a tool roster filtered to the respond family
-        // and routes through DeepInfra's response_format substitution.
-        // The meta-schema's tool_name enum carries the family members.
+        // Sigil #375 — forced synthesis pins respond specifically, so
+        // DeepInfra's response_format substitution (bug #173) carries the
+        // respond tool's OWN input schema (constrained decoding straight to
+        // respond's shape), not the Required-path meta-schema with a
+        // `tool_name` enum across the family.
         val rf = body("response_format")
         rf("type").asString shouldBe "json_schema"
         val js = rf("json_schema")
+        js("name").asString shouldBe "respond"
         js("strict").asBoolean shouldBe true
         val schema = js("schema")
         schema("type").asString shouldBe "object"
         val props = schema("properties").asObj.value
-        props.keys should contain ("tool_name")
-        props.keys should contain ("arguments")
+        props.keys should contain ("content")          // a respond input field
+        props.keys should not contain ("tool_name")    // not the meta-schema
       }
     }
   }

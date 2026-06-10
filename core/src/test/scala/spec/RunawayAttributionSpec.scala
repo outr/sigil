@@ -144,11 +144,11 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "set bounded maxOutputTokens and ReasoningMode.Off on the forced-synthesis call" in {
       driveCapHit().map { case (recorder, _, _) =>
         val recorded = recorder.calls.get().toList
-        // The forced-synthesis call is the one with tool_choice =
-        // Required restricted to the respond family.
+        // The forced-synthesis call is the one pinned to respond (sigil
+        // #375) with the roster restricted to the respond family.
         val forcedCall = recorded.find { c =>
           val respondFamily = sigil.tool.core.CoreTools.atomicContentToolNames
-          c.toolChoice == ToolChoice.Required &&
+          c.toolChoice == ToolChoice.Specific(ToolName("respond")) &&
             c.tools.exists(_.schema.name.value == "respond") &&
             c.tools.forall(t => respondFamily.contains(t.schema.name))
         }
