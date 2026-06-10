@@ -1,7 +1,7 @@
 package sigil.provider.wire
 
 import fabric.*
-import fabric.io.JsonFormatter
+import fabric.io.{JsonFormatter, JsonParser}
 import fabric.rw.*
 import rapid.{Pull, Step, Stream, Task}
 import sigil.Sigil
@@ -243,6 +243,15 @@ object OpenAIChatCompletions {
       * chat-completions backend. */
     extraBody: ProviderCall => Vector[(String, Json)] = _ => Vector.empty,
 
+    /** Provider default for HTTP transport. `true` (default) uses SSE
+      * chunked streaming; `false` issues a single non-streaming POST and
+      * synthesizes the same `ProviderEvent`s from the one JSON response.
+      * Cloudflare's reasoning models (Kimi, gpt-oss) drop tool calls on
+      * the streaming endpoint but return them correctly non-streamed, so
+      * `CloudflareProvider` defaults this `false`. A per-call
+      * [[sigil.provider.GenerationSettings.streaming]] overrides it. */
+    streaming: Boolean = true,
+
     /** Where this backend reports prompt-caching token counts inside
       * the `usage` object. Default [[CacheKeys.OpenAIChat]] reads the
       * OpenAI-canonical `prompt_tokens_details.cached_tokens`; DeepSeek
@@ -293,6 +302,24 @@ object OpenAIChatCompletions {
                  auth: HttpRequest => HttpRequest,
                  tokenIdleTimeout: FiniteDuration,
                  config: Config): Stream[ProviderEvent] = {
+    if (!effectiveStreaming(input, config))
+      nonStreamCall(input, sigil, baseUrl, auth, config)
+    else streamCallImpl(input, sigil, baseUrl, auth, tokenIdleTimeout, config)
+  }
+
+  /** Effective transport for this call: the per-call
+    * [[GenerationSettings.streaming]] override if set, else the provider's
+    * [[Config.streaming]] default. */
+  def effectiveStreaming(input: ProviderCall, config: Config): Boolean =
+    input.generationSettings.streaming.getOrElse(config.streaming)
+
+  /** The SSE streaming path. */
+  private def streamCallImpl(input: ProviderCall,
+                             sigil: Sigil,
+                             baseUrl: URL,
+                             auth: HttpRequest => HttpRequest,
+                             tokenIdleTimeout: FiniteDuration,
+                             config: Config): Stream[ProviderEvent] = {
     val rfMode: Option[ResponseFormatMode] = config.forcedCallShape match {
       case ForcedCallShape.ToolChoice => None
       case ForcedCallShape.ResponseFormatJsonSchema => input.toolChoice match {
@@ -341,6 +368,65 @@ object OpenAIChatCompletions {
     )
   }
 
+  /** Non-streaming path: one POST (`stream:false`), then synthesize the
+    * same `ProviderEvent`s from the single JSON response — reshaping its
+    * `message` into a `delta` and reusing [[parseChunk]] + the terminal
+    * flush, so the orchestrator sees an identical event sequence (just
+    * emitted all at once). Loses live deltas and mid-flight `Stop`, but is
+    * reliable where a backend's streaming tool-call handling is broken
+    * (Cloudflare's reasoning models drop tool calls when streamed but
+    * return them correctly non-streamed). */
+  def nonStreamCall(input: ProviderCall,
+                    sigil: Sigil,
+                    baseUrl: URL,
+                    auth: HttpRequest => HttpRequest,
+                    config: Config): Stream[ProviderEvent] = Stream.force(
+    for {
+      raw         <- buildHttpRequest(input, sigil, baseUrl, auth, config)
+      intercepted <- sigil.wireInterceptor.before(raw)
+      response    <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.send()
+      _           <- sigil.wireInterceptor.after(intercepted, scala.util.Success(response))
+      bodyStr     <- response.content.map(_.asString).getOrElse(Task.pure(""))
+    } yield Stream.emits(parseNonStreamBody(bodyStr, input, config))
+  )
+
+  /** Parse a non-streaming chat-completions response body into the event
+    * sequence the orchestrator expects. Separated from [[nonStreamCall]]'s
+    * transport for unit coverage. */
+  def parseNonStreamBody(bodyStr: String, input: ProviderCall, config: Config): Vector[ProviderEvent] = {
+    val rfMode: Option[ResponseFormatMode] = config.forcedCallShape match {
+      case ForcedCallShape.ToolChoice => None
+      case ForcedCallShape.ResponseFormatJsonSchema => input.toolChoice match {
+        case ToolChoice.Specific(name) => Some(ResponseFormatMode.Specific(name))
+        case ToolChoice.Required       => Some(ResponseFormatMode.Required)
+        case _                         => None
+      }
+    }
+    val state = new StreamState(
+      acc = new ToolCallAccumulator(input.tools, providerKey = config.providerName),
+      responseFormatMode = rfMode,
+      streamingSilenceTimeoutMs = 0L,
+      streamingDeadOnArrivalTimeoutMs = 0L
+    )
+    val json = JsonParser(bodyStr)
+    parseChunk(reshapeMessageToDelta(json), state, config) ++ state.flushDone(config)
+  }
+
+  /** A non-streaming choice carries the assembled `message`; [[parseChunk]]
+    * reads `delta`. Rename `message` → `delta` so the streaming parser
+    * processes the full values as one terminal chunk. */
+  private def reshapeMessageToDelta(json: Json): Json = json.get("choices") match {
+    case Some(cs) =>
+      val newChoices = cs.asVector.map { ch =>
+        ch.get("message") match {
+          case Some(m) => Obj((ch.asObj.value - "message") + ("delta" -> m))
+          case None    => ch
+        }
+      }
+      Obj(json.asObj.value + ("choices" -> Arr(newChoices)))
+    case None => json
+  }
+
   /** Append a terminal batch that is evaluated by-need, only AFTER `events`
     * has fully drained.
     *
@@ -384,12 +470,12 @@ object OpenAIChatCompletions {
     val rendered = renderMessages(pre.messages, config)
     val toolsArr = renderTools(input, sigil, config)
 
+    val streaming = effectiveStreaming(input, config)
     val baseFields = Vector[(String, Json)](
-      "model"          -> str(modelName),
-      "messages"       -> arr((Vector(systemMsg) ++ rendered)*),
-      "stream"         -> bool(true),
-      "stream_options" -> obj("include_usage" -> bool(true))
-    )
+      "model"    -> str(modelName),
+      "messages" -> arr((Vector(systemMsg) ++ rendered)*),
+      "stream"   -> bool(streaming)
+    ) ++ (if (streaming) Vector("stream_options" -> obj("include_usage" -> bool(true))) else Vector.empty)
 
     val toolFields: Vector[(String, Json)] = (input.toolChoice, config.forcedCallShape) match {
       case (ToolChoice.None, _) => Vector.empty
@@ -574,8 +660,14 @@ object OpenAIChatCompletions {
       case ProviderMessage.Assistant(content, toolCalls) =>
         Vector(
           if (toolCalls.isEmpty) obj("role" -> str("assistant"), "content" -> str(content))
+          // `content` is included even alongside `tool_calls` — OpenAI
+          // tolerates omitting it, but Cloudflare's validator REQUIRES
+          // `content` on every message (a tool-call assistant turn in the
+          // history is rejected with "required properties are role,content"
+          // otherwise), which breaks multi-turn agentic conversations.
           else obj(
-            "role" -> str("assistant"),
+            "role"    -> str("assistant"),
+            "content" -> str(content),
             "tool_calls" -> arr(toolCalls.map { tc =>
               obj(
                 "id"       -> str(tc.id),

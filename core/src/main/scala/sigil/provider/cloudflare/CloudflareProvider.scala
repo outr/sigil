@@ -77,7 +77,14 @@ case class CloudflareProvider(apiToken: String,
     // Defensive: Kimi can still degenerate even under more capable
     // hosting. Throwing on the empty-budget burn pattern lets a
     // ProviderStrategy route to the next candidate when it fires.
-    emptyBudgetBurnThrows = true
+    emptyBudgetBurnThrows = true,
+    // Cloudflare's reasoning models (Kimi, gpt-oss) drop tool calls on the
+    // STREAMING endpoint when the model reasons before deciding to call a
+    // tool — `finish_reason: stop` with no tool_calls — but return the call
+    // correctly on a single NON-streaming request (verified by raw curl).
+    // Default to non-streaming so agentic tool use is reliable; a per-call
+    // `GenerationSettings.streaming = Some(true)` can opt back in.
+    streaming = false
   )
 
   private val bearerAuth: HttpRequest => HttpRequest =

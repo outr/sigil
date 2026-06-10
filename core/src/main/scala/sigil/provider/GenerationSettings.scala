@@ -33,7 +33,17 @@ final case class GenerationSettings(temperature: Option[Double] = None,
                                       * protocol; non-reasoning models ignore.
                                       * Default `Auto` preserves model / deployment
                                       * defaults. Bug #155. */
-                                    reasoningMode: ReasoningMode = ReasoningMode.Auto)
+                                    reasoningMode: ReasoningMode = ReasoningMode.Auto,
+                                    /** Per-call HTTP-transport override. `None`
+                                      * (default) uses the provider's own default
+                                      * (e.g. streaming for Anthropic/OpenAI,
+                                      * non-streaming for Cloudflare's reasoning
+                                      * models — see
+                                      * [[sigil.provider.wire.OpenAIChatCompletions.Config.streaming]]).
+                                      * `Some(true)` forces streaming, `Some(false)`
+                                      * forces a single non-streaming request whose
+                                      * events are synthesized from the one response. */
+                                    streaming: Option[Boolean] = None)
   derives RW {
 
   /** Sigil #276 — the effective cap, resolving the deprecation shim.
