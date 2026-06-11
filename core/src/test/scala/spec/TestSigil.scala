@@ -494,6 +494,16 @@ object TestSigil extends Sigil {
     * that want to capture writes for assertions pass an appender. */
   def onPutInformation(f: Information => Unit): Unit = putInformationRef.set(f)
 
+  // Sigil #393 — stub external-image fetching so specs are deterministic and
+  // never hit the network. Default: no external image is fetchable.
+  private val fetchExternalImageRef =
+    new java.util.concurrent.atomic.AtomicReference[String => Task[Option[(Array[Byte], String)]]](_ => Task.pure(None))
+  override def fetchExternalImageBytes(url: String): Task[Option[(Array[Byte], String)]] =
+    fetchExternalImageRef.get()(url)
+  def onFetchExternalImage(f: String => Task[Option[(Array[Byte], String)]]): Unit =
+    fetchExternalImageRef.set(f)
+  def resetFetchExternalImage(): Unit = fetchExternalImageRef.set(_ => Task.pure(None))
+
   /** Install a callback invoked on every `putInformations` (bulk)
     * call. When set, the framework's default delegation to per-record
     * `putInformation` is bypassed — specs use this to assert the

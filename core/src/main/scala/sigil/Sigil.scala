@@ -8514,6 +8514,57 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case _ => true
     }
 
+  /** Sigil #393 — max bytes to fetch for an external image before giving up
+    * (the original, pre-downscale). Beyond this the image is dropped with a
+    * warn rather than buffering an unbounded body. */
+  protected def maxExternalImageFetchBytes: Long = 25L * 1024 * 1024
+
+  /** Sigil #393 — timeout for fetching an external image URL. */
+  protected def externalImageFetchTimeout: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.FiniteDuration(15, "seconds")
+
+  /**
+   * Sigil #393 — fetch the raw bytes (+ media type) of an EXTERNAL image
+   * URL so the provider can downscale it to the tool's `ImageQuality` tier
+   * and ship base64, rather than passing a raw `{type:url}` the provider
+   * fetches at full size (blowing the multimodal ceiling → silent
+   * non-render → blind re-view loops). Returns `None` on any failure
+   * (unreachable, non-2xx, over [[maxExternalImageFetchBytes]], unparseable
+   * URL) — the provider then drops the image block (its caption survives).
+   *
+   * Apps override to add per-host auth (a private CDN), a allow/deny-list,
+   * or to disable external fetching entirely (`Task.pure(None)`).
+   */
+  def fetchExternalImageBytes(url: String): Task[Option[(Array[Byte], String)]] =
+    scala.util.Try(spice.net.URL.parse(url)).toOption match {
+      case None => Task.pure(None)
+      case Some(u) =>
+        spice.http.client.HttpClient
+          .url(u)
+          .timeout(externalImageFetchTimeout)
+          .noFailOnHttpStatus
+          .send()
+          .flatMap { response =>
+            if (response.status.code >= 400) Task.pure(Option.empty[(Array[Byte], String)])
+            else response.content match {
+              case Some(c) if c.length >= 0 && c.length > maxExternalImageFetchBytes =>
+                logger.warn(s"Sigil #393 — external image $url is ${c.length} bytes (> $maxExternalImageFetchBytes cap); dropping")
+                Task.pure(None)
+              case Some(c) =>
+                val ct = c.contentType.outputString
+                c match {
+                  case b: spice.http.content.BytesContent => Task.pure(Some((b.value, ct)))
+                  case other => other.asStream.toList.map(bs => Some((bs.toArray, ct)))
+                }
+              case None => Task.pure(None)
+            }
+          }
+          .handleError { t =>
+            logger.warn(s"Sigil #393 — failed to fetch external image $url: ${Option(t.getMessage).getOrElse(t.getClass.getSimpleName)}")
+            Task.pure(None)
+          }
+    }
+
   /**
    * Convenience accessor for [[sigil.transport.SignalTransport]] — the
    * bridge from `signalsFor(viewer)` to wire sinks (SSE, DurableSocket).

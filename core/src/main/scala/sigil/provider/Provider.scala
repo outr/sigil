@@ -1180,36 +1180,70 @@ trait Provider extends Service with ModelResolver {
     * not resolve to a StoredFile — pass through unchanged. Runs once
     * over the translated call so every provider benefits. */
   private[provider] def normalizeStoredImages(call: ProviderCall): Task[ProviderCall] = {
-    def normalizeContent(mc: MessageContent): Task[MessageContent] = mc match {
+    // Returns None to DROP the image block (#393 — an external image that
+    // couldn't be fetched/downscaled; its caption survives as a sibling Text
+    // block). Some(mc) otherwise.
+    def normalizeContent(mc: MessageContent): Task[Option[MessageContent]] = mc match {
       case MessageContent.Image(url, altText, quality) =>
         storedFileIdFrom(url) match {
-          case None     => Task.pure(mc)
           case Some(id) =>
             sigil.withDB(_.storedFiles.transaction(_.get(id))).flatMap {
-              case None       => Task.pure(mc)
+              case None       => Task.pure(Some(mc))
               case Some(file) =>
                 sigil.storageProvider.download(file.path).map {
                   case Some(bytes) =>
                     // Sigil #382 — downscale to the quality tier before
                     // encoding; never ship original-resolution pixels.
                     val resized = _root_.sigil.image.ImageDownscale.resize(bytes, quality.maxPixels, file.contentType)
-                    MessageContent.ImageBytes(
+                    Some(MessageContent.ImageBytes(
                       mediaType = file.contentType,
                       base64 = java.util.Base64.getEncoder.encodeToString(resized),
                       altText = altText,
                       quality = quality
-                    )
-                  case None => mc
+                    ))
+                  case None => Some(mc)
                 }
             }
+          case None =>
+            // Sigil #393 — an EXTERNAL image URL: fetch + downscale to the
+            // quality tier and ship base64, never a raw `{type:url}` (the
+            // provider would fetch it at full size — blowing the multimodal
+            // ceiling → silent non-render → blind re-view loops). Non-http
+            // (`data:` etc.) passes through untouched.
+            if (Provider.isFetchableImageUrl(url.toString)) materializeExternalImage(url.toString, quality, altText)
+            else Task.pure(Some(mc))
         }
-      case other => Task.pure(other)
+      case other => Task.pure(Some(other))
     }
     Task.sequence(call.messages.toList.map {
       case ProviderMessage.User(content) =>
-        Task.sequence(content.toList.map(normalizeContent)).map(c => ProviderMessage.User(c.toVector))
+        Task.sequence(content.toList.map(normalizeContent)).map(c => ProviderMessage.User(c.flatten.toVector))
       case other => Task.pure(other)
     }).map(messages => call.copy(messages = messages.toVector))
+  }
+
+  /** Sigil #393 — fetch an external image (via `Sigil.fetchExternalImageBytes`),
+    * downscale it to the `quality` tier, and return base64 `ImageBytes`.
+    * Process-cached by `url|quality` so we fetch/encode once and the bytes
+    * stay STABLE across turns (provider prompt-caching of the prefix still
+    * hits). `None` (drop) when the fetch failed. */
+  private def materializeExternalImage(urlStr: String,
+                                       quality: _root_.sigil.tool.ImageQuality,
+                                       altText: Option[String]): Task[Option[MessageContent]] = {
+    val key = s"$urlStr|${quality.toString}"
+    Option(Provider.externalImageCache.get(key)) match {
+      case Some((ct, b64)) => Task.pure(Some(MessageContent.ImageBytes(ct, b64, altText, quality)))
+      case None =>
+        sigil.fetchExternalImageBytes(urlStr).map {
+          case Some((bytes, contentType)) =>
+            val ct = if (contentType.toLowerCase.startsWith("image/")) contentType else "image/png"
+            val resized = _root_.sigil.image.ImageDownscale.resize(bytes, quality.maxPixels, ct)
+            val b64 = java.util.Base64.getEncoder.encodeToString(resized)
+            Provider.cacheExternalImage(key, (ct, b64))
+            Some(MessageContent.ImageBytes(ct, b64, altText, quality))
+          case None => None
+        }
+    }
   }
 
   /** Extract a [[sigil.storage.StoredFile]] id from a URL of shape
@@ -1865,6 +1899,28 @@ trait Provider extends Service with ModelResolver {
 }
 
 object Provider {
+
+  /** Sigil #393 — whether a URL is a fetchable external image (http/https).
+    * `data:` / `sigil://storage` and other schemes are handled elsewhere. */
+  def isFetchableImageUrl(url: String): Boolean = {
+    val l = url.toLowerCase
+    l.startsWith("http://") || l.startsWith("https://")
+  }
+
+  /** Sigil #393 — process-wide cache of downscaled external images, keyed by
+    * `url|quality` → `(mediaType, base64)`. Fetch + downscale + encode happen
+    * once; the stable base64 means the provider's prompt-caching of a fixed
+    * prefix still hits across turns instead of busting on a re-encoded blob.
+    * Bounded by a coarse size cap (clear-on-overflow) — image bytes are heavy
+    * and the working set per conversation is small. */
+  private val externalImageCache =
+    new java.util.concurrent.ConcurrentHashMap[String, (String, String)]()
+  private val MaxExternalImageCacheEntries = 256
+  private[provider] def cacheExternalImage(key: String, value: (String, String)): Unit = {
+    if (externalImageCache.size >= MaxExternalImageCacheEntries) externalImageCache.clear()
+    externalImageCache.put(key, value)
+    ()
+  }
 
   /** Sigil #343 — map a tool-call id to the portable charset every
     * provider accepts (`[A-Za-z0-9_-]`, Anthropic's `tool_use.id` rule).
