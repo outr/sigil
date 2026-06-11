@@ -1740,12 +1740,25 @@ trait Provider extends Service with ModelResolver {
               // Tool-result images ride as a follow-up user message so
               // the model actually sees them; normalizeStoredImages
               // inlines any internal-storage URLs as bytes downstream.
-              if (images.nonEmpty)
+              if (images.nonEmpty) {
                 // Sigil #382 — the producing tool's quality rides each
                 // URL as `_q`; strip it and carry it typed so the
                 // downscale/detail downstream uses it.
-                out += ProviderMessage.User(images.map(u =>
-                  MessageContent.Image(_root_.sigil.tool.ImageQuality.strip(u), quality = _root_.sigil.tool.ImageQuality.fromUrl(u))).toVector)
+                val imageBlocks: Vector[MessageContent] = images.map(u =>
+                  MessageContent.Image(_root_.sigil.tool.ImageQuality.strip(u),
+                    quality = _root_.sigil.tool.ImageQuality.fromUrl(u))).toVector
+                // Sigil #391 — keep the caption ADJACENT to the image. Hoisting
+                // a bare image to its own message (caption stranded back in the
+                // tool_result) turned N image tools into a pile of anonymous
+                // pictures the model couldn't map to a gid/label — reviving the
+                // #280 re-view loop (observed: 32 uncaptioned image messages,
+                // 0 in tool_results, agent re-viewing to re-anchor). One short
+                // text block per image restores the image→caption mapping.
+                val labeled =
+                  if (content.trim.nonEmpty) MessageContent.Text(content) +: imageBlocks
+                  else imageBlocks
+                out += ProviderMessage.User(labeled)
+              }
               resultsSeen.add(wireId)
             case ToolCallState.Active =>
               // No result yet — only happens for mid-turn debug

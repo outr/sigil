@@ -102,6 +102,28 @@ class ToolResultImageRenderingSpec extends AsyncWordSpec with AsyncTaskSpec with
       }.flatten
       userImageUrls shouldBe List(imageUrl)
     }
+
+    "anchor the image to its caption — caption text adjacent, before the image (sigil #391)" in {
+      val callId = Id[Event]("tool-call-3")
+      val caption = "Store file gid://shopify/MediaImage/123 — Huron Body collection hero"
+      val toolCall = ContextFrame.ToolCall(
+        toolName      = ToolName("view_file"),
+        argsJson      = "{}",
+        callId        = callId,
+        participantId = TestAgent,
+        sourceEventId = Id[Event]("tc-3"),
+        state         = ToolCallState.Complete(caption, List(imageUrl))
+      )
+      val rendered = FakeProvider.renderFrames(Vector(toolCall), Some(TestAgent))
+      // The image-bearing user message must NOT be an anonymous bare image —
+      // it carries the caption text immediately before the image so the model
+      // can map image→gid/label in a multi-image context.
+      val imageUserMsg = rendered.collectFirst {
+        case ProviderMessage.User(content) if content.exists(_.isInstanceOf[MessageContent.Image]) => content
+      }.getOrElse(fail("no image-bearing user message"))
+      imageUserMsg.head shouldBe MessageContent.Text(caption)
+      imageUserMsg(1) shouldBe a[MessageContent.Image]
+    }
   }
 
   "tear down" should {
