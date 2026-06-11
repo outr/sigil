@@ -472,6 +472,15 @@ object TestSigil extends Sigil {
   def setProgressCheckpointInterval(n: Int): Unit = progressCheckpointIntervalRef.set(Some(n))
   def resetProgressCheckpointInterval(): Unit     = progressCheckpointIntervalRef.set(None)
 
+  /** Settable hard-stall (identical-call) limit so a spec can disable the
+    * model-independent hard-stall and isolate the LLM-checkpoint path. */
+  private val hardStallLimitRef =
+    new java.util.concurrent.atomic.AtomicReference[Option[Int]](None)
+  override protected def hardStallIdenticalCallLimit: Int =
+    hardStallLimitRef.get().getOrElse(super.hardStallIdenticalCallLimit)
+  def setHardStallIdenticalCallLimit(n: Int): Unit = hardStallLimitRef.set(Some(n))
+  def resetHardStallIdenticalCallLimit(): Unit     = hardStallLimitRef.set(None)
+
   /** Per-test ToolFinder override — specs that need a synthetic
     * tool catalog (consent gate, toolchain boost, etc.) install
     * one without touching the persisted DB tools. `None` reverts

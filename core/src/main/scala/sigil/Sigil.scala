@@ -6969,10 +6969,102 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // (#320/#321). When `pinCoversAuxiliaryCalls` is set and the
         // conversation is pinned, the pin wins; otherwise the default
         // path is untouched (no conversation read).
+        // Sigil #394 — route the checkpoint through the SAME consult path as
+        // every other FrameworkConsult (`auxModelFor` → `routedModelFor` by
+        // `consultWorkType`), so an app's `WorkType` routes (and the pin, via
+        // `pinCoversAuxiliaryCalls`) cover it. Previously it pinned to
+        // `agent.modelId`, so a `ClassificationWork -> Haiku` route never
+        // reached the checkpoint and it ran on the agent's default model (e.g.
+        // Fable, which can't satisfy the forced report → silent None).
         val resolveCheckpointModel: Task[Id[Model]] =
-          if (!pinCoversAuxiliaryCalls) Task.pure(progressReflectionModelFor(agent))
-          else withDB(_.conversations.transaction(_.get(convId)))
-            .map(_.flatMap(_.pinnedModelId).getOrElse(progressReflectionModelFor(agent)))
+          auxModelFor(convId, sigil.tool.consult.ProgressReflectionTool.consultWorkType,
+            List(agent.id), progressReflectionModelFor(agent))
+        // Sigil #394 — shared processing for a checkpoint report: persist the
+        // ProgressCheckpoint, update the no-progress streak, and build the
+        // cooperative/terminal intervention. Called both for a real reflector
+        // report AND (fail-safe) for a stall-synthesized report when the
+        // reflector returned None but the objective StallDetector saw a stall.
+        def processCheckpointReport(report: sigil.tool.consult.ProgressReflectionInput,
+                                    stall: sigil.conversation.compression.StallDetector.Signal): Task[Option[CheckpointIntervention]] =
+          withDB(_.conversations.transaction(_.get(convId))).flatMap { convOpt =>
+            val topicId = convOpt.flatMap(_.topics.lastOption.map(_.id))
+              .getOrElse(_root_.sigil.conversation.Topic.id("__no_topic__"))
+            // Sigil bug #124 — fold the objective stall signal into the
+            // reflector's self-assessment. The agent's `meaningfulProgress`
+            // self-report is necessary but not sufficient; if the
+            // StallDetector spots an identical-call streak or empty-
+            // payload streak, the persisted checkpoint records
+            // `meaningfulProgress = false` regardless of what the agent
+            // said, and `stuckOn` carries the detector's reason so the
+            // intervention message names the loop concretely.
+            val effectiveMeaningful = report.meaningfulProgress && !stall.detected
+            val effectiveStuckOn    = stall.reason.orElse(report.stuckOn)
+            val checkpoint = sigil.event.ProgressCheckpoint(
+              participantId        = agent.id,
+              conversationId       = convId,
+              topicId              = topicId,
+              iterationCount       = iteration,
+              prevCheckpointStatus = priorStatus,
+              currentStatus        = report.currentStatus,
+              meaningfulProgress   = effectiveMeaningful,
+              remainingSteps       = report.remainingSteps,
+              stuckOn              = effectiveStuckOn,
+              shouldAskUser        = report.shouldAskUser
+            )
+            publish(checkpoint).flatMap { _ =>
+              // Update side-state for the next checkpoint comparison.
+              state.lastStatus = Some(report.currentStatus)
+              if (!effectiveMeaningful) {
+                state.noProgressStreak = state.noProgressStreak + 1
+              } else {
+                state.noProgressStreak = 0
+              }
+              val stuck = state.noProgressStreak >= consecutiveNoProgressLimit
+              if (report.shouldAskUser || stuck || stall.detected) {
+                val reason =
+                  if (report.shouldAskUser)
+                    s"I need clarification before I can continue. ${effectiveStuckOn.getOrElse("")}".trim
+                  else if (stall.detected)
+                    // Stall-detector hit on the current checkpoint —
+                    // intervene immediately rather than waiting for
+                    // `consecutiveNoProgressLimit` streaks to stack.
+                    stall.reason.getOrElse(
+                      s"I've made the same kind of call repeatedly without new information. How would you like me to proceed?"
+                    )
+                  else
+                    s"I've been working on this for $iteration turns and haven't made meaningful " +
+                      s"progress since: \"${priorStatus.getOrElse(report.currentStatus)}\". " +
+                      s"${effectiveStuckOn.map(s => s"I'm stuck on: $s. ").getOrElse("")}" +
+                      "How would you like me to proceed?"
+                // Bug #133 — distinguish "ask the user" (genuine
+                // terminal — needs human input) from "agent should
+                // act differently now" (directive — agent gets one
+                // more iteration). The caller in `runAgentLoop`
+                // routes each to the right shape. Constructing the
+                // Message with Standard role here is fine: the
+                // caller rewrites it to Tool-role + Agents
+                // visibility for the directive case.
+                Task.pure(Some(CheckpointIntervention(
+                  message = Message(
+                    participantId  = agent.id,
+                    conversationId = convId,
+                    topicId        = topicId,
+                    content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
+                    state          = EventState.Complete,
+                    role           = MessageRole.Standard
+                  ),
+                  askingUser = report.shouldAskUser,
+                  // Sigil #385 — escalate to a TERMINAL forced synthesis once
+                  // the no-progress streak has persisted past
+                  // `hardNoProgressLimit`. A cooperative nudge gets the agent
+                  // a few chances to change approach; after that, a varied-
+                  // but-unproductive loop (which evades the identical-call
+                  // hard-stall) must be stopped, not nudged again.
+                  terminal = terminalOnPersistentNoProgress(state.noProgressStreak)
+                )))
+              } else Task.pure(None)
+            }
+          }
         resolveCheckpointModel.flatMap { checkpointModelId =>
         sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ProgressReflectionInput](
           sigil = this,
@@ -6983,89 +7075,26 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           tool = sigil.tool.consult.ProgressReflectionTool,
           generationSettings = sigil.tool.consult.ProgressReflectionTool.consultSettings
         ).flatMap {
-        case None         => Task.pure(None)  // checkpoint-call failed; let the loop continue
-        case Some(report) =>
-          // Persist the checkpoint event so the chain is replayable.
+        case Some(report) => stallTask.flatMap(stall => processCheckpointReport(report, stall))
+        case None         =>
+          // Sigil #394 — fail SAFE, not open. A checkpoint that couldn't
+          // produce a report (a forced-tool_choice-incompatible model returned
+          // naked text → None) must not silently switch OFF stall detection
+          // (observed: 44 of 64 checkpoints returned None on Fable, the streak
+          // never built, zero interventions across 84 iterations). Fall back to
+          // the objective StallDetector verdict so an incapable checkpoint
+          // model can't disable the guardrail entirely.
           stallTask.flatMap { stall =>
-            withDB(_.conversations.transaction(_.get(convId))).flatMap { convOpt =>
-              val topicId = convOpt.flatMap(_.topics.lastOption.map(_.id))
-                .getOrElse(_root_.sigil.conversation.Topic.id("__no_topic__"))
-              // Sigil bug #124 — fold the objective stall signal into the
-              // reflector's self-assessment. The agent's `meaningfulProgress`
-              // self-report is necessary but not sufficient; if the
-              // StallDetector spots an identical-call streak or empty-
-              // payload streak, the persisted checkpoint records
-              // `meaningfulProgress = false` regardless of what the agent
-              // said, and `stuckOn` carries the detector's reason so the
-              // intervention message names the loop concretely.
-              val effectiveMeaningful = report.meaningfulProgress && !stall.detected
-              val effectiveStuckOn    = stall.reason.orElse(report.stuckOn)
-              val checkpoint = sigil.event.ProgressCheckpoint(
-                participantId        = agent.id,
-                conversationId       = convId,
-                topicId              = topicId,
-                iterationCount       = iteration,
-                prevCheckpointStatus = priorStatus,
-                currentStatus        = report.currentStatus,
-                meaningfulProgress   = effectiveMeaningful,
-                remainingSteps       = report.remainingSteps,
-                stuckOn              = effectiveStuckOn,
-                shouldAskUser        = report.shouldAskUser
-              )
-              publish(checkpoint).flatMap { _ =>
-                // Update side-state for the next checkpoint comparison.
-                state.lastStatus = Some(report.currentStatus)
-                if (!effectiveMeaningful) {
-                  state.noProgressStreak = state.noProgressStreak + 1
-                } else {
-                  state.noProgressStreak = 0
-                }
-                val stuck = state.noProgressStreak >= consecutiveNoProgressLimit
-                if (report.shouldAskUser || stuck || stall.detected) {
-                  val reason =
-                    if (report.shouldAskUser)
-                      s"I need clarification before I can continue. ${effectiveStuckOn.getOrElse("")}".trim
-                    else if (stall.detected)
-                      // Stall-detector hit on the current checkpoint —
-                      // intervene immediately rather than waiting for
-                      // `consecutiveNoProgressLimit` streaks to stack.
-                      stall.reason.getOrElse(
-                        s"I've made the same kind of call repeatedly without new information. How would you like me to proceed?"
-                      )
-                    else
-                      s"I've been working on this for $iteration turns and haven't made meaningful " +
-                        s"progress since: \"${priorStatus.getOrElse(report.currentStatus)}\". " +
-                        s"${effectiveStuckOn.map(s => s"I'm stuck on: $s. ").getOrElse("")}" +
-                        "How would you like me to proceed?"
-                  // Bug #133 — distinguish "ask the user" (genuine
-                  // terminal — needs human input) from "agent should
-                  // act differently now" (directive — agent gets one
-                  // more iteration). The caller in `runAgentLoop`
-                  // routes each to the right shape. Constructing the
-                  // Message with Standard role here is fine: the
-                  // caller rewrites it to Tool-role + Agents
-                  // visibility for the directive case.
-                  Task.pure(Some(CheckpointIntervention(
-                    message = Message(
-                      participantId  = agent.id,
-                      conversationId = convId,
-                      topicId        = topicId,
-                      content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
-                      state          = EventState.Complete,
-                      role           = MessageRole.Standard
-                    ),
-                    askingUser = report.shouldAskUser,
-                    // Sigil #385 — escalate to a TERMINAL forced synthesis once
-                    // the no-progress streak has persisted past
-                    // `hardNoProgressLimit`. A cooperative nudge gets the agent
-                    // a few chances to change approach; after that, a varied-
-                    // but-unproductive loop (which evades the identical-call
-                    // hard-stall) must be stopped, not nudged again.
-                    terminal = terminalOnPersistentNoProgress(state.noProgressStreak)
-                  )))
-                } else Task.pure(None)
-              }
-            }
+            if (stall.detected)
+              processCheckpointReport(
+                sigil.tool.consult.ProgressReflectionInput(
+                  currentStatus      = stall.reason.getOrElse("Repeating the same kind of action without new information."),
+                  meaningfulProgress = false,
+                  remainingSteps     = "",
+                  stuckOn            = stall.reason,
+                  shouldAskUser      = false),
+                stall)
+            else Task.pure(None)
           }
       }.handleError { e =>
         Task(scribe.warn(s"runProgressCheckpoint failed for ${agent.id.value}/${convId.value} iter=$iteration: ${e.getMessage}"))
