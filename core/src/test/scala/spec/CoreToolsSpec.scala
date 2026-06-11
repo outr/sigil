@@ -127,7 +127,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           .collect { case o: LookupOutput => o }
           .getOrElse(fail(s"expected a ToolDelta carrying LookupOutput; got: $list"))
         out match {
-          case LookupOutput.Found(_, _, payload) =>
+          case LookupOutput.Found(_, _, payload, _) =>
             fabric.io.JsonFormatter.Compact(payload) should include("HIT_BODY_42")
           case other => fail(s"expected Found, got $other")
         }

@@ -9,9 +9,12 @@ import fabric.rw.*
  * `payload` and lets the caller deserialize against whichever shape
  * matches `capabilityType`. Three states:
  *
- *   - `Found(capabilityType, name, payload)` — record found; `payload`
- *     is the full record as fabric JSON, ready to deserialize via
- *     the corresponding RW.
+ *   - `Found(capabilityType, name, payload, chunk)` — record found;
+ *     `payload` is the record as fabric JSON, ready to deserialize via
+ *     the corresponding RW. `chunk` is set (sigil #389) when the record
+ *     was too large for the inline cap and its dominant text field was
+ *     windowed — call `lookup` again with `offset = chunk.nextOffset` for
+ *     the next chunk.
  *   - `NotFound(capabilityType, name)` — capabilityType + name
  *     resolved cleanly but no record matched.
  *   - `NotRetrievable(capabilityType, name, hint)` — the requested
@@ -19,7 +22,7 @@ import fabric.rw.*
  *     (`Tool` / `Mode`); `hint` describes the right action.
  */
 enum LookupOutput extends sigil.tool.ToolOutput derives RW {
-  case Found(capabilityType: String, name: String, payload: fabric.Json)
+  case Found(capabilityType: String, name: String, payload: fabric.Json, chunk: Option[LookupChunk] = None)
   case NotFound(capabilityType: String, name: String)
   case NotRetrievable(capabilityType: String, name: String, hint: String)
 }

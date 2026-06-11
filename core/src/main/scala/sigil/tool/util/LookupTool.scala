@@ -1,6 +1,8 @@
 package sigil.tool.util
 
 import fabric.rw.*
+import fabric.{Json, Obj, Str}
+import fabric.io.JsonFormatter
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
@@ -10,7 +12,7 @@ import sigil.information.Information.given
 import sigil.skill.Skill
 import sigil.tool.discovery.CapabilityType
 import sigil.tool.{Tool, ToolName}
-import sigil.tool.model.{LookupInput, LookupOutput}
+import sigil.tool.model.{LookupChunk, LookupInput, LookupOutput}
 
 /**
  * Generic retrieval tool. Resolves any retrievable
@@ -46,15 +48,18 @@ case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
       |- `capabilityType` — what kind of record to fetch (`Memory`, `Information`, `Skill`).
       |- `name` — the identifier the match surfaced (memory key, information id-as-string,
       |  skill name).
+      |- `offset` — for a LARGE record, read it in windows: the result carries a `chunk`
+      |  block; if `chunk.nextOffset` is set, call lookup again with `offset = nextOffset`
+      |  to read the next part, until `nextOffset` is null.
       |
       |Tools and modes are not retrievable — call tools directly; switch modes via `change_mode`.
-      |Returns `Found(capabilityType, name, payload)`, `NotFound(capabilityType, name)`, or
+      |Returns `Found(capabilityType, name, payload, chunk?)`, `NotFound(capabilityType, name)`, or
       |`NotRetrievable(capabilityType, name, hint)`.""".stripMargin
   override val keywords = Set("lookup", "fetch", "retrieve", "resolve", "details", "full", "expand")
 
   override def executeOutput(input: LookupInput, context: ToolContext): Task[LookupOutput] = {
     val typeName = input.capabilityType.toString
-    input.capabilityType match {
+    val resolved = input.capabilityType match {
       case CapabilityType.Memory      => resolveMemory(input.name, typeName, context)
       case CapabilityType.Information => resolveInformation(input.name, typeName, context)
       case CapabilityType.Skill       => resolveSkill(input.name, typeName, context)
@@ -65,7 +70,49 @@ case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
         Task.pure(LookupOutput.NotRetrievable(typeName, input.name,
           s"modes are not retrievable — call change_mode(\"${input.name}\") to enter it."))
     }
+    // Sigil #389 — `lookup` is retrieval, not generation: a large record
+    // (e.g. a saved HTML page) can't fit the inline cap and there's nothing
+    // to "narrow". Window the record's dominant text field so it pages in
+    // chunks instead of being stubbed by the generic overflow path.
+    resolved.map {
+      case LookupOutput.Found(ct, name, payload, _) =>
+        val (windowed, chunk) = windowPayload(payload, input.offset, context.sigil.inlineContentThreshold)
+        LookupOutput.Found(ct, name, windowed, chunk)
+      case other => other
+    }
   }
+
+  /** Sigil #389 — window the largest string field of a Found payload (the
+    * record's content) so a large record reads in pages. Returns the payload
+    * untouched (and no chunk) when the whole record fits the inline cap and
+    * the caller didn't page in; otherwise replaces that field with the
+    * `[offset, offset+budget)` slice and a [[LookupChunk]] pointing at the
+    * next offset. Budget is sized so the windowed result stays under the cap,
+    * so the generic overflow path never stubs it. */
+  private[util] def windowPayload(payload: Json, offset: Option[Int], threshold: Long): (Json, Option[LookupChunk]) =
+    payload match {
+      case o: Obj =>
+        val strings = o.value.iterator.collect { case (k, s: Str) => (k, s.value) }.toList
+        if (strings.isEmpty) (payload, None)
+        else {
+          val (field, full) = strings.maxBy(_._2.length)
+          val total   = full.length
+          // Budget = inline cap minus the rendered size of everything EXCEPT
+          // this field, minus headroom for the Found envelope + chunk block.
+          val blanked = Obj(o.value.updated(field, Str("")))
+          val baseLen = JsonFormatter.Compact(blanked).length
+          val budget  = math.max(2048, (threshold - baseLen - 2048).toInt)
+          val start   = math.max(0, offset.getOrElse(0)).min(total)
+          if (offset.forall(_ <= 0) && total <= budget) (payload, None)
+          else {
+            val end      = math.min(total, start + budget)
+            val windowed = Obj(o.value.updated(field, Str(full.substring(start, end))))
+            val next     = if (end < total) Some(end) else None
+            (windowed, Some(LookupChunk(field = field, offset = start, returned = end - start, total = total, nextOffset = next)))
+          }
+        }
+      case _ => (payload, None)
+    }
 
   private def resolveMemory(name: String, typeName: String, context: ToolContext): Task[LookupOutput] =
     context.sigil.withDB { db =>

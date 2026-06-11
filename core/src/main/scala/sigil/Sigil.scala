@@ -1746,7 +1746,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
          state.extras.filter(recentlyUsedTools.contains))
       else (baselineFull, state.extras)
     val merged         = (essentials ++ findCapability ++ baseline ++ extras ++ suggested).distinct
-    val deduped =
+    val afterDiscovery =
       if (state.pureDiscovery) {
         // Strip the entire respond family + no_response so the agent
         // can only reach a reply through discovery. The legacy
@@ -1757,6 +1757,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           Set(RespondTool, RespondOptionsTool, NoResponseTool).map(_.schema.name)
         merged.filterNot(stripped.contains)
       } else merged
+    // Sigil #388 — `includesFindCapability = false` (ToolPolicy.ActiveOnly /
+    // ToolPolicy.None) means "ensure find_capability is ABSENT", not merely
+    // "don't ADD it". It can still arrive via baseline (`agent.toolNames`),
+    // extras (the policy's own `names`), or `suggested` — e.g. an app whose
+    // roster is built from `CoreTools.coreToolNames`, which includes
+    // find_capability. Strip it here as a final filter so the documented
+    // suppression holds regardless of which channel surfaced it.
+    val deduped =
+      if (state.includesFindCapability) afterDiscovery
+      else afterDiscovery.filterNot(_ == FindCapabilityTool.schema.name)
     // Tool position bias is real for smaller models — they tend to pick the
     // first appropriate-looking tool. Put discovery + action tools first so
     // a "do X" request can land on `find_capability` / `change_mode` instead

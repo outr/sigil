@@ -18,6 +18,11 @@ import sigil.tool.discovery.CapabilityType
  * called, modes are switched-to via `change_mode`. Looking those up
  * returns a not-supported error message rather than silently doing
  * nothing.
+ *
+ * `offset` (sigil #389) pages a large record: when a result comes back
+ * with a `chunk` block whose `nextOffset` is set, call `lookup` again with
+ * `offset = nextOffset` to read the next window of the record's content.
  */
 case class LookupInput(capabilityType: CapabilityType,
-                       name: String) extends ToolInput derives RW
+                       name: String,
+                       offset: Option[Int] = None) extends ToolInput derives RW
