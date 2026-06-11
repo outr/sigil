@@ -6259,6 +6259,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                   case m: sigil.event.Message
                     if m.source.contains("orchestrator-silent-turn") && m.participantId == agent.id =>
                     Task { userVisibleSeen.set(true); () }
+                  // Sigil #392 — a naked-text terminal answer (end_turn + text,
+                  // no tool, on the no-forced-tool_choice path) was committed by
+                  // the orchestrator. Treat it as a user-visible reply so the
+                  // no-tool-call branch terminates instead of re-requesting the
+                  // same prose (the Fable/Mythos 5 dupe loop).
+                  case md: sigil.signal.MessageDelta if md.terminalReply =>
+                    Task { userVisibleSeen.set(true); () }
                   case td: ToolDelta if td.state.contains(EventState.Complete)
                                      && activeUserVisibleInvokes.containsKey(td.target) =>
                     Task {

@@ -48,7 +48,18 @@ case class MessageDelta(target: Id[Event],
                           * Message settles into a non-Success disposition (e.g.
                           * orphan-Message recovery on tool-call parse failure).
                           * `None` leaves the prior disposition unchanged. */
-                        disposition: Option[sigil.event.MessageDisposition] = None)
+                        disposition: Option[sigil.event.MessageDisposition] = None,
+                        /** Sigil #392 — set on the settle delta that commits a
+                          * naked-text terminal answer: a turn that ended with
+                          * `end_turn` + a user-visible text Message and NO tool
+                          * call (the no-forced-tool_choice path — Fable/Mythos 5
+                          * under the #387 self-heal). The agent loop treats it
+                          * as a user-visible reply (like a `respond` settle), so
+                          * the complete prose answer commits on the FIRST
+                          * occurrence instead of being dropped and re-requested.
+                          * Purely a loop signal; does not affect the projected
+                          * `Message`. */
+                        terminalReply: Boolean = false)
   extends Delta derives RW {
 
   /**

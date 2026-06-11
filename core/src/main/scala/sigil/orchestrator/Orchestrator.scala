@@ -1359,7 +1359,29 @@ object Orchestrator {
               reason      = reason,
               disposition = MessageDisposition.Failure(recoverable = true))
           } else Nil
-        Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic)
+        // Sigil #392 — commit a naked-text terminal answer instead of dropping
+        // it. When the turn ended naturally (`end_turn` → StopReason.Complete)
+        // with a user-visible text Message and NO tool call, the model gave a
+        // complete prose reply. This only happens on the no-forced-tool_choice
+        // path (a forced model would have stopped on `tool_use`) — i.e. the
+        // #387 self-heal downgraded `tool_choice` to `auto` for Fable/Mythos.
+        // Settle the streamed Message and flag the delta `terminalReply` so the
+        // agent loop treats it as a user-visible reply (no re-request). Without
+        // this the prose was left Active and the loop re-requested it ~4×,
+        // showing the user duplicate, never-committing bubbles.
+        val nakedTextTerminal: List[Signal] =
+          if (stopReason == StopReason.Complete && state.activeMessageCreated && !state.sawAnyToolCall) {
+            // Snapshot the streamed text into the settle — the per-delta
+            // `ContentBlockDelta`s were `complete = false` (snapshot-only
+            // persistence ignores them), so without this the committed Message
+            // would settle empty.
+            val text = state.currentBuffer.toString
+            state.activeMessageId.toList.map(id =>
+              MessageDelta(target = id, conversationId = convId,
+                contentReplacement = Some(Vector(ResponseContent.Text(text))),
+                state = Some(EventState.Complete), terminalReply = true))
+          } else Nil
+        Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic ++ nakedTextTerminal)
       case ProviderEvent.Error(msg)                       =>
         // Bug #50 — surface the provider/validator failure as a
         // Tool-role Message so the agent's next iteration sees a
