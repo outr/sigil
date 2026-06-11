@@ -319,11 +319,21 @@ case class AnthropicProvider(apiKey: String,
         val budget = Effort.anthropicBudgetTokens(e, maxTokens)
         Vector("thinking" -> obj("type" -> str("enabled"), "budget_tokens" -> num(budget)))
     }
-    // When thinking is on, Anthropic ignores top_p — silently omit it
+    // Sigil #390 — drive temperature/top_p off the model's catalog
+    // capabilities (OpenRouter `supported_parameters`, via
+    // `Sigil.supportsParameter`), the same way the OpenAI provider does.
+    // The Claude 5 generation (Fable 5 / Mythos 5) removed sampling params
+    // and HTTP-400s when they're sent ("`temperature` is deprecated for
+    // this model."); the catalog omits them from `supported_parameters`, so
+    // we proactively drop them rather than provoke the 400. Fail-open on a
+    // cold/empty catalog (`supportsParameter` returns true) — the self-heal
+    // in `callWithTransientRetry` is the backstop for that window.
+    // When thinking is on, Anthropic also ignores top_p — silently omit it
     // to avoid surprising the caller about a value that has no effect.
+    def supportsSampling(param: String): Boolean = sigilRef.supportsParameter(input.model._id, param)
     val genFields: Vector[(String, Json)] =
-      gen.temperature.toVector.map("temperature" -> num(_)) ++
-        (if (thinkingEnabled) Vector.empty
+      (if (supportsSampling("temperature")) gen.temperature.toVector.map("temperature" -> num(_)) else Vector.empty) ++
+        (if (thinkingEnabled || !supportsSampling("top_p")) Vector.empty
          else gen.topP.toVector.map("top_p" -> num(_))) ++
         (if (gen.stopSequences.nonEmpty) Vector("stop_sequences" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
 

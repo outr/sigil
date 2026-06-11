@@ -458,7 +458,8 @@ trait Provider extends Service with ModelResolver {
       def attempt(currentCall: ProviderCall,
                   remaining: Int,
                   ctx: Option[RetryContext],
-                  downgradedToolChoice: Boolean): Task[(List[ProviderEvent], Option[Throwable])] = {
+                  downgradedToolChoice: Boolean,
+                  strippedSampling: Boolean): Task[(List[ProviderEvent], Option[Throwable])] = {
         val perAttempt = ctx.fold(currentCall)(rc => currentCall.copy(retryContext = Some(rc)))
         val buffer = scala.collection.mutable.ListBuffer.empty[ProviderEvent]
         val tapped = call(perAttempt).evalTap(ev => Task { buffer += ev; () })
@@ -488,7 +489,31 @@ trait Provider extends Service with ModelResolver {
               s"Sigil #387 — model ${currentCall.model._id.value} rejected forced tool_choice " +
                 s"(${currentCall.toolChoice}); downgrading to Auto and retrying once"
             )
-            attempt(currentCall.copy(toolChoice = ToolChoice.Auto), remaining, ctx, downgradedToolChoice = true)
+            attempt(currentCall.copy(toolChoice = ToolChoice.Auto), remaining, ctx,
+              downgradedToolChoice = true, strippedSampling)
+          } else if (!meaningful && !strippedSampling
+                     && (currentCall.generationSettings.temperature.isDefined ||
+                         currentCall.generationSettings.topP.isDefined)
+                     && Provider.isDeprecatedSamplingParam(t)) {
+            // Sigil #390 — cold-cache BACKSTOP for sampling params. The
+            // primary mechanism is proactive: providers drop temperature/top_p
+            // a model doesn't list in its catalog `supported_parameters` (via
+            // `Sigil.supportsParameter`), so a cataloged model never sends
+            // them. This self-heal only fires when the catalog is empty/cold
+            // (e.g. an Anthropic-direct app before an OpenRouter refresh): a
+            // model that rejects a sampling param it removed (Claude 5 — Fable
+            // 5 / Mythos 5 → HTTP 400 "`temperature` is deprecated for this
+            // model.") gets the SAME call retried once with temperature AND
+            // topP stripped (the whole category, so the API doesn't 400 again
+            // on top_p). At most one strip per call; composes with the
+            // tool_choice downgrade across retries when a model rejects both.
+            scribe.warn(
+              s"Sigil #390 — model ${currentCall.model._id.value} rejected a deprecated sampling " +
+                s"parameter; stripping temperature/topP and retrying once"
+            )
+            val stripped = currentCall.generationSettings.copy(temperature = None, topP = None)
+            attempt(currentCall.copy(generationSettings = stripped), remaining, ctx,
+              downgradedToolChoice, strippedSampling = true)
           } else if (!meaningful && remaining > 0 && cls == ErrorClassification.Retry) {
             val nextCtx = nextRetryContext(t)
             // Sigil #283 — honor the upstream's `retry-after` (lifted
@@ -503,7 +528,7 @@ trait Provider extends Service with ModelResolver {
                 s"(${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}) " +
                 s"after ${honoredDelay.toMillis}ms; $remaining retries remaining"
             )
-            Task.sleep(honoredDelay).flatMap(_ => attempt(currentCall, remaining - 1, Some(nextCtx), downgradedToolChoice))
+            Task.sleep(honoredDelay).flatMap(_ => attempt(currentCall, remaining - 1, Some(nextCtx), downgradedToolChoice, strippedSampling))
           } else {
             // Either we have partial events (can't retry — would
             // duplicate the work), or the error isn't classified as
@@ -514,7 +539,7 @@ trait Provider extends Service with ModelResolver {
           }
         }
       }
-      Stream.force(attempt(safe, retries, None, downgradedToolChoice = false).map {
+      Stream.force(attempt(safe, retries, None, downgradedToolChoice = false, strippedSampling = false).map {
         case (events, None) => Stream.emits(events)
         case (events, Some(t)) =>
           // Use `evalMap(Task.error)` rather than
@@ -1863,13 +1888,31 @@ object Provider {
     * [[ToolChoice.Auto]]. Walks the cause chain and matches
     * [[ForcedToolChoiceRejectionMarker]] case-insensitively, so it fires
     * regardless of throwable type or wrapping. */
-  def isForcedToolChoiceRejection(t: Throwable): Boolean = {
-    val needle = ForcedToolChoiceRejectionMarker.toLowerCase
+  def isForcedToolChoiceRejection(t: Throwable): Boolean =
+    messageChainContains(t, ForcedToolChoiceRejectionMarker)
+
+  /** Sigil #390 — substring an Anthropic 400 carries when a model rejects a
+    * sampling parameter it no longer supports, e.g. Claude 5 generation
+    * (Fable 5 / Mythos 5): `"`temperature` is deprecated for this model."`
+    * (also `top_p`). Matched case-insensitively. */
+  val DeprecatedSamplingParamMarker: String = "is deprecated for this model"
+
+  /** Sigil #390 — whether `t` (or any throwable in its cause chain) is a
+    * model rejecting a deprecated sampling parameter. Drives the self-heal
+    * that retries the same call once with `temperature` / `topP` stripped. */
+  def isDeprecatedSamplingParam(t: Throwable): Boolean =
+    messageChainContains(t, DeprecatedSamplingParamMarker)
+
+  /** Case-insensitively test whether `t` or any throwable in its cause chain
+    * carries `needle` in its message — cycle-guarded, so it works regardless
+    * of throwable type or wrapping. */
+  private def messageChainContains(t: Throwable, needle: String): Boolean = {
+    val lc = needle.toLowerCase
     val seen = scala.collection.mutable.Set.empty[Throwable]
     @scala.annotation.tailrec
     def loop(cur: Throwable): Boolean =
       if (cur == null || seen.contains(cur)) false
-      else if (Option(cur.getMessage).exists(_.toLowerCase.contains(needle))) true
+      else if (Option(cur.getMessage).exists(_.toLowerCase.contains(lc))) true
       else { seen += cur; loop(cur.getCause) }
     loop(t)
   }
