@@ -26,9 +26,27 @@ case class TokenUsage(promptTokens: Int,
                       totalTokens: Int,
                       isEstimated: Boolean = false,
                       cacheReadTokens: Int = 0,
-                      cacheCreationTokens: Int = 0) derives RW
+                      cacheCreationTokens: Int = 0) derives RW {
+
+  /** Sigil #381 — accumulate two authoritative per-call usage records.
+    * A turn makes one provider call per loop iteration; each call's
+    * usage sums onto the event it lands on instead of clobbering the
+    * last. Every field (cache subsets included) adds; the result is
+    * authoritative (`isEstimated = false`). */
+  def +(other: TokenUsage): TokenUsage = TokenUsage(
+    promptTokens        = promptTokens + other.promptTokens,
+    completionTokens    = completionTokens + other.completionTokens,
+    totalTokens         = totalTokens + other.totalTokens,
+    isEstimated         = false,
+    cacheReadTokens     = cacheReadTokens + other.cacheReadTokens,
+    cacheCreationTokens = cacheCreationTokens + other.cacheCreationTokens
+  )
+}
 
 object TokenUsage {
+
+  /** The additive identity — a zero-usage record. */
+  val zero: TokenUsage = TokenUsage(0, 0, 0)
 
   /** Build a [[TokenUsage]] from a provider's `usage` JSON object.
     *

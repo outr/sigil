@@ -94,7 +94,11 @@ object FrameBuilder {
               .orElse(Option(img.alt).filter(_.nonEmpty))
               .orElse(Option(ti.summary).filter(_.nonEmpty))
               .getOrElse("(image)")
-            (text, List(img.url))
+            // Sigil #382 — stamp the tool's chosen quality onto the URL
+            // so it survives the persisted `frame.images: List[URL]`
+            // boundary; the provider parses it back into typed wire
+            // content and downscales accordingly.
+            (text, List(sigil.tool.ImageQuality.stamp(img.url, img.quality)))
           case txt: sigil.tool.TextToolOutput =>
             // Sigil #305 — the inner `text` IS the result the model
             // reads; the JSON-envelope rendering through `RW[ToolOutput]`

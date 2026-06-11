@@ -39,7 +39,15 @@ import spice.net.URL
  *             ("Preview of `/pages/analog-standard` at 1280×800")
  *             should set this so the agent has prose to ground its
  *             reasoning against, not just pixels.
+ * @param quality Sigil #382 — how much detail to deliver. The framework
+ *             downscales the bytes to [[sigil.tool.ImageQuality.maxLongEdge]]
+ *             before encoding (the original stays in storage). The tool —
+ *             the only party that knows whether it's glancing or
+ *             scrutinizing — sets it; default [[ImageQuality.Low]] (512 px)
+ *             is the smallest size that's still decisive for the common
+ *             glance. Re-view at `High` only when fine detail is needed.
  */
 case class ImageToolOutput(url: URL,
                            alt: String = "",
-                           text: Option[String] = None) extends ToolOutput derives RW
+                           text: Option[String] = None,
+                           quality: ImageQuality = ImageQuality.Low) extends ToolOutput derives RW

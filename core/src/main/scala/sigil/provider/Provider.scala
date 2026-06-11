@@ -1109,7 +1109,10 @@ trait Provider extends Service with ModelResolver {
   private def toMessageContent(content: Vector[ResponseContent]): Vector[MessageContent] =
     content.map {
       case ResponseContent.Text(t)                 => MessageContent.Text(t)
-      case ResponseContent.Image(url, alt)         => MessageContent.Image(url, alt)
+      // Sigil #382 — quality rides the storage URL as `_q` across the
+      // persisted frame boundary; strip it here and carry it typed.
+      case ResponseContent.Image(url, alt)         =>
+        MessageContent.Image(_root_.sigil.tool.ImageQuality.strip(url), alt, _root_.sigil.tool.ImageQuality.fromUrl(url))
       // Sigil #296 — inline bytes path. Apps that have transient
       // image data (PDF page renders, screen captures) avoid both
       // spice's URL.parse mangling of `data:` URIs AND the
@@ -1133,7 +1136,7 @@ trait Provider extends Service with ModelResolver {
     * over the translated call so every provider benefits. */
   private[provider] def normalizeStoredImages(call: ProviderCall): Task[ProviderCall] = {
     def normalizeContent(mc: MessageContent): Task[MessageContent] = mc match {
-      case MessageContent.Image(url, altText) =>
+      case MessageContent.Image(url, altText, quality) =>
         storedFileIdFrom(url) match {
           case None     => Task.pure(mc)
           case Some(id) =>
@@ -1142,10 +1145,14 @@ trait Provider extends Service with ModelResolver {
               case Some(file) =>
                 sigil.storageProvider.download(file.path).map {
                   case Some(bytes) =>
+                    // Sigil #382 — downscale to the quality tier before
+                    // encoding; never ship original-resolution pixels.
+                    val resized = _root_.sigil.image.ImageDownscale.resize(bytes, quality.maxLongEdge, file.contentType)
                     MessageContent.ImageBytes(
                       mediaType = file.contentType,
-                      base64 = java.util.Base64.getEncoder.encodeToString(bytes),
-                      altText = altText
+                      base64 = java.util.Base64.getEncoder.encodeToString(resized),
+                      altText = altText,
+                      quality = quality
                     )
                   case None => mc
                 }
@@ -1672,7 +1679,11 @@ trait Provider extends Service with ModelResolver {
               // the model actually sees them; normalizeStoredImages
               // inlines any internal-storage URLs as bytes downstream.
               if (images.nonEmpty)
-                out += ProviderMessage.User(images.map(u => MessageContent.Image(u)).toVector)
+                // Sigil #382 — the producing tool's quality rides each
+                // URL as `_q`; strip it and carry it typed so the
+                // downscale/detail downstream uses it.
+                out += ProviderMessage.User(images.map(u =>
+                  MessageContent.Image(_root_.sigil.tool.ImageQuality.strip(u), quality = _root_.sigil.tool.ImageQuality.fromUrl(u))).toVector)
               resultsSeen.add(wireId)
             case ToolCallState.Active =>
               // No result yet — only happens for mid-turn debug

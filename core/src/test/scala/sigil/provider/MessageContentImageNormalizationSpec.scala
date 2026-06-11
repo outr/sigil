@@ -52,7 +52,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
       TestSigil.storeBytes(GlobalSpace, tinyPng, "image/png").flatMap { stored =>
         FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(TestSigil.storageUrl(stored)))).map { normalized =>
           imageContents(normalized) match {
-            case Vector(MessageContent.ImageBytes(mediaType, base64, _)) =>
+            case Vector(MessageContent.ImageBytes(mediaType, base64, _, _)) =>
               mediaType shouldBe "image/png"
               java.util.Base64.getDecoder.decode(base64) shouldBe tinyPng
             case other => fail(s"expected ImageBytes, got $other")

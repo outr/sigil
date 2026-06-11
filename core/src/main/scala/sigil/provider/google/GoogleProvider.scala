@@ -326,7 +326,7 @@ case class GoogleProvider(apiKey: String,
         val parts = blocks.map {
           case MessageContent.Text(t) =>
             obj("text" -> str(t))
-          case MessageContent.Image(u, _) =>
+          case MessageContent.Image(u, _, _) =>
             // Gemini accepts two image shapes:
             //   - `fileData{fileUri, mimeType}` for files uploaded via
             //     the File API (returns `gs://` or
@@ -337,7 +337,9 @@ case class GoogleProvider(apiKey: String,
             // Gemini endpoints but not all — apps that hit a 400 should
             // pre-upload via the File API and pass the returned URI.
             GoogleProvider.renderImageUrl(u)
-          case MessageContent.ImageBytes(mediaType, base64, _) =>
+          case MessageContent.ImageBytes(mediaType, base64, _, _) =>
+            // Sigil #382 — Gemini has no native `detail` flag; bytes are
+            // already downscaled to the quality tier upstream.
             obj("inlineData" -> obj("mimeType" -> str(mediaType), "data" -> str(base64)))
         }
         Vector(obj("role" -> str("user"), "parts" -> arr(parts*)))

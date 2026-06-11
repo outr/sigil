@@ -170,13 +170,16 @@ case class StandardContextCurator(sigil: Sigil,
         // shrinks. The agent recovers original payloads via
         // `search_conversation` if needed.
         externalizedFrames <- externalizeToolUseFields(sigil, blockResult.frames)
-        // Sigil #289 — keep only the most-recent N image-bearing
-        // ToolCall frames; stub older ones so megabytes of stale
-        // previews don't accumulate in the wire prompt.
-        deImagedFrames      = StandardContextCurator.supersedeOlderImages(
-                                externalizedFrames, sigil.keepRecentImages
-                              )
-        externalizedBlock   = blockResult.copy(frames = deImagedFrames)
+        // Sigil #382 — the recency-based image stubbing (#289) is gone.
+        // It evicted by recency (a bad proxy for relevance), destroyed the
+        // derived knowledge on eviction (manufacturing `view_file`
+        // re-acquisition loops), and mutated the cached prefix every turn
+        // (cache-write blowup). Image frames now stay STABLE in the
+        // prefix; the only backstop is the pressure-triggered,
+        // oldest-first, CAPTION-preserving eviction inside `budgetResolve`
+        // (which keeps each evicted frame's text so the agent never has to
+        // re-fetch what it already saw).
+        externalizedBlock   = blockResult.copy(frames = externalizedFrames)
         _             <- control.step("Retrieving memories")
         memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, externalizedBlock.frames, chain)
         // Pull persisted summaries — compression-time records from
@@ -288,12 +291,23 @@ case class StandardContextCurator(sigil: Sigil,
             tokenizer = budgetTokenizer
           )
 
-        val frames = tentative.frames
+        val frames0 = tentative.frames
+        // Sigil #382 — pressure-triggered, oldest-first, caption-preserving
+        // image eviction. When over budget, drop the oldest image frames'
+        // pixels (keeping their captions, so the agent never re-fetches what
+        // it already saw) up front; the rest of the shed cascade then runs
+        // on the result. Minimally lossy — captions are preserved, and on a
+        // fitting conversation nothing is touched (stable cached prefix).
+        val frames =
+          if (tokensOf(tentative, frames0, resolvedSummaries) <= cap) frames0
+          else StandardContextCurator.evictImagesToFit(
+            frames0, candidate => tokensOf(tentative, candidate, resolvedSummaries) <= cap)
+        val tent = tentative.copy(frames = frames)
 
-        if (tokensOf(tentative, frames, resolvedSummaries) <= cap) Task.pure(tentative)
+        if (tokensOf(tent, frames, resolvedSummaries) <= cap) Task.pure(tent)
         else {
           // Stage 1 — drop non-critical retrieved memories.
-          val afterStage1 = tentative.copy(memories = Vector.empty)
+          val afterStage1 = tent.copy(memories = Vector.empty)
           if (tokensOf(afterStage1, frames, resolvedSummaries) <= cap) Task.pure(afterStage1)
           else {
             // Stage 2 — drop unreferenced Information.
@@ -713,47 +727,67 @@ object StandardContextCurator {
     }
   }
 
-  /** Sigil #289 — keep only the most-recent `keepRecent`
-    * image-bearing [[sigil.conversation.ContextFrame.ToolCall]]
-    * frames; replace older frames' `state` with empty `images` plus
-    * a short text stub explaining the suppression. The durable
-    * event log is untouched (frames are derived from settled events
-    * each turn); subsequent curates see the same elision until the
-    * underlying events fall out of `maxFramesPerTurn`.
+  /** Sigil #382 — knowledge-preserving image eviction. Drop the
+    * `images` (pixels) of the OLDEST `evictCount` image-bearing
+    * [[ContextFrame.ToolCall]] frames while KEEPING each frame's text —
+    * which is the image's caption ([[sigil.conversation.FrameBuilder]]
+    * already folds the tool's `text`/`alt`/summary into the frame
+    * content). The agent reads what the image showed rather than being
+    * forced to re-fetch it (the loop the recency-stubbing #289
+    * manufactured). Pressure-triggered from [[budgetResolve]] only;
+    * image frames are otherwise left STABLE so the cached prefix doesn't
+    * churn. Returns `frames` unchanged when `evictCount <= 0`.
     *
-    * `keepRecent = Int.MaxValue` disables supersession entirely
-    * (every image-bearing frame keeps its `images`). `keepRecent =
-    * 0` is the most aggressive — even the latest image stubs out;
-    * apps wire this for low-multimodal-budget scenarios where the
-    * agent should never re-see prior images.
-    *
-    * Only `ToolCallState.Complete` frames with a non-empty `images`
-    * list are candidates; `Active` frames and Complete frames with
-    * empty `images` pass through untouched. */
-  def supersedeOlderImages(frames: Vector[_root_.sigil.conversation.ContextFrame],
-                            keepRecent: Int): Vector[_root_.sigil.conversation.ContextFrame] = {
-    if (keepRecent == Int.MaxValue) return frames
-    val keep = math.max(0, keepRecent)
-    // Index the image-bearing frame positions.
+    * Only `ToolCallState.Complete` frames with a non-empty `images` list
+    * are candidates. */
+  def evictOldestImages(frames: Vector[ContextFrame], evictCount: Int): Vector[ContextFrame] = {
+    if (evictCount <= 0) return frames
     val imageIndices = frames.iterator.zipWithIndex.collect {
-      case (tc: _root_.sigil.conversation.ContextFrame.ToolCall, idx) =>
+      case (tc: ContextFrame.ToolCall, idx) =>
         tc.state match {
-          case _root_.sigil.conversation.ToolCallState.Complete(_, images) if images.nonEmpty => Some(idx)
+          case ToolCallState.Complete(_, images) if images.nonEmpty => Some(idx)
           case _ => None
         }
     }.flatten.toVector
-    if (imageIndices.size <= keep) return frames
-    val supersededSet = imageIndices.dropRight(keep).toSet
+    val evictSet = imageIndices.take(evictCount).toSet // oldest-first
     frames.zipWithIndex.map {
-      case (tc: _root_.sigil.conversation.ContextFrame.ToolCall, idx) if supersededSet.contains(idx) =>
+      case (tc: ContextFrame.ToolCall, idx) if evictSet.contains(idx) =>
         tc.state match {
-          case _root_.sigil.conversation.ToolCallState.Complete(_, _) =>
-            val stub = s"[image suppressed for context budget — produced by ${tc.toolName.value}; " +
-              "recoverable via search_conversation against the conversation event log]"
-            tc.copy(state = _root_.sigil.conversation.ToolCallState.Complete(content = stub, images = Nil))
+          case ToolCallState.Complete(content, _) =>
+            // Keep the caption (content); drop only the pixels.
+            tc.copy(state = ToolCallState.Complete(content = content, images = Nil))
           case _ => tc
         }
       case (other, _) => other
     }
   }
+
+  /** Sigil #382 — progressively evict the oldest image frames' pixels
+    * (caption-preserving, via [[evictOldestImages]]) until `fits` holds
+    * or no image pixels remain. Returns the fully-evicted frames if it
+    * never fits — the residual shed cascade then handles the rest. */
+  def evictImagesToFit(frames: Vector[ContextFrame],
+                       fits: Vector[ContextFrame] => Boolean): Vector[ContextFrame] = {
+    if (fits(frames)) return frames
+    val total = imageFrameCount(frames)
+    if (total == 0) return frames
+    var n = 1
+    while (n <= total) {
+      val candidate = evictOldestImages(frames, n)
+      if (fits(candidate)) return candidate
+      n += 1
+    }
+    evictOldestImages(frames, total)
+  }
+
+  /** Number of image-bearing frames still carrying pixels (sigil #382). */
+  def imageFrameCount(frames: Vector[ContextFrame]): Int =
+    frames.count {
+      case tc: ContextFrame.ToolCall =>
+        tc.state match {
+          case ToolCallState.Complete(_, images) => images.nonEmpty
+          case _ => false
+        }
+      case _ => false
+    }
 }

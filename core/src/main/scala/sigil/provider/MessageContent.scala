@@ -1,5 +1,6 @@
 package sigil.provider
 
+import sigil.tool.ImageQuality
 import spice.net.URL
 
 /**
@@ -32,7 +33,11 @@ sealed trait MessageContent
 
 object MessageContent {
   case class Text(text: String) extends MessageContent
-  case class Image(url: URL, altText: Option[String] = None) extends MessageContent
+  /** Sigil #382 — `quality` drives the server-side downscale before
+    * encode and (where the provider supports it) the native `detail`
+    * flag. Default [[ImageQuality.Low]] (512px). */
+  case class Image(url: URL, altText: Option[String] = None,
+                   quality: ImageQuality = ImageQuality.Low) extends MessageContent
 
   /**
    * Inline image bytes carried in the request.
@@ -41,5 +46,6 @@ object MessageContent {
    * @param base64    the image bytes, already base64-encoded (no `data:` prefix).
    * @param altText   optional alt text the model may surface for accessibility.
    */
-  case class ImageBytes(mediaType: String, base64: String, altText: Option[String] = None) extends MessageContent
+  case class ImageBytes(mediaType: String, base64: String, altText: Option[String] = None,
+                        quality: ImageQuality = ImageQuality.Low) extends MessageContent
 }

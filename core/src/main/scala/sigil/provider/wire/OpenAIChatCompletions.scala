@@ -710,15 +710,16 @@ object OpenAIChatCompletions {
           val parts = blocks.map {
             case MessageContent.Text(t) =>
               obj("type" -> str("text"), "text" -> str(t))
-            case MessageContent.Image(u, _) =>
-              obj("type" -> str("image_url"), "image_url" -> obj("url" -> str(u.toString)))
-            case MessageContent.ImageBytes(mediaType, base64, _) =>
+            case MessageContent.Image(u, _, q) =>
+              obj("type" -> str("image_url"),
+                  "image_url" -> obj("url" -> str(u.toString), "detail" -> str(q.openAIDetail)))
+            case MessageContent.ImageBytes(mediaType, base64, _, q) =>
               // OpenAI's chat-completions `image_url` field accepts inline
               // data URLs (`data:<mime>;base64,<bytes>`). Construct one here
               // so apps with raw bytes don't need to detour through a host.
               obj(
                 "type" -> str("image_url"),
-                "image_url" -> obj("url" -> str(s"data:$mediaType;base64,$base64"))
+                "image_url" -> obj("url" -> str(s"data:$mediaType;base64,$base64"), "detail" -> str(q.openAIDetail))
               )
           }
           obj("role" -> str("user"), "content" -> arr(parts*))

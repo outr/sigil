@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.{ContextFrame, FrameBuilder, ToolCallState}
 import sigil.event.{ToolInvoke, ToolOutcome}
 import sigil.signal.EventState
-import sigil.tool.{ImageToolOutput, ToolName}
+import sigil.tool.{ImageQuality, ImageToolOutput, ToolName}
 import spice.net.URL
 
 /**
@@ -50,7 +50,10 @@ class ImageToolOutputSpec extends AnyWordSpec with Matchers {
       toolFrame.state match {
         case ToolCallState.Complete(content, images) =>
           content shouldBe "Preview of /pages/x"
-          images  shouldBe List(sampleUrl)
+          // #382 — FrameBuilder stamps the quality tier onto the URL as the
+          // `_q` carrier; the underlying storage URL round-trips via strip.
+          images.map(ImageQuality.strip) shouldBe List(sampleUrl)
+          images.map(ImageQuality.fromUrl) shouldBe List(ImageQuality.Low)
         case other => fail(s"expected Complete state, got $other")
       }
     }

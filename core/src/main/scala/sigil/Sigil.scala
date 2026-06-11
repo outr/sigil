@@ -2300,29 +2300,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def inlineToolUseContentThreshold: Long = inlineContentThreshold
 
   /**
-   * Sigil #289 — how many of the most-recent image-bearing tool
-   * results (`ToolCall.state = Complete(_, images)` frames with a
-   * non-empty `images` list) the curator preserves in the per-turn
-   * wire prompt. Older image-bearing frames render with empty
-   * `images` and a short text stub in place of the original
-   * `content`; the durable event log is untouched (anything stubbed
-   * is recoverable via `search_conversation`).
-   *
-   * Default `1` — the most recent image stays inline so the agent
-   * can see current visual state; everything older is suppressed.
-   * Apps that need multiple in-context images (a side-by-side
-   * comparison tool, a multi-page OCR reader) override to widen.
-   * Set to `Int.MaxValue` to disable supersession entirely.
-   *
-   * Rationale: visual outputs (`ImageToolOutput`) are typically
-   * ~50-100 KB per image. A 32-iteration turn doing repeated
-   * previews would otherwise accumulate megabytes of stale images
-   * the agent doesn't need — only the latest snapshot is
-   * load-bearing for the reasoning at hand.
-   */
-  def keepRecentImages: Int = 1
-
-  /**
    * Resolve the [[SpaceId]] under which an externalized content
    * block lands. Default [[GlobalSpace]] — apps that scope storage
    * per-conversation / per-tenant override (e.g.

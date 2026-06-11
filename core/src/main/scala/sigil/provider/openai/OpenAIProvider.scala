@@ -356,10 +356,11 @@ case class OpenAIProvider(apiKey: String,
         val contentItems = blocks.map {
           case MessageContent.Text(t) =>
             obj("type" -> str("input_text"), "text" -> str(t))
-          case MessageContent.Image(u, _) =>
-            obj("type" -> str("input_image"), "image_url" -> str(u.toString))
-          case MessageContent.ImageBytes(mediaType, base64, _) =>
-            obj("type" -> str("input_image"), "image_url" -> str(s"data:$mediaType;base64,$base64"))
+          case MessageContent.Image(u, _, q) =>
+            obj("type" -> str("input_image"), "image_url" -> str(u.toString), "detail" -> str(q.openAIDetail))
+          case MessageContent.ImageBytes(mediaType, base64, _, q) =>
+            obj("type" -> str("input_image"),
+                "image_url" -> str(s"data:$mediaType;base64,$base64"), "detail" -> str(q.openAIDetail))
         }
         Vector(obj("role" -> str("user"), "content" -> arr(contentItems*)))
 

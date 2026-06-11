@@ -23,8 +23,13 @@ object TokenEstimator {
         // budget reflects both halves of the wire-rendered pair.
         val argTokens = tokenizer.count(tc.argsJson)
         val resultTokens = tc.state match {
-          case ToolCallState.Complete(content, _) => tokenizer.count(content)
-          case ToolCallState.Active               => 0
+          // Sigil #382 — image frames cost real (bounded) tokens on the
+          // wire (~22/350/1600 for Claude by quality tier), so account
+          // for them here; otherwise images never pressure the budget and
+          // the curator's pressure-triggered image ceiling can't trigger.
+          case ToolCallState.Complete(content, images) =>
+            tokenizer.count(content) + images.iterator.map(TokenEstimator.imageTokens).sum
+          case ToolCallState.Active                     => 0
         }
         argTokens + resultTokens
       case ContextFrame.System(c, _, _)                   => tokenizer.count(c)
@@ -63,4 +68,14 @@ object TokenEstimator {
       estimateMemories(memories, tokenizer) +
       estimateSummaries(summaries, tokenizer) +
       estimateInformation(information, tokenizer)
+
+  /** Sigil #382 — approximate wire token cost of one rendered image by
+    * its quality tier (parsed off the URL's `_q` param). A provider's
+    * tokenizer caps an image regardless of byte size (~1600 for Claude
+    * at the 1568px high tier); the lower tiers scale down from there. */
+  def imageTokens(url: spice.net.URL): Int = sigil.tool.ImageQuality.fromUrl(url) match {
+    case sigil.tool.ImageQuality.Thumbnail => 22
+    case sigil.tool.ImageQuality.Low       => 350
+    case sigil.tool.ImageQuality.High      => 1600
+  }
 }

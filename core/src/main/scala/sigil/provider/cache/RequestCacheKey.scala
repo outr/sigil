@@ -125,18 +125,20 @@ object RequestCacheKey {
         "kind" -> str("text"),
         "text" -> str(text)
       )
-    case MessageContent.Image(url, altText) =>
+    case MessageContent.Image(url, altText, quality) =>
       obj(
         "kind"    -> str("image"),
         "url"     -> str(url.toString),
-        "altText" -> altText.map(str).getOrElse(Null)
+        "altText" -> altText.map(str).getOrElse(Null),
+        "quality" -> str(quality.toString) // #382 — different tier = different rendered bytes
       )
-    case MessageContent.ImageBytes(mediaType, base64, altText) =>
+    case MessageContent.ImageBytes(mediaType, base64, altText, quality) =>
       obj(
         "kind"      -> str("imageBytes"),
         "mediaType" -> str(mediaType),
         "base64"    -> str(base64),
-        "altText"   -> altText.map(str).getOrElse(Null)
+        "altText"   -> altText.map(str).getOrElse(Null),
+        "quality"   -> str(quality.toString)
       )
   }
 

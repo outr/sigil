@@ -59,7 +59,14 @@ case class MessageDelta(target: Id[Event],
    *   - Otherwise, `content` deltas are appended to `Message.content` only
    *     when `complete = true`. Streaming chunks (`complete = false`) are
    *     wire-only (for subscriber UX) and don't touch the persisted Message.
-   *   - `usage` replaces.
+   *   - `usage` ACCUMULATES (sigil #381). A turn makes one provider call
+   *     per loop iteration; for the tool-calling iterations the usage
+   *     lands on the same `lastUserVisibleMessageId`, so it must sum, not
+   *     clobber — replacing billed the whole turn at only its last call's
+   *     tokens (cost undercounted ~40×). Only AUTHORITATIVE usage
+   *     accumulates; mid-stream estimates (`isEstimated`, OpenAI-compat
+   *     wire) are wire-only for live UI tickers and never touch the
+   *     persisted total.
    *   - `state` replaces.
    *
    * Returns `target` unchanged if it isn't a `Message`.
@@ -74,7 +81,10 @@ case class MessageDelta(target: Id[Event],
             case _ => m.content
           }
       }
-      val nextUsage = usage.getOrElse(m.usage)
+      val nextUsage = usage match {
+        case Some(u) if !u.isEstimated => m.usage + u
+        case _                         => m.usage
+      }
       val nextState = state.getOrElse(m.state)
       val nextDisposition = disposition.getOrElse(m.disposition)
       m.copy(content = nextContent, usage = nextUsage, state = nextState, disposition = nextDisposition)

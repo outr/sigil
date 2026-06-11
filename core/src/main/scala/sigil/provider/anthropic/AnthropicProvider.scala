@@ -362,12 +362,14 @@ case class AnthropicProvider(apiKey: String,
         val contentItems = blocks.map {
           case MessageContent.Text(t) =>
             obj("type" -> str("text"), "text" -> str(t))
-          case MessageContent.Image(u, _) =>
+          case MessageContent.Image(u, _, _) =>
             obj(
               "type" -> str("image"),
               "source" -> obj("type" -> str("url"), "url" -> str(u.toString))
             )
-          case MessageContent.ImageBytes(mediaType, base64, _) =>
+          case MessageContent.ImageBytes(mediaType, base64, _, _) =>
+            // Sigil #382 — Anthropic has no native `detail` flag; the
+            // bytes are already downscaled to the quality tier upstream.
             obj(
               "type" -> str("image"),
               "source" -> obj(
