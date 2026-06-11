@@ -265,9 +265,18 @@ trait Provider extends Service with ModelResolver {
             // handles the cumulative-fan-out case where two requests
             // individually fit but combined exceed the per-minute
             // ceiling.
+            // Sigil #395 — if this model is already known (this process) to
+            // reject a forced tool_choice, demote to Auto BEFORE the wire call
+            // so we don't re-pay the #387 400-then-downgrade round-trip on
+            // every agent-loop iteration. The respond family is always in the
+            // roster, so Auto still lets the agent act.
+            val routed =
+              if (safe.toolChoice.isForced && Provider.rejectsForcedToolChoice(safe.model._id))
+                safe.copy(toolChoice = ToolChoice.Auto)
+              else safe
             Stream.force(
-              admitToWindow(request.modelId, estimateRequest(safe))
-                .map(_ => callWithTransientRetry(safe))
+              admitToWindow(request.modelId, estimateRequest(routed))
+                .map(_ => callWithTransientRetry(routed))
             )
           case Left(reason) => Stream.force(Task.error(reason))
         }
@@ -485,6 +494,10 @@ trait Provider extends Service with ModelResolver {
           // downgraded call.
           if (!meaningful && !downgradedToolChoice && currentCall.toolChoice.isForced
               && Provider.isForcedToolChoiceRejection(t)) {
+            // Sigil #395 — remember the rejection so later calls (this turn's
+            // remaining iterations and every future turn) demote up front
+            // instead of re-paying this round-trip per iteration.
+            Provider.recordForcedToolChoiceRejection(currentCall.model._id)
             scribe.warn(
               s"Sigil #387 — model ${currentCall.model._id.value} rejected forced tool_choice " +
                 s"(${currentCall.toolChoice}); downgrading to Auto and retrying once"
@@ -1959,6 +1972,30 @@ object Provider {
     * regardless of throwable type or wrapping. */
   def isForcedToolChoiceRejection(t: Throwable): Boolean =
     messageChainContains(t, ForcedToolChoiceRejectionMarker)
+
+  /** Sigil #395 — process-wide memo of models observed to reject a forced
+    * `tool_choice`. The #387 self-heal is stateless per-call, so without this
+    * EVERY forced-`tool_choice` call re-pays the 400-then-downgrade round-trip
+    * — once per agent-loop iteration, i.e. many times within a single turn for
+    * a tool-heavy run. OpenRouter can't gate this proactively (it wrongly lists
+    * `tool_choice` in such models' `supported_parameters`), so the honest
+    * signal is the directly-observed rejection: trip the memo on the first 400,
+    * then demote forced choices to [[ToolChoice.Auto]] up front on every later
+    * call. Model-keyed (rejection is a property of the model, not the provider
+    * instance) and shared across all providers. In-memory: re-discovered once
+    * per process after restart. */
+  private val forcedToolChoiceRejectors: java.util.Set[String] =
+    java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+
+  /** Record that `modelId` rejected a forced `tool_choice`. Idempotent. */
+  def recordForcedToolChoiceRejection(modelId: Id[Model]): Unit = {
+    forcedToolChoiceRejectors.add(modelId.value)
+    ()
+  }
+
+  /** Whether `modelId` is known (this process) to reject a forced `tool_choice`. */
+  def rejectsForcedToolChoice(modelId: Id[Model]): Boolean =
+    forcedToolChoiceRejectors.contains(modelId.value)
 
   /** Sigil #390 — substring an Anthropic 400 carries when a model rejects a
     * sampling parameter it no longer supports, e.g. Claude 5 generation
