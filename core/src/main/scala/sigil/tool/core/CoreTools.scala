@@ -92,13 +92,18 @@ object CoreTools {
     Vector(
       RespondTool,
       RespondOptionsTool,
-      FindCapabilityTool
+      FindCapabilityTool,
+      RecordConsentTool
     )
-  // Sigil #378 — `RecordConsentTool` is intentionally NOT in the default
-  // set. It's a no-op unless some tool in scope sets `requiresUserConsent`,
-  // so on apps where none do it was pure dead weight a model could loop
-  // on. The framework injects it into the per-turn roster only when a
-  // consent-gated tool is actually present (see `Sigil.defaultProcess`).
+  // Sigil #378/#380 — `RecordConsentTool` stays REGISTERED and cataloged
+  // here (it's a still-used tool: the framework injects it whenever a
+  // consent-gated tool is in scope), but it is NOT advertised in the
+  // per-turn roster unless one is present — `Sigil.reconcileConsentTool`
+  // drops it otherwise, so the model never sees the no-op it could loop on
+  // (#378). Removing it from this set entirely (as #378 first did)
+  // unregistered the poly type and orphaned its `tools`-store row, throwing
+  // "Type not found" on every `listTools` read (#380); keep it here so the
+  // type stays resolvable — separate registration from advertisement.
 
   /** The ToolInput RWs for polymorphic registration. Sigil registers these
     * automatically during `instance.sync()`; apps don't need to touch this.

@@ -3415,10 +3415,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       val effective = spaces.fold(authorized)(_.intersect(authorized))
       val kindFilter: sigil.tool.Tool => Boolean =
         kinds.fold((_: sigil.tool.Tool) => true)(set => t => set.contains(t.kind))
-      withDB(_.tools.transaction(_.list)).map(_.toList.collect {
-        case tool if effective.contains(tool.space) && kindFilter(tool) =>
-          sigil.signal.ToolSummary.fromTool(tool)
-      })
+      // Sigil #380 — read the tools store leniently. A row whose poly type
+      // is no longer registered (a removed tool) must NOT fail the whole
+      // catalog: the typed `_.list` would throw "Type not found" mid-stream
+      // and abort every consumer (notice refreshes, ToolListSnapshot, …).
+      // Walk `jsonStream` and drop rows that don't decode — same posture as
+      // `StaticToolSyncUpgrade`'s orphan-tolerant prune. So removing a tool
+      // is never DB-corrupting on read.
+      withDB(_.tools.transaction(_.jsonStream.toList)).map { rows =>
+        Sigil.decodeToolsLeniently(rows).collect {
+          case tool if effective.contains(tool.space) && kindFilter(tool) =>
+            sigil.signal.ToolSummary.fromTool(tool)
+        }
+      }
     }
 
   /** Fold the signal through [[inboundTransforms]] in declaration order.
@@ -8459,6 +8468,16 @@ object Sigil {
     * never a dead-end attractor the model loops on. It stays
     * DB-registered (resolvable) regardless; this only governs the
     * per-turn roster surfaced to the model. */
+  /** Sigil #380 — decode tool rows from the store leniently: a row whose
+    * poly type is no longer registered (a removed tool) is skipped rather
+    * than throwing "Type not found" and failing the whole read. So removing
+    * a tool is never DB-corrupting on read. Mirrors the orphan-tolerant
+    * read in [[sigil.tool.StaticToolSyncUpgrade]]. */
+  def decodeToolsLeniently(rows: List[fabric.Json]): List[sigil.tool.Tool] = {
+    val toolRW = summon[RW[sigil.tool.Tool]]
+    rows.flatMap(json => scala.util.Try(json.as[sigil.tool.Tool](using toolRW)).toOption)
+  }
+
   def reconcileConsentTool(tools: Vector[sigil.tool.Tool]): Vector[sigil.tool.Tool] = {
     val consent = sigil.tool.core.RecordConsentTool
     val needsConsent = tools.exists(t => t.requiresUserConsent && t.schema.name != consent.schema.name)
