@@ -26,3 +26,19 @@ enum ToolChoice {
     * discarding whatever the agent has built up. */
   case Specific(toolName: ToolName)
 }
+
+object ToolChoice {
+
+  extension (tc: ToolChoice) {
+
+    /** Whether this choice forces tool use (`Required` →
+      * Anthropic `{type:"any"}`, `Specific` → `{type:"tool"}`). Some
+      * models reject forced tool use entirely and accept only
+      * `Auto`/`None`; sigil #387's self-heal downgrades a forced
+      * choice to [[ToolChoice.Auto]] when the model rejects it. */
+    def isForced: Boolean = tc match {
+      case Required | Specific(_) => true
+      case None | Auto            => false
+    }
+  }
+}

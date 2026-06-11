@@ -455,8 +455,11 @@ trait Provider extends Service with ModelResolver {
       // optionalError is None, the call drained cleanly. If Some,
       // the call errored after emitting `bufferedEvents` (possibly
       // empty / non-meaningful).
-      def attempt(remaining: Int, ctx: Option[RetryContext]): Task[(List[ProviderEvent], Option[Throwable])] = {
-        val perAttempt = ctx.fold(safe)(rc => safe.copy(retryContext = Some(rc)))
+      def attempt(currentCall: ProviderCall,
+                  remaining: Int,
+                  ctx: Option[RetryContext],
+                  downgradedToolChoice: Boolean): Task[(List[ProviderEvent], Option[Throwable])] = {
+        val perAttempt = ctx.fold(currentCall)(rc => currentCall.copy(retryContext = Some(rc)))
         val buffer = scala.collection.mutable.ListBuffer.empty[ProviderEvent]
         val tapped = call(perAttempt).evalTap(ev => Task { buffer += ev; () })
         tapped.drain.map(_ => (buffer.toList, Option.empty[Throwable])).handleError { t =>
@@ -469,7 +472,24 @@ trait Provider extends Service with ModelResolver {
           // text / tool / reasoning / image / response-state events
           // do.
           val meaningful = captured.exists(isMeaningfulProviderEvent)
-          if (!meaningful && remaining > 0 && cls == ErrorClassification.Retry) {
+          // Sigil #387 — model-agnostic self-heal: a model that rejects
+          // forced tool_choice (Fable 5 / Mythos 5 → HTTP 400
+          // "tool_choice forces tool use is not compatible with this
+          // model.") gets the SAME call retried once with tool_choice
+          // downgraded to Auto. Both Required and Specific collapse to
+          // Auto; the respond family is always in the roster so Auto
+          // still lets the agent act. At most one downgrade per call
+          // (`downgradedToolChoice` guard) — independent of the
+          // transient-retry budget, which still applies to the
+          // downgraded call.
+          if (!meaningful && !downgradedToolChoice && currentCall.toolChoice.isForced
+              && Provider.isForcedToolChoiceRejection(t)) {
+            scribe.warn(
+              s"Sigil #387 — model ${currentCall.model._id.value} rejected forced tool_choice " +
+                s"(${currentCall.toolChoice}); downgrading to Auto and retrying once"
+            )
+            attempt(currentCall.copy(toolChoice = ToolChoice.Auto), remaining, ctx, downgradedToolChoice = true)
+          } else if (!meaningful && remaining > 0 && cls == ErrorClassification.Retry) {
             val nextCtx = nextRetryContext(t)
             // Sigil #283 — honor the upstream's `retry-after` (lifted
             // by the provider into ProviderErrorMetadata.retryAfterMs)
@@ -483,7 +503,7 @@ trait Provider extends Service with ModelResolver {
                 s"(${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}) " +
                 s"after ${honoredDelay.toMillis}ms; $remaining retries remaining"
             )
-            Task.sleep(honoredDelay).flatMap(_ => attempt(remaining - 1, Some(nextCtx)))
+            Task.sleep(honoredDelay).flatMap(_ => attempt(currentCall, remaining - 1, Some(nextCtx), downgradedToolChoice))
           } else {
             // Either we have partial events (can't retry — would
             // duplicate the work), or the error isn't classified as
@@ -494,7 +514,7 @@ trait Provider extends Service with ModelResolver {
           }
         }
       }
-      Stream.force(attempt(retries, None).map {
+      Stream.force(attempt(safe, retries, None, downgradedToolChoice = false).map {
         case (events, None) => Stream.emits(events)
         case (events, Some(t)) =>
           // Use `evalMap(Task.error)` rather than
@@ -1828,6 +1848,31 @@ object Provider {
     * iteration sees the failure quickly and can self-correct via
     * the Failure-block diagnostic the orchestrator emits. */
   val ParaphraseLoopMaxOutputTokensCap: Int = 500
+
+  /** Sigil #387 — substring Anthropic returns when a model categorically
+    * forbids forced `tool_choice` (`any`/`tool`/`required`). Claude Fable 5
+    * / Mythos 5 (and any future model that accepts only `auto`/`none`)
+    * reject a forced choice with HTTP 400
+    * `"tool_choice forces tool use is not compatible with this model."`.
+    * Matched case-insensitively. */
+  val ForcedToolChoiceRejectionMarker: String = "tool_choice forces tool use is not compatible"
+
+  /** Sigil #387 — whether `t` (or any throwable in its cause chain) is a
+    * model rejecting forced `tool_choice`. Drives the provider self-heal
+    * that retries the same call once with `tool_choice` downgraded to
+    * [[ToolChoice.Auto]]. Walks the cause chain and matches
+    * [[ForcedToolChoiceRejectionMarker]] case-insensitively, so it fires
+    * regardless of throwable type or wrapping. */
+  def isForcedToolChoiceRejection(t: Throwable): Boolean = {
+    val needle = ForcedToolChoiceRejectionMarker.toLowerCase
+    val seen = scala.collection.mutable.Set.empty[Throwable]
+    @scala.annotation.tailrec
+    def loop(cur: Throwable): Boolean =
+      if (cur == null || seen.contains(cur)) false
+      else if (Option(cur.getMessage).exists(_.toLowerCase.contains(needle))) true
+      else { seen += cur; loop(cur.getCause) }
+    loop(t)
+  }
 
   /** Bug #132 — synthetic user message used when an agent-initiated
     * turn (greeting / scheduled / autonomous wake-up / worker spawn)

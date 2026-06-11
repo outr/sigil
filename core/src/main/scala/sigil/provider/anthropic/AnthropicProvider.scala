@@ -268,12 +268,15 @@ case class AnthropicProvider(apiKey: String,
       }
     }
 
-    // Anthropic rejects `tool_choice: any|tool` when thinking is on.
-    // Downgrade `Required → Auto` silently so the caller can enable
-    // thinking without having to reach into the provider's internal
-    // tool_choice derivation.
+    // Anthropic rejects forced `tool_choice` (`any`/`tool`) when thinking
+    // is on. Downgrade any forced choice — `Required` AND `Specific`
+    // (sigil #387; the #375 forced-synthesis pin) — to `Auto` silently so
+    // the caller can enable thinking without reaching into the provider's
+    // internal tool_choice derivation. The provider-level self-heal
+    // (Provider.callWithTransientRetry) is the model-agnostic net for
+    // models that forbid forced choice regardless of thinking.
     val effectiveChoice =
-      if (input.generationSettings.effort.isDefined && input.toolChoice == ToolChoice.Required)
+      if (input.generationSettings.effort.isDefined && input.toolChoice.isForced)
         ToolChoice.Auto
       else input.toolChoice
     val toolFields: Vector[(String, Json)] = effectiveChoice match {
