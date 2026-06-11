@@ -23,14 +23,24 @@ enum ImageQuality derives RW {
   case Low
   case High
 
-  /** Target long-edge in pixels. The downscaler never upscales and
-    * never exceeds this; `High` sits at the provider tokenizer cap so
-    * larger originals are always reduced. */
+  /** Nominal long-edge in pixels for a square image. Kept as the tier's
+    * human-facing "size" and the basis for [[maxPixels]]; the downscaler
+    * itself budgets by total pixels (see [[maxPixels]]) so it can't crush
+    * a tall image's width. */
   def maxLongEdge: Int = this match {
     case ImageQuality.Thumbnail => 128
     case ImageQuality.Low       => 512
     case ImageQuality.High      => 1568
   }
+
+  /** Total-pixel budget the downscaler clamps to, preserving aspect
+    * ratio (#383). Budgeting by area rather than long edge keeps a tall
+    * full-page screenshot legible — a 1280×10000 capture at `High`
+    * reduces to ~561×4380 (a readable 561 px wide) instead of the
+    * ~201 px sliver a long-edge cap produced. Derived as `maxLongEdge²`
+    * so a square image still lands at exactly `maxLongEdge` per side and
+    * the tiers mirror the provider tokenizers' area-based image cost. */
+  def maxPixels: Long = maxLongEdge.toLong * maxLongEdge.toLong
 
   /** OpenAI's native image `detail` flag (`low` | `high`). Anthropic and
     * Gemini have no equivalent — our server-side downscale is the control

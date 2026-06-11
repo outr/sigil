@@ -64,26 +64,44 @@ class ImageQualitySpec extends AnyWordSpec with Matchers {
       ImageQuality.Low.maxLongEdge shouldBe 512
       ImageQuality.High.maxLongEdge shouldBe 1568
     }
+
+    "expose an area budget of maxLongEdge squared (#383)" in {
+      ImageQuality.Thumbnail.maxPixels shouldBe 128L * 128L
+      ImageQuality.Low.maxPixels shouldBe 512L * 512L
+      ImageQuality.High.maxPixels shouldBe 1568L * 1568L
+    }
   }
 
   "ImageDownscale.resize" should {
-    "clamp the long edge to maxLongEdge, preserving aspect ratio" in {
-      val (w, h) = dimsOf(ImageDownscale.resize(pngBytes(1024, 512), 512))
-      math.max(w, h) shouldBe 512
+    "downscale to within the pixel budget, preserving aspect ratio" in {
+      val budget = ImageQuality.Low.maxPixels
+      val (w, h) = dimsOf(ImageDownscale.resize(pngBytes(2000, 1000), budget))
+      (w.toLong * h.toLong) should be <= budget
       // 2:1 aspect preserved.
-      w shouldBe 512
-      h shouldBe 256
+      (w.toDouble / h.toDouble) shouldBe (2.0 +- 0.05)
+    }
+
+    "keep a tall full-page screenshot legible — no long-edge crush (#383)" in {
+      // 1280×10000 at High: a long-edge cap produced a ~201 px sliver and
+      // manufactured a re-screenshot loop. The area budget keeps a usable
+      // width (~561 px).
+      val budget = ImageQuality.High.maxPixels
+      val (w, h) = dimsOf(ImageDownscale.resize(pngBytes(1280, 10000), budget))
+      (w.toLong * h.toLong) should be <= budget
+      w should be >= 500
+      // aspect preserved (still very tall).
+      h should be > w
     }
 
     "never upscale an already-small image" in {
       val original = pngBytes(64, 48)
-      val result = ImageDownscale.resize(original, 512)
+      val result = ImageDownscale.resize(original, ImageQuality.Low.maxPixels)
       dimsOf(result) shouldBe (64, 48)
     }
 
     "return original bytes for undecodable input" in {
       val junk = "not an image".getBytes("UTF-8")
-      ImageDownscale.resize(junk, 128) shouldBe junk
+      ImageDownscale.resize(junk, ImageQuality.Low.maxPixels) shouldBe junk
     }
   }
 

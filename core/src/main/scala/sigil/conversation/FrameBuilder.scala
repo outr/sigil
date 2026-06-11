@@ -208,6 +208,7 @@ object FrameBuilder {
           sourceEventId = ti._id,
           visibility = ti.visibility,
           wireCallId = ti.callId,
+          internal = ti.internal,
           state = callState
         ))
 
@@ -394,6 +395,7 @@ object FrameBuilder {
           sourceEventId = ti._id,
           visibility = ti.visibility,
           wireCallId = ti.callId,
+          internal = ti.internal,
           state = callState
         )
 

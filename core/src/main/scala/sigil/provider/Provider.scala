@@ -1147,7 +1147,7 @@ trait Provider extends Service with ModelResolver {
                   case Some(bytes) =>
                     // Sigil #382 — downscale to the quality tier before
                     // encoding; never ship original-resolution pixels.
-                    val resized = _root_.sigil.image.ImageDownscale.resize(bytes, quality.maxLongEdge, file.contentType)
+                    val resized = _root_.sigil.image.ImageDownscale.resize(bytes, quality.maxPixels, file.contentType)
                     MessageContent.ImageBytes(
                       mediaType = file.contentType,
                       base64 = java.util.Base64.getEncoder.encodeToString(resized),
@@ -1618,6 +1618,23 @@ trait Provider extends Service with ModelResolver {
         case ContextFrame.Text(content, participantId, _, _) =>
           if (agentId.contains(participantId)) out += ProviderMessage.Assistant(content)
           else out += ProviderMessage.User(content)
+          i += 1
+
+        case tc: ContextFrame.ToolCall if tc.internal =>
+          // Sigil #385 — framework-internal synthetic diagnostics
+          // (`_stall_detected`, `_refusal_challenge`, `_cap_reached`,
+          // `_repeated_query_intercept`, …) must NOT render as an assistant
+          // `tool_use`: the model treats it as a tool IT called and mimics it,
+          // emitting a real call that fails with "Unknown tool" and loops
+          // (observed 9× `_stall_detected` in one turn). Surface the directive
+          // as an out-of-band `System` note — the same channel ModeChange uses
+          // — so the model reads it as guidance, never as a callable tool. The
+          // directive text is the frame's settled (folded) Complete content.
+          tc.state match {
+            case ToolCallState.Complete(content, _) if content.trim.nonEmpty =>
+              out += ProviderMessage.System(content)
+            case _ => ()
+          }
           i += 1
 
         case tc: ContextFrame.ToolCall if agentId.contains(tc.participantId) =>

@@ -1576,6 +1576,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   protected def spaceIds: List[RW[? <: SpaceId]] = Nil
 
   /**
+   * App-specific [[sigil.conversation.ConversationStatus]] subtypes
+   * registered into the polymorphic discriminator so `Conversation.status`
+   * round-trips through fabric RW (sigil #386). The framework's
+   * [[sigil.conversation.ConversationStatus.Open]] default is registered
+   * automatically; apps add their own concrete statuses (Saved, Completed,
+   * Escalated, …) here.
+   */
+  protected def conversationStatusRegistrations: List[RW[? <: sigil.conversation.ConversationStatus]] = Nil
+
+  /**
    * App-defined [[sigil.tool.ToolKind]] subtypes. The framework
    * auto-registers [[sigil.tool.BuiltinKind]]; opt-in modules ship
    * their own (`ScriptKind` in `sigil-script`, `McpKind` in
@@ -5140,6 +5150,34 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
 
   /**
+   * Set a conversation's app-defined [[sigil.conversation.ConversationStatus]],
+   * persist it, and broadcast a [[sigil.signal.ConversationStatusChanged]]
+   * Notice so history-sidebar UIs re-bucket the thread live (sigil #386).
+   *
+   * Idempotent: an unchanged status returns the conversation untouched and
+   * emits no Notice. The framework assigns the status NO meaning — apps own
+   * the value and every transition (including intra-axis mutual exclusion;
+   * "move InProgress → Completed" is the app replacing one status with
+   * another). Query by category via the `Conversation.statusKey` index.
+   *
+   * Fails with [[ConversationNotFoundException]] when the id doesn't resolve.
+   */
+  def setConversationStatus(conversationId: Id[Conversation],
+                            status: sigil.conversation.ConversationStatus): Task[Conversation] =
+    withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
+      case None =>
+        Task.error(new ConversationNotFoundException(conversationId))
+      case Some(conv) if conv.status == status =>
+        Task.pure(conv)
+      case Some(conv) =>
+        val updated = conv.copy(status = status)
+        for {
+          stored <- withDB(_.conversations.transaction(_.upsert(updated)))
+          _      <- publish(sigil.signal.ConversationStatusChanged(conversationId, status))
+        } yield stored
+    }
+
+  /**
    * Resolve the conversations a viewer can see. Currently the
    * underlying `SigilDB.conversations` is unscoped — every
    * conversation is visible to every viewer. Apps that need
@@ -5691,6 +5729,31 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * is aggressive (any single "no progress" report stops the
     * loop); higher values give the agent more rope. */
   protected def consecutiveNoProgressLimit: Int = 2
+
+  /** Sigil #385 — number of consecutive `meaningfulProgress = false`
+    * checkpoints after which the framework escalates from a COOPERATIVE
+    * nudge to a TERMINAL forced synthesis. The cooperative checkpoint
+    * (at [[consecutiveNoProgressLimit]]) only asks the agent to change
+    * approach and lets it continue — correct for a brief plateau, but a
+    * model that ignores nudge after nudge (observed live: 6 consecutive
+    * "no progress" checkpoints over ~50 iterations while reading 40
+    * distinct files without acting) needs to be stopped, not nudged
+    * again. When the streak reaches this limit the next intervention is
+    * `terminal` (forces a `respond` synthesis from what's gathered).
+    * Distinct from [[hardStallIdenticalCallLimit]], which only catches
+    * BYTE-IDENTICAL repeats; this catches a VARIED-but-unproductive loop
+    * that evades the identical-call detector. Must be `>
+    * consecutiveNoProgressLimit` so the cooperative nudge fires first.
+    * 0 disables (cooperative nudges only). Default 4. */
+  protected def hardNoProgressLimit: Int = 4
+
+  /** Sigil #385 — whether a no-progress streak has persisted long enough
+    * that the cooperative checkpoint must escalate to a TERMINAL forced
+    * synthesis instead of nudging again. Pure over [[hardNoProgressLimit]];
+    * extracted as a seam so the escalation boundary is deterministically
+    * testable without driving a live reflection loop. */
+  private[sigil] def terminalOnPersistentNoProgress(noProgressStreak: Int): Boolean =
+    hardNoProgressLimit > 0 && noProgressStreak >= hardNoProgressLimit
 
   /** Objective identical-call streak (same tool, same args, within one turn)
     * at which the framework force-ends the turn — MODEL-INDEPENDENTLY — by
@@ -6868,7 +6931,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             |user's request, the tool history since that request, and the prior checkpoint
             |status, assess whether meaningful progress has been made. Be honest: if your
             |current status looks identical to the prior status, set meaningfulProgress = false
-            |so the framework can intervene.""".stripMargin
+            |so the framework can intervene.
+            |
+            |What counts as meaningful progress (Sigil #385 — do NOT inflate it):
+            |  - NEW information that materially advances toward the deliverable, or a
+            |    concrete action that produces/changes an artifact the task asked for
+            |    (an edit, a save, a send, a created file, a final answer to the user).
+            |  - Reading, viewing, examining, listing, searching, or "gathering context"
+            |    is NOT progress by itself — when the task is to DO something, repeatedly
+            |    inspecting files/images while producing nothing is a stall, however many
+            |    distinct things were inspected. If the recent history is all reads/views
+            |    and no deliverable, set meaningfulProgress = false.
+            |  - A status of "acknowledged / summarized / ready / awaiting next instruction"
+            |    while the agent is STILL calling tools is a contradiction, not completion:
+            |    set meaningfulProgress = false and shouldAskUser = false. The agent isn't
+            |    done — it's looping. Only set shouldAskUser = true when the task genuinely
+            |    cannot proceed without a decision only the user can make.""".stripMargin
         val userPrompt = renderCheckpointPrompt(ctx, priorStatus, iteration)
         // #357 — the reflection normally judges on the agent's own model
         // (#320/#321). When `pinCoversAuxiliaryCalls` is set and the
@@ -6959,7 +7037,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                       state          = EventState.Complete,
                       role           = MessageRole.Standard
                     ),
-                    askingUser = report.shouldAskUser
+                    askingUser = report.shouldAskUser,
+                    // Sigil #385 — escalate to a TERMINAL forced synthesis once
+                    // the no-progress streak has persisted past
+                    // `hardNoProgressLimit`. A cooperative nudge gets the agent
+                    // a few chances to change approach; after that, a varied-
+                    // but-unproductive loop (which evades the identical-call
+                    // hard-stall) must be stopped, not nudged again.
+                    terminal = terminalOnPersistentNoProgress(state.noProgressStreak)
                   )))
                 } else Task.pure(None)
               }
@@ -7707,6 +7792,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _ = ParticipantId.register((summon[RW[sigil.participant.WorkerParticipantId]] :: participantIds).distinctBy(_.definition.className)*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
       _ = sigil.provider.WorkType.register(workTypes.map(w => RW.static(w))*)
+      // Sigil #386 — app-defined conversation status; framework `Open`
+      // default auto-registered. Leaf poly (referenced by `Conversation.status`
+      // and the `ConversationStatusChanged` notice), so registers here before
+      // the aggregate Signal registration below walks the notice definitions.
+      _ = sigil.conversation.ConversationStatus.register(
+            (RW.static(sigil.conversation.ConversationStatus.Open) :: conversationStatusRegistrations).distinct*
+          )
       // Mixin hook — runs AFTER the framework leaf polytypes (SpaceId,
       // ParticipantId, Mode, WorkType, …) register but BEFORE any aggregate
       // that walks tool / participant / signal Definitions. A mixin polytype

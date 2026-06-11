@@ -6,7 +6,7 @@ import rapid.Task
 import robobrowser.RoboBrowser
 import sigil.browser.BrowserStateDelta
 import sigil.browser.WebBrowserMode
-import sigil.tool.{ImageToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{ImageQuality, ImageToolOutput, Tool, ToolExample, ToolName, ToolResult}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
@@ -90,7 +90,12 @@ final class BrowserScreenshotTool extends Tool {
       url  = ctx.sigil.storageUrl(stored),
       alt  = s"Browser screenshot at ${java.time.Instant.now}",
       text = Some("Screenshot of the current browser page. Examine the rendered page for " +
-        "layout, content, error states, or differences from what you expected.")
+        "layout, content, error states, or differences from what you expected."),
+      // #383 — a screenshot exists to be scrutinized (read text, compare
+      // against expectations), so request the High tier rather than the
+      // Low default. Combined with the area-based downscale this keeps a
+      // tall full-page capture legible.
+      quality = ImageQuality.High
     ))
 }
 

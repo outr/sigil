@@ -7,7 +7,7 @@ import profig.Profig
 import rapid.{Stream, Task}
 import sigil.event.Event
 import sigil.{Sigil, TurnContext}
-import sigil.conversation.{ActiveSkillSlot, Conversation, Topic, TopicEntry, TurnInput}
+import sigil.conversation.{ActiveSkillSlot, Conversation, ConversationStatus, Topic, TopicEntry, TurnInput}
 import sigil.SpaceId
 import sigil.conversation.compression.extract.{MemoryExtractor, StandardMemoryExtractor}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
@@ -211,6 +211,12 @@ object TestSigil extends Sigil {
     * both polymorphic Mode RW and `modeByName` resolution. */
   override protected def modes: List[Mode] =
     List(TestCodingMode, TestSkilledMode, WebResearchMode, TestModeAlpha)
+
+  /** Registers the test-only [[ConversationStatus]] subtypes (sigil #386):
+    * a plain marker and a data-carrying one (proving payload-bearing
+    * statuses still answer a `key`-category query). */
+  override protected def conversationStatusRegistrations: List[RW[? <: ConversationStatus]] =
+    List(RW.static(TestSavedStatus), summon[RW[TestCompletedStatus]])
 
   // ---- default values for mutable hooks ----
 
@@ -766,6 +772,17 @@ case object MemoryTestSpace extends SpaceId {
   override val value: String = "memory-compressor-space"
   override val displayName: String = "Memory test space"
   override val description: Option[String] = Some("Compressor / retrieval spec scope.")
+}
+
+/** Test-only [[ConversationStatus]] — a plain lifecycle marker (sigil #386). */
+case object TestSavedStatus extends ConversationStatus {
+  val key: String = "test-saved"
+}
+
+/** Test-only data-carrying [[ConversationStatus]] — proves a payload-bearing
+  * status still answers a category (`key`) query (sigil #386). */
+case class TestCompletedStatus(at: Long) extends ConversationStatus derives RW {
+  val key: String = "test-completed"
 }
 
 /**

@@ -83,6 +83,7 @@ object CoreSignals {
     summon[RW[ParticipantAdded]],
     summon[RW[ParticipantRemoved]],
     summon[RW[ParticipantUpdated]],
+    summon[RW[ConversationStatusChanged]], // sigil #386
     // Sigil #297 — these five framework Notices landed in
     // #291 / #292 / #293 without being registered here. Wire
     // serialization fails on the runtime poly write when these

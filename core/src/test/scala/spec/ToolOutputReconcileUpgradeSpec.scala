@@ -7,7 +7,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.event.{Event, Message, ToolInvoke}
 import sigil.signal.EventState
-import sigil.tool.{TextToolOutput, ToolName, ToolOutput, UnknownToolOutput}
+import sigil.tool.{TextToolOutput, ToolName, ToolOutput, UnknownToolInput, UnknownToolOutput}
 import sigil.upgrade.ToolOutputReconcileUpgrade
 
 /**
@@ -119,6 +119,71 @@ class ToolOutputReconcileUpgradeSpec extends AnyWordSpec with Matchers {
 
     "extract the row's _id for diagnostic logging" in {
       ToolOutputReconcileUpgrade.extractId(orphanRow("evt-4")) shouldBe Some("evt-4")
+    }
+  }
+
+  /** The pre-removal on-disk shape — a `ToolInvoke` whose `input` block
+    * carries a `BrowserScreenshotInput` discriminator dropped from the
+    * `ToolInput` poly when the tool was removed from the roster. */
+  private val legacyInputBlock: Json = obj(
+    "type"     -> str("BrowserScreenshotInput"),
+    "fullPage" -> bool(true),
+    "maxHeight" -> num(10000)
+  )
+
+  private def inputOrphanRow(id: String): Json = {
+    val base = baseInvokeJson(id, TextToolOutput("ok")) // valid output
+    Obj(base.asMap.updated("input", legacyInputBlock))  // orphaned input
+  }
+
+  "ToolOutputReconcileUpgrade — ToolInput orphans (sigil #384)" should {
+
+    "fail the typed Event read on an unregistered input discriminator (the boot-bricking symptom)" in {
+      a[Throwable] should be thrownBy inputOrphanRow("in-red").as[Event](using eventRW)
+    }
+
+    "detect a ToolInvoke row whose input block is no longer decodable" in {
+      val orphan = inputOrphanRow("in-1")
+      ToolOutputReconcileUpgrade.inputIsOrphan(orphan) shouldBe true
+      // The output on the same row is valid — only the input is the orphan.
+      ToolOutputReconcileUpgrade.outputIsOrphan(orphan) shouldBe false
+    }
+
+    "treat an absent / None input as not an orphan" in {
+      val good = baseInvokeJson("in-none", TextToolOutput("ok"))
+      ToolOutputReconcileUpgrade.inputIsOrphan(good) shouldBe false
+      ToolOutputReconcileUpgrade.repairedEvent(good) shouldBe None
+    }
+
+    "rewrite the orphaned input into a typed ToolInvoke whose input is a lossless UnknownToolInput" in {
+      val repaired = ToolOutputReconcileUpgrade.repairedEvent(inputOrphanRow("in-2"))
+      repaired shouldBe defined
+      val invoke = repaired.get.asInstanceOf[ToolInvoke]
+      invoke._id.value shouldBe "in-2"
+      // Output untouched (it was valid).
+      invoke.output shouldBe a[TextToolOutput]
+      // Orphaned input preserved losslessly.
+      invoke.input shouldBe defined
+      val unknown = invoke.input.get.asInstanceOf[UnknownToolInput]
+      unknown.typeTag shouldBe "BrowserScreenshotInput"
+      unknown.raw shouldBe legacyInputBlock
+    }
+
+    "rewrite input AND output orphans on the same row in one pass" in {
+      val base = baseInvokeJson("in-both", TextToolOutput("placeholder"))
+      val both = Obj(base.asMap
+        .updated("input", legacyInputBlock)
+        .updated("output", legacyOutputBlock))
+      val invoke = ToolOutputReconcileUpgrade.repairedEvent(both).get.asInstanceOf[ToolInvoke]
+      invoke.input.get shouldBe a[UnknownToolInput]
+      invoke.output shouldBe a[UnknownToolOutput]
+      invoke.input.get.asInstanceOf[UnknownToolInput].typeTag shouldBe "BrowserScreenshotInput"
+      invoke.output.asInstanceOf[UnknownToolOutput].typeTag shouldBe "BrowserScreenshotOutput"
+    }
+
+    "produce a row that re-serializes and re-decodes cleanly" in {
+      val repaired = ToolOutputReconcileUpgrade.repairedEvent(inputOrphanRow("in-3")).get
+      noException should be thrownBy eventRW.read(repaired).as[Event](using eventRW)
     }
   }
 

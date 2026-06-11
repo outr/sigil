@@ -142,10 +142,14 @@ case class StandardContextCurator(sigil: Sigil,
         elidedEvents: Set[Id[_root_.sigil.event.Event]] =
           allSummaries.iterator.flatMap(_.coversEventIds).toSet
         rawFrames     <- sigil.framesFor(conversationId)
-        visibleFrames = rawFrames.filter(f =>
+        visibleFrames0 = rawFrames.filter(f =>
           sigil.visibilityAllows(f.visibility, chain.lastOption.orNull) &&
             !elidedEvents.contains(f.sourceEventId)
         )
+        // Sigil #385 — shed consumed framework-internal diagnostic frames
+        // (keep only the latest) so stall/refusal/cap nudges don't pile up in
+        // the prompt and re-feed the loop they were meant to break.
+        visibleFrames = StandardContextCurator.dropStaleInternalFrames(visibleFrames0)
         // Cap the per-turn frame budget. Bulk-imported conversations
         // (50K+ events) flow through curate every turn; without a
         // bound the framework re-runs block extraction + budget
@@ -759,6 +763,25 @@ object StandardContextCurator {
           case _ => tc
         }
       case (other, _) => other
+    }
+  }
+
+  /** Sigil #385 — keep only the most-recent framework-internal diagnostic
+    * frame (`ContextFrame.ToolCall(internal = true)`); drop older ones. They
+    * are transient nudges (stall / refusal-challenge / cap directives) meant
+    * to steer ONE next iteration — once consumed, stale copies are pure
+    * context noise that, re-sent every turn, compound the very loop they warn
+    * against (observed live: a single turn's prompt carried 200+ accumulated
+    * `_stall_detected` diagnostics). The durable events are untouched; this is
+    * a per-turn prompt-shaping step only. */
+  def dropStaleInternalFrames(frames: Vector[ContextFrame]): Vector[ContextFrame] = {
+    val internalIdx = frames.iterator.zipWithIndex.collect {
+      case (tc: ContextFrame.ToolCall, idx) if tc.internal => idx
+    }.toVector
+    if (internalIdx.size <= 1) frames
+    else {
+      val drop = internalIdx.dropRight(1).toSet // keep only the latest
+      frames.zipWithIndex.collect { case (f, idx) if !drop.contains(idx) => f }
     }
   }
 

@@ -157,7 +157,12 @@ object CoreTools {
       // succeeds. Also reused by `sigil-mcp` and `sigil-script` for
       // their runtime-shaped tools — register once at the framework
       // level so apps without those mixins still round-trip.
-      summon[RW[sigil.tool.JsonInput]]
+      summon[RW[sigil.tool.JsonInput]],
+      // Sigil #384 — opaque fallback an unregistered/renamed `ToolInput`
+      // discriminator is rewritten to at boot (by ToolOutputReconcileUpgrade)
+      // so removing a tool can't brick the event store on a historical
+      // ToolInvoke. Mirrors `UnknownToolOutput` on the output side.
+      summon[RW[sigil.tool.UnknownToolInput]]
     )
 
   val coreToolNames: List[sigil.tool.ToolName] = all.map(_.schema.name).toList

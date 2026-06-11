@@ -84,6 +84,17 @@ case class Conversation(topics: List[TopicEntry],
                         parentConversationId: Option[Id[Conversation]] = None,
                         stagingFor: Option[Id[Conversation]] = None,
                         archived: Boolean = false,
+                        /** Sigil #386 — app-defined, durable lifecycle/category
+                          * marker. The framework persists, serializes, and
+                          * indexes (via [[Conversation.statusKey]]) it but
+                          * assigns it NO meaning — the app defines the subtypes
+                          * and owns every transition. Defaults to
+                          * [[ConversationStatus.Open]]; set via
+                          * `Sigil.setConversationStatus`. For DURABLE intent
+                          * (Saved / Completed / Escalated), NOT transient runtime
+                          * state (mid-turn / awaiting user) — derive that from
+                          * the event log. See [[ConversationStatus]]. */
+                        status: ConversationStatus = ConversationStatus.Open,
                         /** Conversation-level pinned model — when set, every LLM
                           * dispatch in the conversation (agent turns AND framework
                           * auxiliary calls — classifier, memory extractor, curate
@@ -157,4 +168,11 @@ object Conversation extends RecordDocumentModel[Conversation] with JsonConversio
     * conversation transitively receive its workers' signals
     * without explicit per-worker subscriptions. */
   val parentConversationId: I[Option[Id[Conversation]]] = field.index(_.parentConversationId)
+
+  /** Sigil #386 — payload-independent index over the app-defined
+    * [[ConversationStatus.key]] so apps can list conversations by status
+    * category ("all Resolved") server-side without a side-collection join.
+    * A `String` index (not the whole poly value) so a data-carrying status
+    * still answers a category query. */
+  val statusKey: I[String] = field.index("statusKey", _.status.key)
 }
