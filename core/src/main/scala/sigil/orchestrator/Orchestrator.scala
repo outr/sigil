@@ -1345,8 +1345,20 @@ object Orchestrator {
         // out — this is framework-internal model-correction noise,
         // not user-facing content. Visibility = Agents keeps the
         // diagnostic out of the user-facing wire stream regardless.
+        // Sigil #398 — plain text means different things depending on whether
+        // the turn ran on forced `tool_choice`. A model NOT in the
+        // forced-tool_choice-rejecter memo (#395) ran on `Required`, so plain
+        // text is genuine drift (bug #75 — gemma ignoring the forcing) and is
+        // dropped + diagnosed here. A model IN the memo (Fable / Mythos, whose
+        // forced choice was downgraded to `auto`) chose prose as its answer; a
+        // `Complete` plain-text turn from it is committed by `nakedTextTerminal`
+        // below, not diagnosed. (Grammar-constrained providers can't drift
+        // under forced tool_choice, so this only ever bites the chat-completions
+        // wire, which streams prose as TextDelta into `plainTextBuffer`.)
+        val autoAnsweredPlainText =
+          stopReason == StopReason.Complete && Provider.rejectsForcedToolChoice(request.modelId)
         val plainTextDiagnostic: List[Signal] =
-          if (state.plainTextBuffer.nonEmpty && !state.sawAnyToolCall) {
+          if (state.plainTextBuffer.nonEmpty && !state.sawAnyToolCall && !autoAnsweredPlainText) {
             val droppedText = state.plainTextBuffer.toString
             val snippet = if (droppedText.length <= 200) droppedText else droppedText.take(200) + "…"
             val reason =
@@ -1359,18 +1371,26 @@ object Orchestrator {
               reason      = reason,
               disposition = MessageDisposition.Failure(recoverable = true))
           } else Nil
-        // Sigil #392 — commit a naked-text terminal answer instead of dropping
-        // it. When the turn ended naturally (`end_turn` → StopReason.Complete)
-        // with a user-visible text Message and NO tool call, the model gave a
-        // complete prose reply. This only happens on the no-forced-tool_choice
-        // path (a forced model would have stopped on `tool_use`) — i.e. the
-        // #387 self-heal downgraded `tool_choice` to `auto` for Fable/Mythos.
-        // Settle the streamed Message and flag the delta `terminalReply` so the
-        // agent loop treats it as a user-visible reply (no re-request). Without
-        // this the prose was left Active and the loop re-requested it ~4×,
-        // showing the user duplicate, never-committing bubbles.
+        // Sigil #392/#398 — commit a naked-text terminal answer instead of
+        // dropping it. When the turn ended naturally (`end_turn` →
+        // StopReason.Complete) with user-visible prose and NO tool call, the
+        // model gave a complete reply. Two wire shapes carry that prose:
+        //   - `ContentBlockDelta` (Anthropic / OpenAI Responses / Google) — a
+        //     Message was born (`activeMessageCreated`); settle it in place
+        //     (#392). These providers grammar-constrain tool calls under forced
+        //     tool_choice, so plain-text-only here is always a genuine `auto`
+        //     answer — no rejecter check needed.
+        //   - `TextDelta` (OpenAI-compatible chat-completions, e.g. Fable via
+        //     OpenRouter) — buffered in `plainTextBuffer` with NO Message born;
+        //     mint one and settle it terminally (#398), BUT only for a model in
+        //     the forced-tool_choice-rejecter memo (#395) — i.e. one that
+        //     actually ran on `auto`. A non-rejecter's plain text on this wire
+        //     is drift (bug #75) and went to the `_plain_text_reply` diagnostic.
+        // The settle flags `terminalReply` so the agent loop treats it as a
+        // user-visible reply (no re-request).
         val nakedTextTerminal: List[Signal] =
-          if (stopReason == StopReason.Complete && state.activeMessageCreated && !state.sawAnyToolCall) {
+          if (stopReason != StopReason.Complete || state.sawAnyToolCall) Nil
+          else if (state.activeMessageCreated) {
             // Snapshot the streamed text into the settle — the per-delta
             // `ContentBlockDelta`s were `complete = false` (snapshot-only
             // persistence ignores them), so without this the committed Message
@@ -1380,6 +1400,22 @@ object Orchestrator {
               MessageDelta(target = id, conversationId = convId,
                 contentReplacement = Some(Vector(ResponseContent.Text(text))),
                 state = Some(EventState.Complete), terminalReply = true))
+          } else if (state.plainTextBuffer.nonEmpty && Provider.rejectsForcedToolChoice(request.modelId)) {
+            val text = state.plainTextBuffer.toString
+            val id = state.activeMessageId.getOrElse(Event.id())
+            val msg = Message(
+              participantId = caller,
+              conversationId = convId,
+              topicId = topicId,
+              content = Vector.empty,
+              modelId = Some(request.modelId),
+              modelDisplayName = modelDisplayName,
+              _id = id,
+              state = EventState.Active
+            )
+            List(msg, MessageDelta(target = id, conversationId = convId,
+              contentReplacement = Some(Vector(ResponseContent.Text(text))),
+              state = Some(EventState.Complete), terminalReply = true))
           } else Nil
         Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic ++ nakedTextTerminal)
       case ProviderEvent.Error(msg)                       =>
