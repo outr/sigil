@@ -1,6 +1,7 @@
 package spec
 
 import fabric.rw.*
+import fabric.{arr, str}
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
@@ -11,7 +12,7 @@ import sigil.db.Model
 import sigil.participant.{AgentParticipantId, DefaultAgentParticipant}
 import sigil.provider.{ConversationMode, GenerationSettings, Instructions}
 import sigil.signal.Signal
-import sigil.workflow.{JobStepInput, WorkflowTemplate}
+import sigil.workflow.{JobStepInput, LoopStepInput, WorkflowTemplate}
 import sigil.workflow.event.{WorkflowRunCompleted, WorkflowRunFailed, WorkflowRunStarted}
 
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -196,6 +197,69 @@ class WorkflowInitFailureLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec 
         starts should have size 1
         ok should have size 1
         fails shouldBe empty
+      }
+    }
+
+    "publish WorkflowRunFailed when a Loop body step throws — escapes per-step handling (sigil #375)" in {
+      // A Loop body Job runs via executeBranch, which calls executeToJson
+      // directly — NO per-step handleError (unlike top-level executeJob). So a
+      // body throw escapes to runNextScheduled's unexpected-failure handler.
+      // Pre-#375 that handler only logged, leaving observers on a stale
+      // "running" row; now it settles the run + fires WorkflowRunFailed.
+      val convId = Conversation.id("loop-body-throws-conv")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals
+        .evalMap(s => Task { recorded.add(s); () })
+        .takeWhile(_ => running)
+        .drain
+        .startUnit()
+      Thread.sleep(100)
+
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId],
+          modelId = Model.id("test", "model"),
+          toolNames = Nil,
+          instructions = Instructions(),
+          generationSettings = GenerationSettings()
+        )),
+        currentMode = ConversationMode,
+        space = GlobalSpace,
+        _id = convId
+      )
+      val template = WorkflowTemplate(
+        name = "loop-body-throws",
+        description = Some("Loop body references a missing tool — throws inside executeBranch."),
+        steps = List(LoopStepInput(
+          id = "loop",
+          over = "items",
+          itemVariable = "item",
+          body = List(JobStepInput(id = "body", name = Some("Body step"), tool = Some("definitely_not_a_real_tool"))))),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(convId)
+      )
+
+      for {
+        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(
+                 TestWorkflowSigil, template, variables = Map("items" -> arr(str("a"))))
+        _   <- waitFor(recorded, 10.seconds)(_.exists {
+                 case e: WorkflowRunFailed => e.runId == run._id.value
+                 case _ => false
+               })
+      } yield {
+        running = false
+        import scala.jdk.CollectionConverters.*
+        val all = recorded.iterator().asScala.toList
+        val fails = all.collect { case e: WorkflowRunFailed if e.runId == run._id.value => e }
+        val ok    = all.collect { case e: WorkflowRunCompleted if e.runId == run._id.value => e }
+        fails should have size 1
+        ok shouldBe empty
+        fails.head.reason should not be empty
       }
     }
   }
