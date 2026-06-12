@@ -1,5 +1,6 @@
 package spec
 
+import fabric.io.JsonParser
 import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
@@ -303,6 +304,25 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
     // Non-originating providers MUST drop the entry. The OpenAI
     // coverage spec overrides this expectation (see
     // [[OpenAIRequestCoverageSpec.expectsReasoningSerialized]]).
+    // Sigil #396 — a chain whose tail is the agent's own (assistant) message
+    // must not reach a prefill-rejecting backend as a trailing assistant.
+    // Anthropic (Sonnet 4.6+), Gemini, and thinking-enabled llama.cpp reject
+    // it; the provider appends a user anchor so the wire tail is user-role.
+    // OpenAI-family providers accept a trailing assistant and opt out via
+    // [[appliesUserAnchor]].
+    "append a user anchor when the frame tail is an agent message (no trailing-assistant prefill)" in {
+      if (!appliesUserAnchor) succeed
+      else {
+        val turn = emptyTurnInput.copy(frames = Vector(
+          ContextFrame.Text(content = "do the work", participantId = TestUser, sourceEventId = syntheticEventId),
+          ContextFrame.Text(content = "agent reply tail", participantId = TestAgent, sourceEventId = syntheticEventId)
+        ))
+        withClue(s"wire tail role for ${getClass.getSimpleName}: ") {
+          lastWireRole(bodyOf(turn)) shouldBe Some("user")
+        }
+      }
+    }
+
     "drop Reasoning frames from the wire body by default (non-originating provider)" in {
       val turn = emptyTurnInput.copy(frames = Vector(
         baselineFrame,
@@ -332,4 +352,15 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
   /** Override-hook for providers that DO serialize Reasoning frames.
     * Default `false` (every framework provider except OpenAI). */
   protected def expectsReasoningSerialized: Boolean = false
+
+  /** Whether this provider applies the trailing-assistant user anchor (#396).
+    * Anthropic / Google / llama.cpp do; OpenAI-family chat/Responses accept a
+    * trailing assistant and override to `false`. */
+  protected def appliesUserAnchor: Boolean = true
+
+  /** Role of the last entry in this provider's wire message list. Defaults to
+    * `messages[].role`; Google reads `contents[].role`. */
+  protected def lastWireRole(body: String): Option[String] =
+    JsonParser(body).get("messages").flatMap(_.asVector.lastOption)
+      .flatMap(_.get("role")).map(_.asString)
 }

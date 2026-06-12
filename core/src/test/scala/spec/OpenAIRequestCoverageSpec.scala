@@ -31,6 +31,10 @@ class OpenAIRequestCoverageSpec extends AbstractRequestCoverageSpec {
     * serialized shape when this is `true`. */
   override protected def expectsReasoningSerialized: Boolean = true
 
+  /** OpenAI's Responses API accepts a trailing assistant message (no prefill
+    * rejection), so the #396 user-anchor guard is not applied here. */
+  override protected def appliesUserAnchor: Boolean = false
+
   /** Build a request body using a different modelId than the spec's
     * default — used to exercise the reasoning-family vs non-reasoning
     * gating in `buildBody`. */

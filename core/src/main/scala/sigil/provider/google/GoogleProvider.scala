@@ -186,7 +186,11 @@ case class GoogleProvider(apiKey: String,
         systemInstructionObj(input) ++ toolsField
     }
 
-    val contents = renderContents(input.messages)
+    // Sigil #396 — Gemini requires alternating roles ending in `user`; a
+    // trailing content-only `model` turn (an agent's own prior Message as the
+    // tail) is invalid. Anchor the tail with a user turn (shared with the
+    // Anthropic / llama.cpp prefill guard).
+    val contents = renderContents(ProviderMessage.ensureUserAnchor(input.messages))
 
     // `toolConfig` is request-specific and stays inline (only valid
     // when not paired with `cachedContent`, which is guaranteed by the

@@ -225,7 +225,11 @@ case class AnthropicProvider(apiKey: String,
     val maxTokens = resolveMaxTokens(input.model, input.generationSettings.effectiveCap)
 
     val caching = cachingEnabledFor(input)
-    val messages = renderMessages(input.messages, caching)
+    // Sigil #396 — a chain ending in a content-only assistant message (a
+    // self-loop / worker-bridge tail that is the agent's own prior Message)
+    // is read by Sonnet 4.6+ as an assistant prefill and 400-rejected
+    // ("the conversation must end with a user message"). Anchor the tail.
+    val messages = renderMessages(ProviderMessage.ensureUserAnchor(input.messages), caching)
     val toolsArr = renderTools(input, caching)
 
     val base = Vector[(String, Json)](

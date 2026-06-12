@@ -47,4 +47,38 @@ object ProviderMessage {
   case class Reasoning(providerItemId: String,
                        summary: List[String],
                        encryptedContent: Option[String]) extends ProviderMessage
+
+  /** Neutral user turn injected by [[ensureUserAnchor]]. */
+  private val anchorUserMessage: ProviderMessage =
+    User(Vector(MessageContent.Text("(begin conversation)")))
+
+  /** Normalize a chain for backends that require at least one user-role
+    * message AND reject a conversation that ends with a content-only
+    * assistant message — which they read as an assistant *prefill* to be
+    * continued. Anthropic (Sonnet 4.6+ → HTTP 400 "the conversation must end
+    * with a user message"), Gemini, and thinking-enabled llama.cpp chat
+    * templates each enforce one or both.
+    *
+    * Two independent, idempotent adjustments:
+    *   - no user message anywhere → prepend a neutral user turn (greet-on-join
+    *     / all-assistant histories otherwise raise "no user query found");
+    *   - ends with a content-only assistant message → append a neutral user
+    *     turn so the model generates a fresh response instead of continuing a
+    *     prefill. A trailing assistant that carries tool calls is left as-is:
+    *     its tool result (a user-role message) is what legitimately follows.
+    *
+    * The injected turn is accidental-tail repair — a self-loop / worker-bridge
+    * tail that is the agent's own prior Message lands as a trailing assistant —
+    * never an intentional prefill (Sigil never prefills), so applying it
+    * unconditionally is safe. */
+  def ensureUserAnchor(messages: Vector[ProviderMessage]): Vector[ProviderMessage] = {
+    val withLeadingUser =
+      if (messages.exists { case _: User => true; case _ => false }) messages
+      else anchorUserMessage +: messages
+    val endsWithContentAssistant = withLeadingUser.lastOption.exists {
+      case a: Assistant => a.toolCalls.isEmpty
+      case _            => false
+    }
+    if (endsWithContentAssistant) withLeadingUser :+ anchorUserMessage else withLeadingUser
+  }
 }
