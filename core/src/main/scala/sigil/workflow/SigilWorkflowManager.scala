@@ -114,30 +114,33 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
         }
     }
 
-  /** Locate a participant to attribute a workflow's lifecycle
-    * event to. Walks the resolution chain documented on
-    * [[publishLifecycle]] — `createdBy` match first, then the
-    * source conv's head participant, then (for a participant-less
-    * conversation) the parent conv's head participant. */
+  /** Locate a participant to attribute a workflow's lifecycle event to:
+    * `createdBy` match first, else head participant, walking UP the full
+    * `parentConversationId` chain for a participant-less conversation. The
+    * full walk (not a single hop) matters since #376 gives each run its own
+    * participant-less sub-conversation — so a run bound to an already
+    * worker-shaped (empty) conversation nests two levels above the nearest
+    * conversation that actually has participants. Depth-capped against cycles. */
   private def resolveCaller(workflow: Workflow,
                             conv: Conversation): Task[Option[ParticipantId]] = {
     val createdByValue = workflow.createdBy.getOrElse("")
-    val matched = conv.participants.find(_.id.value == createdByValue).map(_.id)
-    val local = matched.orElse(conv.participants.headOption.map(_.id))
-    local match {
-      case some @ Some(_) => Task.pure(some)
-      case None =>
-        conv.parentConversationId match {
-          case None => Task.pure(None)
-          case Some(parentId) =>
-            host.withDB(_.conversations.transaction(_.get(parentId))).map {
-              case None => None
-              case Some(parentConv) =>
-                parentConv.participants.find(_.id.value == createdByValue).map(_.id)
-                  .orElse(parentConv.participants.headOption.map(_.id))
-            }
-        }
-    }
+    def pick(c: Conversation): Option[ParticipantId] =
+      c.participants.find(_.id.value == createdByValue).map(_.id)
+        .orElse(c.participants.headOption.map(_.id))
+    def walk(c: Conversation, depth: Int): Task[Option[ParticipantId]] =
+      pick(c) match {
+        case some @ Some(_) => Task.pure(some)
+        case None =>
+          c.parentConversationId match {
+            case Some(parentId) if depth < 16 =>
+              host.withDB(_.conversations.transaction(_.get(parentId))).flatMap {
+                case Some(parent) => walk(parent, depth + 1)
+                case None         => Task.pure(None)
+              }
+            case _ => Task.pure(None)
+          }
+      }
+    walk(conv, 0)
   }
 }
 
