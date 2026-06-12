@@ -9,7 +9,10 @@ import sigil.conversation.{Conversation, TopicEntry}
 import sigil.db.Model
 import sigil.participant.{AgentParticipantId, DefaultAgentParticipant}
 import sigil.provider.{ConversationMode, GenerationSettings, Instructions}
+import sigil.event.ToolInvoke
 import sigil.workflow.{JobStepInput, WorkflowTemplate}
+
+import scala.concurrent.duration.*
 
 /**
  * Sigil #376 — a workflow run must carry its OWN openable sub-conversation
@@ -66,6 +69,34 @@ class WorkflowSubConversationSpec extends AsyncWordSpec with AsyncTaskSpec with 
       }
     }
 
+    "record a tool step's call into the run's sub-conversation (sigil #376)" in {
+      val boundId = Conversation.id("sub-conv-tool-1")
+      val template = WorkflowTemplate(
+        name = "tool-transcript-run",
+        description = Some("Single echo_back tool step."),
+        steps = List(JobStepInput(
+          id = "echo",
+          name = Some("echo step"),
+          tool = Some("echo_back"),
+          arguments = Some("""{"text":"hi"}"""))),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(boundId)
+      )
+      for {
+        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(boundConv(boundId))))
+        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
+        runConvId = Id[Conversation](run.conversationId.getOrElse(fail("run had no sub-conversation")))
+        invokes <- waitForToolInvoke(runConvId, "echo_back", 10.seconds)
+      } yield {
+        // The step's tool call was published into the run's own sub-conversation,
+        // so opening it shows the work — not just lifecycle step names.
+        invokes should not be empty
+        invokes.head.toolName.value shouldBe "echo_back"
+      }
+    }
+
     "leave conversationId unset for an unbound (no scheduling conversation) run" in {
       val template = WorkflowTemplate(
         name = "unbound-run",
@@ -82,6 +113,19 @@ class WorkflowSubConversationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         run.conversationId shouldBe None
       }
     }
+  }
+
+  private def waitForToolInvoke(convId: Id[Conversation], toolName: String, timeout: FiniteDuration): Task[List[ToolInvoke]] = {
+    val deadline = System.currentTimeMillis() + timeout.toMillis
+    def loop: Task[List[ToolInvoke]] =
+      TestWorkflowSigil.withDB(_.events.transaction(_.list)).flatMap { events =>
+        val invokes = events.collect {
+          case ti: ToolInvoke if ti.conversationId == convId && ti.toolName.value == toolName => ti
+        }
+        if (invokes.nonEmpty || System.currentTimeMillis() > deadline) Task.pure(invokes)
+        else Task.sleep(100.millis).flatMap(_ => loop)
+      }
+    loop
   }
 
   "tear down" should {

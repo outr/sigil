@@ -8,7 +8,7 @@ import rapid.Task
 import sigil.{Sigil, TurnContext}
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, ToolOutcome}
+import sigil.event.{Event, Message, ToolInvoke, ToolOutcome}
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, ProviderModel, UnregisteredModelException}
 import sigil.signal.{EventState, ToolDelta}
@@ -94,7 +94,7 @@ final case class SigilJobStep(input: JobStepInput,
           case Right(decoded) =>
             SyntheticTurnContext.build(host, workflow).flatMap { ctx =>
               val typedInput = decoded.asInstanceOf[ToolInput]
-              tool.execute(typedInput, ctx, Event.id()).toList.map { signals =>
+              tool.execute(typedInput, ctx, Event.id()).toList.flatMap { signals =>
                 // #354 — a tool's real result rides the settling `ToolDelta`'s `output` (the typed
                 // `ToolOutput`); `ToolResults` was folded into the invoke (#265), so tools like
                 // bash/grep/read_file emit no Message. Read that output first (rendered via the
@@ -110,7 +110,7 @@ final case class SigilJobStep(input: JobStepInput,
                   if (texts.isEmpty) obj("ok" -> str("done"))
                   else obj("results" -> fabric.Arr(texts.map(t => (str(t): Json)).toVector, None))
                 }
-                settle match {
+                val resultJson: Json = settle match {
                   case Some(d) if d.output.isDefined =>
                     tool.outputRW.read(d.output.get.asInstanceOf[tool.Output])
                   case Some(d) =>
@@ -120,6 +120,9 @@ final case class SigilJobStep(input: JobStepInput,
                     }
                   case None => fromMessages
                 }
+                // Sigil #376 — record the call as one settled ToolInvoke in the
+                // run's sub-conversation so it's openable.
+                persistToolInvocation(host, workflow, ctx, ToolName(toolName), typedInput, settle).map(_ => resultJson)
               }
             }
         }
@@ -149,21 +152,29 @@ final case class SigilJobStep(input: JobStepInput,
         // model rather than throwing and losing the whole run.
         val fallbackId = SigilWorkflowVariables.defaultModelIdOf(workflow)
           .map(d => Id[Model](d)).filter(_.value != modelId.value)
-        resolveModelWithFallback(host, modelId, fallbackId).flatMap { pm =>
-          // Resolve provider + registered record at the boundary.
-          val provider = pm.provider
-          val request = OneShotRequest(
-            model = pm.model,
-            systemPrompt = "",
-            userPrompt = prompt,
-            generationSettings = GenerationSettings()
-          )
-          val acc = new java.lang.StringBuilder
-          provider(request).evalMap {
-            case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
-            case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
-            case _                                     => Task.unit
-          }.drain.map(_ => str(acc.toString): Json)
+        SyntheticTurnContext.build(host, workflow).flatMap { ctx =>
+          resolveModelWithFallback(host, modelId, fallbackId).flatMap { pm =>
+            // Resolve provider + registered record at the boundary.
+            val provider = pm.provider
+            val request = OneShotRequest(
+              model = pm.model,
+              systemPrompt = "",
+              userPrompt = prompt,
+              generationSettings = GenerationSettings()
+            )
+            val acc = new java.lang.StringBuilder
+            provider(request).evalMap {
+              case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
+              case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
+              case _                                     => Task.unit
+            }.drain.flatMap { _ =>
+              val response = acc.toString
+              // Sigil #376 — record the prompt + the model's reply in the run's
+              // sub-conversation so the step is openable.
+              persistPromptTurn(host, workflow, ctx, prompt, response, pm.model._id)
+                .map(_ => str(response): Json)
+            }
+          }
         }
     }
   }
@@ -187,4 +198,70 @@ final case class SigilJobStep(input: JobStepInput,
         Task(host.resolveProviderModel(fb))
       case t => Task.error(t)
     }
+
+  /** Sigil #376 — record a tool step as one settled [[ToolInvoke]] (input +
+    * output + outcome) in the run's sub-conversation so the call is openable.
+    * `tool.execute` emits only the settling delta (the orchestrator normally
+    * supplies the invoke), so we mint the paired, already-Complete invoke here
+    * rather than publishing an orphan delta. Best-effort and gated on a bound
+    * run with a resolvable author; a publish hiccup never fails the step. */
+  private def persistToolInvocation(host: Sigil,
+                                    workflow: Workflow,
+                                    ctx: TurnContext,
+                                    toolName: ToolName,
+                                    input: ToolInput,
+                                    settle: Option[ToolDelta]): Task[Unit] =
+    if (workflow.conversationId.isEmpty) Task.unit
+    else
+      ctx.chain.headOption match {
+        case None => Task.unit
+        case Some(author) => Task {
+          val invoke = ToolInvoke(
+            toolName       = toolName,
+            participantId  = author,
+            conversationId = ctx.conversation._id,
+            topicId        = ctx.conversation.currentTopicId,
+            input          = Some(input),
+            output         = settle.flatMap(_.output).getOrElse(sigil.tool.ToolOutput.Pending),
+            outcome        = settle.flatMap(_.outcome).getOrElse(ToolOutcome.Success),
+            state          = EventState.Complete
+          )
+          // Fire-and-forget — transcript persistence is observability, not the
+          // run's critical path; a per-iteration publish must not slow a Loop.
+          host.publish(invoke).map(_ => ()).handleError(_ => Task.unit).startUnit()
+          ()
+        }
+      }
+
+  /** Sigil #376 — record a prompt step's prompt + the model's reply as two
+    * Messages in the run's sub-conversation so the step is openable (the reply
+    * carries `modelId` so the UI badges which model produced it). Best-effort:
+    * no-op for an unbound run or when no participant resolves from the chain
+    * (mirrors the worker-transcript persistence contract). */
+  private def persistPromptTurn(host: Sigil,
+                                workflow: Workflow,
+                                ctx: TurnContext,
+                                promptText: String,
+                                responseText: String,
+                                modelId: Id[Model]): Task[Unit] =
+    if (workflow.conversationId.isEmpty) Task.unit
+    else
+      ctx.chain.headOption match {
+        case None => Task.unit
+        case Some(author) => Task {
+          val convId = ctx.conversation._id
+          val topicId = ctx.conversation.currentTopicId
+          val promptMsg = Message(
+            participantId = author, conversationId = convId, topicId = topicId,
+            content = Vector(ResponseContent.Text(promptText)), state = EventState.Complete)
+          val replyMsg = Message(
+            participantId = author, conversationId = convId, topicId = topicId,
+            content = Vector(ResponseContent.Text(responseText)), modelId = Some(modelId),
+            state = EventState.Complete)
+          // Fire-and-forget — see persistToolInvocation.
+          host.publish(promptMsg).flatMap(_ => host.publish(replyMsg)).map(_ => ())
+            .handleError(_ => Task.unit).startUnit()
+          ()
+        }
+      }
 }

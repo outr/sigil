@@ -323,7 +323,12 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
         _   <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
-        _   <- waitForCompletion(recorded, 30.seconds)
+        // #376 — the run now records a per-iteration transcript ToolInvoke on
+        // top of the per-iteration lifecycle WorkflowStepCompleted (#353), so a
+        // 50-item loop does ~2x the background publishes. They run fire-and-
+        // forget (off the run's critical path) but still contend under the
+        // suite's 4-JVM concurrent forks; give this stress case more headroom.
+        _   <- waitForCompletion(recorded, 60.seconds)
         run <- {
           import scala.jdk.CollectionConverters.*
           val runId = recorded.iterator().asScala.collectFirst { case e: WorkflowRunCompleted => e.runId }.get
