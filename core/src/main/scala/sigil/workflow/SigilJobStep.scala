@@ -10,7 +10,7 @@ import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message, ToolOutcome}
 import sigil.participant.ParticipantId
-import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent}
+import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, ProviderModel, UnregisteredModelException}
 import sigil.signal.{EventState, ToolDelta}
 import sigil.tool.{ToolInput, ToolName}
 import sigil.tool.model.ResponseContent
@@ -143,7 +143,13 @@ final case class SigilJobStep(input: JobStepInput,
         ))
       case Some(s) =>
         val modelId = Id[Model](s)
-        Task(host.resolveProviderModel(modelId)).flatMap { pm =>
+        // Sigil #374 — the step's id may free-form a registered model under a
+        // variant spelling (resolveProviderModel rescues that), or be flat-out
+        // unregistered. In the latter case fall back to the workflow's default
+        // model rather than throwing and losing the whole run.
+        val fallbackId = SigilWorkflowVariables.defaultModelIdOf(workflow)
+          .map(d => Id[Model](d)).filter(_.value != modelId.value)
+        resolveModelWithFallback(host, modelId, fallbackId).flatMap { pm =>
           // Resolve provider + registered record at the boundary.
           val provider = pm.provider
           val request = OneShotRequest(
@@ -161,4 +167,24 @@ final case class SigilJobStep(input: JobStepInput,
         }
     }
   }
+
+  /** Sigil #374 — resolve the step's model (tolerantly — `resolveProviderModel`
+    * already rescues case / prefix / `.`-vs-`-` format variants of a registered
+    * id). If it is still genuinely unregistered, fall back to the workflow's
+    * default model with a warn instead of throwing: a mis-named leaf model id
+    * must not lose an otherwise-valid run. With no usable fallback the error
+    * propagates (and now settles the run as Failed — #375). */
+  private def resolveModelWithFallback(host: Sigil,
+                                       modelId: Id[Model],
+                                       fallbackId: Option[Id[Model]]): Task[ProviderModel] =
+    Task(host.resolveProviderModel(modelId)).handleError {
+      case _: UnregisteredModelException if fallbackId.isDefined =>
+        val fb = fallbackId.get
+        scribe.warn(
+          s"Workflow step '${input.id}' model `${modelId.value}` is unregistered; " +
+            s"falling back to the workflow default `${fb.value}`."
+        )
+        Task(host.resolveProviderModel(fb))
+      case t => Task.error(t)
+    }
 }

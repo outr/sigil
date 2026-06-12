@@ -2780,9 +2780,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * through — fail-loud rather than silently degrading.
    */
   final def resolveProviderModel(modelId: Id[Model]): sigil.provider.ProviderModel =
-    modelResolver.resolve(modelId).getOrElse(
-      throw new sigil.provider.UnregisteredModelException(modelId, cache.all.map(_._id))
-    )
+    modelResolver.resolve(modelId)
+      // Sigil #374 — on an exact miss, rescue a registered model whose id
+      // differs only by case / provider prefix / `.`-vs-`-` separators
+      // (`claude-3-5-sonnet` ↔ `anthropic/claude-3.5-sonnet`) by resolving its
+      // canonical registry id. Still throws when the model is genuinely absent,
+      // so the #277 fail-loud contract holds for unregistered models.
+      .orElse(cache.findTolerant(modelId).flatMap(m => modelResolver.resolve(m._id)))
+      .getOrElse(
+        throw new sigil.provider.UnregisteredModelException(modelId, cache.all.map(_._id))
+      )
 
   // -- framework dispatch (entry point) --
 

@@ -48,9 +48,11 @@ final class ModelRegistry {
     val direct = ref.get.get(modelId)
     if (direct.isDefined) direct
     else {
-      val raw = modelId.value
-      val suffix = s"/$raw"
-      ref.get.values.find(m => m._id.value == raw || m._id.value.endsWith(suffix))
+      // Sigil #374 — normalize across the three axes that cause a registered
+      // model to miss an exact lookup: case, provider prefix, and `.`/`-`
+      // separators. So `claude-3-5-sonnet` matches `anthropic/claude-3.5-sonnet`.
+      val target = ModelRegistry.normalizeForMatch(modelId.value)
+      ref.get.values.find(m => ModelRegistry.normalizeForMatch(m._id.value) == target)
     }
   }
 
@@ -98,5 +100,24 @@ final class ModelRegistry {
       models.foldLeft(current)((acc, m) => acc + (m._id -> m))
     }
     ()
+  }
+}
+
+object ModelRegistry {
+
+  /** Sigil #374 — normalize a model id for tolerant matching: lowercase, drop
+    * any provider prefix (the segment before the first `/`), and collapse `.`
+    * and `-` separators to a single form. So `claude-3-5-sonnet`,
+    * `anthropic/claude-3.5-sonnet`, and `Anthropic/Claude-3.5-Sonnet` all
+    * normalize equal. Best-effort: a bare id that collides across providers
+    * resolves to the first registry match — the exact path handles precise
+    * lookups; this only rescues format variants of a registered model. */
+  private[sigil] def normalizeForMatch(raw: String): String = {
+    val lower = raw.toLowerCase
+    val afterPrefix = lower.indexOf('/') match {
+      case -1 => lower
+      case i  => lower.substring(i + 1)
+    }
+    afterPrefix.replace('.', '-')
   }
 }
