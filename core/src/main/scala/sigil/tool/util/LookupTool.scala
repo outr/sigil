@@ -41,7 +41,7 @@ case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
   val outputRW = summon[RW[LookupOutput]]
   val name = ToolName("lookup")
   val description =
-    """Resolve a capability match (from `find_capability`) to its full record. Use this when
+    """Resolve a capability match (from a capability search) to its full record. Use this when
       |you need the details behind a memory's summary, the body of a referenced Information
       |record, or any other discovered capability with stored content.
       |

@@ -345,6 +345,10 @@ object Orchestrator {
     }
     val convId = request.conversationId
     val topicId = request.currentTopic.id
+    // Sigil #397 — whether discovery is in this turn's roster. Under
+    // ToolPolicy.ActiveOnly/None/Exclusive it isn't, so corrective copy must
+    // not name a `find_capability` the model can't call.
+    val findCapabilityAvailable: Boolean = toolsByName.contains("find_capability")
     // Resolve once per turn — cheap registry lookup, used at every
     // Message-creation site below so clients render a UI-friendly
     // label without maintaining their own model cache.
@@ -697,9 +701,14 @@ object Orchestrator {
               if (perResponseCap > 0 && !isEssentialTool) {
                 if (state.dispatchedActionCount >= perResponseCap) {
                   val body =
-                    s"Refused `$toolName` -- you invoked more than $perResponseCap tools in this single " +
-                      "response. `find_capability` results are RANKED; call the rank-1 tool for your goal, " +
-                      "not the whole family. Re-issue just the one you need."
+                    if (findCapabilityAvailable)
+                      s"Refused `$toolName` -- you invoked more than $perResponseCap tools in this single " +
+                        "response. `find_capability` results are RANKED; call the rank-1 tool for your goal, " +
+                        "not the whole family. Re-issue just the one you need."
+                    else
+                      s"Refused `$toolName` -- you invoked more than $perResponseCap tools in this single " +
+                        "response. Call only the one tool you need for your goal, not several at once. " +
+                        "Re-issue just that one."
                   val capMsg = Message(
                     participantId  = caller,
                     conversationId = convId,
@@ -1045,7 +1054,7 @@ object Orchestrator {
                       // challenge.
                     case _root_.sigil.tool.model.ResponseDisposition.Success =>
                       if (r.content.nonEmpty) {
-                        return Stream.force(refusalChallengeOutcome(sigil, r.content, convId, caller, topicId).map {
+                        return Stream.force(refusalChallengeOutcome(sigil, findCapabilityAvailable, r.content, convId, caller, topicId).map {
                           case Some(challengeSignals) =>
                             Stream.emits(toolDeltaPrefix ::: challengeSignals)
                           case None =>
@@ -1677,11 +1686,16 @@ object Orchestrator {
     * disable the intercept entirely.
     */
   private def refusalChallengeOutcome(sigil: Sigil,
+                                      findCapabilityAvailable: Boolean,
                                       content: String,
                                       convId: lightdb.id.Id[Conversation],
                                       caller: ParticipantId,
                                       topicId: lightdb.id.Id[Topic]): Task[Option[List[Signal]]] = {
-    if (!sigil.refusalDetector.isRefusal(content)) Task.pure(None)
+    // Sigil #397 — the challenge's whole corrective is "call `find_capability`
+    // before refusing". With discovery suppressed (ToolPolicy.ActiveOnly/None/
+    // Exclusive) there is no such tool, so an informed refusal is the only
+    // option — never challenge it.
+    if (!findCapabilityAvailable || !sigil.refusalDetector.isRefusal(content)) Task.pure(None)
     else sigil.withDB(_.conversationEvents(convId)).map { allEvents =>
       val convEvents = allEvents
         .filter(_.conversationId == convId)

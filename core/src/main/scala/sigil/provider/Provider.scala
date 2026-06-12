@@ -1499,10 +1499,17 @@ trait Provider extends Service with ModelResolver {
       // (4+ identical ~350-char blocks observed live) bloats the prompt and
       // reads as noise. The per-group lines below carry only the facts.
       sb.append(
-        "Identical inputs yield identical results UNLESS your tool roster has changed since " +
-          "(compare your current offered tools against what you remember). If a tool you used before isn't in " +
-          "your offer now, re-call `find_capability` even with the same keywords; the framework's cache state " +
-          "may have changed.\n"
+        // Sigil #397 — only point at `find_capability` when discovery is in
+        // the roster. Under ToolPolicy.ActiveOnly/None/Exclusive it isn't, so
+        // naming it tells the model to call a tool it doesn't have.
+        if (findCapabilityAvailable)
+          "Identical inputs yield identical results UNLESS your tool roster has changed since " +
+            "(compare your current offered tools against what you remember). If a tool you used before isn't in " +
+            "your offer now, re-call `find_capability` even with the same keywords; the framework's cache state " +
+            "may have changed.\n"
+        else
+          "Identical inputs yield identical results. If you've already seen a tool's output for these exact " +
+            "arguments, reuse it instead of calling again.\n"
       )
       val summary = duplicateGroups.map { case ((toolName, _), occurrences) =>
         val preview = occurrences.head.argsPreview
@@ -1597,8 +1604,13 @@ trait Provider extends Service with ModelResolver {
     if (c.isGreeting) {
       sb.append("\n== Greeting turn ==\n")
       sb.append("This is a fresh conversation. Call `respond` with a brief introduction — ")
-      sb.append("state your role and offer to help. Do NOT call `no_response` or `find_capability` ")
-      sb.append("on this turn; the user expects a greeting, not silence or discovery.\n")
+      sb.append("state your role and offer to help. ")
+      // Sigil #397 — drop the `find_capability` clause when discovery is off.
+      if (findCapabilityAvailable)
+        sb.append("Do NOT call `no_response` or `find_capability` on this turn; " +
+          "the user expects a greeting, not silence or discovery.\n")
+      else
+        sb.append("Do NOT call `no_response` on this turn; the user expects a greeting, not silence.\n")
     }
 
     RenderedSystem(stable = stable, volatile = sb.toString)
