@@ -58,6 +58,10 @@ final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
     loweredSteps match {
       case Left(errors) => Task.pure(ToolResult.failure(WorkflowStepSpec.violationMessage(errors)))
       case Right(stepsOpt) =>
+        validateStepToolArgs(host, input.steps.getOrElse(Nil)).flatMap {
+          case argErrors if argErrors.nonEmpty =>
+            Task.pure(ToolResult.failure("Workflow step arguments invalid:\n" + argErrors.mkString("\n")))
+          case _ =>
         val id = Id[WorkflowTemplate](input.workflowId)
         host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
           case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
@@ -78,6 +82,7 @@ final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
                 host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map(_ =>
                   ToolResult.success(TextToolOutput(s"Workflow '${updated.name}' updated.")))
             }
+        }
         }
     }
   }

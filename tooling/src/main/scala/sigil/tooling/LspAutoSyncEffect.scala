@@ -46,10 +46,10 @@ final case class LspAutoSyncEffect(manager: LspManager) extends SettledEffect {
   private def extractPath(signal: Signal): Option[String] = signal match {
     case td: ToolDelta if td.state.contains(EventState.Complete) =>
       td.input match {
-        case Some(e: EditFileInput)    => Some(e.filePath)
-        case Some(e: EditAtRangeInput) => Some(e.filePath)
-        case Some(w: WriteFileInput)   => Some(w.filePath)
-        case Some(d: DeleteFileInput)  => Some(d.filePath)
+        case Some(e: EditFileInput)    => Some(e.path)
+        case Some(e: EditAtRangeInput) => Some(e.path)
+        case Some(w: WriteFileInput)   => Some(w.path)
+        case Some(d: DeleteFileInput)  => Some(d.path)
         case _                         => None
       }
     case _ => None

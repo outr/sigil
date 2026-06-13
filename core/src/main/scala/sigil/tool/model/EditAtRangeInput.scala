@@ -12,7 +12,7 @@ import sigil.tool.ToolInput
  * deletes the range. `expectedHash` enables safe-edit: the commit
  * only succeeds if the file's SHA-256 still matches at write time.
  */
-case class EditAtRangeInput(filePath: String,
+case class EditAtRangeInput(path: String,
                             startLine: Int,
                             startChar: Int,
                             endLine: Int,

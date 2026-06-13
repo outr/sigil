@@ -12,6 +12,6 @@ import sigil.tool.ToolInput
  * write is unconditional (last-writer-wins) — the legacy behavior
  * for single-agent flows that don't need staleness protection.
  */
-case class WriteFileInput(filePath: String,
+case class WriteFileInput(path: String,
                           content: String,
                           expectedHash: Option[String] = None) extends ToolInput derives RW

@@ -76,6 +76,10 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
     WorkflowStepSpec.lower(input.steps, input.variableDefs.map(_.name).toSet) match {
       case Left(errors) => Task.pure(ToolResult.failure(WorkflowStepSpec.violationMessage(errors)))
       case Right(steps) =>
+        validateStepToolArgs(host, input.steps).flatMap {
+          case argErrors if argErrors.nonEmpty =>
+            Task.pure(ToolResult.failure("Workflow step arguments invalid:\n" + argErrors.mkString("\n")))
+          case _ =>
         host.accessibleSpaces(ctx.chain).flatMap { spaces =>
           val callerSpace: SpaceId = spaces.headOption.getOrElse(GlobalSpace)
           val template = WorkflowTemplate(
@@ -92,6 +96,7 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
           host.withDB(_.workflowTemplates.transaction(_.insert(template))).map { stored =>
             ToolResult.success(TextToolOutput(s"Workflow '${input.name}' created with id ${stored._id.value}."))
           }
+        }
         }
     }
   }

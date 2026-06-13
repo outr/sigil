@@ -60,21 +60,21 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
   "edit_file" should {
 
-    "reject `filePath = \"string\"` without touching the filesystem" in withTempDir { dir =>
+    "reject `path = \"string\"` without touching the filesystem" in withTempDir { dir =>
       val ctx = new LocalFileSystemContext(Some(dir))
       val tool = new EditFileTool(ctx)
       val tc = turnContext()
-      tool.execute(EditFileInput(filePath = "string", oldString = "a", newString = "b"), tc, Event.id()).toList.map { signals =>
+      tool.execute(EditFileInput(path = "string", oldString = "a", newString = "b"), tc, Event.id()).toList.map { signals =>
         val text = failureText(signals)
         text should include ("JSON Schema type name")
-        text should include ("filePath")
+        text should include ("path")
         // The tool never touched the filesystem — no temp-dir contents
         // mutated, no "file not found" diagnostic from the read path.
         Files.list(dir).iterator().asScala.toList shouldBe empty
       }
     }
 
-    "pass through when `filePath` is real and `oldString`/`newString` are the literal word \"string\"" in withTempDir { dir =>
+    "pass through when `path` is real and `oldString`/`newString` are the literal word \"string\"" in withTempDir { dir =>
       val target = dir.resolve("notes.txt")
       Files.writeString(target, "the value is string today", StandardOpenOption.CREATE)
 
@@ -83,7 +83,7 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val tc = turnContext()
       tool.execute(
         EditFileInput(
-          filePath  = "notes.txt",
+          path  = "notes.txt",
           oldString = "string",
           newString = "String"
         ),
@@ -135,14 +135,14 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
   "read_file" should {
 
-    "reject `filePath = \"integer\"` without touching the filesystem" in withTempDir { dir =>
+    "reject `path = \"integer\"` without touching the filesystem" in withTempDir { dir =>
       val ctx = new LocalFileSystemContext(Some(dir))
       val tool = new ReadFileTool(ctx)
       val tc = turnContext()
-      tool.execute(ReadFileInput(filePath = "integer"), tc, Event.id()).toList.map { signals =>
+      tool.execute(ReadFileInput(path = "integer"), tc, Event.id()).toList.map { signals =>
         val text = failureText(signals)
         text should include ("JSON Schema type name")
-        text should include ("filePath")
+        text should include ("path")
         Files.list(dir).iterator().asScala.toList shouldBe empty
       }
     }

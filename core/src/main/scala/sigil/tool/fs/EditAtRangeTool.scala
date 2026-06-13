@@ -44,17 +44,17 @@ final class EditAtRangeTool(context: FileSystemContext)
   override val examples = List(
     ToolExample(
       "Replace a single line",
-      EditAtRangeInput(filePath = "src/main.scala", startLine = 4, startChar = 0, endLine = 5, endChar = 0,
+      EditAtRangeInput(path = "src/main.scala", startLine = 4, startChar = 0, endLine = 5, endChar = 0,
         newText = "  val x = 42\n")
     ),
     ToolExample(
       "Insert at a specific column",
-      EditAtRangeInput(filePath = "config.toml", startLine = 0, startChar = 0, endLine = 0, endChar = 0,
+      EditAtRangeInput(path = "config.toml", startLine = 0, startChar = 0, endLine = 0, endChar = 0,
         newText = "# header\n")
     ),
     ToolExample(
       "Delete a multi-line block",
-      EditAtRangeInput(filePath = "src/util.scala", startLine = 10, startChar = 0, endLine = 14, endChar = 0,
+      EditAtRangeInput(path = "src/util.scala", startLine = 10, startChar = 0, endLine = 14, endChar = 0,
         newText = "")
     )
   )
@@ -63,7 +63,7 @@ final class EditAtRangeTool(context: FileSystemContext)
 
 
   override def executeResult(input: EditAtRangeInput, ctx: ToolContext): Task[ToolResult[EditAtRangeOutput]] =
-    PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
+    PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        => runEdit(input, ctx)
     }
@@ -75,7 +75,7 @@ final class EditAtRangeTool(context: FileSystemContext)
   private def runEdit(input: EditAtRangeInput, ctx: ToolContext): Task[ToolResult[EditAtRangeOutput]] = {
     val argsJson = renderInputArgs(input)
 
-    WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
+    WorkspacePathResolver.resolve(ctx, input.path).flatMap { resolved =>
       context.readFile(resolved).flatMap { content =>
         EditAtRangeTool.applyRange(content, input) match {
           case Left(reason) =>

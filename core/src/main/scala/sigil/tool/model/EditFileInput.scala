@@ -15,7 +15,7 @@ import sigil.tool.ToolInput
  * agent can re-evaluate the edit against the new state. Without it,
  * the edit commits unconditionally.
  */
-case class EditFileInput(filePath: String,
+case class EditFileInput(path: String,
                          oldString: String,
                          newString: String,
                          replaceAll: Boolean = false,

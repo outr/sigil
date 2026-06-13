@@ -20,15 +20,15 @@ final class DeleteFileTool(context: FileSystemContext)
   val name        = ToolName("delete_file")
   val description = "Delete a file. Returns `{deleted: Boolean}` — true when the file existed and was removed; false when it did not exist."
   override val examples = List(
-    ToolExample("Remove a temp file", DeleteFileInput(filePath = "/tmp/scratch.txt"))
+    ToolExample("Remove a temp file", DeleteFileInput(path = "/tmp/scratch.txt"))
   )
   override val keywords = Set("file", "delete", "remove", "rm", "unlink")
 
   override def executeResult(input: DeleteFileInput, ctx: ToolContext): Task[ToolResult[DeleteFileOutput]] =
-    PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
+    PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None =>
-        WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
+        WorkspacePathResolver.resolve(ctx, input.path).flatMap { resolved =>
           context.deleteFile(resolved).map(existed => ToolResult.success(DeleteFileOutput(deleted = existed)))
         }
     }

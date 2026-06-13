@@ -44,11 +44,11 @@ final class EditFileTool(context: FileSystemContext)
       |
       |Output: `Success(replacements, hash?) | NotFound | NotUnique(occurrences) | Stale(currentHash, currentContent) | FileNotFound`.""".stripMargin
   override val examples = List(
-    ToolExample("Update a single line", EditFileInput(filePath = "config.toml", oldString = "log_level = \"info\"", newString = "log_level = \"debug\"")),
-    ToolExample("Rename a symbol", EditFileInput(filePath = "src/main.rs", oldString = "old_name", newString = "new_name", replaceAll = true)),
+    ToolExample("Update a single line", EditFileInput(path = "config.toml", oldString = "log_level = \"info\"", newString = "log_level = \"debug\"")),
+    ToolExample("Rename a symbol", EditFileInput(path = "src/main.rs", oldString = "old_name", newString = "new_name", replaceAll = true)),
     ToolExample(
       "Edit safely against a known hash",
-      EditFileInput(filePath = "config.toml", oldString = "x = 1", newString = "x = 2", expectedHash = Some("abc123..."))
+      EditFileInput(path = "config.toml", oldString = "x = 1", newString = "x = 2", expectedHash = Some("abc123..."))
     )
   )
   override val keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch")
@@ -61,7 +61,7 @@ final class EditFileTool(context: FileSystemContext)
     * whose typed payload the agent might gloss over and incorrectly
     * report as "I edited the file." */
   override def executeResult(input: EditFileInput, ctx: ToolContext): Task[ToolResult[EditFileOutput]] =
-    PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
+    PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        => runEdit(input, ctx)
     }
@@ -71,7 +71,7 @@ final class EditFileTool(context: FileSystemContext)
     catch { case _: Throwable => None }
 
   private def runEdit(input: EditFileInput, ctx: ToolContext): Task[ToolResult[EditFileOutput]] =
-    WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
+    WorkspacePathResolver.resolve(ctx, input.path).flatMap { resolved =>
       context.readFile(resolved).flatMap { content =>
         val pattern = Pattern.quote(input.oldString)
         val occurrences = pattern.r.findAllIn(content).size

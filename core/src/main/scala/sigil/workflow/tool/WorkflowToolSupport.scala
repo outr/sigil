@@ -1,10 +1,11 @@
 package sigil.workflow.tool
 
+import fabric.Obj
+import fabric.define.DefType
 import rapid.Task
 import sigil.Sigil
-import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, ToolResult}
-import sigil.workflow.{WorkflowSigil, WorkflowTemplate}
+import sigil.tool.{TextToolOutput, ToolContext, ToolName, ToolResult}
+import sigil.workflow.{WorkflowSigil, WorkflowStepSpec, WorkflowTemplate}
 
 /**
  * Shared plumbing for the agent-facing workflow management tools.
@@ -68,6 +69,43 @@ trait WorkflowToolSupport {
    * Runs without a space tag (cron-fired admin flows) bypass the
    * scope check; `GlobalSpace`-tagged runs always allow.
    */
+  /**
+   * Sigil #378 — validate each Job step's tool `arguments` against the
+   * referenced tool's input schema AT AUTHORING time, so a wrong field name
+   * (the `path` vs `filePath` trap) fails fast with a fixable message instead
+   * of crashing the whole run when the Loop reaches that step.
+   *
+   * Field-NAME validation only (unknown argument keys): it catches the common
+   * trap without false-positiving on unresolved `{{var}}` placeholders (still
+   * strings at authoring) or on fields that carry defaults. Unknown tools are
+   * left to the run-time / discovery path. Returns one message per offending
+   * step; empty when every step's args are field-shaped correctly.
+   */
+  protected def validateStepToolArgs(host: WorkflowSigil, steps: List[WorkflowStepSpec]): Task[List[String]] = {
+    val toolSteps = steps.filter(_.tool.exists(_.trim.nonEmpty))
+    toolSteps.foldLeft(Task.pure(List.empty[String])) { (accTask, step) =>
+      accTask.flatMap { acc =>
+        val toolName = step.tool.get.trim
+        host.findTools.byName(ToolName(toolName)).map {
+          case None => acc
+          case Some(tool) =>
+            tool.inputDefinition.defType match {
+              case DefType.Obj(fields) =>
+                val provided = step.arguments match {
+                  case Some(Obj(m)) => m.keySet
+                  case _            => Set.empty[String]
+                }
+                val unknown = (provided -- fields.keySet).toList.sorted
+                if (unknown.isEmpty) acc
+                else acc :+ s"Step '${step.id}': tool '$toolName' got unknown argument(s): ${unknown.mkString(", ")}. " +
+                  s"Valid fields: ${fields.keys.toList.sorted.mkString(", ")}."
+              case _ => acc
+            }
+        }
+      }
+    }
+  }
+
   protected def authorizeRun(host: Sigil,
                              workflow: strider.Workflow,
                              chain: List[sigil.participant.ParticipantId]): Task[Either[String, strider.Workflow]] =

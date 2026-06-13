@@ -10,7 +10,7 @@ import sigil.tool.model.{WriteFileInput, WriteFileOutput}
 import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
 
 /**
- * Write `content` (UTF-8) to `filePath`, creating parent directories
+ * Write `content` (UTF-8) to `path`, creating parent directories
  * as needed.
  *
  * When `expectedHash` is set, the write uses safe-edit semantics:
@@ -38,10 +38,10 @@ final class WriteFileTool(context: FileSystemContext)
       |
       |Output: `Success(bytesWritten, hash?) | Stale(currentHash, currentContent) | NotFound`.""".stripMargin
   override val examples = List(
-    ToolExample("Save text to a new file", WriteFileInput(filePath = "notes.txt", content = "Some notes.")),
+    ToolExample("Save text to a new file", WriteFileInput(path = "notes.txt", content = "Some notes.")),
     ToolExample(
       "Update a file safely",
-      WriteFileInput(filePath = "config.yaml", content = "debug: true", expectedHash = Some("abc123..."))
+      WriteFileInput(path = "config.yaml", content = "debug: true", expectedHash = Some("abc123..."))
     )
   )
   override val keywords = Set("file", "write", "save", "create", "output")
@@ -53,7 +53,7 @@ final class WriteFileTool(context: FileSystemContext)
     * Success-shaped `ToolResults` the agent might gloss over and incorrectly
     * report as "I saved the file." */
   override def executeResult(input: WriteFileInput, ctx: ToolContext): Task[ToolResult[WriteFileOutput]] =
-    PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
+    PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        => runWrite(input, ctx)
     }
@@ -63,7 +63,7 @@ final class WriteFileTool(context: FileSystemContext)
     catch { case _: Throwable => None }
 
   private def runWrite(input: WriteFileInput, ctx: ToolContext): Task[ToolResult[WriteFileOutput]] =
-    WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
+    WorkspacePathResolver.resolve(ctx, input.path).flatMap { resolved =>
       val argsJson = renderInputArgs(input)
       input.expectedHash match {
         case None =>

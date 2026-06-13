@@ -27,9 +27,9 @@ final class ReadFileTool(context: FileSystemContext)
     """Read the contents of a file. Use `offset` (0-indexed line) and `limit` to read a window of large files.
       |Returns `{content, totalLines, linesRead, hash?}`. `hash` is populated only on unwindowed reads.""".stripMargin
   override val examples = List(
-    ToolExample("Read entire file", ReadFileInput(filePath = "README.md")),
-    ToolExample("Read first 100 lines", ReadFileInput(filePath = "data.log", limit = Some(100))),
-    ToolExample("Read lines 200-300", ReadFileInput(filePath = "data.log", offset = Some(200), limit = Some(100)))
+    ToolExample("Read entire file", ReadFileInput(path = "README.md")),
+    ToolExample("Read first 100 lines", ReadFileInput(path = "data.log", limit = Some(100))),
+    ToolExample("Read lines 200-300", ReadFileInput(path = "data.log", offset = Some(200), limit = Some(100)))
   )
   override val keywords = Set(
     "file", "read", "open", "cat", "view",
@@ -48,10 +48,10 @@ final class ReadFileTool(context: FileSystemContext)
   override def boundsOutputItself: Boolean = true
 
   override def executeResult(input: ReadFileInput, ctx: ToolContext): Task[ToolResult[ReadFileOutput]] =
-    PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
+    PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        =>
-        WorkspacePathResolver.resolve(ctx, input.filePath)
+        WorkspacePathResolver.resolve(ctx, input.path)
           .flatMap(operate(input, _))
           .map(out => capInline(out, input, ctx.sigil.inlineContentThreshold))
           .map(ToolResult.success(_))
