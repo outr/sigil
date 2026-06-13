@@ -35,41 +35,42 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
       .map(_.map(SigilWorkflowParent.apply))
 
   override protected def onWorkflowStarted(workflow: Workflow): Task[Unit] =
-    publishLifecycle(workflow) { case (caller, convId, topicId) =>
+    publishLifecycle(workflow) { case (caller, convId, topicId, parentId) =>
       WorkflowRunStarted(
         participantId = caller, conversationId = convId, topicId = topicId,
         workflowId = workflow.sourceId.value, workflowName = workflow.name,
-        runId = workflow._id.value
+        runId = workflow._id.value, parentConversationId = parentId
       )
     }
 
   override protected def onWorkflowCompleted(workflow: Workflow): Task[Unit] =
-    publishLifecycle(workflow) { case (caller, convId, topicId) =>
+    publishLifecycle(workflow) { case (caller, convId, topicId, parentId) =>
       WorkflowRunCompleted(
         participantId = caller, conversationId = convId, topicId = topicId,
         workflowId = workflow.sourceId.value, workflowName = workflow.name,
-        runId = workflow._id.value
+        runId = workflow._id.value, parentConversationId = parentId
       )
     }
 
   override protected def onWorkflowFailed(workflow: Workflow): Task[Unit] = {
     val reason = SigilWorkflowManager.extractFailureReason(workflow)
-    publishLifecycle(workflow) { case (caller, convId, topicId) =>
+    publishLifecycle(workflow) { case (caller, convId, topicId, parentId) =>
       WorkflowRunFailed(
         participantId = caller, conversationId = convId, topicId = topicId,
         workflowId = workflow.sourceId.value, workflowName = workflow.name,
-        runId = workflow._id.value, reason = reason
+        runId = workflow._id.value, reason = reason, parentConversationId = parentId
       )
     }
   }
 
   override protected def onStepCompleted(workflow: Workflow, stepId: Id[Step], success: Boolean): Task[Unit] =
-    publishLifecycle(workflow) { case (caller, convId, topicId) =>
+    publishLifecycle(workflow) { case (caller, convId, topicId, parentId) =>
       val stepName = workflow.byStepId(stepId).map(_.name).getOrElse(stepId.value)
       WorkflowStepCompleted(
         participantId = caller, conversationId = convId, topicId = topicId,
         workflowId = workflow.sourceId.value, runId = workflow._id.value,
-        stepId = stepId.value, stepName = stepName, success = success
+        stepId = stepId.value, stepName = stepName, success = success,
+        parentConversationId = parentId
       )
     }
 
@@ -92,7 +93,7 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
     * If no participant resolves through any of these, log a
     * warning and skip — the workflow is genuinely unowned. */
   private def publishLifecycle(workflow: Workflow)
-                              (build: (ParticipantId, Id[Conversation], Id[Topic]) => Event): Task[Unit] =
+                              (build: (ParticipantId, Id[Conversation], Id[Topic], Option[Id[Conversation]]) => Event): Task[Unit] =
     workflow.conversationId match {
       case None => Task.unit
       case Some(convIdStr) =>
@@ -106,7 +107,7 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
                   s"publishLifecycle: no resolvable participant for workflow ${workflow._id.value} on conversation $convId — lifecycle event suppressed."
                 ))
               case Some(pid) =>
-                val event = build(pid, convId, conv.currentTopicId)
+                val event = build(pid, convId, conv.currentTopicId, conv.parentConversationId)
                 host.publish(event).handleError(t =>
                   Task(scribe.warn(s"publishLifecycle: publish failed for run ${workflow._id.value}: ${t.getMessage}"))
                 )

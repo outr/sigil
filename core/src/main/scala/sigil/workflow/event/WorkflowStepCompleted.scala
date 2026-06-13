@@ -23,6 +23,8 @@ case class WorkflowStepCompleted(participantId: ParticipantId,
                                  stepId: String,
                                  stepName: String,
                                  success: Boolean,
+                                 // Sigil #381 — the scheduling (bound) conversation (see WorkflowRunStarted).
+                                 parentConversationId: Option[Id[Conversation]] = None,
                                  override val state: EventState = EventState.Complete,
                                  override val role: MessageRole = MessageRole.Standard,
                                  override val visibility: MessageVisibility = MessageVisibility.All,

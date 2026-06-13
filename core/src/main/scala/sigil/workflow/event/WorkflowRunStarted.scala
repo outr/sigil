@@ -22,6 +22,9 @@ case class WorkflowRunStarted(participantId: ParticipantId,
                               workflowId: String,
                               workflowName: String,
                               runId: String,
+                              // Sigil #381 — the scheduling (bound) conversation, so the bound conv's
+                              // activity bar surfaces this run (which lives on its own sub-conversation).
+                              parentConversationId: Option[Id[Conversation]] = None,
                               override val state: EventState = EventState.Complete,
                               override val role: MessageRole = MessageRole.Standard,
                               override val visibility: MessageVisibility = MessageVisibility.All,
