@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, DiscoveredCapability, ParticipantProjection, TopicEntry, TurnInput}
-import sigil.event.{CapabilityResults, Event}
+import sigil.event.{CapabilityResults, Event, ToolInvoke}
 import sigil.signal.EventState
 import sigil.tool.ToolContext
 import sigil.tool.ToolName
@@ -235,6 +235,35 @@ class FindCapabilityPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec wit
         // "tools I just discovered."
         afterSecond.suggestedTools.map(_.value) should contain allOf ("bsp_test", "bsp_compile")
         afterSecond.suggestedTools.map(_.value) should contain noneOf ("dispatch_workers", "grep")
+      }
+    }
+
+    "NOT evict a recently-USED discovery when a new find_capability fires (sigil #377)" in {
+      val c = conv(s"fc-inuse-${rapid.Unique()}")
+      val convId = c._id
+      val first  = capabilityResults(convId, List("update_workflow", "run_workflow"), query = "create workflow")
+      // The agent USES update_workflow (lands in recentToolInvocations).
+      val invoke = ToolInvoke(
+        toolName       = ToolName("update_workflow"),
+        participantId  = TestAgent,
+        conversationId = convId,
+        topicId        = TestTopicId,
+        state          = EventState.Complete,
+        origin         = Some(Event.id())
+      )
+      val second = capabilityResults(convId, List("grep", "read_file"), query = "search files")
+      for {
+        _    <- TestSigil.publish(first)
+        _    <- TestSigil.publish(invoke)
+        _    <- TestSigil.publish(second)
+        proj <- TestSigil.projectionFor(TestAgent, convId)
+      } yield {
+        val names = proj.suggestedTools.map(_.value)
+        // The in-use tool survives the replace, alongside the new matches…
+        names should contain ("update_workflow")
+        names should contain allOf ("grep", "read_file")
+        // …but the UNUSED prior discovery is dropped (bounded, per #301).
+        names should not contain "run_workflow"
       }
     }
 

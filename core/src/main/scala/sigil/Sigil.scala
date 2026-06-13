@@ -3714,7 +3714,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           val toolNames = cr.matches.collect {
             case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
           }
-          proj.copy(suggestedTools = toolNames)
+          // Sigil #377 — a new `find_capability` REPLACES stale unused
+          // discoveries (bounded to "this search", #301) but must NOT evict an
+          // earlier discovery the agent is actively CALLING. Once the per-loop
+          // `discoveredCapabilities` cache clears (terminal respond, #6306) this
+          // overlay is the only carrier; a blind replace drops an in-use tool
+          // from the next iteration's roster ("Unknown tool …"). Exempt
+          // recently-invoked tools so a tool dispatched on iteration N stays
+          // dispatchable on N+1.
+          val recentlyUsed = proj.recentToolInvocations.map(_.toolName).toSet
+          val survivors = proj.suggestedTools.filter(recentlyUsed.contains)
+          proj.copy(suggestedTools = (toolNames ++ survivors).distinct)
         }
       case _ => Task.unit
     }
