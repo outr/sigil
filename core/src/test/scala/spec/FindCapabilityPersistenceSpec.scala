@@ -218,8 +218,8 @@ class FindCapabilityPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec wit
       }
     }
 
-    "REPLACE the prior matches when a new find_capability fires (not accumulate)" in {
-      val c = conv(s"fc-replace-${rapid.Unique()}")
+    "ACCUMULATE matches across find_capability calls — a prior discovery isn't evicted (sigil #383)" in {
+      val c = conv(s"fc-accumulate-${rapid.Unique()}")
       val convId = c._id
       val first  = capabilityResults(convId, List("dispatch_workers", "grep"), query = "find grep files")
       val second = capabilityResults(convId, List("bsp_test", "bsp_compile"), query = "test compile build")
@@ -230,11 +230,10 @@ class FindCapabilityPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec wit
         afterSecond <- TestSigil.projectionFor(TestAgent, convId)
       } yield {
         afterFirst.suggestedTools.map(_.value) should contain allOf ("dispatch_workers", "grep")
-        // Replace, not union — keeps the size bounded naturally (one
-        // search's worth) and matches the user's mental model of
-        // "tools I just discovered."
-        afterSecond.suggestedTools.map(_.value) should contain allOf ("bsp_test", "bsp_compile")
-        afterSecond.suggestedTools.map(_.value) should contain noneOf ("dispatch_workers", "grep")
+        // Union, not replace (#383): a tool the agent discovered (and may be
+        // about to dispatch) must stay in the roster even after a later search
+        // returns a different set.
+        afterSecond.suggestedTools.map(_.value) should contain allOf ("dispatch_workers", "grep", "bsp_test", "bsp_compile")
       }
     }
 
@@ -259,11 +258,9 @@ class FindCapabilityPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec wit
         proj <- TestSigil.projectionFor(TestAgent, convId)
       } yield {
         val names = proj.suggestedTools.map(_.value)
-        // The in-use tool survives the replace, alongside the new matches…
-        names should contain ("update_workflow")
-        names should contain allOf ("grep", "read_file")
-        // …but the UNUSED prior discovery is dropped (bounded, per #301).
-        names should not contain "run_workflow"
+        // Every discovery is retained (#383 — additive), incl. the in-use tool
+        // and the new search's matches; nothing the agent found is evicted.
+        names should contain allOf ("update_workflow", "run_workflow", "grep", "read_file")
       }
     }
 

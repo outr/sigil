@@ -3714,17 +3714,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           val toolNames = cr.matches.collect {
             case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
           }
-          // Sigil #377 — a new `find_capability` REPLACES stale unused
-          // discoveries (bounded to "this search", #301) but must NOT evict an
-          // earlier discovery the agent is actively CALLING. Once the per-loop
-          // `discoveredCapabilities` cache clears (terminal respond, #6306) this
-          // overlay is the only carrier; a blind replace drops an in-use tool
-          // from the next iteration's roster ("Unknown tool …"). Exempt
-          // recently-invoked tools so a tool dispatched on iteration N stays
-          // dispatchable on N+1.
-          val recentlyUsed = proj.recentToolInvocations.map(_.toolName).toSet
-          val survivors = proj.suggestedTools.filter(recentlyUsed.contains)
-          proj.copy(suggestedTools = (toolNames ++ survivors).distinct)
+          // Sigil #377 / #383 — ACCUMULATE, never replace. The #301 "bounded
+          // replace" caused a discovered tool the agent was using (#377) or
+          // about to use (#383, create_workflow) to drop out of the roster once
+          // a later `find_capability` returned a different match set — and once
+          // the per-loop `discoveredCapabilities` cache clears (terminal
+          // respond, #6306) this overlay is the only carrier. A discovered
+          // capability must stay dispatchable for the rest of the conversation,
+          // not just the one search. Bounded by `distinct` + the finite catalog
+          // + the curator's own context-limit shedding of the tool roster.
+          proj.copy(suggestedTools = (proj.suggestedTools ++ toolNames).distinct)
         }
       case _ => Task.unit
     }
