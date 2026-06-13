@@ -93,7 +93,6 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
         id = "summarize",
         name = Some("Summarize the input"),
         prompt = Some("Summarize: {{input}}"),
-        modelId = Some("openai/gpt-5.4-mini"),
         output = Some("summary")
       ))
     }
@@ -118,8 +117,8 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
       roundTrip[WorkflowStepInput](ParallelStepInput(
         id = "parallel",
         branches = List(
-          List(JobStepInput(id = "a", prompt = Some("A"), modelId = Some("m"))),
-          List(JobStepInput(id = "b", prompt = Some("B"), modelId = Some("m")))
+          List(JobStepInput(id = "a", prompt = Some("A"))),
+          List(JobStepInput(id = "b", prompt = Some("B")))
         ),
         joinMode = JoinMode.All
       ))
@@ -128,7 +127,7 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
       roundTrip[WorkflowStepInput](LoopStepInput(
         id = "loop",
         over = "items",
-        body = List(JobStepInput(id = "process", prompt = Some("{{item}}"), modelId = Some("m")))
+        body = List(JobStepInput(id = "process", prompt = Some("{{item}}")))
       ))
     }
     "round-trip SubWorkflowStepInput" in {
@@ -153,7 +152,7 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
         name = "demo",
         description = Some("Mixed shapes"),
         steps = List(
-          JobStepInput(id = "s1", prompt = Some("Hello {{name}}"), modelId = Some("m")),
+          JobStepInput(id = "s1", prompt = Some("Hello {{name}}")),
           ConditionStepInput(id = "s2", expression = "{{x}} == \"ok\"", onTrue = "s3", onFalse = "s4"),
           JobStepInput(id = "s3", prompt = Some("Yes")),
           JobStepInput(id = "s4", prompt = Some("No"))
@@ -189,8 +188,8 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
         summon[RW[SigilApproval]]
       )
       val inputs: List[WorkflowStepInput] = List(
-        JobStepInput(id = "a", prompt = Some("Hello"), modelId = Some("m")),
-        JobStepInput(id = "b", prompt = Some("World"), modelId = Some("m"))
+        JobStepInput(id = "a", prompt = Some("Hello")),
+        JobStepInput(id = "b", prompt = Some("World"))
       )
       val compiled = WorkflowStepInputCompiler.compile(inputs)
       compiled.steps should have size 2

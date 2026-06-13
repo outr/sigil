@@ -38,7 +38,8 @@ case class WorkflowStepSpec(@description("Unique id for this step within the wor
                             arguments: Option[Json] = None,
                             @description("The variable name this step writes its result to. A discovery Job that feeds a Loop MUST set this; the Loop's `over` then names this exact variable.")
                             output: Option[String] = None,
-                            modelId: Option[String] = None,
+                            @description("Job `prompt` only: optional difficulty tier — Low, Medium, High, or VeryHigh. The model is selected AUTOMATICALLY from the conversation's mode and this tier; you never name a model. Omit to auto-classify the prompt's difficulty.")
+                            complexity: Option[sigil.provider.Complexity] = None,
                             tools: List[String] = Nil,
                             continueOnError: Boolean = false,
                             retryCount: Int = 0,
@@ -139,7 +140,7 @@ object WorkflowStepSpec {
       // The IR carries `arguments` as a JSON string (the engine's variable
       // substitution + tool-arg decode run on it); the model authors a structured
       // object, which we compact to that string here (#373).
-      JobStepInput(s.id, s.name, s.prompt, s.tool, s.arguments.map(JsonFormatter.Compact(_)), s.output, s.modelId, s.tools, s.continueOnError, s.retryCount, s.retryDelayMs)
+      JobStepInput(s.id, s.name, s.prompt, s.tool, s.arguments.map(JsonFormatter.Compact(_)), s.output, s.complexity, s.tools, s.continueOnError, s.retryCount, s.retryDelayMs)
     case Condition =>
       ConditionStepInput(s.id, s.expression.get, s.onTrue.get, s.onFalse.get, s.name)
     case Approval =>

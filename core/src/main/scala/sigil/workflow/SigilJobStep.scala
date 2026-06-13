@@ -10,7 +10,7 @@ import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message, ToolInvoke, ToolOutcome}
 import sigil.participant.ParticipantId
-import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, ProviderModel, UnregisteredModelException}
+import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent}
 import sigil.signal.{EventState, ToolDelta}
 import sigil.tool.{ToolInput, ToolName}
 import sigil.tool.model.ResponseContent
@@ -129,74 +129,37 @@ final case class SigilJobStep(input: JobStepInput,
     }
   }
 
-  private def runPrompt(host: Sigil, workflow: Workflow, prompt: String): Task[Json] = {
-    // Bug #65 — step's `modelId` falls back to a workflow-level
-    // default. The default is sourced from the workflow's
-    // `variables` map under [[SigilWorkflowVariables.DefaultModelId]]
-    // ("__sigil_defaultModelId"). Lets workflow authors pin the model
-    // once at workflow creation rather than threading it through
-    // every step's input. Reads from the existing Strider
-    // variables surface — no Strider schema change required.
-    val resolved = input.modelId.map(_.trim).filter(_.nonEmpty)
-      .orElse(SigilWorkflowVariables.defaultModelIdOf(workflow))
-    resolved match {
-      case None =>
-        Task.error(new RuntimeException(
-          s"Workflow step '${input.id}' has a prompt but no `modelId` (and no `${SigilWorkflowVariables.DefaultModelId}` variable on the workflow). Set one of them to the model the prompt should run against."
-        ))
-      case Some(s) =>
-        val modelId = Id[Model](s)
-        // Sigil #374 — the step's id may free-form a registered model under a
-        // variant spelling (resolveProviderModel rescues that), or be flat-out
-        // unregistered. In the latter case fall back to the workflow's default
-        // model rather than throwing and losing the whole run.
-        val fallbackId = SigilWorkflowVariables.defaultModelIdOf(workflow)
-          .map(d => Id[Model](d)).filter(_.value != modelId.value)
-        SyntheticTurnContext.build(host, workflow).flatMap { ctx =>
-          resolveModelWithFallback(host, modelId, fallbackId).flatMap { pm =>
-            // Resolve provider + registered record at the boundary.
-            val provider = pm.provider
-            val request = OneShotRequest(
-              model = pm.model,
-              systemPrompt = "",
-              userPrompt = prompt,
-              generationSettings = GenerationSettings()
-            )
-            val acc = new java.lang.StringBuilder
-            provider(request).evalMap {
-              case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
-              case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
-              case _                                     => Task.unit
-            }.drain.flatMap { _ =>
-              val response = acc.toString
-              // Sigil #376 — record the prompt + the model's reply in the run's
-              // sub-conversation so the step is openable.
-              persistPromptTurn(host, workflow, ctx, prompt, response, pm.model._id)
-                .map(_ => str(response): Json)
-            }
-          }
-        }
-    }
-  }
-
-  /** Sigil #374 — resolve the step's model (tolerantly — `resolveProviderModel`
-    * already rescues case / prefix / `.`-vs-`-` format variants of a registered
-    * id). If it is still genuinely unregistered, fall back to the workflow's
-    * default model with a warn instead of throwing: a mis-named leaf model id
-    * must not lose an otherwise-valid run. With no usable fallback the error
-    * propagates (and now settles the run as Failed — #375). */
-  private def resolveModelWithFallback(host: Sigil,
-                                       modelId: Id[Model],
-                                       fallbackId: Option[Id[Model]]): Task[ProviderModel] =
-    Task(host.resolveProviderModel(modelId)).handleError {
-      case _: UnregisteredModelException if fallbackId.isDefined =>
-        val fb = fallbackId.get
-        scribe.warn(
-          s"Workflow step '${input.id}' model `${modelId.value}` is unregistered; " +
-            s"falling back to the workflow default `${fb.value}`."
+  private def runPrompt(host: Sigil, workflow: Workflow, prompt: String): Task[Json] =
+    SyntheticTurnContext.build(host, workflow).flatMap { ctx =>
+      // Sigil #380 — a prompt step never names a model. Route through the
+      // conversation's active Mode (its `workType`) + the step's `complexity`
+      // tier, exactly as a normal turn does — `routedModelFor` picks a
+      // REGISTERED, configured model and degrades down-tier as needed, with the
+      // running agent's own model (always registered) as the fallback. So there
+      // is no model id to guess, no UnregisteredModelException to reach.
+      val workType = ctx.conversation.currentMode.workType.getOrElse(sigil.provider.ConversationWork)
+      host.routedModelFor(workType, ctx.chain, ctx.model._id, complexity = input.complexity).flatMap { modelId =>
+        val pm = host.resolveProviderModel(modelId)
+        val provider = pm.provider
+        val request = OneShotRequest(
+          model = pm.model,
+          systemPrompt = "",
+          userPrompt = prompt,
+          generationSettings = GenerationSettings()
         )
-        Task(host.resolveProviderModel(fb))
-      case t => Task.error(t)
+        val acc = new java.lang.StringBuilder
+        provider(request).evalMap {
+          case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
+          case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
+          case _                                     => Task.unit
+        }.drain.flatMap { _ =>
+          val response = acc.toString
+          // Sigil #376 — record the prompt + the model's reply in the run's
+          // sub-conversation so the step is openable.
+          persistPromptTurn(host, workflow, ctx, prompt, response, pm.model._id)
+            .map(_ => str(response): Json)
+        }
+      }
     }
 
   /** Sigil #376 — record a tool step as one settled [[ToolInvoke]] (input +

@@ -93,7 +93,7 @@ final class GetWorkflowTool extends Tool with WorkflowToolSupport {
         tool = s.tool,
         arguments = s.arguments.flatMap(a => scala.util.Try(fabric.io.JsonParser(a)).toOption),
         output = s.output,
-        modelId = s.modelId,
+        complexity = s.complexity,
         tools = s.tools,
         continueOnError = s.continueOnError,
         retryCount = s.retryCount,

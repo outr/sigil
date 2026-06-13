@@ -6,7 +6,7 @@ import rapid.Task
 import sigil.{Sigil, TurnContext}
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
-import sigil.participant.ParticipantId
+import sigil.participant.{AgentParticipant, Participant, ParticipantId}
 import strider.Workflow
 
 /**
@@ -40,37 +40,42 @@ object SyntheticTurnContext {
       case None => Task.pure(emptyContext(host))
       case Some(convIdStr) =>
         val convId = Id[Conversation](convIdStr)
+        val createdByValue = workflow.createdBy.getOrElse("")
+        // The participant the workflow runs as: the `createdBy` match, else the
+        // conversation's first participant.
+        def resolve(c: Conversation): Option[Participant] =
+          c.participants.find(_.id.value == createdByValue).orElse(c.participants.headOption)
         for {
-          maybeConv <- host.withDB(_.conversations.transaction(_.get(convId)))
-          parentChain <- maybeConv match {
+          maybeConv      <- host.withDB(_.conversations.transaction(_.get(convId)))
+          // For a participant-less (#376 sub-)conversation, fall through to the
+          // parent's resolved participant.
+          parentResolved <- maybeConv match {
             case Some(conv) if conv.participants.isEmpty =>
               conv.parentConversationId match {
                 case Some(parentId) =>
-                  host.withDB(_.conversations.transaction(_.get(parentId))).map {
-                    case Some(parent) =>
-                      val createdByValue = workflow.createdBy.getOrElse("")
-                      val matched = parent.participants.find(_.id.value == createdByValue).map(_.id)
-                      matched.orElse(parent.participants.headOption.map(_.id)).toList
-                    case None => Nil
-                  }
-                case None => Task.pure(Nil)
+                  host.withDB(_.conversations.transaction(_.get(parentId))).map(_.flatMap(resolve))
+                case None => Task.pure(None)
               }
-            case _ => Task.pure(Nil)
+            case _ => Task.pure(None)
           }
         } yield maybeConv match {
           case None       => emptyContext(host)
           case Some(conv) =>
-            val createdByValue = workflow.createdBy.getOrElse("")
-            val matched = conv.participants.find(_.id.value == createdByValue).map(_.id)
-            val ownChain: List[ParticipantId] =
-              matched.orElse(conv.participants.headOption.map(_.id)).toList
-            val chain = if (ownChain.nonEmpty) ownChain else parentChain
+            val participant: Option[Participant] = resolve(conv).orElse(parentResolved)
+            val chain: List[ParticipantId] = participant.map(_.id).toList
+            // Sigil #380 — the run's model is the resolved agent's OWN model
+            // (always registered), so a prompt step's complexity routing has a
+            // valid fallback to degrade to. Falls back to any registered model
+            // when the participant isn't an agent / the registry is cold.
+            val model = participant.collect { case a: AgentParticipant => a.modelId }
+              .flatMap(host.cache.find)
+              .getOrElse(syntheticModel(host))
             TurnContext(
               sigil = host,
               chain = chain,
               conversation = conv,
               turnInput = TurnInput(conversationId = convId),
-              model = syntheticModel(host),
+              model = model,
               // A workflow step's tool output feeds a variable, not the agent's
               // prompt — capture it in full so a Loop over a discovery step's
               // result iterates the whole set, not the bounded inline head.
