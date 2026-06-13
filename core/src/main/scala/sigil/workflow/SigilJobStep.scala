@@ -82,6 +82,19 @@ final case class SigilJobStep(input: JobStepInput,
         val argsRaw = input.arguments
           .map(a => WorkflowVariableSubstitution.substitute(a, workflow.variables).trim)
           .getOrElse("")
+        // Sigil #382 — a resolved tool argument must NEVER still carry a
+        // `{{var}}` template. A mis-wired variable reaching a tool — especially
+        // a destructive one like `write_file` — overwrote real source files
+        // with the literal `{{editedContents}}`. Hard-fail the step instead of
+        // dispatching; the run settles as Failed (#375) rather than corrupting.
+        val unresolved = WorkflowVariableSubstitution.unresolvedVars(argsRaw)
+        if (unresolved.nonEmpty)
+          Task.error(new RuntimeException(
+            s"Workflow step '${input.id}': tool '$toolName' arguments still reference unresolved " +
+              s"variable(s) ${unresolved.map(v => s"{{$v}}").mkString(", ")} — the referenced step output " +
+              s"isn't available in scope. The step was NOT dispatched."
+          ))
+        else {
         val argsJson: Json =
           if (argsRaw.isEmpty) obj()
           else scala.util.Try(fabric.io.JsonParser(argsRaw)).getOrElse(obj())
@@ -125,6 +138,7 @@ final case class SigilJobStep(input: JobStepInput,
                 persistToolInvocation(host, workflow, ctx, ToolName(toolName), typedInput, settle).map(_ => resultJson)
               }
             }
+        }
         }
     }
   }

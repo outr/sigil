@@ -32,6 +32,14 @@ object WorkflowVariableSubstitution {
       }
     })
 
+  /** Sigil #382 — distinct variable names still present as unresolved
+    * `{{var}}` placeholders after substitution. Used to HARD-FAIL a step whose
+    * resolved tool arguments still carry a template: a mis-wired variable must
+    * never reach a tool (`write_file` overwrote real files with the literal
+    * `{{editedContents}}`). Empty when everything resolved. */
+  def unresolvedVars(resolved: String): List[String] =
+    Pattern.findAllMatchIn(resolved).map(_.group(1)).distinct.toList
+
   private def render(j: Json): String = j match {
     case fabric.Str(s, _)    => s
     case fabric.NumInt(n, _) => n.toString
