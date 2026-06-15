@@ -3,7 +3,7 @@ ThisBuild / version := "1.2.0-SNAPSHOT8"
 
 ThisBuild / scalaVersion := "3.8.3"
 
-val rapidVersion: String = "2.9.7"
+val rapidVersion: String = "2.9.8-SNAPSHOT"
 
 val spiceVersion: String = "1.9.1"
 
@@ -32,6 +32,11 @@ val lsp4jDebugVersion: String = "1.0.0"
 val jtokkitVersion: String = "1.1.0"
 
 val scalatestVersion: String = "3.2.20"
+
+// Force rapid-core to the version with Stream.handleErrorWith (#399) — it
+// otherwise arrives transitively (spice / lightdb / strider) at the older
+// release. Additive/binary-compatible, so overriding is safe.
+ThisBuild / dependencyOverrides += "com.outr" %% "rapid-core" % rapidVersion
 
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/master/LICENSE"))

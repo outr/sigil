@@ -460,113 +460,121 @@ trait Provider extends Service with ModelResolver {
     if (retries <= 0) call(safe)
     else {
       val classifier = providerErrorClassifier
-      // Each attempt returns (bufferedEvents, optionalError). If
-      // optionalError is None, the call drained cleanly. If Some,
-      // the call errored after emitting `bufferedEvents` (possibly
-      // empty / non-meaningful).
+      // Re-raise `t` from a stream that has already had its prefix emitted —
+      // `evalMap`'s error fires on pull (not at materialization, which rapid's
+      // `++` would), so downstream `onErrorFinalize` / `guarantee` see the
+      // partial state before the failure.
+      def fail(t: Throwable): Stream[ProviderEvent] =
+        Stream.emit(()).evalMap[ProviderEvent](_ => Task.error[ProviderEvent](t))
+
+      // Sigil #399 — stream events LIVE so MessageDeltas reach subscribers as
+      // tokens arrive off the wire, while keeping retry-safety. The old shape
+      // drained the WHOLE stream into a buffer before re-emitting (so every
+      // content delta was withheld to end-of-turn). Instead, only the LEADING
+      // non-meaningful events (Usage / ThinkingDelta / ReasoningItem) are
+      // buffered — those are the events the design drops on retry (561-569) so a
+      // failed attempt's reasoning chain doesn't duplicate. The moment a
+      // MEANINGFUL event (or a terminal Done / Error) arrives, the buffer is
+      // flushed and the stream goes fully live (`committed`). A retry / self-heal
+      // engages only while nothing is committed — the retryable + self-heal
+      // errors (429, 5xx, tool_choice / sampling 400s) all surface at stream
+      // START, before any meaningful event, so a retry never duplicates observed
+      // output; an error after `committed` propagates after the live prefix.
       def attempt(currentCall: ProviderCall,
                   remaining: Int,
                   ctx: Option[RetryContext],
                   downgradedToolChoice: Boolean,
-                  strippedSampling: Boolean): Task[(List[ProviderEvent], Option[Throwable])] = {
+                  strippedSampling: Boolean): Stream[ProviderEvent] = {
         val perAttempt = ctx.fold(currentCall)(rc => currentCall.copy(retryContext = Some(rc)))
-        val buffer = scala.collection.mutable.ListBuffer.empty[ProviderEvent]
-        val tapped = call(perAttempt).evalTap(ev => Task { buffer += ev; () })
-        tapped.drain.map(_ => (buffer.toList, Option.empty[Throwable])).handleError { t =>
-          val captured = buffer.toList
-          val cls = classifier.classify(t)
-          // A retry is safe when nothing in the captured prefix
-          // represents committed work the consumer has already
-          // observed — session-start chunks (role: assistant) and the
-          // wire decoder's synthetic Usage estimates don't count;
-          // text / tool / reasoning / image / response-state events
-          // do.
-          val meaningful = captured.exists(isMeaningfulProviderEvent)
-          // Sigil #387 — model-agnostic self-heal: a model that rejects
-          // forced tool_choice (Fable 5 / Mythos 5 → HTTP 400
-          // "tool_choice forces tool use is not compatible with this
-          // model.") gets the SAME call retried once with tool_choice
-          // downgraded to Auto. Both Required and Specific collapse to
-          // Auto; the respond family is always in the roster so Auto
-          // still lets the agent act. At most one downgrade per call
-          // (`downgradedToolChoice` guard) — independent of the
-          // transient-retry budget, which still applies to the
-          // downgraded call.
-          if (!meaningful && !downgradedToolChoice && currentCall.toolChoice.isForced
-              && Provider.isForcedToolChoiceRejection(t)) {
-            // Sigil #395 — remember the rejection so later calls (this turn's
-            // remaining iterations and every future turn) demote up front
-            // instead of re-paying this round-trip per iteration.
-            Provider.recordForcedToolChoiceRejection(currentCall.model._id)
-            scribe.warn(
-              s"Sigil #387 — model ${currentCall.model._id.value} rejected forced tool_choice " +
-                s"(${currentCall.toolChoice}); downgrading to Auto and retrying once"
-            )
-            attempt(currentCall.copy(toolChoice = ToolChoice.Auto), remaining, ctx,
-              downgradedToolChoice = true, strippedSampling)
-          } else if (!meaningful && !strippedSampling
-                     && (currentCall.generationSettings.temperature.isDefined ||
-                         currentCall.generationSettings.topP.isDefined)
-                     && Provider.isDeprecatedSamplingParam(t)) {
-            // Sigil #390 — cold-cache BACKSTOP for sampling params. The
-            // primary mechanism is proactive: providers drop temperature/top_p
-            // a model doesn't list in its catalog `supported_parameters` (via
-            // `Sigil.supportsParameter`), so a cataloged model never sends
-            // them. This self-heal only fires when the catalog is empty/cold
-            // (e.g. an Anthropic-direct app before an OpenRouter refresh): a
-            // model that rejects a sampling param it removed (Claude 5 — Fable
-            // 5 / Mythos 5 → HTTP 400 "`temperature` is deprecated for this
-            // model.") gets the SAME call retried once with temperature AND
-            // topP stripped (the whole category, so the API doesn't 400 again
-            // on top_p). At most one strip per call; composes with the
-            // tool_choice downgrade across retries when a model rejects both.
-            scribe.warn(
-              s"Sigil #390 — model ${currentCall.model._id.value} rejected a deprecated sampling " +
-                s"parameter; stripping temperature/topP and retrying once"
-            )
-            val stripped = currentCall.generationSettings.copy(temperature = None, topP = None)
-            attempt(currentCall.copy(generationSettings = stripped), remaining, ctx,
-              downgradedToolChoice, strippedSampling = true)
-          } else if (!meaningful && remaining > 0 && cls == ErrorClassification.Retry) {
-            val nextCtx = nextRetryContext(t)
-            // Sigil #283 — honor the upstream's `retry-after` (lifted
-            // by the provider into ProviderErrorMetadata.retryAfterMs)
-            // in preference to the static providerRetryDelay. A 429
-            // that says "wait 8 seconds" should wait 8 seconds, not
-            // 500ms and burn three more retries against the same
-            // throttle.
-            val honoredDelay = retryAfterFrom(t).getOrElse(providerRetryDelay)
-            scribe.warn(
-              s"Sigil bug #211 — retrying transient provider error " +
-                s"(${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}) " +
-                s"after ${honoredDelay.toMillis}ms; $remaining retries remaining"
-            )
-            Task.sleep(honoredDelay).flatMap(_ => attempt(currentCall, remaining - 1, Some(nextCtx), downgradedToolChoice, strippedSampling))
-          } else {
-            // Either we have partial events (can't retry — would
-            // duplicate the work), or the error isn't classified as
-            // Retry. Return the captured events alongside the error
-            // so the consumer sees the partial state PLUS the
-            // failure.
-            Task.pure((captured, Some(t)))
+        val committed = new java.util.concurrent.atomic.AtomicBoolean(false)
+        val head = new java.util.concurrent.atomic.AtomicReference[List[ProviderEvent]](Nil)
+        def flushTrigger(ev: ProviderEvent): Boolean =
+          isMeaningfulProviderEvent(ev) || (ev match {
+            case _: ProviderEvent.Done | _: ProviderEvent.Error => true
+            case _                                              => false
+          })
+        call(perAttempt)
+          .flatMap { ev =>
+            if (committed.get()) Stream.emit(ev)
+            else if (flushTrigger(ev)) {
+              committed.set(true)
+              Stream.emits(head.getAndSet(Nil).reverse :+ ev)
+            } else {
+              head.updateAndGet(ev :: _)
+              Stream.empty
+            }
           }
-        }
+          .handleErrorWith { t =>
+            // Nothing committed yet — only leading non-meaningful events were
+            // buffered, and they're discarded — so a retry / self-heal is safe.
+            // Once committed, a retry would duplicate observed output: propagate
+            // after the live prefix.
+            if (committed.get()) fail(t)
+            else {
+              val cls = classifier.classify(t)
+              // Sigil #387 — model-agnostic self-heal: a model that rejects
+              // forced tool_choice (Fable 5 / Mythos 5 → HTTP 400 "tool_choice
+              // forces tool use is not compatible with this model.") gets the
+              // SAME call retried once with tool_choice downgraded to Auto. Both
+              // Required and Specific collapse to Auto; the respond family is
+              // always in the roster so Auto still lets the agent act. At most
+              // one downgrade per call (`downgradedToolChoice` guard).
+              if (!downgradedToolChoice && currentCall.toolChoice.isForced
+                  && Provider.isForcedToolChoiceRejection(t)) {
+                // Sigil #395 — remember the rejection so later calls (this turn's
+                // remaining iterations and every future turn) demote up front
+                // instead of re-paying this round-trip per iteration.
+                Provider.recordForcedToolChoiceRejection(currentCall.model._id)
+                scribe.warn(
+                  s"Sigil #387 — model ${currentCall.model._id.value} rejected forced tool_choice " +
+                    s"(${currentCall.toolChoice}); downgrading to Auto and retrying once"
+                )
+                attempt(currentCall.copy(toolChoice = ToolChoice.Auto), remaining, ctx,
+                  downgradedToolChoice = true, strippedSampling)
+              } else if (!strippedSampling
+                         && (currentCall.generationSettings.temperature.isDefined ||
+                             currentCall.generationSettings.topP.isDefined)
+                         && Provider.isDeprecatedSamplingParam(t)) {
+                // Sigil #390 — cold-cache BACKSTOP for sampling params. The
+                // primary mechanism is proactive: providers drop temperature/top_p
+                // a model doesn't list in its catalog `supported_parameters` (via
+                // `Sigil.supportsParameter`), so a cataloged model never sends
+                // them. This self-heal only fires when the catalog is empty/cold
+                // (e.g. an Anthropic-direct app before an OpenRouter refresh):
+                // Claude 5 (Fable 5 / Mythos 5) → HTTP 400 "`temperature` is
+                // deprecated for this model." Strips temperature AND topP (the
+                // whole category, so the API doesn't 400 again on top_p). At most
+                // one strip per call; composes with the tool_choice downgrade.
+                scribe.warn(
+                  s"Sigil #390 — model ${currentCall.model._id.value} rejected a deprecated sampling " +
+                    s"parameter; stripping temperature/topP and retrying once"
+                )
+                val stripped = currentCall.generationSettings.copy(temperature = None, topP = None)
+                attempt(currentCall.copy(generationSettings = stripped), remaining, ctx,
+                  downgradedToolChoice, strippedSampling = true)
+              } else if (remaining > 0 && cls == ErrorClassification.Retry) {
+                val nextCtx = nextRetryContext(t)
+                // Sigil #283 — honor the upstream's `retry-after` (lifted by the
+                // provider into ProviderErrorMetadata.retryAfterMs) over the
+                // static providerRetryDelay. A 429 that says "wait 8 seconds"
+                // should wait 8 seconds, not 500ms and burn three more retries.
+                val honoredDelay = retryAfterFrom(t).getOrElse(providerRetryDelay)
+                scribe.warn(
+                  s"Sigil bug #211 — retrying transient provider error " +
+                    s"(${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}) " +
+                    s"after ${honoredDelay.toMillis}ms; $remaining retries remaining"
+                )
+                Stream.force(Task.sleep(honoredDelay).map(_ =>
+                  attempt(currentCall, remaining - 1, Some(nextCtx), downgradedToolChoice, strippedSampling)))
+              } else {
+                // Not retryable (or budget exhausted). Propagate after whatever
+                // (non-meaningful) prefix already streamed.
+                fail(t)
+              }
+            }
+          }
       }
-      Stream.force(attempt(safe, retries, None, downgradedToolChoice = false, strippedSampling = false).map {
-        case (events, None) => Stream.emits(events)
-        case (events, Some(t)) =>
-          // Use `evalMap(Task.error)` rather than
-          // `Stream.force(Task.error)` for the trailing-error stream.
-          // rapid's `++` evaluates the right-hand stream's `task`
-          // eagerly at left-stream materialization (`task.flatMap { _ =>
-          // that.task.map { ... } }`), so a `Task.error` inside
-          // `Stream.force` fires before the buffered events get a chance
-          // to be consumed by the outer pipeline. `evalMap`'s error
-          // fires on first pull instead, preserving the prefix so
-          // downstream `onErrorFinalize` / `guarantee` blocks see the
-          // partial state.
-          Stream.emits(events) ++ Stream.emit(()).evalMap[ProviderEvent](_ => Task.error[ProviderEvent](t))
-      })
+      attempt(safe, retries, None, downgradedToolChoice = false, strippedSampling = false)
     }
   }
 
