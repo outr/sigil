@@ -1234,6 +1234,24 @@ trait Provider extends Service with ModelResolver {
             if (Provider.isFetchableImageUrl(url.toString)) materializeExternalImage(url.toString, quality, altText)
             else Task.pure(Some(mc))
         }
+      case MessageContent.ImageBytes(mediaType, base64, altText, quality) =>
+        // Inline bytes (PDF page renders, screen captures via
+        // ResponseContent.ImageBytes, data: URLs) reach the wire through
+        // `translate` WITHOUT the stored/external downscale paths. Re-clamp
+        // here so an oversized inline image can't 400 the provider
+        // ("image dimensions exceed max allowed size: 8000 pixels"). Run on
+        // every wire build, not at ingestion — the persisted event keeps the
+        // original bytes, so a conversation that already captured an oversized
+        // image self-heals on its next turn rather than staying poisoned.
+        // Area unconstrained (the app chose the inline resolution); enforce
+        // only the hard per-edge cap. `resize` returns the same array when
+        // already within the cap, so the common case re-encodes nothing.
+        Task {
+          val raw = java.util.Base64.getDecoder.decode(base64)
+          val clamped = _root_.sigil.image.ImageDownscale.resize(raw, maxPixels = 0L, format = mediaType)
+          if (clamped eq raw) Some(mc)
+          else Some(MessageContent.ImageBytes(mediaType, java.util.Base64.getEncoder.encodeToString(clamped), altText, quality))
+        }
       case other => Task.pure(Some(other))
     }
     Task.sequence(call.messages.toList.map {

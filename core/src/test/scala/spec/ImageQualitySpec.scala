@@ -93,10 +93,42 @@ class ImageQualitySpec extends AnyWordSpec with Matchers {
       h should be > w
     }
 
+    "clamp a single dimension that exceeds the provider's max edge even when within the area budget" in {
+      // A 10×9000 strip is only 90k pixels — well within any tier's area
+      // budget — but its 9000 px height exceeds Anthropic's 8000 px hard cap.
+      // Area budgeting alone would ship it unchanged → HTTP 400. With a huge
+      // pixel budget (so area never triggers) the edge cap must still apply.
+      val (w, h) = dimsOf(ImageDownscale.resize(pngBytes(10, 9000), maxPixels = 1_000_000_000L))
+      h should be <= ImageDownscale.MaxEdge
+      w should be <= ImageDownscale.MaxEdge
+    }
+
+    "clamp an extreme-aspect screenshot so neither edge exceeds the max even at High (provider 8000 px cap)" in {
+      // 300×9000 (ratio 30:1) at the High area budget downscales to ~286×8588 —
+      // within the area budget but still 8588 px tall, which Anthropic rejects.
+      // The edge cap must pull it the rest of the way down.
+      val budget = ImageQuality.High.maxPixels
+      val (w, h) = dimsOf(ImageDownscale.resize(pngBytes(300, 9000), budget))
+      withClue(s"resized to ${w}x${h}: ") {
+        h should be <= ImageDownscale.MaxEdge
+        w should be <= ImageDownscale.MaxEdge
+        // Still honors the area budget.
+        (w.toLong * h.toLong) should be <= budget
+        // Still legibly tall, not crushed.
+        h should be > w
+      }
+    }
+
     "never upscale an already-small image" in {
       val original = pngBytes(64, 48)
       val result = ImageDownscale.resize(original, ImageQuality.Low.maxPixels)
       dimsOf(result) shouldBe (64, 48)
+    }
+
+    "never upscale a small image even when its long edge is far below the max edge" in {
+      // A guard against the edge-cap math ever producing scale > 1.
+      val original = pngBytes(120, 80)
+      dimsOf(ImageDownscale.resize(original, ImageQuality.High.maxPixels)) shouldBe (120, 80)
     }
 
     "return original bytes for undecodable input" in {

@@ -111,6 +111,46 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
         imageContents(normalized) shouldBe Vector(MessageContent.Text("hello"))
       }
     }
+
+    // A conversation that already captured an oversized inline image (a tall
+    // full-page screenshot whose height exceeds Anthropic's 8000 px cap) must
+    // self-heal at wire-build time: the persisted event keeps the original
+    // bytes, but every request the provider builds is re-clamped so the image
+    // can't 400 the model turn after turn.
+    "clamp an oversized inline ImageBytes so neither dimension exceeds the provider edge cap" in {
+      def pngBytes(w: Int, h: Int): Array[Byte] = {
+        val img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        val baos = new java.io.ByteArrayOutputStream()
+        javax.imageio.ImageIO.write(img, "png", baos)
+        baos.toByteArray
+      }
+      def dims(b64: String): (Int, Int) = {
+        val img = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder.decode(b64)))
+        (img.getWidth, img.getHeight)
+      }
+      val tall = java.util.Base64.getEncoder.encodeToString(pngBytes(200, 9000))
+      FakeProvider.normalizeStoredImages(callWith(MessageContent.ImageBytes("image/png", tall))).map { normalized =>
+        imageContents(normalized) match {
+          case Vector(MessageContent.ImageBytes(_, base64, _, _)) =>
+            val (w, h) = dims(base64)
+            withClue(s"clamped to ${w}x${h}: ") {
+              h should be <= sigil.image.ImageDownscale.MaxEdge
+              w should be <= sigil.image.ImageDownscale.MaxEdge
+            }
+          case other => fail(s"expected ImageBytes, got $other")
+        }
+      }
+    }
+
+    "leave an inline ImageBytes within the edge cap byte-for-byte unchanged" in {
+      val b64 = java.util.Base64.getEncoder.encodeToString(tinyPng)
+      FakeProvider.normalizeStoredImages(callWith(MessageContent.ImageBytes("image/png", b64))).map { normalized =>
+        imageContents(normalized) match {
+          case Vector(MessageContent.ImageBytes(_, base64, _, _)) => base64 shouldBe b64
+          case other => fail(s"expected ImageBytes, got $other")
+        }
+      }
+    }
   }
 
   "tear down" should {
