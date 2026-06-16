@@ -11,7 +11,7 @@ val profigVersion: String = "3.7.1"
 
 val scribeVersion: String = "3.19.0"
 
-val lightdbVersion: String = "4.40.0"
+val lightdbVersion: String = "4.42.0"
 
 val striderVersion: String = "1.1.4-SNAPSHOT"
 
