@@ -1,25 +1,25 @@
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "1.2.0-SNAPSHOT8"
+ThisBuild / version := "1.2.0-SNAPSHOT11"
 
 ThisBuild / scalaVersion := "3.8.3"
 
-val rapidVersion: String = "2.9.8-SNAPSHOT"
+val rapidVersion: String = "2.9.8"
 
-val spiceVersion: String = "1.9.1"
+val spiceVersion: String = "1.10.1"
 
 val profigVersion: String = "3.7.1"
 
 val scribeVersion: String = "3.19.0"
 
-val lightdbVersion: String = "4.40.0"
+val lightdbVersion: String = "4.42.0"
 
-val striderVersion: String = "1.1.4-SNAPSHOT"
+val striderVersion: String = "1.1.4"
 
 val scalapassVersion: String = "1.4.2"
 
-val awsS3Version: String = "2.46.4"
+val awsS3Version: String = "2.46.10"
 
-val robobrowserVersion: String = "2.3.4-SNAPSHOT"
+val robobrowserVersion: String = "2.3.4"
 
 val commonmarkVersion: String = "0.28.0"
 
