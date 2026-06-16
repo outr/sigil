@@ -16,6 +16,7 @@ import sigil.signal.Signal
 import sigil.tool.core.CoreTools
 import sigil.workflow.{JobStepInput, LoopStepInput, WorkflowCollections, WorkflowHost, WorkflowSigil, WorkflowTemplate}
 import sigil.workflow.event.{WorkflowRunCompleted, WorkflowRunStarted, WorkflowStepCompleted}
+import sigil.transport.{ResumeRequest, SignalSink, SignalTransport}
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.concurrent.duration.*
@@ -97,6 +98,72 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         steps.head.success shouldBe true
         ends should have size 1
         ends.head.workflowName shouldBe "noop"
+      }
+    }
+
+    // Sigil #385 — a run scheduled from a bound conversation gets its own
+    // sub-conversation (#376); its lifecycle Events therefore live on the
+    // sub-conv with `parentConversationId = boundConv` (#381). A client is
+    // subscribed (via SignalTransport) to the BOUND conversation only — it must
+    // still receive those lifecycle Events so the activity bar surfaces the run.
+    // Pre-fix the transport's conversation-scope filter dropped them (sub-conv
+    // not in the subscribed set), so the pill never appeared.
+    "deliver a #376 sub-conversation run's lifecycle Events to a SignalTransport subscriber scoped to the bound parent" in {
+      val boundId = Conversation.id("workflow-e2e-bound-385")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      val sink = new SignalSink {
+        override def push(signal: Signal): Task[Unit] = Task { recorded.add(signal); () }
+        override def close: Task[Unit] = Task.unit
+      }
+      val transport = new SignalTransport(TestWorkflowSigil)
+
+      val template = WorkflowTemplate(
+        name = "noop-385",
+        description = Some("Single empty step — completes immediately"),
+        steps = List(JobStepInput(id = "noop", name = Some("Noop step"))),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(boundId)
+      )
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId],
+          modelId = Model.id("test", "model"),
+          toolNames = Nil,
+          instructions = Instructions(),
+          generationSettings = GenerationSettings()
+        )),
+        currentMode = ConversationMode,
+        space = GlobalSpace,
+        _id = boundId
+      )
+
+      for {
+        _      <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _      <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        // Subscriber watches ONLY the bound conversation — not the run's
+        // (not-yet-existent) sub-conversation.
+        handle <- transport.attach(WorkflowTestUser, sink, ResumeRequest.None,
+                                   conversations = Some(Set(boundId)))
+        _      <- Task.sleep(100.millis)
+        wf     <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
+        _      <- waitForCompletion(recorded, 10.seconds)
+        _      <- handle.detach
+      } yield {
+        import scala.jdk.CollectionConverters.*
+        val all = recorded.iterator().asScala.toList
+        // The run lives on its own sub-conversation, distinct from the bound conv.
+        wf.conversationId.map(Id[Conversation](_)) should not contain boundId
+        val starts = all.collect { case e: WorkflowRunStarted  => e }
+        val ends   = all.collect { case e: WorkflowRunCompleted => e }
+        withClue(s"parent-scoped subscriber received ${all.size} signals: ") {
+          starts.map(_.workflowName) should contain ("noop-385")
+          ends.map(_.workflowName) should contain ("noop-385")
+          // And the lifecycle Events that arrived are the sub-conversation's,
+          // surfaced to the parent via `additionalDeliveryScopes`.
+          starts.head.parentConversationId shouldBe Some(boundId)
+        }
       }
     }
 

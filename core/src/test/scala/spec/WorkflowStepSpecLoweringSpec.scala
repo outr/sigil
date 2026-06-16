@@ -100,6 +100,58 @@ class WorkflowStepSpecLoweringSpec extends AnyWordSpec with Matchers {
       WorkflowStepSpec.lower(specs).left.toOption.getOrElse(Nil).exists(_.contains("requires either a prompt or a tool")) shouldBe true
     }
 
+    // Sigil #384 — the `sigil-remove-bug-references` plan: a top-level writeFile
+    // reads the loop's itemVariable + a body step's output from OUTSIDE the loop,
+    // so per-item edits never persist and `{{editedContents}}` can reach disk.
+    "reject a step outside a loop that references the loop's itemVariable and a body output (#384)" in {
+      val specs = List(
+        WorkflowStepSpec(id = "discover", kind = WorkflowStepKind.Job, tool = Some("grep"),
+          arguments = Some(obj("pattern" -> str("bug #"))), output = Some("bugFiles")),
+        WorkflowStepSpec(id = "editLoop", kind = WorkflowStepKind.Loop, over = Some("bugFiles"),
+          itemVariable = Some("filePath"), bodyStepIds = List("readFile", "editFile")),
+        WorkflowStepSpec(id = "readFile", kind = WorkflowStepKind.Job, tool = Some("read_file"),
+          arguments = Some(obj("path" -> str("{{filePath}}"))), output = Some("fileContents")),
+        WorkflowStepSpec(id = "editFile", kind = WorkflowStepKind.Job, prompt = Some("remove refs from {{fileContents}}"),
+          output = Some("editedContents")),
+        WorkflowStepSpec(id = "writeFile", kind = WorkflowStepKind.Job, tool = Some("write_file"),
+          arguments = Some(obj("path" -> str("{{filePath}}"), "content" -> str("{{editedContents}}"))))
+      )
+      val errors = WorkflowStepSpec.lower(specs).left.toOption.getOrElse(Nil)
+      withClue(s"errors=$errors: ") {
+        errors.exists(e => e.contains("writeFile") && e.contains("{{editedContents}}") && e.contains("editLoop")) shouldBe true
+        errors.exists(e => e.contains("writeFile") && e.contains("{{filePath}}") && e.contains("editLoop")) shouldBe true
+      }
+    }
+
+    "accept the same plan once writeFile is moved INTO the loop body (#384)" in {
+      val specs = List(
+        WorkflowStepSpec(id = "discover", kind = WorkflowStepKind.Job, tool = Some("grep"),
+          arguments = Some(obj("pattern" -> str("bug #"))), output = Some("bugFiles")),
+        WorkflowStepSpec(id = "editLoop", kind = WorkflowStepKind.Loop, over = Some("bugFiles"),
+          itemVariable = Some("filePath"), bodyStepIds = List("readFile", "editFile", "writeFile")),
+        WorkflowStepSpec(id = "readFile", kind = WorkflowStepKind.Job, tool = Some("read_file"),
+          arguments = Some(obj("path" -> str("{{filePath}}"))), output = Some("fileContents")),
+        WorkflowStepSpec(id = "editFile", kind = WorkflowStepKind.Job, prompt = Some("remove refs from {{fileContents}}"),
+          output = Some("editedContents")),
+        WorkflowStepSpec(id = "writeFile", kind = WorkflowStepKind.Job, tool = Some("write_file"),
+          arguments = Some(obj("path" -> str("{{filePath}}"), "content" -> str("{{editedContents}}"))))
+      )
+      WorkflowStepSpec.lower(specs).isRight shouldBe true
+    }
+
+    "not false-positive when a same-named variable is also produced outside the loop (#384)" in {
+      // `result` is produced both inside the loop body AND by a top-level step,
+      // so a later top-level reference to it has a valid outer binding.
+      val specs = List(
+        WorkflowStepSpec(id = "loop", kind = WorkflowStepKind.Loop, over = Some("xs"),
+          itemVariable = Some("x"), bodyStepIds = List("inner")),
+        WorkflowStepSpec(id = "inner", kind = WorkflowStepKind.Job, prompt = Some("use {{x}}"), output = Some("result")),
+        WorkflowStepSpec(id = "outerProducer", kind = WorkflowStepKind.Job, prompt = Some("compute"), output = Some("result")),
+        WorkflowStepSpec(id = "consume", kind = WorkflowStepKind.Job, prompt = Some("read {{result}}"))
+      )
+      WorkflowStepSpec.lower(specs, knownVariables = Set("xs")).isRight shouldBe true
+    }
+
     "round-trip flat specs through the real create_workflow input RW" in {
       val input = CreateWorkflowInput(
         name = "process-matches",

@@ -37,4 +37,9 @@ case class WorkflowStepCompleted(participantId: ParticipantId,
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): Event = copy(conversationId = conversationId)
+
+  /** Deliver this run-lifecycle Event to the bound parent's subscribers too,
+    * so the parent's activity bar surfaces a run that lives on its own
+    * sub-conversation (#376/#385). */
+  override def additionalDeliveryScopes: Set[Id[Conversation]] = parentConversationId.toSet
 }

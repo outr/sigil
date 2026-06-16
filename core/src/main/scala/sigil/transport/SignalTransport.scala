@@ -84,13 +84,15 @@ final class SignalTransport(sigil: Sigil) {
 
     // Live forwarding honors the current per-connection scope. A signal
     // passes when the filter is unset (None — watch everything) or its
-    // `conversationScope` is global (None) or in the subscribed set.
+    // `conversationScope` is global (None) or in the subscribed set, or one
+    // of its `additionalDeliveryScopes` is in the subscribed set (a #376
+    // workflow-run lifecycle Event reaching its bound parent — #385).
     // Events additionally clear the replay boundary to avoid
     // double-delivery of anything replay already pushed.
     val forwarded: Stream[Signal] = live.filter { s =>
       val inScope = filterRef.get() match {
         case None     => true
-        case Some(cs) => s.conversationScope.forall(cs.contains)
+        case Some(cs) => s.conversationScope.forall(cs.contains) || s.additionalDeliveryScopes.exists(cs.contains)
       }
       inScope && (s match {
         case e: Event => e.timestamp.value > boundary.get()

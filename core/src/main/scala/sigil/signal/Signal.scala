@@ -32,9 +32,22 @@ import sigil.conversation.Conversation
  * snapshot, a viewer-state pulse). [[sigil.transport.SignalTransport]] scopes
  * a per-connection subscription against it — global signals always pass; a
  * scoped signal is delivered only to subscribers watching its conversation.
+ *
+ * `additionalDeliveryScopes` lets a signal anchored on one conversation also
+ * be delivered to subscribers watching another, without widening
+ * `conversationScope` (which remains the signal's single home conversation).
+ * It is the narrow, signal-declared counterpart to the subscription-side
+ * descendant inference #334 removed: a workflow run lives on its own
+ * sub-conversation (#376) but its lifecycle Events declare the bound parent
+ * here so the parent's activity bar surfaces the run (#385). Empty by
+ * default — ordinary Events/Deltas reach only their own conversation's
+ * subscribers, so a client still subscribes explicitly to drill into a
+ * worker/run's full transcript.
  */
 trait Signal {
   def conversationScope: Option[Id[Conversation]] = None
+
+  def additionalDeliveryScopes: Set[Id[Conversation]] = Set.empty
 }
 
 object Signal extends PolyType[Signal]()(using scala.reflect.ClassTag(classOf[Signal]))

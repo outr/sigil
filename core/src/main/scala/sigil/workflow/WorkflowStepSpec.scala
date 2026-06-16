@@ -130,7 +130,91 @@ object WorkflowStepSpec {
           if (s.trigger.isEmpty) errors += s"Trigger step '${s.id}' requires a trigger."
       }
     }
+    errors ++= loopScopeViolations(specs, byId, knownVariables)
     errors.result().distinct
+  }
+
+  /** Matches a `{{varName}}` placeholder — same shape the runtime
+    * [[WorkflowVariableSubstitution]] resolves. */
+  private val Placeholder: scala.util.matching.Regex = """\{\{(\w+)\}\}""".r
+
+  /** Every variable a step references via `{{var}}` across its substitution
+    * sites (prompt, tool arguments, condition expression, sub-workflow variable
+    * values). */
+  private def referencedVars(s: WorkflowStepSpec): Set[String] = {
+    val sources =
+      s.prompt.toList ++
+        s.arguments.map(JsonFormatter.Compact(_)).toList ++
+        s.expression.toList ++
+        s.variables.values.toList
+    sources.flatMap(Placeholder.findAllMatchIn(_).map(_.group(1))).toSet
+  }
+
+  /** The step ids that execute inside a step's nested control flow — a Loop's
+    * body, a Parallel's branches, a Condition's two targets. Drives the
+    * transitive-closure walk for loop-scope analysis. */
+  private def childIds(s: WorkflowStepSpec): List[String] = s.kind match {
+    case Loop      => s.bodyStepIds
+    case Parallel  => s.branchStepIds.flatten
+    case Condition => List(s.onTrue, s.onFalse).flatten
+    case _         => Nil
+  }
+
+  /** All step ids reachable from `roots` through nested control flow
+    * (`childIds`), transitively — so a Loop's body set includes nested loops'
+    * bodies, branches, and condition targets. Cycle-guarded. */
+  private def closure(roots: List[String], byId: Map[String, WorkflowStepSpec]): Set[String] = {
+    @scala.annotation.tailrec
+    def walk(frontier: List[String], acc: Set[String]): Set[String] = frontier match {
+      case Nil => acc
+      case id :: rest =>
+        if (acc.contains(id)) walk(rest, acc)
+        else walk(byId.get(id).map(childIds).getOrElse(Nil) ::: rest, acc + id)
+    }
+    walk(roots, Set.empty)
+  }
+
+  /**
+   * Sigil #384 — reject a plan where a step OUTSIDE a loop references a variable
+   * that is bound only INSIDE that loop. The loop's `itemVariable` and the
+   * `output`s of its (transitive) body steps live for one iteration each; a
+   * top-level step reading them runs once, after the loop, with the value
+   * unbound (or only the last iteration's) — so per-item work silently never
+   * persists, and an unresolved `{{var}}` can reach a destructive tool arg.
+   *
+   * A loop-scoped name is only flagged when no step OUTSIDE the loop's body
+   * (nor a declared input variable) also produces it — so reusing a name that
+   * has a legitimate outer binding isn't a false positive.
+   */
+  private def loopScopeViolations(specs: List[WorkflowStepSpec],
+                                  byId: Map[String, WorkflowStepSpec],
+                                  knownVariables: Set[String]): List[String] = {
+    val out = List.newBuilder[String]
+    specs.filter(_.kind == Loop).foreach { loop =>
+      val body = closure(loop.bodyStepIds, byId)
+      val itemVar = loop.itemVariable.filter(_.nonEmpty)
+      val bodyOutputs = body.flatMap(id => byId.get(id).flatMap(_.output.filter(_.nonEmpty)))
+      val loopScoped = itemVar.toSet ++ bodyOutputs
+      // Names also produced outside this loop (or declared inputs) have a valid
+      // outer binding — don't flag references to those.
+      val outerProduced = knownVariables ++
+        specs.iterator.filterNot(s => body.contains(s.id) || s.id == loop.id)
+          .flatMap(_.output.filter(_.nonEmpty)).toSet
+      val leaked = loopScoped -- outerProduced
+      if (leaked.nonEmpty) {
+        specs.foreach { s =>
+          if (s.id != loop.id && !body.contains(s.id)) {
+            (referencedVars(s) & leaked).toList.sorted.foreach { v =>
+              val origin = if (itemVar.contains(v)) s"the loop item variable of '${loop.id}'"
+                           else s"produced only inside loop '${loop.id}'"
+              out += s"Step '${s.id}' references '{{$v}}', which is $origin — bound only per iteration. " +
+                s"Add '${s.id}' to loop '${loop.id}'.bodyStepIds, or capture the value into a loop `output`."
+            }
+          }
+        }
+      }
+    }
+    out.result()
   }
 
   /** Build the IR for a validated spec. Safe `getOrElse` defaults are only
