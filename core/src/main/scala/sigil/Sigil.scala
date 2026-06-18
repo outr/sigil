@@ -5631,6 +5631,31 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * `AtomicReference` captures whether OUR `f` was the one that returned a
    * fresh `Active` (the only way to tell with `tx.modify` semantics).
    */
+  /**
+   * Reconcile a persisted [[Participant]] against the app's current canonical
+   * definition immediately before it runs a turn. The default is identity — a
+   * conversation's participants are a snapshot taken at creation, so an agent's
+   * roster / instructions / tool policy / generation settings are otherwise
+   * frozen for that conversation's life.
+   *
+   * Apps that key canonical agent definitions by id override this to return the
+   * current definition, so changes reach EXISTING conversations on their next
+   * turn without an [[updateParticipant]] sweep — notably new tools added to a
+   * [[sigil.provider.ToolPolicy.ActiveOnly]] / [[sigil.provider.ToolPolicy.Exclusive]]
+   * roster, where there is no `find_capability` discovery path to surface a
+   * catalog tool that isn't already in the frozen roster. A `Standard`-mode
+   * agent already discovers new `staticTools` live via `find_capability`, so
+   * this hook matters most for discovery-suppressed rosters.
+   *
+   * Contract: the returned participant MUST keep the same `id` (it's the same
+   * seat in the conversation). The framework ignores a result whose id differs
+   * and falls back to the persisted participant. The reconciliation does NOT
+   * re-persist the conversation — it's applied per-turn — so a per-conversation
+   * customization an app made via [[updateParticipant]] is only overridden if
+   * the app's `currentParticipant` chooses to.
+   */
+  def currentParticipant(persisted: Participant): Task[Participant] = Task.pure(persisted)
+
   private final def tryFire(agent: AgentParticipant, conv: Conversation, greeting: Boolean = false): Task[Unit] = {
     val lockId = agentStateLockId(agent.id, conv._id)
     val claimedRef = new AtomicReference[Option[AgentState]](None)
@@ -5656,12 +5681,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // We won the claim. Register a StopFlag for this claim so any
           // Stop events published against this agent can interrupt.
           stopFlags.put(claim._id, new StopFlag)
-          // Broadcast manually (modify already persisted), then fire the
-          // agent on its own fiber.
-          Task {
-            hub.emit(claim)
-            runAgent(agent, conv, claim, greeting = greeting).startUnit()
-            ()
+          // Reconcile the persisted agent against the app's current definition
+          // (default identity) so a new tool added to a discovery-suppressed
+          // roster reaches this existing conversation. Keep the original on a
+          // mismatched id or a non-agent result — the seat is by id.
+          currentParticipant(agent).map {
+            case fresh: AgentParticipant if fresh.id == agent.id => fresh
+            case _                                               => agent
+          }.flatMap { effectiveAgent =>
+            // Broadcast manually (modify already persisted), then fire the
+            // agent on its own fiber.
+            Task {
+              hub.emit(claim)
+              runAgent(effectiveAgent, conv, claim, greeting = greeting).startUnit()
+              ()
+            }
           }
         case None => Task.unit
       }

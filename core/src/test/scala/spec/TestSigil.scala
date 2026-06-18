@@ -268,6 +268,8 @@ object TestSigil extends Sigil {
     (_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId])
   )
   private val memoryClassifierModelRef = new AtomicReference[Option[Id[Model]]](None)
+  private val currentParticipantRef =
+    new AtomicReference[Participant => Task[Participant]](p => Task.pure(p))
   // The default for resolveProviderStrategy delegates to the
   // framework's real flow (storage + lookup through
   // providerStrategies / providerAssignments). Specs that need to
@@ -589,7 +591,17 @@ object TestSigil extends Sigil {
     accessibleSpacesRef.set((_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId]))
     healingModeRef.set(sigil.heal.HealingMode.Strict)
     pinCoversAuxiliaryCallsOverride.set(None)
+    currentParticipantRef.set(p => Task.pure(p))
   }
+
+  override def currentParticipant(persisted: Participant): Task[Participant] =
+    currentParticipantRef.get().apply(persisted)
+
+  /** Swap the per-turn participant reconciliation (Sigil's frozen-roster
+    * hook). Specs use this to simulate an app whose canonical agent
+    * definition gained a tool after a conversation was created. */
+  def setCurrentParticipant(f: Participant => Task[Participant]): Unit = currentParticipantRef.set(f)
+  def resetCurrentParticipant(): Unit = currentParticipantRef.set(p => Task.pure(p))
 
   /** Expose the in-memory information store that backs `getInformation`
     * so specs populate it before exercising

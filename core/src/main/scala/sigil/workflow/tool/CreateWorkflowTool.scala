@@ -80,23 +80,23 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
           case argErrors if argErrors.nonEmpty =>
             Task.pure(ToolResult.failure("Workflow step arguments invalid:\n" + argErrors.mkString("\n")))
           case _ =>
-        host.accessibleSpaces(ctx.chain).flatMap { spaces =>
-          val callerSpace: SpaceId = spaces.headOption.getOrElse(GlobalSpace)
-          val template = WorkflowTemplate(
-            name = input.name,
-            description = input.description,
-            steps = steps,
-            triggers = input.triggers,
-            variableDefs = input.variableDefs,
-            space = callerSpace,
-            createdBy = Some(ctx.caller),
-            conversationId = Some(ctx.conversation.id),
-            tags = input.tags.toSet
-          )
-          host.withDB(_.workflowTemplates.transaction(_.insert(template))).map { stored =>
-            ToolResult.success(TextToolOutput(s"Workflow '${input.name}' created with id ${stored._id.value}."))
-          }
-        }
+            host.accessibleSpaces(ctx.chain).flatMap { spaces =>
+              val callerSpace: SpaceId = spaces.headOption.getOrElse(GlobalSpace)
+              val template = WorkflowTemplate(
+                name = input.name,
+                description = input.description,
+                steps = steps,
+                triggers = input.triggers,
+                variableDefs = input.variableDefs,
+                space = callerSpace,
+                createdBy = Some(ctx.caller),
+                conversationId = Some(ctx.conversation.id),
+                tags = input.tags.toSet
+              )
+              host.withDB(_.workflowTemplates.transaction(_.insert(template))).map { stored =>
+                ToolResult.success(TextToolOutput(s"Workflow '${input.name}' created with id ${stored._id.value}."))
+              }
+            }
         }
     }
   }

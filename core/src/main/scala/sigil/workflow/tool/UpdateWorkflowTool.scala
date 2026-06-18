@@ -62,27 +62,27 @@ final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
           case argErrors if argErrors.nonEmpty =>
             Task.pure(ToolResult.failure("Workflow step arguments invalid:\n" + argErrors.mkString("\n")))
           case _ =>
-        val id = Id[WorkflowTemplate](input.workflowId)
-        host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-          case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
-          case Some(prior) =>
-            authorizeAccess(host, prior, ctx.chain).flatMap {
-              case Left(_) => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
-              case Right(_) =>
-                val updated = prior.copy(
-                  name = input.name.getOrElse(prior.name),
-                  description = input.description.orElse(prior.description),
-                  steps = stepsOpt.getOrElse(prior.steps),
-                  triggers = input.triggers.getOrElse(prior.triggers),
-                  variableDefs = input.variableDefs.getOrElse(prior.variableDefs),
-                  tags = input.tags.map(_.toSet).getOrElse(prior.tags),
-                  enabled = input.enabled.getOrElse(prior.enabled),
-                  modified = Timestamp()
-                )
-                host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map(_ =>
-                  ToolResult.success(TextToolOutput(s"Workflow '${updated.name}' updated.")))
+            val id = Id[WorkflowTemplate](input.workflowId)
+            host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
+              case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
+              case Some(prior) =>
+                authorizeAccess(host, prior, ctx.chain).flatMap {
+                  case Left(_) => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
+                  case Right(_) =>
+                    val updated = prior.copy(
+                      name = input.name.getOrElse(prior.name),
+                      description = input.description.orElse(prior.description),
+                      steps = stepsOpt.getOrElse(prior.steps),
+                      triggers = input.triggers.getOrElse(prior.triggers),
+                      variableDefs = input.variableDefs.getOrElse(prior.variableDefs),
+                      tags = input.tags.map(_.toSet).getOrElse(prior.tags),
+                      enabled = input.enabled.getOrElse(prior.enabled),
+                      modified = Timestamp()
+                    )
+                    host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map(_ =>
+                      ToolResult.success(TextToolOutput(s"Workflow '${updated.name}' updated.")))
+                }
             }
-        }
         }
     }
   }
