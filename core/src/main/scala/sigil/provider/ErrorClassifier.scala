@@ -67,6 +67,29 @@ object ErrorClassification {
 
 object ErrorClassifier {
 
+  /** The throwable plus its transitive causes, depth-capped against cycles. */
+  private def causeChain(t: Throwable): List[Throwable] = {
+    val b = List.newBuilder[Throwable]
+    var c = t
+    var depth = 0
+    while (c != null && depth < 16) { b += c; c = c.getCause; depth += 1 }
+    b.result()
+  }
+
+  /**
+   * Whether the failure (anywhere in its cause chain) is a connection-pool
+   * acquire timeout — Netty's `FixedChannelPool` failing an acquire when the
+   * per-host pool is saturated. Matched by a `java.util.concurrent.TimeoutException`
+   * (the type Netty's `AcquireTimeoutAction.FAIL` raises) or the pool's
+   * distinctive message (carrying Netty's "then" typo), so it's recognized even
+   * when re-thrown wrapped at a fiber boundary. Sigil #386.
+   */
+  private[provider] def isConnectionAcquireTimeout(t: Throwable): Boolean =
+    causeChain(t).exists { c =>
+      c.isInstanceOf[java.util.concurrent.TimeoutException] ||
+        Option(c.getMessage).exists(_.toLowerCase.contains("acquire operation took longer"))
+    }
+
   /**
    * Classifier that walks [[HealingStrategy]] candidates and
    * returns [[ErrorClassification.Healable]] on the first match.
@@ -126,6 +149,17 @@ object ErrorClassifier {
         // Fall through to the next candidate; this candidate is saturated.
         case _: CapacityAcquireTimeoutException =>
           return ErrorClassification.Fallthrough
+
+        // Netty FixedChannelPool acquire timeout — the spice client's per-host
+        // connection pool was briefly saturated and a channel couldn't be
+        // acquired within the timeout. Momentary resource contention; retry the
+        // same candidate with backoff rather than surfacing a raw transport
+        // error as the terminal result (Retry, not Fallthrough — a single-
+        // provider app has nowhere to fall through to, so Fallthrough would be
+        // terminal). Recognized anywhere in the cause chain since it's commonly
+        // re-thrown wrapped at a fiber boundary. Sigil #386.
+        case t if isConnectionAcquireTimeout(t) =>
+          return ErrorClassification.Retry
 
         // Request was reshaped past every shed stage and still over budget.
         // Fatal: there's no candidate-level mitigation. The conversation

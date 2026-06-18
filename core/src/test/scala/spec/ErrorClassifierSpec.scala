@@ -125,4 +125,27 @@ class ErrorClassifierSpec extends AnyWordSpec with Matchers {
       composed.classify(new RuntimeException("totally novel error")) shouldBe ErrorClassification.Fallthrough
     }
   }
+
+  "ErrorClassifier.Default — connection-pool acquire timeout (Sigil #386)" should {
+    // Netty FixedChannelPool raises this when a per-host pool is briefly
+    // saturated. It must be Retry (not Fatal/Fallthrough) so the framework's
+    // transient-retry loop backs off and retries rather than surfacing a raw
+    // transport error as the agent's terminal message — a single-provider app
+    // has nowhere to fall through to.
+    "classify the bare Netty acquire-timeout message as Retry" in {
+      classify("Acquire operation took longer then configured maximum time") shouldBe ErrorClassification.Retry
+    }
+
+    "classify a java.util.concurrent.TimeoutException as Retry by type" in {
+      ErrorClassifier.Default.classify(
+        new java.util.concurrent.TimeoutException("Acquire operation took longer then configured maximum time")
+      ) shouldBe ErrorClassification.Retry
+    }
+
+    "recognize the acquire timeout when wrapped at a fiber boundary (cause chain)" in {
+      val root = new java.util.concurrent.TimeoutException("Acquire operation took longer then configured maximum time")
+      val wrapped = new RuntimeException("provider call failed", new IllegalStateException("stream aborted", root))
+      ErrorClassifier.Default.classify(wrapped) shouldBe ErrorClassification.Retry
+    }
+  }
 }
