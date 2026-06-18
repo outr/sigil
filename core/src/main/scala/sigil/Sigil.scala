@@ -1397,6 +1397,26 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                      // High-tier model" without having to enumerate a
                      // specific modelId.
                      complexity: Option[sigil.provider.Complexity] = None): Task[Id[Model]] = {
+    routedCandidateFor(workType, chain, estimatedInputTokens, reservedOutputTokens, complexity)
+      .map(_.map(_.modelId).getOrElse(fallback))
+  }
+
+  /**
+   * Like [[routedModelFor]], but returns the resolved [[sigil.provider.ModelCandidate]]
+   * itself (not just its id) so callers can carry its per-model
+   * [[GenerationSettings]] — token cap, `reasoningMode`, etc. `None` when no
+   * strategy / candidate matches (the caller should fall back to the running
+   * agent's own model + settings). `routedModelFor` is the id-only convenience
+   * over this. Surfacing the candidate matters wherever a request is built
+   * outside the agent's normal turn (e.g. a workflow leaf prompt), since
+   * dropping the candidate's settings re-opens the reasoning-runaway / no-cap
+   * failure those settings exist to prevent.
+   */
+  def routedCandidateFor(workType: sigil.provider.WorkType,
+                         chain: List[ParticipantId],
+                         estimatedInputTokens: Option[Long] = None,
+                         reservedOutputTokens: Long = 1024L,
+                         complexity: Option[sigil.provider.Complexity] = None): Task[Option[sigil.provider.ModelCandidate]] = {
     val convId: Id[Conversation] = sigil.conversation.Conversation.id("__no_conv__")
     val required = estimatedInputTokens.map(_ + reservedOutputTokens)
 
@@ -1419,31 +1439,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // fallback when the exact tier has no candidate. `None` complexity
     // keeps the legacy first-fit behaviour. Down-only by default: a
     // High request never silently escalates to a VeryHigh candidate.
-    def pickFrom(avail: List[sigil.provider.ModelCandidate]): Option[Id[Model]] =
+    def pickFrom(avail: List[sigil.provider.ModelCandidate]): Option[sigil.provider.ModelCandidate] =
       complexity match {
-        case None => avail.find(fits).map(_.modelId)
+        case None => avail.find(fits)
         case Some(requested) =>
           sigil.provider.Complexity.atOrBelow(requested).iterator
             .flatMap(tier => avail.filter(_.supportedComplexity.contains(tier)).find(fits))
-            .map(_.modelId)
             .nextOption()
       }
 
     accessibleSpaces(chain, convId).flatMap { spaces =>
       val ordered = spaces.toList
-      def loop(remaining: List[SpaceId]): Task[Option[Id[Model]]] = remaining match {
+      def loop(remaining: List[SpaceId]): Task[Option[sigil.provider.ModelCandidate]] = remaining match {
         case Nil => Task.pure(None)
         case space :: rest =>
           resolveProviderStrategy(space).flatMap {
             case None => loop(rest)
             case Some(strategy) =>
               pickFrom(strategy.availableCandidates(workType)) match {
-                case Some(modelId) => Task.pure(Some(modelId))
-                case None          => loop(rest)
+                case Some(candidate) => Task.pure(Some(candidate))
+                case None            => loop(rest)
               }
           }
       }
-      loop(ordered).map(_.getOrElse(fallback))
+      loop(ordered)
     }
   }
 

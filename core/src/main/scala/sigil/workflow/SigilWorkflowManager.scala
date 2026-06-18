@@ -4,8 +4,10 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
 import sigil.conversation.{Conversation, Topic}
-import sigil.event.Event
-import sigil.participant.ParticipantId
+import sigil.event.{Event, Message, MessageRole, MessageVisibility}
+import sigil.participant.{ParticipantId, WorkerParticipantId}
+import sigil.signal.EventState
+import sigil.tool.model.ResponseContent
 import sigil.workflow.event.{WorkflowRunCompleted, WorkflowRunFailed, WorkflowRunStarted, WorkflowStepCompleted}
 import strider.{AbstractWorkflowManager, Workflow, WorkflowActivity, WorkflowParent}
 import strider.step.Step
@@ -50,7 +52,9 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
         workflowId = workflow.sourceId.value, workflowName = workflow.name,
         runId = workflow._id.value, parentConversationId = parentId
       )
-    }
+    }.flatMap(_ => wakeSchedulingAgent(workflow,
+      s"The workflow you started — '${workflow.name}' — has completed successfully. " +
+        "Report the outcome to the user and hand them whatever it produced."))
 
   override protected def onWorkflowFailed(workflow: Workflow): Task[Unit] = {
     val reason = SigilWorkflowManager.extractFailureReason(workflow)
@@ -60,8 +64,55 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
         workflowId = workflow.sourceId.value, workflowName = workflow.name,
         runId = workflow._id.value, reason = reason, parentConversationId = parentId
       )
-    }
+    }.flatMap(_ => wakeSchedulingAgent(workflow,
+      s"The workflow you started — '${workflow.name}' — failed: $reason. " +
+        "Tell the user it failed and why, and offer to retry if appropriate."))
   }
+
+  /** Sigil #390 — when a run reaches a terminal state, wake the SCHEDULING
+    * conversation's agent so it closes the loop it opened: reports success /
+    * failure to the user rather than leaving the conversation's last word as
+    * "Workflow running…". Mirrors `delegate_task`'s supervisor-wake.
+    *
+    * The run lives on its own sub-conversation (#376); the scheduling
+    * conversation is its parent (or the run conversation itself when not
+    * sub-conversation'd). Posts an internal (`MessageVisibility.Agents`)
+    * outcome Message there, addressed to the scheduling agent, so the normal
+    * publish fan-out fires exactly that agent — which then responds to the user
+    * (the user sees the agent's reply, not this internal notice). No-op for a
+    * cron-fired background run with no bound conversation or no resolvable
+    * scheduling agent. Best-effort: a hiccup is logged, never fails the run. */
+  private def wakeSchedulingAgent(workflow: Workflow, outcome: String): Task[Unit] =
+    workflow.conversationId match {
+      case None => Task.unit
+      case Some(runConvIdStr) =>
+        val runConvId = Id[Conversation](runConvIdStr)
+        host.withDB(_.conversations.transaction(_.get(runConvId))).flatMap {
+          case None => Task.unit
+          case Some(runConv) =>
+            val schedConvId = runConv.parentConversationId.getOrElse(runConvId)
+            host.withDB(_.conversations.transaction(_.get(schedConvId))).flatMap {
+              case None => Task.unit
+              case Some(schedConv) =>
+                resolveCaller(workflow, schedConv).flatMap {
+                  case None => Task.unit
+                  case Some(agentId) =>
+                    val msg = Message(
+                      participantId  = WorkerParticipantId(s"workflow-${workflow._id.value}"),
+                      conversationId = schedConvId,
+                      topicId        = schedConv.currentTopicId,
+                      content        = Vector(ResponseContent.Text(outcome)),
+                      visibility     = MessageVisibility.Agents,
+                      addressees     = Some(Set(agentId)),
+                      source         = Some("workflow-outcome"),
+                      state          = EventState.Complete
+                    )
+                    host.publish(msg).map(_ => ())
+                }
+            }
+        }.handleError(t => Task(scribe.warn(
+          s"wakeSchedulingAgent: failed to wake the scheduling agent for run ${workflow._id.value}: ${t.getMessage}")))
+    }
 
   override protected def onStepCompleted(workflow: Workflow, stepId: Id[Step], success: Boolean): Task[Unit] =
     publishLifecycle(workflow) { case (caller, convId, topicId, parentId) =>

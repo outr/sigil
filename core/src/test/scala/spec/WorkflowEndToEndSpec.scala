@@ -5,13 +5,13 @@ import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
-import rapid.{AsyncTaskSpec, Task}
+import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.{GlobalSpace, Sigil, SpaceId}
 import sigil.conversation.{Conversation, Topic, TopicEntry}
-import sigil.db.{DefaultSigilDB, Model, SigilDB}
+import sigil.db.{DefaultSigilDB, Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider, SigilDB}
 import sigil.event.{Event, MessageRole, MessageVisibility}
 import sigil.participant.{AgentParticipantId, ParticipantId, Participant, DefaultAgentParticipant}
-import sigil.provider.{ConversationMode, GenerationSettings, Instructions, Provider}
+import sigil.provider.{CallId, ConversationMode, GenerationSettings, Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
 import sigil.signal.Signal
 import sigil.tool.core.CoreTools
 import sigil.workflow.{JobStepInput, LoopStepInput, WorkflowCollections, WorkflowHost, WorkflowSigil, WorkflowTemplate}
@@ -98,6 +98,134 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         steps.head.success shouldBe true
         ends should have size 1
         ends.head.workflowName shouldBe "noop"
+      }
+    }
+
+    // Sigil #388 — a prompt leaf must carry GenerationSettings into the
+    // request (not a fresh empty one) and force reasoningMode = Off, so a
+    // reasoning model can't burn the whole budget on the thinking channel and
+    // return empty content. Here: capture the settings the provider receives
+    // and assert the prompt leaf's call has reasoning off.
+    "send reasoningMode = Off on a prompt leaf's provider request (#388)" in {
+      val seen = new ConcurrentLinkedQueue[sigil.provider.ReasoningMode]()
+      val capturing = new Provider {
+        override def `type`: ProviderType = ProviderType.LlamaCpp
+        override def models: List[Model] = Nil
+        override protected def sigil: Sigil = TestWorkflowSigil
+        override def httpRequestFor(input: ProviderCall): Task[spice.http.HttpRequest] =
+          Task.error(new UnsupportedOperationException("no wire"))
+        override def call(input: ProviderCall): Stream[ProviderEvent] = {
+          seen.add(input.generationSettings.reasoningMode)
+          Stream.emits(List[ProviderEvent](
+            ProviderEvent.ContentBlockDelta(CallId("cap-0"), "done"),
+            ProviderEvent.Done(StopReason.Complete)))
+        }
+      }
+      TestWorkflowSigil.setProvider(Task.pure(capturing))
+
+      val convId = Conversation.id(s"workflow-388-${rapid.Unique()}")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals.evalMap(s => Task { recorded.add(s); () }).takeWhile(_ => running).drain.startUnit()
+      Thread.sleep(100)
+
+      val template = WorkflowTemplate(
+        name = "prompt-leaf",
+        description = Some("Single prompt step"),
+        steps = List(JobStepInput(id = "p", prompt = Some("Say ok."))),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(convId)
+      )
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId], modelId = TestWorkflowSigil.testModelId,
+          toolNames = CoreTools.coreToolNames, instructions = Instructions(), generationSettings = GenerationSettings())),
+        currentMode = ConversationMode, space = GlobalSpace, _id = convId
+      )
+
+      for {
+        _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _ <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
+        _ <- waitForCompletion(recorded, 10.seconds)
+        _ <- Task.sleep(300.millis)
+      } yield {
+        running = false
+        TestWorkflowSigil.resetProvider()
+        import scala.jdk.CollectionConverters.*
+        // The prompt leaf's request carried reasoning OFF (the woken agent's
+        // turn may add other settings; at least one Off proves the leaf path).
+        seen.iterator().asScala.toList should contain(sigil.provider.ReasoningMode.Off)
+      }
+    }
+
+    // Sigil #390 — when a run reaches a terminal state, the scheduling
+    // conversation's agent is woken so it can report the outcome to the user,
+    // rather than leaving the conversation's last word as "running". The wake
+    // posts an internal (Agents-visibility) `workflow-outcome` Message into the
+    // scheduling conversation, addressed to the scheduling agent.
+    "wake the scheduling conversation's agent with an outcome message when the run terminates" in {
+      val convId = Conversation.id(s"workflow-wake-390-${rapid.Unique()}")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals.evalMap(s => Task { recorded.add(s); () }).takeWhile(_ => running).drain.startUnit()
+      Thread.sleep(100)
+
+      val template = WorkflowTemplate(
+        name = "noop-wake",
+        description = Some("Single empty step — completes immediately"),
+        steps = List(JobStepInput(id = "noop", name = Some("Noop step"))),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(convId)
+      )
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId],
+          modelId = TestWorkflowSigil.testModelId,
+          toolNames = CoreTools.coreToolNames,
+          instructions = Instructions(),
+          generationSettings = GenerationSettings()
+        )),
+        currentMode = ConversationMode,
+        space = GlobalSpace,
+        _id = convId
+      )
+
+      def outcomeSeen: Boolean = {
+        import scala.jdk.CollectionConverters.*
+        recorded.iterator().asScala.exists {
+          case m: sigil.event.Message => m.conversationId == convId && m.source.contains("workflow-outcome")
+          case _                      => false
+        }
+      }
+      def awaitOutcome(deadline: Long): Task[Boolean] =
+        if (outcomeSeen) Task.pure(true)
+        else if (System.currentTimeMillis() > deadline) Task.pure(false)
+        else Task.sleep(100.millis).flatMap(_ => awaitOutcome(deadline))
+
+      for {
+        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _   <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
+        ok  <- awaitOutcome(System.currentTimeMillis() + 10_000L)
+        // Let the woken agent's (trivial) turn settle before teardown.
+        _   <- Task.sleep(300.millis)
+      } yield {
+        running = false
+        import scala.jdk.CollectionConverters.*
+        val outcome = recorded.iterator().asScala.collectFirst {
+          case m: sigil.event.Message if m.conversationId == convId && m.source.contains("workflow-outcome") => m
+        }
+        withClue("a workflow-outcome message must be posted into the scheduling conversation on terminal: ") {
+          outcome should not be empty
+        }
+        // Internal notice — addressed to the scheduling agent, hidden from the user.
+        outcome.get.visibility shouldBe MessageVisibility.Agents
+        outcome.get.addressees.exists(_.contains(WorkflowTestUser)) shouldBe true
       }
     }
 
@@ -460,14 +588,52 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
   override protected def participantIds: List[RW[? <: ParticipantId]] =
     List(RW.static(WorkflowTestUser))
 
-  /** Mutable provider hook — defaults to throwing for specs that
-    * don't drive LLM calls. The worker integration spec calls
+  /** A trivial provider that emits one text chunk + Done so any agent turn
+    * settles cleanly — notably the scheduling agent woken on workflow terminal
+    * (#390). The worker integration spec overrides via `setProvider` to plug in
+    * llama.cpp. */
+  private object TrivialProvider extends Provider {
+    override def `type`: ProviderType = ProviderType.LlamaCpp
+    override def models: List[Model] = Nil
+    override protected def sigil: Sigil = TestWorkflowSigil
+    override def httpRequestFor(input: ProviderCall): Task[spice.http.HttpRequest] =
+      Task.error(new UnsupportedOperationException("no wire"))
+    override def call(input: ProviderCall): Stream[ProviderEvent] =
+      Stream.emits(List[ProviderEvent](
+        ProviderEvent.ContentBlockDelta(CallId("wf-trivial"), "ok"),
+        ProviderEvent.Done(StopReason.Complete)))
+  }
+
+  /** Mutable provider hook — defaults to [[TrivialProvider]] so a woken agent
+    * turn settles. The worker integration spec calls
     * `setProvider(Task.pure(realProvider))` to plug in llama.cpp. */
   private val providerRef = new java.util.concurrent.atomic.AtomicReference[() => Task[Provider]](
-    () => Task.error(new RuntimeException("TestWorkflowSigil — no provider configured (call setProvider to wire one)"))
+    () => Task.pure(TrivialProvider)
   )
 
   def setProvider(p: => Task[Provider]): Unit = providerRef.set(() => p)
+
+  /** Restore the default trivial provider (specs that swap in a capturing /
+    * real provider call this to avoid leaking it into later tests). */
+  def resetProvider(): Unit = providerRef.set(() => Task.pure(TrivialProvider))
+
+  /** The synthetic model the E2E participants reference, registered so a woken
+    * scheduling agent resolves it instead of raising UnregisteredModelException. */
+  val testModelId: Id[Model] = Model.id("test", "model")
+  private def registerTestModel(): Unit = {
+    val now = lightdb.time.Timestamp()
+    cache.merge(List(Model(
+      canonicalSlug = testModelId.value, huggingFaceId = "", name = testModelId.value,
+      description = "Synthetic model for the workflow E2E spec.", contextLength = 32768L,
+      architecture = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
+      pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+      topProvider = ModelTopProvider(contextLength = Some(32768L), maxCompletionTokens = Some(8192L), isModerated = false),
+      perRequestLimits = None,
+      supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
+      knowledgeCutoff = None, expirationDate = None, links = ModelLinks(details = ""),
+      created = now, _id = testModelId
+    ))).sync()
+  }
 
   override def modelResolver: sigil.provider.ModelResolver = (modelId: Id[Model]) =>
     cache.find(modelId).map(sigil.provider.ProviderModel(providerRef.get()().sync(), _))
@@ -497,6 +663,7 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
     deleteRecursive(dbPath)
     profig.Profig.merge(fabric.obj("sigil" -> fabric.obj("dbPath" -> fabric.str(dbPath.toString))))
     instance.sync()
+    registerTestModel()
     ()
   }
 

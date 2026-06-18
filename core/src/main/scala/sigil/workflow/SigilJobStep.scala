@@ -10,7 +10,7 @@ import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message, ToolInvoke, ToolOutcome}
 import sigil.participant.ParticipantId
-import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent}
+import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, ReasoningMode}
 import sigil.signal.{EventState, ToolDelta}
 import sigil.tool.{ToolInput, ToolName}
 import sigil.tool.model.ResponseContent
@@ -152,14 +152,24 @@ final case class SigilJobStep(input: JobStepInput,
       // running agent's own model (always registered) as the fallback. So there
       // is no model id to guess, no UnregisteredModelException to reach.
       val workType = ctx.conversation.currentMode.workType.getOrElse(sigil.provider.ConversationWork)
-      host.routedModelFor(workType, ctx.chain, ctx.model._id, complexity = input.complexity).flatMap { modelId =>
+      host.routedCandidateFor(workType, ctx.chain, complexity = input.complexity).flatMap { candidateOpt =>
+        val modelId = candidateOpt.map(_.modelId).getOrElse(ctx.model._id)
         val pm = host.resolveProviderModel(modelId)
         val provider = pm.provider
+        // Sigil #388 — carry the routed candidate's GenerationSettings (token
+        // cap, reasoningMode) into the leaf request instead of dropping them; a
+        // fresh GenerationSettings() left a reasoning model uncapped with
+        // reasoning on, so it burned the whole budget on the thinking channel
+        // and returned empty content. A prompt leaf has no tool-call decision to
+        // reason toward, so reasoning is forced OFF regardless of the candidate
+        // default — any thinking-channel output here is pure budget waste.
+        val settings = candidateOpt.map(_.settings).getOrElse(GenerationSettings())
+          .copy(reasoningMode = ReasoningMode.Off)
         val request = OneShotRequest(
           model = pm.model,
           systemPrompt = "",
           userPrompt = prompt,
-          generationSettings = GenerationSettings()
+          generationSettings = settings
         )
         val acc = new java.lang.StringBuilder
         provider(request).evalMap {
