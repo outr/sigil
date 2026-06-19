@@ -46,19 +46,39 @@ object ImageDownscale {
     * many-image threshold). At or below it, [[MaxEdge]] stands. */
   val ManyImageThreshold: Int = 20
 
+  /** A resized image plus the media type its bytes are actually in. The media
+    * type can DIFFER from the input's: an input format `ImageIO` can read but
+    * not write (webp — TwelveMonkeys ships a reader, no writer) is re-encoded
+    * to PNG, so the wire layer must carry the new media type or it ships
+    * PNG bytes mislabelled as webp. `changed` is true only when the bytes were
+    * actually re-encoded (callers detect a no-op via `bytes eq input`). */
+  final case class Resized(bytes: Array[Byte], mediaType: String)
+
   /** Resize `bytes` so its total pixel count is at most `maxPixels` AND
-    * neither dimension exceeds `maxEdge`, preserving aspect ratio. Returns
-    * the original bytes unchanged when the image is already within both
-    * budgets, can't be decoded, or can't be re-encoded in `format`. NEVER
-    * upscales — the applied scale is the min of two factors each clamped to
-    * 1.0, so a sub-budget image passes through untouched. Best-effort: any
-    * failure falls through to the original bytes rather than throwing on the
-    * wire path. */
+    * neither dimension exceeds `maxEdge`, preserving aspect ratio. Returns the
+    * original bytes (the SAME array reference) unchanged when the image is
+    * already within both budgets. NEVER upscales. See [[resizeTyped]] for the
+    * media-type-aware variant the wire seam uses; this is the bytes-only
+    * convenience for callers that don't re-label the result. */
   def resize(bytes: Array[Byte], maxPixels: Long, format: String = "png", maxEdge: Int = MaxEdge): Array[Byte] =
+    resizeTyped(bytes, maxPixels, format, maxEdge).bytes
+
+  /** Resize, reporting the media type the result is encoded in. On a no-op
+    * (already within budget) returns the original bytes + `mediaType`. On a
+    * real resize, re-encodes via [[formatFor]] (webp → PNG, since there's no
+    * webp writer) and reports the matching media type. Fails LOUD — an
+    * undecodable image or a write that can't produce the format is `scribe.warn`'d
+    * rather than silently returning the oversized original, so a request-killing
+    * 400 downstream leaves a breadcrumb. */
+  def resizeTyped(bytes: Array[Byte], maxPixels: Long, mediaType: String, maxEdge: Int = MaxEdge): Resized = {
+    val original = Resized(bytes, mediaType)
     scala.util.Try {
       val src = ImageIO.read(new ByteArrayInputStream(bytes))
-      if (src == null) bytes
-      else {
+      if (src == null) {
+        scribe.warn(s"ImageDownscale: no ImageIO reader for media type '$mediaType' (${bytes.length} bytes) — " +
+          "image passes through un-resized and may exceed the provider's per-edge cap. Add a reader plugin for this format.")
+        original
+      } else {
         val (w, h) = (src.getWidth, src.getHeight)
         val pixels = w.toLong * h.toLong
         // Area factor: shrink so w·h ≤ maxPixels (1.0 when already within, or
@@ -70,7 +90,7 @@ object ImageDownscale {
         val edgeScale = if (maxEdge > 0 && longest > maxEdge) maxEdge.toDouble / longest.toDouble else 1.0
         // The more aggressive of the two. Both are ≤ 1.0, so this never upscales.
         val scale = math.min(areaScale, edgeScale)
-        if (scale >= 1.0) bytes
+        if (scale >= 1.0) original
         else {
           // Floor (not round) so the result never exceeds either budget:
           // floor(w·s)·floor(h·s) ≤ w·h·s² ≤ maxPixels, and floor(longest·s) ≤ maxEdge.
@@ -85,13 +105,23 @@ object ImageDownscale {
           g.drawImage(src, 0, 0, nw, nh, null)
           g.dispose()
           val baos = new ByteArrayOutputStream()
-          val fmt = formatFor(format)
-          if (ImageIO.write(dst, fmt, baos)) baos.toByteArray else bytes
+          val fmt = formatFor(mediaType)
+          if (ImageIO.write(dst, fmt, baos)) Resized(baos.toByteArray, mediaTypeFor(fmt))
+          else {
+            scribe.warn(s"ImageDownscale: no ImageIO writer for format '$fmt' (from media type '$mediaType') — " +
+              s"image passes through un-resized at ${w}x${h} and may exceed the provider's per-edge cap.")
+            original
+          }
         }
       }
-    }.getOrElse(bytes)
+    }.recover { case t =>
+      scribe.warn(s"ImageDownscale: failed to resize image (media type '$mediaType'): ${t.getMessage}", t)
+      original
+    }.get
+  }
 
-  /** Map a media type or extension to an `ImageIO` writer name. */
+  /** Map a media type or extension to an `ImageIO` writer name. webp has a
+    * reader but no writer (TwelveMonkeys), so it re-encodes to PNG (lossless). */
   private def formatFor(format: String): String = {
     val f = format.toLowerCase
     if (f.contains("png")) "png"
@@ -99,5 +129,14 @@ object ImageDownscale {
     else if (f.contains("gif")) "gif"
     else if (f.contains("bmp")) "bmp"
     else "png"
+  }
+
+  /** The media type produced by an `ImageIO` writer name (the inverse of
+    * [[formatFor]] for the formats it targets). */
+  private def mediaTypeFor(fmt: String): String = fmt match {
+    case "jpeg" => "image/jpeg"
+    case "gif"  => "image/gif"
+    case "bmp"  => "image/bmp"
+    case _      => "image/png"
   }
 }

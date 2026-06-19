@@ -1,5 +1,5 @@
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "1.2.0-SNAPSHOT12"
+ThisBuild / version := "1.2.0-SNAPSHOT14"
 
 ThisBuild / scalaVersion := "3.8.3"
 
@@ -30,6 +30,8 @@ val bsp4jVersion: String = "2.2.0-M4.TEST"
 val lsp4jDebugVersion: String = "1.0.0"
 
 val jtokkitVersion: String = "1.1.0"
+
+val twelveMonkeysVersion: String = "3.12.0"
 
 val scalatestVersion: String = "3.2.20"
 
@@ -97,6 +99,12 @@ lazy val core = (project in file("core"))
       "org.commonmark" % "commonmark" % commonmarkVersion,
       "software.amazon.awssdk" % "s3" % awsS3Version exclude ("software.amazon.awssdk", "netty-nio-client"),
       "com.knuddels" % "jtokkit" % jtokkitVersion,
+      // WebP decode/encode for ImageDownscale (#401) — stock javax.imageio
+      // can't read or write webp, so a tall webp screenshot slipped through the
+      // downscaler untouched. TwelveMonkeys auto-registers its readers/writers
+      // via the ImageIO SPI; no code beyond the dependency.
+      "com.twelvemonkeys.imageio" % "imageio-webp" % twelveMonkeysVersion,
+      "com.twelvemonkeys.imageio" % "imageio-core" % twelveMonkeysVersion,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test,
       "com.outr" %% "spice-server-undertow" % spiceVersion % Test

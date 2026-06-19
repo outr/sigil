@@ -1214,11 +1214,13 @@ trait Provider extends Service with ModelResolver {
                 sigil.storageProvider.download(file.path).map {
                   case Some(bytes) =>
                     // Sigil #382 — downscale to the quality tier before
-                    // encoding; never ship original-resolution pixels.
-                    val resized = _root_.sigil.image.ImageDownscale.resize(bytes, quality.maxPixels, file.contentType)
+                    // encoding; never ship original-resolution pixels. #401 —
+                    // a re-encode can change the media type (webp → PNG), so
+                    // carry the reported type, not the stored file's.
+                    val r = _root_.sigil.image.ImageDownscale.resizeTyped(bytes, quality.maxPixels, file.contentType)
                     Some(MessageContent.ImageBytes(
-                      mediaType = file.contentType,
-                      base64 = java.util.Base64.getEncoder.encodeToString(resized),
+                      mediaType = r.mediaType,
+                      base64 = java.util.Base64.getEncoder.encodeToString(r.bytes),
                       altText = altText,
                       quality = quality
                     ))
@@ -1248,9 +1250,9 @@ trait Provider extends Service with ModelResolver {
         // already within the cap, so the common case re-encodes nothing.
         Task {
           val raw = java.util.Base64.getDecoder.decode(base64)
-          val clamped = _root_.sigil.image.ImageDownscale.resize(raw, maxPixels = 0L, format = mediaType)
-          if (clamped eq raw) Some(mc)
-          else Some(MessageContent.ImageBytes(mediaType, java.util.Base64.getEncoder.encodeToString(clamped), altText, quality))
+          val r = _root_.sigil.image.ImageDownscale.resizeTyped(raw, maxPixels = 0L, mediaType = mediaType)
+          if (r.bytes eq raw) Some(mc)
+          else Some(MessageContent.ImageBytes(r.mediaType, java.util.Base64.getEncoder.encodeToString(r.bytes), altText, quality))
         }
       case other => Task.pure(Some(other))
     }
@@ -1292,9 +1294,9 @@ trait Provider extends Service with ModelResolver {
           ProviderMessage.User(content.map {
             case ib: MessageContent.ImageBytes =>
               val raw = java.util.Base64.getDecoder.decode(ib.base64)
-              val clamped = _root_.sigil.image.ImageDownscale.resize(raw, maxPixels = 0L, format = ib.mediaType, maxEdge = cap)
-              if (clamped eq raw) ib
-              else ib.copy(base64 = java.util.Base64.getEncoder.encodeToString(clamped))
+              val r = _root_.sigil.image.ImageDownscale.resizeTyped(raw, maxPixels = 0L, mediaType = ib.mediaType, maxEdge = cap)
+              if (r.bytes eq raw) ib
+              else ib.copy(mediaType = r.mediaType, base64 = java.util.Base64.getEncoder.encodeToString(r.bytes))
             case other => other
           })
         case other => other
@@ -1326,10 +1328,11 @@ trait Provider extends Service with ModelResolver {
         sigil.fetchExternalImageBytes(urlStr).map {
           case Some((bytes, contentType)) =>
             val ct = if (contentType.toLowerCase.startsWith("image/")) contentType else "image/png"
-            val resized = _root_.sigil.image.ImageDownscale.resize(bytes, quality.maxPixels, ct)
-            val b64 = java.util.Base64.getEncoder.encodeToString(resized)
-            Provider.cacheExternalImage(key, (ct, b64))
-            Some(MessageContent.ImageBytes(ct, b64, altText, quality))
+            val r = _root_.sigil.image.ImageDownscale.resizeTyped(bytes, quality.maxPixels, ct)
+            val b64 = java.util.Base64.getEncoder.encodeToString(r.bytes)
+            // Cache the POST-resize media type (#401 — a webp may have become PNG).
+            Provider.cacheExternalImage(key, (r.mediaType, b64))
+            Some(MessageContent.ImageBytes(r.mediaType, b64, altText, quality))
           case None => None
         }
     }
