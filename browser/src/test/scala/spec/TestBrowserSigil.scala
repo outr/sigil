@@ -89,6 +89,18 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
   def setAccessibleSpaces(f: List[ParticipantId] => Task[Set[SpaceId]]): Unit =
     accessibleSpacesRef.set(f)
 
+  // Sigil #403 — settable navigation guard so specs can simulate a host that
+  // blacklists URLs without standing up a second Sigil.
+  private val navGuardRef: AtomicReference[(URL, List[ParticipantId], lightdb.id.Id[sigil.conversation.Conversation]) => Task[Option[String]]] =
+    new AtomicReference((_, _, _) => Task.pure(None))
+  override def navigationGuard(url: URL,
+                               chain: List[ParticipantId],
+                               conversationId: lightdb.id.Id[sigil.conversation.Conversation]): Task[Option[String]] =
+    navGuardRef.get().apply(url, chain, conversationId)
+  def setNavigationGuard(f: (URL, List[ParticipantId], lightdb.id.Id[sigil.conversation.Conversation]) => Task[Option[String]]): Unit =
+    navGuardRef.set(f)
+  def resetNavigationGuard(): Unit = navGuardRef.set((_, _, _) => Task.pure(None))
+
   override def modelResolver: sigil.provider.ModelResolver = (modelId: lightdb.id.Id[Model]) =>
     cache.find(modelId).map(sigil.provider.ProviderModel(providerRef.get().apply().sync(), _))
 

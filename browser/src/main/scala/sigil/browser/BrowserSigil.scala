@@ -13,6 +13,7 @@ import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.secrets.{SecretRecord, SecretsCollections, SecretsSigil}
 import sigil.signal.{Delta, EventState, StateDelta}
+import spice.net.URL
 
 import java.util.concurrent.ConcurrentHashMap
 import scala.concurrent.duration.*
@@ -54,6 +55,22 @@ trait BrowserSigil extends Sigil with SecretsSigil {
     * 5 minutes — Chrome processes are heavy. The internal reaper
     * fiber checks every 30 seconds. */
   def browserIdleTimeoutMs: Long = 5.minutes.toMillis
+
+  /**
+   * Sigil #403 — veto navigation to a URL before the browser loads it.
+   * Return `Some(reason)` to BLOCK — `browser_navigate` surfaces it as a
+   * recoverable [[sigil.tool.ToolResult.Failure]] (so the agent reads the
+   * reason and redirects); `None` to allow. Default allows everything.
+   *
+   * `chain` / `conversationId` let a host resolve per-conversation state to
+   * build the blacklist — e.g. blocking the agent from loading its OWN
+   * storefront in the generic browser (which shows the live, not the draft,
+   * theme) while still permitting third-party reference sites. Consulted by
+   * [[sigil.browser.tool.BrowserNavigateTool]] before every navigate.
+   */
+  def navigationGuard(url: URL,
+                      chain: List[ParticipantId],
+                      conversationId: Id[Conversation]): Task[Option[String]] = Task.pure(None)
 
   /** Resolve the per-conversation [[BrowserController]]. Lazy-
     * allocated on first call; the same instance is returned for

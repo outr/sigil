@@ -4,7 +4,7 @@ import fabric.rw.*
 import fabric.{num, obj, str}
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.browser.BrowserStateDelta
+import sigil.browser.{BrowserSigil, BrowserStateDelta}
 import sigil.browser.WebBrowserMode
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
@@ -43,6 +43,28 @@ final class BrowserNavigateTool extends Tool {
 
   override def executeResult(input: BrowserNavigateInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+    navigationVeto(input, ctx).flatMap {
+      case Some(reason) => Task.pure(ToolResult.failure(reason))
+      case None         => doNavigate(input, ctx)
+    }
+
+  /** Sigil #403 — consult the host's [[BrowserSigil.navigationGuard]] before
+    * loading the URL. `Some(reason)` blocks; `None` allows. A non-`BrowserSigil`
+    * host (shouldn't happen — this tool needs the per-conversation controller)
+    * or an unparseable URL allows through (the navigate then reports the real
+    * DNS/HTTP error). */
+  private def navigationVeto(input: BrowserNavigateInput, ctx: ToolContext): Task[Option[String]] =
+    ctx.sigil match {
+      case bs: BrowserSigil =>
+        spice.net.URL.get(input.url).toOption match {
+          case Some(url) => bs.navigationGuard(url, ctx.chain, ctx.conversation.id)
+          case None      => Task.pure(None)
+        }
+      case _ => Task.pure(None)
+    }
+
+  private def doNavigate(input: BrowserNavigateInput,
+                         ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
       outcome    <- controller.run { browser =>
