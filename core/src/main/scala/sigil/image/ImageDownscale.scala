@@ -33,6 +33,19 @@ object ImageDownscale {
     * budget while one edge still blows past 8000 px. */
   val MaxEdge: Int = 8000
 
+  /** Per-edge ceiling Anthropic enforces for a "many-image" request — once a
+    * request carries more than [[ManyImageThreshold]] images, the per-edge
+    * limit drops from [[MaxEdge]] (8000) to 2000 px and the WHOLE request 400s
+    * if any image exceeds it. The per-image downscale can't see the
+    * request-wide count, so the count-aware clamp lives at the provider wire
+    * seam (#400). 2000 forces the "tall screenshot → sliver" tradeoff #383
+    * avoided, but the API leaves no choice for many-image requests. */
+  val ManyImageMaxEdge: Int = 2000
+
+  /** Image count above which [[ManyImageMaxEdge]] applies (Anthropic's
+    * many-image threshold). At or below it, [[MaxEdge]] stands. */
+  val ManyImageThreshold: Int = 20
+
   /** Resize `bytes` so its total pixel count is at most `maxPixels` AND
     * neither dimension exceeds `maxEdge`, preserving aspect ratio. Returns
     * the original bytes unchanged when the image is already within both

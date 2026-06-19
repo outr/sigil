@@ -1258,8 +1258,58 @@ trait Provider extends Service with ModelResolver {
       case ProviderMessage.User(content) =>
         Task.sequence(content.toList.map(normalizeContent)).map(c => ProviderMessage.User(c.flatten.toVector))
       case other => Task.pure(other)
-    }).map(messages => call.copy(messages = messages.toVector))
+    }).map(messages => enforceImageEdgeCap(call.copy(messages = messages.toVector)))
   }
+
+  /**
+   * Sigil #400 — a provider may tighten its per-edge image cap based on how
+   * many images the whole request carries. Anthropic drops the limit from
+   * 8000 px to 2000 px once a request has more than
+   * [[sigil.image.ImageDownscale.ManyImageThreshold]] images, and rejects the
+   * ENTIRE request if any image exceeds it. The per-image downscale in
+   * `normalizeStoredImages` can't see the request-wide count, so re-clamp here:
+   * count the request's images, ask the provider for the effective per-edge cap
+   * via [[imageEdgeCapFor]], and when it's tighter than the cap already applied,
+   * shrink every inline image's long edge to it. A no-op for providers that
+   * don't override `imageEdgeCapFor` (the default returns `MaxEdge`).
+   */
+  private def enforceImageEdgeCap(call: ProviderCall): ProviderCall = {
+    def isImage(mc: MessageContent): Boolean = mc match {
+      case _: MessageContent.ImageBytes => true
+      case _: MessageContent.Image      => true
+      case _                            => false
+    }
+    val imageCount = call.messages.iterator.collect {
+      case ProviderMessage.User(content) => content.count(isImage)
+    }.sum
+    val cap = imageEdgeCapFor(imageCount)
+    // The per-image pass already clamped to MaxEdge; only re-clamp when the
+    // provider asks for something stricter.
+    if (imageCount == 0 || cap >= _root_.sigil.image.ImageDownscale.MaxEdge) call
+    else {
+      val messages = call.messages.map {
+        case ProviderMessage.User(content) =>
+          ProviderMessage.User(content.map {
+            case ib: MessageContent.ImageBytes =>
+              val raw = java.util.Base64.getDecoder.decode(ib.base64)
+              val clamped = _root_.sigil.image.ImageDownscale.resize(raw, maxPixels = 0L, format = ib.mediaType, maxEdge = cap)
+              if (clamped eq raw) ib
+              else ib.copy(base64 = java.util.Base64.getEncoder.encodeToString(clamped))
+            case other => other
+          })
+        case other => other
+      }
+      call.copy(messages = messages)
+    }
+  }
+
+  /**
+   * The maximum per-edge image size (px) this provider accepts for a request
+   * carrying `imageCount` images. Default [[sigil.image.ImageDownscale.MaxEdge]]
+   * regardless of count. Providers with a count-dependent limit (Anthropic's
+   * 2000 px many-image cap) override. Sigil #400.
+   */
+  protected def imageEdgeCapFor(imageCount: Int): Int = _root_.sigil.image.ImageDownscale.MaxEdge
 
   /** Sigil #393 — fetch an external image (via `Sigil.fetchExternalImageBytes`),
     * downscale it to the `quality` tier, and return base64 `ImageBytes`.

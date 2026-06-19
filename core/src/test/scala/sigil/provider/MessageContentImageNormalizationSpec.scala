@@ -134,8 +134,8 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
           case Vector(MessageContent.ImageBytes(_, base64, _, _)) =>
             val (w, h) = dims(base64)
             withClue(s"clamped to ${w}x${h}: ") {
-              h should be <= sigil.image.ImageDownscale.MaxEdge
-              w should be <= sigil.image.ImageDownscale.MaxEdge
+              h should be <= _root_.sigil.image.ImageDownscale.MaxEdge
+              w should be <= _root_.sigil.image.ImageDownscale.MaxEdge
             }
           case other => fail(s"expected ImageBytes, got $other")
         }
@@ -149,6 +149,78 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
           case Vector(MessageContent.ImageBytes(_, base64, _, _)) => base64 shouldBe b64
           case other => fail(s"expected ImageBytes, got $other")
         }
+      }
+    }
+  }
+
+  // Sigil #400 — a provider whose per-edge cap tightens for many-image
+  // requests (Anthropic: 8000 px normally, 2000 px above ~20 images).
+  private object ManyImageCapProvider extends Provider {
+    override def `type`: ProviderType = ProviderType.Anthropic
+    override def models: List[Model] = Nil
+    override protected def sigil: _root_.sigil.Sigil = TestSigil
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+      Task.error(new UnsupportedOperationException("no wire"))
+    override def call(input: ProviderCall): Stream[ProviderEvent] =
+      Stream.emits(List(ProviderEvent.Done(StopReason.Complete)))
+    override protected def imageEdgeCapFor(imageCount: Int): Int =
+      if (imageCount > _root_.sigil.image.ImageDownscale.ManyImageThreshold) _root_.sigil.image.ImageDownscale.ManyImageMaxEdge
+      else _root_.sigil.image.ImageDownscale.MaxEdge
+  }
+
+  private def pngBytes(w: Int, h: Int): Array[Byte] = {
+    val img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB)
+    val baos = new java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(img, "png", baos)
+    baos.toByteArray
+  }
+  private def dims(b64: String): (Int, Int) = {
+    val img = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder.decode(b64)))
+    (img.getWidth, img.getHeight)
+  }
+  private def imageBytesOf(call: ProviderCall): Vector[MessageContent.ImageBytes] =
+    imageContents(call).collect { case ib: MessageContent.ImageBytes => ib }
+
+  "the many-image per-edge cap (Sigil #400)" should {
+    // A tall full-page screenshot (1280×4380) is legal at 8000 but violates
+    // Anthropic's 2000 px many-image limit. Below the threshold it stays;
+    // above it, every image's long edge is clamped to 2000.
+    def tall: MessageContent.ImageBytes =
+      MessageContent.ImageBytes("image/png", java.util.Base64.getEncoder.encodeToString(pngBytes(1280, 4380)))
+    def tiny: MessageContent.ImageBytes =
+      MessageContent.ImageBytes("image/png", java.util.Base64.getEncoder.encodeToString(tinyPng))
+
+    "leave a tall image alone when the request is within the many-image threshold" in {
+      ManyImageCapProvider.normalizeStoredImages(callWith((tall +: Vector.fill(4)(tiny)): _*)).map { normalized =>
+        val (_, h) = dims(imageBytesOf(normalized).head.base64)
+        // 4380 ≤ 8000 — untouched; legibility preserved for a few-image request.
+        h shouldBe 4380
+      }
+    }
+
+    "clamp every image's long edge to 2000 once the request crosses the many-image threshold" in {
+      // 21 images (> 20): the many-image cap kicks in for the WHOLE request.
+      val content = tall +: Vector.fill(20)(tiny)
+      ManyImageCapProvider.normalizeStoredImages(callWith(content: _*)).map { normalized =>
+        val images = imageBytesOf(normalized)
+        images should have size 21
+        images.foreach { ib =>
+          val (w, h) = dims(ib.base64)
+          withClue(s"image ${w}x${h} exceeds the 2000px many-image cap: ") {
+            w should be <= _root_.sigil.image.ImageDownscale.ManyImageMaxEdge
+            h should be <= _root_.sigil.image.ImageDownscale.ManyImageMaxEdge
+          }
+        }
+        succeed
+      }
+    }
+
+    "NOT apply the many-image cap for a provider that doesn't declare one" in {
+      // FakeProvider (OpenAI) keeps the default 8000 cap regardless of count.
+      val content = tall +: Vector.fill(20)(tiny)
+      FakeProvider.normalizeStoredImages(callWith(content: _*)).map { normalized =>
+        val (_, h) = dims(imageBytesOf(normalized).find(b => dims(b.base64)._2 > 100).get.base64)
+        h shouldBe 4380
       }
     }
   }

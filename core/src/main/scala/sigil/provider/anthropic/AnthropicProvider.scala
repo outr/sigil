@@ -59,6 +59,15 @@ case class AnthropicProvider(apiKey: String,
   override val providerKey: String = Anthropic.Provider
   override protected def sigil: Sigil = sigilRef
 
+  /** Sigil #400 — Anthropic drops the per-edge image limit from 8000 px to
+    * 2000 px for "many-image" requests (more than ~20 images) and rejects the
+    * whole request if any image exceeds it. Tighten the wire-seam clamp
+    * accordingly so a tall screenshot that was legal at 8000 stops 400ing every
+    * request once enough images accumulate in history. */
+  override protected def imageEdgeCapFor(imageCount: Int): Int =
+    if (imageCount > _root_.sigil.image.ImageDownscale.ManyImageThreshold) _root_.sigil.image.ImageDownscale.ManyImageMaxEdge
+    else _root_.sigil.image.ImageDownscale.MaxEdge
+
   /** Anthropic's tokenizer isn't published; cl100k_base is within
     * ~10% of empirical Claude token counts for English prose, which
     * is plenty of accuracy for budget headroom checks. The pre-flight
