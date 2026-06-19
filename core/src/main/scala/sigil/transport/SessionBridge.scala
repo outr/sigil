@@ -8,9 +8,9 @@ import sigil.Sigil
 import sigil.conversation.Conversation
 import sigil.participant.ParticipantId
 import sigil.signal.{Notice, Signal}
-import spice.http.durable.DurableSession
+import spice.http.durable.{DurableSession, ProtocolState}
 
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 /**
  * Bridges a single [[spice.http.durable.DurableSession]] to a [[Sigil]]:
@@ -128,6 +128,7 @@ object SessionBridge {
                        session: DurableSession[Id[Conversation], Signal, Info],
                        viewer: ParticipantId,
                        onSessionStart: Id[Conversation] => Task[Unit] = (_: Id[Conversation]) => Task.unit,
+                       onSessionEnd: (String, Id[Conversation]) => Task[Unit] = (_: String, _: Id[Conversation]) => Task.unit,
                        onEphemeral: Option[Json => Task[Unit]] = None,
                        resume: ResumeRequest = DefaultResume): Task[SessionRebindHandle] = {
     val convId        = session.channelId
@@ -180,6 +181,24 @@ object SessionBridge {
               })
               .start()
             ()
+          }
+          // Sigil #402 — session-end hook. Fire `onSessionEnd` exactly once
+          // when the protocol reaches its terminal `Closed` state, so a host
+          // can release per-session resources (headless browsers, identity
+          // caches, screencast streams). `Closed` — not `Disconnected` — is the
+          // signal: a transient drop goes Disconnected and may RESUME (firing
+          // here would tear down a session the client reconnects to). A hard
+          // drop reaches `Closed` when the server's session-expiry reaper
+          // (`WsServer` starts it) collects the stale, never-resumed session.
+          val ended = new AtomicBoolean(false)
+          session.protocol.state.attach { st =>
+            if (st == ProtocolState.Closed && ended.compareAndSet(false, true)) {
+              onSessionEnd(session.clientId, convId)
+                .handleError(t => Task {
+                  scribe.warn(s"SessionBridge: onSessionEnd failed for clientId=${session.clientId} ${convId.value}: ${t.getMessage}", t)
+                })
+                .start()
+            }
           }
         }
         // else: resume re-attachment — listeners already on the

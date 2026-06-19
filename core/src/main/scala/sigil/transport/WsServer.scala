@@ -110,6 +110,18 @@ final class WsServer[Info: RW](sigil: Sigil,
                                resolveChannel: (String, Info) => Task[Id[Conversation]],
                                resolveViewer: Option[(String, Info) => Task[ParticipantId]] = None,
                                onSessionStart: Id[Conversation] => Task[Unit] = (_: Id[Conversation]) => Task.unit,
+                               // Sigil #402 — fired once when a session reaches its terminal Closed
+                               // state (the session-expiry reaper collects a never-resumed drop, or
+                               // an explicit close). Hosts release per-session resources here
+                               // (headless browsers, identity caches, screencast streams). `clientId`
+                               // is passed so identity-keyed caches can be cleared too.
+                               onSessionEnd: (String, Id[Conversation]) => Task[Unit] = (_: String, _: Id[Conversation]) => Task.unit,
+                               // How long a disconnected (un-resumed) session lingers before the
+                               // reaper closes it — which is what fires `onSessionEnd`. Resource-heavy
+                               // hosts shorten this for prompter teardown (a network blip longer than
+                               // this forces a fresh re-attach rather than a resume).
+                               sessionTimeout: FiniteDuration = 30.minutes,
+                               sessionExpiryInterval: FiniteDuration = 1.minute,
                                config: DurableSocketConfig = DurableSocketConfig(
                                  ackBatchDelay = 50.millis,
                                  reconnectStrategy = ReconnectStrategy.none
@@ -122,7 +134,8 @@ final class WsServer[Info: RW](sigil: Sigil,
     new DurableSocketServer[Id[Conversation], Signal, Info](
       config = config,
       eventLog = sigil.eventLog,
-      resolveChannel = resolveChannel
+      resolveChannel = resolveChannel,
+      sessionTimeout = sessionTimeout
     )
 
   /** The HTTP server. Public so apps can mount additional handlers
@@ -158,7 +171,8 @@ final class WsServer[Info: RW](sigil: Sigil,
           sigil = sigil,
           session = session,
           viewer = resolved,
-          onSessionStart = onSessionStart
+          onSessionStart = onSessionStart,
+          onSessionEnd = onSessionEnd
         )
       }.start()
       ()
@@ -172,8 +186,12 @@ final class WsServer[Info: RW](sigil: Sigil,
   def serverPort: Int = httpServer.config.listeners().head.port.getOrElse(0)
 
   /** Boot the HTTP server. Idempotent — repeat calls after the
-    * server is already up are no-ops. */
-  def start(): Task[Unit] = httpServer.start().map(_ => ())
+    * server is already up are no-ops. Also starts the session-expiry
+    * reaper (#402) so disconnected, never-resumed sessions reach their
+    * terminal `Closed` state and fire `onSessionEnd`. */
+  def start(): Task[Unit] = httpServer.start().map { _ =>
+    durableServer.startSessionExpiry(sessionExpiryInterval)
+  }
 
   /** Stop the HTTP server. Best-effort — failures are swallowed
     * since the typical caller is a `finally`-shaped shutdown path. */
