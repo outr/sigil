@@ -109,7 +109,15 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
     * record to be persisted at the end of the pass. No I/O here. */
   private def buildExtraction(content: String,
                               replace: String => ContextFrame): (ContextFrame, InformationSummary, Information) = {
-    val newId   = Id[Information]()
+    // Sigil #393 — DETERMINISTIC id (content hash), not a fresh random one.
+    // Externalization runs on every context build; a random id re-minted each
+    // turn changed the placeholder text → the Anthropic prompt-cache prefix
+    // missed at the first externalized message (reprocessing the whole body
+    // uncached every turn) and the Information store accumulated ~230×
+    // duplicates for unchanged content. A stable id keeps the placeholder bytes
+    // identical across turns (cache holds) and makes re-externalization an
+    // idempotent upsert of one record.
+    val newId   = StandardBlockExtractor.deterministicId(content)
     val info    = toInformation(content, newId)
     val summary = summaryOf(content)
     val refText = placeholder(newId, summary)
@@ -126,6 +134,21 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
 }
 
 object StandardBlockExtractor {
+  /** Deterministic [[Information]] id for `content` — its SHA-256 (hex). The
+    * SAME content always externalizes to the SAME id, so the placeholder bytes
+    * are stable across turns (the prompt-cache prefix holds instead of missing
+    * at the first externalized message — #393) and re-externalizing upserts one
+    * record rather than minting a fresh duplicate on every context build.
+    * Content-addressed (not conversation-scoped): `toInformation` derives the
+    * record from content alone, so identical content sharing a record is
+    * correct de-dup, and a stable id keeps the agent's `lookup` references valid
+    * across turns. */
+  def deterministicId(content: String): Id[Information] = {
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    val bytes  = digest.digest(content.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    Id[Information](bytes.iterator.map(b => f"${b & 0xff}%02x").mkString)
+  }
+
   val DefaultPlaceholder: (Id[Information], String) => String =
     (id, summary) => s"(large content stored as Information[${id.value}]. Summary: $summary. Use `lookup(capabilityType=\"Information\", name=\"${id.value}\")` to retrieve full content.)"
 

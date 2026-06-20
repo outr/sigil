@@ -83,6 +83,34 @@ class StandardBlockExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with M
       }
     }
 
+    // Sigil #393 — the externalized id must be DETERMINISTIC for a given
+    // content, so the placeholder bytes are identical across turns (keeping the
+    // prompt-cache prefix stable) and the store de-duplicates.
+    "mint the SAME Information id for the same content across separate extract passes (#393)" in {
+      val puts = recorder()
+      val extractor = StandardBlockExtractor(toInformation = (c, id) => BlockInfo(id, c), minChars = 20)
+      val big = "Z" * 60
+      def placeholderOf(content: String) =
+        extractor.extract(TestSigil, Vector(textFrame(content, "f"))).map { r =>
+          r.frames.head.asInstanceOf[ContextFrame.Text].content
+        }
+      for {
+        a <- placeholderOf(big)
+        b <- placeholderOf(big) // a second context build of the same content
+      } yield {
+        a shouldBe b // identical placeholder text → cache prefix holds
+        // And it matches the deterministic id directly.
+        a should include(s"Information[${StandardBlockExtractor.deterministicId(big).value}]")
+      }
+    }
+
+    "mint DIFFERENT ids for different content" in {
+      StandardBlockExtractor.deterministicId("alpha content") should not be
+        StandardBlockExtractor.deterministicId("beta content")
+      // Same content, same id (pure function).
+      StandardBlockExtractor.deterministicId("same") shouldBe StandardBlockExtractor.deterministicId("same")
+    }
+
   }
 
   "tear down" should {
