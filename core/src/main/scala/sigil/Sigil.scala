@@ -6010,6 +6010,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       healCorrelationId = new AtomicReference(None)
     )
 
+  /** Sigil #392 — completes once `flag.force` is set. Polled (not callback-
+    * driven) because `StopFlag.force` is a plain `AtomicBoolean` flipped by
+    * `applyStop`; a 25 ms tick is imperceptible against a user clicking Stop and
+    * costs nothing while idle. Raced against the iteration drain so a force Stop
+    * interrupts an in-flight tool — the winning waiter cancels the drain fiber.
+    * When the drain finishes first, `Task.race` cancels THIS waiter (interrupts
+    * its sleep), so it never leaks. */
+  private def awaitForceStop(flag: StopFlag): Task[Unit] = Task.defer {
+    if (flag.force.get()) Task.unit
+    else Task.sleep(25.millis).flatMap(_ => awaitForceStop(flag))
+  }
+
   /**
    * `sinceTimestamp` advances per iteration — each loop hands the next one
    * its own start-time, so events consumed by the previous iteration
@@ -6298,7 +6310,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // settle delta lands (bug #74's `endsTurn` lever applies
               // to `respond` specifically).
               val activeUserVisibleInvokes = new java.util.concurrent.ConcurrentHashMap[Id[Event], String]()
-              interruptible
+              val drainTask =
+                interruptible
                 .evalTap {
                   case ti: ToolInvoke if Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) =>
                     Task {
@@ -6373,6 +6386,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 }
                 .evalTap(publish)
                 .drain
+              // Sigil #392 — race the drain against the force-stop flag so a
+              // force Stop interrupts an in-flight tool's blocking call. The
+              // `takeWhile(!force)` above only fires at element boundaries —
+              // while a tool is mid-execution no element is in flight, so the
+              // flag isn't observed until the tool returns (the worst case being
+              // the tool's own timeout). Racing cancels the drain fiber the
+              // moment force flips (rapid's `Fiber.cancel` interrupts the carrier
+              // thread, aborting an interruptible blocking op / parked await),
+              // and the post-drain `stopFlag.exists(_.requested)` branch settles
+              // any dangling invoke + terminates cleanly. `race` returns the
+              // waiter's result and discards the cancelled drain's
+              // InterruptedException, so no error surfaces.
+              stopFlag match {
+                case Some(flag) => Task.race(drainTask, awaitForceStop(flag)).map(_ => ())
+                case None       => drainTask
+              }
           }
         }.flatMap { _ =>
           scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration drain done")
