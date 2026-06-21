@@ -13,7 +13,7 @@ val scribeVersion: String = "3.19.0"
 
 val lightdbVersion: String = "4.42.0"
 
-val striderVersion: String = "1.1.5-SNAPSHOT"
+val striderVersion: String = "1.1.5"
 
 val scalapassVersion: String = "1.4.2"
 
