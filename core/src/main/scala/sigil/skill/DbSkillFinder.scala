@@ -11,6 +11,7 @@ import sigil.tool.DiscoveryRequest
  * [[sigil.tool.DbToolFinder]]. Returns the top `maxResults` skills
  * ranked by Lucene relevance against the [[Skill.searchText]] index,
  * post-filtered by:
+ *   - **Enabled** — `skill.enabled` (a disabled skill is never surfaced; #395).
  *   - **Mode affinity** — `request.mode.id ∈ skill.modes` (or
  *     `skill.modes` empty for "any mode").
  *   - **Space affinity** — `skill.space == GlobalSpace` OR
@@ -45,8 +46,9 @@ case class DbSkillFinder(sigil: Sigil, maxResults: Int = 10) {
   }
 
   private def passesAffinity(skill: Skill, request: DiscoveryRequest): Boolean = {
+    // #395 — a disabled skill is never discoverable (toggled off, not deleted).
     val passesModeAffinity  = skill.modes.isEmpty || skill.modes.contains(request.mode.id)
     val passesSpaceAffinity = skill.space == GlobalSpace || request.callerSpaces.contains(skill.space)
-    passesModeAffinity && passesSpaceAffinity
+    skill.enabled && passesModeAffinity && passesSpaceAffinity
   }
 }

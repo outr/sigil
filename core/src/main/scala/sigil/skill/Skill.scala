@@ -69,6 +69,14 @@ trait Skill extends RecordDocument[Skill] {
   /** Curated keywords boosting BM25 discovery score. */
   def keywords: Set[String] = Set.empty
 
+  /** Whether this skill is active. `false` disables it without deleting the
+    * record: discovery ([[sigil.skill.DbSkillFinder]] / `find_capability`)
+    * filters out disabled skills the same way `modes` / `space` gate
+    * visibility, so a disabled skill never surfaces for activation while its
+    * content is preserved — a user can toggle it back on later (#395). Mirrors
+    * [[sigil.workflow.WorkflowTemplate.enabled]]. */
+  def enabled: Boolean = true
+
   /** The participant that authored the skill. `None` for static
     * (app-shipped) skills; set for user-created records so
     * `StaticSkillSyncUpgrade` knows not to prune them. */
@@ -90,6 +98,7 @@ object Skill extends PolyType[Skill]()(using scala.reflect.ClassTag(classOf[Skil
   val spaceId: I[String]                = field.index(_.space.value)
   val keywordIndex: I[Set[String]]      = field.index(_.keywords)
   val createdByIndex: I[Option[String]] = field.index(_.createdBy.map(_.value))
+  val enabledIndex: I[Boolean]          = field.index(_.enabled)
 
   /** Tokenized full-text index over name + description + content +
     * keywords. Backs `find_capability`'s BM25-scored search via
