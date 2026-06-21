@@ -42,6 +42,14 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
   case class InnerInput(comment: Option[String] = None) derives RW
   case class NestedInput(inner: Option[InnerInput] = None) extends ToolInput derives RW
 
+  // Sigil #394 — scalar-array fields a model commonly fills with a delimited
+  // string. `keywords` mirrors RespondInput.keywords (the spinning case).
+  case class KeywordsInput(keywords: List[String] = Nil) extends ToolInput derives RW
+  case class IntsInput(ids: List[Int] = Nil) extends ToolInput derives RW
+  case class OptKeywordsInput(keywords: Option[List[String]] = None) extends ToolInput derives RW
+  case class TagObj(name: String) derives RW
+  case class ObjListInput(tags: List[TagObj] = Nil) extends ToolInput derives RW
+
   "InputNormalizer" should {
 
     "coerce empty-string Option[String] to Null (so RW materialises None)" in {
@@ -238,6 +246,60 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
       val normalised = InputNormalizer.normalize(raw, summon[RW[PageInput]].definition)
       val typed = summon[RW[PageInput]].write(normalised)
       typed.handle shouldBe Some("real-handle")
+    }
+
+    // Sigil #394 — a model emitting a scalar array as a delimited / bare string
+    // must not hard-fail the decode (catastrophic on `respond` → turn never
+    // settles → spin).
+    "coerce a comma-separated string into a List[String] (#394)" in {
+      val raw = obj("keywords" -> str("footer,ANALOG, newsletter ,columns"))
+      val typed = summon[RW[KeywordsInput]].write(
+        InputNormalizer.normalize(raw, summon[RW[KeywordsInput]].definition))
+      typed.keywords shouldBe List("footer", "ANALOG", "newsletter", "columns")
+    }
+
+    "wrap a bare single string into a 1-element List[String] (#394)" in {
+      val raw = obj("keywords" -> str("solo"))
+      val typed = summon[RW[KeywordsInput]].write(
+        InputNormalizer.normalize(raw, summon[RW[KeywordsInput]].definition))
+      typed.keywords shouldBe List("solo")
+    }
+
+    "coerce empty / \"null\" string into an empty List (#394)" in {
+      def kw(s: String): List[String] =
+        summon[RW[KeywordsInput]].write(
+          InputNormalizer.normalize(obj("keywords" -> str(s)), summon[RW[KeywordsInput]].definition)).keywords
+      kw("") shouldBe Nil
+      kw("null") shouldBe Nil
+    }
+
+    "coerce delimited string elements into a List[Int] (#394)" in {
+      val raw = obj("ids" -> str("1, 2,3"))
+      val typed = summon[RW[IntsInput]].write(
+        InputNormalizer.normalize(raw, summon[RW[IntsInput]].definition))
+      typed.ids shouldBe List(1, 2, 3)
+    }
+
+    "coerce a string into an Option[List[String]] (#394)" in {
+      val raw = obj("keywords" -> str("a,b"))
+      val typed = summon[RW[OptKeywordsInput]].write(
+        InputNormalizer.normalize(raw, summon[RW[OptKeywordsInput]].definition))
+      typed.keywords shouldBe Some(List("a", "b"))
+    }
+
+    "leave an actual array untouched (#394)" in {
+      val raw = obj("keywords" -> arr(str("x"), str("y")))
+      val typed = summon[RW[KeywordsInput]].write(
+        InputNormalizer.normalize(raw, summon[RW[KeywordsInput]].definition))
+      typed.keywords shouldBe List("x", "y")
+    }
+
+    "NOT coerce a string into a List of objects — nested arrays stay strict (#394)" in {
+      // A `List[TagObj]` is not scalar; a bare string must fall through unchanged
+      // (normalize is a no-op here; strict decode would reject it downstream).
+      val raw = obj("tags" -> str("a,b"))
+      val normalised = InputNormalizer.normalize(raw, summon[RW[ObjListInput]].definition)
+      normalised shouldBe raw
     }
   }
 }

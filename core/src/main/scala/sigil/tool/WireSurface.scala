@@ -268,6 +268,21 @@ object WireSurface {
       json match {
         case Arr(values, _) =>
           Arr(values.map(v => normalize(v, elementDef.defType)))
+        // Sigil #394 — a model very commonly emits a SCALAR array as a delimited
+        // string ("a,b,c") or a bare single value ("a"), especially for
+        // keyword/tag fields. Strict decode rejects that (`Str, not a Arr`),
+        // which is catastrophic on `respond` — the turn never settles and the
+        // agent spins. Coerce Str → Arr for scalar element types: split on
+        // commas when delimited, else wrap the single value, then normalize each
+        // element (so "1,2,3" into array<int> still parses). "null"/empty → [].
+        // Nested object / poly arrays stay strict (fall through).
+        case Str(s, _) if isScalarDef(elementDef.defType) =>
+          val trimmed = s.trim
+          val parts =
+            if (trimmed.isEmpty || trimmed.equalsIgnoreCase("null")) Nil
+            else if (trimmed.contains(",")) trimmed.split(",", -1).iterator.map(_.trim).filter(_.nonEmpty).toList
+            else List(trimmed)
+          Arr(parts.iterator.map(p => normalize(Str(p), elementDef.defType)).toVector)
         case other => other
       }
 
@@ -327,6 +342,14 @@ object WireSurface {
         }
       case other => other
     }
+  }
+
+  /** Scalar element types eligible for the Str → Arr coercion (#394). Nested
+    * object / array / poly / any-JSON elements stay strict. */
+  private def isScalarDef(dt: DefType): Boolean = dt match {
+    case DefType.Str | DefType.Int | DefType.Dec | DefType.Bool => true
+    case DefType.Opt(inner)                                     => isScalarDef(inner.defType)
+    case _                                                      => false
   }
 
   private def coerceStringScalar(json: fabric.Json,

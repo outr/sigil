@@ -112,6 +112,27 @@ class WireSurfaceSpec extends AnyWordSpec with Matchers {
       }
     }
 
+    // Sigil #394 — the actual repro: `respond` with `keywords` as a comma-
+    // separated string must DECODE (not RWException), because `respond` is the
+    // turn-completion path — a hard failure there means the turn never settles
+    // and the agent spins.
+    "decode a real respond call whose keywords are a comma-separated string (#394)" in {
+      val rw = summon[RW[sigil.tool.model.RespondInput]]
+      val surface = WireSurface.fromDefinition(rw.definition, rw)
+      val raw = obj(
+        "topicLabel"   -> str("theme"),
+        "topicSummary" -> str("theme work"),
+        "content"      -> str("All set."),
+        "endsTurn"     -> bool(true),
+        "keywords"     -> str("footer,ANALOG,newsletter,columns,wordmark,Horizon")
+      )
+      surface.decode(raw) match {
+        case Right(input) =>
+          input.keywords shouldBe List("footer", "ANALOG", "newsletter", "columns", "wordmark", "Horizon")
+        case Left(err) => fail(s"respond with string keywords should decode, got: ${err.render}")
+      }
+    }
+
     "produce an enum-bearing example whose enum value is on the schema's enum list" in {
       val rw = summon[RW[ComplexityInput]]
       val surface = WireSurface.fromDefinition(rw.definition, rw)
