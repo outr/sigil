@@ -19,7 +19,7 @@ val scalapassVersion: String = "1.4.2"
 
 val awsS3Version: String = "2.46.10"
 
-val robobrowserVersion: String = "2.3.4"
+val robobrowserVersion: String = "2.3.5"
 
 val commonmarkVersion: String = "0.28.0"
 
