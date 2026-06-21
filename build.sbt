@@ -5,7 +5,7 @@ ThisBuild / scalaVersion := "3.8.3"
 
 val rapidVersion: String = "2.9.9-SNAPSHOT"
 
-val spiceVersion: String = "1.10.2-SNAPSHOT"
+val spiceVersion: String = "1.10.2"
 
 val profigVersion: String = "3.7.1"
 
