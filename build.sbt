@@ -3,7 +3,7 @@ ThisBuild / version := "1.2.0-SNAPSHOT14"
 
 ThisBuild / scalaVersion := "3.8.3"
 
-val rapidVersion: String = "2.9.9-SNAPSHOT"
+val rapidVersion: String = "2.9.9"
 
 val spiceVersion: String = "1.10.2-SNAPSHOT"
 
