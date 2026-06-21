@@ -21,7 +21,7 @@ val awsS3Version: String = "2.46.10"
 
 val robobrowserVersion: String = "2.3.4"
 
-val commonmarkVersion: String = "0.28.0"
+val commonmarkVersion: String = "0.29.0"
 
 val lsp4jVersion: String = "1.0.0"
 
