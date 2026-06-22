@@ -79,25 +79,45 @@ final case class SigilJobStep(input: JobStepInput,
       case None =>
         Task.error(new RuntimeException(s"Workflow step '${input.id}' references unknown tool '$toolName'."))
       case Some(tool) =>
-        val argsRaw = input.arguments
-          .map(a => WorkflowVariableSubstitution.substitute(a, workflow.variables).trim)
-          .getOrElse("")
-        // Sigil #382 — a resolved tool argument must NEVER still carry a
-        // `{{var}}` template. A mis-wired variable reaching a tool — especially
-        // a destructive one like `write_file` — overwrote real source files
-        // with the literal `{{editedContents}}`. Hard-fail the step instead of
-        // dispatching; the run settles as Failed (#375) rather than corrupting.
-        val unresolved = WorkflowVariableSubstitution.unresolvedVars(argsRaw)
-        if (unresolved.nonEmpty)
-          Task.error(new RuntimeException(
-            s"Workflow step '${input.id}': tool '$toolName' arguments still reference unresolved " +
-              s"variable(s) ${unresolved.map(v => s"{{$v}}").mkString(", ")} — the referenced step output " +
-              s"isn't available in scope. The step was NOT dispatched."
-          ))
-        else {
-        val argsJson: Json =
-          if (argsRaw.isEmpty) obj()
-          else scala.util.Try(fabric.io.JsonParser(argsRaw)).getOrElse(obj())
+        // Sigil #392 — substitute INTO the parsed args JSON, not into its raw
+        // text. The authored `arguments` is valid JSON with `{{var}}` in string
+        // positions; parse it first, then place each variable's value as TYPED,
+        // properly-escaped JSON. The old string-splice path broke the JSON
+        // whenever a value carried quotes/newlines (edited file content!) and
+        // `JsonParser(...).getOrElse(obj())` silently collapsed the WHOLE object
+        // to `{}`, surfacing as a misleading "missing field" on the first arg.
+        val argsTemplate = input.arguments.map(_.trim).getOrElse("")
+        val substituted: Either[String, Json] =
+          if (argsTemplate.isEmpty) Right(obj())
+          else scala.util.Try(fabric.io.JsonParser(argsTemplate)).toOption match {
+            case Some(parsedTemplate) =>
+              Right(WorkflowVariableSubstitution.substituteJson(parsedTemplate, workflow.variables))
+            case None =>
+              // Authored args aren't valid JSON on their own (e.g. a placeholder
+              // in a non-string position). Fall back to text substitution, then
+              // parse — and fail loud rather than collapsing to `{}`.
+              val s = WorkflowVariableSubstitution.substitute(argsTemplate, workflow.variables).trim
+              scala.util.Try(fabric.io.JsonParser(s)).toEither.left.map(e =>
+                s"arguments did not parse as JSON after substitution: ${e.getMessage}")
+          }
+        substituted match {
+          case Left(reason) =>
+            Task.error(new RuntimeException(
+              s"Workflow step '${input.id}': tool '$toolName' $reason. The step was NOT dispatched."))
+          case Right(argsJson) =>
+            // Sigil #382 — a resolved tool argument must NEVER still carry a
+            // `{{var}}` template. A mis-wired variable reaching a tool —
+            // especially a destructive one like `write_file` — overwrote real
+            // source files with the literal `{{editedContents}}`. Hard-fail the
+            // step instead of dispatching; the run settles as Failed (#375).
+            val unresolved = WorkflowVariableSubstitution.unresolvedVarsInJson(argsJson)
+            if (unresolved.nonEmpty)
+              Task.error(new RuntimeException(
+                s"Workflow step '${input.id}': tool '$toolName' arguments still reference unresolved " +
+                  s"variable(s) ${unresolved.map(v => s"{{$v}}").mkString(", ")} — the referenced step output " +
+                  s"isn't available in scope. The step was NOT dispatched."
+              ))
+            else {
         val parsed: Either[Throwable, Any] = scala.util.Try(tool.inputRW.write(argsJson)).toEither
         parsed match {
           case Left(err) =>
@@ -139,6 +159,7 @@ final case class SigilJobStep(input: JobStepInput,
               }
             }
         }
+            }
         }
     }
   }

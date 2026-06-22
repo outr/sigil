@@ -200,12 +200,14 @@ class WorkflowInitFailureLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec 
       }
     }
 
-    "publish WorkflowRunFailed when a Loop body step throws — escapes per-step handling (sigil #375)" in {
+    "settle a Loop terminally — a single isolated body failure completes the run, never hangs (sigil #375/#389)" in {
       // A Loop body Job runs via executeBranch, which calls executeToJson
-      // directly — NO per-step handleError (unlike top-level executeJob). So a
-      // body throw escapes to runNextScheduled's unexpected-failure handler.
-      // Pre-#375 that handler only logged, leaving observers on a stale
-      // "running" row; now it settles the run + fires WorkflowRunFailed.
+      // directly — NO per-step handleError (unlike top-level executeJob). The
+      // failure must never leave observers on a stale "running" row. #389 then
+      // ISOLATES a one-off body failure to its iteration: a single bad item is
+      // recorded and the run completes (WorkflowRunCompleted), rather than
+      // aborting. The systematic case — every item failing the same way — is
+      // what aborts with WorkflowRunFailed (covered by the #393 test below).
       val convId = Conversation.id("loop-body-throws-conv")
       val recorded = new ConcurrentLinkedQueue[Signal]()
       @volatile var running = true
@@ -248,8 +250,9 @@ class WorkflowInitFailureLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec 
         run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(
                  TestWorkflowSigil, template, variables = Map("items" -> arr(str("a"))))
         _   <- waitFor(recorded, 10.seconds)(_.exists {
-                 case e: WorkflowRunFailed => e.runId == run._id.value
-                 case _ => false
+                 case e: WorkflowRunCompleted => e.runId == run._id.value
+                 case e: WorkflowRunFailed    => e.runId == run._id.value
+                 case _                       => false
                })
       } yield {
         running = false
@@ -257,9 +260,81 @@ class WorkflowInitFailureLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec 
         val all = recorded.iterator().asScala.toList
         val fails = all.collect { case e: WorkflowRunFailed if e.runId == run._id.value => e }
         val ok    = all.collect { case e: WorkflowRunCompleted if e.runId == run._id.value => e }
+        // The single bad item is isolated (#389): the run settles terminally as
+        // Completed — never a stale "running" row, never an abort.
+        ok should have size 1
+        fails shouldBe empty
+      }
+    }
+    "abort + publish WorkflowRunFailed when a Loop fails identically every iteration (sigil #393)" in {
+      // #389 isolates a one-off bad item and lets the run continue. But a Loop
+      // whose body fails the SAME way on EVERY item is systematically mis-wired,
+      // not flaky — isolating each grinds silently through all items and never
+      // surfaces. Strider aborts after K consecutive identical-signature
+      // failures; the run settles Failure → WorkflowRunFailed publishes here so
+      // the #390 terminal-wake hands the scheduling agent the repeated error.
+      val convId = Conversation.id("loop-systematic-fail-conv")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals
+        .evalMap(s => Task { recorded.add(s); () })
+        .takeWhile(_ => running)
+        .drain
+        .startUnit()
+      Thread.sleep(100)
+
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId],
+          modelId = Model.id("test", "model"),
+          toolNames = Nil,
+          instructions = Instructions(),
+          generationSettings = GenerationSettings()
+        )),
+        currentMode = ConversationMode,
+        space = GlobalSpace,
+        _id = convId
+      )
+      val template = WorkflowTemplate(
+        name = "loop-systematic-fail",
+        description = Some("Loop body references a missing tool — fails identically on every item."),
+        steps = List(LoopStepInput(
+          id = "loop",
+          over = "items",
+          itemVariable = "item",
+          body = List(JobStepInput(id = "body", name = Some("Body step"), tool = Some("definitely_not_a_real_tool"))))),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(convId)
+      )
+
+      for {
+        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(
+                 TestWorkflowSigil, template, variables = Map("items" -> arr(str("a"), str("b"), str("c"), str("d"), str("e"))))
+        // Wait for the WAKE message itself — it publishes just after
+        // WorkflowRunFailed, so waiting on it covers both the abort and the wake.
+        _   <- waitFor(recorded, 15.seconds)(_.exists {
+                 case m: sigil.event.Message => m.conversationId == convId && m.source.contains("workflow-outcome")
+                 case _                      => false
+               })
+      } yield {
+        running = false
+        import scala.jdk.CollectionConverters.*
+        val all = recorded.iterator().asScala.toList
+        val fails = all.collect { case e: WorkflowRunFailed if e.runId == run._id.value => e }
+        val ok    = all.collect { case e: WorkflowRunCompleted if e.runId == run._id.value => e }
+        // The run ABORTED rather than completing through every item.
         fails should have size 1
         ok shouldBe empty
-        fails.head.reason should not be empty
+        // The scheduling agent is woken with the systematic-failure reason — an
+        // Agents-visible outcome Message addressed into the scheduling conv.
+        val wake = all.collect {
+          case m: sigil.event.Message if m.conversationId == convId && m.source.contains("workflow-outcome") => m
+        }
+        wake should not be empty
       }
     }
   }

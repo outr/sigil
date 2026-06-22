@@ -482,6 +482,69 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     }
 
+    // Sigil #392 — a later loop-body step's tool args must resolve a PRIOR body
+    // step's output, even when that output carries JSON-special chars. Pre-fix,
+    // the value was string-spliced into the args JSON, breaking it, and
+    // JsonParser(...).getOrElse(obj()) silently collapsed to `{}` → the tool got
+    // empty args ("missing field" error), every iteration.
+    "thread a prior body step's output into a later body step's tool args, even with JSON-special chars (#392)" in {
+      // produce's prompt output is the provider text — choose one with a quote
+      // and a newline, which would break naive string substitution.
+      val produced = "He said \"hi\"\nand left"
+      TestWorkflowSigil.setProvider(Task.pure(new TestWorkflowSigil.FixedTextProvider(produced)))
+      val convId = Conversation.id(s"workflow-392-${rapid.Unique()}")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals.evalMap(s => Task { recorded.add(s); () }).takeWhile(_ => running).drain.startUnit()
+      Thread.sleep(100)
+
+      val template = WorkflowTemplate(
+        name = "thread-body-output",
+        description = Some("Loop body: produce a value, consume it in a later body step's tool args"),
+        steps = List(
+          LoopStepInput(id = "loop", over = "items", itemVariable = "item", output = Some("processed"), body = List(
+            JobStepInput(id = "produce", prompt = Some("generate the value"), output = Some("made")),
+            JobStepInput(id = "consume", tool = Some("echo_back"), arguments = Some("""{"text":"{{made}}"}"""))
+          ))
+        ),
+        space = GlobalSpace, createdBy = Some(WorkflowTestUser), conversationId = Some(convId)
+      )
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId], modelId = TestWorkflowSigil.testModelId,
+          toolNames = CoreTools.coreToolNames, instructions = Instructions(), generationSettings = GenerationSettings())),
+        currentMode = ConversationMode, space = GlobalSpace, _id = convId
+      )
+
+      for {
+        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _   <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template,
+                 variables = Map("items" -> fabric.arr(str("a"), str("b"))))
+        _   <- waitForCompletion(recorded, 15.seconds)
+        run <- {
+          import scala.jdk.CollectionConverters.*
+          val runId = recorded.iterator().asScala.collectFirst { case e: WorkflowRunCompleted => e.runId }.get
+          TestWorkflowSigil.withDB(_.workflows.transaction(_.get(lightdb.id.Id[strider.Workflow](runId))))
+        }
+      } yield {
+        running = false
+        TestWorkflowSigil.resetProvider()
+        // `processed` collects each iteration's last body step (consume = echo_back)
+        // output: {"text":"Echo: <produced>"}. If args had collapsed to {}, echo_back
+        // would have failed (missing `text`) and the entries would be error markers.
+        val items = run.get.variables.get("processed").collect { case fabric.Arr(v, _) => v }.getOrElse(Vector.empty)
+        withClue(s"processed=$items: ") {
+          items should have size 2
+          items.foreach { e =>
+            e.asObj.value.get("text").map(_.asString).getOrElse("") should include(s"Echo: $produced")
+          }
+        }
+        succeed
+      }
+    }
+
     "iterate over a LARGE discovery output without the inline-overflow truncating it (#370/#372)" in {
       // The live failure was a ~65-path grep that overflowed inlineContentThreshold.
       // Inside a workflow the discovery output feeds a Loop variable, NOT the
@@ -601,6 +664,20 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
     override def call(input: ProviderCall): Stream[ProviderEvent] =
       Stream.emits(List[ProviderEvent](
         ProviderEvent.ContentBlockDelta(CallId("wf-trivial"), "ok"),
+        ProviderEvent.Done(StopReason.Complete)))
+  }
+
+  /** Emits a fixed block of text — used by the #392 test to make a prompt
+    * step's output carry JSON-special characters. */
+  final class FixedTextProvider(text: String) extends Provider {
+    override def `type`: ProviderType = ProviderType.LlamaCpp
+    override def models: List[Model] = Nil
+    override protected def sigil: Sigil = TestWorkflowSigil
+    override def httpRequestFor(input: ProviderCall): Task[spice.http.HttpRequest] =
+      Task.error(new UnsupportedOperationException("no wire"))
+    override def call(input: ProviderCall): Stream[ProviderEvent] =
+      Stream.emits(List[ProviderEvent](
+        ProviderEvent.ContentBlockDelta(CallId("wf-fixed"), text),
         ProviderEvent.Done(StopReason.Complete)))
   }
 
