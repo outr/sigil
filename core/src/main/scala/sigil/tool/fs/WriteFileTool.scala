@@ -65,6 +65,38 @@ final class WriteFileTool(context: FileSystemContext)
   private def runWrite(input: WriteFileInput, ctx: ToolContext): Task[ToolResult[WriteFileOutput]] =
     WorkspacePathResolver.resolve(ctx, input.path).flatMap { resolved =>
       val argsJson = renderInputArgs(input)
+      destructiveGuard(input, resolved, argsJson).flatMap {
+        case Some(failure) => Task.pure(failure)
+        case None          => commit(input, resolved, argsJson)
+      }
+    }
+
+  /** #395 — refuse a self-evidently destructive overwrite of an existing
+    * non-empty file (placeholder / collapse), unless `force`. Reads the current
+    * contents through the same context the write targets; a binary/undecodable
+    * file or a read miss skips the guard (fail-open — the guard protects against
+    * obvious garbage, it must never block a legitimate write on a read hiccup). */
+  private def destructiveGuard(input: WriteFileInput,
+                               resolved: String,
+                               argsJson: Option[String]): Task[Option[ToolResult[WriteFileOutput]]] =
+    if (input.force) Task.pure(None)
+    else
+      context.readContents(resolved).map {
+        case Some(existing) if existing.bytes.nonEmpty =>
+          val current = try existing.asText catch { case _: Throwable => "" }
+          if (current.isEmpty) None
+          else DestructiveWriteGuard.check(current, input.content).map { reason =>
+            ToolResult.failure(
+              message = s"write_file: refusing to overwrite $resolved — $reason.",
+              hint = Some("Re-derive the full intended contents and retry; pass force=true only if the " +
+                "destructive overwrite is genuinely intended."),
+              args = argsJson
+            )
+          }
+        case _ => None
+      }.handleError(_ => Task.pure(None))
+
+  private def commit(input: WriteFileInput, resolved: String, argsJson: Option[String]): Task[ToolResult[WriteFileOutput]] =
       input.expectedHash match {
         case None =>
           context.writeFile(resolved, input.content).map { bytes =>
@@ -93,5 +125,4 @@ final class WriteFileTool(context: FileSystemContext)
               )
           }
       }
-    }
 }

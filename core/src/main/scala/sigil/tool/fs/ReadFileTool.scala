@@ -53,7 +53,12 @@ final class ReadFileTool(context: FileSystemContext)
       case None        =>
         WorkspacePathResolver.resolve(ctx, input.path)
           .flatMap(operate(input, _))
-          .map(out => capInline(out, input, ctx.sigil.inlineContentThreshold))
+          // #394 — the inline cap is for AGENT context management. A workflow
+          // step (`overflowLargeResults = false`) captures the result into a
+          // variable a later step consumes verbatim, with no agent to paginate,
+          // so it must receive the COMPLETE file — capping there corrupts the
+          // data flow (the downstream step only ever sees the first window).
+          .map(out => if (ctx.overflowLargeResults) capInline(out, input, ctx.sigil.inlineContentThreshold) else out)
           .map(ToolResult.success(_))
     }
 

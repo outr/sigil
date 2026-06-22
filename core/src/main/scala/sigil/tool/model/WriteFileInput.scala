@@ -11,7 +11,14 @@ import sigil.tool.ToolInput
  * can re-attempt against the new state. Without `expectedHash` the
  * write is unconditional (last-writer-wins) — the legacy behavior
  * for single-agent flows that don't need staleness protection.
+ *
+ * `force` opts out of the destructive-overwrite guard, which otherwise
+ * refuses to replace an existing non-empty file with content that is
+ * self-evidently not a real rewrite (a tool-call / pagination
+ * placeholder, a lone unresolved `{{var}}`, or a drastic collapse).
+ * Set `force = true` for the rare intentional truncate-to-nothing case.
  */
 case class WriteFileInput(path: String,
                           content: String,
-                          expectedHash: Option[String] = None) extends ToolInput derives RW
+                          expectedHash: Option[String] = None,
+                          force: Boolean = false) extends ToolInput derives RW
