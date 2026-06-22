@@ -118,7 +118,20 @@ final case class SigilJobStep(input: JobStepInput,
                   s"isn't available in scope. The step was NOT dispatched."
               ))
             else {
-        val parsed: Either[Throwable, Any] = scala.util.Try(tool.inputRW.write(argsJson)).toEither
+        // Sigil #396 — a leaf can compute a downstream tool's call as structured
+        // output that arrives as a JSON-object STRING (a prompt leaf emits text,
+        // so the variable holds the object as a `Str`). When the whole resolved
+        // `arguments` is such a string, parse it into the object the tool wants
+        // rather than handing the tool a bare `Str` ("Expected JSON object but
+        // got Str") — that's the "leaf decides the call, tool applies it" recipe.
+        // A `Str` that ISN'T a JSON object is left untouched, so genuinely
+        // non-JSON text still errors clearly (no silent coercion).
+        val coerced: Json = argsJson match {
+          case fabric.Str(s, _) =>
+            scala.util.Try(fabric.io.JsonParser(s)).toOption.collect { case o: fabric.Obj => o }.getOrElse(argsJson)
+          case other => other
+        }
+        val parsed: Either[Throwable, Any] = scala.util.Try(tool.inputRW.write(coerced)).toEither
         parsed match {
           case Left(err) =>
             Task.error(new RuntimeException(

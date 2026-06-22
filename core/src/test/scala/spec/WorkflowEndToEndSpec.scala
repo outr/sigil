@@ -15,7 +15,7 @@ import sigil.provider.{CallId, ConversationMode, GenerationSettings, Instruction
 import sigil.signal.Signal
 import sigil.tool.core.CoreTools
 import sigil.workflow.{JobStepInput, LoopStepInput, WorkflowCollections, WorkflowHost, WorkflowSigil, WorkflowTemplate}
-import sigil.workflow.event.{WorkflowRunCompleted, WorkflowRunStarted, WorkflowStepCompleted}
+import sigil.workflow.event.{WorkflowRunCompleted, WorkflowRunFailed, WorkflowRunStarted, WorkflowStepCompleted}
 import sigil.transport.{ResumeRequest, SignalSink, SignalTransport}
 
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -545,6 +545,113 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     }
 
+    // #396 — a leaf computes a downstream tool's arguments as a JSON object,
+    // emitted as text (so the variable holds an object-shaped STRING). When the
+    // consuming step's whole `arguments` resolves to that string, the engine must
+    // parse it into the object the tool wants, not hand the tool a bare `Str`
+    // ("Expected JSON object but got Str"). This is the "leaf decides the call,
+    // tool applies it" recipe.
+    "consume a tool call computed by a prior leaf — arguments resolving to a JSON-object string are parsed (#396)" in {
+      // The leaf emits a tool-args object as text; echo_back wants {text}.
+      TestWorkflowSigil.setProvider(Task.pure(new TestWorkflowSigil.FixedTextProvider("""{"text":"applied"}""")))
+      val convId = Conversation.id(s"workflow-396-${rapid.Unique()}")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals.evalMap(s => Task { recorded.add(s); () }).takeWhile(_ => running).drain.startUnit()
+      Thread.sleep(100)
+
+      val template = WorkflowTemplate(
+        name = "leaf-computes-args",
+        description = Some("A prompt leaf emits a tool-args object; a tool step consumes it via {{patch}}"),
+        steps = List(
+          JobStepInput(id = "patch", prompt = Some("emit the echo_back args as JSON"), output = Some("patch")),
+          // The on-disk IR for "pass the whole computed object through": the
+          // author supplies the JSON string "{{patch}}" for `arguments`, which
+          // WorkflowStepSpec compiles via JsonFormatter.Compact to the quoted
+          // token. It parses as a JSON Str, so substitution lands a Str where
+          // the tool wants an object — the #396 failure.
+          JobStepInput(id = "apply", tool = Some("echo_back"), arguments = Some("\"{{patch}}\""), output = Some("result"))
+        ),
+        space = GlobalSpace, createdBy = Some(WorkflowTestUser), conversationId = Some(convId)
+      )
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId], modelId = TestWorkflowSigil.testModelId,
+          toolNames = CoreTools.coreToolNames, instructions = Instructions(), generationSettings = GenerationSettings())),
+        currentMode = ConversationMode, space = GlobalSpace, _id = convId
+      )
+
+      for {
+        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _   <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
+        _   <- waitForTerminal(recorded, 15.seconds)
+        run <- {
+          import scala.jdk.CollectionConverters.*
+          val runId = recorded.iterator().asScala.collectFirst {
+            case e: WorkflowRunCompleted => e.runId
+            case e: WorkflowRunFailed    => e.runId
+          }.get
+          TestWorkflowSigil.withDB(_.workflows.transaction(_.get(lightdb.id.Id[strider.Workflow](runId))))
+        }
+      } yield {
+        running = false
+        TestWorkflowSigil.resetProvider()
+        import scala.jdk.CollectionConverters.*
+        val failure = recorded.iterator().asScala.collectFirst { case e: WorkflowRunFailed => e.reason }
+        withClue(s"run failed: $failure; result=${run.get.variables.get("result")}: ") {
+          failure shouldBe None
+          // echo_back received the parsed {text:"applied"} object and ran.
+          run.get.variables.get("result").map(_.asObj.value.get("text").map(_.asString).getOrElse(""))
+            .getOrElse("") should include("Echo: applied")
+        }
+      }
+    }
+
+    // #396 — the coercion is narrow: a Str that parses as a JSON object is
+    // parsed; arbitrary text is NOT silently coerced and still fails clearly.
+    "still fail clearly when a {{var}} resolves to a non-JSON string (#396)" in {
+      TestWorkflowSigil.setProvider(Task.pure(new TestWorkflowSigil.FixedTextProvider("just some prose, not JSON")))
+      val convId = Conversation.id(s"workflow-396b-${rapid.Unique()}")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals.evalMap(s => Task { recorded.add(s); () }).takeWhile(_ => running).drain.startUnit()
+      Thread.sleep(100)
+
+      val template = WorkflowTemplate(
+        name = "leaf-computes-nonjson",
+        description = Some("A prompt leaf emits non-JSON text consumed as a tool's whole arguments"),
+        steps = List(
+          JobStepInput(id = "patch", prompt = Some("emit something"), output = Some("patch")),
+          JobStepInput(id = "apply", tool = Some("echo_back"), arguments = Some("\"{{patch}}\""), output = Some("result"))
+        ),
+        space = GlobalSpace, createdBy = Some(WorkflowTestUser), conversationId = Some(convId)
+      )
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId], modelId = TestWorkflowSigil.testModelId,
+          toolNames = CoreTools.coreToolNames, instructions = Instructions(), generationSettings = GenerationSettings())),
+        currentMode = ConversationMode, space = GlobalSpace, _id = convId
+      )
+
+      for {
+        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _   <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
+        _   <- waitForTerminal(recorded, 15.seconds)
+      } yield {
+        running = false
+        TestWorkflowSigil.resetProvider()
+        import scala.jdk.CollectionConverters.*
+        val failure = recorded.iterator().asScala.collectFirst { case e: WorkflowRunFailed => e.reason }
+        withClue(s"expected a clear failure; failure=$failure: ") {
+          failure.map(_.toLowerCase).exists(r => r.contains("object") && r.contains("str")) shouldBe true
+        }
+      }
+    }
+
     "iterate over a LARGE discovery output without the inline-overflow truncating it (#370/#372)" in {
       // The live failure was a ~65-path grep that overflowed inlineContentThreshold.
       // Inside a workflow the discovery output feeds a Loop variable, NOT the
@@ -610,6 +717,20 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     def loop: Task[Unit] = Task.defer {
       import scala.jdk.CollectionConverters.*
       val seen = recorded.iterator().asScala.exists(_.isInstanceOf[WorkflowRunCompleted])
+      if (seen || System.currentTimeMillis() > deadline) Task.unit
+      else Task.sleep(100.millis).flatMap(_ => loop)
+    }
+    loop
+  }
+
+  /** Like [[waitForCompletion]] but resolves on either terminal lifecycle
+    * event — used by tests that must distinguish success from failure. */
+  private def waitForTerminal(recorded: ConcurrentLinkedQueue[Signal], timeout: FiniteDuration): Task[Unit] = {
+    val deadline = System.currentTimeMillis() + timeout.toMillis
+    def loop: Task[Unit] = Task.defer {
+      import scala.jdk.CollectionConverters.*
+      val seen = recorded.iterator().asScala.exists(s =>
+        s.isInstanceOf[WorkflowRunCompleted] || s.isInstanceOf[WorkflowRunFailed])
       if (seen || System.currentTimeMillis() > deadline) Task.unit
       else Task.sleep(100.millis).flatMap(_ => loop)
     }
