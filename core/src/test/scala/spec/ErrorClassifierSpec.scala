@@ -78,6 +78,27 @@ class ErrorClassifierSpec extends AnyWordSpec with Matchers {
       ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Retry
     }
 
+    "classify overloaded_error as Retry — the Anthropic analogue of provider_unavailable (#397)" in {
+      // Anthropic emits overload as an inline `event: error` on a 200-OK SSE
+      // stream → ProviderStreamException(typ="overloaded_error", status=None,
+      // code=0). It must be transient (Retry the same candidate; the live turn
+      // path then degrades to a lower tier once retries exhaust), not the
+      // terminal Fallthrough that killed the turn before #397.
+      val inlineOverload = new sigil.provider.ProviderStreamException(
+        providerKey = "anthropic", code = 0, typ = "overloaded_error",
+        message_ = "Overloaded", status = None
+      )
+      ErrorClassifier.Default.classify(inlineOverload) shouldBe ErrorClassification.Retry
+    }
+
+    "classify a literal HTTP 529 overload status as Retry (#397)" in {
+      val http529 = new sigil.provider.ProviderStreamException(
+        providerKey = "anthropic", code = 529, typ = "error",
+        message_ = "Overloaded", status = Some(529)
+      )
+      ErrorClassifier.Default.classify(http529) shouldBe ErrorClassification.Retry
+    }
+
     "classify CapacityAcquireTimeoutException as Fallthrough (this candidate is saturated)" in {
       val ex = new sigil.provider.CapacityAcquireTimeoutException(
         maxConcurrent = 4, waited = scala.concurrent.duration.FiniteDuration(60, "s")

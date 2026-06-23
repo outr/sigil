@@ -135,13 +135,19 @@ object ErrorClassifier {
         // [DONE]) is the textbook auto-retry case: re-run the same
         // candidate rather than downgrading the planner to a lesser one.
         case e: ProviderStreamException =>
+          // `overloaded_error` is Anthropic's inline-SSE analogue of
+          // `provider_unavailable` (a 200-OK stream carrying `event: error`,
+          // so it arrives with status=None / code=0): the tier is briefly
+          // saturated, not broken. Retry the same candidate; the live turn
+          // path degrades to a lower tier once the per-candidate retries
+          // exhaust (#397). 529 is the matching literal HTTP overload status.
           val transientErrorTypes: Set[String] =
-            Set("provider_unavailable", "upstream_silent", "rate_limited", "truncated_stream")
+            Set("provider_unavailable", "upstream_silent", "rate_limited", "truncated_stream", "overloaded_error")
           val typedTransient: Boolean =
             e.errorMetadata.flatMap(_.errorType).exists(transientErrorTypes.contains) ||
               transientErrorTypes.contains(e.typ)
           val transientStatus: Boolean =
-            e.status.orElse(Option(e.code).filter(_ > 0)).exists(s => s == 429 || s == 502 || s == 503 || s == 504)
+            e.status.orElse(Option(e.code).filter(_ > 0)).exists(s => s == 429 || s == 502 || s == 503 || s == 504 || s == 529)
           if (typedTransient || transientStatus) return ErrorClassification.Retry
           else return ErrorClassification.Fallthrough
 

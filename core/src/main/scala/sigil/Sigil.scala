@@ -1941,6 +1941,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       candidateChain, skipReasons, chosen, modelId)
   }
 
+  /** Resolved per-turn dispatch inputs. `fallbackIds` is the ordered
+    * cross-candidate fallback chain (#397) — the chosen model first, then the
+    * tiers at or below it (down-only), ending at the agent's pinned model when
+    * the strategy chain covers nothing. `candidateChain` carries each
+    * candidate's per-model [[sigil.provider.GenerationSettings]] overlay. */
+  private final case class ResolvedTurn(tools: Vector[Tool],
+                                        fallbackIds: List[Id[Model]],
+                                        candidateChain: List[sigil.provider.ModelCandidate],
+                                        strategyOpt: Option[ProviderStrategy],
+                                        routedWorkType: WorkType,
+                                        roles: List[sigil.role.Role])
+
   private def runAgentTurn(agent: AgentParticipant,
                            context: TurnContext): Stream[Signal] = {
     val effectiveChain = context.chain.filterNot(_ == agent.id) :+ agent.id
@@ -1957,7 +1969,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       context.discoveredCapabilities.values.toList.flatMap(_.matches)
     val suggested = (context.turnInput.projectionFor(agent.id).suggestedTools ++ discoveredToolNames).distinct
 
-    val resolved: Task[(Vector[Tool], Id[Model], GenerationSettings, List[sigil.role.Role])] =
+    val resolved: Task[ResolvedTurn] =
       for {
         routing <- resolveRouting(agent, context.conversation, context)
         strategyOpt    = routing.strategyOpt
@@ -2055,12 +2067,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         effectiveNames = effectiveToolNames(
           agent, context.conversation.currentMode, suggested, overlays.map(_.policy), recentlyUsed
         ).distinct
-        // Per-candidate `settings` overlays the agent's
-        // generationSettings. The framework keeps the agent's settings
-        // as the base — the candidate's settings take precedence on
-        // any field they specify (currently a wholesale replace; if
-        // we want field-by-field merge later that lives here).
-        genSettings  = chosen.map(_.settings).getOrElse(agent.generationSettings)
         rawTools    <- Task.sequence(effectiveNames.map(n => findTools.byName(n))).map(_.flatten.toVector)
         // Sigil #378 — `record_consent` is a no-op unless some tool in
         // scope sets `requiresUserConsent`. It's no longer in the default
@@ -2086,88 +2092,128 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             s"AgentParticipant.resolveRoles must return a non-empty list (id=${agent.id.value})")
           rs
         }
-      } yield (t, modelId, genSettings, rolesResolved)
-
-    Stream.force(resolved.map { case (tools, modelId, genSettings, rolesResolved) =>
-      // Bug #91 — stamp the registry's canonical id on outbound
-      // requests when one is known. Settled Messages then carry the
-      // prefixed form (`openai/gpt-5.5`) that the cost projection
-      // and OpenRouter-derived catalog lookups expect, so we don't
-      // depend on the tolerant fallback at every read site. No-op
-      // when the candidate's id isn't in the registry.
-      val canonicalModelId = cache.canonicalIdFor(modelId)
-      // Sigil #277 + the modelResolver refactor — resolve the canonical
-      // id to BOTH the live provider and the registered Model record in
-      // one pass. A miss throws `UnregisteredModelException` here so the
-      // failure surfaces at the turn boundary instead of silently
-      // truncating on the wire. In a multi-provider app the registry
-      // dispatches by the id's namespace, so the provider always matches
-      // the model it's about to serve.
-      val resolvedPM = resolveProviderModel(canonicalModelId)
-      val provider = resolvedPM.provider
-      val resolvedModel: Model = resolvedPM.model
-      // Sigil bug #199 — forced-synthesis is the framework's
-      // last-resort "make the model respond" turn. Tool-call already
-      // narrowed to the respond family at the orchestrator boundary;
-      // here we ALSO bound the output budget and force reasoning
-      // mode off. Reasoning-template local models (qwen3.5-9b via
-      // llama.cpp, DeepSeek-R1 family) otherwise burn the entire
-      // context window on `reasoning_content` and emit zero
-      // `tool_calls` — observed 4-minute hangs that turn a
-      // recoverable hiccup into a permanently failed turn.
-      val effectiveSettings =
-        if (context.forceResponseSynthesis)
-          // Cap aggressively even when the caller didn't — forced-
-          // synthesis is supposed to emit ONE respond call, ≤ a few
-          // hundred tokens of content. `tightenedTo` preserves a
-          // tighter caller-supplied cap (sigil #276).
-          genSettings.tightenedTo(2048).copy(
-            // Hard override (not orElse) — the narrow tool_choice
-            // means there's nothing worth reasoning about anyway.
-            reasoningMode = ReasoningMode.Off
-          )
-        else genSettings
-      val request = ConversationRequest(
-        conversationId = context.conversation.id,
-        model = resolvedModel,
-        instructions = agent.instructions,
-        turnInput = context.turnInput,
-        currentMode = context.conversation.currentMode,
-        currentTopic = context.conversation.currentTopic,
-        previousTopics = context.conversation.previousTopics,
-        generationSettings = effectiveSettings,
-        tools = tools,
-        builtInTools = agent.builtInTools ++ context.conversation.currentMode.builtInTools,
-        chain = effectiveChain,
-        roles = rolesResolved,
-        isGreeting = context.isGreeting,
-        forceResponseSynthesis = context.forceResponseSynthesis,
-        discoveredCapabilities = context.discoveredCapabilities,
-        // Sigil #281 follow-up — thread the LIVE per-agent-loop cache
-        // ref through to the orchestrator's tool dispatch. Without
-        // this, `FindCapabilityTool.recordDiscovery` writes to a fresh
-        // ref on the orchestrator's TurnContext that the next iteration
-        // never sees; the discovered tool ends up invisible to the
-        // wire roster.
-        discoveredCapabilitiesRef = context.discoveredCapabilitiesRef,
-        turnStartedAt = context.turnStartedAt
-      )
-
-      val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
-      Orchestrator.process(this, provider, request, context.conversation).flatMap { sig =>
-        val prefix: List[Signal] = sig match {
-          case _: Message if typingEmitted.compareAndSet(false, true) =>
-            context.currentAgentStateId.toList.map { agentStateId =>
-              AgentStateDelta(
-                target = agentStateId,
-                conversationId = context.conversation.id,
-                activity = Some(AgentActivity.Typing)
-              )
-            }
-          case _ => Nil
+        // #397 — the cross-candidate fallback chain: the chosen model first,
+        // then every candidate supporting a tier at or below the inferred
+        // complexity (down-only degrade, in chain order, deduped). When the
+        // strategy chain covers nothing, fall back to the agent's pinned model
+        // (single attempt — preserves pre-#397 behaviour). `genSettings` above
+        // resolves the chosen candidate's overlay; later candidates resolve
+        // theirs per-attempt below.
+        fallbackIds = {
+          val ordered = Complexity.atOrBelow(complexity).iterator.flatMap { tier =>
+            candidateChain.filter(_.supportedComplexity.contains(tier)).map(_.modelId)
+          }.toList.distinct
+          if (ordered.nonEmpty) ordered else List(agent.modelId)
         }
-        Stream.emits(prefix :+ sig)
+      } yield ResolvedTurn(t, fallbackIds, candidateChain, strategyOpt, routedWorkType, rolesResolved)
+
+    Stream.force(resolved.map { rt =>
+      val tools          = rt.tools
+      val rolesResolved  = rt.roles
+      val candidateChain = rt.candidateChain
+      // Per-candidate `GenerationSettings` overlay (the chain entry's, or the
+      // agent's base when the id isn't a routed candidate — e.g. the pinned
+      // fallback). #397 degrade keeps each tier's own settings.
+      def settingsFor(modelId: Id[Model]): GenerationSettings =
+        candidateChain.find(_.modelId == modelId).map(_.settings).getOrElse(agent.generationSettings)
+
+      // One candidate's turn: resolve provider+model, build the request, run
+      // the orchestrator. Wrapped by CandidateFallback so a pre-commit,
+      // non-Fatal failure degrades to the next tier instead of killing the turn.
+      def attempt(modelId: Id[Model]): Stream[Signal] = {
+        // Bug #91 — stamp the registry's canonical id on outbound
+        // requests when one is known. Settled Messages then carry the
+        // prefixed form (`openai/gpt-5.5`) that the cost projection
+        // and OpenRouter-derived catalog lookups expect, so we don't
+        // depend on the tolerant fallback at every read site. No-op
+        // when the candidate's id isn't in the registry.
+        val canonicalModelId = cache.canonicalIdFor(modelId)
+        // Sigil #277 + the modelResolver refactor — resolve the canonical
+        // id to BOTH the live provider and the registered Model record in
+        // one pass. A miss throws `UnregisteredModelException` here so the
+        // failure surfaces at the turn boundary instead of silently
+        // truncating on the wire. In a multi-provider app the registry
+        // dispatches by the id's namespace, so the provider always matches
+        // the model it's about to serve.
+        val resolvedPM = resolveProviderModel(canonicalModelId)
+        val provider = resolvedPM.provider
+        val resolvedModel: Model = resolvedPM.model
+        val genSettings = settingsFor(modelId)
+        // Sigil bug #199 — forced-synthesis is the framework's
+        // last-resort "make the model respond" turn. Tool-call already
+        // narrowed to the respond family at the orchestrator boundary;
+        // here we ALSO bound the output budget and force reasoning
+        // mode off. Reasoning-template local models (qwen3.5-9b via
+        // llama.cpp, DeepSeek-R1 family) otherwise burn the entire
+        // context window on `reasoning_content` and emit zero
+        // `tool_calls` — observed 4-minute hangs that turn a
+        // recoverable hiccup into a permanently failed turn.
+        val effectiveSettings =
+          if (context.forceResponseSynthesis)
+            // Cap aggressively even when the caller didn't — forced-
+            // synthesis is supposed to emit ONE respond call, ≤ a few
+            // hundred tokens of content. `tightenedTo` preserves a
+            // tighter caller-supplied cap (sigil #276).
+            genSettings.tightenedTo(2048).copy(
+              // Hard override (not orElse) — the narrow tool_choice
+              // means there's nothing worth reasoning about anyway.
+              reasoningMode = ReasoningMode.Off
+            )
+          else genSettings
+        val request = ConversationRequest(
+          conversationId = context.conversation.id,
+          model = resolvedModel,
+          instructions = agent.instructions,
+          turnInput = context.turnInput,
+          currentMode = context.conversation.currentMode,
+          currentTopic = context.conversation.currentTopic,
+          previousTopics = context.conversation.previousTopics,
+          generationSettings = effectiveSettings,
+          tools = tools,
+          builtInTools = agent.builtInTools ++ context.conversation.currentMode.builtInTools,
+          chain = effectiveChain,
+          roles = rolesResolved,
+          isGreeting = context.isGreeting,
+          forceResponseSynthesis = context.forceResponseSynthesis,
+          discoveredCapabilities = context.discoveredCapabilities,
+          // Sigil #281 follow-up — thread the LIVE per-agent-loop cache
+          // ref through to the orchestrator's tool dispatch. Without
+          // this, `FindCapabilityTool.recordDiscovery` writes to a fresh
+          // ref on the orchestrator's TurnContext that the next iteration
+          // never sees; the discovered tool ends up invisible to the
+          // wire roster.
+          discoveredCapabilitiesRef = context.discoveredCapabilitiesRef,
+          turnStartedAt = context.turnStartedAt
+        )
+
+        val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
+        Orchestrator.process(this, provider, request, context.conversation).flatMap { sig =>
+          val prefix: List[Signal] = sig match {
+            case _: Message if typingEmitted.compareAndSet(false, true) =>
+              context.currentAgentStateId.toList.map { agentStateId =>
+                AgentStateDelta(
+                  target = agentStateId,
+                  conversationId = context.conversation.id,
+                  activity = Some(AgentActivity.Typing)
+                )
+              }
+            case _ => Nil
+          }
+          Stream.emits(prefix :+ sig)
+        }
       }
+
+      // #397 — try the chosen candidate, degrading to the next routed tier on a
+      // pre-commit, non-Fatal failure (e.g. an Anthropic `overloaded_error`
+      // that exhausted the provider's same-candidate retries). The classifier
+      // and cooldown recorder come from the active strategy; a single-candidate
+      // chain (pinned model / no strategy) behaves exactly as before.
+      val classifier = rt.strategyOpt.map(_.errorClassifier).getOrElse(sigil.provider.ErrorClassifier.Default)
+      CandidateFallback.stream(
+        candidates    = rt.fallbackIds,
+        classifier    = classifier,
+        reportFailure = id => rt.strategyOpt.foreach(_.reportFailure(id, rt.routedWorkType))
+      )(attempt)
     })
   }
 
