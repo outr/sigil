@@ -10,7 +10,7 @@ package sigil
  * claim before raising, so the conversation isn't left wedged.
  *
  * The `reason` distinguishes which forced-synthesis trigger condition
- * led here so the message attribution matches reality (sigil bug #198) —
+ * led here so the message attribution matches reality.
  * `CapHit` actually means "iteration counter reached
  * `maxAgentIterations`"; `NoToolCall` means "model returned without
  * calling any tool on iteration ≥ 2 despite `tool_choice: required`";
