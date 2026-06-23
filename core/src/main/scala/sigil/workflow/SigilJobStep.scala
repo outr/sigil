@@ -118,19 +118,13 @@ final case class SigilJobStep(input: JobStepInput,
                   s"isn't available in scope. The step was NOT dispatched."
               ))
             else {
-        // Sigil #396 — a leaf can compute a downstream tool's call as structured
-        // output that arrives as a JSON-object STRING (a prompt leaf emits text,
-        // so the variable holds the object as a `Str`). When the whole resolved
-        // `arguments` is such a string, parse it into the object the tool wants
-        // rather than handing the tool a bare `Str` ("Expected JSON object but
-        // got Str") — that's the "leaf decides the call, tool applies it" recipe.
-        // A `Str` that ISN'T a JSON object is left untouched, so genuinely
-        // non-JSON text still errors clearly (no silent coercion).
-        val coerced: Json = argsJson match {
-          case fabric.Str(s, _) =>
-            scala.util.Try(fabric.io.JsonParser(s)).toOption.collect { case o: fabric.Obj => o }.getOrElse(argsJson)
-          case other => other
-        }
+        // Sigil #396/#398 — a leaf can compute a downstream tool's call as
+        // structured output that arrives as a JSON-object STRING (a prompt leaf
+        // emits text, so the variable holds the object as a `Str`, often wrapped
+        // in a markdown code fence). Coerce such a string into the object the
+        // tool wants rather than handing it a bare `Str` ("Expected JSON object
+        // but got Str") — the "leaf decides the call, tool applies it" recipe.
+        val coerced: Json = SigilJobStep.coerceStringArgs(argsJson)
         val parsed: Either[Throwable, Any] = scala.util.Try(tool.inputRW.write(coerced)).toEither
         parsed match {
           case Left(err) =>
@@ -285,4 +279,36 @@ final case class SigilJobStep(input: JobStepInput,
           ()
         }
       }
+}
+
+object SigilJobStep {
+
+  /**
+   * Sigil #396/#398 — coerce a `Str` tool-argument that is (possibly
+   * code-fenced) JSON-object text into the [[fabric.Obj]] the tool expects.
+   * A `Str` that isn't a JSON object — even after stripping a markdown fence —
+   * is returned unchanged, so a genuinely non-JSON value still fails the tool's
+   * decode with a clear "Expected JSON object but got Str" rather than being
+   * silently coerced. Non-`Str` values pass through untouched.
+   */
+  private[workflow] def coerceStringArgs(argsJson: Json): Json = argsJson match {
+    case fabric.Str(s, _) =>
+      scala.util.Try(fabric.io.JsonParser(stripCodeFence(s))).toOption.collect { case o: fabric.Obj => o }.getOrElse(argsJson)
+    case other => other
+  }
+
+  /**
+   * Sigil #398 — strip a leading/trailing markdown code fence (```` ``` ```` or
+   * ```` ```json ````) that models routinely wrap JSON in even when the prompt
+   * says not to. Drops the opening fence line (with any language tag) and the
+   * trailing fence; non-fenced input is just trimmed.
+   */
+  private[workflow] def stripCodeFence(s: String): String = {
+    val t = s.trim
+    if (t.startsWith("```")) {
+      val body      = t.stripPrefix("```")
+      val afterLang = body.indexOf('\n') match { case -1 => body; case i => body.substring(i + 1) }
+      afterLang.stripSuffix("```").trim
+    } else t
+  }
 }

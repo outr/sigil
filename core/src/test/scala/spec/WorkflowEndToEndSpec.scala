@@ -609,6 +609,62 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     }
 
+    // #398 — many models wrap JSON output in a markdown code fence even when
+    // told not to. The leaf emits ```json\n{...}\n```; the apply step must still
+    // parse it into the object the tool wants (before #398 it failed on every
+    // loop item with "Expected JSON object but got Str").
+    "consume a code-fenced JSON tool call computed by a prior leaf (#398)" in {
+      TestWorkflowSigil.setProvider(Task.pure(new TestWorkflowSigil.FixedTextProvider(
+        "```json\n{\"text\":\"applied\"}\n```")))
+      val convId = Conversation.id(s"workflow-398-${rapid.Unique()}")
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestWorkflowSigil.signals.evalMap(s => Task { recorded.add(s); () }).takeWhile(_ => running).drain.startUnit()
+      Thread.sleep(100)
+
+      val template = WorkflowTemplate(
+        name = "leaf-computes-fenced-args",
+        description = Some("A prompt leaf emits a code-fenced tool-args object; a tool step consumes it"),
+        steps = List(
+          JobStepInput(id = "patch", prompt = Some("emit the echo_back args as JSON"), output = Some("patch")),
+          JobStepInput(id = "apply", tool = Some("echo_back"), arguments = Some("\"{{patch}}\""), output = Some("result"))
+        ),
+        space = GlobalSpace, createdBy = Some(WorkflowTestUser), conversationId = Some(convId)
+      )
+      val conv = Conversation(
+        topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+        participants = List(DefaultAgentParticipant(
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId], modelId = TestWorkflowSigil.testModelId,
+          toolNames = CoreTools.coreToolNames, instructions = Instructions(), generationSettings = GenerationSettings())),
+        currentMode = ConversationMode, space = GlobalSpace, _id = convId
+      )
+
+      for {
+        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _   <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
+        _   <- waitForTerminal(recorded, 15.seconds)
+        run <- {
+          import scala.jdk.CollectionConverters.*
+          val runId = recorded.iterator().asScala.collectFirst {
+            case e: WorkflowRunCompleted => e.runId
+            case e: WorkflowRunFailed    => e.runId
+          }.get
+          TestWorkflowSigil.withDB(_.workflows.transaction(_.get(lightdb.id.Id[strider.Workflow](runId))))
+        }
+      } yield {
+        running = false
+        TestWorkflowSigil.resetProvider()
+        import scala.jdk.CollectionConverters.*
+        val failure = recorded.iterator().asScala.collectFirst { case e: WorkflowRunFailed => e.reason }
+        withClue(s"run failed: $failure; result=${run.get.variables.get("result")}: ") {
+          failure shouldBe None
+          run.get.variables.get("result").map(_.asObj.value.get("text").map(_.asString).getOrElse(""))
+            .getOrElse("") should include("Echo: applied")
+        }
+      }
+    }
+
     // #396 — the coercion is narrow: a Str that parses as a JSON object is
     // parsed; arbitrary text is NOT silently coerced and still fails clearly.
     "still fail clearly when a {{var}} resolves to a non-JSON string (#396)" in {
