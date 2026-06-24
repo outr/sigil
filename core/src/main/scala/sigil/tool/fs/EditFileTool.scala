@@ -17,12 +17,14 @@ import java.util.regex.Pattern
  * isn't unique in the file). `replaceAll = true` replaces every
  * occurrence.
  *
- * Pass `expectedHash` to enable safe-edit: the replacement applies
- * to the file's current contents, then commits only if no other
- * writer has modified the file since `expectedHash` was issued.
- * On mismatch the tool returns the file's freshest contents so the
- * agent can re-evaluate the edit. Without `expectedHash`, the
- * commit is unconditional (legacy single-agent behavior).
+ * `expectedHash` is a narrow guard against a CONCURRENT EXTERNAL
+ * writer changing the file between the read and the edit. It is a
+ * single point-in-time snapshot and goes stale after any edit to the
+ * file — including the agent's own previous edit — so it must be
+ * OMITTED when making multiple edits to one file (a sweep), or every
+ * edit after the first fails `Stale`. The `oldString` text anchor
+ * already makes the edit safe; `expectedHash` is only for genuine
+ * multi-writer races. Without it the commit is unconditional.
  *
  * Emits a typed [[EditFileOutput]] — agents pattern-match on
  * `Success`, `NotFound`, `NotUnique`, `Stale`, `FileNotFound`.
@@ -36,18 +38,24 @@ final class EditFileTool(context: FileSystemContext)
   val name = ToolName("edit_file")
   val description =
     """Find and replace text in a file. By default replaces the first occurrence; pass `replaceAll = true`
-      |to replace every occurrence. Use literal strings — they are escaped before matching.
+      |to replace every occurrence. Use literal strings — they are escaped before matching. The `oldString`
+      |text anchor carries no line number or hash, so it stays valid for repeated edits to one file.
       |
-      |Pass `expectedHash` (SHA-256 of the file when you last read it) to enable safe-edit: the change
-      |commits only if no other writer has modified the file since. On mismatch, the tool returns the
-      |file's current contents so you can re-evaluate the edit against the new state.
+      |`expectedHash` guards against a CONCURRENT EXTERNAL writer changing the file between your read and
+      |your edit. It is a single point-in-time snapshot and goes STALE after any edit to the file — including
+      |your own previous edit — so OMIT it when making multiple edits to one file (a sweep): each edit after
+      |the first will fail `Stale`. Pass it only for genuine multi-writer races.
       |
       |Output: `Success(replacements, hash?) | NotFound | NotUnique(occurrences) | Stale(currentHash, currentContent) | FileNotFound`.""".stripMargin
   override val examples = List(
     ToolExample("Update a single line", EditFileInput(path = "config.toml", oldString = "log_level = \"info\"", newString = "log_level = \"debug\"")),
     ToolExample("Rename a symbol", EditFileInput(path = "src/main.rs", oldString = "old_name", newString = "new_name", replaceAll = true)),
     ToolExample(
-      "Edit safely against a known hash",
+      "One of multiple edits in a sweep — no expectedHash (it would go stale after the prior edit)",
+      EditFileInput(path = "src/main.scala", oldString = "// bug #123", newString = "")
+    ),
+    ToolExample(
+      "Guard against a concurrent external writer — pass expectedHash only for a multi-writer race",
       EditFileInput(path = "config.toml", oldString = "x = 1", newString = "x = 2", expectedHash = Some("abc123..."))
     )
   )

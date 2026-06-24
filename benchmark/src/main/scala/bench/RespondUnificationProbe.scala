@@ -13,9 +13,9 @@ import sigil.tool.model.SelectOption
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 /**
- * Empirical probe — sigil bug #157 unification design decision.
+ * Empirical probe for the `respond_*` unification design decision.
  *
- * The bug proposes collapsing four `respond_*` tools into one
+ * The unification proposes collapsing four `respond_*` tools into one
  * `respond` with a tagged-union content slot (Option B). The
  * concern: smaller models may struggle with the nested-union
  * schema vs the flat 4-tool baseline where the tool name is the
