@@ -15,8 +15,11 @@ import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolRe
  * insert when `start == end`; delete when `newText == ""`.
  *
  * Position-based edits sidestep the whitespace / line-ending
- * sensitivity of string-based matching. Use when the file has been
- * read and the agent knows the exact line / column of the change.
+ * sensitivity of string-based matching. Coordinates and `expectedHash`
+ * reflect the file as last read, so this targets ONE edit to a
+ * freshly-read file — after any edit the lines shift and the hash
+ * changes. For repeated edits to one file, [[EditFileTool]] (text-
+ * anchored) is the right tool; its anchor carries nothing to go stale.
  *
  * `expectedHash` enables safe-edit: the commit fires only if no
  * other writer has modified the file since the hash was issued.
@@ -32,8 +35,15 @@ final class EditAtRangeTool(context: FileSystemContext)
     """Replace a range of text in a file with new content. The range is specified by
       |(startLine, startChar) and (endLine, endChar) — both 0-indexed, both half-open
       |([start, end)). Position-based edits sidestep the whitespace / line-ending
-      |sensitivity of string-based edits — use this when the file has been read and the
-      |exact span is known.
+      |sensitivity of string-based matching.
+      |
+      |The coordinates and `expectedHash` reflect the file AS LAST READ. The moment you
+      |make one edit, the line numbers shift and the hash changes, so this targets ONE
+      |edit to a freshly-read file. For a SECOND edit to the same file you must re-read
+      |and re-target — this is NOT the tool for making several edits across a file. To
+      |edit by a stable text snippet, and for repeated edits to one file, use `edit_file`
+      |instead: its anchor is the surrounding text, carrying no line number or hash to go
+      |stale.
       |
       |  - `expectedHash` (optional) — SHA-256 of the file's last-known contents. The
       |    edit commits only if no other writer has modified the file since.
@@ -58,8 +68,11 @@ final class EditAtRangeTool(context: FileSystemContext)
         newText = "")
     )
   )
+  // #400 — keep the POSITION-specific verbs only. The sweep verbs
+  // (`rewrite`/`patch`/`refactor`/`modify`) floated this point-in-time tool
+  // above the text-anchored `edit_file` for broad-edit intents it's wrong for.
   override val keywords =
-    Set("file", "edit", "range", "position", "line", "column", "replace", "modify", "rewrite", "patch", "refactor")
+    Set("file", "edit", "range", "position", "line", "column", "replace")
 
 
   override def executeResult(input: EditAtRangeInput, ctx: ToolContext): Task[ToolResult[EditAtRangeOutput]] =
