@@ -39,8 +39,7 @@ import java.util.concurrent.atomic.AtomicReference
  *                            summary / information selections plus any
  *                            app-supplied overlays. The single
  *                            self-contained DTO every provider call
- *                            renders from (bug #26 — replaces the
- *                            prior `conversationView` projection).
+ *                            renders from.
  * @param currentAgentStateId the id of the active [[sigil.event.AgentState]]
  *                            for the agent processing this turn, when
  *                            applicable. Set by the framework's dispatcher
@@ -87,7 +86,7 @@ case class TurnContext(sigil: Sigil,
                        turnStartedAt: Option[Timestamp] = None,
                        correlationId: String = TurnContext.freshCorrelationId(),
                        isGreeting: Boolean = false,
-                       /** Sigil bug #125 — when `true`, the framework forces
+                       /** When `true`, the framework forces
                          * the provider's `tool_choice` to `respond` for this
                          * turn so the model can't pick another tool. Set by
                          * the iteration-cap soft-stop path to synthesise a

@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Cooperative cancellation primitive handed to the body of a
- * framework workflow ([[Sigil.runAsFrameworkWorkflow]]). Bug #51.
+ * framework workflow ([[Sigil.runAsFrameworkWorkflow]]).
  *
  * A workflow body checks its token at decision boundaries (between
  * Steps, before issuing a long-running call). When cancellation has

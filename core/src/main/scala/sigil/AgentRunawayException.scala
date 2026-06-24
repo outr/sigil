@@ -25,7 +25,7 @@ final class AgentRunawayException(message: String,
  * Which condition triggered the forced-synthesis recovery turn that
  * eventually failed. Carried on [[AgentRunawayException]] so consumer
  * dashboards and operator runbooks can route on the actual cause
- * rather than reading the message string (sigil bug #198).
+ * rather than reading the message string.
  */
 enum ForcedSynthesisReason {
   /** Iteration counter reached `maxAgentIterations`. */

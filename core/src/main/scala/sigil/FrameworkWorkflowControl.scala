@@ -3,7 +3,7 @@ package sigil
 import rapid.Task
 
 /**
- * Control surface handed to a framework-workflow body. Bug #51.
+ * Control surface handed to a framework-workflow body.
  *
  * Bundles the [[step]] callback (emits a
  * [[sigil.signal.FrameworkWorkflowPhase.Step]] Notice) with the

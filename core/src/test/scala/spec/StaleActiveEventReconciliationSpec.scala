@@ -5,8 +5,8 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
-import sigil.event.{ErrorClassification, Message, MessageDisposition, ToolInvoke}
-import sigil.signal.EventState
+import sigil.event.{AgentState, ErrorClassification, Message, MessageDisposition, ToolInvoke}
+import sigil.signal.{AgentActivity, EventState}
 import sigil.tool.ToolName
 
 /**
@@ -98,6 +98,80 @@ class StaleActiveEventReconciliationSpec extends AsyncWordSpec with AsyncTaskSpe
           .getOrElse(fail(s"expected a ToolInvoke at $staleInvokeId"))
         ti.state shouldBe EventState.Complete
         ti.toolName shouldBe ToolName("respond")  // preserved
+      }
+    }
+
+    "settle a crash-stranded AgentState lock to BOTH Complete and Idle (#399)" in {
+      // A process killed mid-turn strands the agent's in-place AgentState lock
+      // at (state=Active, activity=Thinking) — the terminal Idle delta never
+      // fired. Reconciliation must reset BOTH fields: a row left
+      // (Complete, Thinking) leaves UIs (which key the busy indicator off
+      // `activity`) stuck "thinking" with a dead Stop button.
+      val staleLockId = Id[sigil.event.Event]("stale-agentstate-thinking")
+      for {
+        _ <- seedConversation()
+        _ <- insertEvent(AgentState(
+          _id = staleLockId,
+          agentId = TestAgent,
+          participantId = TestAgent,
+          conversationId = convId,
+          topicId = topicId,
+          activity = AgentActivity.Thinking,
+          state = EventState.Active
+        ))
+        _   <- TestSigil.runStaleActiveReconciliation()
+        out <- fetchEvent(staleLockId)
+      } yield {
+        val lock = out.collect { case a: AgentState => a }
+          .getOrElse(fail(s"expected an AgentState at $staleLockId"))
+        lock.state shouldBe EventState.Complete
+        lock.activity shouldBe AgentActivity.Idle
+      }
+    }
+
+    "settle a Typing-stranded AgentState lock to Idle as well (#399)" in {
+      val staleTypingId = Id[sigil.event.Event]("stale-agentstate-typing")
+      for {
+        _ <- seedConversation()
+        _ <- insertEvent(AgentState(
+          _id = staleTypingId,
+          agentId = TestAgent,
+          participantId = TestAgent,
+          conversationId = convId,
+          topicId = topicId,
+          activity = AgentActivity.Typing,
+          state = EventState.Active
+        ))
+        _   <- TestSigil.runStaleActiveReconciliation()
+        out <- fetchEvent(staleTypingId)
+      } yield {
+        val lock = out.collect { case a: AgentState => a }
+          .getOrElse(fail(s"expected an AgentState at $staleTypingId"))
+        lock.state shouldBe EventState.Complete
+        lock.activity shouldBe AgentActivity.Idle
+      }
+    }
+
+    "leave an already-Idle/Complete AgentState lock untouched (not in the Active filter) (#399)" in {
+      val cleanLockId = Id[sigil.event.Event]("clean-agentstate")
+      for {
+        _ <- seedConversation()
+        _ <- insertEvent(AgentState(
+          _id = cleanLockId,
+          agentId = TestAgent,
+          participantId = TestAgent,
+          conversationId = convId,
+          topicId = topicId,
+          activity = AgentActivity.Idle,
+          state = EventState.Complete
+        ))
+        _   <- TestSigil.runStaleActiveReconciliation()
+        out <- fetchEvent(cleanLockId)
+      } yield {
+        val lock = out.collect { case a: AgentState => a }
+          .getOrElse(fail(s"expected an AgentState at $cleanLockId"))
+        lock.state shouldBe EventState.Complete
+        lock.activity shouldBe AgentActivity.Idle
       }
     }
 

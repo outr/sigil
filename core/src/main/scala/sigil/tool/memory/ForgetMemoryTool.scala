@@ -51,12 +51,16 @@ case object ForgetMemoryTool extends Tool {
         ))
 
       case (Some(id), None) =>
+        // Idempotent: a delete whose target is already gone has ACHIEVED the
+        // desired state, so report success rather than a failure. Returning a
+        // failure here made agents retry the same forget over and over (a
+        // production wire audit caught the same memoryId/key forgotten 13–17×
+        // in one conversation); success with an "already forgotten" note ends
+        // the loop after the first call.
         context.sigil.rejectMemory(id).map {
           case None =>
-            ToolResult.failure(
-              s"[forget_memory] no memory with id ${id.value}.",
-              hint = Some("Confirm the id via list_memories, or pass `key` to hard-delete by stable key.")
-            )
+            ToolResult.Success(TextToolOutput(
+              s"[forget_memory] nothing to do — no active memory with id ${id.value} (already forgotten)."))
           case Some(_) =>
             ToolResult.Success(TextToolOutput(s"[forget_memory] rejected memory ${id.value}."))
         }
@@ -64,13 +68,17 @@ case object ForgetMemoryTool extends Tool {
       case (None, Some(key)) =>
         resolveSpace(context).flatMap {
           case None =>
-            Task.pure(ToolResult.failure(
-              s"[forget_memory] no memory space available for key $key.",
-              hint = Some("This conversation has no default memory space; nothing could be forgotten.")
-            ))
+            // No default space means there is nothing keyed to forget — also an
+            // already-satisfied state, not an error to retry against.
+            Task.pure(ToolResult.Success(TextToolOutput(
+              s"[forget_memory] nothing to do — no memory space for key $key (nothing stored to forget).")))
           case Some(space) =>
             context.sigil.forgetMemory(key, space).map { count =>
-              ToolResult.Success(TextToolOutput(s"[forget_memory] removed $count record(s) for key $key."))
+              if (count == 0)
+                ToolResult.Success(TextToolOutput(
+                  s"[forget_memory] nothing to do — no records for key $key (already forgotten)."))
+              else
+                ToolResult.Success(TextToolOutput(s"[forget_memory] removed $count record(s) for key $key."))
             }
         }
 

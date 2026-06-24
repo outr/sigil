@@ -355,18 +355,40 @@ case class AnthropicProvider(apiKey: String,
 
   private def renderMessages(messages: Vector[ProviderMessage], caching: Boolean): Vector[Json] = {
     val rendered = renderMessageBlocks(messages)
-    // Third cache breakpoint: the stable span of conversation history.
-    // The final rendered message is the current turn's volatile tail
-    // (the latest user / tool-result content the agent is reacting to);
-    // everything before it is stable across the next few turns. Anchor
-    // `cache_control` on the last content block of the second-to-last
-    // message so the cached segment runs tools → system → history up to
-    // that point. Skip when there's only the current turn — the tools
-    // and system breakpoints already cover the whole stable prefix.
+    // Cache breakpoints for the conversation history.
+    //
+    // The previous implementation anchored ONE breakpoint at `size - 2` and
+    // recomputed it every turn. As the conversation grew the marker advanced
+    // one message per turn, which REWROTE the previously-marked block (its
+    // `cache_control` field appeared, then vanished the next turn). Because the
+    // marked block's bytes changed turn-to-turn, Anthropic could not match the
+    // cached history prefix and re-created the ENTIRE conversation on every
+    // call. A production wire audit caught this: cache_create ran ~3.7x
+    // cache_read and history reads were effectively zero (reads stayed pinned
+    // at the static system+tools size while creates grew with the message
+    // count — even on back-to-back turns 1s apart, so it was not TTL).
+    //
+    // Fix: SNAP the breakpoints to fixed message-step boundaries so the marked
+    // blocks stay byte-identical across a run of turns and the history is
+    // served from cache. Two breakpoints (Anthropic permits 4; system + tools
+    // already use 2):
+    //   - a NEAR breakpoint keeps the recent span cached, leaving only a small
+    //     (< step) volatile tail re-sent as fresh input each turn;
+    //   - a FAR breakpoint anchors the deep history, so when the near one
+    //     advances it only re-creates the bounded span between them rather than
+    //     the whole conversation.
+    // Both ride the 1h TTL now that they're stable (see withHistoryCacheControl).
+    // The very last message is the volatile tail the agent is reacting to and
+    // is never marked. Steps are tunable against the wire cache_create:read
+    // ratio. Skip entirely when there's only the current turn — the tools and
+    // system breakpoints already cover the whole stable prefix.
     if (caching && rendered.size >= 2) {
-      val breakpointIdx = rendered.size - 2
+      val lastIdx = rendered.size - 1
+      def snap(step: Int): Int = math.max(0, ((lastIdx - 1) / step) * step)
+      val marks = Set(snap(AnthropicProvider.HistoryCacheStepNear),
+                      snap(AnthropicProvider.HistoryCacheStepFar)).filter(_ < lastIdx)
       rendered.zipWithIndex.map {
-        case (msg, idx) if idx == breakpointIdx =>
+        case (msg, idx) if marks.contains(idx) =>
           AnthropicProvider.withHistoryCacheControl(msg)
         case (msg, _) => msg
       }
@@ -647,11 +669,23 @@ object AnthropicProvider {
   def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://api.anthropic.com"): Task[AnthropicProvider] =
     Task.pure(AnthropicProvider(apiKey, sigil, baseUrl))
 
+  /** History cache breakpoints are snapped to these message-step boundaries
+    * so a marker stays on the same (immutable) historical message for a run of
+    * turns instead of advancing every turn — see [[renderMessages]] for why
+    * that matters. NEAR keeps the recent span cached (small fresh tail); FAR
+    * anchors the deep history so a near-advance only re-creates the span
+    * between them. Tunable against the wire log's cache_create:cache_read
+    * ratio (target: reads ≫ creates). */
+  private[anthropic] val HistoryCacheStepNear = 6
+  private[anthropic] val HistoryCacheStepFar  = 40
+
   /** A `cache_control` value. `extendedTtl = true` requests the
-    * 1-hour cache lifetime (used for the tool roster and system
-    * prompt — the most stable request segments); `false` leaves the
-    * default 5-minute ephemeral cache (used for the history
-    * breakpoint, which turns over faster). */
+    * 1-hour cache lifetime. Used for every breakpoint — the tool roster,
+    * the system prompt, AND the (now stably-snapped) history breakpoints.
+    * The history markers used to turn over every turn and rode the default
+    * 5-minute cache; now that they're pinned to step boundaries they're as
+    * stable as the rest, so the longer TTL keeps the prefix warm across
+    * interactive gaps instead of forcing a re-create after five minutes. */
   private[anthropic] def cacheControl(extendedTtl: Boolean): Json =
     if (extendedTtl) obj("type" -> str("ephemeral"), "ttl" -> str("1h"))
     else obj("type" -> str("ephemeral"))
@@ -666,7 +700,7 @@ object AnthropicProvider {
     fields.get("content").map(_.asVector) match {
       case Some(blocks) if blocks.nonEmpty =>
         val lastBlock = blocks.last.asObj.value.toVector :+
-          ("cache_control" -> cacheControl(extendedTtl = false))
+          ("cache_control" -> cacheControl(extendedTtl = true))
         val rewritten = blocks.init :+ obj(lastBlock*)
         obj((fields.toVector.filterNot(_._1 == "content") :+ ("content" -> arr(rewritten*)))*)
       case _ => message

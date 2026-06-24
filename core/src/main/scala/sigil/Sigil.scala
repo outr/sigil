@@ -4655,6 +4655,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // (`openai/gpt-5.5`). Without it, every cost projection on a
     // bare-id event silently misses and the conversation's running
     // total stays at zero.
+    // Cache-thrash canary. A healthy multi-turn conversation reads its cached
+    // prefix far more than it writes it; sustained cache_creation ≫ cache_read
+    // means the cached prefix is unstable across turns (e.g. a breakpoint that
+    // moves every turn, or churning content early in the request) and the whole
+    // history is being re-created — the dominant cost/latency failure mode.
+    // Warn loudly so a regression surfaces in the logs instead of only in a
+    // monthly bill. Thresholded so normal first-turn cache fills stay quiet.
+    if (usage.cacheCreationTokens > 50000 && usage.cacheCreationTokens > usage.cacheReadTokens * 4)
+      scribe.warn(s"[cache-thrash] cache_creation=${usage.cacheCreationTokens} ≫ " +
+        s"cache_read=${usage.cacheReadTokens} (model=${modelId.map(_.value).getOrElse("?")}); " +
+        "the cached prefix looks unstable across turns — prompt caching is not amortizing.")
     val deltaOpt: Option[BigDecimal] = modelId.flatMap { mid =>
       cache.findTolerant(mid).map(model => Sigil.costFor(model.pricing, usage))
     }.filter(_ > 0)
@@ -8138,6 +8149,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     *     = false) with an ErrorContext explaining "stale from prior
     *     session". Content preserved (whatever partial streamed text
     *     was persisted) so the user can see what was lost.
+    *   - `AgentState` → state Complete AND activity Idle, so the agent's
+    *     stranded turn lock settles to a true terminal and UIs keying the
+    *     busy indicator off `activity` don't stay stuck "thinking" (#399).
     *   - All other Event types → state Complete via `.withState`.
     *
     * Runs synchronously before WS / Notice ingress opens (placed
@@ -8170,6 +8184,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                   ))
                 )
               )
+            // Sigil #399 — an AgentState lock carries TWO fields. `.withState`
+            // only resets `state`; a crash-stranded lock left
+            // (Complete, Thinking) keeps UIs (which key the busy indicator off
+            // `activity`) stuck "thinking" with a dead Stop button. Reset both
+            // to the true terminal: Complete + Idle.
+            case a: sigil.event.AgentState =>
+              a.copy(state = sigil.signal.EventState.Complete, activity = sigil.signal.AgentActivity.Idle)
             case other => other.withState(sigil.signal.EventState.Complete)
           }
           Task.sequence(reconciled.map(tx.upsert)).map { _ =>

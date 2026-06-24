@@ -38,8 +38,7 @@ final class ModelRegistry {
     * because apps configure candidates as `Model.id("gpt-5.5")` while
     * the catalog ships `Model.id("openai/gpt-5.5")`).
     *
-    * Bug #91 — without this fallback the cost projection silently
-    * misses on every Message stamped with a bare id.
+
     *
     * Hot-path safe: exact match takes the AtomicReference dereference
     * + map lookup; only a miss pays the linear walk.

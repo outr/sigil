@@ -80,15 +80,45 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
       systemArr.last.get("cache_control") shouldBe Some(obj("type" -> str("ephemeral"), "ttl" -> str("1h")))
     }
 
-    "place a cache_control breakpoint near the end of the stable history span" in {
+    "snap the history breakpoint to a step boundary (not the volatile last message)" in {
       val (body, _) = render(provider, multiTurnInput)
       val messages = body("messages").asVector
       messages.size shouldBe 3
-      // Second-to-last message carries the (default-TTL) breakpoint;
-      // the final (volatile) message does not.
-      val breakpointBlocks = messages(1)("content").asVector
-      breakpointBlocks.last.get("cache_control") shouldBe Some(obj("type" -> str("ephemeral")))
+      // History breakpoints are snapped to fixed step boundaries so the marked
+      // block stays put across turns (the previous size-2 anchor advanced every
+      // turn and busted the cache). For a 3-message history both snap to index
+      // 0, and they now ride the 1h TTL like the rest of the stable prefix.
+      messages(0)("content").asVector.last.get("cache_control") shouldBe
+        Some(obj("type" -> str("ephemeral"), "ttl" -> str("1h")))
+      // The final (volatile) message is never marked.
       messages.last("content").asVector.foreach(_.get("cache_control") shouldBe None)
+    }
+
+    "keep history breakpoints stable and bounded on a long conversation" in {
+      // 50 messages: enough that the near/far snapped breakpoints land on
+      // distinct interior indices rather than collapsing to 0.
+      val frames = (0 until 50).map { i =>
+        val who = if (i % 2 == 0) TestUser else TestAgent
+        ContextFrame.Text(s"message $i", who, Id[Event](s"seed-$i"))
+      }.toVector
+      val (body, _) = render(provider, TurnInput(conversationId = conversationId, frames = frames))
+      val messages = body("messages").asVector
+      val marked = messages.zipWithIndex.collect {
+        case (m, idx) if m("content").asVector.exists(_.get("cache_control").isDefined) => idx
+      }
+      // At most two history breakpoints (Anthropic's 4-breakpoint budget, less
+      // the system + tools breakpoints), never on the volatile last message,
+      // and all on the 1h TTL.
+      marked.size should (be <= 2 and be >= 1)
+      marked should not contain (messages.size - 1)
+      messages.zipWithIndex.foreach { case (m, _) =>
+        m("content").asVector.foreach { blk =>
+          blk.get("cache_control").foreach(_ shouldBe obj("type" -> str("ephemeral"), "ttl" -> str("1h")))
+        }
+      }
+      // The near breakpoint tracks close to the tail (within one near-step),
+      // so most of the history is cached and only a small tail is volatile.
+      marked.max should be >= (messages.size - 1 - 8)
     }
 
     "send the extended-cache-ttl beta header" in {
