@@ -46,7 +46,7 @@ object OpenRouter {
   /** Boot-safe variant — takes the already-resolved `db` directly so the
     * boot path's `loadAndRefreshModels` can call it without re-entering
     * `sigil.withDB` (which awaits the in-flight `Sigil.instance.singleton`
-    * and deadlocks the boot fiber against itself). Sigil bug #281. */
+    * and deadlocks the boot fiber against itself). */
   def refreshModels(sigil: Sigil, db: _root_.sigil.db.SigilDB): Task[Unit] =
     for {
       models <- loadModels

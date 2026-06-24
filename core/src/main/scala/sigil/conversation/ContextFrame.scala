@@ -91,7 +91,7 @@ enum ContextFrame derives RW {
                   * `call_<hash>`). Renderers prefer this over `callId.value`
                   * so the wire's `tool_call.id` matches what the provider's
                   * `previous_response_id` state remembers. `None` for
-                  * synthetic / framework-emitted calls. Sigil bug #167 r5. */
+                  * synthetic / framework-emitted calls. */
                 wireCallId: Option[String] = None,
                 /** Sigil #385 — denormalized from `ToolInvoke.internal`. A
                   * framework-internal synthetic diagnostic (`_stall_detected`,
@@ -115,8 +115,7 @@ enum ContextFrame derives RW {
 
   /**
    * Provider-internal reasoning state from the originating agent's
-   * prior LLM call (bug #61 — OpenAI Responses API reasoning items).
-   * Renders to a [[sigil.provider.ProviderMessage.Reasoning]] entry
+   * prior LLM call. Renders to a [[sigil.provider.ProviderMessage.Reasoning]] entry
    * in the message vector; the originating provider serializes it
    * back onto the wire and other providers drop it.
    *

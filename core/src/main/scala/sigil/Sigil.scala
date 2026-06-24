@@ -1102,23 +1102,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def escalationReasonFor(conversationId: Id[Conversation]): Option[String] =
     Option(perTurnEscalationReason.get(conversationId)).map(_._2)
 
-  /** When `true`, the iteration-cap soft-stop (sigil bug #125) auto-
-    * bumps complexity one tier up for the forced-synthesis turn —
+  /** When `true`, the iteration-cap soft-stop auto-escalates
+    * complexity one tier up for the forced-synthesis turn —
     * giving the recovery attempt the strongest available reasoning
     * in the chain. Logged via scribe. Default `false` to preserve
     * cost ceilings for apps that don't want auto-escalation. */
   def escalateOnCapHit: Boolean = false
 
-  /** Sigil bug #287 — when `true` (default), the orchestrator's
-    * duplicate-call cap ([[maxIdenticalToolCallsInWindow]]) bumps the
-    * conversation's complexity tier one step on each cap trip, so the
-    * next iteration routes to a more capable model that can read the
-    * Failure and pick a different next move. Detection alone isn't
-    * enough on small models — the same model that produced the
-    * duplicate keeps producing it; escalation is what breaks the
-    * loop. Apps that pin a single tier and don't want auto-bump set
-    * to `false`; the cap still fires (Failure Message + refusal) but
-    * stays at the current tier. */
+  /** When `true` (default), the orchestrator's duplicate-call cap
+    * ([[maxIdenticalToolCallsInWindow]]) bumps the conversation's
+    * complexity tier one step on each cap trip, so the next iteration
+    * routes to a more capable model that can read the Failure and pick
+    * a different next move. Detection alone isn't enough on small
+    * models — the same model that produced the duplicate keeps producing
+    * it; escalation is what breaks the loop. Apps that pin a single tier
+    * and don't want auto-bump set to `false`; the cap still fires
+    * (Failure Message + refusal) but stays at the current tier. */
   def escalateOnDuplicateCallCap: Boolean = true
 
   /** Classify the user's latest message for this conversation,
@@ -1197,11 +1196,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
 
     // Effective routing: fresh derivation from current state.
-    // Pin wins over inference (bug #152). Escalations apply on
-    // top of the classifier complexity. Pin and escalations are
-    // independent — when a pin is in effect, escalations are
-    // intentionally ignored so the pinned tier stays binding for
-    // the duration of the turn.
+    // Pin wins over inference. Escalations apply on top of the
+    // classifier complexity. Pin and escalations are independent —
+    // when a pin is in effect, escalations are intentionally ignored
+    // so the pinned tier stays binding for the duration of the turn.
     classifierTask.map { case (wt, classifierCx) =>
       val effectiveCx = conversation.pinnedComplexity match {
         case Some(pinned) => pinned
@@ -1700,7 +1698,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // The standalone `respond_field` / `respond_failure` /
     // `respond_card` tools are opt-in (not essentials) — markdown
     // callouts and disposition cover their cases in `respond`.
-    // `no_response` dropped from defaults in sigil bug #156.
+    // `no_response` dropped from defaults.
     // `cancel` deliberately omitted from both essentials lists — agents
     // reach for it under stress (duplicate-call warning, ambiguous
     // input) and terminate conversations when the right move is
@@ -1768,7 +1766,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       if (state.pureDiscovery) {
         // Strip the entire respond family + no_response so the agent
         // can only reach a reply through discovery. The legacy
-        // standalone tools (deprecated post sigil bug #157) stay in
+        // standalone tools stay in
         // the strip set so apps that opted back into them retain the
         // same pure-discovery semantics.
         val stripped: Set[sigil.tool.ToolName] =
@@ -1804,7 +1802,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       sigil.tool.core.CancelTool.schema.name -> 100,
       // Within the response tail, `respond_options` precedes `respond` so first-tool
       // bias on small models surfaces the specific "asking" shape before the
-      // catch-all "telling" tool. Sigil bug #168.
+      // catch-all "telling" tool.
       RespondOptionsTool.schema.name    -> 101,
       RespondTool.schema.name           -> 102,
       NoResponseTool.schema.name        -> 105
@@ -1990,17 +1988,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                chosenModelId      = modelId,
                skipReasons        = skipReasons
              )
-        // Sigil bug #175 — when every candidate is skipped (typically
-        // because an expected provider is unavailable, e.g. an env-var
-        // unset took its candidate out of the chain), `chosen` is None
-        // and dispatch falls back to `agent.modelId`. RouteResolved
-        // records the skip reasons but is a ControlPlaneEvent — it
-        // doesn't enter the agent's ContextFrame projection, so the
-        // agent has no way to read "the framework wanted to route
-        // higher but couldn't." The observed failure mode is an
-        // infinite `change_mode` loop: the agent calls `change_mode`,
-        // notices the model didn't change, calls it again, and so on
-        // until the iteration cap fires.
+        // when every candidate is skipped (typically because an expected
+        // provider is unavailable, e.g. an env-var unset took its
+        // candidate out of the chain), `chosen` is None and dispatch
+        // falls back to `agent.modelId`. RouteResolved records the skip
+        // reasons but is a ControlPlaneEvent — it doesn't enter the
+        // agent's ContextFrame projection, so the agent has no way to
+        // read "the framework wanted to route higher but couldn't." The
+        // observed failure mode is an infinite `change_mode` loop: the
+        // agent calls `change_mode`, notices the model didn't change,
+        // calls it again, and so on until the iteration cap fires.
         //
         // Emit a Standard-role Message (visibility=All) so the agent
         // sees the structural failure on its next iteration's
@@ -2138,14 +2135,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         val provider = resolvedPM.provider
         val resolvedModel: Model = resolvedPM.model
         val genSettings = settingsFor(modelId)
-        // Sigil bug #199 — forced-synthesis is the framework's
-        // last-resort "make the model respond" turn. Tool-call already
-        // narrowed to the respond family at the orchestrator boundary;
-        // here we ALSO bound the output budget and force reasoning
-        // mode off. Reasoning-template local models (qwen3.5-9b via
-        // llama.cpp, DeepSeek-R1 family) otherwise burn the entire
-        // context window on `reasoning_content` and emit zero
-        // `tool_calls` — observed 4-minute hangs that turn a
+        // forced-synthesis is the framework's last-resort "make the model
+        // respond" turn. Tool-call already narrowed to the respond family
+        // at the orchestrator boundary; here we ALSO bound the output
+        // budget and force reasoning mode off. Reasoning-template local
+        // models (qwen3.5-9b via llama.cpp, DeepSeek-R1 family) otherwise
+        // burn the entire context window on `reasoning_content` and emit
+        // zero `tool_calls` — observed 4-minute hangs that turn a
         // recoverable hiccup into a permanently failed turn.
         val effectiveSettings =
           if (context.forceResponseSynthesis)
@@ -2422,8 +2418,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def geocoder: Geocoder = NoOpGeocoder
 
   /**
-   * Recognises refusal language in an agent's `respond.content`
-   * (sigil bug #126). When the detector fires AND no
+   * Recognises refusal language in an agent's `respond.content`.
+   * When the detector fires AND no
    * `find_capability` call exists in the conversation tail since
    * the last user-authored Message, the orchestrator suppresses
    * the respond emission and substitutes a Tool-role `Failure`
@@ -2431,8 +2427,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * actually consult the catalog before refusing.
    *
    * Default: [[sigil.provider.RefusalDetector.Default]] — a
-   * conservative regex set tuned against the wire-log scenario
-   * the bug was filed from. Apps where refusal is a valid
+   * conservative regex set. Apps where refusal is a valid
    * outcome (moderation flows, sandbox executors) override with
    * [[sigil.provider.RefusalDetector.Never]] or a custom
    * implementation.
@@ -2695,7 +2690,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   /**
    * Per-chunk diagnostic hook for streaming SSE provider responses
-   * (sigil bug #194). Default
+   * Default
    * [[sigil.provider.debug.ChunkLogger.NoOp]] writes nothing and pays
    * zero overhead; apps that want post-hoc stall diagnosis on
    * streaming turns override with
@@ -3103,7 +3098,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     else Task.sequence(events.toList.map(e => validateEventInvariants(e))).flatMap { _ =>
       // Inline contextFrame on every imported event before persisting
       // so the bulk-import path matches the publish-time pipeline's
-      // settle-time inlining (bug #26). Events that are still Active
+      // settle-time inlining. Events that are still Active
       // (rare for imports, but supported) keep `contextFrame = None`.
       //
       // Sigil #261 — two-pass to mirror the unified ToolCall frame
@@ -3392,7 +3387,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           publishTo(fromViewer, sigil.signal.ToolListSnapshot(summaries))
         }
 
-      // -- conversation search vocabulary (bug #291) --
+      // -- conversation search vocabulary --
       // Symmetric to RequestConversationList for the search axis.
       // Reuses the same `searchConversationEvents` primitive that the
       // agent's `search_conversation` tool calls, so UI hits and agent
@@ -3767,13 +3762,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           proj.copy(recentToolInvocations = recent, suggestedTools = suggested)
         }
       case cr: CapabilityResults =>
-        // Sigil bug #226 — the per-loop `find_capability` cache is no
-        // longer persisted; `FindCapabilityTool.executeResult` records
-        // matches directly onto `TurnContext.discoveredCapabilities`
-        // so the cache dies with the agent loop instead of polluting
-        // every subsequent turn. The projection update here keeps the
-        // `suggestedTools` overlay only — that's a single-turn decay
-        // surface that drives the "Suggested tools" prompt section.
+        // the per-loop `find_capability` cache is no longer persisted;
+        // `FindCapabilityTool.executeResult` records matches directly
+        // onto `TurnContext.discoveredCapabilities` so the cache dies
+        // with the agent loop instead of polluting every subsequent turn.
+        // The projection update here keeps the `suggestedTools` overlay
+        // only — that's a single-turn decay surface that drives the
+        // "Suggested tools" prompt section.
         updateProjection(cr.conversationId, cr.participantId) { proj =>
           val toolNames = cr.matches.collect {
             case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
