@@ -7,7 +7,7 @@ import sigil.provider.AnalysisWork
 
 class WebBrowserModeWorkTypeSpec extends AnyWordSpec with Matchers {
   "WebBrowserMode" should {
-    "pin workType to AnalysisWork (sigil bug #17)" in {
+    "pin workType to AnalysisWork" in {
       WebBrowserMode.workType shouldBe Some(AnalysisWork)
     }
   }

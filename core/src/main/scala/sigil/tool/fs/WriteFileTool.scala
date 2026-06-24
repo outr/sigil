@@ -97,7 +97,9 @@ final class WriteFileTool(context: FileSystemContext)
       }.handleError(_ => Task.pure(None))
 
   private def commit(input: WriteFileInput, resolved: String, argsJson: Option[String]): Task[ToolResult[WriteFileOutput]] =
-      input.expectedHash match {
+      // #402 — a model's "no hash" sentinel ("None"/"null"/"") must not be
+      // treated as a real expected hash (it never matches → every write Stale).
+      ExpectedHash.normalize(input.expectedHash) match {
         case None =>
           context.writeFile(resolved, input.content).map { bytes =>
             ToolResult.success(WriteFileOutput.Success(bytesWritten = bytes, hash = None))

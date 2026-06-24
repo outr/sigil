@@ -843,7 +843,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   /** Toolchains attached to `conversationId` — when a tool's
     * [[sigil.tool.Tool.toolchain]] matches a name in this set,
     * [[findCapabilities]]'s ranker adds [[toolchainBoost]] to its
-    * score. Sigil bug #85.
+    * score.
     *
     * Apps register active toolchains as conversations attach
     * runtimes:
@@ -864,7 +864,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * LSP/BSP tools above generic verbs (grep, glob, execute_script
     * cluster around 7-10), small enough that a tool with no
     * keyword match doesn't displace a strong direct match. Apps
-    * tune by override. Sigil bug #85. */
+    * tune by override. */
   def toolchainBoost: Double = 10.0
 
   /** Score penalty subtracted from a tool's [[findCapabilities]]
@@ -873,8 +873,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * domain-specific tools that ranker score them as ties. Default
     * `3.0` — large enough to push grep below LSP for "examine code"
     * queries, small enough that a generic-only match still ranks
-    * positive (no domain match → grep is still the top result).
-    * Sigil bug #86. */
+    * positive (no domain match → grep is still the top result). */
   def preferIfNoBetterPenalty: Double = 3.0
 
   /** Score added when a tool's name exactly matches the

@@ -111,7 +111,9 @@ final class EditFileTool(context: FileSystemContext)
           else
             (pattern.r.replaceFirstIn(content, replacement), 1)
 
-          input.expectedHash match {
+          // #402 — a model's "no hash" sentinel ("None"/"null"/"") must not be
+          // treated as a real expected hash (it never matches → every edit Stale).
+          ExpectedHash.normalize(input.expectedHash) match {
             case None =>
               context.writeFile(resolved, next).map(_ =>
                 ToolResult.success(EditFileOutput.Success(replacements = replaced, hash = None))

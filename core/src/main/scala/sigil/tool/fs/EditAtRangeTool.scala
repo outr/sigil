@@ -103,7 +103,9 @@ final class EditAtRangeTool(context: FileSystemContext)
           case Right(next) =>
             val byteDelta = next.getBytes("UTF-8").length - content.getBytes("UTF-8").length
             val lineDelta = next.count(_ == '\n') - content.count(_ == '\n')
-            input.expectedHash match {
+            // #402 — normalize a "no hash" sentinel ("None"/"null"/"") to absent
+            // so the model's intended unconditional edit doesn't fail Stale.
+            ExpectedHash.normalize(input.expectedHash) match {
               case None =>
                 context.writeFile(resolved, next).map(_ =>
                   ToolResult.success(EditAtRangeOutput.Success(hash = None, lineDelta = lineDelta, byteDelta = byteDelta))
