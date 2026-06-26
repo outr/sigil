@@ -30,4 +30,27 @@ trait ContextCurator {
   def curate(conversationId: Id[Conversation],
              modelId: Id[Model],
              chain: List[ParticipantId]): Task[TurnInput]
+
+  /**
+   * Re-fit an already-built [[TurnInput]] to a (typically smaller)
+   * model's context window. Same flow as hitting the context limit on
+   * the model the turn was curated for — it just sizes down to a
+   * different window. Used when per-turn routing lands the turn on a
+   * model whose window is smaller than the one the context was curated
+   * against (complexity reclassification, tier degrade, a credential
+   * that doesn't grant the catalog window): re-running the budget gate
+   * against the served model's window keeps the prompt inside it
+   * instead of relying on the provider's crude emergency shed.
+   *
+   * The reduction reuses the curator's existing non-lossy-first
+   * cascade (caption-preserving image eviction, dropping only
+   * recoverable retrieved memories / information / summaries, eliding
+   * oversized frames to `reload_content` pointers) before any lossy
+   * summarization — and even that stays recoverable from the durable
+   * event log. Default: identity (no curator implementation to re-run).
+   */
+  def refit(turnInput: TurnInput,
+            modelId: Id[Model],
+            chain: List[ParticipantId]): Task[TurnInput] =
+    Task.pure(turnInput)
 }

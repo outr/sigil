@@ -222,6 +222,37 @@ case class StandardContextCurator(sigil: Sigil,
       } yield result
     }
 
+  /** Sigil #100 — re-fit an already-curated [[TurnInput]] to a
+    * (typically smaller) served model's window by re-running the SAME
+    * budget gate `curate` ends with, just against the served model's
+    * `contextLength`. No new reduction path: it replays
+    * [[budgetResolve]] — caption-preserving image eviction, then
+    * dropping only recoverable retrieved memories / Information /
+    * summaries, then eliding oversized frames to `reload_content`
+    * pointers, with lossy frame summarization only as a last resort —
+    * so down-sizing inherits the non-lossy-first cascade and never
+    * touches pinned (critical) memories. Reconstructs the resolver
+    * inputs from the TurnInput itself (its already-retrieved memory /
+    * information ids). No-op when the model isn't registered. */
+  override def refit(turnInput: TurnInput,
+                     modelId: Id[Model],
+                     chain: List[ParticipantId]): Task[TurnInput] =
+    modelFor(modelId).flatMap {
+      case Some(model) =>
+        budgetResolve(
+          model = model,
+          tentative = turnInput,
+          modelId = modelId,
+          chain = chain,
+          memoryResult = MemoryRetrievalResult(
+            memories = turnInput.memories,
+            criticalMemories = turnInput.criticalMemories
+          ),
+          information = turnInput.information
+        )
+      case None => Task.pure(turnInput)
+    }
+
   /** Sigil #288 — rewrite ContextFrame.ToolCall.argsJson values for
     * tool-opted-in fields that exceed [[Sigil.inlineToolUseContentThreshold]].
     * Resolves each distinct toolName via [[Sigil.findTools]] once per

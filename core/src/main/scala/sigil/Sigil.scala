@@ -1537,6 +1537,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
              chain: List[ParticipantId]): Task[TurnInput] =
     sigil.conversation.compression.StandardContextCurator(this).curate(conversationId, modelId, chain)
 
+  /**
+   * Sigil #100 — re-fit an already-curated [[TurnInput]] to a served
+   * model's context window. Used by the agent loop when per-turn
+   * routing lands a turn on a model whose window is SMALLER than the
+   * one the context was curated for (Opus 1M → Haiku 200K under
+   * complexity-based model assignment, a tier degrade, or a credential
+   * that doesn't grant the catalog window). Same reduction flow `curate`
+   * ends with — it just sizes down to the smaller window — so it
+   * inherits the curator's non-lossy-first cascade and never sheds
+   * pinned memories. Identity when re-fitting isn't needed (served
+   * window ≥ curated window); the caller only invokes it when smaller.
+   */
+  def refit(turnInput: TurnInput,
+            modelId: Id[Model],
+            chain: List[ParticipantId]): Task[TurnInput] =
+    sigil.conversation.compression.StandardContextCurator(this).refit(turnInput, modelId, chain)
+
   // -- information lookup --
 
   /**
@@ -2155,47 +2172,66 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               reasoningMode = ReasoningMode.Off
             )
           else genSettings
-        val request = ConversationRequest(
-          conversationId = context.conversation.id,
-          model = resolvedModel,
-          instructions = agent.instructions,
-          turnInput = context.turnInput,
-          currentMode = context.conversation.currentMode,
-          currentTopic = context.conversation.currentTopic,
-          previousTopics = context.conversation.previousTopics,
-          generationSettings = effectiveSettings,
-          tools = tools,
-          builtInTools = agent.builtInTools ++ context.conversation.currentMode.builtInTools,
-          chain = effectiveChain,
-          roles = rolesResolved,
-          isGreeting = context.isGreeting,
-          forceResponseSynthesis = context.forceResponseSynthesis,
-          discoveredCapabilities = context.discoveredCapabilities,
-          // Sigil #281 follow-up — thread the LIVE per-agent-loop cache
-          // ref through to the orchestrator's tool dispatch. Without
-          // this, `FindCapabilityTool.recordDiscovery` writes to a fresh
-          // ref on the orchestrator's TurnContext that the next iteration
-          // never sees; the discovered tool ends up invisible to the
-          // wire roster.
-          discoveredCapabilitiesRef = context.discoveredCapabilitiesRef,
-          turnStartedAt = context.turnStartedAt
-        )
+        // Sigil #100 — when per-turn routing lands this candidate on a model
+        // whose context window is SMALLER than the one the turn was curated
+        // for (Opus 1M → Haiku 200K under complexity-based assignment, a tier
+        // degrade, or a credential that doesn't grant the catalog window),
+        // re-fit the curated TurnInput to the served window before shipping
+        // it. Same non-lossy-first shed `curate` ends with, just sized down —
+        // so an over-budget prompt is compacted (recoverable frame elision,
+        // dropping only recoverable memories/info) instead of hard-400ing on
+        // the wire or getting crudely emergency-shed by the provider gate. A
+        // re-fit failure falls back to the un-fitted input (the provider
+        // pre-flight gate is still the backstop).
+        val turnInputTask: Task[TurnInput] =
+          if (resolvedModel.contextLength < context.model.contextLength)
+            refit(context.turnInput, canonicalModelId, context.chain)
+              .handleError(_ => Task.pure(context.turnInput))
+          else Task.pure(context.turnInput)
 
-        val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
-        Orchestrator.process(this, provider, request, context.conversation).flatMap { sig =>
-          val prefix: List[Signal] = sig match {
-            case _: Message if typingEmitted.compareAndSet(false, true) =>
-              context.currentAgentStateId.toList.map { agentStateId =>
-                AgentStateDelta(
-                  target = agentStateId,
-                  conversationId = context.conversation.id,
-                  activity = Some(AgentActivity.Typing)
-                )
-              }
-            case _ => Nil
+        Stream.force(turnInputTask.map { fittedTurnInput =>
+          val request = ConversationRequest(
+            conversationId = context.conversation.id,
+            model = resolvedModel,
+            instructions = agent.instructions,
+            turnInput = fittedTurnInput,
+            currentMode = context.conversation.currentMode,
+            currentTopic = context.conversation.currentTopic,
+            previousTopics = context.conversation.previousTopics,
+            generationSettings = effectiveSettings,
+            tools = tools,
+            builtInTools = agent.builtInTools ++ context.conversation.currentMode.builtInTools,
+            chain = effectiveChain,
+            roles = rolesResolved,
+            isGreeting = context.isGreeting,
+            forceResponseSynthesis = context.forceResponseSynthesis,
+            discoveredCapabilities = context.discoveredCapabilities,
+            // Sigil #281 follow-up — thread the LIVE per-agent-loop cache
+            // ref through to the orchestrator's tool dispatch. Without
+            // this, `FindCapabilityTool.recordDiscovery` writes to a fresh
+            // ref on the orchestrator's TurnContext that the next iteration
+            // never sees; the discovered tool ends up invisible to the
+            // wire roster.
+            discoveredCapabilitiesRef = context.discoveredCapabilitiesRef,
+            turnStartedAt = context.turnStartedAt
+          )
+
+          val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
+          Orchestrator.process(this, provider, request, context.conversation).flatMap { sig =>
+            val prefix: List[Signal] = sig match {
+              case _: Message if typingEmitted.compareAndSet(false, true) =>
+                context.currentAgentStateId.toList.map { agentStateId =>
+                  AgentStateDelta(
+                    target = agentStateId,
+                    conversationId = context.conversation.id,
+                    activity = Some(AgentActivity.Typing)
+                  )
+                }
+              case _ => Nil
+            }
+            Stream.emits(prefix :+ sig)
           }
-          Stream.emits(prefix :+ sig)
-        }
+        })
       }
 
       // #397 — try the chosen candidate, degrading to the next routed tier on a
