@@ -1,7 +1,7 @@
 ThisBuild / organization := "com.outr"
 ThisBuild / version := "1.2.0-SNAPSHOT20"
 
-ThisBuild / scalaVersion := "3.8.3"
+ThisBuild / scalaVersion := "3.8.4"
 
 val rapidVersion: String = "2.9.9"
 
@@ -17,11 +17,11 @@ val striderVersion: String = "1.1.6-SNAPSHOT"
 
 val scalapassVersion: String = "1.4.2"
 
-val awsS3Version: String = "2.46.10"
+val awsS3Version: String = "2.46.18"
 
 val robobrowserVersion: String = "2.3.5"
 
-val commonmarkVersion: String = "0.28.0"
+val commonmarkVersion: String = "0.29.0"
 
 val lsp4jVersion: String = "1.0.0"
 
@@ -31,7 +31,7 @@ val lsp4jDebugVersion: String = "1.0.0"
 
 val jtokkitVersion: String = "1.1.0"
 
-val twelveMonkeysVersion: String = "3.12.0"
+val twelveMonkeysVersion: String = "3.13.1"
 
 val scalatestVersion: String = "3.2.20"
 
