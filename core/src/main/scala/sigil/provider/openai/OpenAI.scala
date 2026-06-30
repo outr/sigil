@@ -71,6 +71,8 @@ object OpenAI {
   private val effortLevelsByFamily: List[(String, Set[String])] = List(
     "gpt-5.5" -> Set("none", "low", "medium", "high", "xhigh"),
     "gpt-5_5" -> Set("none", "low", "medium", "high", "xhigh"),
+    "gpt-5.4" -> Set("none", "low", "medium", "high", "xhigh"),
+    "gpt-5_4" -> Set("none", "low", "medium", "high", "xhigh"),
     "gpt-5"   -> Set("minimal", "low", "medium", "high"),
     "o1"      -> Set("minimal", "low", "medium", "high"),
     "o3"      -> Set("minimal", "low", "medium", "high"),

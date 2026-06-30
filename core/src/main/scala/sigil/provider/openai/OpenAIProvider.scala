@@ -5,6 +5,7 @@ import fabric.io.JsonFormatter
 import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.db.Model
+import sigil.orchestrator.Orchestrator
 import sigil.provider.*
 import sigil.provider.sse.SSELineParser
 import sigil.tokenize.{JtokkitTokenizer, Tokenizer}
@@ -645,11 +646,25 @@ case class OpenAIProvider(apiKey: String,
         // by the role filter even when their position is within the
         // dropped range. Sigil bug #167 r3.
         val nextDropCount = state.sentMessageCount
+        // A response that ends with a TERMINAL user-visible tool call
+        // (`respond` / `respond_options` / `no_response`) is unchainable.
+        // Sigil renders those calls as assistant text and never sends a
+        // `function_call_output` for them, so OpenAI's SERVER-SIDE stored copy
+        // keeps a `function_call` with no paired output. Chaining the next turn
+        // via `previous_response_id` onto it 400s ("No tool output found for
+        // function call ..."). A NON-terminal tool call (`find_capability`,
+        // `change_mode`, …) is fine: its output ships in the next request's
+        // `input` (with the round-tripped call_id, bug #167 r5), pairing the
+        // call — so the chain stays valid. Pure-text / server-tool-only
+        // responses chain too. Clear the chain only for the terminal case.
+        val endsWithTerminalCall =
+          state.functionCallNames.exists(Orchestrator.UserVisibleTerminalTools.contains)
         val responseStateEv: Vector[ProviderEvent] =
-          if (state.responseId.nonEmpty)
-            Vector(ProviderEvent.ResponseStateCaptured(Some(state.responseId), nextDropCount))
+          if (state.responseId.isEmpty) Vector.empty
+          else if (endsWithTerminalCall)
+            Vector(ProviderEvent.ResponseStateCaptured(None, 0))
           else
-            Vector.empty
+            Vector(ProviderEvent.ResponseStateCaptured(Some(state.responseId), nextDropCount))
         completes ++ citationFooter ++ usageEv ++ responseStateEv :+ ProviderEvent.Done(stopReason)
 
       case "response.error" | "error" =>
@@ -706,6 +721,7 @@ case class OpenAIProvider(apiKey: String,
       case "function_call" =>
         state.sawFunctionCall = true
         val name = item.get("name").map(_.asString).getOrElse("")
+        if (name.nonEmpty) state.functionCallNames += name
         state.acc.start(index, callId, name)
 
       case "message" =>
@@ -763,6 +779,13 @@ case class OpenAIProvider(apiKey: String,
     var itemIndex: Int = 0
     var nextIndex: Int = 0
     var sawFunctionCall: Boolean = false
+    /** Names of every `function_call` item this response emitted. Used at
+      * `response.completed` to decide whether the captured `responseId` is
+      * chainable: a response ending with a TERMINAL user-visible tool
+      * (`respond` family) leaves a dangling call in OpenAI's stored state and
+      * must NOT be chained via `previous_response_id`; non-terminal tool calls
+      * pair on the next turn and stay chainable. */
+    val functionCallNames: scala.collection.mutable.Set[String] = scala.collection.mutable.Set.empty
     /** Server-side state handle captured from `response.created`. Empty
       * until the SSE delivers it; used at `response.completed` to emit
       * `ResponseStateCaptured` so the framework can persist it for the

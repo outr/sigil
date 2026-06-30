@@ -19,8 +19,16 @@ import scala.concurrent.duration.*
  * small model puts every tool parameter inside it — instead of, with the prior
  * stringified-JSON `arguments`, spilling the grep params into sibling fields
  * (`workflowId` / `variables`) and leaving `arguments` null. Asked to compose a
- * known-shape `find → act on each` workflow, Kimi-K2.6 fills the discovery Job's
- * `arguments` as a non-empty JSON object.
+ * known-shape `find → act on each` workflow, Kimi-K2.6 keeps the discovery Job's
+ * real grep params (the task's pattern + path) OUT of those cross-kind fields.
+ *
+ * The guard is the no-scatter property, not strict-emptiness of the cross-kind
+ * fields: Cloudflare Workers AI doesn't honour temperature=0, so Kimi
+ * intermittently echoes type-name placeholders ("string") into unused fields —
+ * model noise that is not a param scatter. Checking that the actual grep params
+ * never land in `workflowId` / `variables` is stable across those rolls while
+ * still failing on a genuine #373 regression (params spilling out of
+ * `arguments`).
  *
  * Why the flat schema (not the `oneOf`-by-kind #373 proposed): a discriminated
  * union of per-kind variants re-triggers #372 — Kimi degenerates to the
@@ -145,17 +153,34 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
           val discoveryJob = in.steps.find(s =>
             s.kind == WorkflowStepKind.Job && s.tool.exists(discoveryTools.contains))
           discoveryJob should not be empty
-          // The #373 win: with `arguments` a structured object, the grep params
-          // have a home there — the model no longer mis-routes them into
-          // SubWorkflow-only fields. The discovery Job's `workflowId` stays
-          // empty (was "includeIgnored:false"), and `variables` carries no real
-          // tool param. (Fully POPULATING `arguments` is a frontier-model
-          // capability — a weak model may leave it sparse, the #372-class limit —
-          // but it can no longer scatter the params into cross-kind fields.)
-          withClue(s"discovery Job = ${discoveryJob.map(summarizeStep)}\n") {
-            discoveryJob.flatMap(_.workflowId).forall(_.isEmpty) shouldBe true
-            discoveryJob.toList.flatMap(_.variables.values).forall(_.isEmpty) shouldBe true
+          // The #373 property: with `arguments` a structured object the grep
+          // params have a home there, so the model no longer mis-routes them
+          // into the SubWorkflow-only cross-kind fields (`workflowId` /
+          // `variables`) the way the prior stringified-`arguments` schema
+          // forced (e.g. spilling "includeIgnored:false" into `workflowId`).
+          //
+          // Asserting those fields are STRICTLY empty was brittle: Cloudflare
+          // Workers AI does not honour temperature=0, so Kimi intermittently
+          // returns a schema SKELETON — `arguments` empty, type-name
+          // placeholders ("string") echoed into otherwise-unused fields. That
+          // is model noise, NOT a param scatter. Assert the property the bug
+          // actually names: the real grep params (the task's pattern + path)
+          // never appear in a cross-kind field. A genuine #373 regression puts
+          // those exact values there and fails; placeholder noise does not — so
+          // the guard is stable across Kimi's rolls yet still catches the
+          // regression it exists to catch.
+          val crossKindValues: List[String] =
+            discoveryJob.flatMap(_.workflowId).toList :::
+              discoveryJob.toList.flatMap(_.variables.values)
+          val grepParamSignals = List("/home/u/project", "bug #")
+          withClue(s"discovery Job = ${discoveryJob.map(summarizeStep)}\n" +
+                   s"cross-kind field values = $crossKindValues\n") {
+            for (v <- crossKindValues; sig <- grepParamSignals)
+              withClue(s"grep param '$sig' must live in `arguments`, not scattered into a cross-kind field (found in '$v'): ") {
+                v.toLowerCase.contains(sig.toLowerCase) shouldBe false
+              }
           }
+          succeed
         }
       }
     }

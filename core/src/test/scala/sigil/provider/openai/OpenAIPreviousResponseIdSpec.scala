@@ -72,24 +72,56 @@ class OpenAIPreviousResponseIdSpec extends AsyncWordSpec with AsyncTaskSpec with
       events.collect { case rc: ProviderEvent.ResponseStateCaptured => rc } shouldBe empty
     }
 
-    "capture sentMessageCount regardless of output item mix (server tools, function_calls, messages)" in Task {
-      // messageCount is now just sentMessageCount — the rendered count
-      // at call entry. Output item types don't affect it. The next
-      // turn's renderInput role-filters the post-cutoff tail to keep
-      // only User + ToolResult, so server-managed tools (web_search,
-      // image_generation, file_search, code_interpreter) and Assistant
-      // outputs are correctly excluded without needing per-item
-      // counting. Sigil bug #167 r3.
+    "clear the chain (capture None) when the response ends with a TERMINAL tool call (respond)" in Task {
+      // A terminal user-visible tool (`respond` / `respond_options` /
+      // `no_response`) is rendered as assistant text and never gets a
+      // `function_call_output`, so OpenAI's server-side stored response keeps a
+      // dangling function_call. Chaining the next turn via previous_response_id
+      // would 400 ("No tool output found for function call ..."), so a
+      // terminal-call response is NOT chainable: capture a None id to force a
+      // full stateless render next.
       val events = runLines(sse(List(
         """{"type":"response.created","response":{"id":"resp_xyz","status":"in_progress"}}""",
-        """{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc1","call_id":"call_abc","name":"vector_lookup"}}""",
-        """{"type":"response.output_item.added","output_index":1,"item":{"type":"web_search_call","id":"ws1"}}""",
-        """{"type":"response.output_item.added","output_index":2,"item":{"type":"message","id":"msg1"}}""",
+        """{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc1","call_id":"call_abc","name":"respond"}}""",
+        """{"type":"response.output_item.added","output_index":1,"item":{"type":"message","id":"msg1"}}""",
         """{"type":"response.completed","response":{"status":"completed"}}"""
       )))
       val captured = events.collect { case rc: ProviderEvent.ResponseStateCaptured => rc }
       captured should have size 1
-      // runLines seeds state.sentMessageCount = 1 (line 40).
+      captured.head.responseId shouldBe None
+    }
+
+    "stay chainable when the response ends with a NON-terminal tool call (find_capability)" in Task {
+      // A non-terminal tool's output ships in the NEXT request's input (with
+      // the round-tripped call_id, bug #167 r5), pairing the call server-side —
+      // so the chain stays valid and prev-id IS captured. (OpenAICallIdRoundtripSpec
+      // exercises this end-to-end against the live Responses API.)
+      val events = runLines(sse(List(
+        """{"type":"response.created","response":{"id":"resp_xyz","status":"in_progress"}}""",
+        """{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc1","call_id":"call_abc","name":"find_capability"}}""",
+        """{"type":"response.completed","response":{"status":"completed"}}"""
+      )))
+      val captured = events.collect { case rc: ProviderEvent.ResponseStateCaptured => rc }
+      captured should have size 1
+      captured.head.responseId shouldBe Some("resp_xyz")
+    }
+
+    "stay chainable for server-managed tools (web_search) with no function_call" in Task {
+      // Server-managed tools (web_search, image_generation, file_search,
+      // code_interpreter) run entirely server-side — they leave no dangling
+      // function_call in the stored response, so the chain stays valid and
+      // the next turn's renderInput role-filters the post-cutoff tail to keep
+      // only User + ToolResult. messageCount is the rendered count at call
+      // entry (= 1, seeded by runLines). Sigil bug #167 r3.
+      val events = runLines(sse(List(
+        """{"type":"response.created","response":{"id":"resp_xyz","status":"in_progress"}}""",
+        """{"type":"response.output_item.added","output_index":0,"item":{"type":"web_search_call","id":"ws1"}}""",
+        """{"type":"response.output_item.added","output_index":1,"item":{"type":"message","id":"msg1"}}""",
+        """{"type":"response.completed","response":{"status":"completed"}}"""
+      )))
+      val captured = events.collect { case rc: ProviderEvent.ResponseStateCaptured => rc }
+      captured should have size 1
+      captured.head.responseId shouldBe Some("resp_xyz")
       captured.head.messageCount shouldBe 1
     }
 

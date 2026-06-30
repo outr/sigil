@@ -49,7 +49,7 @@ class FableConformanceSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   ))).sync()
 
   override def run(testName: Option[String], args: org.scalatest.Args): org.scalatest.Status =
-    AnthropicLiveSupport.runGated(this, testName, args) {
+    AnthropicLiveSupport.runGatedForModel(this, testName, args, modelId.value) {
       super.run(testName, args)
     }
 

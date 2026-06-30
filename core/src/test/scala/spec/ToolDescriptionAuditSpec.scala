@@ -67,7 +67,12 @@ class ToolDescriptionAuditSpec extends AnyWordSpec with Matchers {
       "pin_model" -> "unpin_model", "unpin_model" -> "pin_model",
       // #344 — record_consent's description names respond_options to tell
       // the agent that an options selection is NOT a reason to pre-consent.
-      "record_consent" -> "respond_options"
+      "record_consent" -> "respond_options",
+      // #400 — edit_at_range and edit_file are the coupled file-edit pair
+      // (both in sigil.tool.fs). The position-based tool's description names
+      // the text-anchored one to steer repeated / multi-edit-sweep intents to
+      // the right editor — a deliberate disambiguation, not stale coupling.
+      "edit_at_range" -> "edit_file"
     )
   }
 

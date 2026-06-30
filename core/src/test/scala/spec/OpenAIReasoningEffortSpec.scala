@@ -21,6 +21,12 @@ class OpenAIReasoningEffortSpec extends AnyWordSpec with Matchers {
       OpenAI.effortLevelsFromSlug("openai/gpt-5.5") shouldBe Set("none", "low", "medium", "high", "xhigh")
       OpenAI.effortLevelsFromSlug("gpt-5_5-mini") shouldBe Set("none", "low", "medium", "high", "xhigh")
     }
+    "return gpt-5.5's expanded set for gpt-5.4 (it also dropped minimal, added xhigh)" in {
+      OpenAI.effortLevelsFromSlug("gpt-5.4-mini") shouldBe Set("none", "low", "medium", "high", "xhigh")
+      OpenAI.effortLevelsFromSlug("openai/gpt-5.4") shouldBe Set("none", "low", "medium", "high", "xhigh")
+      OpenAI.effortLevelsFromSlug("gpt-5_4-mini") shouldBe Set("none", "low", "medium", "high", "xhigh")
+      OpenAI.effortLevelsFromSlug("gpt-5.4-mini") should not contain "minimal"
+    }
     "return the legacy minimal-anchored set for gpt-5" in {
       OpenAI.effortLevelsFromSlug("gpt-5") shouldBe Set("minimal", "low", "medium", "high")
       OpenAI.effortLevelsFromSlug("openai/gpt-5") shouldBe Set("minimal", "low", "medium", "high")

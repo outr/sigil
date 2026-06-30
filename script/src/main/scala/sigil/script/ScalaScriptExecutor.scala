@@ -65,16 +65,35 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
     // classpath, so we restore the original immediately after.
     val resolvedClasspath: Option[String] =
       classpathOverride.orElse(ScalaScriptExecutor.detectClasspathFromContext())
+    // `dotty.tools.repl.ScriptEngine` builds its `ReplDriver` (and the
+    // diagnostic reporter) at construction, binding to the ambient output
+    // streams THEN. Scala 3.8.4's reporter writes to `System.out`/`System.err`
+    // (not the `Console.out` we set via `Console.withOut`), and it caches the
+    // reference at construction, so an eval-time redirect is too late. Bind
+    // ALL of Console.out + System.out + System.err to `capturedPS` for the
+    // duration of construction so every later eval's diagnostics land in
+    // `captured`, whichever stream the active REPL version targets. Bug #55.
+    def buildEngine(): ScriptEngine = {
+      val priorOut = System.out
+      val priorErr = System.err
+      System.setOut(capturedPS)
+      System.setErr(capturedPS)
+      try Console.withOut(capturedPS)(ScriptEngine())
+      finally {
+        System.setOut(priorOut)
+        System.setErr(priorErr)
+      }
+    }
     val e = resolvedClasspath match {
       case Some(cp) =>
         val original = System.getProperty("java.class.path")
         System.setProperty("java.class.path", cp)
-        try Console.withOut(capturedPS)(ScriptEngine())
+        try buildEngine()
         finally
           if (original == null) System.clearProperty("java.class.path")
           else System.setProperty("java.class.path", original)
       case None =>
-        Console.withOut(capturedPS)(ScriptEngine())
+        buildEngine()
     }
     // Bug #54 — evaluate the prelude exactly once at engine init, so
     // every subsequent script runs with the ambient surface
@@ -211,7 +230,26 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
       // self-contained, so this is intentional rather than regressive.
       val defName = s"__sigilScript_${java.lang.Long.toHexString(System.nanoTime())}"
       val wrapped = s"def $defName() = {\n$cleaned\n}\n$defName()"
-      val result = engine.eval(wrapped)
+      // Bug #55 — the Scala 3 REPL `ScriptEngine` reports compile failure in
+      // two different ways across versions: older releases returned `null`
+      // (caught by the post-eval diagnostic check below); 3.8.4 throws while
+      // reflectively loading the never-generated result class (e.g.
+      // `ClassNotFoundException: rs$line$N`) after `driver.run` reports the
+      // diagnostic. The diagnostic lands in `captured` because the driver's
+      // reporter was bound to it at engine construction (see `engine`). Catch
+      // the throw and, when the captured output is a real compile diagnostic,
+      // surface it as a `ScriptCompileException` carrying the human-readable
+      // error text so both REPL behaviours collapse to the same typed failure.
+      // A throw with no compile diagnostic is a genuine runtime error —
+      // rethrow it as-is.
+      val result =
+        try engine.eval(wrapped)
+        catch {
+          case t: Throwable =>
+            val diag = captured.toString.trim
+            if (containsErrorDiagnostic(diag)) throw new ScriptCompileException(diag)
+            else throw t
+        }
       val diagnostics = captured.toString.trim
       if (containsErrorDiagnostic(diagnostics)) {
         throw new ScriptCompileException(diagnostics)
