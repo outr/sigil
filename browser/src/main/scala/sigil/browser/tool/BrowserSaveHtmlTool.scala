@@ -16,7 +16,7 @@ import sigil.tool.ToolContext
  * Capture the current page's outer HTML, normalize via jSoup so the
  * resulting bytes are well-formed, persist it BOTH as a raw
  * `StoredFile` (for the fragment tools) AND as a lookup-able
- * `Information` (Sigil #377), and return a structural overview the
+ * `Information`, and return a structural overview the
  * agent uses to plan `browser_xpath_query` / `browser_text_search`
  * calls.
  *
@@ -65,7 +65,7 @@ final class BrowserSaveHtmlTool extends Tool {
                         "conversationId" -> ctx.conversation.id.value,
                         "url" -> currentUrl
                       ))
-      // Sigil #377 — also register the page as a lookup-able Information
+      // also register the page as a lookup-able Information
       // (the subsystem an uploaded HTML file lands in) so the agent can
       // read the whole document via `lookup`, exactly as it reads an
       // uploaded file, instead of snippet-hunting through
@@ -99,7 +99,7 @@ final class BrowserSaveHtmlTool extends Tool {
 }
 
 object BrowserSaveHtmlTool {
-  /** Sigil #377 — pages at or below this rendered byte size are
+  /** Pages at or below this rendered byte size are
     * recommended for whole-document `lookup`; larger pages steer the
     * agent toward the fragment tools (with `lookup` still available). */
   val readWholeThresholdBytes: Int = 200_000

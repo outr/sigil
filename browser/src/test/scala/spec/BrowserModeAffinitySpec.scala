@@ -13,17 +13,10 @@ import sigil.provider.{ConversationMode, Mode}
 import sigil.tool.{DiscoveryFilter, DiscoveryRequest, Tool}
 
 /**
- * Regression coverage for the wire-log scenario reproduced by bug
- * #122. The user is in `ConversationMode`, the agent calls
- * `find_capability("read")`, the framework lists `browser_click`
- * as `Ready`, and the agent fires `browser_click({"selector":
- * ".read"})` instead of `change_mode("web-browser")` or a real
- * filesystem tool.
- *
- * Fix: every browser tool sets `modes = Set(WebBrowserMode.id)`.
- * [[DiscoveryFilter.passesAffinity]] already honors empty-as-
- * universal vs non-empty-as-restricted, so find_capability filters
- * them out of every non-web-browser mode.
+ * Regression: every browser tool must set `modes = Set(WebBrowserMode.id)`
+ * so they're only discoverable inside web-browser mode. [[DiscoveryFilter.passesAffinity]]
+ * honors empty-as-universal vs non-empty-as-restricted, so find_capability
+ * filters them out of every non-web-browser mode.
  */
 class BrowserModeAffinitySpec extends AnyWordSpec with Matchers {
 

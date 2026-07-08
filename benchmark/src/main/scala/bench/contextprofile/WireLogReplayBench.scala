@@ -24,8 +24,7 @@ import java.nio.file.{Files, Paths}
 /**
  * Scale + wire-log replay benchmark — sanity-checks the curator
  * pipeline against the kinds of conversation shapes that have
- * historically hidden performance regressions (bug cluster
- * #142–#147 plus the #151 investigation).
+ * historically hidden performance regressions.
  *
  * Two modes:
  *
@@ -58,8 +57,6 @@ import java.nio.file.{Files, Paths}
  * Run:
  *   sbt "benchmark/runMain bench.contextprofile.WireLogReplayBench"
  *   sbt "benchmark/runMain bench.contextprofile.WireLogReplayBench /path/to/wire.jsonl"
- *
- * Bug #151 followup.
  */
 object WireLogReplayBench {
 

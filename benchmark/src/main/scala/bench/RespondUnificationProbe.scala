@@ -268,7 +268,7 @@ object RespondUnificationProbe {
                      scenario: Scenario,
                      tools: Vector[_root_.sigil.tool.Tool],
                      rosterLabel: String): ProbeResult = {
-    // Sigil #277 — resolve at the boundary.
+
     val resolvedModel = sigil.cache.find(modelId).getOrElse(
       throw new _root_.sigil.provider.UnregisteredModelException(modelId, sigil.cache.all.map(_._id))
     )

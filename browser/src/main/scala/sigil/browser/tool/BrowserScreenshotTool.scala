@@ -18,7 +18,7 @@ import scala.concurrent.duration.*
  * Capture a PNG screenshot of the current page, persist it via
  * [[sigil.Sigil.storeBytes]] under [[GlobalSpace]], and resolve to an
  * [[ImageToolOutput]] so the framework lifts the capture into the
- * agent's visual context (Sigil #280) — the agent SEES the screenshot
+ * agent's visual context — the agent SEES the screenshot
  * on its next turn, matching this tool's contract, instead of a bare
  * file reference it can't render.
  *
@@ -91,7 +91,7 @@ final class BrowserScreenshotTool extends Tool {
       alt  = s"Browser screenshot at ${java.time.Instant.now}",
       text = Some("Screenshot of the current browser page. Examine the rendered page for " +
         "layout, content, error states, or differences from what you expected."),
-      // #383 — a screenshot exists to be scrutinized (read text, compare
+      // a screenshot exists to be scrutinized (read text, compare
       // against expectations), so request the High tier rather than the
       // Low default. Combined with the area-based downscale this keeps a
       // tall full-page capture legible.

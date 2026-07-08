@@ -71,7 +71,7 @@ object BFCLBench {
       vectorIndex = _root_.sigil.vector.NoOpVectorIndex
     )
     val modelId = Id[Model](modelStr)
-    // Sigil #277 — resolve at the boundary; OpenRouter refresh
+ 
     // should populate the registry on Sigil instance startup.
     val resolvedModel = benchSigil.cache.find(modelId).getOrElse(
       throw new _root_.sigil.provider.UnregisteredModelException(modelId, benchSigil.cache.all.map(_._id))

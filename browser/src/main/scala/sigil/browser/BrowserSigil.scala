@@ -57,7 +57,7 @@ trait BrowserSigil extends Sigil with SecretsSigil {
   def browserIdleTimeoutMs: Long = 5.minutes.toMillis
 
   /**
-   * Sigil #403 — veto navigation to a URL before the browser loads it.
+   * Veto navigation to a URL before the browser loads it.
    * Return `Some(reason)` to BLOCK — `browser_navigate` surfaces it as a
    * recoverable [[sigil.tool.ToolResult.Failure]] (so the agent reads the
    * reason and redirects); `None` to allow. Default allows everything.

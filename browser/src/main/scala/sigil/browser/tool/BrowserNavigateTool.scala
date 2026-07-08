@@ -48,7 +48,7 @@ final class BrowserNavigateTool extends Tool {
       case None         => doNavigate(input, ctx)
     }
 
-  /** Sigil #403 — consult the host's [[BrowserSigil.navigationGuard]] before
+  /** Consult the host's [[BrowserSigil.navigationGuard]] before
     * loading the URL. `Some(reason)` blocks; `None` allows. A non-`BrowserSigil`
     * host (shouldn't happen — this tool needs the per-conversation controller)
     * or an unparseable URL allows through (the navigate then reports the real

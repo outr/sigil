@@ -48,7 +48,7 @@ object ProfilerHarness {
 
   val DefaultTopic: TopicEntry = TopicEntry(TopicId, "Bench Topic", "Synthetic conversation for context profiling.")
 
-  /** Sigil #277 — synthetic Model record used by harness fixtures.
+  /** Synthetic Model record used by harness fixtures.
     * Carries OpenAI gpt-4o defaults (context length / pricing) so any
     * profiler heuristic that reads model facts gets representative
     * numbers without booting a Sigil instance. */
@@ -116,11 +116,9 @@ object ProfilerHarness {
     )
   }
 
-  /** Sigil #261 / #265 — `ContextFrame.ToolCall` carries the result
-    * inline via `state = ToolCallState.Complete(content)`. Helper
-    * builds a fresh ToolCall in the completed state for profiling
-    * fixtures (replaces the pre-#261 separate `ContextFrame.ToolResult`
-    * frame the harness emitted). */
+  /** Helper builds a fresh ToolCall in the completed state for profiling
+    * fixtures (state carries the result inline, replacing the prior
+    * separate ToolResult frame). */
   def completedToolCallFrame(call: ContextFrame.ToolCall, content: String): ContextFrame.ToolCall =
     call.copy(state = ToolCallState.Complete(content))
 
