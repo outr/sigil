@@ -6013,6 +6013,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * Default 3. */
   def maxIdenticalToolCallsInWindow: Int = 3
 
+  /** Sigil #407 — bound on identical re-issues of a tool whose result keeps
+    * RACING past the frame (settled Pending, never delivered — a large/slow
+    * result that overflowed to `.sigil/output/`). Those re-issues are excluded
+    * from [[maxIdenticalToolCallsInWindow]] (#354) because a transient race is
+    * rational to retry; but a PERSISTENT racer would re-issue unboundedly and
+    * never progress. When set to a positive N, after N raced identical
+    * re-issues in the current turn the orchestrator stops inviting re-issue and
+    * refuses the next one with a non-escalating Failure that redirects the
+    * agent to the externalized result (read/grep the overflow file). Set to
+    * `0` / negative to disable. Default 2. Distinct from the duplicate-call cap:
+    * that punishes a spinning agent; this rescues a well-behaved agent from a
+    * tool that can't deliver its result inline. */
+  def maxRacedReissues: Int = 2
+
   /** Cap on the number of non-essential (action) tool calls the framework
     * dispatches from a SINGLE model response. A model that fires a whole
     * discovered tool family in one completion (e.g. all 10 `bsp_*` when it

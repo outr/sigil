@@ -175,15 +175,16 @@ class DuplicateCallEscalationSpec extends AsyncWordSpec with AsyncTaskSpec with 
     }
 
     "NOT count race-induced retries (Pending-result priors) toward the cap (#354)" in {
-      // Seed FAR more than the cap of identical priors, but every one
-      // raced past the frame and never produced a result (resulted =
-      // false). A slow tool whose large output loses the frame race is
-      // not the agent spinning — retrying to obtain the missing result
-      // must be allowed, so the cap (and its escalation/restriction
-      // spiral) must NOT fire.
+      // A raced prior (resulted = false) below the #407 raced-reissue bound is
+      // not the agent spinning — retrying to obtain the missing result of a
+      // transient race must be allowed, so the duplicate-call cap (and its
+      // escalation/restriction spiral) must NOT fire. Seed 1 raced prior:
+      // below `maxRacedReissues` (default 2), so #407's persistent-racer
+      // redirect stays dormant here and this isolates the #354 guarantee. (The
+      // #407 spec covers the at/above-bound redirect separately.)
       val convId = Conversation.id(s"dup-cap-race-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
-      val request = requestWithPriorInvocations(convId, priorIdentical = 5, keywords = "x", resulted = false)
+      val request = requestWithPriorInvocations(convId, priorIdentical = 1, keywords = "x", resulted = false)
       val provider = new FindCapStubProvider(keywords = "x")
       for {
         _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))

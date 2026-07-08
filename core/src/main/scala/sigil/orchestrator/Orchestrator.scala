@@ -748,6 +748,50 @@ object Orchestrator {
                 // counts every recent invocation for one-shot / synthetic
                 // requests that have no owning turn.
                 val turnStartMs = request.turnStartedAt.map(_.value).getOrElse(Long.MinValue)
+                // Sigil #407 — a large/slow tool (e.g. grep overflowing to
+                // `.sigil/output/`) whose result keeps racing past the frame
+                // settles Pending, so its re-issues are cap-EXCLUDED below
+                // (#354). A TRANSIENT race self-heals in a turn or two; a
+                // PERSISTENT racer would otherwise re-issue unboundedly and
+                // never see the result. After `maxRacedReissues` raced identical
+                // re-issues THIS turn, stop inviting re-issue: refuse with a
+                // NON-escalating Failure that redirects the agent to the
+                // externalized result, so it pivots to reading the overflow file
+                // instead of losing the race again.
+                val racedReissueLimit = sigil.maxRacedReissues
+                if (racedReissueLimit > 0) {
+                  val racedPrior = request.turnInput
+                    .projectionFor(caller)
+                    .recentToolInvocations
+                    .count(inv => inv.toolName.value == toolName
+                               && inv.argsHash == canonicalHash
+                               && inv.invokedAt.value >= turnStartMs
+                               && !inv.resulted)
+                  if (racedPrior >= racedReissueLimit) {
+                    val overflowDir = s".sigil/output/${convId.value}/"
+                    val body =
+                      s"`$toolName` has been issued $racedPrior times this turn and its result keeps " +
+                        s"racing past the turn — a large/slow result that overflowed to a file. Re-issuing " +
+                        s"loses the race again and makes no progress. The completed result was written under " +
+                        s"`$overflowDir` (as `$toolName-<callId>.txt`); read it with `read_file` or search it " +
+                        s"with `grep` there instead of calling `$toolName` again."
+                    val racedMsg = Message(
+                      participantId  = caller,
+                      conversationId = convId,
+                      topicId        = topicId,
+                      role           = MessageRole.Tool,
+                      content        = Vector(ResponseContent.Text(body)),
+                      state          = EventState.Complete,
+                      disposition    = MessageDisposition.Failure(recoverable = true),
+                      visibility     = MessageVisibility.Agents,
+                      origin         = Some(invokeId)
+                    )
+                    return Stream.emits(toolDeltaPrefix ::: List[Signal](
+                      racedMsg,
+                      StateDelta(target = racedMsg._id, conversationId = convId, state = EventState.Complete)
+                    ))
+                  }
+                }
                 val matchingPrior = request.turnInput
                   .projectionFor(caller)
                   .recentToolInvocations
