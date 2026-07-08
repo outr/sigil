@@ -190,7 +190,15 @@ object FrameBuilder {
           content = renderMessageText(m),
           participantId = m.participantId,
           sourceEventId = m._id,
-          visibility = m.visibility
+          visibility = m.visibility,
+          // Sigil #405 — lift the message's attached image URLs onto the frame
+          // so a user upload reaches the vision channel first-class (the
+          // renderer emits MessageContent.Image blocks for them). The text
+          // still reduces each image to a `[image: …]` placeholder — persisted
+          // frames carry URLs, never base64. `ImageBytes` has no URL to persist,
+          // so it stays a placeholder; apps store the bytes and reference them
+          // as `ResponseContent.Image(storageUrl)`.
+          images = m.content.collect { case img: ResponseContent.Image => img.url }.toList
         ))
 
       case ti: ToolInvoke =>

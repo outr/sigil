@@ -1798,9 +1798,24 @@ trait Provider extends Service with ModelResolver {
     var i = 0
     while (i < merged.length) {
       merged(i) match {
-        case ContextFrame.Text(content, participantId, _, _) =>
+        case ContextFrame.Text(content, participantId, _, _, images) =>
           if (agentId.contains(participantId)) out += ProviderMessage.Assistant(content)
-          else out += ProviderMessage.User(content)
+          else if (images.isEmpty) out += ProviderMessage.User(content)
+          else {
+            // Sigil #405 — a user upload attached to the turn rides the vision
+            // channel: lift each image URL into a MessageContent.Image block
+            // (quality stripped + carried typed, like the ToolCall Complete
+            // branch below). normalizeStoredImages inlines any
+            // sigil://storage/<id> URL as downscaled bytes downstream. Keep the
+            // text adjacent so the model maps caption -> image (#391).
+            val imageBlocks: Vector[MessageContent] = images.map(u =>
+              MessageContent.Image(_root_.sigil.tool.ImageQuality.strip(u),
+                quality = _root_.sigil.tool.ImageQuality.fromUrl(u))).toVector
+            val labeled =
+              if (content.trim.nonEmpty) MessageContent.Text(content) +: imageBlocks
+              else imageBlocks
+            out += ProviderMessage.User(labeled)
+          }
           i += 1
 
         case tc: ContextFrame.ToolCall if tc.internal =>

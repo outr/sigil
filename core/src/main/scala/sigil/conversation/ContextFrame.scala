@@ -50,11 +50,21 @@ enum ContextFrame derives RW {
 
   /**
    * A textual message from a participant — user input or agent output.
+   *
+   * `images` (sigil #405) carries any images attached to the source
+   * `Message` — user uploads referenced as `ResponseContent.Image(storageUrl)`
+   * — so they reach the vision channel first-class, mirroring the `ToolCall`
+   * frame's `ToolCallState.Complete(content, images)`. The renderer lifts them
+   * into `MessageContent.Image` blocks on the user turn (see
+   * `Provider.renderFrames`); the frame text keeps only the `[image: …]`
+   * placeholder, so persisted frames never carry base64. Default `Nil` —
+   * agent-authored text frames stay empty.
    */
   case Text(content: String,
             participantId: ParticipantId,
             sourceEventId: Id[Event],
-            visibility: MessageVisibility = MessageVisibility.All)
+            visibility: MessageVisibility = MessageVisibility.All,
+            images: List[URL] = Nil)
 
   /**
    * A tool transaction. Begins as `state = ToolCallState.Active` when

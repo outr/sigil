@@ -30,7 +30,7 @@ object TranscriptRenderer {
     if (sb.nonEmpty) sb.append("\n")
 
     frames.foreach {
-      case ContextFrame.Text(content, participantId, _, _) =>
+      case ContextFrame.Text(content, participantId, _, _, _) =>
         sb.append(s"[${participantId.value}] ").append(content.trim).append("\n")
 
       case tc: ContextFrame.ToolCall =>

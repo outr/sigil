@@ -16,7 +16,7 @@ object TokenEstimator {
   /** Estimate tokens used by a collection of conversation frames. */
   def estimateFrames(frames: Vector[ContextFrame], tokenizer: Tokenizer = HeuristicTokenizer): Int =
     frames.iterator.map {
-      case ContextFrame.Text(c, _, _, _)                  => tokenizer.count(c)
+      case ContextFrame.Text(c, _, _, _, _)               => tokenizer.count(c)
       case tc: ContextFrame.ToolCall                      =>
         // Sigil #261 — unified ToolCall(state) frame carries both
         // call args AND (when Complete) the result content. Token
