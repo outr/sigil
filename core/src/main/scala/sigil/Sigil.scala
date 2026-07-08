@@ -4656,13 +4656,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case Some(tc: TopicChange) =>
         applyTopicChangeToStack(tc)
       case Some(m: Message) =>
-        applyEventCostToConversation(m.conversationId, m.modelId, m.usage)
+        applyEventCostToConversation(m.conversationId, m._id, m.participantId, m.modelId, m.usage)
       case Some(t: ToolInvoke) =>
         // For tool-call-only turns (change_mode, cancel, find_capability,
         // …) the per-turn usage attaches to the ToolInvoke via
         // [[sigil.signal.ToolDelta]]. Cost projection picks it up off
         // the same `modelId × usage` pair that drives the Message path.
-        applyEventCostToConversation(t.conversationId, t.modelId, t.usage)
+        applyEventCostToConversation(t.conversationId, t._id, t.participantId, t.modelId, t.usage)
       case _ => Task.unit
     }
   }
@@ -4675,8 +4675,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * `modelId = None`, or zero usage → no-op. On a non-zero delta,
     * publishes a [[sigil.signal.ConversationCostUpdated]] Notice
     * carrying the new running total + the per-event delta. */
+  /**
+   * Sigil #406 — per-turn cost telemetry seam. Called once per charged turn at
+   * the point the framework folds the turn's USD `cost` into
+   * `Conversation.cost`, for BOTH `Message` and tool-call-only `ToolInvoke`
+   * turns. The framework has already resolved the model, computed the delta
+   * cost from `Model.pricing` × `usage`, and knows the acting participant and
+   * active mode — [[TurnCost]] bundles them so a consumer can persist its own
+   * cost-ledger row (itemized by model · mode · participant, project-to-date)
+   * without reconstructing any of it or patching the cost pipeline.
+   *
+   * Default no-op. Runs best-effort — a consumer's failure here is logged and
+   * does not break the cost projection. The transient
+   * [[sigil.signal.ConversationCostUpdated]] Notice still fires as the live
+   * "cost changed" trigger; this hook is the DURABLE seam (the Notice isn't
+   * persisted / replayed).
+   */
+  def onTurnCost(entry: TurnCost): Task[Unit] = Task.unit
+
   private final def applyEventCostToConversation(
     conversationId: Id[Conversation],
+    eventId: Id[Event],
+    participantId: ParticipantId,
     modelId: Option[Id[Model]],
     usage: TokenUsage
   ): Task[Unit] = {
@@ -4696,12 +4716,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       scribe.warn(s"[cache-thrash] cache_creation=${usage.cacheCreationTokens} ≫ " +
         s"cache_read=${usage.cacheReadTokens} (model=${modelId.map(_.value).getOrElse("?")}); " +
         "the cached prefix looks unstable across turns — prompt caching is not amortizing.")
-    val deltaOpt: Option[BigDecimal] = modelId.flatMap { mid =>
-      cache.findTolerant(mid).map(model => Sigil.costFor(model.pricing, usage))
-    }.filter(_ > 0)
-    deltaOpt match {
+    // Capture the resolved model id alongside the delta so the #406 telemetry
+    // reports what the turn actually ran on (registry-canonical when known).
+    val chargeOpt: Option[(Id[Model], BigDecimal)] = modelId.flatMap { mid =>
+      cache.findTolerant(mid).map(model => cache.canonicalIdFor(mid) -> Sigil.costFor(model.pricing, usage))
+    }.filter(_._2 > 0)
+    chargeOpt match {
       case None => Task.unit
-      case Some(delta) =>
+      case Some((resolvedModelId, delta)) =>
         withDB(_.conversations.transaction(_.modify(conversationId) {
           case None => Task.pure(None)
           case Some(conv) =>
@@ -4712,7 +4734,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               conversationId = updated._id,
               cost = updated.cost,
               delta = delta
-            ))
+            )).flatMap { _ =>
+              // Sigil #406 — hand the fully-attributed turn cost to the app's
+              // ledger seam. Best-effort: a consumer hiccup mustn't break the
+              // cost projection.
+              onTurnCost(TurnCost(
+                conversationId = updated._id,
+                eventId        = eventId,
+                participantId  = participantId,
+                modelId        = resolvedModelId,
+                mode           = updated.currentMode.name,
+                cost           = delta,
+                usage          = usage,
+                timestamp      = Timestamp(Nowish())
+              )).handleError(t => Task(scribe.warn(s"onTurnCost hook failed for ${updated._id.value}: ${t.getMessage}")))
+            }
           case None => Task.unit
         }
     }
