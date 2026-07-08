@@ -151,7 +151,20 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
             if (argsText.trim.isEmpty) Right(fabric.Obj.empty)
             else
               try Right(JsonParser(argsText))
-              catch { case t: Throwable => Left(t) }
+              catch {
+                case t: Throwable =>
+                  // Sigil #408 — before hard-failing, try a bounded mechanical
+                  // repair of common model JSON slips (doubled `{{`, trailing
+                  // comma). Adopt it ONLY if the repaired text re-parses; the
+                  // result then flows through the SAME decode branch below, so
+                  // #171 (array-when-object) and full validation still apply and
+                  // a still-invalid shape surfaces the enriched diagnostic. Keep
+                  // the original error otherwise, so the diagnostic reflects what
+                  // the model actually sent.
+                  ToolCallAccumulator.repairMalformedJson(argsText)
+                    .flatMap(r => try Some(JsonParser(r)) catch { case _: Throwable => None })
+                    .toRight(t)
+              }
 
           rawJsonOpt match {
             case Left(parseErr) =>
@@ -310,6 +323,53 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
 }
 
 object ToolCallAccumulator {
+
+  /**
+   * Sigil #408 — bounded, strictly-mechanical repair of common model JSON
+   * slips, tried ONLY after a genuine parse failure and adopted ONLY if the
+   * result re-parses (the caller re-decodes it through the normal path, so
+   * #171 / validation still apply). Peer of the existing #171 (array-when-
+   * object) / #398 (fenced-JSON) coercions.
+   *
+   * Two structural recoveries, both applied OUTSIDE string literals so string
+   * content (e.g. a `{{item}}` template) is never touched:
+   *   - collapse a run of consecutive `{` to one — `{{` is never valid JSON
+   *     structurally (after `{` only a quoted key or `}` may follow), so
+   *     back-to-back opens can only be a model slip;
+   *   - drop a trailing comma that precedes a `}` / `]` close.
+   *
+   * `[[` is deliberately NOT collapsed — nested arrays make it legitimately
+   * valid, so collapsing would corrupt real data. Returns the repaired string
+   * only when it actually changed something; `None` otherwise (nothing to
+   * gain from re-parsing an unchanged string). No semantic guessing.
+   */
+  def repairMalformedJson(text: String): Option[String] = {
+    val sb = new StringBuilder(text.length)
+    val n = text.length
+    var i = 0
+    var inString = false
+    var changed = false
+    while (i < n) {
+      val c = text.charAt(i)
+      if (inString) {
+        sb.append(c)
+        if (c == '\\' && i + 1 < n) { sb.append(text.charAt(i + 1)); i += 2 } // preserve escape pair
+        else { if (c == '"') inString = false; i += 1 }
+      } else c match {
+        case '"' => inString = true; sb.append(c); i += 1
+        case '{' =>
+          sb.append('{'); i += 1
+          while (i < n && text.charAt(i) == '{') { changed = true; i += 1 } // collapse the doubled-open slip
+        case ',' =>
+          var j = i + 1
+          while (j < n && text.charAt(j).isWhitespace) j += 1
+          if (j < n && (text.charAt(j) == '}' || text.charAt(j) == ']')) { changed = true; i += 1 } // drop trailing comma
+          else { sb.append(','); i += 1 }
+        case _ => sb.append(c); i += 1
+      }
+    }
+    if (changed) Some(sb.toString) else None
+  }
 
   /** Compact human-readable summary of a fabric [[Definition]] —
     * field names + types — for use in tool-arg error diagnostics
