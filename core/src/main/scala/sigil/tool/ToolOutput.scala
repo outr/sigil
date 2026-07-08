@@ -34,7 +34,27 @@ import fabric.rw.*
  * `Sigil.toolOutputRegistrations`. The framework ships
  * [[TextToolOutput]] for the common markdown-text case.
  */
-trait ToolOutput
+trait ToolOutput {
+
+  /**
+   * Optional clean-text rendering for the model. When defined, the tool
+   * result is presented to the model as this exact string instead of the
+   * `JsonFormatter.Compact(RW[ToolOutput].read(this))` envelope — so a
+   * structured output can lead with a verbatim primary-text field (plus, by
+   * convention, a plain metadata trailer) rather than a JSON-escaped one.
+   *
+   * Presentation-only: the typed output is unchanged, so programmatic
+   * consumers still read the case class fields. It matters when the text is
+   * something the model copies back verbatim — e.g.
+   * [[sigil.tool.model.ReadFileOutput]] content used as an `edit_file`
+   * `oldString` anchor, where JSON-escaping (`"` → `\"`, `/` → `\/`) makes the
+   * copied anchor fail to match the real file (sigil #404). Default `None` —
+   * structured outputs keep the JSON envelope unless they opt in.
+   * [[TextToolOutput]] renders via its own unwrap path, so it need not
+   * override this.
+   */
+  def modelText: Option[String] = None
+}
 
 object ToolOutput extends PolyType[ToolOutput]()(using scala.reflect.ClassTag(classOf[ToolOutput])) {
 

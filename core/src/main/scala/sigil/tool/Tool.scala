@@ -139,7 +139,11 @@ trait Tool extends RecordDocument[Tool] {
         // (#370). Structured outputs externalize their compact JSON as before.
         val rendered  = value match {
           case t: TextToolOutput => t.text
-          case _                 => JsonFormatter.Compact(outputRW.read(value))
+          // Sigil #404 — a structured output that opts into a clean-text
+          // render (`modelText`) measures + overflows on THAT text, so the
+          // overflow file holds the same verbatim content the model would read
+          // inline (edit anchors stay faithful).
+          case o                 => o.modelText.getOrElse(JsonFormatter.Compact(outputRW.read(o)))
         }
         val threshold = context.sigil.inlineContentThreshold
         // On overflow, the full result is written to a file and the bounded
@@ -215,7 +219,7 @@ trait Tool extends RecordDocument[Tool] {
     // envelope on the prompt.
     val source = output match {
       case t: TextToolOutput => t.text
-      case _                 => jsonRendered
+      case o                 => o.modelText.getOrElse(jsonRendered)  // #404 — clean-text opt-in
     }
     if (source.length <= 200) source else source.take(200) + " …"
   }

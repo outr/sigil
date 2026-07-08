@@ -109,7 +109,14 @@ object FrameBuilder {
             // provider.
             (txt.text, Nil)
           case other =>
-            val rendered = JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolOutput]].read(other)))
+            // Sigil #404 — a structured output can opt into a clean-text
+            // render via `modelText` (verbatim primary field + plain metadata
+            // trailer) so a line the model copies out (e.g. read_file → an
+            // edit_file anchor) equals the file's bytes. Others keep the
+            // compact-JSON envelope.
+            val rendered = other.modelText.getOrElse(
+              JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolOutput]].read(other)))
+            )
             (rendered, Nil)
         }
       case ToolOutcome.Pending =>
