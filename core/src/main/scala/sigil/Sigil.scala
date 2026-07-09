@@ -2213,6 +2213,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             // never sees; the discovered tool ends up invisible to the
             // wire roster.
             discoveredCapabilitiesRef = context.discoveredCapabilitiesRef,
+            toolResultCacheRef = context.toolResultCacheRef,
             turnStartedAt = context.turnStartedAt
           )
 
@@ -6164,6 +6165,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // empty cache, preventing prompt pollution from prior turns'
       // discoveries.
       discoveredCapabilitiesRef = new AtomicReference(Map.empty),
+      // Sigil #411 — turn-scoped read-tool result cache, fresh per turn so a
+      // retry's identical READ is served from cache instead of re-executing.
+      toolResultCacheRef = new AtomicReference(Map.empty),
       // Sigil #313 — one heal per turn. CAS-gated; a healed retry
       // that ALSO fails is treated as Exhausted, NOT retried again.
       healedThisTurn = new java.util.concurrent.atomic.AtomicBoolean(false),
@@ -6249,6 +6253,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                    * `runAgent` call starts with a fresh empty
                                    * map. */
                                  discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]],
+                                 /** Sigil #411 — turn-scoped read-tool result cache
+                                   * (canonical key → content). Created once per
+                                   * `runAgent` call and threaded through each iteration
+                                   * so a retry re-issuing an identical READ is served
+                                   * from cache. */
+                                 toolResultCacheRef: AtomicReference[Map[String, Vector[sigil.tool.model.ResponseContent]]],
                                  /** Sigil #313 — single-shot fire-gate for the
                                    * reactive self-heal. Threaded through every
                                    * recursion so a healed retry that ALSO
@@ -6326,6 +6336,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         forceResponseSynthesis    = true,
         forcedReason              = Some(reason),
         discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+        toolResultCacheRef = toolResultCacheRef,
         healedThisTurn            = healedThisTurn,
         healCorrelationId         = healCorrelationId
       )
@@ -6352,6 +6363,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         forcedReason              = None,
         noToolCallRetries         = noToolCallRetries + 1,
         discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+        toolResultCacheRef = toolResultCacheRef,
         healedThisTurn            = healedThisTurn,
         healCorrelationId         = healCorrelationId
       )
@@ -6439,7 +6451,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // suggestion-emitting tool result replaces the list.
         {
           scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
-          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, claimedTimestamp = claimed.timestamp, isGreeting = greeting && iteration == 1, discoveredCapabilitiesRef = discoveredCapabilitiesRef, healedThisTurn = Some(healedThisTurn)).flatMap {
+          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, claimedTimestamp = claimed.timestamp, isGreeting = greeting && iteration == 1, discoveredCapabilitiesRef = discoveredCapabilitiesRef, toolResultCacheRef = toolResultCacheRef, healedThisTurn = Some(healedThisTurn)).flatMap {
             case (rawCtx, triggers) =>
               // Sigil bug #125 — propagate the cap-hit soft-stop flag
               // through the TurnContext so runAgentTurn → ConversationRequest →
@@ -6793,6 +6805,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                               turnExtractorFired = turnExtractorFired,
                               failurePublished = failurePublished,
                               discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+                              toolResultCacheRef = toolResultCacheRef,
                               healedThisTurn = healedThisTurn,
                               healCorrelationId = healCorrelationId)))
                   case None =>
@@ -6809,6 +6822,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                           turnExtractorFired = turnExtractorFired,
                           failurePublished = failurePublished,
                           discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+                          toolResultCacheRef = toolResultCacheRef,
                           healedThisTurn = healedThisTurn,
                           healCorrelationId = healCorrelationId))
                     )
@@ -7788,6 +7802,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 turnExtractorFired        = new java.util.concurrent.atomic.AtomicBoolean(false),
                 failurePublished          = new java.util.concurrent.atomic.AtomicBoolean(false),
                 discoveredCapabilitiesRef = new AtomicReference(Map.empty),
+                toolResultCacheRef        = new AtomicReference(Map.empty),
                 healedThisTurn            = healedThisTurn,
                 healCorrelationId         = healCorrelationId
               )
@@ -7916,6 +7931,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                  isGreeting: Boolean = false,
                                  discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]] =
                                    new AtomicReference(Map.empty),
+                                 // Sigil #411 — turn-scoped read-tool result cache, threaded onto the TurnContext.
+                                 toolResultCacheRef: AtomicReference[Map[String, Vector[sigil.tool.model.ResponseContent]]] =
+                                   new AtomicReference(Map.empty),
                                  healedThisTurn: Option[java.util.concurrent.atomic.AtomicBoolean] = None): Task[(TurnContext, Stream[Event])] =
     for {
       triggerEvents <- withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
@@ -7975,7 +7993,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         currentAgentStateId = Some(claimedId),
         turnStartedAt       = Some(claimedTimestamp),
         isGreeting          = isGreeting,
-        discoveredCapabilitiesRef = discoveredCapabilitiesRef
+        discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+        toolResultCacheRef = toolResultCacheRef
       )
       (ctx, triggers)
     }

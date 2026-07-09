@@ -936,6 +936,39 @@ object Orchestrator {
               // AgentRunawayException. Same shape as any other tool failure
               // — the dispatch path has one branch, not two.
               val tool: Tool = toolsByName.getOrElse(active.toolName, _root_.sigil.tool.core.UnknownTool)
+              // Sigil #411 — turn-scoped read dedup across iterations/retries.
+              // #87 above dedups identical calls within ONE completion
+              // (`state.dispatchedKeys`); a no-tool-call retry / recoverable
+              // provider-error re-iterate re-runs the model in a FRESH State, so
+              // an identical READ would re-execute — a real latency/quota tax on
+              // side-effecting reads (an on-prem RPC, a paid web search). If this
+              // exact (tool, args) key already produced a result THIS turn and
+              // the tool is side-effect-free (`readOnly`), serve the cached
+              // content — exactly like #87's within-completion dupe (inline the
+              // content, no prose directive per #189) — instead of re-running.
+              // WRITES always fall through so a retry can never double-submit;
+              // the prompt-level duplicate detector still teaches the model to
+              // stop re-issuing.
+              if (tool.readOnly) {
+                request.toolResultCacheRef.get().get(argsKey) match {
+                  case Some(cached) =>
+                    val cacheMsg = Message(
+                      participantId  = caller,
+                      conversationId = convId,
+                      topicId        = topicId,
+                      role           = MessageRole.Tool,
+                      content        = cached,
+                      state          = EventState.Complete,
+                      visibility     = MessageVisibility.Agents,
+                      origin         = Some(invokeId)
+                    )
+                    return Stream.emits(toolDeltaPrefix ::: List[Signal](
+                      cacheMsg,
+                      StateDelta(target = cacheMsg._id, conversationId = convId, state = EventState.Complete)
+                    ))
+                  case None => ()
+                }
+              }
               val context = TurnContext(
                 sigil = sigil,
                 chain = request.chain,
@@ -1047,10 +1080,17 @@ object Orchestrator {
                             }
                           }.getOrElse("")
                       }
-                      if (rendered.nonEmpty)
-                        state.dispatchedResultContent(invokeId) = Vector(ResponseContent.Text(rendered))
+                      if (rendered.nonEmpty) {
+                        val settledContent = Vector(ResponseContent.Text(rendered))
+                        state.dispatchedResultContent(invokeId) = settledContent
+                        // Sigil #411 — cache a READ tool's settled result under the
+                        // turn cache so a later iteration's identical call is served
+                        // from here instead of re-executing.
+                        if (tool.readOnly) request.toolResultCacheRef.updateAndGet(_ + (argsKey -> settledContent))
+                      }
                     case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) =>
                       state.dispatchedResultContent(invokeId) = m.content
+                      if (tool.readOnly) request.toolResultCacheRef.updateAndGet(_ + (argsKey -> m.content)) // Sigil #411
                     case _ =>
                   }
                   // `respond` publishes its user-visible Message via

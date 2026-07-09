@@ -112,6 +112,16 @@ case class TurnContext(sigil: Sigil,
                          * turn. */
                        discoveredCapabilitiesRef: AtomicReference[Map[String, DiscoveredCapability]] =
                          new AtomicReference(Map.empty[String, DiscoveredCapability]),
+                       /** Sigil #411 — TURN-scoped cache of settled read-tool results
+                         * (canonical `(toolName, args)` key → result content), created
+                         * once per turn in the agent loop and threaded into each
+                         * iteration's [[sigil.provider.ConversationRequest.toolResultCacheRef]]
+                         * so a retry re-issuing an identical READ is served from cache
+                         * instead of re-executing. Only `Tool.readOnly` tools are
+                         * cached; writes always run. Fresh empty map per turn (like
+                         * [[discoveredCapabilitiesRef]]). */
+                       toolResultCacheRef: AtomicReference[Map[String, Vector[_root_.sigil.tool.model.ResponseContent]]] =
+                         new AtomicReference(Map.empty[String, Vector[_root_.sigil.tool.model.ResponseContent]]),
                        /** Snapshot of the offered tool roster for the turn the
                          * orchestrator is currently driving. Populated at dispatch
                          * by [[sigil.orchestrator.Orchestrator]] from
