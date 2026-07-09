@@ -87,23 +87,38 @@ object SessionBridge {
     * via a callback on every invocation rather than capturing a
     * snapshot at attach time. Used internally so a session's
     * post-rebind viewer drives Notice dispatch. */
-  private def noticeOrWarnLive(sigil: Sigil, viewerRef: () => ParticipantId): Json => Task[Unit] = json => Task.defer {
-    val rw = summon[RW[Signal]]
-    scala.util.Try(rw.write(json)) match {
-      case scala.util.Success(n: Notice) =>
-        val v = viewerRef()
-        sigil.handleNotice(n, v)
-          .handleError(t => Task {
-            scribe.warn(s"SessionBridge: handleNotice failed for $v: ${t.getMessage}", t)
-          })
-      case _ =>
-        Task {
-          scribe.warn(
-            s"SessionBridge: unexpected ephemeral payload (not a Notice): $json"
-          )
+  private def noticeOrWarnLive(sigil: Sigil, viewerRef: () => ParticipantId): Json => Task[Unit] = json =>
+    // Sigil #409 — await the polymorphic registry BEFORE decoding. App-defined
+    // `Notice` subtypes (e.g. a client→server request pulse like
+    // `RequestThemeThumbnail`) register into the process-global `RW[Signal]`
+    // PolyType at `sigil.instance`; an ephemeral payload that arrives before
+    // that completes can't have its discriminator resolved, so `rw.write` throws
+    // and the payload is silently dropped — intermittently, since the same bytes
+    // decode fine a moment later. `polymorphicRegistrations` is `.singleton`, so
+    // this awaits the one-time registration and is a no-op thereafter.
+    sigil.polymorphicRegistrations.flatMap { _ =>
+      Task.defer {
+        val rw = summon[RW[Signal]]
+        scala.util.Try(rw.write(json)) match {
+          case scala.util.Success(n: Notice) =>
+            val v = viewerRef()
+            sigil.handleNotice(n, v)
+              .handleError(t => Task {
+                scribe.warn(s"SessionBridge: handleNotice failed for $v: ${t.getMessage}", t)
+              })
+          // Sigil #409 — split the old collapsed `case _` so the REASON a payload
+          // didn't dispatch is visible: a Signal that isn't a Notice vs. a genuine
+          // decode failure (the latter logs the exception, which distinguishes a
+          // registry/init-order miss from a real decode bug or an unknown type).
+          case scala.util.Success(other) =>
+            Task(scribe.warn(
+              s"SessionBridge: ephemeral payload deserialized to a non-Notice ${other.getClass.getName}: $json"))
+          case scala.util.Failure(err) =>
+            Task(scribe.warn(
+              s"SessionBridge: could not decode ephemeral payload as a Signal: ${err.getMessage} — $json", err))
         }
+      }
     }
-  }
 
   /** Default replay budget for new sessions. 50 most recent Messages
     * (plus any non-Message events that interleave with them) gives a
