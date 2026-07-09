@@ -139,7 +139,14 @@ object Orchestrator {
       */
     def reconcileInflight: Task[Unit] = {
       val errOpt = capturedError.get()
-      val errorMsg = errOpt.flatMap(t => Option(t.getMessage)).filter(_.nonEmpty)
+      // Sigil #410 — scrub vendor identity (support URLs / backend name) from a
+      // raw provider/turn error before it reaches user-visible or agent-visible
+      // content; the raw error stays in the server log only. This is the
+      // user-visible path (settleOrphanMessage with routedToAgent = false renders
+      // the reason into the end user's own reply bubble).
+      val rawErrorMsg = errOpt.flatMap(t => Option(t.getMessage)).filter(_.nonEmpty)
+      rawErrorMsg.foreach(m => scribe.warn(s"Turn error (raw, ${provider.providerKey}): $m"))
+      val errorMsg = rawErrorMsg.map(m => sigil.sanitizeProviderError(provider.providerKey, m))
       val callerForOrphan = request.chain.lastOption.getOrElse(
         throw new IllegalStateException("ProviderRequest.chain is empty; orchestrator needs at least one participant.")
       )
@@ -1486,11 +1493,20 @@ object Orchestrator {
         // Bug #51 — pass the error through to the orphan-settle
         // ToolDelta so the user-visible chip can render
         // "(invalid args: …)" instead of "(input pending)".
-        val orphanSettle = settleOrphanToolInvoke(state, convId, caller, topicId, error = Some(msg))
+        // Sigil #410 — scrub vendor identity (support URLs / backend name) from
+        // the raw provider error before it becomes agent-visible (the Tool-role
+        // Message + ToolDelta below, which the model can echo) or user-visible;
+        // the raw error stays in the server log only. Provider key = the model
+        // id's namespace (`openai/…` → `openai`), the same key the registry
+        // dispatches on.
+        val providerKey = request.modelId.value.split("/", 2).headOption.getOrElse(request.modelId.value)
+        scribe.warn(s"Provider error (raw, model=${request.modelId.value}): $msg")
+        val safeMsg = sigil.sanitizeProviderError(providerKey, msg)
+        val orphanSettle = settleOrphanToolInvoke(state, convId, caller, topicId, error = Some(safeMsg))
         // The failure is routed to the agent below (recoverable
         // Tool failure + retry); don't ALSO dead-end the user with the
         // streamed placeholder's "failed to produce a valid reply".
-        val orphanMessageSettle = settleOrphanMessage(state, convId, error = Some(msg), routedToAgent = true)
+        val orphanMessageSettle = settleOrphanMessage(state, convId, error = Some(safeMsg), routedToAgent = true)
         // Bug #69 — Tool-role Message MUST have origin. Pair to the
         // active ToolInvoke if one is open (the typical case — the
         // provider's error came mid-tool-call); otherwise fall back
@@ -1523,7 +1539,7 @@ object Orchestrator {
         // errors are typically retryable (transient backend hiccup,
         // args malformed, etc.); a fatal provider failure has its own
         // escalation path through `ProviderStrategy`.
-        val reason = s"Provider error: $msg"
+        val reason = s"Provider error: $safeMsg"
         val errorResult: Signal = ToolDelta(
           target         = originId,
           conversationId = convId,

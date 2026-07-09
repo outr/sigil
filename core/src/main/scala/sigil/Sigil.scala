@@ -2472,6 +2472,31 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     sigil.provider.RefusalDetector.Default
 
   /**
+   * Sigil #410 — scrub provider-identifying text from an error before it is
+   * surfaced to users or fed to the model. A raw provider error carries
+   * vendor-identifying content — the backend's name and support URLs like
+   * `help.openai.com` — which the framework otherwise inserts verbatim into the
+   * agent-facing diagnostic (the model can then echo it) AND, on a
+   * non-agent-routed failure, into the end user's own reply bubble. Apps that
+   * present a provider-agnostic product have no other seam to prevent this: the
+   * string originates in the provider's error, not a model response, so a
+   * system prompt can't stop it.
+   *
+   * The default strips known LLM-vendor support URLs/domains (replacing them
+   * with a neutral phrase) while preserving the rest of the diagnostic, so an
+   * actionable message ("malformed args", "rate limited") still reaches the
+   * agent. Apps wanting a FULLY provider-agnostic surface override this to
+   * return a generic message (e.g. "the model provider returned an error").
+   * The framework always logs the RAW error to `scribe` (server-side) so
+   * debugging isn't lost; only the sanitized text becomes surfaced content.
+   *
+   * @param providerName the resolved provider key (e.g. `"openai"`)
+   * @param raw          the provider's raw error string
+   */
+  def sanitizeProviderError(providerName: String, raw: String): String =
+    Sigil.vendorSupportUrlPattern.replaceAllIn(raw, "the provider's support site").trim
+
+  /**
    * Reactive self-healers registered with the framework. When an
    * iteration of [[runAgentLoop]] throws, the agent loop's
    * `handleError` chain walks this list with the thrown error and
@@ -8862,6 +8887,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 }
 
 object Sigil {
+
+  /** Sigil #410 — known LLM-vendor support/help URLs & domains whose presence
+    * in a raw provider error would leak which backend an app uses. Matched with
+    * any leading subdomain, an optional `http(s)://` scheme, and an optional
+    * path, case-insensitively; the default [[Sigil.sanitizeProviderError]]
+    * replaces each match with a neutral phrase. Covers the vendors sigil ships
+    * providers for; apps needing more scrub the rest via the hook. */
+  private[sigil] val vendorSupportUrlPattern: scala.util.matching.Regex =
+    ("(?i)\\b(?:https?://)?(?:[a-z0-9-]+\\.)*" +
+      "(?:openai\\.com|anthropic\\.com|deepseek\\.com|deepinfra\\.com|mistral\\.ai|" +
+      "x\\.ai|googleapis\\.com|cloudflare\\.com|digitalocean\\.com)" +
+      "(?:/[^\\s)\"']*)?").r
 
   /** Sigil #376 — an [[AgentRunawayException]] is a STALL terminal (the
     * agent hit the iteration cap or a progress-checkpoint stall and the
