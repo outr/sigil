@@ -3918,10 +3918,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   /** Most-recent [[sigil.event.ToolApproval]] for `(toolName,
     * conversationId)`, or `None` when the agent hasn't recorded a
-    * decision yet. Sigil bug #83 — the orchestrator's consent gate
-    * reads this before dispatching a `requiresUserConsent` tool;
-    * apps can also call directly to surface "is this tool approved
-    * in this conversation?" UX. */
+    * decision yet. The orchestrator reads this before dispatching a
+    * `requiresUserConsent` tool; apps can also call directly to
+    * surface "is this tool approved in this conversation?" UX. */
   def latestToolApproval(toolName: sigil.tool.ToolName,
                          conversationId: Id[Conversation]): Task[Option[sigil.event.ToolApproval]] =
     withDB(_.eventsTransaction(conversationId)(_.list)).map { events =>
@@ -4682,11 +4681,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           case None       => Task.pure(None)
         })).unit
       case Some(cc: sigil.event.ComplexityChange) =>
-        // Sigil bug #177 — symmetric with ModeChange. The pin/unpin
-        // tools mutate `pinnedComplexity` themselves; this projection
-        // arm keeps the event the source of truth so future emitters
-        // (e.g. classifier-driven auto-escalation) flow through the
-        // same path without duplicating the conversation modify.
+        // The pin/unpin tools mutate `pinnedComplexity` themselves;
+        // this projection arm keeps the event the source of truth so
+        // future emitters (e.g. classifier-driven auto-escalation)
+        // flow through the same path without duplicating the
+        // conversation modify.
         withDB(_.conversations.transaction(_.modify(cc.conversationId) {
           case Some(conv) if conv.pinnedComplexity != cc.newTier =>
             Task.pure(Some(conv.copy(pinnedComplexity = cc.newTier, modified = Timestamp(Nowish()))))
@@ -4875,7 +4874,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * name, "Greeting", "Initial setup", "Chat", "Help") that
     * would otherwise pull every subsequent turn back to them via
     * the prior-match path. Apps that brand the agent override and
-    * include the agent's display name. Sigil bug #89. */
+    * include the agent's display name. */
   def reservedTopicLabels: Set[String] = Set(
     "greeting", "initial setup", "chat", "help", "assistant", "conversation"
   )
@@ -4995,11 +4994,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               }
           }
       })
-      // Sigil bug #197 — `NoOpinion` is a legitimate "model declined
-      // to call the tool"; default to NoChange silently. `Truncated`
-      // / `Failed` are diagnostic events — surface a Failed
-      // FrameworkWorkflowNotice so the gap is visible to operators
-      // and downstream code rather than being a zero-event silence.
+      // `NoOpinion` is a legitimate "model declined to call the tool";
+      // default to NoChange silently. `Truncated` / `Failed` are
+      // diagnostic events — surface a Failed FrameworkWorkflowNotice
+      // so the gap is visible to operators and downstream code
+      // rather than being a zero-event silence.
       case sigil.tool.consult.ConsultOutcome.NoOpinion =>
         Task.pure(TopicShiftResult.NoChange)
       case t @ sigil.tool.consult.ConsultOutcome.Truncated(_, _, _) =>
@@ -6110,9 +6109,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // releases the AgentState claim — this wrap layers a
     // `FrameworkWorkflowNotice` (workflowType = "agent-loop") on top
     // so operational observers (activity bars, latency traces) get an
-    // explicit terminal pulse when the loop ends. Closes the gap
-    // adjacent to bug #312 where operational observers had no signal
-    // for an agent loop that crashed mid-stream.
+    // explicit terminal pulse when the loop ends.
     //
     // Sigil #313 — both terminal phases fire. `AgentStateDelta(Idle)`
     // is a different channel keyed by agent/conversation, not the
@@ -6164,20 +6161,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // terminate path guarantees a single fire across the whole
       // loop.
       turnExtractorFired = new java.util.concurrent.atomic.AtomicBoolean(false),
-      // Sigil bug #200 — the post-error `publishFailureMessage` also
-      // needs fire-once semantics. Without this gate, an exception
-      // raised inside an inner recursion level propagates up through
-      // every parent level's `.handleError`, each of which publishes
-      // its own Failure Message — surfacing N identical failure
-      // bubbles in the chat for one failure. CAS-gated like
-      // `turnExtractorFired`.
+      // The post-error `publishFailureMessage` needs fire-once
+      // semantics. Without this gate, an exception raised inside an
+      // inner recursion level propagates up through every parent
+      // level's `.handleError`, each of which publishes its own
+      // Failure Message — surfacing N identical failure bubbles in
+      // the chat for one failure. CAS-gated like `turnExtractorFired`.
       failurePublished = new java.util.concurrent.atomic.AtomicBoolean(false),
-      // Sigil bug #226 — per-loop `find_capability` cache. Shared
-      // across every iteration of THIS loop so the agent doesn't
-      // re-discover within the same task; a fresh AtomicReference
-      // per `runAgent` call means the next user turn starts with an
-      // empty cache, preventing prompt pollution from prior turns'
-      // discoveries.
+      // Per-loop `find_capability` cache. Shared across every
+      // iteration of THIS loop so the agent doesn't re-discover
+      // within the same task; a fresh AtomicReference per `runAgent`
+      // call means the next user turn starts with an empty cache,
+      // preventing prompt pollution from prior turns' discoveries.
       discoveredCapabilitiesRef = new AtomicReference(Map.empty),
       // Sigil #411 — turn-scoped read-tool result cache, fresh per turn so a
       // retry's identical READ is served from cache instead of re-executing.
@@ -6729,7 +6724,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                           participantId  = agent.id,
                           conversationId = convId,
                           topicId        = conv.currentTopicId,
-                          content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
+                          content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(
+                            checkpointDirective(reason, None))),
                           state          = EventState.Complete,
                           role           = MessageRole.Standard
                         ),
@@ -7314,19 +7310,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               if (report.shouldAskUser || stuck || stall.detected) {
                 val reason =
                   if (report.shouldAskUser)
+                    // Genuine ask-the-user terminal — this one IS meant to
+                    // reach the user (the caller rewrites the exact wording;
+                    // a first-person voice is correct here).
                     s"I need clarification before I can continue. ${effectiveStuckOn.getOrElse("")}".trim
                   else if (stall.detected)
                     // Stall-detector hit on the current checkpoint —
                     // intervene immediately rather than waiting for
                     // `consecutiveNoProgressLimit` streaks to stack.
-                    stall.reason.getOrElse(
-                      s"I've made the same kind of call repeatedly without new information. How would you like me to proceed?"
-                    )
+                    checkpointDirective(
+                      stall.reason.getOrElse(
+                        "You have repeated the same kind of call without gaining new information."),
+                      effectiveStuckOn)
                   else
-                    s"I've been working on this for $iteration turns and haven't made meaningful " +
-                      s"progress since: \"${priorStatus.getOrElse(report.currentStatus)}\". " +
-                      s"${effectiveStuckOn.map(s => s"I'm stuck on: $s. ").getOrElse("")}" +
-                      "How would you like me to proceed?"
+                    checkpointDirective(
+                      s"You have run $iteration iterations without meaningful progress since: " +
+                        s"\"${priorStatus.getOrElse(report.currentStatus)}\".",
+                      effectiveStuckOn)
                 // Bug #133 — distinguish "ask the user" (genuine
                 // terminal — needs human input) from "agent should
                 // act differently now" (directive — agent gets one
@@ -7489,6 +7489,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         .identicalInputStreak(records, hardStallIdenticalCallLimit)
         .reason
     }.handleError(_ => Task.pure(None))
+
+  /** Frame a checkpoint DIRECTIVE (the non-ask-user nudge) as an
+    * explicitly internal, non-conversational instruction. The directive
+    * reaches the agent as a Tool-role message hidden from the user, but a
+    * reason worded as a first-person question ("How would you like me to
+    * proceed?") is read by an instruction-following model as the USER
+    * challenging it — so it posts a user-visible "You're right…"
+    * acknowledgment, a reply to a message the user never sent (and, across
+    * repeated checkpoints on a long turn, several such ghost-replies). The
+    * envelope states the situation as a fact, adds an explicit
+    * do-not-acknowledge instruction, and asks a question of nobody — so
+    * there is nothing for the model to answer in chat. The genuine
+    * ask-the-user checkpoint (`shouldAskUser`) keeps its first-person
+    * user-facing wording; only the directive path is reframed. */
+  private def checkpointDirective(body: String, stuckOn: Option[String]): String = {
+    val hint = stuckOn.map(s => s" You are stuck on: $s.").getOrElse("")
+    "[progress checkpoint — internal, not a user message; do NOT reply to or acknowledge this in chat]\n" +
+      body.trim + hint +
+      " Change your approach now and continue the task. Do not apologize for or narrate this correction " +
+      "to the user; just do the work."
+  }
 
   private final def evaluateStall(convId: Id[Conversation],
                                   agentId: ParticipantId): Task[sigil.conversation.compression.StallDetector.Signal] =
