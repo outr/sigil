@@ -17,7 +17,7 @@ val striderVersion: String = "1.1.6"
 
 val scalapassVersion: String = "1.4.2"
 
-val awsS3Version: String = "2.46.21"
+val awsS3Version: String = "2.47.4"
 
 val robobrowserVersion: String = "2.3.5"
 
