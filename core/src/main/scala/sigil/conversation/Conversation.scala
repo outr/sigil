@@ -112,6 +112,18 @@ case class Conversation(topics: List[TopicEntry],
                           * Pin wins over inference; inference wins over the
                           * strategy's `Complexity.Medium` default. Bug #152. */
                         pinnedComplexity: Option[sigil.provider.Complexity] = None,
+                        /** Conversation-level pinned reasoning effort — when set,
+                          * the main agent turn's resolved [[sigil.provider.GenerationSettings]]
+                          * is overlaid with this effort (and reasoning forced on
+                          * so it engages on providers whose default is
+                          * thinking-off). Lets a consumer expose a per-conversation
+                          * effort picker (Low / Medium / High / Max) without
+                          * touching the deployment-global strategy candidate
+                          * settings. Governs the user-facing agent turn only —
+                          * framework auxiliary calls (classifier, memory
+                          * extractor, summarization) keep their own settings.
+                          * Cleared via the `unpin_effort` tool. */
+                        pinnedEffort: Option[sigil.provider.Effort] = None,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
                         _id: Id[Conversation] = Conversation.id())

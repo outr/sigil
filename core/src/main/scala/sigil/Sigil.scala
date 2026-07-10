@@ -2152,6 +2152,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         val provider = resolvedPM.provider
         val resolvedModel: Model = resolvedPM.model
         val genSettings = settingsFor(modelId)
+        // Sigil #412 — a per-conversation effort pin (set via `pin_effort`)
+        // overlays the resolved candidate settings for the main agent turn.
+        // Mirrors `pinnedModelId` / `pinnedComplexity`: it gives a consumer a
+        // user-facing effort picker (Low / Medium / High / Max) without
+        // touching the deployment-global ProviderStrategy candidate settings.
+        // Reasoning is forced On so the effort actually engages on providers
+        // whose default is thinking-off (Google 2.5) or `Auto`; the
+        // forced-synthesis branch below overrides back to Off when it runs.
+        // Scoped to the user-facing agent turn — auxiliary calls (classifier,
+        // extractor, summarization) resolve their own settings elsewhere.
+        val pinnedSettings = context.conversation.pinnedEffort match {
+          case Some(effort) => genSettings.copy(effort = Some(effort), reasoningMode = ReasoningMode.On)
+          case None         => genSettings
+        }
         // forced-synthesis is the framework's last-resort "make the model
         // respond" turn. Tool-call already narrowed to the respond family
         // at the orchestrator boundary; here we ALSO bound the output
@@ -2166,12 +2180,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             // synthesis is supposed to emit ONE respond call, ≤ a few
             // hundred tokens of content. `tightenedTo` preserves a
             // tighter caller-supplied cap (sigil #276).
-            genSettings.tightenedTo(2048).copy(
+            pinnedSettings.tightenedTo(2048).copy(
               // Hard override (not orElse) — the narrow tool_choice
               // means there's nothing worth reasoning about anyway.
               reasoningMode = ReasoningMode.Off
             )
-          else genSettings
+          else pinnedSettings
         // Sigil #100 — when per-turn routing lands this candidate on a model
         // whose context window is SMALLER than the one the turn was curated
         // for (Opus 1M → Haiku 200K under complexity-based assignment, a tier
