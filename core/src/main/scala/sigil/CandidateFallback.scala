@@ -44,7 +44,13 @@ object CandidateFallback {
    */
   def stream(candidates: List[Id[Model]],
              classifier: ErrorClassifier,
-             reportFailure: Id[Model] => Unit)
+             reportFailure: Id[Model] => Unit,
+             /** Sigil #415 — consulted before advancing to the next
+               * candidate. A user Stop that lands while one tier is
+               * failing must not be answered with a fresh call against
+               * the next tier; the error propagates instead and the
+               * agent loop's stop handling ends the turn quietly. */
+             stopRequested: () => Boolean = () => false)
             (attempt: Id[Model] => Stream[Signal]): Stream[Signal] =
     candidates match {
       case Nil =>
@@ -57,7 +63,7 @@ object CandidateFallback {
             Stream.emit(sig)
           }
           .handleErrorWith { t =>
-            if (committed.get() || rest.isEmpty) fail(t)
+            if (committed.get() || rest.isEmpty || stopRequested()) fail(t)
             else
               classifier.classify(t) match {
                 // Terminal — surface to the agent loop (which heals, or
@@ -73,7 +79,7 @@ object CandidateFallback {
                       s"(${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}); " +
                       s"falling back to the next routed candidate"
                   )
-                  stream(rest, classifier, reportFailure)(attempt)
+                  stream(rest, classifier, reportFailure, stopRequested)(attempt)
               }
           }
     }

@@ -8,7 +8,7 @@ import sigil.db.Model
 import sigil.information.InformationSummary
 import sigil.participant.ParticipantId
 import sigil.conversation.compression.extract.{MemoryExtractor, NoOpMemoryExtractor}
-import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
+import sigil.tokenize.{HeuristicTokenizer, JtokkitTokenizer, Tokenizer}
 
 /**
  * Default [[ContextCurator]]. Bug #26 — sources frames from
@@ -55,21 +55,25 @@ case class StandardContextCurator(sigil: Sigil,
                                   keepMinimum: Int = 4,
                                   tokenizer: Tokenizer = HeuristicTokenizer,
                                   /** Token counter used in the multi-stage `budgetResolve`
-                                    * shed. Defaults to [[HeuristicTokenizer]] regardless of
-                                    * what `tokenizer` is — budget math runs over the full
-                                    * frame vector (50K+ frames on bulk-imported
-                                    * conversations) and gets re-run on the survivors of
-                                    * every shed stage. A network-backed `tokenizer`
-                                    * (`LlamaCppTokenizer` etc.) plugged here would issue
-                                    * one HTTP round-trip per unique text per pass — fine
-                                    * on a 50-frame chat, multi-minute hangs on a 50K-frame
-                                    * import. The heuristic is in-memory, instant, and
-                                    * conservative (over-counts ~7-15% which the right
-                                    * asymmetry for a pre-flight gate). Apps that genuinely
-                                    * need wire-exact budget math override this explicitly;
-                                    * everyone else benefits from the cheap default even if
-                                    * they wire a network tokenizer for other paths. */
-                                  budgetTokenizer: Tokenizer = HeuristicTokenizer,
+                                    * shed. Defaults to the in-memory BPE tokenizer
+                                    * ([[sigil.tokenize.JtokkitTokenizer.OpenAIO200k]],
+                                    * which self-degrades to [[HeuristicTokenizer]] when
+                                    * the jtokkit dependency is absent). Real BPE counts
+                                    * matter here: on markup-heavy content (CSS / HTML /
+                                    * Liquid) the character heuristic UNDER-counts by
+                                    * 20-30%, which pushed the effective trigger of the
+                                    * default `Percentage(0.8)` budget past the model's
+                                    * wire window — compression mathematically never ran
+                                    * before the provider hard-rejected the request. A
+                                    * network-backed `tokenizer` (`LlamaCppTokenizer`
+                                    * etc.) must NOT be plugged here — budget math runs
+                                    * over the full frame vector and re-runs on the
+                                    * survivors of every shed stage, so a per-text HTTP
+                                    * round-trip means multi-minute hangs on bulk-imported
+                                    * histories. [[HeuristicTokenizer]] remains a valid
+                                    * explicit choice when jtokkit's per-frame encoding
+                                    * cost matters more than gate accuracy. */
+                                  budgetTokenizer: Tokenizer = JtokkitTokenizer.OpenAIO200k,
                                   pinnedShareWarningThreshold: Double = 0.20,
                                   /** Hard cap on the number of frames the per-turn
                                     * curate pass considers. When the conversation has
@@ -237,6 +241,18 @@ case class StandardContextCurator(sigil: Sigil,
   override def refit(turnInput: TurnInput,
                      modelId: Id[Model],
                      chain: List[ParticipantId]): Task[TurnInput] =
+    refit(turnInput, modelId, chain, capOverride = None)
+
+  /** [[refit]] with an explicit token cap in place of
+    * `budget.tokensFor(model)`. The agent loop's context-overflow
+    * recovery passes an emergency cap well under the wire window after
+    * the provider has hard-rejected a request — the wire's rejection is
+    * ground truth that the estimator under-counted, so the emergency
+    * cap must not be derived from the same estimate that just failed. */
+  def refit(turnInput: TurnInput,
+            modelId: Id[Model],
+            chain: List[ParticipantId],
+            capOverride: Option[Int]): Task[TurnInput] =
     modelFor(modelId).flatMap {
       case Some(model) =>
         budgetResolve(
@@ -248,7 +264,8 @@ case class StandardContextCurator(sigil: Sigil,
             memories = turnInput.memories,
             criticalMemories = turnInput.criticalMemories
           ),
-          information = turnInput.information
+          information = turnInput.information,
+          capOverride = capOverride
         )
       case None => Task.pure(turnInput)
     }
@@ -304,13 +321,14 @@ case class StandardContextCurator(sigil: Sigil,
                             modelId: Id[Model],
                             chain: List[ParticipantId],
                             memoryResult: MemoryRetrievalResult,
-                            information: Vector[InformationSummary]): Task[TurnInput] =
+                            information: Vector[InformationSummary],
+                            capOverride: Option[Int] = None): Task[TurnInput] =
     for {
       memTuple <- resolveMemoriesAndSummaries(memoryResult)
       resolvedSummaries <- resolveSummaries(tentative.summaries)
       out <- {
         val (resolvedCritical, resolvedRetrieved) = memTuple
-        val cap = budget.tokensFor(model)
+        val cap = capOverride.getOrElse(budget.tokensFor(model))
 
         // The persisted-summary section is always rendered when
         // budget allows. When the budget gets tight the curator

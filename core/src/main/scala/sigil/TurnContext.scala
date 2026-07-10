@@ -93,6 +93,17 @@ case class TurnContext(sigil: Sigil,
                          * reply from the agent's gathered context rather than
                          * discarding it via [[sigil.AgentRunawayException]]. */
                        forceResponseSynthesis: Boolean = false,
+                       /** Emergency context-window factor. Set by the agent
+                         * loop's context-overflow recovery after the provider
+                         * hard-rejected a request as over the model's window:
+                         * the turn's input is re-fitted (full shed cascade,
+                         * persisted) to `contextLength × factor` BEFORE the
+                         * retried request ships, regardless of what the
+                         * estimator thinks — the wire's rejection is ground
+                         * truth that the estimate under-counted. Halves per
+                         * consecutive overflow (0.5, then 0.25). `None` on
+                         * normal turns. */
+                       emergencyContextFactor: Option[Double] = None,
                        /** Per-agent-loop cache of `find_capability` matches,
                          * keyed by the normalised query. Populated when the
                          * agent invokes `find_capability`; rendered into the

@@ -510,6 +510,18 @@ trait Provider extends Service with ModelResolver {
             // Once committed, a retry would duplicate observed output: propagate
             // after the live prefix.
             if (committed.get()) fail(t)
+            // Sigil #415 — a user Stop that lands mid-call (its stream-
+            // cancel typically surfaces here as a transport error) or
+            // mid-backoff must not be answered with a fresh wire call:
+            // the already-fired cancel can't reach a request issued
+            // after it. Propagate instead of retrying / self-healing;
+            // the agent loop's stop handling ends the turn quietly.
+            else if (currentCall.conversationId.exists(cid => sigil.stopRequested(cid, currentCall.agentId))) {
+              scribe.info(
+                s"Sigil #415 — suppressing provider retry for ${currentCall.model._id.value}: " +
+                  "stop requested for the conversation")
+              fail(t)
+            }
             else {
               val cls = classifier.classify(t)
               // Sigil #387 — model-agnostic self-heal: a model that rejects
@@ -2121,6 +2133,34 @@ object Provider {
   /** Case-insensitively test whether `t` or any throwable in its cause chain
     * carries `needle` in its message — cycle-guarded, so it works regardless
     * of throwable type or wrapping. */
+  /** Vendor wire messages for a request that exceeds the model's context
+    * window. The pre-flight gate estimates and sheds, but estimates can
+    * under-count (markup-heavy content); when they do, the provider's 400
+    * is the ground truth. The agent loop matches this to trigger
+    * emergency compaction + retry instead of failing the turn. */
+  private val ContextOverflowMarkers: List[String] = List(
+    "prompt is too long",                    // Anthropic
+    "context_length_exceeded",               // OpenAI error code
+    "maximum context length",                // OpenAI message
+    "exceeds the maximum number of tokens",  // Google Gemini
+    "input token count"                      // Google Gemini variant
+  )
+
+  /** Whether `t` (anywhere in its cause chain) is a context-window
+    * overflow — either the framework's own pre-flight
+    * [[RequestOverBudgetException]] or a vendor wire rejection. */
+  def isContextOverflow(t: Throwable): Boolean = {
+    val seen = scala.collection.mutable.Set.empty[Throwable]
+    @scala.annotation.tailrec
+    def loop(cur: Throwable): Boolean =
+      if (cur == null || seen.contains(cur)) false
+      else if (cur.isInstanceOf[RequestOverBudgetException]) true
+      else if (Option(cur.getMessage).map(_.toLowerCase)
+                 .exists(m => ContextOverflowMarkers.exists(m.contains))) true
+      else { seen += cur; loop(cur.getCause) }
+    loop(t)
+  }
+
   private def messageChainContains(t: Throwable, needle: String): Boolean = {
     val lc = needle.toLowerCase
     val seen = scala.collection.mutable.Set.empty[Throwable]

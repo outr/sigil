@@ -1551,8 +1551,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def refit(turnInput: TurnInput,
             modelId: Id[Model],
-            chain: List[ParticipantId]): Task[TurnInput] =
-    sigil.conversation.compression.StandardContextCurator(this).refit(turnInput, modelId, chain)
+            chain: List[ParticipantId],
+            capTokens: Option[Int] = None): Task[TurnInput] =
+    sigil.conversation.compression.StandardContextCurator(this).refit(turnInput, modelId, chain, capTokens)
 
   // -- information lookup --
 
@@ -2197,11 +2198,24 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // the wire or getting crudely emergency-shed by the provider gate. A
         // re-fit failure falls back to the un-fitted input (the provider
         // pre-flight gate is still the backstop).
-        val turnInputTask: Task[TurnInput] =
-          if (resolvedModel.contextLength < context.model.contextLength)
+        //
+        // Sigil #413 — the context-overflow recovery re-runs the iteration
+        // with `emergencyContextFactor` set after the provider hard-rejected
+        // the request as over the window. That refit is UNCONDITIONAL and
+        // uses an explicit cap of `contextLength × factor` — the wire told
+        // us the estimator under-counted, so a budget derived from the same
+        // estimate can't be trusted to shed enough.
+        val emergencyCap: Option[Int] =
+          context.emergencyContextFactor.map(f => math.max(1024, (resolvedModel.contextLength * f).toInt))
+        val turnInputTask: Task[TurnInput] = emergencyCap match {
+          case Some(cap) =>
+            refit(context.turnInput, canonicalModelId, context.chain, capTokens = Some(cap))
+              .handleError(_ => Task.pure(context.turnInput))
+          case None if resolvedModel.contextLength < context.model.contextLength =>
             refit(context.turnInput, canonicalModelId, context.chain)
               .handleError(_ => Task.pure(context.turnInput))
-          else Task.pure(context.turnInput)
+          case None => Task.pure(context.turnInput)
+        }
 
         Stream.force(turnInputTask.map { fittedTurnInput =>
           val request = ConversationRequest(
@@ -2258,7 +2272,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       CandidateFallback.stream(
         candidates    = rt.fallbackIds,
         classifier    = classifier,
-        reportFailure = id => rt.strategyOpt.foreach(_.reportFailure(id, rt.routedWorkType))
+        reportFailure = id => rt.strategyOpt.foreach(_.reportFailure(id, rt.routedWorkType)),
+        stopRequested = () => stopRequested(context.conversation.id, Some(agent.id))
       )(attempt)
     })
   }
@@ -3592,6 +3607,39 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * when `releaseClaim` completes (successfully or via error). */
   private final val stopFlags: ConcurrentHashMap[Id[Event], StopFlag] = new ConcurrentHashMap()
 
+  /** Sigil #415 — conversation-level stop latch that OUTLIVES claims.
+    * [[stopFlags]] only interrupts a claim that is live at the moment the
+    * Stop arrives; in an erroring conversation churning through rapid
+    * claim/release cycles (or with re-trigger machinery queued), a Stop
+    * can land in a gap, set nothing, and evaporate — the next claim then
+    * starts with a fresh unset flag and the agent visibly ignores the
+    * user's Stop. The latch records the Stop's timestamp per conversation;
+    * agent fan-out refuses to fire while it is set, and only a
+    * user-authored Message NEWER than the latch clears it (a genuine
+    * "keep going" re-arms naturally; auto-continue / challenge machinery
+    * stays suppressed). In-memory: a restart clears latches, which is the
+    * conservative direction (an agent firing after restart is recoverable;
+    * a permanently-latched conversation is not). */
+  private final val stopLatches: ConcurrentHashMap[Id[Conversation], java.lang.Long] = new ConcurrentHashMap()
+
+  /** Sigil #415 — whether the user has requested a stop that should halt
+    * further work for `conversationId` (optionally narrowed to one
+    * agent). Consulted by the provider layer's transient-retry loop and
+    * the candidate-fallback combinator BEFORE issuing another wire call:
+    * a Stop that lands mid-retry-backoff must prevent the next attempt,
+    * not race it. True when the conversation is stop-latched OR any
+    * matching live claim's [[StopFlag]] is set. */
+  private[sigil] final def stopRequested(conversationId: Id[Conversation],
+                                         agentId: Option[ParticipantId] = None): Boolean =
+    stopLatches.containsKey(conversationId) || {
+      import scala.jdk.CollectionConverters.*
+      stopFlags.entrySet().iterator().asScala.exists { entry =>
+        entry.getKey.value.endsWith(s":${conversationId.value}") &&
+          agentId.forall(id => entry.getKey.value == s"agentlock:${id.value}:${conversationId.value}") &&
+          entry.getValue.requested
+      }
+    }
+
   /** In-flight provider HTTP-stream cancel handles, keyed per
     * (agent, conversation). A [[Provider]] registers its spice
     * `StreamHandle.cancel` here when an agent turn starts streaming and
@@ -3630,7 +3678,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           s"Stop received: conversation=${s.conversationId.value} target=$target " +
             s"force=${s.force} by=${s.participantId.value}$why"
         )
+        // Sigil #415 — latch the conversation regardless of whether a
+        // claim is live RIGHT NOW. Flags only reach a claim that exists
+        // at this instant; the latch covers the gap (Stop landing between
+        // claim/release cycles, queued re-triggers) so the conversation
+        // stays stopped until a fresh user message re-arms it (fan-out
+        // clears the latch on a user-authored Message newer than this).
+        stopLatches.put(s.conversationId, java.lang.Long.valueOf(s.timestamp.value))
         import scala.jdk.CollectionConverters.*
+        var matched = 0
         stopFlags.entrySet().iterator().asScala.foreach { entry =>
           val lockId = entry.getKey
           val flag = entry.getValue
@@ -3642,9 +3698,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             case Some(id) => lockId.value == s"agentlock:${id.value}:${s.conversationId.value}"
           }
           if (matchesConv && matchesTarget) {
+            matched += 1
             if (s.force) flag.force.set(true) else flag.graceful.set(true)
           }
         }
+        // Diagnostic: a Stop that matched no live claim used to be a
+        // silent total no-op — the exact failure observed in the field.
+        // The latch above now covers it, but the log keeps the condition
+        // visible for forensics.
+        if (matched == 0) scribe.info(
+          s"Stop for ${s.conversationId.value} matched no live agent claim — " +
+            "conversation latched; agents will not re-fire until a new user message")
       }
       // Abort the in-flight provider HTTP stream(s) for the targeted
       // agent (or every agent in the conversation when no target is
@@ -5771,6 +5835,32 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
 
   private final def fanOut(event: Event): Task[Unit] =
+    // Sigil #415 — honor the conversation's stop latch before waking any
+    // agent. While latched, only a user-authored Message NEWER than the
+    // Stop re-arms the conversation (and clears the latch); every other
+    // trigger — an agent's own tool results, framework diagnostics,
+    // challenge machinery, queued auto-continues — stays suppressed. The
+    // user's Stop means stopped, even across claim/release churn.
+    Option(stopLatches.get(event.conversationId)) match {
+      case Some(stoppedAt) =>
+        event match {
+          case m: Message
+            if !m.participantId.isInstanceOf[AgentParticipantId]
+              && m.role == MessageRole.Standard
+              && m.timestamp.value > stoppedAt =>
+            stopLatches.remove(event.conversationId)
+            fanOutUnlatched(event)
+          case _ =>
+            Task {
+              scribe.debug(
+                s"fanOut suppressed for ${event.conversationId.value}: conversation is stop-latched " +
+                  s"(${event.getClass.getSimpleName} is not a fresh user message)")
+            }
+        }
+      case None => fanOutUnlatched(event)
+    }
+
+  private final def fanOutUnlatched(event: Event): Task[Unit] =
     withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
       case None       => Task.unit
       case Some(conv) =>
@@ -5995,6 +6085,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * testable without driving a live reflection loop. */
   private[sigil] def terminalOnPersistentNoProgress(noProgressStreak: Int): Boolean =
     hardNoProgressLimit > 0 && noProgressStreak >= hardNoProgressLimit
+
+  /** Sigil #413 — how many context-overflow recoveries a single turn may
+    * spend before the overflow surfaces as a clean terminal failure. Each
+    * recovery re-runs the failed iteration with an emergency refit to
+    * `contextLength × 0.5^attempt` — the halving absorbs any estimator
+    * under-count, so two attempts reach a quarter of the window before
+    * giving up. 0 disables the recovery (overflow fails the turn
+    * immediately, pre-#413 behaviour). */
+  protected def maxOverflowCompactions: Int = 2
 
   /** Objective identical-call streak (same tool, same args, within one turn)
     * at which the framework force-ends the turn — MODEL-INDEPENDENTLY — by
@@ -6285,7 +6384,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                    * for a single turn's heal arc. Threaded so
                                    * the retry's audit pulse joins the same
                                    * arc. */
-                                 healCorrelationId: AtomicReference[Option[String]]
+                                 healCorrelationId: AtomicReference[Option[String]],
+                                 /** Sigil #413 — count of context-overflow
+                                   * recoveries already spent this turn. Each
+                                   * recovery re-runs the iteration with
+                                   * `emergencyContextFactor = 0.5^n` so the
+                                   * turn's input is force-refitted under the
+                                   * wire window; bounded by
+                                   * [[maxOverflowCompactions]], after which
+                                   * the overflow surfaces as a clean terminal
+                                   * failure. Threaded through every recursion
+                                   * so the bound holds across the whole turn. */
+                                 overflowCompactions: Int = 0
                                    ): Task[Unit] = Task.defer {
     // Bug #149 — release the agent's claim AND fire the per-turn
     // memory extractor exactly once. The CAS-guard guarantees a
@@ -6347,7 +6457,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         discoveredCapabilitiesRef = discoveredCapabilitiesRef,
         toolResultCacheRef = toolResultCacheRef,
         healedThisTurn            = healedThisTurn,
-        healCorrelationId         = healCorrelationId
+        healCorrelationId         = healCorrelationId,
+        overflowCompactions       = overflowCompactions
       )
     // Sigil #257 — recovery for a no-tool-call response: run ONE more
     // iteration with the FULL roster + normal `tool_choice` intact (NOT
@@ -6374,7 +6485,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         discoveredCapabilitiesRef = discoveredCapabilitiesRef,
         toolResultCacheRef = toolResultCacheRef,
         healedThisTurn            = healedThisTurn,
-        healCorrelationId         = healCorrelationId
+        healCorrelationId         = healCorrelationId,
+        overflowCompactions       = overflowCompactions
       )
     val stopFlag = Option(stopFlags.get(claimed._id))
     // Bug #74 — flips when a `respond` settles with `endsTurn = false`
@@ -6467,7 +6579,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // Sigil bug #125 — propagate the cap-hit soft-stop flag
               // through the TurnContext so runAgentTurn → ConversationRequest →
               // Provider's tool_choice all reflect it.
-              val ctx = if (forceResponseSynthesis) rawCtx.copy(forceResponseSynthesis = true) else rawCtx
+              // Sigil #413 — after a context-overflow recovery, carry the
+              // emergency refit factor so this iteration's input is force-
+              // compacted under the wire window before the request ships.
+              val ctx0 = if (forceResponseSynthesis) rawCtx.copy(forceResponseSynthesis = true) else rawCtx
+              val ctx =
+                if (overflowCompactions > 0)
+                  ctx0.copy(emergencyContextFactor = Some(math.pow(0.5, overflowCompactions)))
+                else ctx0
               scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext done; dispatching agent.process")
               // Wrap the agent's signal stream with a force-stop check so a
               // Stop(force=true) mid-iteration terminates the stream promptly.
@@ -6820,7 +6939,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                               discoveredCapabilitiesRef = discoveredCapabilitiesRef,
                               toolResultCacheRef = toolResultCacheRef,
                               healedThisTurn = healedThisTurn,
-                              healCorrelationId = healCorrelationId)))
+                              healCorrelationId = healCorrelationId,
+                              overflowCompactions = overflowCompactions)))
                   case None =>
                     // Sigil #285 — consult the intra-turn compactor
                     // before the next iteration. When budget pressure
@@ -6837,7 +6957,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                           discoveredCapabilitiesRef = discoveredCapabilitiesRef,
                           toolResultCacheRef = toolResultCacheRef,
                           healedThisTurn = healedThisTurn,
-                          healCorrelationId = healCorrelationId))
+                          healCorrelationId = healCorrelationId,
+                          overflowCompactions = overflowCompactions))
                     )
                 }
               }
@@ -6979,6 +7100,53 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // Task.pure so it becomes the iterationStep's continuation
           // rather than executing inline.
           Task.pure(retryTask)
+        case None if stopFlag.exists(_.requested) || stopLatches.containsKey(convId) =>
+          // Sigil #415 — the user stopped this conversation; whatever
+          // error the stop's stream-cancel (or the wedged state that
+          // prompted the stop) produced is a byproduct of the stop, not
+          // a failure to surface. End quietly: no Failure bubble, no
+          // recovery machinery, no re-raise — just release the claim.
+          scribe.info(
+            s"runAgent for ${agent.id.value} in ${convId.value} ended by user Stop " +
+              s"(suppressing ${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")})")
+          Task.pure(terminate(skipFallback = true).handleError(_ => Task.unit))
+        case None if _root_.sigil.provider.Provider.isContextOverflow(t)
+                  && overflowCompactions < maxOverflowCompactions =>
+          // Sigil #413 — the provider hard-rejected the request as over
+          // the model's context window (or the pre-flight gate threw
+          // after exhausting its own shed). The wire is ground truth
+          // that the estimator under-counted, so instead of failing the
+          // turn, re-run the iteration with an emergency refit: the
+          // recursion carries `overflowCompactions + 1`, which sets
+          // `emergencyContextFactor = 0.5^n` on the rebuilt TurnContext
+          // — the full shed cascade runs against HALF the window (then a
+          // quarter), and its stage-3 persistence (summary + clearedAt
+          // advance) keeps the NEXT turn under the wall too. Bounded by
+          // `maxOverflowCompactions`; exhaustion falls through to the
+          // clean terminal failure below on the next propagation.
+          scribe.warn(
+            s"Sigil #413 — context overflow for ${agent.id.value} in ${convId.value} " +
+              s"(attempt ${overflowCompactions + 1}/$maxOverflowCompactions): re-running iteration " +
+              s"with emergency refit factor ${math.pow(0.5, overflowCompactions + 1)}")
+          Task.pure(runAgentLoop(
+            agent                     = agent,
+            convId                    = convId,
+            claimed                   = claimed,
+            iteration                 = iteration + 1,
+            sinceTimestamp            = sinceTimestamp,
+            greeting                  = false,
+            userVisibleSeen           = userVisibleSeen,
+            turnExtractorFired        = turnExtractorFired,
+            failurePublished          = failurePublished,
+            forceResponseSynthesis    = forceResponseSynthesis,
+            forcedReason              = forcedReason,
+            noToolCallRetries         = noToolCallRetries,
+            discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+            toolResultCacheRef        = toolResultCacheRef,
+            healedThisTurn            = healedThisTurn,
+            healCorrelationId         = healCorrelationId,
+            overflowCompactions       = overflowCompactions + 1
+          ))
         case None =>
           // No heal applied (no match, healing exhausted, or strict
           // refusal). Fall through to the standard failure path.
@@ -7889,9 +8057,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case Some(conv) => conv.topics.headOption match {
         case None        => Task.unit
         case Some(topic) =>
-          val reason = Option(t.getMessage).filter(_.nonEmpty)
-            .map(m => s"${t.getClass.getSimpleName}: $m")
-            .getOrElse(t.getClass.getSimpleName)
+          // Sigil #413 — a context overflow that exhausted the emergency
+          // recovery gets a user-readable explanation, not a raw wire
+          // blob. Everything else runs through the #410 scrub so vendor
+          // support URLs and similar noise never reach the chat; the
+          // provider name isn't resolvable at this seam, so the scrub
+          // receives the "provider" placeholder.
+          val reason =
+            if (_root_.sigil.provider.Provider.isContextOverflow(t))
+              "The conversation has grown past the model's context window, and automatic emergency " +
+                "compaction could not bring it back under the limit. Start a new conversation, or reduce " +
+                "the request (fewer attached files / shorter input) and try again."
+            else sanitizeProviderError("provider", Option(t.getMessage).filter(_.nonEmpty)
+              .map(m => s"${t.getClass.getSimpleName}: $m")
+              .getOrElse(t.getClass.getSimpleName))
           val ec = sigil.event.ErrorContext.classify(t)
           // Sigil bug #282 — enrich the user-facing failure body with
           // the agent's most recent self-reported status (from a
