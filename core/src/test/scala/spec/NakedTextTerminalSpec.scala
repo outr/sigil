@@ -12,20 +12,25 @@ import sigil.provider.{
   CallId, GenerationSettings, Instructions, Provider, ProviderCall, ProviderEvent,
   ProviderType, StopReason
 }
+import sigil.orchestrator.Orchestrator
 import sigil.signal.EventState
 import sigil.tool.core.CoreTools
-import sigil.tool.model.ResponseContent
+import sigil.tool.model.{RespondInput, ResponseContent}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Sigil #392 — when the forced `tool_choice` self-heal (#387) downgrades to
- * `auto` for Fable/Mythos 5, the model often answers with plain text +
- * `end_turn` and no tool call. That complete prose answer must be COMMITTED
- * on the first occurrence — not dropped and re-requested (which produced ~4
- * duplicate, never-committing bubbles before forced synthesis finally landed
- * a `respond`).
+ * Naked-text terminal handling. A plain-prose `end_turn` with no tool call
+ * carries no explicit continue-vs-yield decision (`respond`'s required
+ * `endsTurn` field), so the framework challenges the FIRST occurrence per
+ * user turn with a `_turn_decision_required` diagnostic — the model must
+ * either execute the work its prose announced or end the turn explicitly
+ * via the respond family. A naked text on an already-challenged turn
+ * commits as the terminal reply (the framework had its say — bounded, no
+ * re-request loop), preserving the guarantee that a weak model's prose
+ * answer still lands instead of producing duplicate never-committing
+ * bubbles.
  */
 class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -82,6 +87,42 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     }
   }
 
+  /** Emits an announcement as naked prose on the first call, then — after
+    * the decision challenge — makes the explicit decision via
+    * `respond(endsTurn = true)`. The compliant shape a real model takes. */
+  private final class AnnounceThenRespondProvider extends Provider {
+    val calls = new AtomicInteger(0)
+    override def `type`: ProviderType = ProviderType.LlamaCpp
+    override def models: List[Model] = Nil
+    override protected def sigil: _root_.sigil.Sigil = TestSigil
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+      Task.error(new UnsupportedOperationException("no wire"))
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
+      val n = calls.incrementAndGet()
+      if (n == 1)
+        Stream.emits(List[ProviderEvent](
+          ProviderEvent.ContentBlockDelta(CallId("announce-0"), "Next I'll rename the theme and report back."),
+          ProviderEvent.Done(StopReason.Complete)
+        ))
+      else {
+        val cid = CallId(s"respond-${rapid.Unique()}")
+        Stream.emits(List[ProviderEvent](
+          ProviderEvent.ToolCallStart(cid, "respond"),
+          ProviderEvent.ToolCallComplete(cid, RespondInput(
+            // Matches the active TestTopicEntry so `resolveTopicShift`
+            // takes the same-topic fast path — this fake provider can't
+            // answer a TopicClassifier consult.
+            topicLabel   = TestTopicEntry.label,
+            topicSummary = TestTopicEntry.summary,
+            content      = "Renamed the theme as requested.",
+            endsTurn     = true
+          )),
+          ProviderEvent.Done(StopReason.ToolCall)
+        ))
+      }
+    }
+  }
+
   private def makeAgent(mid: Id[Model] = modelId): AgentParticipant =
     DefaultAgentParticipant(
       id                 = TestAgent,
@@ -112,43 +153,55 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   private def eventsFor(convId: Id[Conversation]): Task[List[sigil.event.Event]] =
     TestSigil.withDB(_.events.transaction(_.list)).map(_.filter(_.conversationId == convId))
 
-  "Naked-text terminal answer (sigil #392)" should {
+  "Naked-text terminal decision" should {
 
-    "commit the prose on the FIRST turn — no re-request, no duplicate bubbles" in {
+    "challenge the first naked text, then commit the repeat — bounded at one challenge per turn" in {
       val provider = new NakedTextProvider
       for {
         convId <- runUserTurn(provider)
         evs    <- eventsFor(convId)
       } yield {
-        // The model was called exactly once — the prose wasn't dropped and
-        // re-requested (pre-fix it took ~4 retries + a forced synthesis).
-        provider.calls.get() shouldBe 1
-        // The agent's terminal answer committed as a single Complete,
-        // user-visible Standard Message carrying the prose.
+        // First call: prose settles as a visible (non-terminal) message and
+        // the decision challenge re-triggers the loop. Second call: this
+        // provider naked-texts again — already challenged, so it commits as
+        // the terminal reply. Exactly two calls, never a re-request spiral.
+        provider.calls.get() shouldBe 2
+        val challenges = evs.collect {
+          case ti: sigil.event.ToolInvoke if ti.toolName.value == Orchestrator.TurnDecisionToolName => ti
+        }
+        challenges should have size 1
+        // Both prose messages committed Complete and user-visible — the
+        // streamed text is never lost, even from a model that ignores the
+        // challenge.
         val replies = evs.collect {
           case m: Message if m.participantId == TestAgent && m.role == MessageRole.Standard
                           && m.state == EventState.Complete && m.isSuccess => m
         }
-        replies should have size 1
-        replies.head.content.collect { case t: ResponseContent.Text => t.text }.mkString should include("Use Huron Test")
-        // No Failure bubble.
-        evs.collect { case m: Message if m.isFailure => m } shouldBe empty
+        replies should have size 2
+        replies.foreach(
+          _.content.collect { case t: ResponseContent.Text => t.text }.mkString should include("Use Huron Test"))
+        succeed
       }
     }
 
-    "commit prose delivered via TextDelta on the chat-completions wire for a forced-tool_choice rejecter (sigil #398)" in {
-      // The model ran on `auto` (its forced tool_choice was downgraded, #395),
-      // so its plain-text reply is a committed answer — not bug-#75 drift.
+    "challenge without minting on the chat-completions wire, then commit the repeat (forced-tool_choice rejecter)" in {
+      // The model ran on `auto` (its forced tool_choice was downgraded),
+      // so its plain-text reply is a genuine answer — not drift.
       Provider.recordForcedToolChoiceRejection(rejecterModelId)
       val provider = new NakedTextChatCompletionsProvider
       for {
         convId <- runUserTurn(provider, rejecterModelId)
         evs    <- eventsFor(convId)
       } yield {
-        // Called once — the prose committed, not dropped + re-requested.
-        provider.calls.get() shouldBe 1
-        // A single Complete, user-visible Standard Message carrying the prose,
-        // minted at Done from plainTextBuffer (no Message was born streaming).
+        provider.calls.get() shouldBe 2
+        val challenges = evs.collect {
+          case ti: sigil.event.ToolInvoke if ti.toolName.value == Orchestrator.TurnDecisionToolName => ti
+        }
+        challenges should have size 1
+        // The buffered prose was NOT minted on the challenged first call —
+        // only the post-challenge repeat committed, so the user sees exactly
+        // one bubble. The challenge diagnostic carried the dropped text for
+        // the model to re-wrap.
         val replies = evs.collect {
           case m: Message if m.participantId == TestAgent && m.role == MessageRole.Standard
                           && m.state == EventState.Complete && m.isSuccess => m
@@ -156,8 +209,32 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         replies should have size 1
         replies.head.content.collect { case t: ResponseContent.Text => t.text }.mkString should include("Use Huron Test")
         // The prose was NOT routed to the `_plain_text_reply` drop diagnostic.
-        evs.collect { case m: Message if m.isFailure => m } shouldBe empty
         evs.collect { case ti: sigil.event.ToolInvoke if ti.toolName.value == "_plain_text_reply" => ti } shouldBe empty
+      }
+    }
+
+    "let a compliant model answer the challenge with an explicit respond" in {
+      val provider = new AnnounceThenRespondProvider
+      for {
+        convId <- runUserTurn(provider)
+        evs    <- eventsFor(convId)
+      } yield {
+        // Call 1: announcement prose → challenged. Call 2: the model makes
+        // the explicit decision — respond(endsTurn = true). No third call.
+        provider.calls.get() shouldBe 2
+        evs.collect {
+          case ti: sigil.event.ToolInvoke if ti.toolName.value == Orchestrator.TurnDecisionToolName => ti
+        } should have size 1
+        val respondInvokes = evs.collect {
+          case ti: sigil.event.ToolInvoke if ti.toolName.value == "respond" => ti
+        }
+        respondInvokes should have size 1
+        // The final answer landed via respond's content (parsed markdown).
+        val replies = evs.collect {
+          case m: Message if m.participantId == TestAgent && m.role == MessageRole.Standard
+                          && m.state == EventState.Complete && m.isSuccess => m
+        }
+        replies.map(_.content.mkString).exists(_.contains("Renamed the theme")) shouldBe true
       }
     }
   }

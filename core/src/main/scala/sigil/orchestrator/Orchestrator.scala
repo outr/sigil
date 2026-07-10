@@ -53,6 +53,14 @@ object Orchestrator {
   val UserVisibleTerminalTools: Set[String] =
     Set("respond", "respond_options", "no_response")
 
+  /** Synthetic-invoke name for the naked-text decision challenge: a
+    * plain-prose `end_turn` carries no explicit continue-vs-yield
+    * decision (`respond`'s required `endsTurn`), so the first
+    * occurrence per user turn is challenged instead of committed as
+    * terminal. The name doubles as the once-per-turn marker and as
+    * the agent loop's continue signal. */
+  val TurnDecisionToolName: String = "_turn_decision_required"
+
   /** Canonicalise a `find_capability` keywords string for repeated-
     * query detection (sigil bug #159). Lowercases, trims, and
     * collapses whitespace runs so trivial formatting differences
@@ -1471,53 +1479,84 @@ object Orchestrator {
               reason      = reason,
               disposition = MessageDisposition.Failure(recoverable = true))
           } else Nil
-        // Sigil #392/#398 — commit a naked-text terminal answer instead of
-        // dropping it. When the turn ended naturally (`end_turn` →
-        // StopReason.Complete) with user-visible prose and NO tool call, the
-        // model gave a complete reply. Two wire shapes carry that prose:
-        //   - `ContentBlockDelta` (Anthropic / OpenAI Responses / Google) — a
-        //     Message was born (`activeMessageCreated`); settle it in place
-        //     (#392). These providers grammar-constrain tool calls under forced
-        //     tool_choice, so plain-text-only here is always a genuine `auto`
-        //     answer — no rejecter check needed.
-        //   - `TextDelta` (OpenAI-compatible chat-completions, e.g. Fable via
-        //     OpenRouter) — buffered in `plainTextBuffer` with NO Message born;
-        //     mint one and settle it terminally (#398), BUT only for a model in
-        //     the forced-tool_choice-rejecter memo (#395) — i.e. one that
-        //     actually ran on `auto`. A non-rejecter's plain text on this wire
-        //     is drift (bug #75) and went to the `_plain_text_reply` diagnostic.
-        // The settle flags `terminalReply` so the agent loop treats it as a
-        // user-visible reply (no re-request).
-        val nakedTextTerminal: List[Signal] =
-          if (stopReason != StopReason.Complete || state.sawAnyToolCall) Nil
+        // A naked-text terminal (`end_turn` → StopReason.Complete with
+        // user-visible prose and NO tool call) carries no explicit
+        // continue-vs-yield decision — the decision lives on `respond`'s
+        // required `endsTurn` field, which prose bypasses. Treating the
+        // prose as an implicit yield is the announce-then-stall failure
+        // mode: the model narrates its next step, stops, and the turn
+        // ends with the announced work undone. So the FIRST naked-text
+        // terminal per user turn is not committed as terminal — it gets
+        // a `_turn_decision_required` challenge (a Tool-role diagnostic
+        // that re-triggers the loop) instructing the model to either
+        // execute the announced work or end the turn explicitly via the
+        // respond family. Loop safety mirrors the refusal challenge:
+        // challenge once per user turn; a naked text on a turn already
+        // challenged — or on a forced-synthesis recovery turn, where the
+        // framework has had its say — commits as the terminal reply.
+        //
+        // Two wire shapes carry the prose:
+        //   - `ContentBlockDelta` (Anthropic / OpenAI Responses / Google) —
+        //     a Message was born (`activeMessageCreated`) and has already
+        //     streamed to clients; settle it Complete either way. On the
+        //     challenge path it settles WITHOUT `terminalReply` (a visible
+        //     progress message; the turn continues), on the commit path
+        //     WITH it.
+        //   - `TextDelta` (OpenAI-compatible chat-completions) — buffered
+        //     in `plainTextBuffer` with NO Message born, and only
+        //     meaningful for a model in the forced-tool_choice-rejecter
+        //     memo (one that actually ran on `auto`; any other model's
+        //     plain text on this wire is drift and went to the
+        //     `_plain_text_reply` diagnostic above). On the challenge path
+        //     nothing is minted — the challenge carries the dropped text
+        //     so the model can re-wrap it in `respond`; on the commit path
+        //     a Message is minted and settled terminally.
+        val nakedTextOutcome: Task[List[Signal]] =
+          if (stopReason != StopReason.Complete || state.sawAnyToolCall) Task.pure(Nil)
           else if (state.activeMessageCreated) {
             // Snapshot the streamed text into the settle — the per-delta
             // `ContentBlockDelta`s were `complete = false` (snapshot-only
-            // persistence ignores them), so without this the committed Message
-            // would settle empty.
+            // persistence ignores them), so without this the committed
+            // Message would settle empty.
             val text = state.currentBuffer.toString
-            state.activeMessageId.toList.map(id =>
-              MessageDelta(target = id, conversationId = convId,
-                contentReplacement = Some(Vector(ResponseContent.Text(text))),
-                state = Some(EventState.Complete), terminalReply = true))
+            def settle(terminal: Boolean): List[Signal] =
+              state.activeMessageId.toList.map(id =>
+                MessageDelta(target = id, conversationId = convId,
+                  contentReplacement = Some(Vector(ResponseContent.Text(text))),
+                  state = Some(EventState.Complete), terminalReply = terminal))
+            if (request.forceResponseSynthesis) Task.pure(settle(terminal = true))
+            else turnDecisionAlreadyChallenged(sigil, convId).map {
+              case true  => settle(terminal = true)
+              case false =>
+                settle(terminal = false) ++
+                  buildTurnDecisionSignals(caller, convId, topicId, droppedText = None)
+            }
           } else if (state.plainTextBuffer.nonEmpty && Provider.rejectsForcedToolChoice(request.modelId)) {
             val text = state.plainTextBuffer.toString
-            val id = state.activeMessageId.getOrElse(Event.id())
-            val msg = Message(
-              participantId = caller,
-              conversationId = convId,
-              topicId = topicId,
-              content = Vector.empty,
-              modelId = Some(request.modelId),
-              modelDisplayName = modelDisplayName,
-              _id = id,
-              state = EventState.Active
-            )
-            List(msg, MessageDelta(target = id, conversationId = convId,
-              contentReplacement = Some(Vector(ResponseContent.Text(text))),
-              state = Some(EventState.Complete), terminalReply = true))
-          } else Nil
-        Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic ++ nakedTextTerminal)
+            def mintTerminal: List[Signal] = {
+              val id = state.activeMessageId.getOrElse(Event.id())
+              val msg = Message(
+                participantId = caller,
+                conversationId = convId,
+                topicId = topicId,
+                content = Vector.empty,
+                modelId = Some(request.modelId),
+                modelDisplayName = modelDisplayName,
+                _id = id,
+                state = EventState.Active
+              )
+              List(msg, MessageDelta(target = id, conversationId = convId,
+                contentReplacement = Some(Vector(ResponseContent.Text(text))),
+                state = Some(EventState.Complete), terminalReply = true))
+            }
+            if (request.forceResponseSynthesis) Task.pure(mintTerminal)
+            else turnDecisionAlreadyChallenged(sigil, convId).map {
+              case true  => mintTerminal
+              case false => buildTurnDecisionSignals(caller, convId, topicId, droppedText = Some(text))
+            }
+          } else Task.pure(Nil)
+        Stream.force(nakedTextOutcome.map(naked =>
+          Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic ++ naked)))
       case ProviderEvent.Error(msg)                       =>
         // Bug #50 — surface the provider/validator failure as a
         // Tool-role Message so the agent's next iteration sees a
@@ -1841,6 +1880,61 @@ object Orchestrator {
         "what discovery actually returns. If no relevant capability surfaces, refuse with the " +
         "specifics of what you searched and what wasn't there."
     SyntheticDiagnostic("_refusal_challenge", caller, convId, topicId,
+      reason      = reason,
+      disposition = MessageDisposition.Failure(recoverable = true))
+  }
+
+  /** Whether a `_turn_decision_required` challenge already fired since
+    * the last user-authored Message — the once-per-user-turn bound on
+    * the naked-text decision challenge. A conversation with no user
+    * message yet (greeting turns, agent-only spawns) checks the whole
+    * event log, which bounds the challenge to once until a user
+    * message arrives. */
+  private def turnDecisionAlreadyChallenged(sigil: Sigil,
+                                            convId: lightdb.id.Id[Conversation]): Task[Boolean] =
+    sigil.withDB(_.conversationEvents(convId)).map { allEvents =>
+      val convEvents = allEvents
+        .filter(_.conversationId == convId)
+        .sortBy(_.timestamp.value)
+      val lastUserIdx = convEvents.lastIndexWhere {
+        case m: Message => !m.participantId.isInstanceOf[_root_.sigil.participant.AgentParticipantId]
+        case _          => false
+      }
+      val tail = if (lastUserIdx < 0) convEvents else convEvents.drop(lastUserIdx + 1)
+      tail.exists {
+        case ti: ToolInvoke => ti.toolName.value == TurnDecisionToolName
+        case _              => false
+      }
+    }
+
+  /** Construct the (synthetic-invoke, Failure-message) pair emitted
+    * when a naked-text terminal is intercepted for an explicit turn
+    * decision. The invoke's `_turn_decision_required` name doubles as
+    * the marker [[turnDecisionAlreadyChallenged]] walks for. When the
+    * prose was buffered-and-dropped (chat-completions wire),
+    * `droppedText` carries it so the model can re-wrap the content in
+    * `respond`; when the prose already streamed to the user as a
+    * Message, the wording steers toward `no_response` (nothing more to
+    * deliver) or further work instead of a duplicate reply. */
+  private def buildTurnDecisionSignals(caller: ParticipantId,
+                                       convId: lightdb.id.Id[Conversation],
+                                       topicId: lightdb.id.Id[Topic],
+                                       droppedText: Option[String]): List[Signal] = {
+    val reason = droppedText match {
+      case Some(text) =>
+        val snippet = if (text.length <= 200) text else text.take(200) + "…"
+        "Your previous reply was plain prose and was dropped — prose carries no explicit turn decision " +
+          "(`respond`'s required `endsTurn`). Decide now: if the work for this turn is complete, call " +
+          "`respond` with your answer and `endsTurn = true`. If your reply announced further steps, execute " +
+          s"them now with tool calls instead of stopping. Dropped text was: $snippet"
+      case None =>
+        "Your previous reply was plain prose, which carries no explicit turn decision (`respond`'s required " +
+          "`endsTurn`). The message HAS been delivered to the user — do not repeat it. Decide now: if the " +
+          "work for this turn is complete and that message was your full answer, call `no_response` to end " +
+          "the turn. If your reply announced further steps, execute them now with tool calls instead of " +
+          "stopping. If you still owe the user a final answer, call `respond` with `endsTurn = true`."
+    }
+    SyntheticDiagnostic(TurnDecisionToolName, caller, convId, topicId,
       reason      = reason,
       disposition = MessageDisposition.Failure(recoverable = true))
   }

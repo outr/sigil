@@ -6385,12 +6385,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // genuine *external* trigger (a message from someone else that
     // landed mid-turn), never for the turn's own emitted events.
     val terminalToolSettled = new java.util.concurrent.atomic.AtomicBoolean(false)
-    // Set when the orchestrator emits a `_refusal_challenge` this
-    // iteration — the agent's `respond` was suppressed and replaced
-    // with a diagnostic it must read and act on. The loop MUST run
-    // another iteration so the agent re-responds; `terminalToolSettled`
-    // (set by the suppressed respond's settle delta) would otherwise
-    // end the turn before the challenge is ever acted on.
+    // Set when the orchestrator emits a `_refusal_challenge` or
+    // `_turn_decision_required` challenge this iteration — the agent's
+    // terminal action was intercepted and replaced with a diagnostic it
+    // must read and act on. The loop MUST run another iteration so the
+    // agent decides explicitly; `terminalToolSettled` (set by a
+    // suppressed respond's settle delta) or the absence of any other
+    // continue signal would otherwise end the turn before the challenge
+    // is ever acted on.
     val frameworkRequestedContinue = new java.util.concurrent.atomic.AtomicBoolean(false)
     // Sigil #275 — set when the model's response for this iteration
     // contained AT LEAST ONE non-internal `ToolInvoke`. The narrowed
@@ -6498,7 +6500,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                       if (!ti.internal) iterationHadToolCall.set(true)
                       ()
                     }
-                  case ti: ToolInvoke if ti.toolName.value == "_refusal_challenge" =>
+                  case ti: ToolInvoke if ti.toolName.value == "_refusal_challenge"
+                                      || ti.toolName.value == Orchestrator.TurnDecisionToolName =>
                     Task { frameworkRequestedContinue.set(true); () }
                   case ti: ToolInvoke if !ti.internal =>
                     // Sigil #275 — record that this iteration's response
