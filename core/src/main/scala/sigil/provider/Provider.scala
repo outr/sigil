@@ -1403,11 +1403,12 @@ trait Provider extends Service with ModelResolver {
     * tools, repeated-call diagnostics, discovered capabilities,
     * per-turn budget warnings, the greeting hint) shift every turn —
     * placing them last keeps the cacheable prefix stable. */
-  /** Sigil #302 — split system prompt return shape. Anthropic uses the
-    * two segments as distinct cache-control breakpoints (stable gets
-    * cached; volatile lands as a second segment without a marker so
-    * its per-turn churn doesn't invalidate the cached prefix). Other
-    * providers concat via [[RenderedSystem.combined]]. */
+  /** Split system prompt return shape. The stable segment is the
+    * provider's system prompt (part of the cacheable prefix); the
+    * volatile segment rides behind the prefix as a trailing message
+    * via [[ProviderCall.messagesWithVolatileTail]], or folds into a
+    * per-request channel outside the transcript (OpenAI Responses'
+    * `instructions`) via [[RenderedSystem.combined]]. */
   protected case class RenderedSystem(stable: String, volatile: String) {
     /** Single-string form used by providers that don't split. */
     def combined: String =
@@ -1533,10 +1534,12 @@ trait Provider extends Service with ModelResolver {
 
     // ---- volatile tail (per-turn, excluded from the cacheable prefix) ----
     //
-    // Sigil #302 — accumulate this section into its own builder so the
-    // Anthropic provider can emit it as a separate cache-control-free
-    // system segment. Other providers concatenate via
-    // `RenderedSystem.combined`.
+    // Everything below churns turn-to-turn, so it must ride BEHIND the
+    // request's cacheable prefix (tools, system prompt, message history) —
+    // full-history-replay providers append it as a trailing message via
+    // [[ProviderCall.messagesWithVolatileTail]]; OpenAI Responses folds it
+    // into its per-request `instructions`. Accumulate into its own builder
+    // so [[RenderedSystem]] carries the two segments separately.
     val stable = sb.toString
     sb.setLength(0)
 

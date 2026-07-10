@@ -56,8 +56,8 @@ case class DigitalOceanProvider(apiKey: String,
     emptyBudgetBurnThrows = true,
     preprocess = { call =>
       val modelName = DigitalOcean.stripProviderPrefix(call.modelId.value)
-      val systemContent = applyKimiReasoningDirective(call.systemCombined, modelName, call.generationSettings.reasoningMode)
-      OpenAIChatCompletions.Preprocessed(systemContent, call.messages)
+      val systemContent = applyKimiReasoningDirective(call.system, modelName, call.generationSettings.reasoningMode)
+      OpenAIChatCompletions.Preprocessed(systemContent, call.messagesWithVolatileTail)
     }
   )
 

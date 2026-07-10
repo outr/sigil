@@ -79,30 +79,52 @@ case class ProviderCall(/** Sigil #277 — required Model record. Wire
                           * caller doesn't construct via `runAgentTurn` (e.g.
                           * `OneShotRequest` consumers). */
                         preservedToolNames: Set[sigil.tool.ToolName] = Set.empty,
-                        /** Sigil #302 — per-turn volatile system content
-                          * (Recently used tools / Repeated tool calls /
-                          * Suggested tools / Capabilities discovered /
+                        /** Per-turn volatile context (Recently used
+                          * tools / Repeated tool calls / Suggested
+                          * tools / Capabilities discovered /
                           * Conversation context / Participant context /
-                          * Memories / Greeting hint). Providers that
-                          * support segmented system prompts with
-                          * cache-control breakpoints (Anthropic) emit
-                          * this as a separate segment WITHOUT
-                          * cache_control so its per-turn churn doesn't
-                          * invalidate the cached stable prefix on
-                          * [[system]]. Providers without that
-                          * facility concatenate via
-                          * `system + systemVolatile`. Empty when no
-                          * volatile content was rendered. */
+                          * Memories / Greeting hint). Prompt caches key
+                          * on a byte-stable request PREFIX, so this
+                          * churning segment must ride BEHIND every
+                          * cacheable span — full-history-replay
+                          * providers render [[system]] alone as the
+                          * system prompt and append this via
+                          * [[messagesWithVolatileTail]]; anywhere
+                          * earlier (even uncached, as a trailing system
+                          * segment) it sits upstream of the message
+                          * history and invalidates the history's cache
+                          * prefix on every turn. Providers with
+                          * server-side conversation state (OpenAI
+                          * Responses) keep [[systemCombined]] instead —
+                          * their per-request `instructions` channel is
+                          * not part of an accumulated transcript. Empty
+                          * when no volatile content was rendered. */
                         systemVolatile: String = "") {
   /** Convenience — `model._id`. Wire serializers reach for this when
     * they just need the id for the wire `model` field; per-model facts
     * read directly off [[model]]. */
   def modelId: lightdb.id.Id[Model] = model._id
 
-  /** Sigil #302 — single-string form (stable + volatile) for providers
-    * that don't split the system prompt into segments. */
+  /** Single-string form (stable + volatile) for providers whose
+    * system channel is not part of a cacheable prefix (OpenAI
+    * Responses' per-request `instructions`). Full-history-replay
+    * providers use [[system]] + [[messagesWithVolatileTail]] instead. */
   def systemCombined: String =
     if (systemVolatile.isEmpty) system
     else if (system.isEmpty) systemVolatile
     else system + systemVolatile
+
+  /** [[messages]] with the volatile per-turn segment appended as a
+    * trailing System entry. Full-history-replay providers render this
+    * (with [[system]] alone as the system prompt) so the per-turn
+    * churn rides AFTER every cache breakpoint: the prefix a prompt
+    * cache keys on — tools, system prompt, message history — stays
+    * byte-stable across turns, and only the never-cached tail changes.
+    * Each provider's existing mid-conversation System rendering gives
+    * the tail a sensible wire shape (a `[system]`-marked user message
+    * on Anthropic / Google, a system-role message on OpenAI-compatible
+    * dialects). */
+  def messagesWithVolatileTail: Vector[ProviderMessage] =
+    if (systemVolatile.isEmpty) messages
+    else messages :+ ProviderMessage.System(systemVolatile)
 }

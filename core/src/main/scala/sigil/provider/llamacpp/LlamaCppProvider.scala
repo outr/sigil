@@ -139,11 +139,15 @@ case class LlamaCppProvider(url: URL,
     * ([[ProviderMessage.ensureUserAnchor]]) so the rendered chat-completions
     * message array satisfies Qwen3's chat-template requirements. */
   private def preprocessForLlamaCpp(call: ProviderCall): OpenAIChatCompletions.Preprocessed = {
-    val (leadingSystem, nonLeading) = call.messages.span {
+    // The volatile per-turn segment arrives as a trailing System entry
+    // (see [[ProviderCall.messagesWithVolatileTail]]) — the fold below
+    // attaches it to the last non-system message, keeping the leading
+    // system prompt byte-stable for llama.cpp's KV-prefix cache.
+    val (leadingSystem, nonLeading) = call.messagesWithVolatileTail.span {
       case _: ProviderMessage.System => true
       case _ => false
     }
-    val combinedSystem = (call.systemCombined +: leadingSystem.collect {
+    val combinedSystem = (call.system +: leadingSystem.collect {
       case ProviderMessage.System(c) => c
     }).filter(_.nonEmpty).mkString("\n\n")
     val folded = foldMidArraySystems(nonLeading)

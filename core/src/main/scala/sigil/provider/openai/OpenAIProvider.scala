@@ -239,6 +239,12 @@ case class OpenAIProvider(apiKey: String,
       "stream" -> bool(true)
     ) ++ effectivePreviousResponseId.toVector.map("previous_response_id" -> str(_))
     val instructionsField: Vector[(String, Json)] = {
+      // Deliberately `systemCombined` (stable + volatile), NOT the
+      // volatile-tail-in-messages placement the full-replay providers
+      // use: `instructions` is a per-request channel outside the
+      // server-held transcript, so the volatile segment neither
+      // accumulates across `previous_response_id` chains nor gets
+      // dropped by the incremental path's User-only tail filter.
       val combined = input.systemCombined
       if (combined.isEmpty) Vector.empty
       else Vector("instructions" -> str(combined))

@@ -238,7 +238,12 @@ case class AnthropicProvider(apiKey: String,
     // self-loop / worker-bridge tail that is the agent's own prior Message)
     // is read by Sonnet 4.6+ as an assistant prefill and 400-rejected
     // ("the conversation must end with a user message"). Anchor the tail.
-    val messages = renderMessages(ProviderMessage.ensureUserAnchor(input.messages), caching)
+    // The volatile per-turn segment arrives as a trailing System entry
+    // (see [[ProviderCall.messagesWithVolatileTail]]) rendered as a
+    // `[system]`-marked user message — itself a valid user-role terminal,
+    // and positioned behind every cache breakpoint so its churn never
+    // touches the cacheable prefix.
+    val messages = renderMessages(ProviderMessage.ensureUserAnchor(input.messagesWithVolatileTail), caching)
     val toolsArr = renderTools(input, caching)
 
     val base = Vector[(String, Json)](
@@ -253,32 +258,21 @@ case class AnthropicProvider(apiKey: String,
     // slot for the field. Both encodings are wire-equivalent for the
     // model.
     val systemField: Vector[(String, Json)] = {
-      // Sigil #302 — emit the volatile tail as a separate system
-      // segment WITHOUT cache_control so its per-turn churn
-      // (recently used, repeated calls, suggestions, discovered
-      // capabilities, conversation context, greeting hint) doesn't
-      // invalidate the cached stable prefix. When caching is off,
-      // collapse to a single string so the wire shape is unchanged.
+      // Only the STABLE system prompt renders here. The volatile
+      // per-turn segment must not appear anywhere in the system array —
+      // even without cache_control it would sit upstream of the message
+      // history in prefix order, and prompt caching keys on a byte-stable
+      // prefix, so its churn would invalidate every history breakpoint
+      // downstream. It rides the message tail instead (see
+      // [[ProviderCall.messagesWithVolatileTail]]).
       val stable = input.system
-      val volatile = input.systemVolatile
-      if (stable.isEmpty && volatile.isEmpty) Vector.empty
-      else if (!caching) Vector("system" -> str(input.systemCombined))
-      else {
-        val stableSeg: Vector[Json] =
-          if (stable.isEmpty) Vector.empty
-          else Vector(obj(
-            "type" -> str("text"),
-            "text" -> str(stable),
-            "cache_control" -> AnthropicProvider.cacheControl(extendedTtl = true)
-          ))
-        val volatileSeg: Vector[Json] =
-          if (volatile.isEmpty) Vector.empty
-          else Vector(obj(
-            "type" -> str("text"),
-            "text" -> str(volatile)
-          ))
-        Vector("system" -> arr((stableSeg ++ volatileSeg)*))
-      }
+      if (stable.isEmpty) Vector.empty
+      else if (!caching) Vector("system" -> str(stable))
+      else Vector("system" -> arr(obj(
+        "type" -> str("text"),
+        "text" -> str(stable),
+        "cache_control" -> AnthropicProvider.cacheControl(extendedTtl = true)
+      )))
     }
 
     // Anthropic rejects forced `tool_choice` (`any`/`tool`) when thinking

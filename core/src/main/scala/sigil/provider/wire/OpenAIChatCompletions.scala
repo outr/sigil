@@ -154,11 +154,14 @@ object OpenAIChatCompletions {
     multimodalPolicy: MultimodalPolicy = MultimodalPolicy.TextOnlyWithWarning,
 
     /** Override the (systemPrompt, messages) pair pre-render. The
-      * default returns the call's own system prompt and messages
-      * unchanged. Use this for provider-specific reshaping —
-      * llama.cpp's mid-array system folding + placeholder-user
-      * injection, DigitalOcean's kimi `/think` directive. */
-    preprocess: ProviderCall => Preprocessed = call => Preprocessed(call.systemCombined, call.messages),
+      * default keeps the stable system prompt at the head and appends
+      * the volatile per-turn segment as a trailing system-role message
+      * (see [[ProviderCall.messagesWithVolatileTail]]) so upstream
+      * implicit prefix caching keys on a byte-stable prefix. Use this
+      * for provider-specific reshaping — llama.cpp's mid-array system
+      * folding + placeholder-user injection, DigitalOcean's kimi
+      * `/think` directive. */
+    preprocess: ProviderCall => Preprocessed = call => Preprocessed(call.system, call.messagesWithVolatileTail),
 
     /** Normalise tool-call ids received from the wire before they
       * become [[CallId]]s. Default identity. llama.cpp uses this to

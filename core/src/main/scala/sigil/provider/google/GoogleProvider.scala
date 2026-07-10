@@ -120,12 +120,16 @@ case class GoogleProvider(apiKey: String,
     }
 
   /** Render the system-instruction object for the request body — the
-    * stable head of the prefix. Empty when the call carries no system
-    * prompt. */
+    * stable head of the prefix. Only [[ProviderCall.system]] renders
+    * here: the volatile per-turn segment rides the `contents` tail (see
+    * [[ProviderCall.messagesWithVolatileTail]]) so both Gemini's
+    * implicit prefix caching and the explicit `cachedContents` key
+    * (hashed from this text) stay stable across turns. Empty when the
+    * call carries no system prompt. */
   private def systemInstructionObj(input: ProviderCall): Vector[(String, Json)] = {
-    val combined = input.systemCombined
-    if (combined.isEmpty) Vector.empty
-    else Vector("systemInstruction" -> obj("parts" -> arr(obj("text" -> str(combined)))))
+    val stable = input.system
+    if (stable.isEmpty) Vector.empty
+    else Vector("systemInstruction" -> obj("parts" -> arr(obj("text" -> str(stable)))))
   }
 
   /** Render the `tools` array — custom function declarations grouped
@@ -190,7 +194,7 @@ case class GoogleProvider(apiKey: String,
     // trailing content-only `model` turn (an agent's own prior Message as the
     // tail) is invalid. Anchor the tail with a user turn (shared with the
     // Anthropic / llama.cpp prefill guard).
-    val contents = renderContents(ProviderMessage.ensureUserAnchor(input.messages))
+    val contents = renderContents(ProviderMessage.ensureUserAnchor(input.messagesWithVolatileTail))
 
     // `toolConfig` is request-specific and stays inline (only valid
     // when not paired with `cachedContent`, which is guaranteed by the
@@ -252,7 +256,7 @@ case class GoogleProvider(apiKey: String,
       else {
         // The prefix payload is exactly what would be sent inline —
         // hash it for the cache key and estimate its token cost.
-        val systemText = input.systemCombined
+        val systemText = input.system
         val toolsBlock = if (toolsArr.isEmpty) "" else JsonFormatter.Compact(arr(toolsArr*))
         val estimatedTokens = tokenizer.count(systemText) + tokenizer.count(toolsBlock)
         if (estimatedTokens < contextCacheMinTokens) Task.pure(None)
