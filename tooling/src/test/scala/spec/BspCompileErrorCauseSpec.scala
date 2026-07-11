@@ -122,6 +122,58 @@ class BspCompileErrorCauseSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     }
   }
 
+  "the failed-request diagnostics path" should {
+
+    import ch.epfl.scala.bsp4j.{Diagnostic, Position, PublishDiagnosticsParams, Range, TextDocumentIdentifier}
+    import scala.jdk.CollectionConverters.*
+    import sigil.tooling.BspRecordingBuildClient
+
+    def diag(line: Int, msg: String): Diagnostic =
+      new Diagnostic(new Range(new Position(line, 0), new Position(line, 10)), msg)
+    def publish(client: BspRecordingBuildClient, uri: String, ds: Diagnostic*): Unit =
+      client.onBuildPublishDiagnostics(new PublishDiagnosticsParams(
+        new TextDocumentIdentifier(uri),
+        new BuildTargetIdentifier("file:/proj/#core/Compile"),
+        ds.toList.asJava,
+        java.lang.Boolean.TRUE
+      ))
+
+    "surface diagnostics published before the request failed, alongside the request's own cause" in Task {
+      // sbt's BSP errors the JSON-RPC response for some compile failures
+      // instead of returning CompileResult(ERROR) — but it has already
+      // published per-file diagnostics on the way down. Those must reach
+      // the agent (WHERE it failed), with the request failure kept as
+      // the cause (THAT it failed).
+      val client = new BspRecordingBuildClient
+      publish(client, "file:///proj/src/Bad1.scala", diag(3, "']' expected but '}' found"))
+      publish(client, "file:///proj/src/Bad2.scala", diag(7, "unclosed comment"))
+      val res = BspCompileTool.buildResult("/proj", "ERROR", 2, client,
+        requestFailure = Some("BSP error: (core / Compile / compileIncremental) Compilation failed"))
+      res.status shouldBe "ERROR"
+      res.targetCount shouldBe 2
+      res.diagnostics.map(_.filePath).toSet shouldBe Set("/proj/src/Bad1.scala", "/proj/src/Bad2.scala")
+      res.diagnostics.map(_.message) should contain("unclosed comment")
+      res.cause shouldBe Some("BSP error: (core / Compile / compileIncremental) Compilation failed")
+    }
+
+    "point at the build tool when the failed request published nothing" in Task {
+      val client = new BspRecordingBuildClient
+      val res = BspCompileTool.buildResult("/proj", "ERROR", 2, client,
+        requestFailure = Some("BSP error: Compilation failed"))
+      res.diagnostics shouldBe empty
+      res.cause should not be empty
+      res.cause.get should include("BSP error: Compilation failed")
+      res.cause.get should include("published no diagnostics — run the build tool directly")
+    }
+
+    "carry the hint alone for a normal ERROR result with no diagnostics and no logs" in Task {
+      val client = new BspRecordingBuildClient
+      val res = BspCompileTool.buildResult("/proj", "ERROR", 1, client, requestFailure = None)
+      res.cause should not be empty
+      res.cause.get should include("published no diagnostics — run the build tool directly")
+    }
+  }
+
   "the diagnostics-free compile-failure fallback" should {
 
     def log(t: MessageType, msg: String): LogMessageParams =

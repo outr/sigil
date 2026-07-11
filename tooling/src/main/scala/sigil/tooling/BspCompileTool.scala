@@ -65,29 +65,17 @@ final class BspCompileTool(val manager: BspManager) extends Tool
           case StatusCode.ERROR     => "ERROR"
           case StatusCode.CANCELLED => "CANCELLED"
         }
-        val diags = session.client.diagnosticsSnapshot
-        val typedDiags = diags.toList.flatMap { case (uri, ds) =>
-          val path = scala.util.Try {
-            val u = new java.net.URI(uri)
-            if (u.getScheme == "file") java.nio.file.Paths.get(u).toString else uri
-          }.getOrElse(uri)
-          ds.map(BspDiagnostic.fromBsp4j(path, _))
-        }
-        // Drain the call's log messages either way (fresh slate for the
-        // next call); surface them only when the compile failed WITHOUT
-        // structured diagnostics — the bounded raw-output fallback that
-        // keeps an ERROR actionable.
-        val logs = session.client.drainLogs()
-        val cause =
-          if (status == "ERROR" && typedDiags.isEmpty) BspCompileTool.errorCauseFromLogs(logs)
-          else None
-        BspCompileResult(
-          projectRoot = input.projectRoot,
-          status      = status,
-          targetCount = targets.size,
-          diagnostics = typedDiags,
-          cause       = cause
-        )
+        BspCompileTool.buildResult(input.projectRoot, status, targets.size, session.client, requestFailure = None)
+      }.handleError { t =>
+        // The compile REQUEST itself failed — sbt's BSP errors the
+        // JSON-RPC response for some compile failures instead of
+        // returning a CompileResult with statusCode ERROR. The server
+        // has usually already published the per-file diagnostics on the
+        // way down; collect them (plus the real target count) rather
+        // than dropping to a contentless ERROR the agent can't act on.
+        Task(BspCompileTool.buildResult(
+          input.projectRoot, "ERROR", targets.size, session.client,
+          requestFailure = Some(s"BSP error: ${t.getMessage}")))
       }
     }
 }
@@ -97,6 +85,55 @@ object BspCompileTool {
   /** Bounded tail of the rendered log text kept when it stands in for
     * missing diagnostics. */
   private val CauseMaxChars = 4000
+
+  /** Fallback guidance when a failed compile produced neither
+    * diagnostics nor useful log output — tells the agent to stop
+    * retrying blind and use the build tool directly. */
+  private val NoDiagnosticsHint =
+    "the BSP server published no diagnostics — run the build tool directly (e.g. `sbt compile`) for details"
+
+  /** Assemble the tool's result from the recording client's accumulated
+    * state. Shared by the normal-return path and the failed-request
+    * path so the two can't drift: `build/publishDiagnostics`
+    * notifications land in the client as the server emits them, so
+    * per-file diagnostics survive even when the compile request itself
+    * completes exceptionally. Drains the call's log messages either way
+    * (fresh slate for the next call) and surfaces them only when an
+    * ERROR carries no structured diagnostics; when neither diagnostics
+    * nor logs exist, the cause carries [[NoDiagnosticsHint]].
+    * `requestFailure` (the failed request's own reason) is always kept
+    * — alongside diagnostics when they landed, prefixing the fallback
+    * text when they didn't. */
+  def buildResult(projectRoot: String,
+                  status: String,
+                  targetCount: Int,
+                  client: BspRecordingBuildClient,
+                  requestFailure: Option[String]): BspCompileResult = {
+    val typedDiags = client.diagnosticsSnapshot.toList.flatMap { case (uri, ds) =>
+      val path = scala.util.Try {
+        val u = new java.net.URI(uri)
+        if (u.getScheme == "file") java.nio.file.Paths.get(u).toString else uri
+      }.getOrElse(uri)
+      ds.map(BspDiagnostic.fromBsp4j(path, _))
+    }
+    val logs = client.drainLogs()
+    val fallback: Option[String] =
+      if (status == "ERROR" && typedDiags.isEmpty)
+        errorCauseFromLogs(logs).orElse(Some(NoDiagnosticsHint))
+      else None
+    val cause = (requestFailure, fallback) match {
+      case (Some(rf), Some(fb)) => Some(s"$rf; $fb")
+      case (Some(rf), None)     => Some(rf)
+      case (None, fb)           => fb
+    }
+    BspCompileResult(
+      projectRoot = projectRoot,
+      status      = status,
+      targetCount = targetCount,
+      diagnostics = typedDiags,
+      cause       = cause
+    )
+  }
 
   /** Build the `cause` fallback from the build server's log messages
     * when a failed compile published no structured diagnostics.
