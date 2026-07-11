@@ -51,6 +51,19 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
 
   override def testMode: Boolean = true
 
+  /** CI runners (GitHub Actions ubuntu-24.04) restrict unprivileged
+    * user namespaces via AppArmor, which kills Chrome's sandbox at
+    * launch — the CDP debug port never opens ("Connection refused:
+    * localhost:<port>/json" retry storms in the CI log), navigation
+    * silently times out, and captures come back as an empty document.
+    * Tests run Chrome unsandboxed; production keeps [[BrowserSigil]]'s
+    * default sandboxed config. */
+  override def browserConfig: robobrowser.RoboBrowserConfig = robobrowser.RoboBrowserConfig(
+    browserConfig = robobrowser.BrowserConfig(headless = true, disableGPU = true, noSandbox = true),
+    enableNetworkEvents = false,
+    enableDOMEvents = false
+  )
+
   /** Static test-only key — `BrowserSigil` mixes in `SecretsSigil`,
     * which requires this. Production apps source it from a real
     * secret manager; tests get a deterministic literal. */
