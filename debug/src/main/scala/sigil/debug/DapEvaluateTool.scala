@@ -8,7 +8,8 @@ import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 case class DapEvaluateInput(sessionId: String,
                             expression: String,
                             frameId: Option[Int] = None,
-                            context: String = "repl") extends ToolInput derives RW
+                            context: String = "repl")
+  extends ToolInput derives RW
 
 /**
  * Evaluate an expression in the debugged program's context. The

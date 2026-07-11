@@ -53,11 +53,13 @@ class EventsForSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       timestamp = Timestamp(ts)
     )
 
-  /** Text payload of a Message; empty for non-Message events. */
+  /**
+   * Text payload of a Message; empty for non-Message events.
+   */
   private def label(e: Event): String = e match {
-    case m: Message    => m.content.collect { case ResponseContent.Text(t) => t }.mkString
+    case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
     case t: ToolInvoke => t.toolName.value
-    case _             => ""
+    case _ => ""
   }
 
   "eventsFor message-counted paging" should {
@@ -65,29 +67,55 @@ class EventsForSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     // Schedule: m, t, t, m, t, m, t, t, m, t, m, t, m, t, t, m, t, t, m, t
     // 8 Messages (m1..m8) interleaved with 12 ToolInvokes (t1..t12).
     val schedule = List(
-      ("m", 100L, "m1"), ("t", 110L, "t1"), ("t", 120L, "t2"), ("m", 130L, "m2"),
-      ("t", 140L, "t3"), ("m", 150L, "m3"), ("t", 160L, "t4"), ("t", 170L, "t5"),
-      ("m", 180L, "m4"), ("t", 190L, "t6"), ("m", 200L, "m5"), ("t", 210L, "t7"),
-      ("m", 220L, "m6"), ("t", 230L, "t8"), ("t", 240L, "t9"), ("m", 250L, "m7"),
-      ("t", 260L, "t10"), ("t", 270L, "t11"), ("m", 280L, "m8"), ("t", 290L, "t12")
+      ("m", 100L, "m1"),
+      ("t", 110L, "t1"),
+      ("t", 120L, "t2"),
+      ("m", 130L, "m2"),
+      ("t", 140L, "t3"),
+      ("m", 150L, "m3"),
+      ("t", 160L, "t4"),
+      ("t", 170L, "t5"),
+      ("m", 180L, "m4"),
+      ("t", 190L, "t6"),
+      ("m", 200L, "m5"),
+      ("t", 210L, "t7"),
+      ("m", 220L, "m6"),
+      ("t", 230L, "t8"),
+      ("t", 240L, "t9"),
+      ("m", 250L, "m7"),
+      ("t", 260L, "t10"),
+      ("t", 270L, "t11"),
+      ("m", 280L, "m8"),
+      ("t", 290L, "t12")
     )
 
     def seed(convId: Id[Conversation]): Task[Unit] =
       Task.sequence(schedule.map {
         case ("m", ts, l) => TestSigil.publish(msg(convId, ts, l))
-        case (_, ts, l)   => TestSigil.publish(tool(convId, ts, l))
+        case (_, ts, l) => TestSigil.publish(tool(convId, ts, l))
       }).unit
 
     "return page 0 as the most recent maxMessages messages plus their trailing live edge" in {
       val convId = freshConv("page0")
       for {
-        _    <- seed(convId)
+        _ <- seed(convId)
         page <- TestSigil.eventsFor(convId, page = 0, maxMessages = Some(5))
       } yield {
         // 5th-newest Message is m4 (ts=180). Page 0 = m4 forward, including
         // every non-Message event newer than m4 (the live edge: t6..t12).
         page.events.map(label) shouldBe List(
-          "m4", "t6", "m5", "t7", "m6", "t8", "t9", "m7", "t10", "t11", "m8", "t12"
+          "m4",
+          "t6",
+          "m5",
+          "t7",
+          "m6",
+          "t8",
+          "t9",
+          "m7",
+          "t10",
+          "t11",
+          "m8",
+          "t12"
         )
         page.events.collect { case m: Message => label(m) } shouldBe List("m4", "m5", "m6", "m7", "m8")
         page.hasMore shouldBe true
@@ -97,7 +125,7 @@ class EventsForSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "return page 1 strictly between its first and last Message, no live edge" in {
       val convId = freshConv("page1")
       for {
-        _    <- seed(convId)
+        _ <- seed(convId)
         page <- TestSigil.eventsFor(convId, page = 1, maxMessages = Some(5))
       } yield {
         // Page 1 messages are m3 down to... only m1,m2,m3 remain (3 older
@@ -113,7 +141,7 @@ class EventsForSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "treat non-Message events as free — they never consume message budget" in {
       val convId = freshConv("budget")
       for {
-        _    <- seed(convId)
+        _ <- seed(convId)
         page <- TestSigil.eventsFor(convId, page = 0, maxMessages = Some(2))
       } yield {
         // maxMessages=2: page 0 holds m7,m8 — the two newest Messages —
@@ -130,7 +158,7 @@ class EventsForSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "return every event on page 0 when maxMessages is None" in {
       val convId = freshConv("uncapped")
       for {
-        _    <- seed(convId)
+        _ <- seed(convId)
         page <- TestSigil.eventsFor(convId, page = 0, maxMessages = None)
       } yield {
         page.events.size shouldBe 20
@@ -142,7 +170,7 @@ class EventsForSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "return an empty page past the last message" in {
       val convId = freshConv("past-end")
       for {
-        _    <- seed(convId)
+        _ <- seed(convId)
         page <- TestSigil.eventsFor(convId, page = 5, maxMessages = Some(5))
       } yield {
         page.events shouldBe Nil
@@ -158,31 +186,29 @@ class EventsForSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val topicA = Id[Topic]("eventsfor-topic-a")
       val topicB = Id[Topic]("eventsfor-topic-b")
       for {
-        _    <- TestSigil.publish(msg(convId, 100L, "a1", topicA))
-        _    <- TestSigil.publish(msg(convId, 200L, "b1", topicB))
-        _    <- TestSigil.publish(msg(convId, 300L, "a2", topicA))
-        _    <- TestSigil.publish(msg(convId, 400L, "b2", topicB))
+        _ <- TestSigil.publish(msg(convId, 100L, "a1", topicA))
+        _ <- TestSigil.publish(msg(convId, 200L, "b1", topicB))
+        _ <- TestSigil.publish(msg(convId, 300L, "a2", topicA))
+        _ <- TestSigil.publish(msg(convId, 400L, "b2", topicB))
         page <- TestSigil.eventsFor(convId, maxMessages = None, topicId = Some(topicA))
-      } yield {
-        page.events.map(label) shouldBe List("a1", "a2")
-      }
+      } yield page.events.map(label) shouldBe List("a1", "a2")
     }
 
     "bound the window with exclusive minTimestamp and maxTimestamp" in {
       val convId = freshConv("window")
       for {
-        _      <- TestSigil.publish(msg(convId, 100L, "e1"))
-        _      <- TestSigil.publish(msg(convId, 200L, "e2"))
-        _      <- TestSigil.publish(msg(convId, 300L, "e3"))
-        _      <- TestSigil.publish(msg(convId, 400L, "e4"))
+        _ <- TestSigil.publish(msg(convId, 100L, "e1"))
+        _ <- TestSigil.publish(msg(convId, 200L, "e2"))
+        _ <- TestSigil.publish(msg(convId, 300L, "e3"))
+        _ <- TestSigil.publish(msg(convId, 400L, "e4"))
         afterT <- TestSigil.eventsFor(convId, maxMessages = None, minTimestamp = Some(Timestamp(200L)))
         beforeT <- TestSigil.eventsFor(convId, maxMessages = None, maxTimestamp = Some(Timestamp(300L)))
         window <- TestSigil.eventsFor(
-                    convId,
-                    maxMessages = None,
-                    minTimestamp = Some(Timestamp(100L)),
-                    maxTimestamp = Some(Timestamp(400L))
-                  )
+          convId,
+          maxMessages = None,
+          minTimestamp = Some(Timestamp(100L)),
+          maxTimestamp = Some(Timestamp(400L))
+        )
       } yield {
         // Both bounds are exclusive — the event at the bound is excluded.
         afterT.events.map(label) shouldBe List("e3", "e4")
@@ -196,19 +222,19 @@ class EventsForSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val topicA = Id[Topic]("eventsfor-compose-a")
       val topicB = Id[Topic]("eventsfor-compose-b")
       for {
-        _    <- TestSigil.publish(msg(convId, 100L, "a1", topicA))
-        _    <- TestSigil.publish(msg(convId, 150L, "b1", topicB))
-        _    <- TestSigil.publish(msg(convId, 200L, "a2", topicA))
-        _    <- TestSigil.publish(msg(convId, 300L, "a3", topicA))
-        _    <- TestSigil.publish(msg(convId, 400L, "a4", topicA))
+        _ <- TestSigil.publish(msg(convId, 100L, "a1", topicA))
+        _ <- TestSigil.publish(msg(convId, 150L, "b1", topicB))
+        _ <- TestSigil.publish(msg(convId, 200L, "a2", topicA))
+        _ <- TestSigil.publish(msg(convId, 300L, "a3", topicA))
+        _ <- TestSigil.publish(msg(convId, 400L, "a4", topicA))
         page <- TestSigil.eventsFor(
-                  convId,
-                  page = 0,
-                  maxMessages = Some(2),
-                  topicId = Some(topicA),
-                  minTimestamp = Some(Timestamp(100L)),
-                  maxTimestamp = Some(Timestamp(400L))
-                )
+          convId,
+          page = 0,
+          maxMessages = Some(2),
+          topicId = Some(topicA),
+          minTimestamp = Some(Timestamp(100L)),
+          maxTimestamp = Some(Timestamp(400L))
+        )
       } yield {
         // Window (100,400) exclusive on topicA = a2,a3. Cap of 2 fits both.
         page.events.map(label) shouldBe List("a2", "a3")
@@ -222,10 +248,10 @@ class EventsForSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "order events oldest-first within a page while paging newest-first" in {
       val convId = freshConv("ordering")
       for {
-        _     <- TestSigil.publish(msg(convId, 100L, "x1"))
-        _     <- TestSigil.publish(msg(convId, 200L, "x2"))
-        _     <- TestSigil.publish(msg(convId, 300L, "x3"))
-        _     <- TestSigil.publish(msg(convId, 400L, "x4"))
+        _ <- TestSigil.publish(msg(convId, 100L, "x1"))
+        _ <- TestSigil.publish(msg(convId, 200L, "x2"))
+        _ <- TestSigil.publish(msg(convId, 300L, "x3"))
+        _ <- TestSigil.publish(msg(convId, 400L, "x4"))
         page0 <- TestSigil.eventsFor(convId, page = 0, maxMessages = Some(2))
         page1 <- TestSigil.eventsFor(convId, page = 1, maxMessages = Some(2))
       } yield {
@@ -250,24 +276,24 @@ class EventsForSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val pending = List(msg(convId, 300L, "pending-1"), tool(convId, 310L, "pending-tool"))
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
-               Conversation(topics = TestTopicStack, participants = Nil, _id = convId)
-             )))
+          Conversation(topics = TestTopicStack, participants = Nil, _id = convId)
+        )))
         _ <- Task.sequence(committed.map(TestSigil.publish))
         result <- TestSigil.withDB(_.withBatchedEvents(convId) {
-                    for {
-                      // Write the pending events into the open batched scope.
-                      _        <- Task.sequence(pending.map(p => TestSigil.withDB(_.apply(p))))
-                      // The scope's accumulator holds the iteration's
-                      // still-uncommitted events — the page-0 merge source.
-                      acc      <- TestSigil.withDB(db =>
-                                    Task.pure(db.batchedEventScope(convId).map(_.snapshot.map(label).toSet)))
-                      // While the scope is still open, page 0 surfaces the
-                      // committed history merged with the pending edge.
-                      page0    <- TestSigil.eventsFor(convId, page = 0, maxMessages = None)
-                    } yield (acc, page0)
-                  })
+          for {
+            // Write the pending events into the open batched scope.
+            _ <- Task.sequence(pending.map(p => TestSigil.withDB(_.apply(p))))
+            // The scope's accumulator holds the iteration's
+            // still-uncommitted events — the page-0 merge source.
+            acc <- TestSigil.withDB(db =>
+              Task.pure(db.batchedEventScope(convId).map(_.snapshot.map(label).toSet)))
+            // While the scope is still open, page 0 surfaces the
+            // committed history merged with the pending edge.
+            page0 <- TestSigil.eventsFor(convId, page = 0, maxMessages = None)
+          } yield (acc, page0)
+        })
         // The scope has exited — the registry entry is gone.
-        scopeGone   <- TestSigil.withDB(db => Task.pure(db.batchedEventScope(convId).isEmpty))
+        scopeGone <- TestSigil.withDB(db => Task.pure(db.batchedEventScope(convId).isEmpty))
         // After the scope commits the pending events are durable — a
         // fresh read returns them straight from the DB.
         afterCommit <- TestSigil.eventsFor(convId, page = 0, maxMessages = None)

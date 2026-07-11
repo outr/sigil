@@ -29,15 +29,15 @@ class FindCapabilityRankingSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "rank pin_complexity above change_mode for a tier-pinning query" in {
       val req = DiscoveryRequest(
-        keywords     = "complexity pin adjust medium level",
-        chain        = List(TestUser, TestAgent),
-        mode         = ConversationMode,
+        keywords = "complexity pin adjust medium level",
+        chain = List(TestUser, TestAgent),
+        mode = ConversationMode,
         callerSpaces = Set(sigil.GlobalSpace),
         conversationId = None
       )
       TestSigil.findTools(req).map { hits =>
-        val names     = hits.map(_.schema.name.value)
-        val pinIdx    = names.indexOf("pin_complexity")
+        val names = hits.map(_.schema.name.value)
+        val pinIdx = names.indexOf("pin_complexity")
         val changeIdx = names.indexOf("change_mode")
         withClue(s"discovery results: $names — pin_complexity at $pinIdx, change_mode at $changeIdx — ") {
           pinIdx should be >= 0
@@ -50,16 +50,16 @@ class FindCapabilityRankingSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "rank change_mode above pin_complexity for a mode-switching query" in {
       val req = DiscoveryRequest(
-        keywords     = "switch operating mode change toolset",
-        chain        = List(TestUser, TestAgent),
-        mode         = ConversationMode,
+        keywords = "switch operating mode change toolset",
+        chain = List(TestUser, TestAgent),
+        mode = ConversationMode,
         callerSpaces = Set(sigil.GlobalSpace),
         conversationId = None
       )
       TestSigil.findTools(req).map { hits =>
-        val names     = hits.map(_.schema.name.value)
+        val names = hits.map(_.schema.name.value)
         val changeIdx = names.indexOf("change_mode")
-        val pinIdx    = names.indexOf("pin_complexity")
+        val pinIdx = names.indexOf("pin_complexity")
         withClue(s"discovery results: $names — change_mode at $changeIdx, pin_complexity at $pinIdx — ") {
           changeIdx should be >= 0
           if (pinIdx >= 0) {

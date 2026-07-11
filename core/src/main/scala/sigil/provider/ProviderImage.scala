@@ -17,9 +17,11 @@ enum ProviderImage derives RW {
   case Hosted(url: spice.net.URL)
   case Inline(base64: String, contentType: String)
 
-  /** Byte-safe debug rendering — never echoes the base64 payload. */
+  /**
+   * Byte-safe debug rendering — never echoes the base64 payload.
+   */
   def describe: String = this match {
-    case Hosted(url)     => s"Hosted($url)"
+    case Hosted(url) => s"Hosted($url)"
     case Inline(b64, ct) => s"Inline($ct, ${b64.length} b64 chars)"
   }
 }

@@ -8,7 +8,8 @@ import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolR
 import sigil.workflow.{WorkflowScheduler, WorkflowTemplate}
 
 case class RunWorkflowInput(workflowId: String,
-                            variables: Map[String, String] = Map.empty) extends ToolInput derives RW
+                            variables: Map[String, String] = Map.empty)
+  extends ToolInput derives RW
 
 /**
  * Schedule an immediate run of a persisted workflow template.
@@ -23,9 +24,9 @@ case class RunWorkflowInput(workflowId: String,
  * etc.) to refer to a specific run.
  */
 final class RunWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = RunWorkflowInput
+  type Input = RunWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RunWorkflowInput]]
+  val inputRW = summon[RW[RunWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("run_workflow")
   val description =

@@ -7,11 +7,13 @@ import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class TestMcpServerInput(name: String) extends ToolInput derives RW
 
-/** Force a connection attempt and report success or failure. */
+/**
+ * Force a connection attempt and report success or failure.
+ */
 final class TestMcpServerTool(manager: McpManager) extends Tool {
-  type Input  = TestMcpServerInput
+  type Input = TestMcpServerInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[TestMcpServerInput]]
+  val inputRW = summon[RW[TestMcpServerInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("test_mcp_server")

@@ -39,22 +39,53 @@ object TaskShapeHints {
     Set("grep", "edit_file", "edit_at_range", "lsp_did_change", "read_file")
 
   private val transformVerbs: Set[String] =
-    Set("remove", "delete", "rename", "replace", "transform", "classify",
-        "summarize", "summarise", "score", "update", "refactor", "batch",
-        "bulk", "across", "every", "all", "many")
+    Set(
+      "remove",
+      "delete",
+      "rename",
+      "replace",
+      "transform",
+      "classify",
+      "summarize",
+      "summarise",
+      "score",
+      "update",
+      "refactor",
+      "batch",
+      "bulk",
+      "across",
+      "every",
+      "all",
+      "many"
+    )
 
   private val navigationVerbs: Set[String] =
-    Set("caller", "callers", "callee", "callees", "definition", "definitions",
-        "reference", "references", "implementation", "implementations",
-        "usage", "usages", "declaration", "declarations")
+    Set(
+      "caller",
+      "callers",
+      "callee",
+      "callees",
+      "definition",
+      "definitions",
+      "reference",
+      "references",
+      "implementation",
+      "implementations",
+      "usage",
+      "usages",
+      "declaration",
+      "declarations"
+    )
 
-  /** Compute hints for a result set. `query` is the (already-
-    * normalised, lowercased, space-separated) keyword string the
-    * agent passed to find_capability; `matches` is the ranked result
-    * list.
-    *
-    * Returns hints in stable order; safe to call on every find_capability
-    * resolution — synthesis is pure and bounded by `matches.size`. */
+  /**
+   * Compute hints for a result set. `query` is the (already-
+   * normalised, lowercased, space-separated) keyword string the
+   * agent passed to find_capability; `matches` is the ranked result
+   * list.
+   *
+   * Returns hints in stable order; safe to call on every find_capability
+   * resolution — synthesis is pure and bounded by `matches.size`.
+   */
   def synthesize(query: String, matches: List[CapabilityMatch]): List[TaskShapeHint] = {
     val toolNames: Set[String] = matches.iterator
       .filter(_.capabilityType == CapabilityType.Tool)
@@ -78,9 +109,9 @@ object TaskShapeHints {
     if (!toolNames.exists(textualPrimitives.contains)) return None
     if (tokens.intersect(transformVerbs).isEmpty) return None
     Some(TaskShapeHint(
-      shape       = "multi_file_transformation",
+      shape = "multi_file_transformation",
       recommended = ToolName("dispatch_workers"),
-      context     =
+      context =
         "Your query suggests a multi-file transformation. `dispatch_workers` runs a " +
           "compile-checked Scala action over every matched item in parallel — typically the " +
           "right primitive for 'do X to many things' shapes (remove / rename / replace / " +
@@ -104,9 +135,9 @@ object TaskShapeHints {
     )
     ranked.find(toolNames.contains).map { lspName =>
       TaskShapeHint(
-        shape       = "semantic_navigation",
+        shape = "semantic_navigation",
         recommended = ToolName(lspName),
-        context     =
+        context =
           s"Your query mentions navigation verbs (callers / definitions / references / " +
             s"implementations). `$lspName` reads the language server's type-aware index — more " +
             "accurate than `grep` for these queries: it follows imports / overloads / inheritance " +

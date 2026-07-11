@@ -6,16 +6,18 @@ import sigil.TurnContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 import sigil.tool.ToolContext
 
-/** Test-only tool that echoes its `text` input back as the tool's
-  * typed result reading `Echo: <text>`. Used by [[LlamaCppWorkerSpec]] to
-  * verify the worker's tool-dispatch path: when the LLM calls
-  * `echo_back` with a known text, the spec inspects the worker's
-  * settle payload and prior reasoning to confirm the tool ran and the
-  * result was folded into the next iteration. */
+/**
+ * Test-only tool that echoes its `text` input back as the tool's
+ * typed result reading `Echo: <text>`. Used by [[LlamaCppWorkerSpec]] to
+ * verify the worker's tool-dispatch path: when the LLM calls
+ * `echo_back` with a known text, the spec inspects the worker's
+ * settle payload and prior reasoning to confirm the tool ran and the
+ * result was folded into the next iteration.
+ */
 case object EchoBackTool extends Tool {
-  type Input  = EchoBackInput
+  type Input = EchoBackInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[EchoBackInput]]
+  val inputRW = summon[RW[EchoBackInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("echo_back")
   val description =

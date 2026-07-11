@@ -16,11 +16,10 @@ import scala.concurrent.duration.*
  * Result is truncated to `maxLength` (default 100 KB) and emitted as
  * a typed [[WebFetchOutput]].
  */
-final class WebFetchTool(timeout: FiniteDuration = 30.seconds)
-  extends Tool with sigil.tool.NetworkReadOnlyTool {
-  type Input  = WebFetchInput
+final class WebFetchTool(timeout: FiniteDuration = 30.seconds) extends Tool with sigil.tool.NetworkReadOnlyTool {
+  type Input = WebFetchInput
   type Output = WebFetchOutput
-  val inputRW  = summon[RW[WebFetchInput]]
+  val inputRW = summon[RW[WebFetchInput]]
   val outputRW = summon[RW[WebFetchOutput]]
   val name = ToolName("web_fetch")
   val description =
@@ -41,18 +40,18 @@ final class WebFetchTool(timeout: FiniteDuration = 30.seconds)
       .send()
       .flatMap { response =>
         val statusCode = response.status.code
-        val ct         = response.content.map(_.contentType.outputString).getOrElse("text/plain")
-        val maxLen     = input.maxLength.getOrElse(WebFetchTool.DefaultMaxLength)
+        val ct = response.content.map(_.contentType.outputString).getOrElse("text/plain")
+        val maxLen = input.maxLength.getOrElse(WebFetchTool.DefaultMaxLength)
         response.content match {
           case Some(content) =>
             content.asString.map { raw =>
               val processed = if (ct.contains("text/html")) HtmlToMarkdown.convert(raw) else raw
               val truncated = processed.length > maxLen
               WebFetchOutput(
-                content     = if (truncated) processed.take(maxLen) else processed,
+                content = if (truncated) processed.take(maxLen) else processed,
                 contentType = ct,
-                statusCode  = statusCode,
-                truncated   = truncated
+                statusCode = statusCode,
+                truncated = truncated
               )
             }
           case None =>

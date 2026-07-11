@@ -21,9 +21,9 @@ import sigil.tool.model.ResponseContent
  * preserved.
  */
 case class ImageDelta(target: Id[Event],
-                     conversationId: Id[Conversation],
-                     url: spice.net.URL,
-                     altText: Option[String] = None)
+                      conversationId: Id[Conversation],
+                      url: spice.net.URL,
+                      altText: Option[String] = None)
   extends Delta derives RW {
 
   override def apply(target: Event): Event = target match {

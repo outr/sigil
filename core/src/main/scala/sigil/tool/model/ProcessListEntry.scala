@@ -12,4 +12,5 @@ import lightdb.time.Timestamp
 case class ProcessListEntry(id: String,
                             pid: Long,
                             startedAt: Timestamp,
-                            command: String) derives RW
+                            command: String)
+  derives RW

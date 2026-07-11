@@ -12,9 +12,9 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * with `tool_choice = required`.
  */
 case object RerankTool extends Tool with FrameworkConsult {
-  type Input  = RerankInput
+  type Input = RerankInput
   type Output = TextToolOutput
-  val inputRW: RW[RerankInput]     = summon[RW[RerankInput]]
+  val inputRW: RW[RerankInput] = summon[RW[RerankInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("rerank_candidates")
@@ -27,20 +27,25 @@ case object RerankTool extends Tool with FrameworkConsult {
       |from the output are treated as least-relevant (appended at the end in their original
       |order); ids not in the candidate set are ignored.""".stripMargin
 
-
-  /** Relevance scoring — routes through the cheap classification tier. */
+  /**
+   * Relevance scoring — routes through the cheap classification tier.
+   */
   override def consultWorkType: WorkType = ClassificationWork
 
-  /** Output is a list of candidate id strings — bounded by the
-    * candidate-pool size (typically <= 20). 768 tokens covers a full
-    * reorder plus the reasoning-spill margin. */
+  /**
+   * Output is a list of candidate id strings — bounded by the
+   * candidate-pool size (typically <= 20). 768 tokens covers a full
+   * reorder plus the reasoning-spill margin.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     maxOutputTokens = Some(768),
     reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   override def executeResult(input: RerankInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

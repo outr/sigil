@@ -9,7 +9,8 @@ import sigil.tooling.types.{BspOutputPathItem, BspOutputPathsResult, BspTargetOu
 import scala.jdk.CollectionConverters.*
 
 case class BspOutputPathsInput(projectRoot: String,
-                               targets: List[String] = Nil) extends ToolInput derives RW
+                               targets: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * List the build output directories (compiled classes, packaged
@@ -17,11 +18,10 @@ case class BspOutputPathsInput(projectRoot: String,
  * artifacts directly when a downstream tool needs the classpath
  * or jar output.
  */
-final class BspOutputPathsTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
-  type Input  = BspOutputPathsInput
+final class BspOutputPathsTool(val manager: BspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input = BspOutputPathsInput
   type Output = BspOutputPathsResult
-  val inputRW  = summon[RW[BspOutputPathsInput]]
+  val inputRW = summon[RW[BspOutputPathsInput]]
   val outputRW = summon[RW[BspOutputPathsResult]]
 
   val name = ToolName("bsp_output_paths")
@@ -32,11 +32,12 @@ final class BspOutputPathsTool(val manager: BspManager) extends Tool
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
   override val keywords = Set("bsp", "output", "output paths", "classpath", "build output")
 
-
   override def executeOutput(input: BspOutputPathsInput,
                              context: ToolContext): Task[BspOutputPathsResult] =
     withTargets[BspOutputPathsResult](
-      input.projectRoot, context, input.targets,
+      input.projectRoot,
+      context,
+      input.targets,
       onError = msg => BspOutputPathsResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspOutputPathsResult(input.projectRoot, Nil)
     ) { (session, targets) =>

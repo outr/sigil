@@ -13,9 +13,9 @@ import sigil.provider.{MessageContent, ProviderMessage, ToolCallMessage}
 class ProviderMessageAnchorSpec extends AnyWordSpec with Matchers {
   import ProviderMessage.*
 
-  private def user(t: String)      = User(Vector(MessageContent.Text(t)))
+  private def user(t: String) = User(Vector(MessageContent.Text(t)))
   private def assistant(t: String) = Assistant(t)
-  private def assistantWithTool    = Assistant("", List(ToolCallMessage("c1", "do", "{}")))
+  private def assistantWithTool = Assistant("", List(ToolCallMessage("c1", "do", "{}")))
 
   "ensureUserAnchor" should {
     "leave a chain that already ends with a user message untouched" in {

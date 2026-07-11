@@ -24,22 +24,24 @@ class CrossConversationReadSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def turnContextFor(conv: Conversation): TurnContext =
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser, TestAgent),
+      sigil = TestSigil,
+      chain = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv._id),
-      model        = TestSigil.defaultTestModel
+      turnInput = TurnInput(conversationId = conv._id),
+      model = TestSigil.defaultTestModel
     )
 
-  /** Seed a small conversation pair: parent + one worker, plus an
-    * unrelated conversation for the negative access test. */
+  /**
+   * Seed a small conversation pair: parent + one worker, plus an
+   * unrelated conversation for the negative access test.
+   */
   private def seedConversations(label: String): Task[(Conversation, Conversation, Conversation)] = {
     val parentId = Conversation.id(s"$label-parent-${rapid.Unique()}")
     val workerId = Conversation.id(s"$label-worker-${rapid.Unique()}")
     val strangerId = Conversation.id(s"$label-stranger-${rapid.Unique()}")
     val topic = TopicEntry(sigil.conversation.Topic.id(s"topic-$label"), "test", "test")
-    val parent  = Conversation(_id = parentId, topics = List(topic))
-    val worker  = Conversation(_id = workerId, topics = List(topic), parentConversationId = Some(parentId))
+    val parent = Conversation(_id = parentId, topics = List(topic))
+    val worker = Conversation(_id = workerId, topics = List(topic), parentConversationId = Some(parentId))
     val stranger = Conversation(_id = strangerId, topics = List(topic))
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(parent)))
@@ -84,16 +86,16 @@ class CrossConversationReadSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "REFUSE sibling worker → sibling worker (no transitive grandparent traversal)" in {
       // worker1 and worker2 share a parent but cannot read each other.
       val parentId = Conversation.id(s"siblings-parent-${rapid.Unique()}")
-      val w1Id     = Conversation.id(s"siblings-w1-${rapid.Unique()}")
-      val w2Id     = Conversation.id(s"siblings-w2-${rapid.Unique()}")
+      val w1Id = Conversation.id(s"siblings-w1-${rapid.Unique()}")
+      val w2Id = Conversation.id(s"siblings-w2-${rapid.Unique()}")
       val topic = TopicEntry(sigil.conversation.Topic.id(s"topic-siblings"), "test", "test")
       val parent = Conversation(_id = parentId, topics = List(topic))
       val w1 = Conversation(_id = w1Id, topics = List(topic), parentConversationId = Some(parentId))
       val w2 = Conversation(_id = w2Id, topics = List(topic), parentConversationId = Some(parentId))
       for {
-        _      <- TestSigil.withDB(_.conversations.transaction(_.upsert(parent)))
-        _      <- TestSigil.withDB(_.conversations.transaction(_.upsert(w1)))
-        _      <- TestSigil.withDB(_.conversations.transaction(_.upsert(w2)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(parent)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(w1)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(w2)))
         result <- TestSigil.canReadConversation(w1._id, w2._id)
       } yield result.isLeft shouldBe true
     }
@@ -106,20 +108,21 @@ class CrossConversationReadSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         (parent, worker, _) <- seedConversations("search-cross")
         // Seed a message in the worker conversation.
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = worker._id,
-               topicId        = worker.topics.head.id,
-               content        = Vector(ResponseContent.Text("unique-search-marker-zzqq")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = worker._id,
+          topicId = worker.topics.head.id,
+          content = Vector(ResponseContent.Text("unique-search-marker-zzqq")),
+          state = EventState.Complete
+        ))
         _ <- Task.sleep(scala.concurrent.duration.Duration(100, "millis"))
         // Run search_conversation from the parent, targeting the worker.
         signals <- SearchConversationTool.execute(
-                     SearchConversationInput(query = "unique-search-marker-zzqq",
-                                             conversationId = Some(worker._id)),
-                     turnContextFor(parent),
-                     Event.id()
-                   ).toList
+          SearchConversationInput(
+            query = "unique-search-marker-zzqq",
+            conversationId = Some(worker._id)),
+          turnContextFor(parent),
+          Event.id()
+        ).toList
       } yield {
         val success = signals.collectFirst {
           case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
@@ -137,11 +140,12 @@ class CrossConversationReadSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       for {
         (parent, _, stranger) <- seedConversations("search-refuse")
         signals <- SearchConversationTool.execute(
-                     SearchConversationInput(query = "anything",
-                                             conversationId = Some(stranger._id)),
-                     turnContextFor(parent),
-                     Event.id()
-                   ).toList
+          SearchConversationInput(
+            query = "anything",
+            conversationId = Some(stranger._id)),
+          turnContextFor(parent),
+          Event.id()
+        ).toList
       } yield {
         val failures = signals.collect {
           case d: ToolDelta => d.outcome
@@ -155,25 +159,25 @@ class CrossConversationReadSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       for {
         (parent, worker, _) <- seedConversations("walk-cross")
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = worker._id,
-               topicId        = worker.topics.head.id,
-               content        = Vector(ResponseContent.Text("walk-event-1")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = worker._id,
+          topicId = worker.topics.head.id,
+          content = Vector(ResponseContent.Text("walk-event-1")),
+          state = EventState.Complete
+        ))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = worker._id,
-               topicId        = worker.topics.head.id,
-               content        = Vector(ResponseContent.Text("walk-event-2")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = worker._id,
+          topicId = worker.topics.head.id,
+          content = Vector(ResponseContent.Text("walk-event-2")),
+          state = EventState.Complete
+        ))
         _ <- Task.sleep(scala.concurrent.duration.Duration(100, "millis"))
         signals <- SearchConversationTool.execute(
-                     SearchConversationInput(query = "", conversationId = Some(worker._id), limit = 10),
-                     turnContextFor(parent),
-                     Event.id()
-                   ).toList
+          SearchConversationInput(query = "", conversationId = Some(worker._id), limit = 10),
+          turnContextFor(parent),
+          Event.id()
+        ).toList
       } yield {
         val success = signals.collectFirst {
           case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
@@ -181,8 +185,8 @@ class CrossConversationReadSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         success.flatMap(_.output) match {
           case Some(out: sigil.tool.model.SearchConversationOutput) =>
             val texts = out.hits.map(_.snippet)
-            texts should contain ("walk-event-1")
-            texts should contain ("walk-event-2")
+            texts should contain("walk-event-1")
+            texts should contain("walk-event-2")
             // Chronological: event-1 before event-2.
             texts.indexOf("walk-event-1") should be < texts.indexOf("walk-event-2")
           case other =>

@@ -35,23 +35,23 @@ class GetWorkflowRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "resolve a template that becomes visible shortly after the call, not fail fast with NotFound" in {
       val convId = Conversation.id(s"gw-retry-${rapid.Unique()}")
       val ctx = TurnContext(
-        sigil        = TestWorkflowSigil,
-        chain        = List(WorkflowTestUser),
+        sigil = TestWorkflowSigil,
+        chain = List(WorkflowTestUser),
         conversation = Conversation(
           topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
-          _id    = convId
+          _id = convId
         ),
-        turnInput    = TurnInput(ConversationView(conversationId = convId)),
-        model        = TestSigil.defaultTestModel
+        turnInput = TurnInput(ConversationView(conversationId = convId)),
+        model = TestSigil.defaultTestModel
       )
       val wfId = s"retry-target-${rapid.Unique()}"
       val template = WorkflowTemplate(
-        name        = "retry-target",
+        name = "retry-target",
         description = Some("appears late"),
-        steps       = List(JobStepInput(id = "s", name = Some("step"))),
-        space       = GlobalSpace,
-        createdBy   = Some(WorkflowTestUser),
-        _id         = WorkflowTemplate.id(wfId)
+        steps = List(JobStepInput(id = "s", name = Some("step"))),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        _id = WorkflowTemplate.id(wfId)
       )
 
       // The template lands ~300ms into the call — a stand-in for the

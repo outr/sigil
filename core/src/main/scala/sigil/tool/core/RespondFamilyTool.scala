@@ -14,13 +14,15 @@ import sigil.tool.Tool
  */
 trait RespondFamilyTool extends Tool {
   override def destructive: Boolean = true
-  override def openWorld: Boolean   = true
-  override def idempotent: Boolean  = false
-  override def readOnly: Boolean    = false
+  override def openWorld: Boolean = true
+  override def idempotent: Boolean = false
+  override def readOnly: Boolean = false
 
-  /** Terminality framing — `**ENDS YOUR TURN.**` beats the generic
-    * destructive prefix because turn-end is the load-bearing
-    * semantic (small models over-call respond when they think it's
-    * just a content tool). */
+  /**
+   * Terminality framing — `**ENDS YOUR TURN.**` beats the generic
+   * destructive prefix because turn-end is the load-bearing
+   * semantic (small models over-call respond when they think it's
+   * just a content tool).
+   */
   override protected def destructivePrefix: String = "**ENDS YOUR TURN.** "
 }

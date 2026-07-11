@@ -23,10 +23,10 @@ class RefusalDeltaSpec extends AnyWordSpec with Matchers {
 
   private val cfg: Config = Config(
     providerNamespace = "test",
-    providerName      = "Test",
+    providerName = "Test",
     strictModeCapable = true,
-    honorsStrict      = true,
-    forcedCallShape   = ForcedCallShape.ToolChoice
+    honorsStrict = true,
+    forcedCallShape = ForcedCallShape.ToolChoice
   )
 
   private def refusalChunk(text: String): fabric.Json =
@@ -41,7 +41,7 @@ class RefusalDeltaSpec extends AnyWordSpec with Matchers {
   private def runUntilFlush(chunks: List[fabric.Json]): Vector[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(Vector.empty, providerKey = "test"))
     val events = Vector.newBuilder[ProviderEvent]
-    chunks.foreach { ch => events ++= OpenAIChatCompletions.parseChunk(ch, state, cfg) }
+    chunks.foreach(ch => events ++= OpenAIChatCompletions.parseChunk(ch, state, cfg))
     events ++= state.flushDone(cfg)
     events.result()
   }
@@ -57,7 +57,7 @@ class RefusalDeltaSpec extends AnyWordSpec with Matchers {
       }
       ex.typ shouldBe "refusal"
       ex.code shouldBe 200
-      ex.message_ should include ("I can't help with that.")
+      ex.message_ should include("I can't help with that.")
     }
 
     "concatenate refusal text streamed across multiple chunks" in {
@@ -69,7 +69,7 @@ class RefusalDeltaSpec extends AnyWordSpec with Matchers {
           finishChunk("stop")
         ))
       }
-      ex.message_ should include ("I'm sorry, but I can't help with that.")
+      ex.message_ should include("I'm sorry, but I can't help with that.")
     }
 
     "ignore null refusal fields (no throw)" in {

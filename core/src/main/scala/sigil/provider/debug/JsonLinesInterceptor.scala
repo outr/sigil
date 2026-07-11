@@ -73,11 +73,13 @@ case class JsonLinesInterceptor(path: Path) extends Interceptor {
     result
   }
 
-  /** Convert a content payload to a JSON field. Reassembles a streamed
-    * SSE body into its final message + complete tool calls (#322) so a
-    * streamed-provider response is readable straight from the log;
-    * parses ordinary JSON bodies as structured JSON; wraps non-JSON
-    * strings as plain text; summarizes anything else. */
+  /**
+   * Convert a content payload to a JSON field. Reassembles a streamed
+   * SSE body into its final message + complete tool calls (#322) so a
+   * streamed-provider response is readable straight from the log;
+   * parses ordinary JSON bodies as structured JSON; wraps non-JSON
+   * strings as plain text; summarizes anything else.
+   */
   private def bodyToJson(content: Option[spice.http.content.Content]): Json = content match {
     case Some(s: StringContent) =>
       if (JsonLinesInterceptor.looksLikeSse(s.value)) JsonLinesInterceptor.reassembleSse(s.value)
@@ -88,7 +90,7 @@ case class JsonLinesInterceptor(path: Path) extends Interceptor {
   }
 
   private def appendLine(line: Json): Unit = synchronized {
-    parent.foreach { p => if (!Files.exists(p)) Files.createDirectories(p) }
+    parent.foreach(p => if (!Files.exists(p)) Files.createDirectories(p))
     val serialized = JsonFormatter.Compact(line) + "\n"
     Files.writeString(path, serialized, writeOpts*)
   }
@@ -104,15 +106,19 @@ object JsonLinesInterceptor {
   private case class SseChoice(delta: Option[SseDelta] = None) derives RW
   private case class SseChunk(choices: Option[List[SseChoice]] = None) derives RW
 
-  /** True when the body is an SSE stream (any `data:`-prefixed line). */
+  /**
+   * True when the body is an SSE stream (any `data:`-prefixed line).
+   */
   def looksLikeSse(body: String): Boolean =
     body.linesIterator.exists(_.trim.startsWith("data:"))
 
-  /** Reassemble OpenAI-style streaming deltas: concatenate
-    * `choices[].delta.content` and each tool call's `function.arguments`
-    * (accumulated by `index`) into the final message + complete tool
-    * calls. Falls back to the raw body for an unrecognised SSE shape so
-    * nothing is lost (#322). */
+  /**
+   * Reassemble OpenAI-style streaming deltas: concatenate
+   * `choices[].delta.content` and each tool call's `function.arguments`
+   * (accumulated by `index`) into the final message + complete tool
+   * calls. Falls back to the raw body for an unrecognised SSE shape so
+   * nothing is lost (#322).
+   */
   def reassembleSse(body: String): Json = {
     val contentSb = new StringBuilder
     // index -> (id, name, accumulated-arguments)
@@ -135,13 +141,13 @@ object JsonLinesInterceptor {
     }
     if (contentSb.isEmpty && toolCalls.isEmpty) str(body)
     else obj(
-      "_format"    -> str("sse-reassembled"),
-      "content"    -> str(contentSb.toString),
+      "_format" -> str("sse-reassembled"),
+      "content" -> str(contentSb.toString),
       "tool_calls" -> arr(toolCalls.toList.map { case (idx, (id, name, args)) =>
         obj(
-          "index"     -> num(idx),
-          "id"        -> id.map(str).getOrElse(Null),
-          "name"      -> name.map(str).getOrElse(Null),
+          "index" -> num(idx),
+          "id" -> id.map(str).getOrElse(Null),
+          "name" -> name.map(str).getOrElse(Null),
           "arguments" -> str(args.toString)
         )
       }*)

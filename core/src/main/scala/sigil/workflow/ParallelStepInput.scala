@@ -21,4 +21,5 @@ case class ParallelStepInput(id: String,
                              branches: List[List[WorkflowStepInput]],
                              name: Option[String] = None,
                              joinMode: JoinMode = JoinMode.All,
-                             output: Option[String] = None) extends WorkflowStepInput derives RW
+                             output: Option[String] = None)
+  extends WorkflowStepInput derives RW

@@ -35,12 +35,14 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   case class PingInput() extends ToolInput derives RW
   ToolInput.register(RW.static(PingInput()))
 
-  /** Test tool that counts executions and returns a fixed result. `ro` toggles
-    * the `readOnly` (cacheable) flag. */
+  /**
+   * Test tool that counts executions and returns a fixed result. `ro` toggles
+   * the `readOnly` (cacheable) flag.
+   */
   private class CountingTool(val name: ToolName, ro: Boolean, val counter: AtomicInteger) extends Tool {
-    type Input  = PingInput
+    type Input = PingInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[PingInput]]
+    val inputRW = summon[RW[PingInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val description = "counting test tool"
     override def readOnly: Boolean = ro
@@ -50,8 +52,10 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     }
   }
 
-  /** Emits one call to `toolName` with the SAME `PingInput` — so two runs share
-    * a canonical args key. */
+  /**
+   * Emits one call to `toolName` with the SAME `PingInput` — so two runs share
+   * a canonical args key.
+   */
   private class PingProvider(toolName: String) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -68,30 +72,31 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     }
   }
 
-  private def requestFor(convId: Id[Conversation], tool: Tool,
+  private def requestFor(convId: Id[Conversation],
+                         tool: Tool,
                          cacheRef: AtomicReference[Map[String, Vector[ResponseContent]]]): ConversationRequest =
     ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = Vector(tool),
-      chain              = List(TestUser, TestAgent),
+      tools = Vector(tool),
+      chain = List(TestUser, TestAgent),
       toolResultCacheRef = cacheRef
     )
 
   "Turn-scoped read dedup (#411)" should {
 
     "execute a readOnly tool ONCE across two iterations sharing the turn cache" in {
-      val counter  = new AtomicInteger(0)
-      val tool     = new CountingTool(ToolName("ping_read"), ro = true, counter)
+      val counter = new AtomicInteger(0)
+      val tool = new CountingTool(ToolName("ping_read"), ro = true, counter)
       val cacheRef = new AtomicReference(Map.empty[String, Vector[ResponseContent]])
-      val convId   = Conversation.id(s"dedup-read-${rapid.Unique()}")
-      val conv     = Conversation(topics = TestTopicStack, _id = convId)
-      val request  = requestFor(convId, tool, cacheRef)
+      val convId = Conversation.id(s"dedup-read-${rapid.Unique()}")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
+      val request = requestFor(convId, tool, cacheRef)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- Orchestrator.process(TestSigil, new PingProvider("ping_read"), request, conv).toList
@@ -102,12 +107,12 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     }
 
     "execute a WRITE (non-readOnly) tool every iteration — never served from cache" in {
-      val counter  = new AtomicInteger(0)
-      val tool     = new CountingTool(ToolName("ping_write"), ro = false, counter)
+      val counter = new AtomicInteger(0)
+      val tool = new CountingTool(ToolName("ping_write"), ro = false, counter)
       val cacheRef = new AtomicReference(Map.empty[String, Vector[ResponseContent]])
-      val convId   = Conversation.id(s"dedup-write-${rapid.Unique()}")
-      val conv     = Conversation(topics = TestTopicStack, _id = convId)
-      val request  = requestFor(convId, tool, cacheRef)
+      val convId = Conversation.id(s"dedup-write-${rapid.Unique()}")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
+      val request = requestFor(convId, tool, cacheRef)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- Orchestrator.process(TestSigil, new PingProvider("ping_write"), request, conv).toList

@@ -3,11 +3,15 @@ package sigil.tool
 import sigil.SpaceId
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesTool, RerankTool, SummarizationTool}
 import sigil.tool.core.{CancelFrameworkWorkflowTool, ChangeModeTool}
-import sigil.tool.fs.{BashTool, DeleteFileTool, EditAtRangeTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, ReadFileTool, WriteFileTool}
+import sigil.tool.fs.{
+  BashTool, DeleteFileTool, EditAtRangeTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, ReadFileTool, WriteFileTool
+}
 import sigil.tool.git.{GitBranchTool, GitDiffTool, GitLogTool, GitShowTool, GitStatusTool}
 import sigil.tool.memory.{ForgetMemoryTool, MemoryHistoryTool}
 import sigil.tool.process.{ProcessListTool, ProcessOutputTool, ProcessRegistry, ProcessSignalTool, ProcessSpawnTool}
-import sigil.tool.util.{LookupTool, RelayMessageTool, SaveMemoryTool, SearchConversationTool, SemanticSearchTool, SleepTool, SystemStatsTool}
+import sigil.tool.util.{
+  LookupTool, RelayMessageTool, SaveMemoryTool, SearchConversationTool, SemanticSearchTool, SleepTool, SystemStatsTool
+}
 import sigil.tool.web.{HttpRequestTool, WebFetchTool}
 
 import scala.concurrent.duration.*
@@ -72,23 +76,24 @@ import scala.concurrent.duration.*
  */
 object AllShippedTools {
 
-  /** All non-core shipped tools, instantiated with reasonable
-    * defaults. Pair with `super.staticTools` in your `Sigil.staticTools`
-    * override; the framework's [[sigil.tool.core.CoreTools]] essentials
-    * come from `super`.
-    *
-    * @param fs              filesystem context for tools that touch disk
-    *                        (`bash`, `read_file`, `write_file`, `edit_file`,
-    *                        `delete_file`, `glob`, `grep`, `system_stats`)
-    * @param space           memory-space discriminator for `save_memory`
-    * @param processRegistry shared in-memory subprocess registry for the
-    *                        `process_*` tools; pass `Some(reg)` with `reg`
-    *                        hoisted to a `lazy val` on the calling Sigil
-    *                        so the same instance survives every
-    *                        `staticTools` re-evaluation. `None` omits
-    *                        the four `process_*` tools from the result.
-    * @param webFetchTimeout HTTP timeout for `web_fetch`
-    */
+  /**
+   * All non-core shipped tools, instantiated with reasonable
+   * defaults. Pair with `super.staticTools` in your `Sigil.staticTools`
+   * override; the framework's [[sigil.tool.core.CoreTools]] essentials
+   * come from `super`.
+   *
+   * @param fs              filesystem context for tools that touch disk
+   *                        (`bash`, `read_file`, `write_file`, `edit_file`,
+   *                        `delete_file`, `glob`, `grep`, `system_stats`)
+   * @param space           memory-space discriminator for `save_memory`
+   * @param processRegistry shared in-memory subprocess registry for the
+   *                        `process_*` tools; pass `Some(reg)` with `reg`
+   *                        hoisted to a `lazy val` on the calling Sigil
+   *                        so the same instance survives every
+   *                        `staticTools` re-evaluation. `None` omits
+   *                        the four `process_*` tools from the result.
+   * @param webFetchTimeout HTTP timeout for `web_fetch`
+   */
   def apply(fs: FileSystemContext,
             space: SpaceId,
             processRegistry: Option[ProcessRegistry],
@@ -140,10 +145,11 @@ object AllShippedTools {
     // Web.
     new WebFetchTool(webFetchTimeout),
     HttpRequestTool
-  ) ++ processRegistry.toList.flatMap(reg => List(
-    new ProcessSpawnTool(reg),
-    new ProcessOutputTool(reg),
-    new ProcessSignalTool(reg),
-    new ProcessListTool(reg)
-  ))
+  ) ++ processRegistry.toList.flatMap(reg =>
+    List(
+      new ProcessSpawnTool(reg),
+      new ProcessOutputTool(reg),
+      new ProcessSignalTool(reg),
+      new ProcessListTool(reg)
+    ))
 }

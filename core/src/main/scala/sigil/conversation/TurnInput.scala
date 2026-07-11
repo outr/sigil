@@ -40,26 +40,35 @@ case class TurnInput(conversationId: Id[Conversation],
                      extraContext: Map[ContextKey, String] = Map.empty)
   derives RW {
 
-  /** The projection for `id` within this turn's snapshot — empty if
-    * the chain participant has no recorded projection yet. */
+  /**
+   * The projection for `id` within this turn's snapshot — empty if
+   * the chain participant has no recorded projection yet.
+   */
   def projectionFor(id: ParticipantId): ParticipantProjection =
     participantProjections.getOrElse(id, ParticipantProjection.empty(id, conversationId))
 
-  /** Flat list of active skills across `chain`. */
+  /**
+   * Flat list of active skills across `chain`.
+   */
   def aggregatedSkills(chain: List[ParticipantId]): Vector[ActiveSkillSlot] =
     chain.flatMap(id => projectionFor(id).activeSkills.values).toVector
 
-  /** Re-pack the curator-controlled fields as a transient
-    * [[ConversationView]] for callers that prefer that DTO. */
+  /**
+   * Re-pack the curator-controlled fields as a transient
+   * [[ConversationView]] for callers that prefer that DTO.
+   */
   def conversationView: ConversationView =
     ConversationView(conversationId, frames, participantProjections)
 }
 
 object TurnInput {
-  /** Convenience factory that lifts a transient [[ConversationView]]
-    * onto a fresh `TurnInput`. Test fixtures use this to keep their
-    * old construction shape; production paths build `TurnInput`
-    * directly. */
+
+  /**
+   * Convenience factory that lifts a transient [[ConversationView]]
+   * onto a fresh `TurnInput`. Test fixtures use this to keep their
+   * old construction shape; production paths build `TurnInput`
+   * directly.
+   */
   def apply(view: ConversationView): TurnInput =
     TurnInput(
       conversationId = view.conversationId,
@@ -67,8 +76,10 @@ object TurnInput {
       participantProjections = view.participantProjections
     )
 
-  /** Convenience factory: lift a [[ConversationView]] plus optional
-    * memory / summary / information references. */
+  /**
+   * Convenience factory: lift a [[ConversationView]] plus optional
+   * memory / summary / information references.
+   */
   def apply(view: ConversationView,
             criticalMemories: Vector[Id[ContextMemory]],
             memories: Vector[Id[ContextMemory]],

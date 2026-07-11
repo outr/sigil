@@ -28,9 +28,9 @@ import scala.concurrent.duration.*
  * (local FS / S3 / future CDN) is invisible to the client.
  */
 final class BrowserScreenshotTool extends Tool {
-  type Input  = BrowserScreenshotInput
+  type Input = BrowserScreenshotInput
   type Output = ImageToolOutput
-  val inputRW  = summon[RW[BrowserScreenshotInput]]
+  val inputRW = summon[RW[BrowserScreenshotInput]]
   val outputRW = summon[RW[ImageToolOutput]]
 
   val name = ToolName("browser_screenshot")
@@ -51,44 +51,48 @@ final class BrowserScreenshotTool extends Tool {
     for {
       controller <- BrowserToolBase.resolveController(ctx)
       // Resize viewport if requested.
-      _          <- controller.run { browser =>
-                      (input.maxWidth, input.maxHeight) match {
-                        case (Some(w), Some(h)) => browser.setViewportSize(w, h)
-                        case _ => Task.unit
-                      }
-                    }
+      _ <- controller.run { browser =>
+        (input.maxWidth, input.maxHeight) match {
+          case (Some(w), Some(h)) => browser.setViewportSize(w, h)
+          case _ => Task.unit
+        }
+      }
       // Capture bytes. `fullPage` goes straight through CDP
       // (captureBeyondViewport + content-size clip); the viewport case
       // captures to a tempfile via robobrowser's helper.
-      bytes      <- controller.run { browser =>
-                      if (input.fullPage)
-                        Task.sleep(input.waitSeconds.seconds)
-                          .flatMap(_ => BrowserScreenshotTool.captureFullPage(browser))
-                      else Task.defer {
-                        val tmp = Files.createTempFile("sigil-screenshot-", ".png")
-                        browser.screenshotAs(tmp, afterLoadDelay = Some(input.waitSeconds.seconds))
-                          .map { _ =>
-                            val read = Files.readAllBytes(tmp)
-                            try Files.deleteIfExists(tmp) catch { case _: Throwable => () }
-                            read
-                          }
-                      }
-                    }
-      stored     <- ctx.sigil.storeBytes(GlobalSpace, bytes, "image/png",
-                      metadata = Map(
-                        "kind" -> "browser-screenshot",
-                        "conversationId" -> ctx.conversation.id.value
-                      ))
+      bytes <- controller.run { browser =>
+        if (input.fullPage)
+          Task.sleep(input.waitSeconds.seconds)
+            .flatMap(_ => BrowserScreenshotTool.captureFullPage(browser))
+        else Task.defer {
+          val tmp = Files.createTempFile("sigil-screenshot-", ".png")
+          browser.screenshotAs(tmp, afterLoadDelay = Some(input.waitSeconds.seconds))
+            .map { _ =>
+              val read = Files.readAllBytes(tmp)
+              try Files.deleteIfExists(tmp)
+              catch { case _: Throwable => () }
+              read
+            }
+        }
+      }
+      stored <- ctx.sigil.storeBytes(
+        GlobalSpace,
+        bytes,
+        "image/png",
+        metadata = Map(
+          "kind" -> "browser-screenshot",
+          "conversationId" -> ctx.conversation.id.value
+        ))
       // Emit a delta on the BrowserState so subscribers see the new
       // screenshot reference.
-      _          <- ctx.sigil.publish(BrowserStateDelta(
-                      target           = controller.stateId,
-                      conversationId   = ctx.conversation.id,
-                      screenshotFileId = Some(stored._id)
-                    ))
+      _ <- ctx.sigil.publish(BrowserStateDelta(
+        target = controller.stateId,
+        conversationId = ctx.conversation.id,
+        screenshotFileId = Some(stored._id)
+      ))
     } yield ToolResult.Success(ImageToolOutput(
-      url  = ctx.sigil.storageUrl(stored),
-      alt  = s"Browser screenshot at ${java.time.Instant.now}",
+      url = ctx.sigil.storageUrl(stored),
+      alt = s"Browser screenshot at ${java.time.Instant.now}",
       text = Some("Screenshot of the current browser page. Examine the rendered page for " +
         "layout, content, error states, or differences from what you expected."),
       // a screenshot exists to be scrutinized (read text, compare
@@ -101,23 +105,29 @@ final class BrowserScreenshotTool extends Tool {
 
 object BrowserScreenshotTool {
 
-  /** Full-page capture via raw CDP: size the clip to the page's CSS
-    * content box (from `Page.getLayoutMetrics`) and pass
-    * `captureBeyondViewport` so Chrome renders past the visible
-    * viewport — the same mechanism Playwright/Puppeteer use for their
-    * `fullPage` option. Returns the decoded PNG bytes. */
+  /**
+   * Full-page capture via raw CDP: size the clip to the page's CSS
+   * content box (from `Page.getLayoutMetrics`) and pass
+   * `captureBeyondViewport` so Chrome renders past the visible
+   * viewport — the same mechanism Playwright/Puppeteer use for their
+   * `fullPage` option. Returns the decoded PNG bytes.
+   */
   private[tool] def captureFullPage(browser: RoboBrowser): Task[Array[Byte]] =
     browser.send(method = "Page.getLayoutMetrics").flatMap { metrics =>
       val content = metrics.result("cssContentSize")
-      val width   = content("width").asDouble
-      val height  = content("height").asDouble
+      val width = content("width").asDouble
+      val height = content("height").asDouble
       browser.send(
         method = "Page.captureScreenshot",
         params = obj(
-          "format"                -> "png".json,
+          "format" -> "png".json,
           "captureBeyondViewport" -> true.json,
           "clip" -> obj(
-            "x" -> 0.json, "y" -> 0.json, "width" -> width.json, "height" -> height.json, "scale" -> 1.json
+            "x" -> 0.json,
+            "y" -> 0.json,
+            "width" -> width.json,
+            "height" -> height.json,
+            "scale" -> 1.json
           )
         )
       ).map(shot => Base64.getDecoder.decode(shot.result("data").asString))

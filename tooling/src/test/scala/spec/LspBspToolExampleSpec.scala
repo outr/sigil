@@ -35,9 +35,11 @@ import sigil.tooling.{
  */
 class LspBspToolExampleSpec extends AnyWordSpec with Matchers {
 
-  /** Tools whose examples must not leak placeholders. Built from
-    * direct construction (no LSP / BSP subprocess required — we only
-    * read metadata) so the spec stays a pure unit test. */
+  /**
+   * Tools whose examples must not leak placeholders. Built from
+   * direct construction (no LSP / BSP subprocess required — we only
+   * read metadata) so the spec stays a pure unit test.
+   */
   private val auditedTools: List[Tool] = {
     val fs = new sigil.tool.fs.LocalFileSystemContext(basePath = None)
     val lsp = null.asInstanceOf[LspManager]
@@ -92,24 +94,30 @@ class LspBspToolExampleSpec extends AnyWordSpec with Matchers {
     )
   }
 
-  /** Placeholder fragments that must never appear in any example's
-    * rendered JSON — these are the fingerprints from the field repro. */
+  /**
+   * Placeholder fragments that must never appear in any example's
+   * rendered JSON — these are the fingerprints from the field repro.
+   */
   private val placeholderFragments: List[String] =
     List("/abs/path", "Foo.scala", "myproject")
 
-  /** JSON-schema type-name sentinels — when a renderer falls back to
-    * "describe the schema" instead of "render an example value", these
-    * leak through as literal string values like `"string"` / `"integer"`
-    * which agents then copy verbatim. */
+  /**
+   * JSON-schema type-name sentinels — when a renderer falls back to
+   * "describe the schema" instead of "render an example value", these
+   * leak through as literal string values like `"string"` / `"integer"`
+   * which agents then copy verbatim.
+   */
   private val schemaTypeNameSentinels: Set[String] =
     Set("string", "integer", "boolean", "number", "object", "array")
 
-  /** Walk a fabric Json tree and collect every string leaf value. */
+  /**
+   * Walk a fabric Json tree and collect every string leaf value.
+   */
   private def stringLeaves(json: Json): List[String] = json match {
     case s: Str => List(s.value)
     case o: Obj => o.value.values.toList.flatMap(stringLeaves)
     case a: Arr => a.value.toList.flatMap(stringLeaves)
-    case _      => Nil
+    case _ => Nil
   }
 
   private def renderInput(tool: Tool, input: ToolInput): Json =
@@ -119,7 +127,7 @@ class LspBspToolExampleSpec extends AnyWordSpec with Matchers {
     "contain no placeholder paths or filenames from bug #227" in {
       val violations: List[String] = auditedTools.flatMap { tool =>
         tool.examples.flatMap { example =>
-          val json     = renderInput(tool, example.input)
+          val json = renderInput(tool, example.input)
           val rendered = JsonFormatter.Compact(json)
           placeholderFragments.collect {
             case fragment if rendered.contains(fragment) =>
@@ -136,8 +144,8 @@ class LspBspToolExampleSpec extends AnyWordSpec with Matchers {
     "contain no JSON-schema type names as string values" in {
       val violations: List[String] = auditedTools.flatMap { tool =>
         tool.examples.flatMap { example =>
-          val json    = renderInput(tool, example.input)
-          val leaves  = stringLeaves(json)
+          val json = renderInput(tool, example.input)
+          val leaves = stringLeaves(json)
           leaves.collect {
             case leaf if schemaTypeNameSentinels.contains(leaf) =>
               s"${tool.name.value} example ${example.description.inspect}: " +

@@ -40,9 +40,9 @@ class ModelDisplayNameSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
 
     "strip f16 / bf16 / f32 suffixes" in rapid.Task {
-      LlamaCpp.displayNameFromBasename("phi-3-mini-4k-f16")  shouldBe Some("Phi-3-mini-4k")
+      LlamaCpp.displayNameFromBasename("phi-3-mini-4k-f16") shouldBe Some("Phi-3-mini-4k")
       LlamaCpp.displayNameFromBasename("phi-3-mini-4k-bf16") shouldBe Some("Phi-3-mini-4k")
-      LlamaCpp.displayNameFromBasename("phi-3-mini-4k-f32")  shouldBe Some("Phi-3-mini-4k")
+      LlamaCpp.displayNameFromBasename("phi-3-mini-4k-f32") shouldBe Some("Phi-3-mini-4k")
     }
 
     "dedupe vendor_vendor prefix" in rapid.Task {
@@ -65,7 +65,7 @@ class ModelDisplayNameSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val json = m.json
       val back = json.as[Model]
       back.displayName shouldBe Some("GPT-5.5")
-      back._id        shouldBe m._id
+      back._id shouldBe m._id
     }
 
     "default displayName to None when not provided" in rapid.Task {
@@ -77,52 +77,52 @@ class ModelDisplayNameSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   "Message.modelDisplayName" should {
 
     "round-trip through fabric RW" in rapid.Task {
-      val convId  = sigil.conversation.Conversation.id("display-spec")
+      val convId = sigil.conversation.Conversation.id("display-spec")
       val topicId = sigil.conversation.Topic.id("t1")
       val msg = Message(
-        participantId    = SpecParticipant,
-        conversationId   = convId,
-        topicId          = topicId,
-        modelId          = Some(Model.id("openai", "gpt-5.5")),
+        participantId = SpecParticipant,
+        conversationId = convId,
+        topicId = topicId,
+        modelId = Some(Model.id("openai", "gpt-5.5")),
         modelDisplayName = Some("GPT-5.5")
       )
       val json = msg.json
       val back = json.as[Message]
-      back.modelId          shouldBe Some(Model.id("openai", "gpt-5.5"))
+      back.modelId shouldBe Some(Model.id("openai", "gpt-5.5"))
       back.modelDisplayName shouldBe Some("GPT-5.5")
     }
 
     "default to None when not stamped" in rapid.Task {
-      val convId  = sigil.conversation.Conversation.id("display-default")
+      val convId = sigil.conversation.Conversation.id("display-default")
       val topicId = sigil.conversation.Topic.id("t1")
       val msg = Message(
-        participantId  = SpecParticipant,
+        participantId = SpecParticipant,
         conversationId = convId,
-        topicId        = topicId
+        topicId = topicId
       )
       msg.modelDisplayName shouldBe None
     }
   }
 
   private def stubModel(provider: String, model: String, display: Option[String]): Model = Model(
-    canonicalSlug        = s"$provider/$model",
-    huggingFaceId        = "",
-    name                 = model,
-    displayName          = display,
-    description          = "",
-    contextLength        = 32_000,
-    architecture         = ModelArchitecture("text->text", List("text"), List("text"), "Unknown", None),
-    pricing              = ModelPricing(BigDecimal(0), BigDecimal(0), None, None),
-    topProvider          = ModelTopProvider(Some(32_000L), Some(8_192L), false),
-    perRequestLimits     = None,
-    supportedParameters  = Set("temperature"),
-    defaultParameters    = ModelDefaultParameters(),
-    knowledgeCutoff      = None,
-    expirationDate       = None,
-    links                = ModelLinks(""),
-    created              = Timestamp(),
-    modified             = Timestamp(),
-    _id                  = Model.id(provider, model)
+    canonicalSlug = s"$provider/$model",
+    huggingFaceId = "",
+    name = model,
+    displayName = display,
+    description = "",
+    contextLength = 32_000,
+    architecture = ModelArchitecture("text->text", List("text"), List("text"), "Unknown", None),
+    pricing = ModelPricing(BigDecimal(0), BigDecimal(0), None, None),
+    topProvider = ModelTopProvider(Some(32_000L), Some(8_192L), false),
+    perRequestLimits = None,
+    supportedParameters = Set("temperature"),
+    defaultParameters = ModelDefaultParameters(),
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(""),
+    created = Timestamp(),
+    modified = Timestamp(),
+    _id = Model.id(provider, model)
   )
 
   private case object SpecParticipant extends ParticipantId {

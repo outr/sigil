@@ -43,7 +43,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   // as a test failure.
   override protected val testTimeout: FiniteDuration = 4.minutes
 
-  private val apiTokenOpt: Option[String]  = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
+  private val apiTokenOpt: Option[String] = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
   private val accountIdOpt: Option[String] = sys.env.get("CLOUDFLARE_ACCOUNT_ID").filter(_.nonEmpty)
 
   // Constructed lazily — every test gates on `skipUnlessLive()` before
@@ -75,8 +75,10 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         "CLOUDFLARE_AUTH_TOKEN / CLOUDFLARE_ACCOUNT_ID not set — skipping live Cloudflare Kimi-K2.6 spec"
       )
 
-  /** Build a minimal single-turn ProviderCall — one user message,
-    * supplied tools and reasoning mode, deterministic settings. */
+  /**
+   * Build a minimal single-turn ProviderCall — one user message,
+   * supplied tools and reasoning mode, deterministic settings.
+   */
   private def call(
     system: String,
     userMessage: String,
@@ -85,40 +87,45 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     reasoning: ReasoningMode,
     maxTokens: Int = 400
   ): ProviderCall = ProviderCall(
-    model      = TestSigil.testModel(modelId),
-    system       = system,
-    messages     = Vector(ProviderMessage.User(Vector(MessageContent.Text(userMessage)))),
-    tools        = tools,
+    model = TestSigil.testModel(modelId),
+    system = system,
+    messages = Vector(ProviderMessage.User(Vector(MessageContent.Text(userMessage)))),
+    tools = tools,
     builtInTools = Set.empty,
-    toolChoice   = toolChoice,
+    toolChoice = toolChoice,
     generationSettings = GenerationSettings(
       maxOutputTokens = Some(maxTokens),
-      temperature     = Some(0.0),
-      reasoningMode   = reasoning
+      temperature = Some(0.0),
+      reasoningMode = reasoning
     )
   )
 
-  /** Run `provider.call(pc).toList`, but translate "neurons
-    * exhausted" responses (HTTP 429 from Cloudflare's free-tier
-    * quota wall) into a cancelled test rather than letting the
-    * exception bubble as a failure. Matches the live-spec
-    * convention of self-skipping when the external service is
-    * unavailable. */
+  /**
+   * Run `provider.call(pc).toList`, but translate "neurons
+   * exhausted" responses (HTTP 429 from Cloudflare's free-tier
+   * quota wall) into a cancelled test rather than letting the
+   * exception bubble as a failure. Matches the live-spec
+   * convention of self-skipping when the external service is
+   * unavailable.
+   */
   private def runScenarioOnce(pc: ProviderCall): Task[List[ProviderEvent]] =
     provider.call(pc).toList.handleError { t =>
       // Self-skip on ANY live-service-unavailable signal — the daily-quota wall
       // AND the mid-run capacity throttle (`429 Capacity temporarily exceeded`)
       // / timeouts the free tier returns under load (sigil live-spec convention).
       if (CloudflareLiveSupport.isServiceUnavailable(t))
-        Task(cancel(s"Cloudflare Workers AI unavailable (throttle/timeout) — skipping live spec. (${Option(t.getMessage).getOrElse(t.toString)})"))
+        Task(cancel(
+          s"Cloudflare Workers AI unavailable (throttle/timeout) — skipping live spec. (${Option(t.getMessage).getOrElse(t.toString)})"))
       else Task.error(t)
     }
 
-  /** A degenerate completion — no tool call AND no error event — is the
-    * signature of a transient upstream blip (Cloudflare/Kimi occasionally
-    * returns an empty body). Retry those up to [[MaxTriesPerRep]] times;
-    * a real error is surfaced immediately (not retried), and a sustained
-    * outage still fails because every retry comes back empty too. */
+  /**
+   * A degenerate completion — no tool call AND no error event — is the
+   * signature of a transient upstream blip (Cloudflare/Kimi occasionally
+   * returns an empty body). Retry those up to [[MaxTriesPerRep]] times;
+   * a real error is surfaced immediately (not retried), and a sustained
+   * outage still fails because every retry comes back empty too.
+   */
   private def isEmptyBlip(events: List[ProviderEvent]): Boolean =
     !events.exists(_.isInstanceOf[ProviderEvent.ToolCallComplete]) &&
       !events.exists(_.isInstanceOf[ProviderEvent.Error])
@@ -134,13 +141,17 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     attempt(MaxTriesPerRep)
   }
 
-  /** Reliability multiplier — every scenario runs this many times and
-    * must pass each attempt. Catches intermittent degeneration that a
-    * single pass would mask. 3 is enough to surface ~30%+ flakiness in
-    * one spec run; raise to 5+ for tighter characterization. */
+  /**
+   * Reliability multiplier — every scenario runs this many times and
+   * must pass each attempt. Catches intermittent degeneration that a
+   * single pass would mask. 3 is enough to surface ~30%+ flakiness in
+   * one spec run; raise to 5+ for tighter characterization.
+   */
   private val Reps: Int = 3
 
-  /** Sequentially run `task` `n` times and collect every result. */
+  /**
+   * Sequentially run `task` `n` times and collect every result.
+   */
   private def repeat[A](n: Int)(task: Task[A]): Task[List[A]] = {
     def loop(remaining: Int, acc: List[A]): Task[List[A]] =
       if (remaining <= 0) Task.pure(acc.reverse)
@@ -148,22 +159,25 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     loop(n, Nil)
   }
 
-  /** Assert a MAJORITY of attempts produced a clean tool-call completion
-    * (no Error events, at least one ToolCallComplete). Each attempt has
-    * already retried transient empty blips (see [[runScenario]]); a
-    * strict majority then tolerates the rare blip that survives every
-    * retry while still failing on sustained degradation — if Kimi is
-    * less than ~half reliable, the majority isn't met. */
+  /**
+   * Assert a MAJORITY of attempts produced a clean tool-call completion
+   * (no Error events, at least one ToolCallComplete). Each attempt has
+   * already retried transient empty blips (see [[runScenario]]); a
+   * strict majority then tolerates the rare blip that survives every
+   * retry while still failing on sustained degradation — if Kimi is
+   * less than ~half reliable, the majority isn't met.
+   */
   private def expectAllPassed(attempts: List[List[ProviderEvent]]): org.scalatest.Assertion = {
     val perAttempt = attempts.zipWithIndex.map { case (events, idx) =>
-      val errors    = events.collect { case e: ProviderEvent.Error => e }
+      val errors = events.collect { case e: ProviderEvent.Error => e }
       val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
       val ok = errors.isEmpty && completes.nonEmpty
-      val tag = if (ok) "ok" else
+      val tag = if (ok) "ok"
+      else
         s"FAIL[errors=${errors.size}, completes=${completes.size}: ${errors.take(1).mkString}]"
       s"attempt ${idx + 1}: $tag"
     }
-    val passed   = perAttempt.count(_.endsWith("ok"))
+    val passed = perAttempt.count(_.endsWith("ok"))
     val majority = attempts.size / 2 + 1
     withClue(s"$passed/${attempts.size} attempts passed (need majority $majority) (${perAttempt.mkString("; ")}): ") {
       passed should be >= majority
@@ -175,11 +189,11 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "complete a respond tool call with ReasoningMode.Auto" in {
       skipUnlessLive()
       val pc = call(
-        system      = "Reply to the user via the `respond` tool. Keep it brief.",
+        system = "Reply to the user via the `respond` tool. Keep it brief.",
         userMessage = "Say hello.",
-        tools       = Vector(RespondTool),
-        toolChoice  = ToolChoice.Required,
-        reasoning   = ReasoningMode.Auto
+        tools = Vector(RespondTool),
+        toolChoice = ToolChoice.Required,
+        reasoning = ReasoningMode.Auto
       )
       repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
@@ -187,12 +201,12 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "complete a respond tool call with ReasoningMode.On" in {
       skipUnlessLive()
       val pc = call(
-        system      = "Reply to the user via the `respond` tool. Keep it brief.",
+        system = "Reply to the user via the `respond` tool. Keep it brief.",
         userMessage = "What is 2+2?",
-        tools       = Vector(RespondTool),
-        toolChoice  = ToolChoice.Required,
-        reasoning   = ReasoningMode.On,
-        maxTokens   = 600
+        tools = Vector(RespondTool),
+        toolChoice = ToolChoice.Required,
+        reasoning = ReasoningMode.On,
+        maxTokens = 600
       )
       repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
@@ -200,11 +214,11 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "complete a respond tool call with ReasoningMode.Off" in {
       skipUnlessLive()
       val pc = call(
-        system      = "Reply to the user via the `respond` tool. Keep it brief.",
+        system = "Reply to the user via the `respond` tool. Keep it brief.",
         userMessage = "Say hello.",
-        tools       = Vector(RespondTool),
-        toolChoice  = ToolChoice.Required,
-        reasoning   = ReasoningMode.Off
+        tools = Vector(RespondTool),
+        toolChoice = ToolChoice.Required,
+        reasoning = ReasoningMode.Off
       )
       repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
@@ -212,11 +226,11 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "decode a tool call whose Input has all-optional fields (no_response)" in {
       skipUnlessLive()
       val pc = call(
-        system      = "If the user has nothing to discuss, call `no_response` (no arguments needed). Otherwise call `respond`.",
+        system = "If the user has nothing to discuss, call `no_response` (no arguments needed). Otherwise call `respond`.",
         userMessage = "Nothing for now.",
-        tools       = Vector(NoResponseTool, RespondTool),
-        toolChoice  = ToolChoice.Required,
-        reasoning   = ReasoningMode.Auto
+        tools = Vector(NoResponseTool, RespondTool),
+        toolChoice = ToolChoice.Required,
+        reasoning = ReasoningMode.Auto
       )
       repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
@@ -224,12 +238,12 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "complete a respond call exercising every RespondInput field (multi-arg strict-mode stress)" in {
       skipUnlessLive()
       val pc = call(
-        system      = "Reply via the `respond` tool. Set topicLabel, topicSummary, content, and disposition = \"Success\". Keep content brief.",
+        system = "Reply via the `respond` tool. Set topicLabel, topicSummary, content, and disposition = \"Success\". Keep content brief.",
         userMessage = "Tell me one fun fact about octopuses.",
-        tools       = Vector(RespondTool),
-        toolChoice  = ToolChoice.Required,
-        reasoning   = ReasoningMode.Auto,
-        maxTokens   = 500
+        tools = Vector(RespondTool),
+        toolChoice = ToolChoice.Required,
+        reasoning = ReasoningMode.Auto,
+        maxTokens = 500
       )
       repeat(Reps)(runScenario(pc)).map { attempts =>
         expectAllPassed(attempts)
@@ -247,12 +261,12 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "pick a tool from a multi-tool roster" in {
       skipUnlessLive()
       val pc = call(
-        system      = "You have three tools available: `respond` for replies, `no_response` for silence, " +
-                      "`find_capability` for discovering additional tools. Pick one.",
+        system = "You have three tools available: `respond` for replies, `no_response` for silence, " +
+          "`find_capability` for discovering additional tools. Pick one.",
         userMessage = "What is 5 minus 2?",
-        tools       = Vector(RespondTool, NoResponseTool, FindCapabilityTool),
-        toolChoice  = ToolChoice.Required,
-        reasoning   = ReasoningMode.Auto
+        tools = Vector(RespondTool, NoResponseTool, FindCapabilityTool),
+        toolChoice = ToolChoice.Required,
+        reasoning = ReasoningMode.Auto
       )
       repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
@@ -260,20 +274,20 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "complete a multi-turn conversation (assistant message threaded in history)" in {
       skipUnlessLive()
       val pc = ProviderCall(
-        model      = TestSigil.testModel(modelId),
-        system       = "Reply via the `respond` tool.",
-        messages     = Vector(
+        model = TestSigil.testModel(modelId),
+        system = "Reply via the `respond` tool.",
+        messages = Vector(
           ProviderMessage.User(Vector(MessageContent.Text("My favorite color is blue."))),
           ProviderMessage.Assistant(content = "Got it — blue is a great color!", toolCalls = Nil),
           ProviderMessage.User(Vector(MessageContent.Text("What did I just tell you my favorite color was?")))
         ),
-        tools        = Vector(RespondTool),
+        tools = Vector(RespondTool),
         builtInTools = Set.empty,
-        toolChoice   = ToolChoice.Required,
+        toolChoice = ToolChoice.Required,
         generationSettings = GenerationSettings(
           maxOutputTokens = Some(400),
-          temperature     = Some(0.0),
-          reasoningMode   = ReasoningMode.Auto
+          temperature = Some(0.0),
+          reasoningMode = ReasoningMode.Auto
         )
       )
       repeat(Reps)(runScenario(pc)).map { attempts =>
@@ -306,12 +320,12 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           |Tone: helpful, professional, never patronising. Keep replies under three
           |sentences when possible.""".stripMargin
       val pc = call(
-        system      = longSystem,
+        system = longSystem,
         userMessage = "How do I update my email address?",
-        tools       = Vector(RespondTool),
-        toolChoice  = ToolChoice.Required,
-        reasoning   = ReasoningMode.Auto,
-        maxTokens   = 400
+        tools = Vector(RespondTool),
+        toolChoice = ToolChoice.Required,
+        reasoning = ReasoningMode.Auto,
+        maxTokens = 400
       )
       repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
@@ -326,13 +340,13 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       // plus a tool call.
       skipUnlessLive()
       val pc = call(
-        system      = "Reply via the `respond` tool. Reason step-by-step where useful, then give the answer.",
+        system = "Reply via the `respond` tool. Reason step-by-step where useful, then give the answer.",
         userMessage = "If a clock loses 3 minutes every hour and starts at 12:00 noon, " +
-                      "what time will it show after 8 real hours?",
-        tools       = Vector(RespondTool),
-        toolChoice  = ToolChoice.Required,
-        reasoning   = ReasoningMode.On,
-        maxTokens   = 1200
+          "what time will it show after 8 real hours?",
+        tools = Vector(RespondTool),
+        toolChoice = ToolChoice.Required,
+        reasoning = ReasoningMode.On,
+        maxTokens = 1200
       )
       repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }

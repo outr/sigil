@@ -21,7 +21,7 @@ class RoutedModelSizeAwareSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   TestSigil.initFor(getClass.getSimpleName)
 
   private val smallModelId: Id[Model] = Id[Model]("test/size-aware-small")
-  private val bigModelId: Id[Model]   = Id[Model]("test/size-aware-big")
+  private val bigModelId: Id[Model] = Id[Model]("test/size-aware-big")
 
   private def synthModel(id: Id[Model], slug: String, contextLength: Long): Model = Model(
     canonicalSlug = slug,
@@ -76,7 +76,7 @@ class RoutedModelSizeAwareSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   "Sigil.routedModelFor" should {
 
-    "pick the head candidate when the input fits its context window" in {
+    "pick the head candidate when the input fits its context window" in
       withCostAwareSummarization {
         TestSigil.routedModelFor(
           SummarizationWork,
@@ -87,9 +87,8 @@ class RoutedModelSizeAwareSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           picked shouldBe smallModelId
         }
       }
-    }
 
-    "skip the small candidate and pick the big one when the input exceeds the small's window" in {
+    "skip the small candidate and pick the big one when the input exceeds the small's window" in
       withCostAwareSummarization {
         TestSigil.routedModelFor(
           SummarizationWork,
@@ -100,9 +99,8 @@ class RoutedModelSizeAwareSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           picked shouldBe bigModelId
         }
       }
-    }
 
-    "fall back to `fallback` when every candidate's window is too small" in {
+    "fall back to `fallback` when every candidate's window is too small" in
       withCostAwareSummarization {
         TestSigil.routedModelFor(
           SummarizationWork,
@@ -113,9 +111,8 @@ class RoutedModelSizeAwareSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           picked shouldBe bigModelId
         }
       }
-    }
 
-    "pick the head candidate when no estimatedInputTokens is supplied (legacy behavior)" in {
+    "pick the head candidate when no estimatedInputTokens is supplied (legacy behavior)" in
       withCostAwareSummarization {
         TestSigil.routedModelFor(
           SummarizationWork,
@@ -126,7 +123,6 @@ class RoutedModelSizeAwareSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           picked shouldBe smallModelId
         }
       }
-    }
 
     "treat candidates with unknown contextLength as keep (don't filter)" in {
       val unknownModelId: Id[Model] = Id[Model]("test/size-aware-unknown")
@@ -147,7 +143,7 @@ class RoutedModelSizeAwareSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         estimatedInputTokens = Some(50_000L)
       ).map { picked =>
         picked shouldBe unknownModelId
-      }.guarantee(Task { TestSigil.reset() })
+      }.guarantee(Task(TestSigil.reset()))
     }
   }
 

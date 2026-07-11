@@ -49,7 +49,7 @@ class WorkflowToolSchemaSpec extends AnyWordSpec with Matchers {
         case Obj(m) =>
           get(Obj(m), "properties") match {
             case Obj(p) => p.getOrElse("arguments", fail(s"steps.items has no `arguments` property: ${p.keySet}"))
-            case other  => fail(s"steps.items.properties is not an object: $other")
+            case other => fail(s"steps.items.properties is not an object: $other")
           }
         case other => fail(s"steps.items is not an object: $other")
       }
@@ -59,7 +59,7 @@ class WorkflowToolSchemaSpec extends AnyWordSpec with Matchers {
       // tool parameter has a home.
       val ty = argsSchema match {
         case Obj(m) => m.get("type").map(_.toString.replace("\"", ""))
-        case _      => None
+        case _ => None
       }
       withClue(s"arguments schema = $argsSchema (type=$ty)\n") {
         ty should not be Some("string")

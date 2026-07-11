@@ -48,7 +48,7 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       )
       opt.optimize(frames).count {
         case _: ContextFrame.Text => true
-        case _                    => false
+        case _ => false
       } shouldBe 2
     }
 
@@ -56,7 +56,12 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       val callId = Id[Event]("fc-1")
       val frames = Vector[ContextFrame](
         textFrame("looking up tools"),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"slack\"]}", callId, TestUser, callId,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{\"keywords\":[\"slack\"]}",
+          callId,
+          TestUser,
+          callId,
           state = ToolCallState.Complete("- send_slack_message: send")),
         textFrame("got it")
       )
@@ -80,11 +85,26 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       val c2 = Id[Event]("fc-old-2")
       val c3 = Id[Event]("fc-latest")
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"a\"]}",   c1, TestUser, c1,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{\"keywords\":[\"a\"]}",
+          c1,
+          TestUser,
+          c1,
           state = ToolCallState.Complete("old result 1")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"b\"]}",   c2, TestUser, c2,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{\"keywords\":[\"b\"]}",
+          c2,
+          TestUser,
+          c2,
           state = ToolCallState.Complete("old result 2")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"c\"]}",   c3, TestUser, c3,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{\"keywords\":[\"c\"]}",
+          c3,
+          TestUser,
+          c3,
           state = ToolCallState.Complete("latest result"))
       )
       val out = opt.optimize(frames, Set("find_capability"))
@@ -99,13 +119,33 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       val fc2 = Id[Event]("fc-latest")
       val cm2 = Id[Event]("cm-latest")
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fc1, TestUser, fc1,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          fc1,
+          TestUser,
+          fc1,
           state = ToolCallState.Complete("old")),
-        ContextFrame.ToolCall(ToolName("change_mode"),     "{}", cm1, TestUser, cm1,
+        ContextFrame.ToolCall(
+          ToolName("change_mode"),
+          "{}",
+          cm1,
+          TestUser,
+          cm1,
           state = ToolCallState.Complete("old mode")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fc2, TestUser, fc2,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          fc2,
+          TestUser,
+          fc2,
           state = ToolCallState.Complete("latest")),
-        ContextFrame.ToolCall(ToolName("change_mode"),     "{}", cm2, TestUser, cm2,
+        ContextFrame.ToolCall(
+          ToolName("change_mode"),
+          "{}",
+          cm2,
+          TestUser,
+          cm2,
           state = ToolCallState.Complete("latest mode"))
       )
       val out = opt.optimize(frames, Set("find_capability", "change_mode"))
@@ -115,7 +155,12 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
     "leave tool calls alone when no elide-set is passed (default behavior is no stripping)" in {
       val callId = Id[Event]("noop-1")
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", callId, TestUser, callId,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          callId,
+          TestUser,
+          callId,
           state = ToolCallState.Complete("results"))
       )
       val out = opt.optimize(frames)
@@ -128,7 +173,12 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       val optExtra = StandardContextOptimizer(stripStaleTools = Set("my_app_tool"))
       val callId = Id[Event]("app-1")
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(ToolName("my_app_tool"), "{}", callId, TestUser, callId,
+        ContextFrame.ToolCall(
+          ToolName("my_app_tool"),
+          "{}",
+          callId,
+          TestUser,
+          callId,
           state = ToolCallState.Complete("ok"))
       )
       val out = optExtra.optimize(frames)
@@ -162,9 +212,19 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       val fc2 = Id[Event]("fc-2")
       val frames = Vector[ContextFrame](
         ContextFrame.Text("please find a tool", TestUser, userMsg),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":\"x\"}", fc1, TestAgent, fc1,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{\"keywords\":\"x\"}",
+          fc1,
+          TestAgent,
+          fc1,
           state = ToolCallState.Complete("result 1")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":\"x\"}", fc2, TestAgent, fc2,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{\"keywords\":\"x\"}",
+          fc2,
+          TestAgent,
+          fc2,
           state = ToolCallState.Complete("result 2"))
       )
       val out = opt.optimize(frames, Set("find_capability"), Some(TestUser))
@@ -177,16 +237,26 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       // only one — under existing #44 logic the latest-per-name rule
       // applies WITHIN prior turns). Current stays.
       val userMsg1 = Id[Event]("user-msg-1")
-      val fcPrior  = Id[Event]("fc-prior")
+      val fcPrior = Id[Event]("fc-prior")
       val userMsg2 = Id[Event]("user-msg-2")
       val fcCurrent = Id[Event]("fc-current")
       val frames = Vector[ContextFrame](
         ContextFrame.Text("first ask", TestUser, userMsg1),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fcPrior, TestAgent, fcPrior,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          fcPrior,
+          TestAgent,
+          fcPrior,
           state = ToolCallState.Complete("prior")),
         ContextFrame.Text("answer", TestAgent, Id[Event]("answer")),
         ContextFrame.Text("second ask", TestUser, userMsg2),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fcCurrent, TestAgent, fcCurrent,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          fcCurrent,
+          TestAgent,
+          fcCurrent,
           state = ToolCallState.Complete("current"))
       )
       val out = opt.optimize(frames, Set("find_capability"), Some(TestUser))
@@ -205,20 +275,40 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       // both within-turn calls survive (bug #73).
       val u1 = Id[Event]("u1")
       val fcOldA = Id[Event]("fc-old-a")
-      val fcOldB = Id[Event]("fc-old-b")  // latest of prior turn
+      val fcOldB = Id[Event]("fc-old-b") // latest of prior turn
       val u2 = Id[Event]("u2")
       val fcCur1 = Id[Event]("fc-cur-1")
       val fcCur2 = Id[Event]("fc-cur-2")
       val frames = Vector[ContextFrame](
         ContextFrame.Text("turn 1", TestUser, u1),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fcOldA, TestAgent, fcOldA,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          fcOldA,
+          TestAgent,
+          fcOldA,
           state = ToolCallState.Complete("a")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fcOldB, TestAgent, fcOldB,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          fcOldB,
+          TestAgent,
+          fcOldB,
           state = ToolCallState.Complete("b")),
         ContextFrame.Text("turn 2", TestUser, u2),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fcCur1, TestAgent, fcCur1,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          fcCur1,
+          TestAgent,
+          fcCur1,
           state = ToolCallState.Complete("c1")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fcCur2, TestAgent, fcCur2,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          fcCur2,
+          TestAgent,
+          fcCur2,
           state = ToolCallState.Complete("c2"))
       )
       val out = opt.optimize(frames, Set("find_capability"), Some(TestUser))
@@ -236,11 +326,26 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       val c2 = Id[Event]("fc-2")
       val c3 = Id[Event]("fc-3")
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", c1, TestUser, c1,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          c1,
+          TestUser,
+          c1,
           state = ToolCallState.Complete("1")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", c2, TestUser, c2,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          c2,
+          TestUser,
+          c2,
           state = ToolCallState.Complete("2")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", c3, TestUser, c3,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          c3,
+          TestUser,
+          c3,
           state = ToolCallState.Complete("3"))
       )
       val out = opt.optimize(frames, Set("find_capability"), None)
@@ -257,7 +362,12 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       val frames = Vector[ContextFrame](
         ContextFrame.Text("ask", TestUser, userMsg),
         ContextFrame.Text("(agent thinking)", TestAgent, Id[Event]("agent-text")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fcInner, TestAgent, fcInner,
+        ContextFrame.ToolCall(
+          ToolName("find_capability"),
+          "{}",
+          fcInner,
+          TestAgent,
+          fcInner,
           state = ToolCallState.Complete("ok"))
       )
       val out = opt.optimize(frames, Set("find_capability"), Some(TestUser))

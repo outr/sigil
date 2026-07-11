@@ -11,7 +11,8 @@ import scala.jdk.CollectionConverters.*
 
 case class LspApplyCodeActionInput(languageId: String,
                                    filePath: String,
-                                   index: Int) extends ToolInput derives RW
+                                   index: Int)
+  extends ToolInput derives RW
 
 /**
  * Apply a code action selected from the most-recent
@@ -32,11 +33,10 @@ case class LspApplyCodeActionInput(languageId: String,
  * Either way, the agent's job is "pick by index"; the wire details
  * are framework-hidden.
  */
-final class LspApplyCodeActionTool(val manager: LspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with LspToolSupport {
-  type Input  = LspApplyCodeActionInput
+final class LspApplyCodeActionTool(val manager: LspManager) extends Tool with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  type Input = LspApplyCodeActionInput
   type Output = LspApplyCodeActionResult
-  val inputRW  = summon[RW[LspApplyCodeActionInput]]
+  val inputRW = summon[RW[LspApplyCodeActionInput]]
   val outputRW = summon[RW[LspApplyCodeActionResult]]
   val name = ToolName("lsp_apply_code_action")
   val description =
@@ -47,15 +47,28 @@ final class LspApplyCodeActionTool(val manager: LspManager) extends Tool
       |`index` is the 0-based position in the prior listing.
       |Returns one of `Applied` / `CommandExecuted` / `Failed` / `CacheEmpty` / `OutOfRange`.""".stripMargin
   override val keywords = Set(
-    "lsp", "apply", "fix", "quickfix", "refactor", "refactoring", "code action", "execute fix",
-    "extract method", "extract variable", "organize imports", "missing imports",
-    "modify", "change", "transform"
+    "lsp",
+    "apply",
+    "fix",
+    "quickfix",
+    "refactor",
+    "refactoring",
+    "code action",
+    "execute fix",
+    "extract method",
+    "extract variable",
+    "organize imports",
+    "missing imports",
+    "modify",
+    "change",
+    "transform"
   )
-
 
   override def executeOutput(input: LspApplyCodeActionInput, context: ToolContext): Task[LspApplyCodeActionResult] =
     withSessionOrThrow[LspApplyCodeActionResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri, _) =>
       val cached = session.cachedCodeActions(uri)
       if (cached.isEmpty) Task.pure(LspApplyCodeActionResult.CacheEmpty(uri))
@@ -84,11 +97,11 @@ final class LspApplyCodeActionTool(val manager: LspManager) extends Tool
       case Some(e) =>
         val ok = PermissiveWorkspaceEditApplier.apply(e)
         if (ok) LspApplyCodeActionResult.Applied(title, s"applied edits for action: $title")
-        else    LspApplyCodeActionResult.Failed(title, s"failed to apply edits for action: $title")
+        else LspApplyCodeActionResult.Failed(title, s"failed to apply edits for action: $title")
       case None =>
         Option(action.getCommand) match {
           case Some(cmd) => LspApplyCodeActionResult.CommandExecuted(cmd.getTitle)
-          case None      => LspApplyCodeActionResult.Failed(title, "action carried neither edit nor command after resolve")
+          case None => LspApplyCodeActionResult.Failed(title, "action carried neither edit nor command after resolve")
         }
     }
   }

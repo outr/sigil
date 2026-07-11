@@ -62,7 +62,7 @@ object BFCLScorer {
       val allowed = allowedJson.asVector.toList
       modelMap.get(name) match {
         case Some(mv) => allowed.exists(paramValueMatches(mv, _))
-        case None     => allowed.exists(isOmissionSentinel)
+        case None => allowed.exists(isOmissionSentinel)
       }
     }
   }
@@ -84,8 +84,8 @@ object BFCLScorer {
       case (NumInt(a, _), NumInt(b, _)) => a == b
       case (NumDec(a, _), NumInt(b, _)) => a == BigDecimal(b)
       case (NumInt(a, _), NumDec(b, _)) => BigDecimal(a) == b
-      case (Str(a, _), Str(b, _))       => standardizeString(a) == standardizeString(b)
-      case (Bool(a, _), Bool(b, _))     => a == b
+      case (Str(a, _), Str(b, _)) => standardizeString(a) == standardizeString(b)
+      case (Bool(a, _), Bool(b, _)) => a == b
       case (Arr(modelArr, _), Arr(allowedArr, _)) => listMatches(modelArr, allowedArr)
       case (o: Obj, Arr(allowedDictMatrix, _)) =>
         // GT for a dict-valued param looks like `[{k: [values]}, ...]`
@@ -95,8 +95,8 @@ object BFCLScorer {
         // allowed-dicts representing alternatives. The helper
         // handles both.
         dictMatchesAny(o, Vector(Arr(allowedDictMatrix)))
-      case (o: Obj, a: Obj)             => dictMatches(o, a)
-      case _                            => false
+      case (o: Obj, a: Obj) => dictMatches(o, a)
+      case _ => false
     }
   }
 
@@ -110,8 +110,8 @@ object BFCLScorer {
     model.zip(allowed).forall { case (m, a) =>
       (m, a) match {
         case (Str(ms, _), Str(as, _)) => standardizeString(ms) == standardizeString(as)
-        case (mo: Obj, ao: Obj)       => dictMatches(mo, ao)
-        case _                        => paramValueMatches(m, a)
+        case (mo: Obj, ao: Obj) => dictMatches(mo, ao)
+        case _ => paramValueMatches(m, a)
       }
     }
   }
@@ -133,11 +133,11 @@ object BFCLScorer {
     av.forall { case (k, allowedForK) =>
       val allowedList = allowedForK match {
         case Arr(a, _) => a
-        case single    => Vector(single)
+        case single => Vector(single)
       }
       mv.get(k) match {
         case Some(modelV) => allowedList.exists(paramValueMatches(modelV, _))
-        case None         => allowedList.exists(isOmissionSentinel)
+        case None => allowedList.exists(isOmissionSentinel)
       }
     }
   }
@@ -148,17 +148,16 @@ object BFCLScorer {
    * Skips the `""` sentinel that BFCL uses to indicate "this param
    * is optional at the dict level".
    */
-  private def dictMatchesAny(modelDict: Obj, allowedDicts: Vector[Json]): Boolean = {
+  private def dictMatchesAny(modelDict: Obj, allowedDicts: Vector[Json]): Boolean =
     allowedDicts.exists {
-      case Arr(inner, _)   => inner.exists {
-        case o: Obj => dictMatches(modelDict, o)
-        case _      => false
-      }
-      case o: Obj          => dictMatches(modelDict, o)
-      case Str("", _)      => false   // sentinel — can't match a present value
-      case _               => false
+      case Arr(inner, _) => inner.exists {
+          case o: Obj => dictMatches(modelDict, o)
+          case _ => false
+        }
+      case o: Obj => dictMatches(modelDict, o)
+      case Str("", _) => false // sentinel — can't match a present value
+      case _ => false
     }
-  }
 
   /**
    * Mirrors BFCL's `standardize_string` normalization. Strips
@@ -173,7 +172,7 @@ object BFCLScorer {
 
   private def isOmissionSentinel(allowed: Json): Boolean = allowed match {
     case Str("", _) => true
-    case Null       => true
-    case _          => false
+    case Null => true
+    case _ => false
   }
 }

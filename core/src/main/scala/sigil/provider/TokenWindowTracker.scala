@@ -28,43 +28,47 @@ import java.util.concurrent.ConcurrentLinkedDeque
  * a single large call would dominate the minute's budget.
  */
 final class TokenWindowTracker(perMinute: Long,
-                                safetyMargin: Double,
-                                windowMs: Long = 60_000L) {
+                               safetyMargin: Double,
+                               windowMs: Long = 60_000L) {
   private val entries: ConcurrentLinkedDeque[(Long, Int)] = new ConcurrentLinkedDeque()
   private val ceiling: Long = math.max(1L, (perMinute * safetyMargin).toLong)
 
-  /** Snapshot of current usage in the window (after pruning expired
-    * entries). Test-only helper; not used by the framework hot path. */
+  /**
+   * Snapshot of current usage in the window (after pruning expired
+   * entries). Test-only helper; not used by the framework hot path.
+   */
   def usedInWindow: Long = {
     pruneExpired(System.currentTimeMillis())
     snapshotSum
   }
 
-  /** Admit a request of size `tokens`. Returns a Task that completes
-    * when the request is allowed to proceed; the tracker records the
-    * tokens against the current window at completion.
-    *
-    * Behavior:
-    *
-    *   - If `tokens >= ceiling`: returns immediately without
-    *     recording — a single request that big can never fit the
-    *     per-minute budget, and the pre-flight gate above us has
-    *     already raised [[RequestExceedsRateLimitException]] in that
-    *     case. The tracker's job is window pacing for requests that
-    *     individually fit; oversized-single-request rejection is the
-    *     gate's job.
-    *   - If `used + tokens <= ceiling`: records and returns.
-    *   - Otherwise: sleeps the minimum delta for the oldest entry to
-    *     age out of the window, then re-checks. Tail-recursive via
-    *     rapid `flatMap`.
-    *
-    * Note that recording happens BEFORE the underlying HTTP call
-    * completes — we use the curator-estimated token count as a
-    * conservative reservation. Apps that want token-accurate tracking
-    * post-hoc can wire a settled-effect callback to adjust the entry
-    * after the provider's `Usage` event arrives, but the default
-    * window-arithmetic does not require that level of precision —
-    * estimation overshoot is the safer side of the budget. */
+  /**
+   * Admit a request of size `tokens`. Returns a Task that completes
+   * when the request is allowed to proceed; the tracker records the
+   * tokens against the current window at completion.
+   *
+   * Behavior:
+   *
+   *   - If `tokens >= ceiling`: returns immediately without
+   *     recording — a single request that big can never fit the
+   *     per-minute budget, and the pre-flight gate above us has
+   *     already raised [[RequestExceedsRateLimitException]] in that
+   *     case. The tracker's job is window pacing for requests that
+   *     individually fit; oversized-single-request rejection is the
+   *     gate's job.
+   *   - If `used + tokens <= ceiling`: records and returns.
+   *   - Otherwise: sleeps the minimum delta for the oldest entry to
+   *     age out of the window, then re-checks. Tail-recursive via
+   *     rapid `flatMap`.
+   *
+   * Note that recording happens BEFORE the underlying HTTP call
+   * completes — we use the curator-estimated token count as a
+   * conservative reservation. Apps that want token-accurate tracking
+   * post-hoc can wire a settled-effect callback to adjust the entry
+   * after the provider's `Usage` event arrives, but the default
+   * window-arithmetic does not require that level of precision —
+   * estimation overshoot is the safer side of the budget.
+   */
   def admit(tokens: Int): Task[Unit] = Task.defer {
     if (tokens >= ceiling) Task.unit
     else admitLoop(tokens)
@@ -94,7 +98,7 @@ final class TokenWindowTracker(perMinute: Long,
 
   private def snapshotSum: Long = {
     var sum = 0L
-    val it  = entries.iterator()
+    val it = entries.iterator()
     while (it.hasNext) sum += it.next()._2
     sum
   }

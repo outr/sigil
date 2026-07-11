@@ -14,4 +14,5 @@ case class ProgressReflectionInput(currentStatus: String,
                                    meaningfulProgress: Boolean,
                                    remainingSteps: String,
                                    stuckOn: Option[String],
-                                   shouldAskUser: Boolean) extends ToolInput derives RW
+                                   shouldAskUser: Boolean)
+  extends ToolInput derives RW

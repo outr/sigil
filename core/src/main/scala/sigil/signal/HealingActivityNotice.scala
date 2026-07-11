@@ -21,4 +21,5 @@ import sigil.heal.{CorruptionEvidence, HealingOutcome}
 case class HealingActivityNotice(conversationId: Id[Conversation],
                                  strategyName: String,
                                  detectedCorruption: List[CorruptionEvidence],
-                                 outcome: HealingOutcome) extends ConversationNotice derives RW
+                                 outcome: HealingOutcome)
+  extends ConversationNotice derives RW

@@ -17,7 +17,9 @@ import spice.http.HttpRequest
 class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** A real 1x1 transparent PNG. */
+  /**
+   * A real 1x1 transparent PNG.
+   */
   private val tinyPng: Array[Byte] = java.util.Base64.getDecoder.decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII="
   )
@@ -48,7 +50,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
 
   "normalizeStoredImages" should {
 
-    "rewrite an internally-stored image to inline ImageBytes" in {
+    "rewrite an internally-stored image to inline ImageBytes" in
       TestSigil.storeBytes(GlobalSpace, tinyPng, "image/png").flatMap { stored =>
         FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(TestSigil.storageUrl(stored)))).map { normalized =>
           imageContents(normalized) match {
@@ -59,12 +61,11 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
           }
         }
       }
-    }
 
     "fetch + downscale an EXTERNAL image URL to inline ImageBytes (sigil #393)" in {
       val publicUrl = spice.net.URL.get("https://cdn.example.com/pic.png").toOption.get
       val calls = new java.util.concurrent.atomic.AtomicInteger(0)
-      TestSigil.onFetchExternalImage { _ => Task { calls.incrementAndGet(); Some((tinyPng, "image/png")) } }
+      TestSigil.onFetchExternalImage(_ => Task { calls.incrementAndGet(); Some((tinyPng, "image/png")) })
       val act = for {
         a <- FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(publicUrl)))
         // Second call with the same url+quality must hit the process cache —
@@ -87,7 +88,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
 
     "DROP an external image URL that can't be fetched — caption survives (sigil #393)" in {
       val deadUrl = spice.net.URL.get("https://cdn.example.com/too-big.png").toOption.get
-      TestSigil.onFetchExternalImage { _ => Task.pure(None) }
+      TestSigil.onFetchExternalImage(_ => Task.pure(None))
       FakeProvider.normalizeStoredImages(
         callWith(MessageContent.Text("Store file gid://… — a hero"), MessageContent.Image(deadUrl))
       ).map { normalized =>
@@ -99,18 +100,18 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
     }
 
     "leave a storage-shaped URL whose id does not resolve untouched" in {
-      val dangling = spice.net.URL.get("sigil://storage/no-such-file",
+      val dangling = spice.net.URL.get(
+        "sigil://storage/no-such-file",
         tldValidation = spice.net.TLDValidation.Off).toOption.get
       FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(dangling))).map { normalized =>
         imageContents(normalized) shouldBe Vector(MessageContent.Image(dangling))
       }
     }
 
-    "leave text content untouched" in {
+    "leave text content untouched" in
       FakeProvider.normalizeStoredImages(callWith(MessageContent.Text("hello"))).map { normalized =>
         imageContents(normalized) shouldBe Vector(MessageContent.Text("hello"))
       }
-    }
 
     // A conversation that already captured an oversized inline image (a tall
     // full-page screenshot whose height exceeds Anthropic's 8000 px cap) must
@@ -133,7 +134,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
         imageContents(normalized) match {
           case Vector(MessageContent.ImageBytes(_, base64, _, _)) =>
             val (w, h) = dims(base64)
-            withClue(s"clamped to ${w}x${h}: ") {
+            withClue(s"clamped to ${w}x$h: ") {
               h should be <= _root_.sigil.image.ImageDownscale.MaxEdge
               w should be <= _root_.sigil.image.ImageDownscale.MaxEdge
             }
@@ -190,13 +191,12 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
     def tiny: MessageContent.ImageBytes =
       MessageContent.ImageBytes("image/png", java.util.Base64.getEncoder.encodeToString(tinyPng))
 
-    "leave a tall image alone when the request is within the many-image threshold" in {
+    "leave a tall image alone when the request is within the many-image threshold" in
       ManyImageCapProvider.normalizeStoredImages(callWith((tall +: Vector.fill(4)(tiny)): _*)).map { normalized =>
         val (_, h) = dims(imageBytesOf(normalized).head.base64)
         // 4380 ≤ 8000 — untouched; legibility preserved for a few-image request.
         h shouldBe 4380
       }
-    }
 
     "clamp every image's long edge to 2000 once the request crosses the many-image threshold" in {
       // 21 images (> 20): the many-image cap kicks in for the WHOLE request.
@@ -206,7 +206,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
         images should have size 21
         images.foreach { ib =>
           val (w, h) = dims(ib.base64)
-          withClue(s"image ${w}x${h} exceeds the 2000px many-image cap: ") {
+          withClue(s"image ${w}x$h exceeds the 2000px many-image cap: ") {
             w should be <= _root_.sigil.image.ImageDownscale.ManyImageMaxEdge
             h should be <= _root_.sigil.image.ImageDownscale.ManyImageMaxEdge
           }

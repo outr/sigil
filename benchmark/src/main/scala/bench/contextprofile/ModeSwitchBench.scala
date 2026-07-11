@@ -55,9 +55,9 @@ object ModeSwitchBench {
       val discoverySkill = if (mode == CodingMode) codingDeepSkill else researchSkill
 
       val activeSkills = Map[SkillSource, ActiveSkillSlot](
-        SkillSource.Mode      -> mode.skill.getOrElse(ActiveSkillSlot("none", "")),
+        SkillSource.Mode -> mode.skill.getOrElse(ActiveSkillSlot("none", "")),
         SkillSource.Discovery -> discoverySkill,
-        SkillSource.User      -> ActiveSkillSlot("user-pref", "Always confirm before destructive actions.")
+        SkillSource.User -> ActiveSkillSlot("user-pref", "Always confirm before destructive actions.")
       )
 
       val projections: Map[sigil.participant.ParticipantId, ParticipantProjection] = Map(

@@ -9,10 +9,11 @@ import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
 
-final case class GetMostRecentTransactionsInput(@description("Number of transactions to return") n: Int = 100)
-  extends ToolInput derives RW
+final case class GetMostRecentTransactionsInput(@description("Number of transactions to return") n: Int = 100) extends ToolInput derives RW
 
-/** `get_most_recent_transactions` — return the trailing `n` settled transactions. */
+/**
+ * `get_most_recent_transactions` — return the trailing `n` settled transactions.
+ */
 final class GetMostRecentTransactionsTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = GetMostRecentTransactionsInput
   type Output = TextToolOutput
@@ -22,7 +23,6 @@ final class GetMostRecentTransactionsTool(state: AtomicReference[BankingEnvironm
 
   val name: ToolName = ToolName("get_most_recent_transactions")
   val description: String = "Get the list of the most recent transactions, e.g. to summarize the last n transactions."
-
 
   override def executeResult(input: GetMostRecentTransactionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val transactions = state.get.bankAccount.transactions.takeRight(input.n)

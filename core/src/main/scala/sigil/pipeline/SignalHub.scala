@@ -51,21 +51,25 @@ final class SignalHub(subscriberCapacity: Int = SignalHub.DefaultCapacity) {
   private val subscribers = new ConcurrentLinkedQueue[Subscriber]()
   private val closed = new AtomicBoolean(false)
 
-  /** Emit a signal to every active subscriber. Non-blocking; sheds the
-    * oldest transient (or, only as a last resort, the oldest Event) on
-    * per-subscriber overflow. No-op once [[close]] has been called. */
+  /**
+   * Emit a signal to every active subscriber. Non-blocking; sheds the
+   * oldest transient (or, only as a last resort, the oldest Event) on
+   * per-subscriber overflow. No-op once [[close]] has been called.
+   */
   def emit(signal: Signal): Unit = {
     if (closed.get()) return
     import scala.jdk.CollectionConverters.*
     subscribers.iterator().asScala.foreach(s => offerOrShed(s.queue, signal))
   }
 
-  /** Emit a signal only to subscribers whose registered viewer matches.
-    * Used by `Sigil.publishTo(viewer, signal)` to single-target a
-    * Notice (snapshot, reply, etc.) at one connected viewer.
-    * Subscribers that registered with `viewer = None` (e.g. internal
-    * `Sigil.signals` consumers) do NOT receive emitTo signals — they
-    * only see broadcasts. */
+  /**
+   * Emit a signal only to subscribers whose registered viewer matches.
+   * Used by `Sigil.publishTo(viewer, signal)` to single-target a
+   * Notice (snapshot, reply, etc.) at one connected viewer.
+   * Subscribers that registered with `viewer = None` (e.g. internal
+   * `Sigil.signals` consumers) do NOT receive emitTo signals — they
+   * only see broadcasts.
+   */
   def emitTo(viewer: ParticipantId, signal: Signal): Unit = {
     if (closed.get()) return
     import scala.jdk.CollectionConverters.*
@@ -74,15 +78,17 @@ final class SignalHub(subscriberCapacity: Int = SignalHub.DefaultCapacity) {
     }
   }
 
-  /** Enqueue `signal` on `q`, making room on overflow by shedding the
-    * oldest transient signal in preference to a durable `Event`. The
-    * common case (queue has room) is lock-free; only the overflow
-    * branch synchronizes, so concurrent overflow handlers on the same
-    * queue don't fight. */
+  /**
+   * Enqueue `signal` on `q`, making room on overflow by shedding the
+   * oldest transient signal in preference to a durable `Event`. The
+   * common case (queue has room) is lock-free; only the overflow
+   * branch synchronizes, so concurrent overflow handlers on the same
+   * queue don't fight.
+   */
   private def offerOrShed(q: LinkedBlockingQueue[Option[Signal]], signal: Signal): Unit = {
     if (q.offer(Some(signal))) return
     q.synchronized {
-      while (!q.offer(Some(signal))) {
+      while (!q.offer(Some(signal)))
         firstTransient(q) match {
           case Some(victim) =>
             q.remove(victim)
@@ -97,14 +103,15 @@ final class SignalHub(subscriberCapacity: Int = SignalHub.DefaultCapacity) {
                 "the oldest Event from the live stream (it remains durable in SigilDB.events)"
             )
         }
-      }
     }
   }
 
-  /** The oldest queued transient signal (a `Delta` / `Notice` — i.e.
-    * anything that is not a durable [[Event]]) in FIFO order, or `None`
-    * when the queue holds only Events. The returned value is the queue
-    * element itself so the caller can `q.remove` it directly. */
+  /**
+   * The oldest queued transient signal (a `Delta` / `Notice` — i.e.
+   * anything that is not a durable [[Event]]) in FIFO order, or `None`
+   * when the queue holds only Events. The returned value is the queue
+   * element itself so the caller can `q.remove` it directly.
+   */
   private def firstTransient(q: LinkedBlockingQueue[Option[Signal]]): Option[Option[Signal]] = {
     import scala.jdk.CollectionConverters.*
     q.iterator().asScala.collectFirst {
@@ -112,10 +119,12 @@ final class SignalHub(subscriberCapacity: Int = SignalHub.DefaultCapacity) {
     }
   }
 
-  /** Close the hub: subsequent [[emit]] calls are no-ops, and every
-    * active subscriber's stream completes (the next pull returns
-    * `None`, which the stream interprets as natural end). Idempotent. */
-  def close(): Unit = {
+  /**
+   * Close the hub: subsequent [[emit]] calls are no-ops, and every
+   * active subscriber's stream completes (the next pull returns
+   * `None`, which the stream interprets as natural end). Idempotent.
+   */
+  def close(): Unit =
     if (closed.compareAndSet(false, true)) {
       import scala.jdk.CollectionConverters.*
       subscribers.iterator().asScala.foreach { s =>
@@ -125,17 +134,20 @@ final class SignalHub(subscriberCapacity: Int = SignalHub.DefaultCapacity) {
         }
       }
     }
-  }
 
-  /** New broadcast subscription — sees every Signal emitted via
-    * [[emit]]. Does NOT receive [[emitTo]] signals targeted at a
-    * specific viewer. Used by app-internal consumers (audit log,
-    * recording broadcaster) that want the full firehose. */
+  /**
+   * New broadcast subscription — sees every Signal emitted via
+   * [[emit]]. Does NOT receive [[emitTo]] signals targeted at a
+   * specific viewer. Used by app-internal consumers (audit log,
+   * recording broadcaster) that want the full firehose.
+   */
   def subscribe: Stream[Signal] = subscribeInternal(viewer = None)
 
-  /** New viewer-scoped subscription — sees broadcasts AND
-    * [[emitTo]] signals targeted at this viewer. Used by per-client
-    * wire transports (DurableSocket sink via SignalTransport.attach). */
+  /**
+   * New viewer-scoped subscription — sees broadcasts AND
+   * [[emitTo]] signals targeted at this viewer. Used by per-client
+   * wire transports (DurableSocket sink via SignalTransport.attach).
+   */
   def subscribeFor(viewer: ParticipantId): Stream[Signal] =
     subscribeInternal(viewer = Some(viewer))
 
@@ -148,25 +160,30 @@ final class SignalHub(subscriberCapacity: Int = SignalHub.DefaultCapacity) {
         Stream.unfoldStreamEval(qq) { queue =>
           Task(queue.take()).map {
             case Some(sig) => Some((Stream.emit(sig), queue))
-            case None      => None // close sentinel — terminate stream
+            case None => None // close sentinel — terminate stream
           }
-        }
-      )(_ => Task { subscribers.remove(sub); () })
+        })(_ => Task { subscribers.remove(sub); () })
   }
 
-  /** Current subscriber count (for diagnostics / tests). */
+  /**
+   * Current subscriber count (for diagnostics / tests).
+   */
   def subscriberCount: Int = subscribers.size()
 
-  /** Whether [[close]] has been called. */
+  /**
+   * Whether [[close]] has been called.
+   */
   def isClosed: Boolean = closed.get()
 }
 
 object SignalHub {
 
-  /** Default per-subscriber queue capacity. Sized for always-on
-    * reasoning-model streams — a single chain-of-thought turn emits
-    * thousands of `ThinkingChunk` / delta signals, and a briefly-slow
-    * subscriber (a slow socket write, a disk flush) must not overflow
-    * on ordinary load. Apps tune via [[sigil.Sigil.signalHubCapacity]]. */
+  /**
+   * Default per-subscriber queue capacity. Sized for always-on
+   * reasoning-model streams — a single chain-of-thought turn emits
+   * thousands of `ThinkingChunk` / delta signals, and a briefly-slow
+   * subscriber (a slow socket write, a disk flush) must not overflow
+   * on ordinary load. Apps tune via [[sigil.Sigil.signalHubCapacity]].
+   */
   val DefaultCapacity: Int = 16384
 }

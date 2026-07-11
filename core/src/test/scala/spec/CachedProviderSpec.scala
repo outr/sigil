@@ -26,10 +26,12 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
   private val modelId: Id[Model] = Model.id("test", "cache-fixture-model")
 
-  /** In-memory [[CacheStore]] used by the unit specs — round-trips
-    * through the same JSONL serialisation as [[FileSystemCacheStore]]
-    * so the spec exercises real codec behaviour without touching the
-    * filesystem. */
+  /**
+   * In-memory [[CacheStore]] used by the unit specs — round-trips
+   * through the same JSONL serialisation as [[FileSystemCacheStore]]
+   * so the spec exercises real codec behaviour without touching the
+   * filesystem.
+   */
   private class MemoryCacheStore extends CacheStore {
     private val entries = new java.util.concurrent.ConcurrentHashMap[String, String]
     override def read(keyHash: String): Option[CachedResponse] =
@@ -45,7 +47,9 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     }
   }
 
-  /** Stub provider that returns a fixed stream and counts calls. */
+  /**
+   * Stub provider that returns a fixed stream and counts calls.
+   */
   private class CountingProvider(perAttempt: Int => Stream[ProviderEvent]) extends Provider {
     val attemptCount: AtomicInteger = new AtomicInteger(0)
     val observedCalls: AtomicReference[List[ProviderCall]] = new AtomicReference(List.empty)
@@ -71,10 +75,10 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
                       userPrompt: String = "What is 2+2?",
                       tools: Vector[Tool] = Vector.empty): OneShotRequest =
     OneShotRequest(
-      model            = TestSigil.testModel(modelId),
-      systemPrompt       = systemPrompt,
-      userPrompt         = userPrompt,
-      tools              = tools,
+      model = TestSigil.testModel(modelId),
+      systemPrompt = systemPrompt,
+      userPrompt = userPrompt,
+      tools = tools,
       generationSettings = GenerationSettings(temperature = Some(0.0))
     )
 
@@ -86,7 +90,7 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val cached = new CachedProvider(underlying, TestSigil, store, CacheMode.RecordOrReplay)
       val request = oneShot()
       for {
-        firstEvents  <- cached(request).toList
+        firstEvents <- cached(request).toList
         secondEvents <- cached(request).toList
       } yield {
         underlying.attemptCount.get() shouldBe 1
@@ -130,7 +134,7 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val store = new MemoryCacheStore
       val underlying = new CountingProvider(_ => successStream)
       val cached = new CachedProvider(underlying, TestSigil, store, CacheMode.RecordOrReplay)
-      val first  = oneShot(systemPrompt = "You are a helpful test assistant.")
+      val first = oneShot(systemPrompt = "You are a helpful test assistant.")
       val second = oneShot(systemPrompt = "You are a friendly test assistant.")
       for {
         _ <- cached(first).toList
@@ -149,7 +153,7 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       // in description. The hash must change.
       val toolOriginal = new ProxyToolWithDescription(RespondTool, "Send a textual response back to the user.")
       val toolReworded = new ProxyToolWithDescription(RespondTool, "Send a written response back to the user.")
-      val first  = oneShot(tools = Vector(toolOriginal))
+      val first = oneShot(tools = Vector(toolOriginal))
       val second = oneShot(tools = Vector(toolReworded))
       for {
         _ <- cached(first).toList
@@ -182,7 +186,7 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val cached = new CachedProvider(underlying, TestSigil, store, CacheMode.RecordOrReplay)
       val request = oneShot()
       for {
-        firstAttempt  <- cached(request).toList.attempt
+        firstAttempt <- cached(request).toList.attempt
         secondAttempt <- cached(request).toList.attempt
       } yield {
         firstAttempt.isFailure shouldBe true
@@ -210,7 +214,7 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         readBack should not be empty
         readBack.get.requestHash shouldBe "abc123"
         readBack.get.events shouldBe response.events
-      } finally {
+      } finally
         // Cleanup the temp dir
         if (java.nio.file.Files.exists(tmpDir)) {
           val walker = java.nio.file.Files.walk(tmpDir)
@@ -221,15 +225,16 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
             }
           } finally walker.close()
         }
-      }
     }
   }
 
-  /** Wraps an existing [[Tool]] but overrides its `description`. Lets
-    * us assert that a description-only change perturbs the cache hash
-    * without faking out a new schema. */
+  /**
+   * Wraps an existing [[Tool]] but overrides its `description`. Lets
+   * us assert that a description-only change perturbs the cache hash
+   * without faking out a new schema.
+   */
   private class ProxyToolWithDescription(delegate: Tool, descriptionText: String) extends Tool {
-    type Input  = ToolInput
+    type Input = ToolInput
     type Output = sigil.tool.TextToolOutput
     val inputRW: fabric.rw.RW[ToolInput] = delegate.inputRW.asInstanceOf[fabric.rw.RW[ToolInput]]
     val outputRW = summon[fabric.rw.RW[sigil.tool.TextToolOutput]]

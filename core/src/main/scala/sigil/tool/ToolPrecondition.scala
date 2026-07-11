@@ -23,13 +23,18 @@ import sigil.TurnContext
  * tool and surface its name via [[ToolPreconditionResult.Unsatisfied.suggestedFix]].
  */
 trait ToolPrecondition {
-  /** Short human-readable identifier — surfaced in the Unsatisfied
+
+  /**
+   * Short human-readable identifier — surfaced in the Unsatisfied
    * message so the agent can pattern-match across multiple failed
-   * preconditions ("the slack-oauth and the rate-limit are blocking"). */
+   * preconditions ("the slack-oauth and the rate-limit are blocking").
+   */
   def name: String
 
-  /** Run the check. Implementations should be fast — preconditions
+  /**
+   * Run the check. Implementations should be fast — preconditions
    * fire on every tool call. Long checks (network round-trips, DB
-   * scans) should cache and refresh out-of-band. */
+   * scans) should cache and refresh out-of-band.
+   */
   def check(context: TurnContext): Task[ToolPreconditionResult]
 }

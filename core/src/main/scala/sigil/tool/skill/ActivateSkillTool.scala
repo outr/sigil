@@ -29,10 +29,10 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * silently.
  */
 case object ActivateSkillTool extends Tool {
-  type Input  = ActivateSkillInput
+  type Input = ActivateSkillInput
   type Output = TextToolOutput
   val inputRW: RW[ActivateSkillInput] = summon[RW[ActivateSkillInput]]
-  val outputRW: RW[TextToolOutput]    = summon[RW[TextToolOutput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("activate_skill")
   val description: String =

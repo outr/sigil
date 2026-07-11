@@ -17,9 +17,9 @@ case class ListTriggersInput(workflowId: String) extends ToolInput derives RW
  * field values (compact JSON of the trigger's case-class shape).
  */
 final class ListTriggersTool extends Tool with WorkflowToolSupport {
-  type Input  = ListTriggersInput
+  type Input = ListTriggersInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ListTriggersInput]]
+  val inputRW = summon[RW[ListTriggersInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("list_triggers")
   val description =

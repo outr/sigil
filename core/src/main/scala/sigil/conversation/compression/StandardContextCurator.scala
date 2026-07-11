@@ -3,7 +3,9 @@ package sigil.conversation.compression
 import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, ParticipantProjection, ToolCallState, TurnInput}
+import sigil.conversation.{
+  ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, ParticipantProjection, ToolCallState, TurnInput
+}
 import sigil.db.Model
 import sigil.information.InformationSummary
 import sigil.participant.ParticipantId
@@ -41,91 +43,106 @@ case class StandardContextCurator(sigil: Sigil,
                                   blockExtractor: BlockExtractor = NoOpBlockExtractor,
                                   memoryRetriever: MemoryRetriever = NoOpMemoryRetriever,
                                   compressor: ContextCompressor = NoOpContextCompressor,
-                                  /** Run over the about-to-be-shed slice in stage 3
-                                    * (frame compression) BEFORE the slice gets
-                                    * collapsed into a summary. Captures durable
-                                    * facts hidden inside older frames so they
-                                    * survive the lossy compression. Fires on a
-                                    * background fiber — failures are logged but
-                                    * don't block the curator pipeline. Default
-                                    * NoOp; wire a concrete extractor (typically
-                                    * [[StandardMemoryExtractor]]) to enable. */
+                                  /**
+                                   * Run over the about-to-be-shed slice in stage 3
+                                   * (frame compression) BEFORE the slice gets
+                                   * collapsed into a summary. Captures durable
+                                   * facts hidden inside older frames so they
+                                   * survive the lossy compression. Fires on a
+                                   * background fiber — failures are logged but
+                                   * don't block the curator pipeline. Default
+                                   * NoOp; wire a concrete extractor (typically
+                                   * [[StandardMemoryExtractor]]) to enable.
+                                   */
                                   compressionExtractor: MemoryExtractor = NoOpMemoryExtractor,
                                   budget: ContextBudget = Percentage(0.8),
                                   keepMinimum: Int = 4,
                                   tokenizer: Tokenizer = HeuristicTokenizer,
-                                  /** Token counter used in the multi-stage `budgetResolve`
-                                    * shed. Defaults to the in-memory BPE tokenizer
-                                    * ([[sigil.tokenize.JtokkitTokenizer.OpenAIO200k]],
-                                    * which self-degrades to [[HeuristicTokenizer]] when
-                                    * the jtokkit dependency is absent). Real BPE counts
-                                    * matter here: on markup-heavy content (CSS / HTML /
-                                    * Liquid) the character heuristic UNDER-counts by
-                                    * 20-30%, which pushed the effective trigger of the
-                                    * default `Percentage(0.8)` budget past the model's
-                                    * wire window — compression mathematically never ran
-                                    * before the provider hard-rejected the request. A
-                                    * network-backed `tokenizer` (`LlamaCppTokenizer`
-                                    * etc.) must NOT be plugged here — budget math runs
-                                    * over the full frame vector and re-runs on the
-                                    * survivors of every shed stage, so a per-text HTTP
-                                    * round-trip means multi-minute hangs on bulk-imported
-                                    * histories. [[HeuristicTokenizer]] remains a valid
-                                    * explicit choice when jtokkit's per-frame encoding
-                                    * cost matters more than gate accuracy. */
+                                  /**
+                                   * Token counter used in the multi-stage `budgetResolve`
+                                   * shed. Defaults to the in-memory BPE tokenizer
+                                   * ([[sigil.tokenize.JtokkitTokenizer.OpenAIO200k]],
+                                   * which self-degrades to [[HeuristicTokenizer]] when
+                                   * the jtokkit dependency is absent). Real BPE counts
+                                   * matter here: on markup-heavy content (CSS / HTML /
+                                   * Liquid) the character heuristic UNDER-counts by
+                                   * 20-30%, which pushed the effective trigger of the
+                                   * default `Percentage(0.8)` budget past the model's
+                                   * wire window — compression mathematically never ran
+                                   * before the provider hard-rejected the request. A
+                                   * network-backed `tokenizer` (`LlamaCppTokenizer`
+                                   * etc.) must NOT be plugged here — budget math runs
+                                   * over the full frame vector and re-runs on the
+                                   * survivors of every shed stage, so a per-text HTTP
+                                   * round-trip means multi-minute hangs on bulk-imported
+                                   * histories. [[HeuristicTokenizer]] remains a valid
+                                   * explicit choice when jtokkit's per-frame encoding
+                                   * cost matters more than gate accuracy.
+                                   */
                                   budgetTokenizer: Tokenizer = JtokkitTokenizer.OpenAIO200k,
-                                  /** Frames whose rendered content exceeds this elide
-                                    * to gist+reload-id under budget pressure (stage
-                                    * 2c). High enough that ordinary messages pass
-                                    * through untouched; low enough that a bulk tool
-                                    * result or a giant paste is caught. Consumers
-                                    * doing code / markup work (where 2K chars is a
-                                    * modest read) tune upward. */
+                                  /**
+                                   * Frames whose rendered content exceeds this elide
+                                   * to gist+reload-id under budget pressure (stage
+                                   * 2c). High enough that ordinary messages pass
+                                   * through untouched; low enough that a bulk tool
+                                   * result or a giant paste is caught. Consumers
+                                   * doing code / markup work (where 2K chars is a
+                                   * modest read) tune upward.
+                                   */
                                   frameElisionThreshold: Int = 2000,
-                                  /** Characters of the original content kept as the
-                                    * elision gist when the tool author supplied no
-                                    * summary. */
+                                  /**
+                                   * Characters of the original content kept as the
+                                   * elision gist when the tool author supplied no
+                                   * summary.
+                                   */
                                   frameElisionHeadChars: Int = 240,
                                   pinnedShareWarningThreshold: Double = 0.20,
-                                  /** Hard cap on the number of frames the per-turn
-                                    * curate pass considers. When the conversation has
-                                    * more frames than this (typical only on bulk-
-                                    * imported histories — 50K+ events from
-                                    * `load_claude_state`), only the most-recent
-                                    * `maxFramesPerTurn` flow through block extraction,
-                                    * memory retrieval, and budget resolution. Older
-                                    * frames remain in the durable event log and stay
-                                    * reachable via `search_conversation` /
-                                    * `recall_memory` / persisted summaries —
-                                    * they're just skipped on the hot path so the
-                                    * curator doesn't try to summarize the entire
-                                    * history every turn. `Int.MaxValue` disables the
-                                    * cap (legacy behaviour). Bug #144. */
+                                  /**
+                                   * Hard cap on the number of frames the per-turn
+                                   * curate pass considers. When the conversation has
+                                   * more frames than this (typical only on bulk-
+                                   * imported histories — 50K+ events from
+                                   * `load_claude_state`), only the most-recent
+                                   * `maxFramesPerTurn` flow through block extraction,
+                                   * memory retrieval, and budget resolution. Older
+                                   * frames remain in the durable event log and stay
+                                   * reachable via `search_conversation` /
+                                   * `recall_memory` / persisted summaries —
+                                   * they're just skipped on the hot path so the
+                                   * curator doesn't try to summarize the entire
+                                   * history every turn. `Int.MaxValue` disables the
+                                   * cap (legacy behaviour). Bug #144.
+                                   */
                                   maxFramesPerTurn: Int = 5000,
-                                  /** When `true`, the curator pulls persisted
-                                    * `ContextSummary` records via
-                                    * [[sigil.Sigil.summariesFor]] and feeds them
-                                    * into the turn's `TurnInput.summaries`
-                                    * BEFORE the budget gate runs. Apps that
-                                    * precompute summaries at import time (the
-                                    * "compress once, recall many" pattern) get
-                                    * them rendered on every subsequent turn
-                                    * without re-paying the compression cost.
-                                    * Default `true`; apps that don't use the
-                                    * persisted-summary pathway can disable to
-                                    * skip the per-turn DB read. Bug #144. */
+                                  /**
+                                   * When `true`, the curator pulls persisted
+                                   * `ContextSummary` records via
+                                   * [[sigil.Sigil.summariesFor]] and feeds them
+                                   * into the turn's `TurnInput.summaries`
+                                   * BEFORE the budget gate runs. Apps that
+                                   * precompute summaries at import time (the
+                                   * "compress once, recall many" pattern) get
+                                   * them rendered on every subsequent turn
+                                   * without re-paying the compression cost.
+                                   * Default `true`; apps that don't use the
+                                   * persisted-summary pathway can disable to
+                                   * skip the per-turn DB read. Bug #144.
+                                   */
                                   loadPersistedSummaries: Boolean = true,
-                                  /** Optional detector for the
-                                    * "paraphrase without action" failure
-                                    * mode. When set and a pattern fires,
-                                    * an observation is injected into the
-                                    * next turn's `TurnInput.extraContext`
-                                    * under [[ParaphraseLoopDetector.ContextKeyValue]]
-                                    * so the model sees the loop and can
-                                    * self-correct rather than being
-                                    * silently cleaned up. Default `None`
-                                    * — opt-in. */
-                                  paraphraseDetector: Option[ParaphraseLoopDetector] = None) extends ContextCurator {
+                                  /**
+                                   * Optional detector for the
+                                   * "paraphrase without action" failure
+                                   * mode. When set and a pattern fires,
+                                   * an observation is injected into the
+                                   * next turn's `TurnInput.extraContext`
+                                   * under [[ParaphraseLoopDetector.ContextKeyValue]]
+                                   * so the model sees the loop and can
+                                   * self-correct rather than being
+                                   * silently cleaned up. Default `None`
+                                   * — opt-in.
+                                   */
+                                  paraphraseDetector: Option[ParaphraseLoopDetector] = None)
+  extends ContextCurator {
 
   override def curate(conversationId: Id[Conversation],
                       modelId: Id[Model],
@@ -144,24 +161,23 @@ case class StandardContextCurator(sigil: Sigil,
         .collect { case t if t.resultTtl.contains(0) => t.name.value }
         .toSet
       for {
-        _             <- control.step("Loading frames")
+        _ <- control.step("Loading frames")
         // Load persisted summaries first so the per-turn frame
         // filter can skip events that an intra-turn summary
         // (sigil #285) already subsumes. Without this ordering the
         // frame slice would carry both the originals AND the
         // summary text on every subsequent turn.
-        allSummaries  <- if (loadPersistedSummaries) sigil.summariesFor(conversationId)
-                         else Task.pure(List.empty[ContextSummary])
+        allSummaries <- if (loadPersistedSummaries) sigil.summariesFor(conversationId)
+        else Task.pure(List.empty[ContextSummary])
         // Build the elision set across every summary's coversEventIds.
         // Empty (the common case) means no per-event filtering kicks
         // in and frames flow through as before.
         elidedEvents: Set[Id[_root_.sigil.event.Event]] =
           allSummaries.iterator.flatMap(_.coversEventIds).toSet
-        rawFrames     <- sigil.framesFor(conversationId)
+        rawFrames <- sigil.framesFor(conversationId)
         visibleFrames0 = rawFrames.filter(f =>
           sigil.visibilityAllows(f.visibility, chain.lastOption.orNull) &&
-            !elidedEvents.contains(f.sourceEventId)
-        )
+            !elidedEvents.contains(f.sourceEventId))
         // Sigil #385 — shed consumed framework-internal diagnostic frames
         // (keep only the latest) so stall/refusal/cap nudges don't pile up in
         // the prompt and re-feed the loop they were meant to break.
@@ -174,16 +190,16 @@ case class StandardContextCurator(sigil: Sigil,
         // needs in scope; older frames remain durable and reachable
         // via search / recall / persisted summaries.
         boundedFrames = if (visibleFrames.size <= maxFramesPerTurn) visibleFrames
-                        else visibleFrames.takeRight(maxFramesPerTurn)
+        else visibleFrames.takeRight(maxFramesPerTurn)
         optimizedFrames = optimizer.optimize(boundedFrames, elide, chain.headOption)
-        _             <- control.step(s"Extracting blocks (${optimizedFrames.size} frames)")
+        _ <- control.step(s"Extracting blocks (${optimizedFrames.size} frames)")
         // Pulse the workflow step every progress callback the
         // extractor fires so the activity bar reflects forward
         // motion on bulk imports instead of sitting on the same
         // label for minutes. Default cadence (every 500 frames)
         // keeps small-conversation noise low.
-        progressCb    = (i: Int, n: Int) => control.step(s"Extracting blocks ($i / $n)")
-        blockResult   <- blockExtractor.extract(sigil, optimizedFrames, progressCb)
+        progressCb = (i: Int, n: Int) => control.step(s"Extracting blocks ($i / $n)")
+        blockResult <- blockExtractor.extract(sigil, optimizedFrames, progressCb)
         // Sigil #288 — rewrite ContextFrame.ToolCall.argsJson to
         // truncate fields the tool opts into externalization. The
         // durable event log is untouched; only the per-turn prompt
@@ -199,9 +215,9 @@ case class StandardContextCurator(sigil: Sigil,
         // oldest-first, CAPTION-preserving eviction inside `budgetResolve`
         // (which keeps each evicted frame's text so the agent never has to
         // re-fetch what it already saw).
-        externalizedBlock   = blockResult.copy(frames = externalizedFrames)
-        _             <- control.step("Retrieving memories")
-        memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, externalizedBlock.frames, chain)
+        externalizedBlock = blockResult.copy(frames = externalizedFrames)
+        _ <- control.step("Retrieving memories")
+        memoryResult <- memoryRetriever.retrieve(sigil, conversationId, externalizedBlock.frames, chain)
         // Pull persisted summaries — compression-time records from
         // earlier turns + any narrative summaries an app's UX
         // generated explicitly via `MemoryContextCompressor.compressHierarchical`.
@@ -210,8 +226,8 @@ case class StandardContextCurator(sigil: Sigil,
         persistedSummaries =
           if (loadPersistedSummaries) allSummaries.map(_._id).toVector
           else Vector.empty
-        projections   <- loadProjections(conversationId, chain)
-        tentative     = injectParaphraseObservation(
+        projections <- loadProjections(conversationId, chain)
+        tentative = injectParaphraseObservation(
           TurnInput(
             conversationId = conversationId,
             frames = externalizedBlock.frames,
@@ -223,44 +239,48 @@ case class StandardContextCurator(sigil: Sigil,
           ),
           chain
         )
-        modelOpt      <- modelFor(modelId)
-        _             <- control.step("Resolving token budget")
-        shed          <- modelOpt match {
+        modelOpt <- modelFor(modelId)
+        _ <- control.step("Resolving token budget")
+        shed <- modelOpt match {
           case Some(model) =>
             budgetResolve(model, tentative, modelId, chain, memoryResult, externalizedBlock.information)
           case None =>
             Task.pure(tentative)
         }
-        result        <- modelOpt match {
+        result <- modelOpt match {
           case Some(model) => attachBudgetWarning(shed, model, memoryResult, modelId, chain, conversationId)
-          case None        => Task.pure(shed)
+          case None => Task.pure(shed)
         }
       } yield result
     }
 
-  /** Sigil #100 — re-fit an already-curated [[TurnInput]] to a
-    * (typically smaller) served model's window by re-running the SAME
-    * budget gate `curate` ends with, just against the served model's
-    * `contextLength`. No new reduction path: it replays
-    * [[budgetResolve]] — caption-preserving image eviction, then
-    * dropping only recoverable retrieved memories / Information /
-    * summaries, then eliding oversized frames to `reload_content`
-    * pointers, with lossy frame summarization only as a last resort —
-    * so down-sizing inherits the non-lossy-first cascade and never
-    * touches pinned (critical) memories. Reconstructs the resolver
-    * inputs from the TurnInput itself (its already-retrieved memory /
-    * information ids). No-op when the model isn't registered. */
+  /**
+   * Sigil #100 — re-fit an already-curated [[TurnInput]] to a
+   * (typically smaller) served model's window by re-running the SAME
+   * budget gate `curate` ends with, just against the served model's
+   * `contextLength`. No new reduction path: it replays
+   * [[budgetResolve]] — caption-preserving image eviction, then
+   * dropping only recoverable retrieved memories / Information /
+   * summaries, then eliding oversized frames to `reload_content`
+   * pointers, with lossy frame summarization only as a last resort —
+   * so down-sizing inherits the non-lossy-first cascade and never
+   * touches pinned (critical) memories. Reconstructs the resolver
+   * inputs from the TurnInput itself (its already-retrieved memory /
+   * information ids). No-op when the model isn't registered.
+   */
   override def refit(turnInput: TurnInput,
                      modelId: Id[Model],
                      chain: List[ParticipantId]): Task[TurnInput] =
     refit(turnInput, modelId, chain, capOverride = None)
 
-  /** [[refit]] with an explicit token cap in place of
-    * `budget.tokensFor(model)`. The agent loop's context-overflow
-    * recovery passes an emergency cap well under the wire window after
-    * the provider has hard-rejected a request — the wire's rejection is
-    * ground truth that the estimator under-counted, so the emergency
-    * cap must not be derived from the same estimate that just failed. */
+  /**
+   * [[refit]] with an explicit token cap in place of
+   * `budget.tokensFor(model)`. The agent loop's context-overflow
+   * recovery passes an emergency cap well under the wire window after
+   * the provider has hard-rejected a request — the wire's rejection is
+   * ground truth that the estimator under-counted, so the emergency
+   * cap must not be derived from the same estimate that just failed.
+   */
   def refit(turnInput: TurnInput,
             modelId: Id[Model],
             chain: List[ParticipantId],
@@ -282,16 +302,18 @@ case class StandardContextCurator(sigil: Sigil,
       case None => Task.pure(turnInput)
     }
 
-  /** Sigil #288 — rewrite ContextFrame.ToolCall.argsJson values for
-    * tool-opted-in fields that exceed [[Sigil.inlineToolUseContentThreshold]].
-    * Resolves each distinct toolName via [[Sigil.findTools]] once per
-    * curate call; per-frame walk just applies the cached opt-in set.
-    *
-    * Only `ToolCallState.Complete` frames externalize — `Active` frames
-    * are mid-turn debug projections where the agent might still be
-    * processing the in-flight tool_use; we don't truncate those. */
+  /**
+   * Sigil #288 — rewrite ContextFrame.ToolCall.argsJson values for
+   * tool-opted-in fields that exceed [[Sigil.inlineToolUseContentThreshold]].
+   * Resolves each distinct toolName via [[Sigil.findTools]] once per
+   * curate call; per-frame walk just applies the cached opt-in set.
+   *
+   * Only `ToolCallState.Complete` frames externalize — `Active` frames
+   * are mid-turn debug projections where the agent might still be
+   * processing the in-flight tool_use; we don't truncate those.
+   */
   private def externalizeToolUseFields(sigil: Sigil,
-                                        frames: Vector[ContextFrame]): Task[Vector[ContextFrame]] = {
+                                       frames: Vector[ContextFrame]): Task[Vector[ContextFrame]] = {
     val threshold = sigil.inlineToolUseContentThreshold
     if (threshold == Long.MaxValue) return Task.pure(frames)
     val candidates: Vector[ContextFrame.ToolCall] = frames.collect {
@@ -320,8 +342,10 @@ case class StandardContextCurator(sigil: Sigil,
     }
   }
 
-  /** Snapshot every chain participant's projection from the
-    * persistent collection. Empty when none recorded yet. */
+  /**
+   * Snapshot every chain participant's projection from the
+   * persistent collection. Empty when none recorded yet.
+   */
   private def loadProjections(conversationId: Id[Conversation],
                               chain: List[ParticipantId]): Task[Map[ParticipantId, ParticipantProjection]] =
     Task.sequence(chain.distinct.map { pid =>
@@ -366,7 +390,8 @@ case class StandardContextCurator(sigil: Sigil,
         val frames =
           if (tokensOf(tentative, frames0, resolvedSummaries) <= cap) frames0
           else StandardContextCurator.evictImagesToFit(
-            frames0, candidate => tokensOf(tentative, candidate, resolvedSummaries) <= cap)
+            frames0,
+            candidate => tokensOf(tentative, candidate, resolvedSummaries) <= cap)
         val tent = tentative.copy(frames = frames)
 
         // Sigil #416 — stamp the returned TurnInput when this curate had
@@ -414,102 +439,103 @@ case class StandardContextCurator(sigil: Sigil,
               if (tokensOf(afterStage2b, frames, Vector.empty) <= cap) Task.pure(afterStage2b)
               else resolveElisionProtectedIds(tentative.conversationId, frames).flatMap { elisionProtected =>
                 compactLargeFrames(tentative.conversationId, frames, elisionProtected).flatMap { compacted =>
-                // Stage 2c — elide oversized tool-result / message frames
-                // to a short summary + reload-id (#316). Targets the
-                // actual budget bloat (a giant grep result, a huge
-                // message) WITHOUT dropping any frame; full content stays
-                // durable and re-examinable via reload_content(eventId). This
-                // runs before the lossy frame shed, so the common case
-                // (one oversized tool result) never reaches Stage 3.
-                //
-                // Sigil #416 — active-turn frames are exempt (the agent
-                // must be able to act on what it just read), and chronic
-                // elision escalates: 2c's relief is per-curate and
-                // ephemeral, so a conversation that needs it every turn
-                // would re-elide forever while stage 3's DURABLE shed
-                // (summary + clearedAt advance) never runs. After
-                // `elisionPressureEscalationStreak` consecutive eliding
-                // curates, proceed into stage 3 against the UNELIDED
-                // frames so history durably shrinks and elision stops
-                // being needed.
-                val elidedCount = frames.iterator.zip(compacted.iterator).count { case (a, b) => a ne b }
-                val streak: Int =
-                  if (elidedCount > 0)
-                    sigil.elisionPressureStreaks
-                      .merge(tentative.conversationId, Int.box(1), (a, b) => Int.box(a.intValue + b.intValue))
-                      .intValue
+                  // Stage 2c — elide oversized tool-result / message frames
+                  // to a short summary + reload-id (#316). Targets the
+                  // actual budget bloat (a giant grep result, a huge
+                  // message) WITHOUT dropping any frame; full content stays
+                  // durable and re-examinable via reload_content(eventId). This
+                  // runs before the lossy frame shed, so the common case
+                  // (one oversized tool result) never reaches Stage 3.
+                  //
+                  // Sigil #416 — active-turn frames are exempt (the agent
+                  // must be able to act on what it just read), and chronic
+                  // elision escalates: 2c's relief is per-curate and
+                  // ephemeral, so a conversation that needs it every turn
+                  // would re-elide forever while stage 3's DURABLE shed
+                  // (summary + clearedAt advance) never runs. After
+                  // `elisionPressureEscalationStreak` consecutive eliding
+                  // curates, proceed into stage 3 against the UNELIDED
+                  // frames so history durably shrinks and elision stops
+                  // being needed.
+                  val elidedCount = frames.iterator.zip(compacted.iterator).count { case (a, b) => a ne b }
+                  val streak: Int =
+                    if (elidedCount > 0)
+                      sigil.elisionPressureStreaks
+                        .merge(tentative.conversationId, Int.box(1), (a, b) => Int.box(a.intValue + b.intValue))
+                        .intValue
+                    else {
+                      sigil.elisionPressureStreaks.remove(tentative.conversationId)
+                      0
+                    }
+                  // Escalation only helps when a real compressor is wired —
+                  // the durable shed drops frames strictly via summary, so
+                  // with NoOpContextCompressor an escalated stage 3 would
+                  // no-op into the last-resort full elision instead of
+                  // shrinking anything.
+                  val escalate = sigil.elisionPressureEscalationStreak > 0 &&
+                    streak >= sigil.elisionPressureEscalationStreak &&
+                    (compressor ne NoOpContextCompressor)
+                  val afterStage2c = stampPressure(afterStage2b.copy(frames = compacted), elidedCount)
+                  if (!escalate && tokensOf(afterStage2c, compacted, Vector.empty) <= cap) Task.pure(afterStage2c)
                   else {
-                    sigil.elisionPressureStreaks.remove(tentative.conversationId)
-                    0
-                  }
-                // Escalation only helps when a real compressor is wired —
-                // the durable shed drops frames strictly via summary, so
-                // with NoOpContextCompressor an escalated stage 3 would
-                // no-op into the last-resort full elision instead of
-                // shrinking anything.
-                val escalate = sigil.elisionPressureEscalationStreak > 0 &&
-                  streak >= sigil.elisionPressureEscalationStreak &&
-                  (compressor ne NoOpContextCompressor)
-                val afterStage2c = stampPressure(afterStage2b.copy(frames = compacted), elidedCount)
-                if (!escalate && tokensOf(afterStage2c, compacted, Vector.empty) <= cap) Task.pure(afterStage2c)
-                else {
-                // Stage 3 — last-resort frame shed for sheer history
-                // length. Resolve the invariant-protected
-                // `sourceEventId`s once so the shed never folds the user
-                // task or cleaves a paired tool exchange. Under #416
-                // escalation the shed runs against the UNELIDED frames
-                // (targeting the raw content the per-curate elision keeps
-                // rewriting) so the resulting summary + clearedAt advance
-                // durably removes it.
-                val stage3Frames = if (escalate) frames else compacted
-                val stage3Base   = if (escalate) afterStage2b else afterStage2c
-                resolveProtectedEventIds(tentative.conversationId, stage3Frames).flatMap { protectedIds =>
-                  shedFramesIteratively(
-                    kept = stage3Frames,
-                    droppedSoFar = Vector.empty,
-                    summaryCarry = None,
-                    cap = cap,
-                    modelId = modelId,
-                    chain = chain,
-                    conversationId = tentative.conversationId,
-                    protectedSourceEventIds = protectedIds,
-                    tokensOfKept = (kept, summaryOpt) =>
-                      tokensOf(stage3Base, kept, summaryOpt.toVector)
-                  )
-                }.flatMap { case (newerKept, summaryOpt) =>
-                  if (escalate) sigil.elisionPressureStreaks.remove(tentative.conversationId)
-                  summaryOpt match {
-                    case Some(summary) =>
-                      // Bug #147 — advance the conversation's
-                      // `clearedAt` watermark to the timestamp of
-                      // the LAST shed frame's source event so the
-                      // next turn's `framesFor` filters them out.
-                      // Without this, the same shed re-fires every
-                      // turn forever — the summary lands but the
-                      // frames it replaced come right back. The
-                      // advance is capped below the current user task
-                      // by `advanceClearedAt` (#316), so old history
-                      // sheds while the task never does.
-                      val shedSlice = stage3Frames.dropRight(newerKept.size)
-                      val advance: Task[Unit] = shedSlice.lastOption match {
-                        case Some(boundary) =>
-                          sigil.withDB(_.eventsTransaction(tentative.conversationId)(_.get(boundary.sourceEventId))).flatMap {
-                            case Some(ev) =>
-                              sigil.advanceClearedAt(tentative.conversationId, ev.timestamp)
-                                .handleError(_ => Task.unit)
+                    // Stage 3 — last-resort frame shed for sheer history
+                    // length. Resolve the invariant-protected
+                    // `sourceEventId`s once so the shed never folds the user
+                    // task or cleaves a paired tool exchange. Under #416
+                    // escalation the shed runs against the UNELIDED frames
+                    // (targeting the raw content the per-curate elision keeps
+                    // rewriting) so the resulting summary + clearedAt advance
+                    // durably removes it.
+                    val stage3Frames = if (escalate) frames else compacted
+                    val stage3Base = if (escalate) afterStage2b else afterStage2c
+                    resolveProtectedEventIds(tentative.conversationId, stage3Frames).flatMap { protectedIds =>
+                      shedFramesIteratively(
+                        kept = stage3Frames,
+                        droppedSoFar = Vector.empty,
+                        summaryCarry = None,
+                        cap = cap,
+                        modelId = modelId,
+                        chain = chain,
+                        conversationId = tentative.conversationId,
+                        protectedSourceEventIds = protectedIds,
+                        tokensOfKept = (kept, summaryOpt) =>
+                          tokensOf(stage3Base, kept, summaryOpt.toVector)
+                      )
+                    }.flatMap { case (newerKept, summaryOpt) =>
+                      if (escalate) sigil.elisionPressureStreaks.remove(tentative.conversationId)
+                      summaryOpt match {
+                        case Some(summary) =>
+                          // Bug #147 — advance the conversation's
+                          // `clearedAt` watermark to the timestamp of
+                          // the LAST shed frame's source event so the
+                          // next turn's `framesFor` filters them out.
+                          // Without this, the same shed re-fires every
+                          // turn forever — the summary lands but the
+                          // frames it replaced come right back. The
+                          // advance is capped below the current user task
+                          // by `advanceClearedAt` (#316), so old history
+                          // sheds while the task never does.
+                          val shedSlice = stage3Frames.dropRight(newerKept.size)
+                          val advance: Task[Unit] = shedSlice.lastOption match {
+                            case Some(boundary) =>
+                              sigil.withDB(_.eventsTransaction(tentative.conversationId)(_.get(boundary.sourceEventId))).flatMap {
+                                case Some(ev) =>
+                                  sigil.advanceClearedAt(tentative.conversationId, ev.timestamp)
+                                    .handleError(_ => Task.unit)
+                                case None => Task.unit
+                              }
                             case None => Task.unit
                           }
-                        case None => Task.unit
+                          advance.flatMap(_ =>
+                            fitOrLastResort(stage3Base.copy(
+                              frames = newerKept,
+                              summaries = Vector(summary._id)
+                            )))
+                        case None =>
+                          fitOrLastResort(stage3Base.copy(frames = newerKept))
                       }
-                      advance.flatMap(_ => fitOrLastResort(stage3Base.copy(
-                        frames    = newerKept,
-                        summaries = Vector(summary._id)
-                      )))
-                    case None =>
-                      fitOrLastResort(stage3Base.copy(frames = newerKept))
+                    }
                   }
-                }
-                }
                 }
               }
             }
@@ -518,11 +544,13 @@ case class StandardContextCurator(sigil: Sigil,
       }
     } yield out
 
-  /** Resolve persisted-summary ids on `TurnInput.summaries` to full
-    * records via the DB. Bug #144 — the curator's budget-gate math
-    * needs the rendered token cost of every summary in the tentative
-    * TurnInput; without resolution the gate under-counts and the
-    * provider sees a request that's bigger than the budget computed. */
+  /**
+   * Resolve persisted-summary ids on `TurnInput.summaries` to full
+   * records via the DB. Bug #144 — the curator's budget-gate math
+   * needs the rendered token cost of every summary in the tentative
+   * TurnInput; without resolution the gate under-counts and the
+   * provider sees a request that's bigger than the budget computed.
+   */
   private def resolveSummaries(ids: Vector[Id[ContextSummary]]): Task[Vector[ContextSummary]] =
     if (ids.isEmpty) Task.pure(Vector.empty)
     else sigil.withDB(_.summaries.transaction { tx =>
@@ -533,17 +561,19 @@ case class StandardContextCurator(sigil: Sigil,
       Task.sequence(ids.toList.map(tx.get)).map(_.flatten.toVector)
     })
 
-  /** Iterative Stage 3 shed (bug #23 — preserves the iteration model
-    * inside the new bug-#26 architecture). Each pass either fits, hits
-    * `keepMinimum`, or falls through on a compressor refusal. When the
-    * input exceeds `cap × 3`, jump straight to the floor for a single
-    * aggressive collapse instead of rounds of halving.
-    *
-    * `protectedSourceEventIds` is the union of every
-    * [[CompactionInvariant]] applicable to the slice's events. The
-    * split point is adjusted forward (older direction) so no
-    * protected event lands in the `older` half; protects paired tool
-    * exchanges and structurally load-bearing events from being folded. */
+  /**
+   * Iterative Stage 3 shed (bug #23 — preserves the iteration model
+   * inside the new bug-#26 architecture). Each pass either fits, hits
+   * `keepMinimum`, or falls through on a compressor refusal. When the
+   * input exceeds `cap × 3`, jump straight to the floor for a single
+   * aggressive collapse instead of rounds of halving.
+   *
+   * `protectedSourceEventIds` is the union of every
+   * [[CompactionInvariant]] applicable to the slice's events. The
+   * split point is adjusted forward (older direction) so no
+   * protected event lands in the `older` half; protects paired tool
+   * exchanges and structurally load-bearing events from being folded.
+   */
   private def shedFramesIteratively(kept: Vector[ContextFrame],
                                     droppedSoFar: Vector[ContextFrame],
                                     summaryCarry: Option[ContextSummary],
@@ -553,7 +583,7 @@ case class StandardContextCurator(sigil: Sigil,
                                     conversationId: Id[Conversation],
                                     protectedSourceEventIds: Set[Id[_root_.sigil.event.Event]],
                                     tokensOfKept: (Vector[ContextFrame], Option[ContextSummary]) => Int)
-      : Task[(Vector[ContextFrame], Option[ContextSummary])] = {
+    : Task[(Vector[ContextFrame], Option[ContextSummary])] = {
     val current = tokensOfKept(kept, summaryCarry)
     if (current <= cap || kept.size <= keepMinimum) Task.pure((kept, summaryCarry))
     else {
@@ -594,40 +624,47 @@ case class StandardContextCurator(sigil: Sigil,
     }
   }
 
-  /** Walk the split point earlier until no protected frame lands in
-    * the `older` half. Returns 0 when every preceding frame is
-    * protected (the shed becomes a no-op for this iteration). */
+  /**
+   * Walk the split point earlier until no protected frame lands in
+   * the `older` half. Returns 0 when every preceding frame is
+   * protected (the shed becomes a no-op for this iteration).
+   */
   private def adjustSplitForInvariants(frames: Vector[ContextFrame],
                                        initialSplit: Int,
-                                       protectedIds: Set[Id[_root_.sigil.event.Event]]): Int = {
+                                       protectedIds: Set[Id[_root_.sigil.event.Event]]): Int =
     if (protectedIds.isEmpty) initialSplit
     else {
       var s = initialSplit
       while (s > 0 && protectedIds.contains(frames(s - 1).sourceEventId)) s -= 1
       s
     }
-  }
 
-  /** Load the events backing `frames`, run every
-    * [[CompactionInvariant]] in [[sigil.Sigil.compactionInvariants]]
-    * against the result, and return the union of protected
-    * `sourceEventId`s. Best-effort: a DB hiccup or a missing event
-    * row degrades to an empty set so the shed still makes progress. */
+  /**
+   * Load the events backing `frames`, run every
+   * [[CompactionInvariant]] in [[sigil.Sigil.compactionInvariants]]
+   * against the result, and return the union of protected
+   * `sourceEventId`s. Best-effort: a DB hiccup or a missing event
+   * row degrades to an empty set so the shed still makes progress.
+   */
   private def resolveProtectedEventIds(conversationId: Id[Conversation],
-                                        frames: Vector[ContextFrame]): Task[Set[Id[_root_.sigil.event.Event]]] =
+                                       frames: Vector[ContextFrame]): Task[Set[Id[_root_.sigil.event.Event]]] =
     resolveInvariantIds(conversationId, frames, sigil.compactionInvariants)
 
-  /** Event ids stage 2c's frame elision must not touch: the app's
-    * configured invariants PLUS the active turn
-    * ([[CompactionInvariant.ActiveTurnEvents]]). */
+  /**
+   * Event ids stage 2c's frame elision must not touch: the app's
+   * configured invariants PLUS the active turn
+   * ([[CompactionInvariant.ActiveTurnEvents]]).
+   */
   private def resolveElisionProtectedIds(conversationId: Id[Conversation],
                                          frames: Vector[ContextFrame]): Task[Set[Id[_root_.sigil.event.Event]]] =
-    resolveInvariantIds(conversationId, frames,
+    resolveInvariantIds(
+      conversationId,
+      frames,
       sigil.compactionInvariants :+ CompactionInvariant.ActiveTurnEvents)
 
   private def resolveInvariantIds(conversationId: Id[Conversation],
                                   frames: Vector[ContextFrame],
-                                  invariants: List[CompactionInvariant]): Task[Set[Id[_root_.sigil.event.Event]]] = {
+                                  invariants: List[CompactionInvariant]): Task[Set[Id[_root_.sigil.event.Event]]] =
     if (invariants.isEmpty || frames.isEmpty) Task.pure(Set.empty)
     else {
       val ids = frames.map(_.sourceEventId).distinct
@@ -639,22 +676,23 @@ case class StandardContextCurator(sigil: Sigil,
         invariants.iterator.flatMap(_.applicableIds(sorted, ctx)).toSet
       }.handleError(_ => Task.pure(Set.empty))
     }
-  }
 
-  /** #316 — per-frame budget elision. Replace oversized tool-result and
-    * message frame content with a short gist + a `reload_content(eventId)`
-    * reload pointer, keeping the frame in place. Non-destructive: the
-    * durable event retains full content, re-examinable via reload_content.
-    * Prefers the tool author's `ToolInvoke.summary` for the gist (this
-    * runs only on the over-budget path, over oversized frames, so the
-    * per-frame event lookup is rare), falling back to a head excerpt.
-    *
-    * `protectedIds` (typically the [[CompactionInvariant.ActiveTurnEvents]]
-    * resolution) are exempt: the agent must be able to act on what it
-    * just read — a this-turn tool result rewritten to a stub between
-    * iterations starves the work in progress. The last-resort pass in
-    * `budgetResolve` re-runs with an empty set when protection alone
-    * can't fit the cap. */
+  /**
+   * #316 — per-frame budget elision. Replace oversized tool-result and
+   * message frame content with a short gist + a `reload_content(eventId)`
+   * reload pointer, keeping the frame in place. Non-destructive: the
+   * durable event retains full content, re-examinable via reload_content.
+   * Prefers the tool author's `ToolInvoke.summary` for the gist (this
+   * runs only on the over-budget path, over oversized frames, so the
+   * per-frame event lookup is rare), falling back to a head excerpt.
+   *
+   * `protectedIds` (typically the [[CompactionInvariant.ActiveTurnEvents]]
+   * resolution) are exempt: the agent must be able to act on what it
+   * just read — a this-turn tool result rewritten to a stub between
+   * iterations starves the work in progress. The last-resort pass in
+   * `budgetResolve` re-runs with an empty set when protection alone
+   * can't fit the cap.
+   */
   private def compactLargeFrames(conversationId: Id[Conversation],
                                  frames: Vector[ContextFrame],
                                  protectedIds: Set[Id[_root_.sigil.event.Event]]): Task[Vector[ContextFrame]] =
@@ -669,7 +707,8 @@ case class StandardContextCurator(sigil: Sigil,
               }
               val gist = authored.getOrElse(headExcerpt(content))
               tc.copy(state = ToolCallState.Complete(
-                elisionText(tc.toolName.value, gist, content.length, images.size, tc.sourceEventId), Nil))
+                elisionText(tc.toolName.value, gist, content.length, images.size, tc.sourceEventId),
+                Nil))
             }
           case _ => Task.pure(tc)
         }
@@ -691,8 +730,10 @@ case class StandardContextCurator(sigil: Sigil,
       s"Reload full content with reload_content(\"${eventId.value}\").]"
   }
 
-  /** Resolve the criticalMemories / memories id buckets from a
-    * [[MemoryRetrievalResult]] to full records via the DB. */
+  /**
+   * Resolve the criticalMemories / memories id buckets from a
+   * [[MemoryRetrievalResult]] to full records via the DB.
+   */
   private def resolveMemoriesAndSummaries(memResult: MemoryRetrievalResult): Task[(Vector[ContextMemory], Vector[ContextMemory])] = {
     val now = lightdb.time.Timestamp()
     // Sigil bug #170 — both id buckets share one memories transaction.
@@ -701,7 +742,7 @@ case class StandardContextCurator(sigil: Sigil,
     // seconds to "Resolving token budget."
     sigil.withDB(_.memories.transaction { tx =>
       for {
-        crit    <- Task.sequence(memResult.criticalMemories.toList.map(tx.get))
+        crit <- Task.sequence(memResult.criticalMemories.toList.map(tx.get))
         regular <- Task.sequence(memResult.memories.toList.map(tx.get))
       } yield (
         crit.flatten.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).toVector,
@@ -710,25 +751,27 @@ case class StandardContextCurator(sigil: Sigil,
     })
   }
 
-  /** Information ids referenced inside the current frames. */
+  /**
+   * Information ids referenced inside the current frames.
+   */
   private def referencedInformationIds(frames: Vector[ContextFrame]): Set[String] = {
     val needle = "Information["
     frames.iterator.flatMap {
-      case t: ContextFrame.Text     => extractIds(t.content, needle)
+      case t: ContextFrame.Text => extractIds(t.content, needle)
       case tc: ContextFrame.ToolCall =>
         // Sigil #261 — unified frame: args + (if Complete) result content.
         val argIds = extractIds(tc.argsJson, needle)
         val resultIds = tc.state match {
           case ToolCallState.Complete(content, _) => extractIds(content, needle)
-          case ToolCallState.Active               => Iterator.empty
+          case ToolCallState.Active => Iterator.empty
         }
         argIds ++ resultIds
-      case s: ContextFrame.System   => extractIds(s.content, needle)
-      case _                        => Iterator.empty
+      case s: ContextFrame.System => extractIds(s.content, needle)
+      case _ => Iterator.empty
     }.toSet
   }
 
-  private[compression] def extractIds(content: String, needle: String): Iterator[String] = {
+  private[compression] def extractIds(content: String, needle: String): Iterator[String] =
     if (!content.contains(needle)) Iterator.empty
     else {
       val out = List.newBuilder[String]
@@ -749,7 +792,6 @@ case class StandardContextCurator(sigil: Sigil,
       }
       out.result().iterator
     }
-  }
 
   private def attachBudgetWarning(turnInput: TurnInput,
                                   model: Model,
@@ -773,7 +815,7 @@ case class StandardContextCurator(sigil: Sigil,
           }
           .sortBy(-_._2)
         val top3 = ranked.take(3)
-        val topRender = top3.map { case (k, n) => s"$k @${n} tok" }.mkString(", ")
+        val topRender = top3.map { case (k, n) => s"$k @$n tok" }.mkString(", ")
         val message =
           s"Your pinned directives use ~$pct% of this model's context window ($pinnedTokens / $ctxLen tok; top: $topRender). " +
             s"If the user wants to review pinned items, call `list_memories(pinned=true)` and offer them via `respond_options`. " +
@@ -804,11 +846,13 @@ case class StandardContextCurator(sigil: Sigil,
   private def modelFor(modelId: Id[Model]): Task[Option[Model]] =
     Task.pure(sigil.cache.find(modelId))
 
-  /** Run [[paraphraseDetector]] over the turn's frame history; on a
-    * hit, append the observation to `extraContext` under
-    * [[ParaphraseLoopDetector.ContextKeyValue]]. No-op when the
-    * detector is not configured or the chain has no agent
-    * participant the detector can scope to. */
+  /**
+   * Run [[paraphraseDetector]] over the turn's frame history; on a
+   * hit, append the observation to `extraContext` under
+   * [[ParaphraseLoopDetector.ContextKeyValue]]. No-op when the
+   * detector is not configured or the chain has no agent
+   * participant the detector can scope to.
+   */
   private def injectParaphraseObservation(turn: TurnInput, chain: List[ParticipantId]): TurnInput =
     paraphraseDetector match {
       case None => turn
@@ -817,7 +861,7 @@ case class StandardContextCurator(sigil: Sigil,
           case None => turn
           case Some(agentId) =>
             detector.detect(turn.frames, agentId) match {
-              case None          => turn
+              case None => turn
               case Some(pattern) =>
                 turn.copy(extraContext = turn.extraContext +
                   (_root_.sigil.conversation.ContextKey(ParaphraseLoopDetector.ContextKeyValue) -> pattern.render()))
@@ -828,28 +872,32 @@ case class StandardContextCurator(sigil: Sigil,
 
 object StandardContextCurator {
 
-  /** Sigil #416 — [[sigil.conversation.TurnInput.extraContext]] key
-    * stamped by `budgetResolve` when stage 2c had to elide frame
-    * content this curate. Downstream consumers read it to distinguish
-    * a pressured turn from a normal one — notably the orchestrator's
-    * naked-text decision challenge, which backs off rather than
-    * prodding a context-starved agent through extra iterations. */
+  /**
+   * Sigil #416 — [[sigil.conversation.TurnInput.extraContext]] key
+   * stamped by `budgetResolve` when stage 2c had to elide frame
+   * content this curate. Downstream consumers read it to distinguish
+   * a pressured turn from a normal one — notably the orchestrator's
+   * naked-text decision challenge, which backs off rather than
+   * prodding a context-starved agent through extra iterations.
+   */
   val ContextPressureKey: _root_.sigil.conversation.ContextKey =
     _root_.sigil.conversation.ContextKey("_contextPressure")
 
-  /** Sigil #288 — replace oversized top-level string fields in a
-    * tool-call args JSON with a short placeholder. The placeholder
-    * keeps the wire type intact (string → string) and conveys the
-    * original size + truncation marker so the model can recognise
-    * that the framework elided it. Same-string identity is preserved
-    * when no rewrite fires so callers can `eq`-check for "nothing
-    * changed."
-    *
-    * Only top-level string-valued fields with names in `fields` are
-    * candidates. Object / array / numeric fields pass through
-    * untouched even if their byte size exceeds the threshold — this
-    * pass is targeted at the "agent shipped a large prose / file body
-    * as a tool arg" pattern, not general-purpose JSON walking. */
+  /**
+   * Sigil #288 — replace oversized top-level string fields in a
+   * tool-call args JSON with a short placeholder. The placeholder
+   * keeps the wire type intact (string → string) and conveys the
+   * original size + truncation marker so the model can recognise
+   * that the framework elided it. Same-string identity is preserved
+   * when no rewrite fires so callers can `eq`-check for "nothing
+   * changed."
+   *
+   * Only top-level string-valued fields with names in `fields` are
+   * candidates. Object / array / numeric fields pass through
+   * untouched even if their byte size exceeds the threshold — this
+   * pass is targeted at the "agent shipped a large prose / file body
+   * as a tool arg" pattern, not general-purpose JSON walking.
+   */
   def rewriteOversizedFields(argsJson: String, fields: Set[String], threshold: Long): String = {
     import fabric.{Json, Obj, obj, str}
     import fabric.io.{JsonFormatter, JsonParser}
@@ -866,7 +914,7 @@ object StandardContextCurator {
               changed = true
               val size = s.value.length
               k -> str(s"[externalized — $size chars elided; original in event log, " +
-                       "recoverable via search_conversation]")
+                "recoverable via search_conversation]")
             case _ => k -> v
           }
           else k -> v
@@ -875,19 +923,21 @@ object StandardContextCurator {
     }
   }
 
-  /** Sigil #382 — knowledge-preserving image eviction. Drop the
-    * `images` (pixels) of the OLDEST `evictCount` image-bearing
-    * [[ContextFrame.ToolCall]] frames while KEEPING each frame's text —
-    * which is the image's caption ([[sigil.conversation.FrameBuilder]]
-    * already folds the tool's `text`/`alt`/summary into the frame
-    * content). The agent reads what the image showed rather than being
-    * forced to re-fetch it (the loop the recency-stubbing #289
-    * manufactured). Pressure-triggered from [[budgetResolve]] only;
-    * image frames are otherwise left STABLE so the cached prefix doesn't
-    * churn. Returns `frames` unchanged when `evictCount <= 0`.
-    *
-    * Only `ToolCallState.Complete` frames with a non-empty `images` list
-    * are candidates. */
+  /**
+   * Sigil #382 — knowledge-preserving image eviction. Drop the
+   * `images` (pixels) of the OLDEST `evictCount` image-bearing
+   * [[ContextFrame.ToolCall]] frames while KEEPING each frame's text —
+   * which is the image's caption ([[sigil.conversation.FrameBuilder]]
+   * already folds the tool's `text`/`alt`/summary into the frame
+   * content). The agent reads what the image showed rather than being
+   * forced to re-fetch it (the loop the recency-stubbing #289
+   * manufactured). Pressure-triggered from [[budgetResolve]] only;
+   * image frames are otherwise left STABLE so the cached prefix doesn't
+   * churn. Returns `frames` unchanged when `evictCount <= 0`.
+   *
+   * Only `ToolCallState.Complete` frames with a non-empty `images` list
+   * are candidates.
+   */
   def evictOldestImages(frames: Vector[ContextFrame], evictCount: Int): Vector[ContextFrame] = {
     if (evictCount <= 0) return frames
     val imageIndices = frames.iterator.zipWithIndex.collect {
@@ -910,14 +960,16 @@ object StandardContextCurator {
     }
   }
 
-  /** Sigil #385 — keep only the most-recent framework-internal diagnostic
-    * frame (`ContextFrame.ToolCall(internal = true)`); drop older ones. They
-    * are transient nudges (stall / refusal-challenge / cap directives) meant
-    * to steer ONE next iteration — once consumed, stale copies are pure
-    * context noise that, re-sent every turn, compound the very loop they warn
-    * against (observed live: a single turn's prompt carried 200+ accumulated
-    * `_stall_detected` diagnostics). The durable events are untouched; this is
-    * a per-turn prompt-shaping step only. */
+  /**
+   * Sigil #385 — keep only the most-recent framework-internal diagnostic
+   * frame (`ContextFrame.ToolCall(internal = true)`); drop older ones. They
+   * are transient nudges (stall / refusal-challenge / cap directives) meant
+   * to steer ONE next iteration — once consumed, stale copies are pure
+   * context noise that, re-sent every turn, compound the very loop they warn
+   * against (observed live: a single turn's prompt carried 200+ accumulated
+   * `_stall_detected` diagnostics). The durable events are untouched; this is
+   * a per-turn prompt-shaping step only.
+   */
   def dropStaleInternalFrames(frames: Vector[ContextFrame]): Vector[ContextFrame] = {
     val internalIdx = frames.iterator.zipWithIndex.collect {
       case (tc: ContextFrame.ToolCall, idx) if tc.internal => idx
@@ -929,10 +981,12 @@ object StandardContextCurator {
     }
   }
 
-  /** Sigil #382 — progressively evict the oldest image frames' pixels
-    * (caption-preserving, via [[evictOldestImages]]) until `fits` holds
-    * or no image pixels remain. Returns the fully-evicted frames if it
-    * never fits — the residual shed cascade then handles the rest. */
+  /**
+   * Sigil #382 — progressively evict the oldest image frames' pixels
+   * (caption-preserving, via [[evictOldestImages]]) until `fits` holds
+   * or no image pixels remain. Returns the fully-evicted frames if it
+   * never fits — the residual shed cascade then handles the rest.
+   */
   def evictImagesToFit(frames: Vector[ContextFrame],
                        fits: Vector[ContextFrame] => Boolean): Vector[ContextFrame] = {
     if (fits(frames)) return frames
@@ -947,7 +1001,9 @@ object StandardContextCurator {
     evictOldestImages(frames, total)
   }
 
-  /** Number of image-bearing frames still carrying pixels (sigil #382). */
+  /**
+   * Number of image-bearing frames still carrying pixels (sigil #382).
+   */
   def imageFrameCount(frames: Vector[ContextFrame]): Int =
     frames.count {
       case tc: ContextFrame.ToolCall =>

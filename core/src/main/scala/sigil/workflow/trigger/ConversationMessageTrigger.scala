@@ -47,12 +47,13 @@ object ConversationMessageTrigger {
   val Kind: String = "conversation_message"
 }
 
-/** Strider-side trigger implementation that bridges the Sigil
-  * signal stream into the workflow's `register/check/unregister`
-  * lifecycle. Per-trigger-instance state lives in a small atomic
-  * buffer so Strider's polling `check` can drain matches without
-  * blocking on the signal subscription.
-  */
+/**
+ * Strider-side trigger implementation that bridges the Sigil
+ * signal stream into the workflow's `register/check/unregister`
+ * lifecycle. Per-trigger-instance state lives in a small atomic
+ * buffer so Strider's polling `check` can drain matches without
+ * blocking on the signal subscription.
+ */
 final case class ConversationMessageTriggerImpl(spec: ConversationMessageTrigger,
                                                 id: Id[Step] = Step.id())
   extends Trigger derives RW {

@@ -36,18 +36,27 @@ class WorkflowComplexityRoutingSpec extends AsyncWordSpec with AsyncTaskSpec wit
   private def syntheticModel(id: Id[Model]): Model = {
     val now = lightdb.time.Timestamp()
     Model(
-      canonicalSlug = id.value, huggingFaceId = "", name = id.value,
-      description = s"Synthetic Model for $id.", contextLength = 32768L,
+      canonicalSlug = id.value,
+      huggingFaceId = "",
+      name = id.value,
+      description = s"Synthetic Model for $id.",
+      contextLength = 32768L,
       architecture = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
       pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
       topProvider = ModelTopProvider(contextLength = Some(32768L), maxCompletionTokens = Some(8192L), isModerated = false),
-      perRequestLimits = None, supportedParameters = Set("temperature", "tools"),
-      knowledgeCutoff = None, expirationDate = None, links = ModelLinks(details = ""),
-      created = now, _id = id
+      perRequestLimits = None,
+      supportedParameters = Set("temperature", "tools"),
+      knowledgeCutoff = None,
+      expirationDate = None,
+      links = ModelLinks(details = ""),
+      created = now,
+      _id = id
     )
   }
 
-  /** Returns a fixed reply for the OneShot prompt call. */
+  /**
+   * Returns a fixed reply for the OneShot prompt call.
+   */
   private object StubProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -84,28 +93,41 @@ class WorkflowComplexityRoutingSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val conv = Conversation(
         topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
         participants = List(DefaultAgentParticipant(
-          id = WorkflowTestUser.asInstanceOf[AgentParticipantId], modelId = modelId,
-          toolNames = Nil, instructions = Instructions(), generationSettings = GenerationSettings())),
-        currentMode = ConversationMode, space = GlobalSpace, _id = boundId
+          id = WorkflowTestUser.asInstanceOf[AgentParticipantId],
+          modelId = modelId,
+          toolNames = Nil,
+          instructions = Instructions(),
+          generationSettings =
+            GenerationSettings()
+        )),
+        currentMode = ConversationMode,
+        space = GlobalSpace,
+        _id = boundId
       )
       // A prompt step with NO model id, only an (optional) complexity tier.
       val template = WorkflowTemplate(
         name = "route-prompt",
         description = Some("Single prompt step, no model id."),
-        steps = List(JobStepInput(id = "ask", name = Some("Ask"), prompt = Some("hello"),
-          output = Some("r"), complexity = Some(Complexity.Low))),
-        space = GlobalSpace, createdBy = Some(WorkflowTestUser), conversationId = Some(boundId)
+        steps = List(JobStepInput(
+          id = "ask",
+          name = Some("Ask"),
+          prompt = Some("hello"),
+          output = Some("r"),
+          complexity = Some(Complexity.Low))),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(boundId)
       )
       for {
-        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
         run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
-        _   <- waitFor(recorded, 15.seconds)(_.exists {
-                 case e: WorkflowRunCompleted => e.runId == run._id.value
-                 case e: WorkflowRunFailed    => e.runId == run._id.value
-                 case _                       => false
-               })
-        wf  <- TestWorkflowSigil.withDB(_.workflows.transaction(_.get(run._id)))
+        _ <- waitFor(recorded, 15.seconds)(_.exists {
+          case e: WorkflowRunCompleted => e.runId == run._id.value
+          case e: WorkflowRunFailed => e.runId == run._id.value
+          case _ => false
+        })
+        wf <- TestWorkflowSigil.withDB(_.workflows.transaction(_.get(run._id)))
       } yield {
         running = false
         import scala.jdk.CollectionConverters.*

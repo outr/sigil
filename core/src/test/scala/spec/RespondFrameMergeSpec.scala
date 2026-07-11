@@ -42,20 +42,20 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
       val replyText = "Here is the answer to your question."
       val frames = Vector[ContextFrame](
         ContextFrame.Text(
-          content       = "What's the answer?",
+          content = "What's the answer?",
           participantId = spec.TestUser,
           sourceEventId = Id[Event]("user-msg")
         ),
         ContextFrame.ToolCall(
-          toolName      = RespondTool.schema.name,
-          argsJson      = s"""{"topicLabel":"x","topicSummary":"y","content":"$replyText","disposition":"Success","endsTurn":true}""",
-          callId        = callId,
+          toolName = RespondTool.schema.name,
+          argsJson = s"""{"topicLabel":"x","topicSummary":"y","content":"$replyText","disposition":"Success","endsTurn":true}""",
+          callId = callId,
           participantId = agent,
           sourceEventId = Id[Event]("toolinvoke-respond-1"),
-          state         = ToolCallState.Complete("""{"text":""}""")
+          state = ToolCallState.Complete("""{"text":""}""")
         ),
         ContextFrame.Text(
-          content       = replyText,
+          content = replyText,
           participantId = agent,
           sourceEventId = Id[Event]("message-respond-1")
         )
@@ -90,22 +90,22 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
       val replyText = "Hello! I'm Sage, a Scala coding agent."
       val frames = Vector[ContextFrame](
         ContextFrame.Text(
-          content       = "Hi",
+          content = "Hi",
           participantId = spec.TestUser,
           sourceEventId = Id[Event]("user-msg-stream")
         ),
         ContextFrame.Text(
-          content       = replyText,
+          content = replyText,
           participantId = agent,
           sourceEventId = Id[Event]("message-respond-stream")
         ),
         ContextFrame.ToolCall(
-          toolName      = RespondTool.schema.name,
-          argsJson      = s"""{"topicLabel":"x","topicSummary":"y","content":"$replyText","disposition":"Success","endsTurn":true}""",
-          callId        = Id[Event]("call-respond-stream"),
+          toolName = RespondTool.schema.name,
+          argsJson = s"""{"topicLabel":"x","topicSummary":"y","content":"$replyText","disposition":"Success","endsTurn":true}""",
+          callId = Id[Event]("call-respond-stream"),
           participantId = agent,
           sourceEventId = Id[Event]("toolinvoke-respond-stream"),
-          state         = ToolCallState.Complete("""{"text":""}""")
+          state = ToolCallState.Complete("""{"text":""}""")
         )
       )
 
@@ -113,25 +113,25 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
       val assistants = rendered.collect { case a: ProviderMessage.Assistant => a }
       assistants should have size 1
       assistants.head.content shouldBe replyText
-      assistants.head.toolCalls.map(_.name) should contain (RespondTool.schema.name.value)
+      assistants.head.toolCalls.map(_.name) should contain(RespondTool.schema.name.value)
     }
 
     "merge regardless of which respond-family variant fired" in {
       val replyText = "I cannot complete this task."
       val frames = Vector[ContextFrame](
         ContextFrame.ToolCall(
-          toolName      = _root_.sigil.tool.core.RespondTool.schema.name,
-          argsJson      = s"""{"content":"$replyText","disposition":"failure"}""",
-          callId        = callId,
+          toolName = _root_.sigil.tool.core.RespondTool.schema.name,
+          argsJson = s"""{"content":"$replyText","disposition":"failure"}""",
+          callId = callId,
           participantId = agent,
           sourceEventId = Id[Event]("toolinvoke-respond-failure-1"),
           // Sigil #313 — every ToolCall reaching the wire renderer
           // must be settled by construction; renderFrames throws
           // BrokenHistoryException on an Active row.
-          state         = ToolCallState.Complete(s"""{"reason":"$replyText"}""")
+          state = ToolCallState.Complete(s"""{"reason":"$replyText"}""")
         ),
         ContextFrame.Text(
-          content       = replyText,
+          content = replyText,
           participantId = agent,
           sourceEventId = Id[Event]("message-respond-failure-1")
         )
@@ -152,25 +152,25 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
       val unrelated = "Some other text the agent emitted earlier."
       val frames = Vector[ContextFrame](
         ContextFrame.Text(
-          content       = unrelated,
+          content = unrelated,
           participantId = agent,
           sourceEventId = Id[Event]("earlier-agent-msg")
         ),
         ContextFrame.Text(
-          content       = "Now the user asks something.",
+          content = "Now the user asks something.",
           participantId = spec.TestUser,
           sourceEventId = Id[Event]("user-msg-2")
         ),
         ContextFrame.ToolCall(
-          toolName      = RespondTool.schema.name,
-          argsJson      = """{"topicLabel":"x","topicSummary":"y","content":"reply","disposition":"Success","endsTurn":true}""",
-          callId        = callId,
+          toolName = RespondTool.schema.name,
+          argsJson = """{"topicLabel":"x","topicSummary":"y","content":"reply","disposition":"Success","endsTurn":true}""",
+          callId = callId,
           participantId = agent,
           sourceEventId = Id[Event]("toolinvoke-respond-3"),
-          state         = ToolCallState.Complete("""{"text":"reply"}""")
+          state = ToolCallState.Complete("""{"text":"reply"}""")
         ),
         ContextFrame.Text(
-          content       = "reply",
+          content = "reply",
           participantId = agent,
           sourceEventId = Id[Event]("message-respond-3")
         )

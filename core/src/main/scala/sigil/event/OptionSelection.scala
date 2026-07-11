@@ -24,4 +24,5 @@ import lightdb.id.Id
  */
 case class OptionSelection(parentOptionsEventId: Id[Event],
                            prompt: String,
-                           selectedOptions: List[SelectedOption]) derives RW
+                           selectedOptions: List[SelectedOption])
+  derives RW

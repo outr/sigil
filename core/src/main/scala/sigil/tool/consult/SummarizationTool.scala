@@ -11,10 +11,10 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * to force the consulted model into a structured summary output.
  */
 case object SummarizationTool extends Tool with FrameworkConsult {
-  type Input  = SummarizationInput
+  type Input = SummarizationInput
   type Output = TextToolOutput
   val inputRW: RW[SummarizationInput] = summon[RW[SummarizationInput]]
-  val outputRW: RW[TextToolOutput]    = summon[RW[TextToolOutput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("summarize_conversation")
   val description: String =
@@ -27,21 +27,26 @@ case object SummarizationTool extends Tool with FrameworkConsult {
       |`tokenEstimate` — your best estimate of `summary` length in tokens (~4 chars/token is fine).
       |The framework uses this to budget future turns.""".stripMargin
 
-
-  /** Condensing work — routes through the cheap summarization tier. */
+  /**
+   * Condensing work — routes through the cheap summarization tier.
+   */
   override def consultWorkType: WorkType = SummarizationWork
 
-  /** Conservative ceiling. Summarization output scales with the
-    * target summary length, so the compressors pass a computed
-    * `maxOutputTokens` per call; this value is the fallback cap when
-    * no override is supplied. `ReasoningMode.Off` always applies. */
+  /**
+   * Conservative ceiling. Summarization output scales with the
+   * target summary length, so the compressors pass a computed
+   * `maxOutputTokens` per call; this value is the fallback cap when
+   * no override is supplied. `ReasoningMode.Off` always applies.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     maxOutputTokens = Some(2048),
     reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   override def executeResult(input: SummarizationInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

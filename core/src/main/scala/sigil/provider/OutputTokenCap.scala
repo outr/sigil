@@ -35,13 +35,15 @@ sealed trait OutputTokenCap derives RW
 object OutputTokenCap {
   case object ModelMax extends OutputTokenCap
 
-  /** Cap the model's output at `tokens`, even if the model's registered
-    * max is higher. Use for deliberate cost / latency / conciseness
-    * constraints — NOT to pin the model's max (that's [[ModelMax]]).
-    *
-    * Providers clamp `tokens` to the model's registered max when the
-    * caller asked for a larger value; the warning is server-side, not
-    * a hard failure, so swapping to a smaller-output model doesn't
-    * break callers. */
+  /**
+   * Cap the model's output at `tokens`, even if the model's registered
+   * max is higher. Use for deliberate cost / latency / conciseness
+   * constraints — NOT to pin the model's max (that's [[ModelMax]]).
+   *
+   * Providers clamp `tokens` to the model's registered max when the
+   * caller asked for a larger value; the warning is server-side, not
+   * a hard failure, so swapping to a smaller-output model doesn't
+   * break callers.
+   */
   case class Below(tokens: Int) extends OutputTokenCap
 }

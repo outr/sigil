@@ -55,60 +55,64 @@ class VolatileContextTailPlacementSpec extends AnyWordSpec with Matchers {
     ContextFrame.Text("follow-up user message", TestUser, Id[Event]("seed-5"))
   )
 
-  /** TurnInput seeded with a participant projection carrying volatile
-    * sources. The values themselves are arbitrary — the tests only care
-    * where they land in the rendered request. */
-  private def turnWith(suggested: List[String], recent: List[String],
+  /**
+   * TurnInput seeded with a participant projection carrying volatile
+   * sources. The values themselves are arbitrary — the tests only care
+   * where they land in the rendered request.
+   */
+  private def turnWith(suggested: List[String],
+                       recent: List[String],
                        frames: Vector[ContextFrame] = baseFrames): TurnInput = {
     val proj = ParticipantProjection.empty(TestAgent, convId)
       .copy(
         suggestedTools = suggested.map(ToolName(_)),
         recentToolInvocations = recent.zipWithIndex.map { case (n, i) =>
           RecentToolInvocation(
-            toolName    = ToolName(n),
-            argsHash    = s"h-$n-$i",
+            toolName = ToolName(n),
+            argsHash = s"h-$n-$i",
             argsPreview = s"""{"x":$i}""",
-            invokedAt   = Timestamp(System.currentTimeMillis() - 1_000L * (i + 1))
+            invokedAt = Timestamp(System.currentTimeMillis() - 1_000L * (i + 1))
           )
         }
       )
     TurnInput(
-      conversationId         = convId,
-      frames                 = frames,
+      conversationId = convId,
+      frames = frames,
       participantProjections = Map(TestAgent -> proj)
     )
   }
 
   private def requestFor(t: TurnInput, modelId: Id[Model] = anthropicModelId): ProviderRequest =
     ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = t,
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = t,
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50)),
-      tools              = CoreTools.all,
-      chain              = List(TestUser, TestAgent)
+      tools = CoreTools.all,
+      chain = List(TestUser, TestAgent)
     )
 
-  private def renderBody(provider: sigil.provider.Provider, t: TurnInput,
+  private def renderBody(provider: sigil.provider.Provider,
+                         t: TurnInput,
                          modelId: Id[Model] = anthropicModelId): Json = {
     val httpReq = provider.requestConverter(requestFor(t, modelId)).sync()
     httpReq.content match {
       case Some(c: spice.http.content.StringContent) => fabric.io.JsonParser(c.value)
-      case _                                          => obj()
+      case _ => obj()
     }
   }
 
   private val volatileTurnA = turnWith(
     suggested = List("dispatch_workers", "grep"),
-    recent    = List("find_capability")
+    recent = List("find_capability")
   )
   private val volatileTurnB = turnWith(
-    suggested = List("lsp_find_references", "bsp_compile"),   // DIFFERENT
-    recent    = List("respond_options", "find_capability"),   // DIFFERENT
-    frames    = grownFrames                                   // conversation advanced
+    suggested = List("lsp_find_references", "bsp_compile"), // DIFFERENT
+    recent = List("respond_options", "find_capability"), // DIFFERENT
+    frames = grownFrames // conversation advanced
   )
 
   "AnthropicProvider volatile-context placement" should {
@@ -132,7 +136,7 @@ class VolatileContextTailPlacementSpec extends AnyWordSpec with Matchers {
       tail("role").asString shouldBe "user"
       val tailText = tail("content").asVector.map(_("text").asString).mkString
       tailText should startWith("[system] ")
-      tailText should (include ("Suggested tools") or include ("Recently used tools"))
+      tailText should (include("Suggested tools") or include("Recently used tools"))
       tail("content").asVector.foreach(_.get("cache_control") shouldBe None)
     }
 
@@ -179,21 +183,21 @@ class VolatileContextTailPlacementSpec extends AnyWordSpec with Matchers {
       tail("role").asString shouldBe "user"
       val tailText = tail("parts").asVector.map(_("text").asString).mkString
       tailText should startWith("[system] ")
-      tailText should (include ("Suggested tools") or include ("Recently used tools"))
+      tailText should (include("Suggested tools") or include("Recently used tools"))
     }
   }
 
   "OpenAIChatCompletions default preprocess" should {
     "hand renderers the stable system and the volatile-tailed messages" in {
       val call = sigil.provider.ProviderCall(
-        model              = TestSigil.testModel(anthropicModelId),
-        system             = "stable system prompt",
-        messages           = Vector(ProviderMessage.User("hello")),
-        tools              = Vector.empty,
-        builtInTools       = Set.empty,
-        toolChoice         = sigil.provider.ToolChoice.Auto,
+        model = TestSigil.testModel(anthropicModelId),
+        system = "stable system prompt",
+        messages = Vector(ProviderMessage.User("hello")),
+        tools = Vector.empty,
+        builtInTools = Set.empty,
+        toolChoice = sigil.provider.ToolChoice.Auto,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50)),
-        systemVolatile     = "\n== Suggested tools ==\n- grep\n"
+        systemVolatile = "\n== Suggested tools ==\n- grep\n"
       )
       val pre = OpenAIChatCompletions.Config(providerNamespace = "test", providerName = "Test").preprocess(call)
       pre.systemPrompt shouldBe "stable system prompt"
@@ -208,7 +212,7 @@ class VolatileContextTailPlacementSpec extends AnyWordSpec with Matchers {
     "keep the volatile segment in per-request instructions, not the transcript" in {
       val body = renderBody(provider, volatileTurnA, openAiModelId)
       val instructions = body("instructions").asString
-      instructions should (include ("Suggested tools") or include ("Recently used tools"))
+      instructions should (include("Suggested tools") or include("Recently used tools"))
       // No volatile tail item in the input transcript — `instructions`
       // is per-request, while input items accumulate server-side across
       // `previous_response_id` chains and the incremental path's tail

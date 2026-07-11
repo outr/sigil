@@ -24,14 +24,16 @@ import scala.jdk.CollectionConverters.*
 class GrepRegexBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** A pattern + line that backtracks catastrophically under
-    * `java.util.regex` on a current JDK. (JDK 21 optimizes the classic
-    * nested-quantifier `(a+)+$` form, so that no longer blows up —
-    * `.*` inside a bounded repetition over a whitespace-laden line that
-    * fails the trailing literal still does, the same backtracking mode
-    * as the field's many-alternation `bug\s+…` pattern.) */
+  /**
+   * A pattern + line that backtracks catastrophically under
+   * `java.util.regex` on a current JDK. (JDK 21 optimizes the classic
+   * nested-quantifier `(a+)+$` form, so that no longer blows up —
+   * `.*` inside a bounded repetition over a whitespace-laden line that
+   * fails the trailing literal still does, the same backtracking mode
+   * as the field's many-alternation `bug\s+…` pattern.)
+   */
   private val PathologicalPattern = "(.*\\s){15}x"
-  private val PathologicalLine     = "w " * 40
+  private val PathologicalLine = "w " * 40
 
   private def withTempDir[T](budget: Long)(body: (FileSystemContext, Path) => Task[T]): Task[T] = Task.defer {
     val dir = Files.createTempDirectory(s"grep-budget-${rapid.Unique()}-")
@@ -51,15 +53,15 @@ class GrepRegexBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   }
 
   private def turnContext(): TurnContext = {
-    val convId  = Conversation.id(s"grep-budget-${rapid.Unique()}")
+    val convId = Conversation.id(s"grep-budget-${rapid.Unique()}")
     val topicId = sigil.conversation.Topic.id(s"grep-budget-topic-${rapid.Unique()}")
     val conv = Conversation(topics = List(TopicEntry(topicId, "test", "test")), _id = convId)
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser),
+      sigil = TestSigil,
+      chain = List(TestUser),
       conversation = conv,
-      turnInput    = TurnInput(ConversationView(conversationId = convId)),
-      model        = TestSigil.defaultTestModel
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
+      model = TestSigil.defaultTestModel
     )
   }
 
@@ -124,9 +126,9 @@ class GrepRegexBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     "settle with a recoverable failure ToolDelta when the regex blows the budget" in
       withTempDir(budget = 100_000L) { (fs, dir) =>
         write(dir, "victim.txt", PathologicalLine)
-        val ctx    = turnContext()
+        val ctx = turnContext()
         val callId = sigil.event.Event.id()
-        val start  = System.currentTimeMillis()
+        val start = System.currentTimeMillis()
         new GrepTool(fs)
           .execute(GrepInput(path = dir.toString, pattern = PathologicalPattern), ctx, callId)
           .toList

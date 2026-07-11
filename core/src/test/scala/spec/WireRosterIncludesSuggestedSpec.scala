@@ -54,31 +54,36 @@ class WireRosterIncludesSuggestedSpec extends AsyncWordSpec with AsyncTaskSpec w
   private val tinyModel: Model = {
     val now = lightdb.time.Timestamp()
     Model(
-      canonicalSlug       = modelId.value,
-      huggingFaceId       = "",
-      name                = modelId.value,
-      description         = "Synthetic tiny-context model for sigil #305 emergencyShed coverage.",
-      contextLength       = 6500L,
-      architecture        = ModelArchitecture(
-        modality         = "text->text",
-        inputModalities  = List("text"),
+      canonicalSlug = modelId.value,
+      huggingFaceId = "",
+      name = modelId.value,
+      description = "Synthetic tiny-context model for sigil #305 emergencyShed coverage.",
+      contextLength = 6500L,
+      architecture = ModelArchitecture(
+        modality = "text->text",
+        inputModalities = List("text"),
         outputModalities = List("text"),
-        tokenizer        = "GPT",
-        instructType     = None
+        tokenizer = "GPT",
+        instructType = None
       ),
-      pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0),
-                                          webSearch = None, inputCacheRead = None),
-      topProvider         = ModelTopProvider(contextLength = Some(6500L),
-                                              maxCompletionTokens = Some(64L), isModerated = false),
-      perRequestLimits    = None,
+      pricing = ModelPricing(
+        prompt = BigDecimal(0),
+        completion = BigDecimal(0),
+        webSearch = None,
+        inputCacheRead = None),
+      topProvider = ModelTopProvider(
+        contextLength = Some(6500L),
+        maxCompletionTokens = Some(64L),
+        isModerated = false),
+      perRequestLimits = None,
       supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
-      defaultParameters   = ModelDefaultParameters(),
-      knowledgeCutoff     = None,
-      expirationDate      = None,
-      links               = ModelLinks(details = ""),
-      created             = now,
-      modified            = now,
-      _id                 = modelId
+      defaultParameters = ModelDefaultParameters(),
+      knowledgeCutoff = None,
+      expirationDate = None,
+      links = ModelLinks(details = ""),
+      created = now,
+      modified = now,
+      _id = modelId
     )
   }
   TestSigil.cache.merge(List(tinyModel)).sync()
@@ -87,14 +92,16 @@ class WireRosterIncludesSuggestedSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   case class StubInput(arg: String = "") extends ToolInput derives RW
 
-  /** Verbose stub tool — long description simulates real LSP/BSP tool
-    * schemas that contribute hundreds of tokens each to the wire roster.
-    * 40+ instances of this drive the request over the budget so
-    * emergencyShed actually fires. */
+  /**
+   * Verbose stub tool — long description simulates real LSP/BSP tool
+   * schemas that contribute hundreds of tokens each to the wire roster.
+   * 40+ instances of this drive the request over the budget so
+   * emergencyShed actually fires.
+   */
   private def stubTool(n: String): Tool = new Tool {
-    type Input  = StubInput
+    type Input = StubInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[StubInput]]
+    val inputRW = summon[RW[StubInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name = ToolName(n)
     val description =
@@ -119,7 +126,7 @@ class WireRosterIncludesSuggestedSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   // ---- capturing provider — records every translated ProviderCall ----
 
-  private final class CapturingProvider(
+  final private class CapturingProvider(
     captured: ConcurrentLinkedQueue[ProviderCall]
   ) extends Provider {
     override def `type`: ProviderType = ProviderType.OpenAI
@@ -135,10 +142,10 @@ class WireRosterIncludesSuggestedSpec extends AsyncWordSpec with AsyncTaskSpec w
         ProviderEvent.ToolCallComplete(
           cid,
           _root_.sigil.tool.model.RespondInput(
-            topicLabel   = "T",
+            topicLabel = "T",
             topicSummary = "test",
-            content      = "ok",
-            endsTurn     = true
+            content = "ok",
+            endsTurn = true
           )
         ),
         ProviderEvent.Done(StopReason.Complete)
@@ -148,26 +155,28 @@ class WireRosterIncludesSuggestedSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   private def installFinder(): Unit = {
     val tools = CoreTools.all.toList ++
-                List(ChangeModeTool, GrepTool, DispatchWorkersTool) ++
-                BulkOverlayTools
+      List(ChangeModeTool, GrepTool, DispatchWorkersTool) ++
+      BulkOverlayTools
     TestSigil.setToolFinder(InMemoryToolFinder(tools.distinctBy(_.name)))
   }
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
+      id = TestAgent,
       // Baseline includes the bulk overlay simulating start_metals's
       // Active(...) policy injecting 40 LSP/BSP tools. With these in
       // the wire roster, the request crosses the model's 6500-token
       // budget — exactly the condition Sage hit at L395.
-      modelId            = modelId,
-      toolNames          = List(
-        RespondTool.schema.name, RespondOptionsTool.schema.name,
-        FindCapabilityTool.schema.name, RecordConsentTool.schema.name,
+      modelId = modelId,
+      toolNames = List(
+        RespondTool.schema.name,
+        RespondOptionsTool.schema.name,
+        FindCapabilityTool.schema.name,
+        RecordConsentTool.schema.name,
         ChangeModeTool.schema.name
       ) ++ BulkOverlayTools.map(_.schema.name),
-      tools              = ToolPolicy.Standard,
-      instructions       = Instructions(),
+      tools = ToolPolicy.Standard,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -176,19 +185,18 @@ class WireRosterIncludesSuggestedSpec extends AsyncWordSpec with AsyncTaskSpec w
     val cr = CapabilityResults(
       matches = names.map(n =>
         CapabilityMatch(
-          name           = n,
-          description    = s"stub: $n",
+          name = n,
+          description = s"stub: $n",
           capabilityType = CapabilityType.Tool,
-          score          = 1.0,
-          status         = CapabilityStatus.Ready
-        )
-      ),
-      participantId  = TestAgent,
+          score = 1.0,
+          status = CapabilityStatus.Ready
+        )),
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicId,
-      query          = "seed",
-      state          = EventState.Complete,
-      origin         = Some(Event.id())
+      topicId = TestTopicId,
+      query = "seed",
+      state = EventState.Complete,
+      origin = Some(Event.id())
     )
     TestSigil.publish(cr).map(_ => ())
   }
@@ -219,24 +227,24 @@ class WireRosterIncludesSuggestedSpec extends AsyncWordSpec with AsyncTaskSpec w
       val captured = new ConcurrentLinkedQueue[ProviderCall]()
       TestSigil.setProvider(Task.pure(new CapturingProvider(captured)))
       val convId = Conversation.id(s"wire-suggested-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
-        _    <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _    <- seedSuggestedTools(convId, List("grep", "dispatch_workers"))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- seedSuggestedTools(convId, List("grep", "dispatch_workers"))
         proj <- TestSigil.projectionFor(TestAgent, convId)
-        _     = proj.suggestedTools.map(_.value) should contain allOf ("grep", "dispatch_workers")
-        _    <- TestSigil.publish(Message(
-                  participantId  = TestUser,
-                  conversationId = convId,
-                  topicId        = TestTopicEntry.id,
-                  content        = Vector(ResponseContent.Text("act")),
-                  state          = EventState.Complete
-                ))
+        _ = proj.suggestedTools.map(_.value) should contain allOf ("grep", "dispatch_workers")
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("act")),
+          state = EventState.Complete
+        ))
         // Filter to ConversationRequest-driven calls only — classifier
         // consults also call the provider but with empty `tools`. The
         // agent's ConversationRequest carries a non-empty tools array.
-        _    <- waitUntil(captured.iterator().asScalaList.exists(_.tools.nonEmpty), deadlineMs = 8_000L)
+        _ <- waitUntil(captured.iterator().asScalaList.exists(_.tools.nonEmpty), deadlineMs = 8_000L)
       } yield {
         val agentCalls = captured.iterator().asScalaList.filter(_.tools.nonEmpty)
         agentCalls should not be empty
@@ -244,8 +252,8 @@ class WireRosterIncludesSuggestedSpec extends AsyncWordSpec with AsyncTaskSpec w
         // The wire MUST carry the names projection.suggestedTools
         // advertises — without them, the agent's discovered roster
         // dies between turns. emergencyShed today strips them.
-        toolNames should contain ("grep")
-        toolNames should contain ("dispatch_workers")
+        toolNames should contain("grep")
+        toolNames should contain("dispatch_workers")
       }
     }
   }

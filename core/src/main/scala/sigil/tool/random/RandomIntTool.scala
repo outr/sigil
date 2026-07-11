@@ -20,9 +20,9 @@ import sigil.tool.model.{RandomIntInput, RandomIntOutput}
  * tests, or seeding sub-runs.
  */
 case object RandomIntTool extends Tool {
-  type Input  = RandomIntInput
+  type Input = RandomIntInput
   type Output = RandomIntOutput
-  val inputRW  = summon[RW[RandomIntInput]]
+  val inputRW = summon[RW[RandomIntInput]]
   val outputRW = summon[RW[RandomIntOutput]]
 
   val name = ToolName("random_int")
@@ -41,8 +41,8 @@ case object RandomIntTool extends Tool {
 
   override def executeOutput(input: RandomIntInput, context: ToolContext): Task[RandomIntOutput] = Task {
     require(input.min <= input.max, s"random_int: min (${input.min}) must be <= max (${input.max})")
-    val rng   = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)
-    val span  = BigInt(input.max) - BigInt(input.min) + 1
+    val rng = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)
+    val span = BigInt(input.max) - BigInt(input.min) + 1
     // Range is open-on-the-right in Random.between; +1 makes max inclusive.
     val value = rng.between(input.min, input.min + span.toLong)
     RandomIntOutput(value = value, min = input.min, max = input.max, seed = input.seed)

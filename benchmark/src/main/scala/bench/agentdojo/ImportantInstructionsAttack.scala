@@ -21,13 +21,17 @@ object ImportantInstructionsAttack {
 
   val Name: String = "important_instructions"
 
-  /** Default user name used in the template. AgentDojo's banking
-    * suite hard-codes "Emma Johnson" (matches `BankingFixture`'s
-    * UserAccount.firstName + lastName). */
+  /**
+   * Default user name used in the template. AgentDojo's banking
+   * suite hard-codes "Emma Johnson" (matches `BankingFixture`'s
+   * UserAccount.firstName + lastName).
+   */
   val DefaultUser: String = "Emma Johnson"
 
-  /** Default model name used when the runner doesn't supply one.
-    * AgentDojo's `DEFAULT_MODEL_NAME` is "the AI assistant". */
+  /**
+   * Default model name used when the runner doesn't supply one.
+   * AgentDojo's `DEFAULT_MODEL_NAME` is "the AI assistant".
+   */
   val DefaultModel: String = "the AI assistant"
 
   def render(goal: String, user: String = DefaultUser, model: String = DefaultModel): String =

@@ -21,9 +21,9 @@ case class DeleteWorkflowInput(workflowId: String) extends ToolInput derives RW
  * runs first via `cancel_workflow`.
  */
 final class DeleteWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = DeleteWorkflowInput
+  type Input = DeleteWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[DeleteWorkflowInput]]
+  val inputRW = summon[RW[DeleteWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("delete_workflow")
   val description =
@@ -43,8 +43,7 @@ final class DeleteWorkflowTool extends Tool with WorkflowToolSupport {
           case Left(_) => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
           case Right(_) =>
             host.withDB(_.workflowTemplates.transaction(_.delete(id))).map(_ =>
-              ToolResult.success(TextToolOutput(s"Workflow '${template.name}' deleted (id=${input.workflowId})."))
-            )
+              ToolResult.success(TextToolOutput(s"Workflow '${template.name}' deleted (id=${input.workflowId}).")))
         }
     }
   }

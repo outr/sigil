@@ -16,4 +16,5 @@ import fabric.rw.*
 case class ContextBreakdownOutput(totalTokens: Int,
                                   currentMode: String,
                                   sections: List[ContextSectionBreakdown],
-                                  note: String) extends sigil.tool.ToolOutput derives RW
+                                  note: String)
+  extends sigil.tool.ToolOutput derives RW

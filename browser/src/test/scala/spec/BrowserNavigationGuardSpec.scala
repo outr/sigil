@@ -32,14 +32,21 @@ class BrowserNavigationGuardSpec extends AnyWordSpec with Matchers {
 
   private val modelId: Id[Model] = Model.id("test", "model")
   private val model: Model = Model(
-    canonicalSlug = modelId.value, huggingFaceId = "", name = modelId.value,
-    description = "test", contextLength = 8192L,
+    canonicalSlug = modelId.value,
+    huggingFaceId = "",
+    name = modelId.value,
+    description = "test",
+    contextLength = 8192L,
     architecture = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
     pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
     topProvider = ModelTopProvider(contextLength = Some(8192L), maxCompletionTokens = Some(2048L), isModerated = false),
-    perRequestLimits = None, supportedParameters = Set("max_tokens"),
-    knowledgeCutoff = None, expirationDate = None, links = ModelLinks(""),
-    created = Timestamp(), _id = modelId
+    perRequestLimits = None,
+    supportedParameters = Set("max_tokens"),
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(""),
+    created = Timestamp(),
+    _id = modelId
   )
 
   private val convId = Conversation.id("nav-guard-conv")
@@ -48,8 +55,11 @@ class BrowserNavigationGuardSpec extends AnyWordSpec with Matchers {
 
   private def navigate(url: String): ToolResult[?] = {
     val turn = TurnContext(
-      sigil = TestBrowserSigil, chain = List(SpecUser), conversation = conv,
-      turnInput = TurnInput(ConversationView(conversationId = convId)), model = model)
+      sigil = TestBrowserSigil,
+      chain = List(SpecUser),
+      conversation = conv,
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
+      model = model)
     val tool = new BrowserNavigateTool
     tool.executeResult(BrowserNavigateInput(url = url), ToolContext(turn, Event.id(), tool.name)).sync()
   }
@@ -61,25 +71,25 @@ class BrowserNavigationGuardSpec extends AnyWordSpec with Matchers {
         Task.pure(Option.when(url.host.endsWith("mystore.myshopify.com"))(
           "Don't load your own storefront in the browser — use preview_theme."))
       }
-      try {
+      try
         navigate("https://mystore.myshopify.com/products/widget") match {
           case ToolResult.Failure(message, _, _) =>
             message should include("preview_theme")
           case other => fail(s"expected a Failure from the guard, got: $other")
         }
-      } finally TestBrowserSigil.resetNavigationGuard()
+      finally TestBrowserSigil.resetNavigationGuard()
     }
 
     "allow a non-vetoed host (guard returns None)" in {
       TestBrowserSigil.setNavigationGuard { (url, _, _) =>
         Task.pure(Option.when(url.host.endsWith("mystore.myshopify.com"))("blocked"))
       }
-      try {
+      try
         // The guard itself passes a third-party host — proving the veto is
         // host-scoped, not blanket. (We don't drive the actual navigate here,
         // which would need a live Chrome.)
         TestBrowserSigil.navigationGuard(url"https://reference.example.com/", List(SpecUser), convId).sync() shouldBe None
-      } finally TestBrowserSigil.resetNavigationGuard()
+      finally TestBrowserSigil.resetNavigationGuard()
     }
 
     "default to allowing everything (no guard configured)" in {

@@ -108,22 +108,30 @@ object LoCoMoBench {
               val text = msg("text").asString
               val messageId = s"conv-$convIdx-msg-$msgIdx"
               convToIdx(messageId) = convIdx
-              batch += ((messageId, text, Map(
-                "kind" -> "locomo-message",
-                "conversationId" -> s"locomo-conv-$convIdx",
-                "messageId" -> messageId
-              )))
+              batch +=
+                ((
+                  messageId,
+                  text,
+                  Map(
+                    "kind" -> "locomo-message",
+                    "conversationId" -> s"locomo-conv-$convIdx",
+                    "messageId" -> messageId
+                  )))
             }
             val allText = messages.map(m => m("text").asString).mkString("\n")
             val truncated = if (allText.length > 6000) allText.take(6000) else allText
             if (truncated.length >= 50) {
               val summaryId = s"conv-$convIdx-summary"
               convToIdx(summaryId) = convIdx
-              batch += ((summaryId, truncated, Map(
-                "kind" -> "locomo-summary",
-                "conversationId" -> s"locomo-conv-$convIdx",
-                "messageId" -> summaryId
-              )))
+              batch +=
+                ((
+                  summaryId,
+                  truncated,
+                  Map(
+                    "kind" -> "locomo-summary",
+                    "conversationId" -> s"locomo-conv-$convIdx",
+                    "messageId" -> summaryId
+                  )))
             }
           }
           harness.embedAndIndexBatch(batch.toList).sync()
@@ -163,7 +171,7 @@ object LoCoMoBench {
 
           val elapsed = (System.currentTimeMillis() - startTime) / 1000.0
           val pct = if (totalRun > 0) totalCorrect.toDouble / totalRun * 100 else 0.0
-          println(f"  ${file.getName}: ${evidenceItems.size} questions, R@$k=$pct%.1f%% ($totalCorrect/$totalRun, ${elapsed}%.0fs)")
+          println(f"  ${file.getName}: ${evidenceItems.size} questions, R@$k=$pct%.1f%% ($totalCorrect/$totalRun, $elapsed%.0fs)")
         }
       }
     }
@@ -173,7 +181,7 @@ object LoCoMoBench {
     println("=== Results ===")
     val overall = if (totalRun > 0) totalCorrect.toDouble / totalRun * 100 else 0.0
     println(f"Recall@$k: $totalCorrect/$totalRun ($overall%.1f%%)")
-    println(f"Time: ${elapsed}%.0fs")
+    println(f"Time: $elapsed%.0fs")
     println()
     println("By category:")
     val catLabel: Int => String = {
@@ -202,12 +210,12 @@ object LoCoMoBench {
       }
       sb.append(s"\n## Failures (${failures.size})\n\n")
       failures.toList.foreach { case (catNum, fname, q, expected, topK, topHits) =>
-        sb.append(s"### [${catLabel(catNum)}] ${fname} — `${q}`\n\n")
+        sb.append(s"### [${catLabel(catNum)}] $fname — `$q`\n\n")
         sb.append(s"- expected conv indices: ${expected.toList.sorted.mkString(", ")}\n")
-        sb.append(s"- top-${k} ranked conv indices: ${topK.mkString(", ")}\n")
+        sb.append(s"- top-$k ranked conv indices: ${topK.mkString(", ")}\n")
         if (topHits.nonEmpty) {
           sb.append("- top-K snippets:\n")
-          topHits.zipWithIndex.foreach { case (s, i) => sb.append(s"  ${i + 1}. ${s}\n") }
+          topHits.zipWithIndex.foreach { case (s, i) => sb.append(s"  ${i + 1}. $s\n") }
         }
         sb.append("\n")
       }

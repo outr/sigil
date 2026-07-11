@@ -38,18 +38,22 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   private val modelId: Id[Model] = Model.id("test", "naked-text")
   TestSigil.testModel(modelId)
 
-  /** A distinct model that has been observed to reject forced tool_choice
-    * (#395 memo) — i.e. it runs on `auto`, so a plain-text answer is its
-    * committed reply, not drift. Used by the #398 chat-completions test. */
+  /**
+   * A distinct model that has been observed to reject forced tool_choice
+   * (#395 memo) — i.e. it runs on `auto`, so a plain-text answer is its
+   * committed reply, not drift. Used by the #398 chat-completions test.
+   */
   private val rejecterModelId: Id[Model] = Model.id("test", "naked-text-cc")
   TestSigil.testModel(rejecterModelId)
 
   private val answer = "Done — the working draft theme is now named \"Use Huron Test\"."
 
-  /** Always answers with naked text + end_turn (Complete), no tool call —
-    * exactly the auto-downgraded Fable/Mythos terminal turn. Counts calls so
-    * the test can prove it isn't re-requested. */
-  private final class NakedTextProvider extends Provider {
+  /**
+   * Always answers with naked text + end_turn (Complete), no tool call —
+   * exactly the auto-downgraded Fable/Mythos terminal turn. Counts calls so
+   * the test can prove it isn't re-requested.
+   */
+  final private class NakedTextProvider extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -65,13 +69,15 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     }
   }
 
-  /** Sigil #398 — the chat-completions wire (OpenAI-compatible, e.g. Fable via
-    * OpenRouter) streams assistant prose as `TextDelta`, NOT `ContentBlockDelta`.
-    * No Message is born during the stream, so #392's settle didn't fire and the
-    * prose hit the `_plain_text_reply` drop. The Done handler must mint + commit
-    * the Message from `plainTextBuffer` — but only for a forced-tool_choice
-    * rejecter (a model on `auto`), distinguishing it from bug #75 drift. */
-  private final class NakedTextChatCompletionsProvider extends Provider {
+  /**
+   * Sigil #398 — the chat-completions wire (OpenAI-compatible, e.g. Fable via
+   * OpenRouter) streams assistant prose as `TextDelta`, NOT `ContentBlockDelta`.
+   * No Message is born during the stream, so #392's settle didn't fire and the
+   * prose hit the `_plain_text_reply` drop. The Done handler must mint + commit
+   * the Message from `plainTextBuffer` — but only for a forced-tool_choice
+   * rejecter (a model on `auto`), distinguishing it from bug #75 drift.
+   */
+  final private class NakedTextChatCompletionsProvider extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -87,10 +93,12 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     }
   }
 
-  /** Emits an announcement as naked prose on the first call, then — after
-    * the decision challenge — makes the explicit decision via
-    * `respond(endsTurn = true)`. The compliant shape a real model takes. */
-  private final class AnnounceThenRespondProvider extends Provider {
+  /**
+   * Emits an announcement as naked prose on the first call, then — after
+   * the decision challenge — makes the explicit decision via
+   * `respond(endsTurn = true)`. The compliant shape a real model takes.
+   */
+  final private class AnnounceThenRespondProvider extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -108,15 +116,18 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         val cid = CallId(s"respond-${rapid.Unique()}")
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, "respond"),
-          ProviderEvent.ToolCallComplete(cid, RespondInput(
-            // Matches the active TestTopicEntry so `resolveTopicShift`
-            // takes the same-topic fast path — this fake provider can't
-            // answer a TopicClassifier consult.
-            topicLabel   = TestTopicEntry.label,
-            topicSummary = TestTopicEntry.summary,
-            content      = "Renamed the theme as requested.",
-            endsTurn     = true
-          )),
+          ProviderEvent.ToolCallComplete(
+            cid,
+            RespondInput(
+              // Matches the active TestTopicEntry so `resolveTopicShift`
+              // takes the same-topic fast path — this fake provider can't
+              // answer a TopicClassifier consult.
+              topicLabel = TestTopicEntry.label,
+              topicSummary = TestTopicEntry.summary,
+              content = "Renamed the theme as requested.",
+              endsTurn = true
+            )
+          ),
           ProviderEvent.Done(StopReason.ToolCall)
         ))
       }
@@ -125,27 +136,27 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private def makeAgent(mid: Id[Model] = modelId): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = mid,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = mid,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings()
     )
 
   private def runUserTurn(provider: Provider, mid: Id[Model] = modelId): Task[Id[Conversation]] = {
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"naked-text-${rapid.Unique()}")
-    val agent  = makeAgent(mid)
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent(mid)
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Rename the theme.")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Rename the theme.")),
+        state = EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId)
     } yield convId
   }
@@ -159,7 +170,7 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val provider = new NakedTextProvider
       for {
         convId <- runUserTurn(provider)
-        evs    <- eventsFor(convId)
+        evs <- eventsFor(convId)
       } yield {
         // First call: prose settles as a visible (non-terminal) message and
         // the decision challenge re-triggers the loop. Second call: this
@@ -174,8 +185,9 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         // streamed text is never lost, even from a model that ignores the
         // challenge.
         val replies = evs.collect {
-          case m: Message if m.participantId == TestAgent && m.role == MessageRole.Standard
-                          && m.state == EventState.Complete && m.isSuccess => m
+          case m: Message
+              if m.participantId == TestAgent && m.role == MessageRole.Standard
+                && m.state == EventState.Complete && m.isSuccess => m
         }
         replies should have size 2
         replies.foreach(
@@ -191,7 +203,7 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val provider = new NakedTextChatCompletionsProvider
       for {
         convId <- runUserTurn(provider, rejecterModelId)
-        evs    <- eventsFor(convId)
+        evs <- eventsFor(convId)
       } yield {
         provider.calls.get() shouldBe 2
         val challenges = evs.collect {
@@ -203,8 +215,9 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         // one bubble. The challenge diagnostic carried the dropped text for
         // the model to re-wrap.
         val replies = evs.collect {
-          case m: Message if m.participantId == TestAgent && m.role == MessageRole.Standard
-                          && m.state == EventState.Complete && m.isSuccess => m
+          case m: Message
+              if m.participantId == TestAgent && m.role == MessageRole.Standard
+                && m.state == EventState.Complete && m.isSuccess => m
         }
         replies should have size 1
         replies.head.content.collect { case t: ResponseContent.Text => t.text }.mkString should include("Use Huron Test")
@@ -217,7 +230,7 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val provider = new AnnounceThenRespondProvider
       for {
         convId <- runUserTurn(provider)
-        evs    <- eventsFor(convId)
+        evs <- eventsFor(convId)
       } yield {
         // Call 1: announcement prose → challenged. Call 2: the model makes
         // the explicit decision — respond(endsTurn = true). No third call.
@@ -231,8 +244,9 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         respondInvokes should have size 1
         // The final answer landed via respond's content (parsed markdown).
         val replies = evs.collect {
-          case m: Message if m.participantId == TestAgent && m.role == MessageRole.Standard
-                          && m.state == EventState.Complete && m.isSuccess => m
+          case m: Message
+              if m.participantId == TestAgent && m.role == MessageRole.Standard
+                && m.state == EventState.Complete && m.isSuccess => m
         }
         replies.map(_.content.mkString).exists(_.contains("Renamed the theme")) shouldBe true
       }

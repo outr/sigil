@@ -6,7 +6,9 @@ import sigil.TurnContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tool.ToolContext
 
-/** Empty input — `get_magic_number` takes no arguments. */
+/**
+ * Empty input — `get_magic_number` takes no arguments.
+ */
 final case class GetMagicNumberInput() extends ToolInput derives RW
 
 /**
@@ -20,9 +22,9 @@ final case class GetMagicNumberInput() extends ToolInput derives RW
  * chance to read the result and compose a `respond` call.
  */
 case object GetMagicNumberTool extends Tool {
-  type Input  = GetMagicNumberInput
+  type Input = GetMagicNumberInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[GetMagicNumberInput]]
+  val inputRW = summon[RW[GetMagicNumberInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("get_magic_number")
   val description = "Returns the magic number. Call this first, then tell the user what number you got."

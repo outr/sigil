@@ -11,4 +11,5 @@ import sigil.tool.ToolOutput
  */
 case class DapEvaluateOutput(result: String,
                              `type`: Option[String],
-                             variablesReference: Int) extends ToolOutput derives RW
+                             variablesReference: Int)
+  extends ToolOutput derives RW

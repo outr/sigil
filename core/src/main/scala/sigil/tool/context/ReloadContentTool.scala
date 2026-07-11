@@ -27,9 +27,9 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * by [[sigil.Sigil.canReadConversation]] (parent / worker only).
  */
 case object ReloadContentTool extends Tool {
-  type Input  = ReloadContentInput
+  type Input = ReloadContentInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ReloadContentInput]]
+  val inputRW = summon[RW[ReloadContentInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("reload_content")
@@ -45,7 +45,7 @@ case object ReloadContentTool extends Tool {
   override val keywords = Set("reload", "expand", "content", "elided", "restore", "full", "rehydrate")
 
   override def executeResult(input: ReloadContentInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
-    val targetConvId  = input.conversationId.getOrElse(ctx.conversation.id)
+    val targetConvId = input.conversationId.getOrElse(ctx.conversation.id)
     val currentConvId = ctx.conversation.id
     ctx.sigil.canReadConversation(currentConvId, targetConvId).flatMap {
       case Left(reason) =>
@@ -61,9 +61,11 @@ case object ReloadContentTool extends Tool {
     }
   }
 
-  /** Resolve a `referenceId` as a [[ContextSummary]] (browse its covered
-    * events) or an [[Event]] (return its full content). Both stay scoped
-    * to `convId`. */
+  /**
+   * Resolve a `referenceId` as a [[ContextSummary]] (browse its covered
+   * events) or an [[Event]] (return its full content). Both stay scoped
+   * to `convId`.
+   */
   private def resolveEventOrSummary(ctx: ToolContext,
                                     convId: Id[Conversation],
                                     referenceId: String): Task[ToolResult[TextToolOutput]] =
@@ -79,8 +81,10 @@ case object ReloadContentTool extends Tool {
         }
     }
 
-  /** A browsable index of a summary's covered events — `<eventId>: <snippet>`
-    * per line; the agent drills into one via `reload_content("<eventId>")`. */
+  /**
+   * A browsable index of a summary's covered events — `<eventId>: <snippet>`
+   * per line; the agent drills into one via `reload_content("<eventId>")`.
+   */
   private def summaryText(ctx: ToolContext, summary: ContextSummary): Task[ToolResult[TextToolOutput]] = {
     val ids = summary.coversEventIds
     if (ids.isEmpty) Task.pure(ToolResult.Success(TextToolOutput("(summary covers no events)")))
@@ -96,19 +100,21 @@ case object ReloadContentTool extends Tool {
     }
   }
 
-  /** The full rendered text an event carries — preferring its inlined
-    * frame (which retains full content even when the per-turn render
-    * elided it), falling back to a Message's text blocks. */
+  /**
+   * The full rendered text an event carries — preferring its inlined
+   * frame (which retains full content even when the per-turn render
+   * elided it), falling back to a Message's text blocks.
+   */
   private def eventContentText(ev: Event): String = ev.contextFrame match {
-    case Some(t: ContextFrame.Text)      => t.content
-    case Some(s: ContextFrame.System)    => s.content
+    case Some(t: ContextFrame.Text) => t.content
+    case Some(s: ContextFrame.System) => s.content
     case Some(tc: ContextFrame.ToolCall) => tc.state match {
-      case ToolCallState.Complete(c, _) => c
-      case _                            => ""
-    }
+        case ToolCallState.Complete(c, _) => c
+        case _ => ""
+      }
     case _ => ev match {
-      case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString("\n")
-      case _          => ""
-    }
+        case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString("\n")
+        case _ => ""
+      }
   }
 }

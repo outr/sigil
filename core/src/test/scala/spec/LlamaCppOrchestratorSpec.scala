@@ -11,7 +11,7 @@ class LlamaCppOrchestratorSpec extends AbstractOrchestratorSpec {
     CachedProviderFixtures.wrap(this, LlamaCppProvider(TestSigil, TestSigil.llamaCppHost))
 
   override protected def modelId: Id[Model] = Model.id("qwen3.5-9b-q4_k_m")
-    TestSigil.testModel(modelId)
+  TestSigil.testModel(modelId)
 
   "tear down" should {
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)

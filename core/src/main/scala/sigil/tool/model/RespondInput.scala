@@ -71,4 +71,5 @@ case class RespondInput(topicLabel: String,
                         content: String,
                         disposition: ResponseDisposition = ResponseDisposition.Success,
                         endsTurn: Boolean,
-                        keywords: List[String] = Nil) extends ToolInput derives RW
+                        keywords: List[String] = Nil)
+  extends ToolInput derives RW

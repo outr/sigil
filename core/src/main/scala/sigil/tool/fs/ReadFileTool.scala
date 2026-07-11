@@ -16,11 +16,10 @@ import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolRe
  * Apps that want sandboxing pass a `LocalFileSystemContext(basePath)`;
  * remote execution wraps this tool in [[sigil.tool.proxy.ProxyTool]].
  */
-final class ReadFileTool(context: FileSystemContext)
-  extends Tool with sigil.tool.ReadOnlyExternalTool {
-  type Input  = ReadFileInput
+final class ReadFileTool(context: FileSystemContext) extends Tool with sigil.tool.ReadOnlyExternalTool {
+  type Input = ReadFileInput
   type Output = ReadFileOutput
-  val inputRW  = summon[RW[ReadFileInput]]
+  val inputRW = summon[RW[ReadFileInput]]
   val outputRW = summon[RW[ReadFileOutput]]
   val name = ToolName("read_file")
   val description =
@@ -32,9 +31,23 @@ final class ReadFileTool(context: FileSystemContext)
     ToolExample("Read lines 200-300", ReadFileInput(path = "data.log", offset = Some(200), limit = Some(100)))
   )
   override val keywords = Set(
-    "file", "read", "open", "cat", "view",
-    "contents", "source", "examine", "inspect", "load", "show",
-    "code", "text", "lines", "display", "fetch", "look"
+    "file",
+    "read",
+    "open",
+    "cat",
+    "view",
+    "contents",
+    "source",
+    "examine",
+    "inspect",
+    "load",
+    "show",
+    "code",
+    "text",
+    "lines",
+    "display",
+    "fetch",
+    "look"
   )
 
   // Generic primitive: ranks below domain-specific tools when both match a query.
@@ -50,7 +63,7 @@ final class ReadFileTool(context: FileSystemContext)
   override def executeResult(input: ReadFileInput, ctx: ToolContext): Task[ToolResult[ReadFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
-      case None        =>
+      case None =>
         WorkspacePathResolver.resolve(ctx, input.path)
           .flatMap(operate(input, _))
           // #394 — the inline cap is for AGENT context management. A workflow
@@ -62,19 +75,21 @@ final class ReadFileTool(context: FileSystemContext)
           .map(ToolResult.success(_))
     }
 
-  /** Cap an over-cap read to the inline limit at a line boundary, appending a
-    * single consistent continuation note (`read_file` with `offset`/`limit`) —
-    * so reading a large file (including an externalized overflow file) returns a
-    * bounded, retrievable window instead of re-overflowing. */
-  private def capInline(out: ReadFileOutput, input: ReadFileInput, threshold: Long): ReadFileOutput = {
+  /**
+   * Cap an over-cap read to the inline limit at a line boundary, appending a
+   * single consistent continuation note (`read_file` with `offset`/`limit`) —
+   * so reading a large file (including an externalized overflow file) returns a
+   * bounded, retrievable window instead of re-overflowing.
+   */
+  private def capInline(out: ReadFileOutput, input: ReadFileInput, threshold: Long): ReadFileOutput =
     if (out.content.length.toLong <= threshold) out
     else {
-      val keep       = out.content.take(threshold.toInt)
+      val keep = out.content.take(threshold.toInt)
       val atBoundary = keep.lastIndexOf('\n') match {
         case -1 => keep
-        case i  => keep.take(i)
+        case i => keep.take(i)
       }
-      val shown      = if (atBoundary.isEmpty) 1 else atBoundary.count(_ == '\n') + 1
+      val shown = if (atBoundary.isEmpty) 1 else atBoundary.count(_ == '\n') + 1
       val baseOffset = input.offset.getOrElse(0)
       val note =
         s"\n\n[read_file: showing lines ${baseOffset + 1}-${baseOffset + shown} of ${out.totalLines} " +
@@ -82,17 +97,16 @@ final class ReadFileTool(context: FileSystemContext)
           s"Call read_file again with offset=${baseOffset + shown} (and a limit) to read more.]"
       out.copy(content = atBoundary + note, linesRead = shown, hash = None)
     }
-  }
 
   private def operate(input: ReadFileInput, resolved: String): Task[ReadFileOutput] = (input.offset, input.limit) match {
     case (None, None) =>
       context.readFile(resolved).map { content =>
         val lines = content.split('\n').length
         ReadFileOutput(
-          content    = content,
+          content = content,
           totalLines = lines,
-          linesRead  = lines,
-          hash       = Some(FileVersion.hashOf(content))
+          linesRead = lines,
+          hash = Some(FileVersion.hashOf(content))
         )
       }
     case (off, lim) =>
@@ -102,10 +116,10 @@ final class ReadFileTool(context: FileSystemContext)
           // full file's bytes; passing it as `expectedHash` after a
           // windowed read would silently mismatch on commit.
           ReadFileOutput(
-            content    = lines.mkString("\n"),
+            content = lines.mkString("\n"),
             totalLines = total,
-            linesRead  = lines.size,
-            hash       = None
+            linesRead = lines.size,
+            hash = None
           )
       }
   }

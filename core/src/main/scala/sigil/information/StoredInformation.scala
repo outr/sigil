@@ -27,13 +27,15 @@ case class StoredInformation(content: String,
   override def id: Id[Information] = Id(_id.value)
 
 object StoredInformation extends RecordDocumentModel[StoredInformation] with JsonConversion[StoredInformation]:
-  override implicit val rw: RW[StoredInformation] = RW.gen
+  implicit override val rw: RW[StoredInformation] = RW.gen
 
   val space: I[String] = field.index(_.space.value)
 
   override def id(value: String = Unique()): Id[StoredInformation] = Id(value)
 
-  /** `toInformation` factory for [[sigil.conversation.compression.StandardBlockExtractor]]:
-    * mints a record whose `_id` shares the framework-allocated id. */
+  /**
+   * `toInformation` factory for [[sigil.conversation.compression.StandardBlockExtractor]]:
+   * mints a record whose `_id` shares the framework-allocated id.
+   */
   def fromInformationId(id: Id[Information], content: String, space: SpaceId = GlobalSpace): StoredInformation =
     StoredInformation(content = content, space = space, _id = Id(id.value))

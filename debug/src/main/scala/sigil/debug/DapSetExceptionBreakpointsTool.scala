@@ -6,7 +6,8 @@ import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapSetExceptionBreakpointsInput(sessionId: String,
-                                           filters: List[String]) extends ToolInput derives RW
+                                           filters: List[String])
+  extends ToolInput derives RW
 
 /**
  * Configure exception filters — pause execution when an exception
@@ -43,11 +44,12 @@ final class DapSetExceptionBreakpointsTool(val manager: DapManager) extends Tool
       session.setExceptionBreakpoints(input.filters).map { bps =>
         if (input.filters.isEmpty) ToolResult.success(TextToolOutput("Cleared exception breakpoints."))
         else {
-          val rows = input.filters.zipAll(bps, "", null).collect { case (filter, b) if filter.nonEmpty =>
-            val verified = Option(b).exists(_.isVerified)
-            val state = if (verified) "verified" else "unverified"
-            val msg = Option(b).flatMap(bp => Option(bp.getMessage)).map(m => s" — $m").getOrElse("")
-            (filter, verified, s"  $filter: $state$msg")
+          val rows = input.filters.zipAll(bps, "", null).collect {
+            case (filter, b) if filter.nonEmpty =>
+              val verified = Option(b).exists(_.isVerified)
+              val state = if (verified) "verified" else "unverified"
+              val msg = Option(b).flatMap(bp => Option(bp.getMessage)).map(m => s" — $m").getOrElse("")
+              (filter, verified, s"  $filter: $state$msg")
           }
           val text = rows.map(_._3).mkString("\n")
           if (rows.exists(_._2)) ToolResult.success(TextToolOutput(text))

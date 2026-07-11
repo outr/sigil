@@ -12,7 +12,8 @@ case class DapLaunchInput(languageId: String,
                           sessionId: String,
                           launchArguments: Map[String, Json] = Map.empty,
                           breakpointsByFile: Map[String, List[Int]] = Map.empty,
-                          exceptionFilters: List[String] = Nil) extends ToolInput derives RW
+                          exceptionFilters: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Spawn a debug adapter for the given language and start a fresh
@@ -66,19 +67,19 @@ final class DapLaunchTool(val manager: DapManager) extends Tool with DapToolSupp
       val args = input.launchArguments.map { case (k, v) => k -> jsonToObject(v) }.asJava
 
       for {
-        _    <- session.launch(args)
-        bps  <- Task.sequence(
-                  input.breakpointsByFile.toList.map { case (path, lines) =>
-                    session.setBreakpoints(path, lines).map(path -> _)
-                  }
-                )
-        _    <- if (input.exceptionFilters.nonEmpty) session.setExceptionBreakpoints(input.exceptionFilters)
-                else Task.pure(Nil)
-        _    <- session.configurationDone()
+        _ <- session.launch(args)
+        bps <- Task.sequence(
+          input.breakpointsByFile.toList.map { case (path, lines) =>
+            session.setBreakpoints(path, lines).map(path -> _)
+          }
+        )
+        _ <- if (input.exceptionFilters.nonEmpty) session.setExceptionBreakpoints(input.exceptionFilters)
+        else Task.pure(Nil)
+        _ <- session.configurationDone()
       } yield {
         val bpReport = bps.map { case (path, set) =>
           val verified = set.count(_.isVerified)
-          s"  $path: ${verified}/${set.size} verified"
+          s"  $path: $verified/${set.size} verified"
         }.mkString("\n")
         val header = s"Debug session '${input.sessionId}' launched (language=${input.languageId})."
         val text = if (bpReport.isEmpty) header else s"$header\nBreakpoints:\n$bpReport"
@@ -86,15 +87,17 @@ final class DapLaunchTool(val manager: DapManager) extends Tool with DapToolSupp
       }
     }.handleError(e => Task.pure(ToolResult.failure(s"DAP launch failed: ${e.getMessage}")))
 
-  /** Translate fabric `Json` into the boxed Java types lsp4j-debug
-    * expects in the launch arguments map. Values that don't fit a
-    * primitive role flatten to their JSON-string form. */
+  /**
+   * Translate fabric `Json` into the boxed Java types lsp4j-debug
+   * expects in the launch arguments map. Values that don't fit a
+   * primitive role flatten to their JSON-string form.
+   */
   private def jsonToObject(j: Json): Object = j match {
-    case fabric.Str(s, _)   => s
-    case fabric.NumInt(n, _)  => java.lang.Long.valueOf(n)
+    case fabric.Str(s, _) => s
+    case fabric.NumInt(n, _) => java.lang.Long.valueOf(n)
     case fabric.NumDec(d, _) => d.bigDecimal.doubleValue.asInstanceOf[Object]
-    case fabric.Bool(b, _)  => java.lang.Boolean.valueOf(b)
-    case fabric.Null        => null
+    case fabric.Bool(b, _) => java.lang.Boolean.valueOf(b)
+    case fabric.Null => null
     case fabric.Arr(values, _) =>
       values.toArray.map(jsonToObject)
     case obj: fabric.Obj =>

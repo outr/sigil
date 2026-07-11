@@ -22,9 +22,9 @@ case class ReadMcpResourceInput(server: String, uri: String) extends ToolInput d
  * agent's visual context.
  */
 final class ReadMcpResourceTool(manager: McpManager) extends Tool {
-  type Input  = ReadMcpResourceInput
+  type Input = ReadMcpResourceInput
   type Output = ToolOutput
-  val inputRW  = summon[RW[ReadMcpResourceInput]]
+  val inputRW = summon[RW[ReadMcpResourceInput]]
   val outputRW = summon[RW[ToolOutput]]
 
   val name = ToolName("read_mcp_resource")
@@ -41,11 +41,14 @@ final class ReadMcpResourceTool(manager: McpManager) extends Tool {
 
   private def buildOutput(result: Json, input: ReadMcpResourceInput, context: ToolContext): Task[ToolOutput] = {
     val contents = result.get("contents").map(_.asVector.toList).getOrElse(Nil)
-    val images   = contents.flatMap(imageRef)
+    val images = contents.flatMap(imageRef)
     images match {
       case Nil => Task.pure(TextToolOutput(JsonFormatter.Default(result)))
       case (blob, mime) :: _ =>
-        context.sigil.storeBytes(GlobalSpace, Base64.getDecoder.decode(blob), mime,
+        context.sigil.storeBytes(
+          GlobalSpace,
+          Base64.getDecoder.decode(blob),
+          mime,
           metadata = Map("kind" -> "mcp-resource", "server" -> input.server, "uri" -> input.uri))
           .map { stored =>
             val text = contents.flatMap(contentText).mkString("\n")
@@ -55,8 +58,8 @@ final class ReadMcpResourceTool(manager: McpManager) extends Tool {
                 if (text.isEmpty) extra else s"$text\n$extra"
               } else text
             ImageToolOutput(
-              url  = context.sigil.storageUrl(stored),
-              alt  = s"MCP image resource ${input.uri}",
+              url = context.sigil.storageUrl(stored),
+              alt = s"MCP image resource ${input.uri}",
               text = Option(note).filter(_.nonEmpty)
             )
           }
@@ -67,8 +70,10 @@ final class ReadMcpResourceTool(manager: McpManager) extends Tool {
     if (imageRef(c).isDefined) None
     else c.get("text").map(_.asString).orElse(Some(JsonFormatter.Compact(c)))
 
-  /** `(base64Blob, mimeType)` for a resource content carrying a binary
-    * `blob` whose `mimeType` is `image/…`. */
+  /**
+   * `(base64Blob, mimeType)` for a resource content carrying a binary
+   * `blob` whose `mimeType` is `image/…`.
+   */
   private def imageRef(c: Json): Option[(String, String)] = {
     val mime = c.get("mimeType").map(_.asString).getOrElse("")
     if (mime.startsWith("image/")) c.get("blob").map(_.asString).map(_ -> mime) else None

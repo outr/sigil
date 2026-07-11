@@ -26,8 +26,14 @@ class QdrantVectorIndexSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val collection = s"sigil-test-${rapid.Unique()}"
       val index = QdrantVectorIndex(baseUrl, collection)
       val dims = 8
-      val a = VectorPoint(id = java.util.UUID.randomUUID().toString, vector = Vector(1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0), payload = Map("kind" -> "x"))
-      val b = VectorPoint(id = java.util.UUID.randomUUID().toString, vector = Vector(0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0), payload = Map("kind" -> "y"))
+      val a = VectorPoint(
+        id = java.util.UUID.randomUUID().toString,
+        vector = Vector(1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        payload = Map("kind" -> "x"))
+      val b = VectorPoint(
+        id = java.util.UUID.randomUUID().toString,
+        vector = Vector(0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        payload = Map("kind" -> "y"))
       val run = for {
         _ <- index.ensureCollection(dims)
         _ <- index.upsertBatch(List(a, b))
@@ -45,7 +51,7 @@ class QdrantVectorIndexSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       }
       run.attempt.flatMap { tried =>
         cleanup.map { _ =>
-          val (hits, filtered, afterDelete) = tried.get  // re-throws on failure
+          val (hits, filtered, afterDelete) = tried.get // re-throws on failure
           hits.map(_.id) should contain(a.id)
           filtered.map(_.id) shouldBe List(b.id)
           afterDelete.map(_.id) should not contain a.id

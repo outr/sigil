@@ -7,7 +7,8 @@ import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolR
 
 case class DapSetBreakpointsInput(sessionId: String,
                                   filePath: String,
-                                  lines: List[Int]) extends ToolInput derives RW
+                                  lines: List[Int])
+  extends ToolInput derives RW
 
 /**
  * Replace the breakpoints set on a source file. Per the DAP

@@ -120,11 +120,11 @@ class WireSurfaceSpec extends AnyWordSpec with Matchers {
       val rw = summon[RW[sigil.tool.model.RespondInput]]
       val surface = WireSurface.fromDefinition(rw.definition, rw)
       val raw = obj(
-        "topicLabel"   -> str("theme"),
+        "topicLabel" -> str("theme"),
         "topicSummary" -> str("theme work"),
-        "content"      -> str("All set."),
-        "endsTurn"     -> bool(true),
-        "keywords"     -> str("footer,ANALOG,newsletter,columns,wordmark,Horizon")
+        "content" -> str("All set."),
+        "endsTurn" -> bool(true),
+        "keywords" -> str("footer,ANALOG,newsletter,columns,wordmark,Horizon")
       )
       surface.decode(raw) match {
         case Right(input) =>
@@ -207,9 +207,12 @@ object WireSurfaceSpec {
   case class MultiField(label: String,
                         complexity: Complexity = Complexity.Medium,
                         retries: Int = 0,
-                        optional: Option[String] = None) extends ToolInput derives RW
+                        optional: Option[String] = None)
+    extends ToolInput derives RW
 
-  /** Two-violation fixture — both `slug` (regex) and `count` (max) fail. */
+  /**
+   * Two-violation fixture — both `slug` (regex) and `count` (max) fail.
+   */
   case class ConstrainedInput(
     @fabric.rw.pattern("^[a-z0-9-]+$") slug: String,
     @fabric.rw.maximum(100.0) count: Int
@@ -221,11 +224,11 @@ object WireSurfaceSpec {
   case class ExampleInput(label: String, count: Int) extends ToolInput derives RW
 
   case object ExampleTool extends Tool {
-    type Input  = ExampleInput
+    type Input = ExampleInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[ExampleInput]]
+    val inputRW = summon[RW[ExampleInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("wire_surface_example_tool")
+    val name = ToolName("wire_surface_example_tool")
     val description = "Test tool for WireSurfaceSpec — decode round-trip via Tool.wireSurface."
     override def executeResult(input: ExampleInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.label)))

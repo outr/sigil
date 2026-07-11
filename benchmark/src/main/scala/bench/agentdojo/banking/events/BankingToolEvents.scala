@@ -23,7 +23,9 @@ import sigil.signal.EventState
  * type discipline, no opaque-string parsing.
  */
 
-/** `get_balance` returned the current balance. */
+/**
+ * `get_balance` returned the current balance.
+ */
 case class BalanceRead(balance: Double,
                        participantId: ParticipantId,
                        conversationId: Id[Conversation],
@@ -40,10 +42,13 @@ case class BalanceRead(balance: Double,
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }
 
-/** `get_iban` returned the user's IBAN. */
+/**
+ * `get_iban` returned the user's IBAN.
+ */
 case class IbanRead(iban: String,
                     participantId: ParticipantId,
                     conversationId: Id[Conversation],
@@ -53,17 +58,20 @@ case class IbanRead(iban: String,
                     timestamp: Timestamp = Timestamp(Nowish()),
                     role: MessageRole = MessageRole.Tool,
                     override val origin: Option[Id[Event]] = None,
-                       override val source: Option[String] = None,
-                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
-                       _id: Id[Event] = Event.id())
+                    override val source: Option[String] = None,
+                    override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
+                    _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }
 
-/** `get_most_recent_transactions` returned the trailing N settled transactions. */
+/**
+ * `get_most_recent_transactions` returned the trailing N settled transactions.
+ */
 case class TransactionsRead(transactions: List[BankingTransaction],
                             participantId: ParticipantId,
                             conversationId: Id[Conversation],
@@ -73,17 +81,20 @@ case class TransactionsRead(transactions: List[BankingTransaction],
                             timestamp: Timestamp = Timestamp(Nowish()),
                             role: MessageRole = MessageRole.Tool,
                             override val origin: Option[Id[Event]] = None,
-                       override val source: Option[String] = None,
-                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
-                       _id: Id[Event] = Event.id())
+                            override val source: Option[String] = None,
+                            override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
+                            _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }
 
-/** `get_scheduled_transactions` returned the scheduled-transaction list. */
+/**
+ * `get_scheduled_transactions` returned the scheduled-transaction list.
+ */
 case class ScheduledTransactionsRead(transactions: List[BankingTransaction],
                                      participantId: ParticipantId,
                                      conversationId: Id[Conversation],
@@ -93,17 +104,20 @@ case class ScheduledTransactionsRead(transactions: List[BankingTransaction],
                                      timestamp: Timestamp = Timestamp(Nowish()),
                                      role: MessageRole = MessageRole.Tool,
                                      override val origin: Option[Id[Event]] = None,
-                       override val source: Option[String] = None,
-                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
-                       _id: Id[Event] = Event.id())
+                                     override val source: Option[String] = None,
+                                     override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
+                                     _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }
 
-/** `read_file` returned a file's contents (or empty string for missing). */
+/**
+ * `read_file` returned a file's contents (or empty string for missing).
+ */
 case class FileRead(filePath: String,
                     content: String,
                     participantId: ParticipantId,
@@ -114,17 +128,20 @@ case class FileRead(filePath: String,
                     timestamp: Timestamp = Timestamp(Nowish()),
                     role: MessageRole = MessageRole.Tool,
                     override val origin: Option[Id[Event]] = None,
-                       override val source: Option[String] = None,
-                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
-                       _id: Id[Event] = Event.id())
+                    override val source: Option[String] = None,
+                    override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
+                    _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }
 
-/** `get_user_info` / `update_user_info` returned the visible user fields. */
+/**
+ * `get_user_info` / `update_user_info` returned the visible user fields.
+ */
 case class UserInfoRead(firstName: String,
                         lastName: String,
                         street: String,
@@ -137,17 +154,20 @@ case class UserInfoRead(firstName: String,
                         timestamp: Timestamp = Timestamp(Nowish()),
                         role: MessageRole = MessageRole.Tool,
                         override val origin: Option[Id[Event]] = None,
-                       override val source: Option[String] = None,
-                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
-                       _id: Id[Event] = Event.id())
+                        override val source: Option[String] = None,
+                        override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
+                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }
 
-/** `send_money` appended a settled transaction to the attacker / recipient. */
+/**
+ * `send_money` appended a settled transaction to the attacker / recipient.
+ */
 case class MoneyTransferred(recipient: String,
                             amount: Double,
                             subject: String,
@@ -160,17 +180,20 @@ case class MoneyTransferred(recipient: String,
                             timestamp: Timestamp = Timestamp(Nowish()),
                             role: MessageRole = MessageRole.Tool,
                             override val origin: Option[Id[Event]] = None,
-                       override val source: Option[String] = None,
-                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
-                       _id: Id[Event] = Event.id())
+                            override val source: Option[String] = None,
+                            override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
+                            _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }
 
-/** `schedule_transaction` appended a future-dated transaction to the schedule. */
+/**
+ * `schedule_transaction` appended a future-dated transaction to the schedule.
+ */
 case class TransactionScheduled(recipient: String,
                                 amount: Double,
                                 subject: String,
@@ -184,17 +207,20 @@ case class TransactionScheduled(recipient: String,
                                 timestamp: Timestamp = Timestamp(Nowish()),
                                 role: MessageRole = MessageRole.Tool,
                                 override val origin: Option[Id[Event]] = None,
-                       override val source: Option[String] = None,
-                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
-                       _id: Id[Event] = Event.id())
+                                override val source: Option[String] = None,
+                                override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
+                                _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }
 
-/** `update_scheduled_transaction` patched a scheduled transaction by id. */
+/**
+ * `update_scheduled_transaction` patched a scheduled transaction by id.
+ */
 case class ScheduledTransactionUpdated(transactionId: Int,
                                        participantId: ParticipantId,
                                        conversationId: Id[Conversation],
@@ -204,17 +230,20 @@ case class ScheduledTransactionUpdated(transactionId: Int,
                                        timestamp: Timestamp = Timestamp(Nowish()),
                                        role: MessageRole = MessageRole.Tool,
                                        override val origin: Option[Id[Event]] = None,
-                       override val source: Option[String] = None,
-                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
-                       _id: Id[Event] = Event.id())
+                                       override val source: Option[String] = None,
+                                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
+                                       _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }
 
-/** `update_scheduled_transaction` failed because the id wasn't found. */
+/**
+ * `update_scheduled_transaction` failed because the id wasn't found.
+ */
 case class ScheduledTransactionNotFound(transactionId: Int,
                                         participantId: ParticipantId,
                                         conversationId: Id[Conversation],
@@ -224,17 +253,20 @@ case class ScheduledTransactionNotFound(transactionId: Int,
                                         timestamp: Timestamp = Timestamp(Nowish()),
                                         role: MessageRole = MessageRole.Tool,
                                         override val origin: Option[Id[Event]] = None,
-                       override val source: Option[String] = None,
-                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
-                       _id: Id[Event] = Event.id())
+                                        override val source: Option[String] = None,
+                                        override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
+                                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }
 
-/** `update_password` overwrote the user's password. */
+/**
+ * `update_password` overwrote the user's password.
+ */
 case class PasswordUpdated(participantId: ParticipantId,
                            conversationId: Id[Conversation],
                            topicId: Id[Topic],
@@ -243,14 +275,15 @@ case class PasswordUpdated(participantId: ParticipantId,
                            timestamp: Timestamp = Timestamp(Nowish()),
                            role: MessageRole = MessageRole.Tool,
                            override val origin: Option[Id[Event]] = None,
-                       override val source: Option[String] = None,
-                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
-                       _id: Id[Event] = Event.id())
+                           override val source: Option[String] = None,
+                           override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
+                           _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }
 
 /**

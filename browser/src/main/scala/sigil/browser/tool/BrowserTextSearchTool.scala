@@ -27,9 +27,9 @@ import scala.jdk.CollectionConverters.*
  * unbounded count.
  */
 final class BrowserTextSearchTool extends Tool {
-  type Input  = BrowserTextSearchInput
+  type Input = BrowserTextSearchInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[BrowserTextSearchInput]]
+  val inputRW = summon[RW[BrowserTextSearchInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("browser_text_search")
@@ -53,95 +53,95 @@ final class BrowserTextSearchTool extends Tool {
   override def executeResult(input: BrowserTextSearchInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.fetchStoredFile(Id[StoredFile](input.htmlFileId), ctx.chain).map {
-        case None =>
-          ToolResult.failure(s"htmlFileId '${input.htmlFileId}' not found or not authorized")
-        case Some((_, bytes)) =>
-          val html = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
-          val doc  = Jsoup.parse(html)
+      case None =>
+        ToolResult.failure(s"htmlFileId '${input.htmlFileId}' not found or not authorized")
+      case Some((_, bytes)) =>
+        val html = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
+        val doc = Jsoup.parse(html)
 
-          // Walk the body's text nodes, building (position, textNode) pairs against
-          // a single concatenated body text. We squish whitespace per node so the
-          // search positions correspond roughly to what jSoup's `body().text()`
-          // returns — close enough for human-meaningful "find X on the page".
-          val body = Option(doc.body()).getOrElse(doc)
-          val flat = new StringBuilder
-          val nodeOffsets = mutable.ArrayBuffer.empty[(Int, TextNode)]
+        // Walk the body's text nodes, building (position, textNode) pairs against
+        // a single concatenated body text. We squish whitespace per node so the
+        // search positions correspond roughly to what jSoup's `body().text()`
+        // returns — close enough for human-meaningful "find X on the page".
+        val body = Option(doc.body()).getOrElse(doc)
+        val flat = new StringBuilder
+        val nodeOffsets = mutable.ArrayBuffer.empty[(Int, TextNode)]
 
-          val visitor = new NodeVisitor {
-            override def head(node: org.jsoup.nodes.Node, depth: Int): Unit = node match {
-              case t: TextNode if !t.isBlank =>
-                val piece = BrowserHtmlOverview.squish(t.text())
-                if (piece.nonEmpty) {
-                  if (flat.nonEmpty && !flat.charAt(flat.length - 1).isWhitespace) flat.append(' ')
-                  nodeOffsets += ((flat.length, t))
-                  flat.append(piece)
-                }
-              case _ => ()
-            }
-            override def tail(node: org.jsoup.nodes.Node, depth: Int): Unit = ()
-          }
-          NodeTraversor.traverse(visitor, body)
-
-          val haystack    = flat.toString
-          val needle      = input.query
-          val needleLower = if (input.caseSensitive) needle else needle.toLowerCase
-          val haystackLU  = if (input.caseSensitive) haystack else haystack.toLowerCase
-
-          // Collect all match positions.
-          val positions = mutable.ListBuffer.empty[Int]
-          if (needleLower.nonEmpty) {
-            var idx = haystackLU.indexOf(needleLower)
-            while (idx >= 0) {
-              positions += idx
-              idx = haystackLU.indexOf(needleLower, idx + needleLower.length)
-            }
-          }
-
-          val totalCount = positions.size
-          val limited    = positions.take(input.maxResults).toList
-
-          val matches: List[Json] = limited.map { pos =>
-            val matchText    = haystack.substring(pos, math.min(pos + needle.length, haystack.length))
-            val ctxStart     = math.max(0, pos - input.contextChars)
-            val ctxEndBefore = pos
-            val ctxStartAfter = math.min(haystack.length, pos + matchText.length)
-            val ctxEndAfter   = math.min(haystack.length, ctxStartAfter + input.contextChars)
-            val before        = haystack.substring(ctxStart, ctxEndBefore)
-            val after         = haystack.substring(ctxStartAfter, ctxEndAfter)
-
-            // Find the TextNode whose offset range contains pos — last
-            // entry whose start offset ≤ pos. nodeOffsets is in source
-            // order so this is monotonic.
-            val containing: Option[TextNode] = {
-              var i = 0
-              var found: Option[TextNode] = None
-              while (i < nodeOffsets.size && nodeOffsets(i)._1 <= pos) {
-                found = Some(nodeOffsets(i)._2)
-                i += 1
+        val visitor = new NodeVisitor {
+          override def head(node: org.jsoup.nodes.Node, depth: Int): Unit = node match {
+            case t: TextNode if !t.isBlank =>
+              val piece = BrowserHtmlOverview.squish(t.text())
+              if (piece.nonEmpty) {
+                if (flat.nonEmpty && !flat.charAt(flat.length - 1).isWhitespace) flat.append(' ')
+                nodeOffsets += ((flat.length, t))
+                flat.append(piece)
               }
-              found
-            }
-            val containingXPath = containing.flatMap(t => Option(t.parent())).collect {
-              case el: Element => BrowserHtmlOverview.xpathOf(el)
-            }.getOrElse("")
-
-            obj(
-              "position"        -> num(pos),
-              "contextBefore"   -> str(before),
-              "matchText"       -> str(matchText),
-              "contextAfter"    -> str(after),
-              "containingXPath" -> str(containingXPath)
-            )
+            case _ => ()
           }
+          override def tail(node: org.jsoup.nodes.Node, depth: Int): Unit = ()
+        }
+        NodeTraversor.traverse(visitor, body)
 
-          ToolResult.Success(BrowserToolBase.toolResult(
-            obj(
-              "htmlFileId" -> str(input.htmlFileId),
-              "query"      -> str(needle),
-              "matches"    -> arr(matches*),
-              "totalCount" -> num(totalCount),
-              "returned"   -> num(limited.size)
-            )
-          ))
+        val haystack = flat.toString
+        val needle = input.query
+        val needleLower = if (input.caseSensitive) needle else needle.toLowerCase
+        val haystackLU = if (input.caseSensitive) haystack else haystack.toLowerCase
+
+        // Collect all match positions.
+        val positions = mutable.ListBuffer.empty[Int]
+        if (needleLower.nonEmpty) {
+          var idx = haystackLU.indexOf(needleLower)
+          while (idx >= 0) {
+            positions += idx
+            idx = haystackLU.indexOf(needleLower, idx + needleLower.length)
+          }
+        }
+
+        val totalCount = positions.size
+        val limited = positions.take(input.maxResults).toList
+
+        val matches: List[Json] = limited.map { pos =>
+          val matchText = haystack.substring(pos, math.min(pos + needle.length, haystack.length))
+          val ctxStart = math.max(0, pos - input.contextChars)
+          val ctxEndBefore = pos
+          val ctxStartAfter = math.min(haystack.length, pos + matchText.length)
+          val ctxEndAfter = math.min(haystack.length, ctxStartAfter + input.contextChars)
+          val before = haystack.substring(ctxStart, ctxEndBefore)
+          val after = haystack.substring(ctxStartAfter, ctxEndAfter)
+
+          // Find the TextNode whose offset range contains pos — last
+          // entry whose start offset ≤ pos. nodeOffsets is in source
+          // order so this is monotonic.
+          val containing: Option[TextNode] = {
+            var i = 0
+            var found: Option[TextNode] = None
+            while (i < nodeOffsets.size && nodeOffsets(i)._1 <= pos) {
+              found = Some(nodeOffsets(i)._2)
+              i += 1
+            }
+            found
+          }
+          val containingXPath = containing.flatMap(t => Option(t.parent())).collect {
+            case el: Element => BrowserHtmlOverview.xpathOf(el)
+          }.getOrElse("")
+
+          obj(
+            "position" -> num(pos),
+            "contextBefore" -> str(before),
+            "matchText" -> str(matchText),
+            "contextAfter" -> str(after),
+            "containingXPath" -> str(containingXPath)
+          )
+        }
+
+        ToolResult.Success(BrowserToolBase.toolResult(
+          obj(
+            "htmlFileId" -> str(input.htmlFileId),
+            "query" -> str(needle),
+            "matches" -> arr(matches*),
+            "totalCount" -> num(totalCount),
+            "returned" -> num(limited.size)
+          )
+        ))
     }
 }

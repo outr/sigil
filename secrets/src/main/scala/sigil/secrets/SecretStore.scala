@@ -49,32 +49,44 @@ import scala.concurrent.duration.FiniteDuration
  */
 trait SecretStore {
 
-  /** Store an encrypted (retrievable) value. The value is JSON-rendered
-    * via `RW[T]` and the rendered string is what's actually encrypted at
-    * rest. Overwrites any existing entry at the same id, regardless of
-    * kind. */
-  def setEncrypted[T: RW](id: Id[SecretRecord], value: T,
+  /**
+   * Store an encrypted (retrievable) value. The value is JSON-rendered
+   * via `RW[T]` and the rendered string is what's actually encrypted at
+   * rest. Overwrites any existing entry at the same id, regardless of
+   * kind.
+   */
+  def setEncrypted[T: RW](id: Id[SecretRecord],
+                          value: T,
                           ttl: Option[FiniteDuration] = None): Task[Unit]
 
-  /** Store a hashed (verify-only) value. The value is JSON-rendered via
-    * `RW[T]` and the rendered string is what's actually hashed at rest.
-    * Overwrites any existing entry at the same id, regardless of kind. */
-  def setHashed[T: RW](id: Id[SecretRecord], value: T,
+  /**
+   * Store a hashed (verify-only) value. The value is JSON-rendered via
+   * `RW[T]` and the rendered string is what's actually hashed at rest.
+   * Overwrites any existing entry at the same id, regardless of kind.
+   */
+  def setHashed[T: RW](id: Id[SecretRecord],
+                       value: T,
                        ttl: Option[FiniteDuration] = None): Task[Unit]
 
-  /** Decrypt and parse the typed value at `id`. Returns `None` for
-    * hashed entries, missing entries, entries past their TTL, or
-    * entries whose stored JSON doesn't parse into `T`. */
+  /**
+   * Decrypt and parse the typed value at `id`. Returns `None` for
+   * hashed entries, missing entries, entries past their TTL, or
+   * entries whose stored JSON doesn't parse into `T`.
+   */
   def get[T: RW](id: Id[SecretRecord]): Task[Option[T]]
 
-  /** Compare `candidate` to a hashed secret. The candidate is rendered
-    * the same way the stored value was rendered (`JsonFormatter.Compact`
-    * of `RW[T].read(candidate)`) and the resulting hash is compared.
-    * `false` for encrypted entries, missing entries, or entries past
-    * their TTL. */
+  /**
+   * Compare `candidate` to a hashed secret. The candidate is rendered
+   * the same way the stored value was rendered (`JsonFormatter.Compact`
+   * of `RW[T].read(candidate)`) and the resulting hash is compared.
+   * `false` for encrypted entries, missing entries, or entries past
+   * their TTL.
+   */
   def verify[T: RW](id: Id[SecretRecord], candidate: T): Task[Boolean]
 
-  /** Remove the entry at this id. Idempotent — no-op if missing. Used
-    * during revoke / reset / password-change flows. */
+  /**
+   * Remove the entry at this id. Idempotent — no-op if missing. Used
+   * during revoke / reset / password-change flows.
+   */
   def delete(id: Id[SecretRecord]): Task[Unit]
 }

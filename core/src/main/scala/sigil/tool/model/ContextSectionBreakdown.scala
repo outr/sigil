@@ -10,4 +10,5 @@ import fabric.rw.*
  */
 case class ContextSectionBreakdown(section: ContextSectionKind,
                                    tokens: Int,
-                                   count: Int) derives RW
+                                   count: Int)
+  derives RW

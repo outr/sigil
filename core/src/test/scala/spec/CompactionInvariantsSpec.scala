@@ -24,47 +24,47 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   private def userMsg(text: String, ts: Long = 1L): Message =
     Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicId,
-      role           = MessageRole.Standard,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      timestamp      = Timestamp(ts)
+      topicId = TestTopicId,
+      role = MessageRole.Standard,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      timestamp = Timestamp(ts)
     )
 
   private def agentMsg(text: String, ts: Long = 1L): Message =
     Message(
-      participantId  = TestAgent,
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicId,
-      role           = MessageRole.Standard,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      timestamp      = Timestamp(ts)
+      topicId = TestTopicId,
+      role = MessageRole.Standard,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      timestamp = Timestamp(ts)
     )
 
   private def toolInvoke(name: String, ts: Long = 1L, originId: Option[Id[Event]] = None): ToolInvoke =
     ToolInvoke(
-      toolName       = ToolName(name),
-      participantId  = TestAgent,
+      toolName = ToolName(name),
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicId,
-      state          = EventState.Complete,
-      timestamp      = Timestamp(ts),
-      origin         = originId
+      topicId = TestTopicId,
+      state = EventState.Complete,
+      timestamp = Timestamp(ts),
+      origin = originId
     )
 
   private def toolResult(text: String, originId: Id[Event], ts: Long = 1L): Message =
     Message(
-      participantId  = TestAgent,
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicId,
-      role           = MessageRole.Tool,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      timestamp      = Timestamp(ts),
-      origin         = Some(originId)
+      topicId = TestTopicId,
+      role = MessageRole.Tool,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      timestamp = Timestamp(ts),
+      origin = Some(originId)
     )
 
   private val emptyCtx: TurnEventsContext =
@@ -73,9 +73,9 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   "CompactionInvariant.CurrentUserTaskMessage" should {
 
     "protect the most-recent user task when ctx.claimedAt is None (#316 safe-by-default)" in Task {
-      val older  = userMsg("old task", ts = 10L)
+      val older = userMsg("old task", ts = 10L)
       val recent = userMsg("please find the bug", ts = 100L)
-      val agent  = agentMsg("working on it", ts = 110L)
+      val agent = agentMsg("working on it", ts = 110L)
       val ids = CompactionInvariant.CurrentUserTaskMessage.applicableIds(Vector(older, recent, agent), emptyCtx)
       ids shouldBe Set(recent._id)
     }
@@ -123,8 +123,8 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "protect the first event at or after the claim timestamp" in Task {
       val preClaim = userMsg("earlier", ts = 5L)
-      val anchor   = userMsg("the new task", ts = 100L)
-      val later    = toolInvoke("read_one", ts = 110L)
+      val anchor = userMsg("the new task", ts = 100L)
+      val later = toolInvoke("read_one", ts = 110L)
       val events: Vector[Event] = Vector(preClaim, anchor, later)
       val ctx = emptyCtx.copy(claimedAt = Some(Timestamp(100L)))
       val ids = CompactionInvariant.CurrentAgentClaimAnchor.applicableIds(events, ctx)
@@ -150,8 +150,8 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "with unsettledOnly=true, only protect invokes whose paired result is absent" in Task {
       val unpaired = toolInvoke("running_now", ts = 10L)
-      val paired   = toolInvoke("done_already", ts = 20L)
-      val result   = toolResult("output", originId = paired._id, ts = 21L)
+      val paired = toolInvoke("done_already", ts = 20L)
+      val result = toolResult("output", originId = paired._id, ts = 21L)
       val events: Vector[Event] = Vector(unpaired, paired, result)
       val ids = CompactionInvariant.PairedToolResult(unsettledOnly = true)
         .applicableIds(events, emptyCtx)
@@ -197,13 +197,13 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       )
       val protectedIds = invariants.iterator.flatMap(_.applicableIds(events, ctx)).toSet
       // user task: from CurrentUserTaskMessage + claim anchor (same id)
-      protectedIds should contain (ut._id)
+      protectedIds should contain(ut._id)
       // paired tool exchange
-      protectedIds should contain (inv._id)
-      protectedIds should contain (res._id)
+      protectedIds should contain(inv._id)
+      protectedIds should contain(res._id)
       // tail
-      protectedIds should contain (tail1._id)
-      protectedIds should contain (tail2._id)
+      protectedIds should contain(tail1._id)
+      protectedIds should contain(tail2._id)
     }
 
     "StandardIntraTurnCompactor.selectFoldable drops everything not in the protected union" in Task {
@@ -225,8 +225,8 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       folded should not contain tail2._id
       folded should not contain tail3._id
       // older agent-tool events are foldable
-      folded should contain (older1._id)
-      folded should contain (older2._id)
+      folded should contain(older1._id)
+      folded should contain(older2._id)
     }
   }
 

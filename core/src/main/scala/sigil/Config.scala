@@ -6,4 +6,5 @@ import java.nio.file.Path
 
 case class Config(dbPath: Path = Path.of("db/sigil"),
                   storagePath: Option[Path] = None,
-                  postgres: Option[PostgresConfig] = None) derives RW
+                  postgres: Option[PostgresConfig] = None)
+  derives RW

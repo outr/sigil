@@ -24,19 +24,24 @@ object WorkflowVariableSubstitution {
 
   def substitute(template: String, variables: Map[String, Json]): String =
     if (template.isEmpty || variables.isEmpty) template
-    else Pattern.replaceAllIn(template, m => {
-      val key = m.group(1)
-      variables.get(key) match {
-        case None       => Regex.quoteReplacement(m.matched)
-        case Some(json) => Regex.quoteReplacement(render(json))
+    else Pattern.replaceAllIn(
+      template,
+      m => {
+        val key = m.group(1)
+        variables.get(key) match {
+          case None => Regex.quoteReplacement(m.matched)
+          case Some(json) => Regex.quoteReplacement(render(json))
+        }
       }
-    })
+    )
 
-  /** Sigil #382 — distinct variable names still present as unresolved
-    * `{{var}}` placeholders after substitution. Used to HARD-FAIL a step whose
-    * resolved tool arguments still carry a template: a mis-wired variable must
-    * never reach a tool (`write_file` overwrote real files with the literal
-    * `{{editedContents}}`). Empty when everything resolved. */
+  /**
+   * Sigil #382 — distinct variable names still present as unresolved
+   * `{{var}}` placeholders after substitution. Used to HARD-FAIL a step whose
+   * resolved tool arguments still carry a template: a mis-wired variable must
+   * never reach a tool (`write_file` overwrote real files with the literal
+   * `{{editedContents}}`). Empty when everything resolved.
+   */
   def unresolvedVars(resolved: String): List[String] =
     Pattern.findAllMatchIn(resolved).map(_.group(1)).distinct.toList
 
@@ -59,47 +64,51 @@ object WorkflowVariableSubstitution {
    * broke the JSON and `getOrElse(obj())` swallowed the whole object.
    */
   def substituteJson(json: Json, variables: Map[String, Json]): Json = json match {
-    case fabric.Str(s, _)      => substituteStringLeaf(s, variables)
+    case fabric.Str(s, _) => substituteStringLeaf(s, variables)
     case fabric.Arr(values, _) => fabric.Arr(values.map(v => substituteJson(v, variables)))
-    case fabric.Obj(map)       => fabric.Obj(map.map { case (k, v) => k -> substituteJson(v, variables) })
-    case other                 => other
+    case fabric.Obj(map) => fabric.Obj(map.map { case (k, v) => k -> substituteJson(v, variables) })
+    case other => other
   }
 
   private def substituteStringLeaf(s: String, variables: Map[String, Json]): Json = s match {
     case ExactPattern(key) =>
       variables.get(key) match {
         case Some(value) => value
-        case None        => fabric.Str(s)
+        case None => fabric.Str(s)
       }
     case _ =>
-      fabric.Str(Pattern.replaceAllIn(s, m =>
-        variables.get(m.group(1)) match {
-          case None        => Regex.quoteReplacement(m.matched)
-          case Some(value) => Regex.quoteReplacement(render(value))
-        }))
+      fabric.Str(Pattern.replaceAllIn(
+        s,
+        m =>
+          variables.get(m.group(1)) match {
+            case None => Regex.quoteReplacement(m.matched)
+            case Some(value) => Regex.quoteReplacement(render(value))
+          }))
   }
 
-  /** Sigil #392 — distinct variable names still unresolved (`{{var}}`) in any
-    * string leaf of a substituted JSON structure. The structured analogue of
-    * [[unresolvedVars]], used to fail-loud on a tool's arguments. */
+  /**
+   * Sigil #392 — distinct variable names still unresolved (`{{var}}`) in any
+   * string leaf of a substituted JSON structure. The structured analogue of
+   * [[unresolvedVars]], used to fail-loud on a tool's arguments.
+   */
   def unresolvedVarsInJson(json: Json): List[String] = {
     val builder = List.newBuilder[String]
     def walk(j: Json): Unit = j match {
-      case fabric.Str(s, _)      => Pattern.findAllMatchIn(s).foreach(m => builder += m.group(1))
+      case fabric.Str(s, _) => Pattern.findAllMatchIn(s).foreach(m => builder += m.group(1))
       case fabric.Arr(values, _) => values.foreach(walk)
-      case fabric.Obj(map)       => map.values.foreach(walk)
-      case _                     => ()
+      case fabric.Obj(map) => map.values.foreach(walk)
+      case _ => ()
     }
     walk(json)
     builder.result().distinct
   }
 
   private def render(j: Json): String = j match {
-    case fabric.Str(s, _)    => s
+    case fabric.Str(s, _) => s
     case fabric.NumInt(n, _) => n.toString
     case fabric.NumDec(d, _) => d.toString
-    case fabric.Bool(b, _)   => b.toString
-    case fabric.Null         => ""
-    case other               => fabric.io.JsonFormatter.Compact(other)
+    case fabric.Bool(b, _) => b.toString
+    case fabric.Null => ""
+    case other => fabric.io.JsonFormatter.Compact(other)
   }
 }

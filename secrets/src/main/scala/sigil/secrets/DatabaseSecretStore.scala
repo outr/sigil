@@ -52,7 +52,8 @@ import scala.util.Try
 final class DatabaseSecretStore(sigil: Sigil { type DB <: SigilDB & SecretsCollections },
                                 cryptoKey: String,
                                 passwordFactory: PasswordFactory = Argon2PasswordFactory(),
-                                clock: () => Long = () => System.currentTimeMillis()) extends SecretStore {
+                                clock: () => Long = () => System.currentTimeMillis())
+  extends SecretStore {
   private val keyChars: Array[Char] = cryptoKey.toCharArray
   private val ivSpec: IvParameterSpec = {
     val keyBytes = MessageDigest.getInstance("SHA-256").digest(cryptoKey.getBytes("UTF-8"))
@@ -203,7 +204,7 @@ object DatabaseSecretStore {
     Option(path.getParent).foreach(java.nio.file.Files.createDirectories(_))
     val generated = rapid.Unique.sync() + "-" + rapid.Unique.sync()
     java.nio.file.Files.writeString(path, generated)
-    try {
+    try
       java.nio.file.Files.setPosixFilePermissions(
         path,
         java.util.Set.of(
@@ -211,7 +212,7 @@ object DatabaseSecretStore {
           java.nio.file.attribute.PosixFilePermission.OWNER_WRITE
         )
       )
-    } catch { case _: UnsupportedOperationException => () } // non-POSIX FS — best-effort
+    catch { case _: UnsupportedOperationException => () } // non-POSIX FS — best-effort
     scribe.info(s"DatabaseSecretStore.generateKeyFile: wrote new symmetric key to $path")
     generated
   }

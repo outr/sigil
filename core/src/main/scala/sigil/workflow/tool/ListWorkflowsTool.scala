@@ -13,9 +13,9 @@ case class ListWorkflowsInput(tag: Option[String] = None) extends ToolInput deri
  * (optional) narrows to templates carrying a matching tag.
  */
 final class ListWorkflowsTool extends Tool with WorkflowToolSupport {
-  type Input  = ListWorkflowsInput
+  type Input = ListWorkflowsInput
   type Output = ListWorkflowsOutput
-  val inputRW  = summon[RW[ListWorkflowsInput]]
+  val inputRW = summon[RW[ListWorkflowsInput]]
   val outputRW = summon[RW[ListWorkflowsOutput]]
   val name = ToolName("list_workflows")
   val description =
@@ -42,10 +42,10 @@ final class ListWorkflowsTool extends Tool with WorkflowToolSupport {
             .filter(t => input.tag.forall(t.tags.contains))
         } yield ToolResult.success(ListWorkflowsOutput(filtered.map { t =>
           WorkflowSummary(
-            workflowId  = t._id.value,
-            name        = t.name,
-            enabled     = t.enabled,
-            stepCount   = t.steps.size,
+            workflowId = t._id.value,
+            name = t.name,
+            enabled = t.enabled,
+            stepCount = t.steps.size,
             description = t.description
           )
         }))

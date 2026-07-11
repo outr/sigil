@@ -30,9 +30,9 @@ import scala.util.boundary.break
  * without a parser; the agent reads the whole class.
  */
 case object ReadSourceTool extends Tool {
-  type Input  = ReadSourceInput
+  type Input = ReadSourceInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ReadSourceInput]]
+  val inputRW = summon[RW[ReadSourceInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("read_source")
@@ -59,7 +59,7 @@ case object ReadSourceTool extends Tool {
     val candidates = List(s"$relPath.scala", s"$relPath.java")
     findInClasspath(candidates) match {
       case Some((path, body)) => s"# $fqn\n# (source: $path)\n\n$body"
-      case None               => s"(source not available for $fqn — no `-sources.jar` on the classpath ships $relPath.scala or .java)"
+      case None => s"(source not available for $fqn — no `-sources.jar` on the classpath ships $relPath.scala or .java)"
     }
   }
 
@@ -98,15 +98,19 @@ case object ReadSourceTool extends Tool {
             val buf = new Array[Byte](8192)
             var n = is.read(buf)
             while (n != -1) { baos.write(buf, 0, n); n = is.read(buf) }
-          } finally try is.close() catch { case _: Throwable => () }
+          } finally
+            try is.close()
+            catch { case _: Throwable => () }
           (s"${file.getName}!$rel", baos.toString("UTF-8"))
         }
       }.nextOption()
     } catch { case _: Throwable => None }
-    finally if (jar != null) try jar.close() catch { case _: Throwable => () }
+    finally
+      if (jar != null) try jar.close()
+      catch { case _: Throwable => () }
   }
 
-  private def findInDir(root: File, candidates: List[String]): Option[(String, String)] = {
+  private def findInDir(root: File, candidates: List[String]): Option[(String, String)] =
     candidates.iterator.flatMap { rel =>
       val f = new File(root, rel)
       if (f.isFile) {
@@ -114,5 +118,4 @@ case object ReadSourceTool extends Tool {
         catch { case _: Throwable => None }
       } else None
     }.nextOption()
-  }
 }

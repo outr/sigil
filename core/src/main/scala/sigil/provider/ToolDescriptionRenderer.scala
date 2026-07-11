@@ -16,7 +16,9 @@ import sigil.tool.ToolInput.given
  */
 object ToolDescriptionRenderer {
 
-  /** Render the full wire description for `tool` under `mode`. */
+  /**
+   * Render the full wire description for `tool` under `mode`.
+   */
   def render(tool: Tool, mode: Mode, sigil: Sigil): String = {
     val base = tool.wireDescription(mode, sigil)
     if (tool.examples.isEmpty) base
@@ -31,6 +33,6 @@ object ToolDescriptionRenderer {
 
   private def stripPolyDiscriminator(json: Json): Json = json match {
     case o: Obj => Obj(o.value - "type")
-    case other  => other
+    case other => other
   }
 }

@@ -51,8 +51,9 @@ class OverflowReadBackSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   private def typedRead(signals: List[Signal]): ReadFileOutput =
-    signals.collectFirst { case d: ToolDelta if d.output.exists(_.isInstanceOf[ReadFileOutput]) =>
-      d.output.get.asInstanceOf[ReadFileOutput]
+    signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_.isInstanceOf[ReadFileOutput]) =>
+        d.output.get.asInstanceOf[ReadFileOutput]
     }.getOrElse(fail(s"no ReadFileOutput in: ${signals.collect { case d: ToolDelta => d.output.map(_.getClass.getSimpleName) }}"))
 
   // A wide, multi-line body well over the inline cap — the shape a discovery
@@ -61,34 +62,35 @@ class OverflowReadBackSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   private val bigBody: String = pathLines.mkString("\n")
 
   "read_file on an over-cap file" should {
-    "return a bounded, inline result with offset guidance — never re-externalize or mention tool_output_get (#370)" in withWorkspace { (fs, tc) =>
-      for {
-        _    <- new WriteFileTool(fs).execute(WriteFileInput("matches.txt", bigBody), tc, Event.id()).toList
-        read <- new ReadFileTool(fs).execute(ReadFileInput("matches.txt"), tc, Event.id()).toList
-      } yield {
-        val out = typedRead(read)
-        withClue(s"content len=${out.content.length} threshold=$threshold head=${out.content.take(60)}\n") {
-          // Bounded inline — fits the cap (plus a short guidance note), not the full body.
-          bigBody.length.toLong should be > threshold
-          out.content.length.toLong should be <= (threshold + 400L)
-          // Consistent, actionable continuation guidance.
-          out.content should include("offset=")
-          out.content.toLowerCase should include("read_file")
-          // The removed reference-handle tool must never be named.
-          out.content should not include "tool_output_get"
-          // No cascade: read-back did not spill into another overflow file.
-          read.collect { case d: ToolDelta => d.summary }.flatten.mkString should not include ".sigil/output"
-          out.content should not include ".sigil/output"
+    "return a bounded, inline result with offset guidance — never re-externalize or mention tool_output_get (#370)" in
+      withWorkspace { (fs, tc) =>
+        for {
+          _ <- new WriteFileTool(fs).execute(WriteFileInput("matches.txt", bigBody), tc, Event.id()).toList
+          read <- new ReadFileTool(fs).execute(ReadFileInput("matches.txt"), tc, Event.id()).toList
+        } yield {
+          val out = typedRead(read)
+          withClue(s"content len=${out.content.length} threshold=$threshold head=${out.content.take(60)}\n") {
+            // Bounded inline — fits the cap (plus a short guidance note), not the full body.
+            bigBody.length.toLong should be > threshold
+            out.content.length.toLong should be <= (threshold + 400L)
+            // Consistent, actionable continuation guidance.
+            out.content should include("offset=")
+            out.content.toLowerCase should include("read_file")
+            // The removed reference-handle tool must never be named.
+            out.content should not include "tool_output_get"
+            // No cascade: read-back did not spill into another overflow file.
+            read.collect { case d: ToolDelta => d.summary }.flatten.mkString should not include ".sigil/output"
+            out.content should not include ".sigil/output"
+          }
         }
       }
-    }
 
     "continue from the reported offset to read the remainder" in withWorkspace { (fs, tc) =>
       for {
-        _     <- new WriteFileTool(fs).execute(WriteFileInput("matches.txt", bigBody), tc, Event.id()).toList
+        _ <- new WriteFileTool(fs).execute(WriteFileInput("matches.txt", bigBody), tc, Event.id()).toList
         first <- new ReadFileTool(fs).execute(ReadFileInput("matches.txt"), tc, Event.id()).toList
-        shown  = typedRead(first).linesRead
-        next  <- new ReadFileTool(fs).execute(ReadFileInput("matches.txt", offset = Some(shown), limit = Some(50)), tc, Event.id()).toList
+        shown = typedRead(first).linesRead
+        next <- new ReadFileTool(fs).execute(ReadFileInput("matches.txt", offset = Some(shown), limit = Some(50)), tc, Event.id()).toList
       } yield {
         val out = typedRead(next)
         withClue(s"shown=$shown next.head=${out.content.take(60)}\n") {

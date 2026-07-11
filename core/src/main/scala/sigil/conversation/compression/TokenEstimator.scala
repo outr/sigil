@@ -13,11 +13,13 @@ import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
  */
 object TokenEstimator {
 
-  /** Estimate tokens used by a collection of conversation frames. */
+  /**
+   * Estimate tokens used by a collection of conversation frames.
+   */
   def estimateFrames(frames: Vector[ContextFrame], tokenizer: Tokenizer = HeuristicTokenizer): Int =
     frames.iterator.map {
-      case ContextFrame.Text(c, _, _, _, _)               => tokenizer.count(c)
-      case tc: ContextFrame.ToolCall                      =>
+      case ContextFrame.Text(c, _, _, _, _) => tokenizer.count(c)
+      case tc: ContextFrame.ToolCall =>
         // Sigil #261 — unified ToolCall(state) frame carries both
         // call args AND (when Complete) the result content. Token
         // budget reflects both halves of the wire-rendered pair.
@@ -29,34 +31,42 @@ object TokenEstimator {
           // the curator's pressure-triggered image ceiling can't trigger.
           case ToolCallState.Complete(content, images) =>
             tokenizer.count(content) + images.iterator.map(TokenEstimator.imageTokens).sum
-          case ToolCallState.Active                     => 0
+          case ToolCallState.Active => 0
         }
         argTokens + resultTokens
-      case ContextFrame.System(c, _, _)                   => tokenizer.count(c)
+      case ContextFrame.System(c, _, _) => tokenizer.count(c)
       case ContextFrame.Reasoning(_, summary, _, _, _, _) => tokenizer.count(summary.mkString("\n"))
     }.sum
 
-  /** Estimate tokens used by resolved memory records. Mirrors the
-    * `summary || fact` policy the renderer applies — the per-turn
-    * cost reflects what actually gets sent on the wire. */
+  /**
+   * Estimate tokens used by resolved memory records. Mirrors the
+   * `summary || fact` policy the renderer applies — the per-turn
+   * cost reflects what actually gets sent on the wire.
+   */
   def estimateMemories(memories: Vector[ContextMemory], tokenizer: Tokenizer = HeuristicTokenizer): Int =
     memories.iterator.map { m =>
       val text = if (m.summary.trim.nonEmpty) m.summary else m.fact
       tokenizer.count(text)
     }.sum
 
-  /** Estimate tokens used by resolved summary records. */
+  /**
+   * Estimate tokens used by resolved summary records.
+   */
   def estimateSummaries(summaries: Vector[ContextSummary], tokenizer: Tokenizer = HeuristicTokenizer): Int =
     summaries.iterator.map(s => tokenizer.count(s.text)).sum
 
-  /** Estimate tokens used by Information catalog entries (id + summary
-    * lines as `Provider.renderSystem` emits them). */
+  /**
+   * Estimate tokens used by Information catalog entries (id + summary
+   * lines as `Provider.renderSystem` emits them).
+   */
   def estimateInformation(infos: Vector[InformationSummary], tokenizer: Tokenizer = HeuristicTokenizer): Int =
     infos.iterator.map(i => tokenizer.count(s"${i.id.value} [${i.informationType.name}]: ${i.summary}")).sum
 
-  /** Sum the curator-controlled sections of a tentative TurnInput.
-    * System prompt overhead + tool roster are added by the provider's
-    * pre-flight gate; this is the curator's portion only. */
+  /**
+   * Sum the curator-controlled sections of a tentative TurnInput.
+   * System prompt overhead + tool roster are added by the provider's
+   * pre-flight gate; this is the curator's portion only.
+   */
   def estimateCuratorSections(frames: Vector[ContextFrame],
                               criticalMemories: Vector[ContextMemory],
                               memories: Vector[ContextMemory],
@@ -69,13 +79,15 @@ object TokenEstimator {
       estimateSummaries(summaries, tokenizer) +
       estimateInformation(information, tokenizer)
 
-  /** Sigil #382 — approximate wire token cost of one rendered image by
-    * its quality tier (parsed off the URL's `_q` param). A provider's
-    * tokenizer caps an image regardless of byte size (~1600 for Claude
-    * at the 1568px high tier); the lower tiers scale down from there. */
+  /**
+   * Sigil #382 — approximate wire token cost of one rendered image by
+   * its quality tier (parsed off the URL's `_q` param). A provider's
+   * tokenizer caps an image regardless of byte size (~1600 for Claude
+   * at the 1568px high tier); the lower tiers scale down from there.
+   */
   def imageTokens(url: spice.net.URL): Int = sigil.tool.ImageQuality.fromUrl(url) match {
     case sigil.tool.ImageQuality.Thumbnail => 22
-    case sigil.tool.ImageQuality.Low       => 350
-    case sigil.tool.ImageQuality.High      => 1600
+    case sigil.tool.ImageQuality.Low => 350
+    case sigil.tool.ImageQuality.High => 1600
   }
 }

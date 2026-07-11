@@ -54,15 +54,16 @@ class WorkflowStepFullReadSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   }
 
   private def typedRead(signals: List[Signal]): ReadFileOutput =
-    signals.collectFirst { case d: ToolDelta if d.output.exists(_.isInstanceOf[ReadFileOutput]) =>
-      d.output.get.asInstanceOf[ReadFileOutput]
+    signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_.isInstanceOf[ReadFileOutput]) =>
+        d.output.get.asInstanceOf[ReadFileOutput]
     }.getOrElse(fail("no ReadFileOutput in tool signals"))
 
   "read_file as a workflow step (overflowLargeResults = false)" should {
     "capture the COMPLETE file — no inline cap, no offset/limit pagination note (#394)" in withWorkspace { fs =>
       val convId = Conversation.id(s"wf394-${rapid.Unique()}")
       for {
-        _    <- new WriteFileTool(fs).execute(WriteFileInput("big.scala", bigBody), turnContext(convId, overflow = true), Event.id()).toList
+        _ <- new WriteFileTool(fs).execute(WriteFileInput("big.scala", bigBody), turnContext(convId, overflow = true), Event.id()).toList
         read <- new ReadFileTool(fs).execute(ReadFileInput("big.scala"), turnContext(convId, overflow = false), Event.id()).toList
       } yield {
         val out = typedRead(read)
@@ -80,7 +81,7 @@ class WorkflowStepFullReadSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "still cap inline with offset guidance — the agent path is unchanged (#394)" in withWorkspace { fs =>
       val convId = Conversation.id(s"wf394agent-${rapid.Unique()}")
       for {
-        _    <- new WriteFileTool(fs).execute(WriteFileInput("big.scala", bigBody), turnContext(convId, overflow = true), Event.id()).toList
+        _ <- new WriteFileTool(fs).execute(WriteFileInput("big.scala", bigBody), turnContext(convId, overflow = true), Event.id()).toList
         read <- new ReadFileTool(fs).execute(ReadFileInput("big.scala"), turnContext(convId, overflow = true), Event.id()).toList
       } yield {
         val out = typedRead(read)

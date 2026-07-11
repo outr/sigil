@@ -21,4 +21,5 @@ case class StoredFileRef(space: SpaceId,
                          fileId: Option[Id[StoredFile]] = None,
                          conversationId: Option[Id[Conversation]] = None,
                          title: Option[String] = None,
-                         language: Option[String] = None) derives RW
+                         language: Option[String] = None)
+  derives RW

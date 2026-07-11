@@ -14,9 +14,9 @@ case class UnpinEffortInput() extends ToolInput derives RW
  * Companion to [[PinEffortTool]]. Not auto-registered.
  */
 case object UnpinEffortTool extends Tool {
-  type Input  = UnpinEffortInput
+  type Input = UnpinEffortInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[UnpinEffortInput]]
+  val inputRW = summon[RW[UnpinEffortInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("unpin_effort")
   val description =
@@ -27,7 +27,7 @@ case object UnpinEffortTool extends Tool {
   override def executeResult(input: UnpinEffortInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
-      case None       => Task.pure(None)
+      case None => Task.pure(None)
       case Some(conv) => Task.pure(Some(conv.copy(pinnedEffort = None, modified = Timestamp())))
     })).map {
       case None =>

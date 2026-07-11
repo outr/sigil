@@ -51,13 +51,18 @@ class StallInterventionContinuesSpec extends AsyncWordSpec with AsyncTaskSpec wi
   private val modelId: Id[Model] = Model.id("test", "stall-continue")
   TestSigil.testModel(modelId)
 
-  /** Emits an identical `change_mode` every main-loop turn so
-    * `StallDetector` fires. On the checkpoint reflector call reports
-    * `meaningfulProgress = false`. Only the iteration-cap forced turn
-    * (signalled by `tool_choice = Specific(respond)`) gets a respond —
-    * so the agent settles ONLY at the ceiling, never at a stall. */
-  private final class StallEveryTurnProvider extends Provider {
-    /** Per-call (toolChoice, rosterHasChangeMode). */
+  /**
+   * Emits an identical `change_mode` every main-loop turn so
+   * `StallDetector` fires. On the checkpoint reflector call reports
+   * `meaningfulProgress = false`. Only the iteration-cap forced turn
+   * (signalled by `tool_choice = Specific(respond)`) gets a respond —
+   * so the agent settles ONLY at the ceiling, never at a stall.
+   */
+  final private class StallEveryTurnProvider extends Provider {
+
+    /**
+     * Per-call (toolChoice, rosterHasChangeMode).
+     */
     val calls: atomic.AtomicReference[Vector[(ToolChoice, Boolean)]] =
       new atomic.AtomicReference(Vector.empty)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -77,11 +82,11 @@ class StallInterventionContinuesSpec extends AsyncWordSpec with AsyncTaskSpec wi
             ProviderEvent.ToolCallComplete(
               callId,
               _root_.sigil.tool.consult.ProgressReflectionInput(
-                currentStatus      = "still looping on change_mode",
+                currentStatus = "still looping on change_mode",
                 meaningfulProgress = false,
-                remainingSteps     = "wrap up and respond",
-                stuckOn            = Some("looping"),
-                shouldAskUser      = false
+                remainingSteps = "wrap up and respond",
+                stuckOn = Some("looping"),
+                shouldAskUser = false
               )
             ),
             ProviderEvent.Done(StopReason.Complete)
@@ -93,10 +98,10 @@ class StallInterventionContinuesSpec extends AsyncWordSpec with AsyncTaskSpec wi
               ProviderEvent.ToolCallComplete(
                 callId,
                 RespondInput(
-                  topicLabel   = "Cap-synth",
+                  topicLabel = "Cap-synth",
                   topicSummary = "forced-synthesis at the ceiling",
-                  content      = "Synthesised at the iteration ceiling.",
-                  endsTurn     = true
+                  content = "Synthesised at the iteration ceiling.",
+                  endsTurn = true
                 )
               ),
               ProviderEvent.Done(StopReason.Complete)
@@ -119,10 +124,10 @@ class StallInterventionContinuesSpec extends AsyncWordSpec with AsyncTaskSpec wi
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = ToolName("change_mode") :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = ToolName("change_mode") :: CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -132,18 +137,18 @@ class StallInterventionContinuesSpec extends AsyncWordSpec with AsyncTaskSpec wi
       val provider = new StallEveryTurnProvider
       TestSigil.setProvider(Task.pure(provider))
       val convId = Conversation.id(s"stall-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = TestTopicEntry.id,
-                 content        = Vector(ResponseContent.Text("Evaluate the X system")),
-                 state          = EventState.Complete
-               ))
-        _   <- TestSigil.awaitSettled(convId)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Evaluate the X system")),
+          state = EventState.Complete
+        ))
+        _ <- TestSigil.awaitSettled(convId)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val convEvs = evs.filter(_.conversationId == convId)

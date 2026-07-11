@@ -25,9 +25,9 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * Emits a typed [[SemanticSearchOutput]] (`query`, `memories: List[SemanticSearchHit]`, `count`).
  */
 case object SemanticSearchTool extends Tool with sigil.tool.ReadOnlyInternalTool {
-  type Input  = SemanticSearchInput
+  type Input = SemanticSearchInput
   type Output = SemanticSearchOutput
-  val inputRW  = summon[RW[SemanticSearchInput]]
+  val inputRW = summon[RW[SemanticSearchInput]]
   val outputRW = summon[RW[SemanticSearchOutput]]
   val name = ToolName("semantic_search")
   val description =
@@ -38,7 +38,8 @@ case object SemanticSearchTool extends Tool with sigil.tool.ReadOnlyInternalTool
   override val examples = List(
     ToolExample("Recall a preference", SemanticSearchInput(query = "user's preferred coding style")),
     ToolExample("Top 3 matches only", SemanticSearchInput(query = "deadline next week", limit = 3)),
-    ToolExample("Include archived versions",
+    ToolExample(
+      "Include archived versions",
       SemanticSearchInput(query = "deploy target", includeHistory = true))
   )
   override val keywords = Set("semantic", "search", "memory", "recall", "remember", "find", "vector", "similarity", "rag")
@@ -51,14 +52,15 @@ case object SemanticSearchTool extends Tool with sigil.tool.ReadOnlyInternalTool
         ctx.sigil.searchMemories(input.query, spaces, input.limit).flatMap { hits =>
           val filtered = hits.filter { m =>
             m.status == MemoryStatus.Approved &&
-              (input.includeHistory || m.validUntil.isEmpty)
+            (input.includeHistory || m.validUntil.isEmpty)
           }
           Task.sequence(filtered.map(m => ctx.sigil.recordMemoryAccess(m._id)))
-            .map(_ => SemanticSearchOutput(
-              query    = input.query,
-              memories = filtered.map(toHit),
-              count    = filtered.size
-            ))
+            .map(_ =>
+              SemanticSearchOutput(
+                query = input.query,
+                memories = filtered.map(toHit),
+                count = filtered.size
+              ))
         }
     }
 
@@ -68,14 +70,14 @@ case object SemanticSearchTool extends Tool with sigil.tool.ReadOnlyInternalTool
 
   private def toHit(m: sigil.conversation.ContextMemory): SemanticSearchHit =
     SemanticSearchHit(
-      memoryId      = m._id.value,
-      key           = m.key,
-      label         = m.label,
-      summary       = m.summary,
-      fact          = m.fact,
-      pinned        = m.pinned,
-      archived      = m.validUntil.isDefined,
-      confidence    = m.confidence,
+      memoryId = m._id.value,
+      key = m.key,
+      label = m.label,
+      summary = m.summary,
+      fact = m.fact,
+      pinned = m.pinned,
+      archived = m.validUntil.isDefined,
+      confidence = m.confidence,
       justification = m.justification
     )
 }

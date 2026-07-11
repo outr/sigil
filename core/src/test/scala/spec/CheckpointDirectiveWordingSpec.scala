@@ -46,16 +46,18 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
   // quickly instead of waiting for the framework's default interval.
   TestSigil.setProgressCheckpointInterval(1)
 
-  /** Three-shape stub:
-    *   - Consult (roster is exactly `report_progress`): report NO
-    *     meaningful progress and shouldAskUser = false → the checkpoint
-    *     escalates to a DIRECTIVE nudge, not an ask-user one.
-    *   - Forced synthesis (roster has `respond` but not `find_capability`):
-    *     emit a terminal respond so the turn settles cleanly once the
-    *     no-progress streak escalates to terminal.
-    *   - Normal iteration: emit a non-terminal `find_capability` with
-    *     FRESH keywords each turn (avoids the #159 repeated-query intercept)
-    *     so the loop keeps reaching checkpoints. */
+  /**
+   * Three-shape stub:
+   *   - Consult (roster is exactly `report_progress`): report NO
+   *     meaningful progress and shouldAskUser = false → the checkpoint
+   *     escalates to a DIRECTIVE nudge, not an ask-user one.
+   *   - Forced synthesis (roster has `respond` but not `find_capability`):
+   *     emit a terminal respond so the turn settles cleanly once the
+   *     no-progress streak escalates to terminal.
+   *   - Normal iteration: emit a non-terminal `find_capability` with
+   *     FRESH keywords each turn (avoids the #159 repeated-query intercept)
+   *     so the loop keeps reaching checkpoints.
+   */
   private class StubProvider extends Provider {
     private val counter = new atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -69,13 +71,16 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
         val callId = CallId(s"consult-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, "report_progress"),
-          ProviderEvent.ToolCallComplete(callId, ProgressReflectionInput(
-            currentStatus      = "still reading files, no edits yet",
-            meaningfulProgress = false,
-            remainingSteps     = "keep going",
-            stuckOn            = Some("the read-edit loop"),
-            shouldAskUser      = false
-          )),
+          ProviderEvent.ToolCallComplete(
+            callId,
+            ProgressReflectionInput(
+              currentStatus = "still reading files, no edits yet",
+              meaningfulProgress = false,
+              remainingSteps = "keep going",
+              stuckOn = Some("the read-edit loop"),
+              shouldAskUser = false
+            )
+          ),
           ProviderEvent.Done(StopReason.Complete)
         ))
       } else if (!roster.contains(FindCapabilityTool.name.value)) {
@@ -83,12 +88,14 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
         val callId = CallId(s"respond-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, "respond"),
-          ProviderEvent.ToolCallComplete(callId, RespondInput(
-            topicLabel   = TestTopicEntry.label,
-            topicSummary = TestTopicEntry.summary,
-            content      = "Wrapping up.",
-            endsTurn     = true
-          )),
+          ProviderEvent.ToolCallComplete(
+            callId,
+            RespondInput(
+              topicLabel = TestTopicEntry.label,
+              topicSummary = TestTopicEntry.summary,
+              content = "Wrapping up.",
+              endsTurn = true
+            )),
           ProviderEvent.Done(StopReason.ToolCall)
         ))
       } else {
@@ -104,21 +111,21 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def runScenario(): Task[List[Signal]] = {
     TestSigil.setProvider(Task.pure(new StubProvider))
     val convId = Conversation.id(s"checkpoint-directive-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
@@ -128,7 +135,7 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     def hasIdle: Boolean =
       recorded.iterator().asScala.exists {
         case d: AgentStateDelta
-          if d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete) => true
+            if d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete) => true
         case _ => false
       }
     def waitForSettle(deadline: Long): Task[Unit] =
@@ -139,12 +146,12 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
       _ <- Task.sleep(100.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Do the bulk sweep")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Do the bulk sweep")),
+        state = EventState.Complete
+      ))
       _ <- waitForSettle(System.currentTimeMillis() + 20_000L)
     } yield {
       running.set(false)
@@ -157,14 +164,15 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
 
   "A checkpoint directive nudge (sigil #412 re-file)" should {
 
-    "be framework-voiced and non-conversational — no first-person question, explicit do-not-acknowledge" in {
+    "be framework-voiced and non-conversational — no first-person question, explicit do-not-acknowledge" in
       runScenario().map { signals =>
         // The directive reaches the agent as a Tool-role, Agents-visibility
         // message hidden from the user.
         val directives = signals.collect {
-          case m: Message if m.participantId == TestAgent
-                          && m.role == MessageRole.Tool
-                          && m.visibility == MessageVisibility.Agents => m
+          case m: Message
+              if m.participantId == TestAgent
+                && m.role == MessageRole.Tool
+                && m.visibility == MessageVisibility.Agents => m
         }.map(textOf).filter(_.contains("progress checkpoint"))
         withClue(s"directive texts=$directives: ") {
           directives should not be empty
@@ -178,7 +186,6 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
           succeed
         }
       }
-    }
   }
 
   "tear down" should {

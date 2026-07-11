@@ -21,15 +21,19 @@ import sigil.event.Event
 trait Delta extends Signal {
   def target: Id[? <: Event]
 
-  /** The conversation this delta lives in — typically duplicated from
-    * the target Event's `conversationId` so routing / per-viewer
-    * filtering doesn't need a DB lookup. Concrete subtypes declare
-    * the field; the trait redeclares the accessor so polymorphic
-    * `delta.conversationId` reads work. */
+  /**
+   * The conversation this delta lives in — typically duplicated from
+   * the target Event's `conversationId` so routing / per-viewer
+   * filtering doesn't need a DB lookup. Concrete subtypes declare
+   * the field; the trait redeclares the accessor so polymorphic
+   * `delta.conversationId` reads work.
+   */
   def conversationId: Id[sigil.conversation.Conversation]
 
-  /** A Delta always lives in its target Event's conversation — that's
-    * its wire-delivery scope. */
+  /**
+   * A Delta always lives in its target Event's conversation — that's
+   * its wire-delivery scope.
+   */
   final override def conversationScope: Option[Id[sigil.conversation.Conversation]] = Some(conversationId)
 
   /**

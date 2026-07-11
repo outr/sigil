@@ -13,7 +13,9 @@ import sigil.tool.{TextToolOutput, Tool, ToolFailureException, ToolInput, ToolNa
 import sigil.tool.ToolContext
 import sigil.event.Event
 
-/** Shared ad-hoc input for synchronous annotation tests. */
+/**
+ * Shared ad-hoc input for synchronous annotation tests.
+ */
 private case class PlainInput() extends ToolInput derives RW
 
 /**
@@ -37,41 +39,45 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   ToolInput.register(RW.static(EchoInput()))
 
-  /** Simple-path tool — overrides only `executeOutput`. Drives the
-    * default-wrap path: success → Success; throw → Failure. */
-  private final class LegacyEchoTool(throwOn: Option[String] = None) extends Tool {
-    type Input  = EchoInput
+  /**
+   * Simple-path tool — overrides only `executeOutput`. Drives the
+   * default-wrap path: success → Success; throw → Failure.
+   */
+  final private class LegacyEchoTool(throwOn: Option[String] = None) extends Tool {
+    type Input = EchoInput
     type Output = EchoOutput
-    val inputRW  = summon[RW[EchoInput]]
+    val inputRW = summon[RW[EchoInput]]
     val outputRW = summon[RW[EchoOutput]]
 
-    val name        = ToolName("legacy_echo")
+    val name = ToolName("legacy_echo")
     val description = "Echoes the payload."
 
     override def executeOutput(input: EchoInput, context: ToolContext): Task[EchoOutput] =
       throwOn match {
         case Some(msg) => Task.error(new RuntimeException(msg))
-        case None      => Task.pure(EchoOutput(input.payload))
+        case None => Task.pure(EchoOutput(input.payload))
       }
   }
 
-  /** Envelope-aware tool — overrides `executeResult` directly.
-    * Drives the explicit-Failure path. */
-  private final class EnvelopeEchoTool extends Tool {
-    type Input  = EchoInput
+  /**
+   * Envelope-aware tool — overrides `executeResult` directly.
+   * Drives the explicit-Failure path.
+   */
+  final private class EnvelopeEchoTool extends Tool {
+    type Input = EchoInput
     type Output = EchoOutput
-    val inputRW  = summon[RW[EchoInput]]
+    val inputRW = summon[RW[EchoInput]]
     val outputRW = summon[RW[EchoOutput]]
 
-    val name        = ToolName("envelope_echo")
+    val name = ToolName("envelope_echo")
     val description = "Echoes the payload via the envelope."
 
     override def executeResult(input: EchoInput, context: ToolContext): Task[ToolResult[EchoOutput]] =
       if (input.payload.isEmpty)
         Task.pure(ToolResult.failure(
           message = "payload must not be empty",
-          hint    = Some("set `payload` to a non-empty string"),
-          args    = Some(s"payload.length=0")
+          hint = Some("set `payload` to a non-empty string"),
+          args = Some(s"payload.length=0")
         ))
       else Task.pure(ToolResult.success(EchoOutput(input.payload)))
   }
@@ -79,10 +85,10 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   private def turnContext(): Task[TurnContext] =
     TestSigil.curate(Conversation.id("envelope-spec"), sigil.db.Model.id("test", "envelope"), List(TestUser)).map { ti =>
       TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestUser),
+        sigil = TestSigil,
+        chain = List(TestUser),
         conversation = Conversation(topics = TestTopicStack, participants = Nil, _id = Conversation.id("envelope-spec")),
-        turnInput    = ti,
+        turnInput = ti,
         model = TestSigil.defaultTestModel
       )
     }
@@ -130,7 +136,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         tool.invoke(EchoInput(""), ToolContext(ctx, Event.id(), tool.name))
           .map(_ => fail("expected ToolFailureException"))
           .handleError { err =>
-            err shouldBe a [ToolFailureException]
+            err shouldBe a[ToolFailureException]
             val tfe = err.asInstanceOf[ToolFailureException]
             tfe.failureMessage should include("payload must not be empty")
             tfe.hint.get should include("non-empty")
@@ -189,7 +195,7 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
       // base trait — every annotation must read as `false` so apps
       // that don't opt in get no behavior change.
       val noop = new sigil.tool.Tool {
-        type Input  = PlainInput
+        type Input = PlainInput
         type Output = TextToolOutput
         override def name = ToolName("plain")
         override def description = "noop"

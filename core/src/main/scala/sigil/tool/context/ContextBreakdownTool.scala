@@ -22,9 +22,9 @@ import sigil.tool.{Tool, ToolName}
  * Emits a typed [[ContextBreakdownOutput]].
  */
 case object ContextBreakdownTool extends Tool {
-  type Input  = ContextBreakdownInput
+  type Input = ContextBreakdownInput
   type Output = ContextBreakdownOutput
-  val inputRW  = summon[RW[ContextBreakdownInput]]
+  val inputRW = summon[RW[ContextBreakdownInput]]
   val outputRW = summon[RW[ContextBreakdownOutput]]
   val name = ToolName("context_breakdown")
   val description =
@@ -41,22 +41,22 @@ case object ContextBreakdownTool extends Tool {
   override def executeOutput(input: ContextBreakdownInput, context: ToolContext): Task[ContextBreakdownOutput] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
       val critTask = if (spaces.isEmpty) Task.pure(List.empty[ContextMemory])
-                     else context.sigil.findCriticalMemories(spaces)
+      else context.sigil.findCriticalMemories(spaces)
       critTask.map { criticals =>
         val tokenizer = HeuristicTokenizer
-        val turn      = context.turnInput
+        val turn = context.turnInput
 
         val frameTokens = turn.frames.iterator.map {
-          case f: ContextFrame.Text      => tokenizer.count(f.content)
-          case f: ContextFrame.ToolCall  =>
+          case f: ContextFrame.Text => tokenizer.count(f.content)
+          case f: ContextFrame.ToolCall =>
             // Sigil #261 — unified ToolCall(state) frame: count args
             // plus (when Complete) the result content as one frame.
             val resultTokens = f.state match {
               case sigil.conversation.ToolCallState.Complete(content, _) => tokenizer.count(content)
-              case sigil.conversation.ToolCallState.Active               => 0
+              case sigil.conversation.ToolCallState.Active => 0
             }
             tokenizer.count(f.argsJson) + resultTokens
-          case f: ContextFrame.System    => tokenizer.count(f.content)
+          case f: ContextFrame.System => tokenizer.count(f.content)
           case f: ContextFrame.Reasoning => tokenizer.count(f.summary.mkString("\n"))
         }.sum
 
@@ -64,10 +64,10 @@ case object ContextBreakdownTool extends Tool {
           tokenizer.count(if (m.summary.trim.nonEmpty) m.summary else m.fact)
         }.sum
 
-        val skills      = turn.aggregatedSkills(context.chain)
+        val skills = turn.aggregatedSkills(context.chain)
         val skillTokens = skills.iterator.map(s => tokenizer.count(s.name) + tokenizer.count(s.content)).sum
 
-        val mode       = context.conversation.currentMode
+        val mode = context.conversation.currentMode
         val modeTokens = tokenizer.count(s"${mode.name} — ${mode.description}")
 
         val total = frameTokens + criticalTokens + skillTokens + modeTokens
@@ -76,10 +76,10 @@ case object ContextBreakdownTool extends Tool {
           totalTokens = total,
           currentMode = mode.name,
           sections = List(
-            ContextSectionBreakdown(ContextSectionKind.Frames,           frameTokens,    turn.frames.size),
+            ContextSectionBreakdown(ContextSectionKind.Frames, frameTokens, turn.frames.size),
             ContextSectionBreakdown(ContextSectionKind.CriticalMemories, criticalTokens, criticals.size),
-            ContextSectionBreakdown(ContextSectionKind.ActiveSkills,     skillTokens,    skills.size),
-            ContextSectionBreakdown(ContextSectionKind.ModeBlock,        modeTokens,     1)
+            ContextSectionBreakdown(ContextSectionKind.ActiveSkills, skillTokens, skills.size),
+            ContextSectionBreakdown(ContextSectionKind.ModeBlock, modeTokens, 1)
           ),
           note = "Tokens estimated via the char/4 heuristic; production budget uses the provider's tokenizer."
         )

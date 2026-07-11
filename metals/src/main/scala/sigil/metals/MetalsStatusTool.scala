@@ -17,9 +17,9 @@ case class MetalsStatusInput() extends ToolInput derives RW
  * chip per workspace.
  */
 final class MetalsStatusTool extends Tool {
-  type Input  = MetalsStatusInput
+  type Input = MetalsStatusInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[MetalsStatusInput]]
+  val inputRW = summon[RW[MetalsStatusInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("metals_status")
@@ -28,8 +28,16 @@ final class MetalsStatusTool extends Tool {
       |MCP endpoint URL, alive flag, and milliseconds since the last touch (so you can see which
       |sessions are about to be reaped by the idle sweeper).""".stripMargin
   override val keywords = Set(
-    "metals", "status", "health", "indexing", "ready",
-    "scala", "compile", "subprocess", "running", "lsp"
+    "metals",
+    "status",
+    "health",
+    "indexing",
+    "ready",
+    "scala",
+    "compile",
+    "subprocess",
+    "running",
+    "lsp"
   )
 
   import MetalsToolSupport.*
@@ -52,10 +60,10 @@ final class MetalsStatusTool extends Tool {
   }
 
   private def render(s: MetalsManager.WorkspaceStatus): String = {
-    val now    = System.currentTimeMillis()
+    val now = System.currentTimeMillis()
     val idleMs = now - s.lastUsedMs
-    val ep     = s.endpoint.getOrElse("(starting…)")
-    val alive  = if (s.alive) "alive" else "DEAD"
+    val ep = s.endpoint.getOrElse("(starting…)")
+    val alive = if (s.alive) "alive" else "DEAD"
     s"- ${s.workspaceKey}: ${s.workspace} → $ep [$alive, idle ${idleMs}ms]"
   }
 }

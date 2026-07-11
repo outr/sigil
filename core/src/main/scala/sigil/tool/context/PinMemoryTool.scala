@@ -25,9 +25,9 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * [[sigil.Sigil.validateCoreContextCap]].
  */
 case object PinMemoryTool extends Tool {
-  type Input  = PinMemoryInput
+  type Input = PinMemoryInput
   type Output = TextToolOutput
-  val inputRW: RW[PinMemoryInput]  = summon[RW[PinMemoryInput]]
+  val inputRW: RW[PinMemoryInput] = summon[RW[PinMemoryInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("pin_memory")
@@ -72,7 +72,9 @@ case object PinMemoryTool extends Tool {
         }
     }
 
-  /** Look for the target by `key` first, then by `_id` fallback. */
+  /**
+   * Look for the target by `key` first, then by `_id` fallback.
+   */
   private def findTarget(key: String,
                          spaces: Set[sigil.SpaceId],
                          context: ToolContext): Task[Option[ContextMemory]] =
@@ -82,7 +84,7 @@ case object PinMemoryTool extends Tool {
         case None =>
           context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
             case some @ Some(m) if spaces.contains(m.spaceId) => some
-            case _                                            => None
+            case _ => None
           }
       }
     }

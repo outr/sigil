@@ -37,28 +37,33 @@ import sigil.tool.ToolName
  * or "treat tool X as a sub-task-closed signal").
  */
 trait IntraTurnCompactor {
-  /** Decide whether to fire compression at this iteration boundary.
-    *
-    * @param turnEvents events accumulated since this user turn began
-    *                   (events after the most recent user-author Message)
-    * @param estimatedTokens heuristic estimate of the wire-token cost
-    *                        of those events, courtesy of the framework
-    *                        (so apps don't re-tokenize)
-    * @param threshold per-iteration cost threshold above which the
-    *                  framework considers folding worthwhile; derived
-    *                  from the model's `contextLength` and
-    *                  `inputTokensPerMinute` via
-    *                  [[sigil.Sigil.compressionTriggerTokens]] */
+
+  /**
+   * Decide whether to fire compression at this iteration boundary.
+   *
+   * @param turnEvents events accumulated since this user turn began
+   *                   (events after the most recent user-author Message)
+   * @param estimatedTokens heuristic estimate of the wire-token cost
+   *                        of those events, courtesy of the framework
+   *                        (so apps don't re-tokenize)
+   * @param threshold per-iteration cost threshold above which the
+   *                  framework considers folding worthwhile; derived
+   *                  from the model's `contextLength` and
+   *                  `inputTokensPerMinute` via
+   *                  [[sigil.Sigil.compressionTriggerTokens]]
+   */
   def shouldCompact(turnEvents: Vector[Event], estimatedTokens: Long, threshold: Long): Boolean
 
-  /** Pick a foldable subset of `turnEvents` — the framework will
-    * summarize their frames into one [[ContextSummary]] that subsumes
-    * the same ground in the next iteration's prompt. Return an empty
-    * list to skip compaction even when [[shouldCompact]] fired.
-    *
-    * Implementations should consult their [[CompactionInvariant]] set
-    * against `ctx` and drop only events not in the union of protected
-    * ids — never fold across an invariant. */
+  /**
+   * Pick a foldable subset of `turnEvents` — the framework will
+   * summarize their frames into one [[ContextSummary]] that subsumes
+   * the same ground in the next iteration's prompt. Return an empty
+   * list to skip compaction even when [[shouldCompact]] fired.
+   *
+   * Implementations should consult their [[CompactionInvariant]] set
+   * against `ctx` and drop only events not in the union of protected
+   * ids — never fold across an invariant.
+   */
   def selectFoldable(turnEvents: Vector[Event], ctx: TurnEventsContext): List[Id[Event]]
 }
 
@@ -85,24 +90,23 @@ trait IntraTurnCompactor {
  * Everything outside the protected union is foldable.
  */
 case class StandardIntraTurnCompactor(terminalTools: Set[ToolName] = Set.empty,
-                                       recentTailN: Int = 4,
-                                       invariants: List[CompactionInvariant] = CompactionInvariant.standard)
-    extends IntraTurnCompactor {
+                                      recentTailN: Int = 4,
+                                      invariants: List[CompactionInvariant] = CompactionInvariant.standard)
+  extends IntraTurnCompactor {
 
   private val tailInvariant = CompactionInvariant.RecentTail(recentTailN)
   private val effectiveInvariants = invariants :+ tailInvariant
 
-  override def shouldCompact(turnEvents: Vector[Event], estimatedTokens: Long, threshold: Long): Boolean = {
+  override def shouldCompact(turnEvents: Vector[Event], estimatedTokens: Long, threshold: Long): Boolean =
     if (turnEvents.size <= recentTailN) false
     else if (estimatedTokens >= threshold) true
     else turnEvents.lastOption match {
       case Some(m: Message) if m.role == MessageRole.Standard && m.content.nonEmpty => true
-      case Some(ti: ToolInvoke) if terminalTools.contains(ti.toolName)               => true
-      case _                                                                          => false
+      case Some(ti: ToolInvoke) if terminalTools.contains(ti.toolName) => true
+      case _ => false
     }
-  }
 
-  override def selectFoldable(turnEvents: Vector[Event], ctx: TurnEventsContext): List[Id[Event]] = {
+  override def selectFoldable(turnEvents: Vector[Event], ctx: TurnEventsContext): List[Id[Event]] =
     if (turnEvents.size <= recentTailN) Nil
     else {
       val protectedIds: Set[Id[Event]] =
@@ -112,5 +116,4 @@ case class StandardIntraTurnCompactor(terminalTools: Set[ToolName] = Set.empty,
         .map(_._id)
         .toList
     }
-  }
 }

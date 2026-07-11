@@ -18,4 +18,5 @@ case class BrowserTextSearchInput(htmlFileId: String,
                                   query: String,
                                   contextChars: Int = 120,
                                   maxResults: Int = 20,
-                                  caseSensitive: Boolean = false) extends ToolInput derives RW
+                                  caseSensitive: Boolean = false)
+  extends ToolInput derives RW

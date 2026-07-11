@@ -17,9 +17,9 @@ import sigil.tool.{DiscoveryRequest, Tool, ToolExample, ToolName, ToolResult}
  * next turn. Bug #66.
  */
 case object FindCapabilityTool extends Tool {
-  type Input  = FindCapabilityInput
+  type Input = FindCapabilityInput
   type Output = FindCapabilityOutput
-  val inputRW  = summon[RW[FindCapabilityInput]]
+  val inputRW = summon[RW[FindCapabilityInput]]
   val outputRW = summon[RW[FindCapabilityOutput]]
 
   val name = ToolName("find_capability")
@@ -64,9 +64,9 @@ case object FindCapabilityTool extends Tool {
       |roster, re-run this search to recover it — that's the intended recovery path.""".stripMargin
 
   override val examples: List[ToolExample] = List(
-    ToolExample("Send a message",          FindCapabilityInput("send slack channel message")),
-    ToolExample("Pause / wait / sleep",    FindCapabilityInput("sleep wait delay pause")),
-    ToolExample("Look up by concept",      FindCapabilityInput("billing invoice payment charge"))
+    ToolExample("Send a message", FindCapabilityInput("send slack channel message")),
+    ToolExample("Pause / wait / sleep", FindCapabilityInput("sleep wait delay pause")),
+    ToolExample("Look up by concept", FindCapabilityInput("billing invoice payment charge"))
   )
 
   // The discovery results are delivered into the caller's
@@ -116,35 +116,37 @@ case object FindCapabilityTool extends Tool {
         //     on every turn, not just the discovery turn.
         context.turn.recordDiscovery(request.keywords, toolNames)
         val cr = CapabilityResults(
-          matches        = matches,
-          participantId  = context.caller,
+          matches = matches,
+          participantId = context.caller,
           conversationId = context.conversation.id,
-          topicId        = context.conversation.currentTopicId,
-          query          = request.keywords,
-          state          = EventState.Complete,
-          origin         = Some(context.invokeId)
+          topicId = context.conversation.currentTopicId,
+          query = request.keywords,
+          state = EventState.Complete,
+          origin = Some(context.invokeId)
         )
         val hints = sigil.tool.discovery.TaskShapeHints.synthesize(request.keywords, matches)
         context.emit(cr).map { _ =>
           ToolResult.Success(FindCapabilityOutput(
-            query          = request.keywords,
-            matches        = matches,
+            query = request.keywords,
+            matches = matches,
             taskShapeHints = hints
           ))
         }
       }
     }
 
-  /** Sigil #347 — trim a score-sorted match list to what the running
-    * model's context window can hold with room to act: a rendered-bytes
-    * budget (~15% of the window at ~4 chars/token) and a count cap that
-    * scales with the window (3 on a tiny model, up to 25 on a large
-    * one). Lowest-scored matches are dropped first; at least one match
-    * always survives. The input must already be sorted by score desc. */
+  /**
+   * Sigil #347 — trim a score-sorted match list to what the running
+   * model's context window can hold with room to act: a rendered-bytes
+   * budget (~15% of the window at ~4 chars/token) and a count cap that
+   * scales with the window (3 on a tiny model, up to 25 on a large
+   * one). Lowest-scored matches are dropped first; at least one match
+   * always survives. The input must already be sorted by score desc.
+   */
   private[core] def sizeToModel(matches: List[sigil.tool.discovery.CapabilityMatch],
                                 contextLength: Long): List[sigil.tool.discovery.CapabilityMatch] = {
     val budgetChars = math.max(1500, (contextLength.toDouble * 4.0 * 0.15).toInt)
-    val maxCount    = math.max(3, math.min(25, (contextLength / 8000L).toInt))
+    val maxCount = math.max(3, math.min(25, (contextLength / 8000L).toInt))
     val out = scala.collection.mutable.ListBuffer.empty[sigil.tool.discovery.CapabilityMatch]
     var used = 0
     var stopped = false
@@ -159,9 +161,11 @@ case object FindCapabilityTool extends Tool {
     out.toList
   }
 
-  /** Normalise a keywords string into the lowercase, space-separated
-    * form `findTools` expects: drop punctuation, split snake_case /
-    * camelCase / kebab-case, collapse runs to single spaces. */
+  /**
+   * Normalise a keywords string into the lowercase, space-separated
+   * form `findTools` expects: drop punctuation, split snake_case /
+   * camelCase / kebab-case, collapse runs to single spaces.
+   */
   private[core] def normaliseKeywords(raw: String): String = {
     // Insert a space at every camelCase boundary BEFORE lowercasing,
     // so `getRandomDogImage` → `get Random Dog Image` → `get random dog image`.

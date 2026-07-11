@@ -22,9 +22,9 @@ import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, T
  * (possibly-updated) tool's invocation shape and JSON schema.
  */
 case object UpdateScriptToolTool extends Tool {
-  type Input  = UpdateScriptToolInput
+  type Input = UpdateScriptToolInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[UpdateScriptToolInput]]
+  val inputRW = summon[RW[UpdateScriptToolInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("update_script_tool")
@@ -48,10 +48,10 @@ case object UpdateScriptToolTool extends Tool {
             } else {
               val updated = existing.copy(
                 description = input.description.getOrElse(existing.description),
-                code        = input.code.getOrElse(existing.code),
-                parameters  = input.parameters.fold(existing.parameters)(JsonSchemaToDefinition.apply),
-                keywords    = input.keywords.getOrElse(existing.keywords),
-                modified    = Timestamp(Nowish())
+                code = input.code.getOrElse(existing.code),
+                parameters = input.parameters.fold(existing.parameters)(JsonSchemaToDefinition.apply),
+                keywords = input.keywords.getOrElse(existing.keywords),
+                modified = Timestamp(Nowish())
               )
               tx.upsert(updated).map { stored =>
                 val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))

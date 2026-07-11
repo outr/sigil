@@ -65,7 +65,11 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
             over = Some("hits"),
             itemVariable = Some("file"),
             bodyStepIds = List("act")),
-          WorkflowStepSpec(id = "act", kind = WorkflowStepKind.Job, tool = Some("read_file"), arguments = Some(obj("path" -> str("{{file}}"))))
+          WorkflowStepSpec(
+            id = "act",
+            kind = WorkflowStepKind.Job,
+            tool = Some("read_file"),
+            arguments = Some(obj("path" -> str("{{file}}"))))
         )
       )
     )

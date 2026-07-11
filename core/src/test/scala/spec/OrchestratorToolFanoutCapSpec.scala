@@ -18,14 +18,16 @@ import sigil.signal.{EventState, Signal}
 import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
 import spice.http.HttpRequest
 
-/** A trivial action tool taking a distinct arg, so N calls aren't collapsed
-  * by the identical-call dedupe. */
+/**
+ * A trivial action tool taking a distinct arg, so N calls aren't collapsed
+ * by the identical-call dedupe.
+ */
 case class ProbeInput(n: Int) extends ToolInput derives RW
 
 case object ProbeTool extends Tool {
-  type Input  = ProbeInput
+  type Input = ProbeInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ProbeInput]]
+  val inputRW = summon[RW[ProbeInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("probe")
   val description = "A trivial probe tool."
@@ -71,36 +73,36 @@ class OrchestratorToolFanoutCapSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val convId = Conversation.id(s"fanout-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = ConversationRequest(
-        conversationId     = convId,
-        model              = TestSigil.testModel(modelId),
-        instructions       = Instructions(),
-        turnInput          = TurnInput(conversationId = convId),
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
+        conversationId = convId,
+        model = TestSigil.testModel(modelId),
+        instructions = Instructions(),
+        turnInput = TurnInput(conversationId = convId),
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
         generationSettings = GenerationSettings(),
-        tools              = Vector(ProbeTool),
-        chain              = List(TestUser, TestAgent)
+        tools = Vector(ProbeTool),
+        chain = List(TestUser, TestAgent)
       )
       Orchestrator.process(TestSigil, new FanoutProvider, request, conv).toList.map { signals =>
         val invokes = signals.collect { case t: ToolInvoke => t }
         val executed = signals.collect {
           case d: sigil.signal.ToolDelta
-            if d.state.contains(EventState.Complete)
-              && d.output.exists(_.isInstanceOf[TextToolOutput]) => d
+              if d.state.contains(EventState.Complete)
+                && d.output.exists(_.isInstanceOf[TextToolOutput]) => d
         }
         val refusals = signals.collect {
           case m: Message
-            if m.role == MessageRole.Tool
-              && m.disposition.isInstanceOf[MessageDisposition.Failure]
-              && m.content.exists {
-                   case sigil.tool.model.ResponseContent.Text(t) => t.contains("more than")
-                   case _ => false
-                 } => m
+              if m.role == MessageRole.Tool
+                && m.disposition.isInstanceOf[MessageDisposition.Failure]
+                && m.content.exists {
+                  case sigil.tool.model.ResponseContent.Text(t) => t.contains("more than")
+                  case _ => false
+                } => m
         }
         withClue(s"cap=$cap total=$total invokes=${invokes.size} executed=${executed.size} refusals=${refusals.size}: ") {
-          invokes.size shouldBe total           // every call gets an invoke
-          executed.size shouldBe cap             // exactly the cap's worth run
-          refusals.size shouldBe (total - cap)   // the excess is refused with a note
+          invokes.size shouldBe total // every call gets an invoke
+          executed.size shouldBe cap // exactly the cap's worth run
+          refusals.size shouldBe (total - cap) // the excess is refused with a note
         }
       }
     }

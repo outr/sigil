@@ -68,8 +68,10 @@ final class BatchedEventScope[TX](val transaction: TX) {
    */
   def snapshot: List[Event] = inFlight.values.toList
 
-  /** Tail of the FIFO lock chain — each waiter swaps in its own release and awaits its
-    * predecessor. Initialized to a completed task so the first acquirer proceeds immediately. */
+  /**
+   * Tail of the FIFO lock chain — each waiter swaps in its own release and awaits its
+   * predecessor. Initialized to a completed task so the first acquirer proceeds immediately.
+   */
   private val lockTail: AtomicReference[Task[Unit]] = new AtomicReference(Task.unit)
 
   /**

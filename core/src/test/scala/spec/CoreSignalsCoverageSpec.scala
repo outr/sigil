@@ -27,11 +27,13 @@ import scala.jdk.CollectionConverters.*
  */
 class CoreSignalsCoverageSpec extends AnyWordSpec with Matchers {
 
-  /** Discover Notice subtypes by walking the compiled .class files
-    * for `sigil.signal.*`. Classpath scanning rather than reflection-
-    * via-package because Java reflection has no built-in "list
-    * classes in package" — `getResources("sigil/signal")` is the
-    * only portable handle. */
+  /**
+   * Discover Notice subtypes by walking the compiled .class files
+   * for `sigil.signal.*`. Classpath scanning rather than reflection-
+   * via-package because Java reflection has no built-in "list
+   * classes in package" — `getResources("sigil/signal")` is the
+   * only portable handle.
+   */
   private def discoveredNoticeClassNames: Set[String] = {
     val loader = getClass.getClassLoader
     val resources = loader.getResources("sigil/signal").asScala.toList
@@ -42,7 +44,8 @@ class CoreSignalsCoverageSpec extends AnyWordSpec with Matchers {
           val dir = Paths.get(uri)
           if (Files.isDirectory(dir)) {
             val it = Files.list(dir)
-            try it.iterator().asScala.toList finally it.close()
+            try it.iterator().asScala.toList
+            finally it.close()
           } else Nil
         case _ => Nil // jar entries — skip in dev test runs (.class files come from `file:` in sbt forks)
       }
@@ -50,29 +53,30 @@ class CoreSignalsCoverageSpec extends AnyWordSpec with Matchers {
     val classNames = files.iterator
       .filter(p => p.toString.endsWith(".class"))
       .map(_.getFileName.toString)
-      .filterNot(_.contains("$"))                    // skip inner / synthetic / companion
+      .filterNot(_.contains("$")) // skip inner / synthetic / companion
       .map(_.stripSuffix(".class"))
       .toList
     classNames.flatMap { simpleName =>
       val fqn = s"sigil.signal.$simpleName"
       scala.util.Try(loader.loadClass(fqn)).toOption.filter { cls =>
         classOf[Notice].isAssignableFrom(cls) &&
-          cls != classOf[Notice] &&
-          !cls.isInterface &&
-          !java.lang.reflect.Modifier.isAbstract(cls.getModifiers)
+        cls != classOf[Notice] &&
+        !cls.isInterface &&
+        !java.lang.reflect.Modifier.isAbstract(cls.getModifiers)
       }.map(_ => simpleName)
     }.toSet
   }
 
-  /** Registered class names in `CoreSignals.notices` — extracted via
-    * each RW's `Definition.className`. Returns the simple-name (final
-    * segment) for cross-reference against the classpath-derived set. */
-  private def registeredNoticeClassNames: Set[String] = {
+  /**
+   * Registered class names in `CoreSignals.notices` — extracted via
+   * each RW's `Definition.className`. Returns the simple-name (final
+   * segment) for cross-reference against the classpath-derived set.
+   */
+  private def registeredNoticeClassNames: Set[String] =
     CoreSignals.notices.iterator
       .flatMap(_.definition.className)
       .map(_.split('.').last.split('$').last)
       .toSet
-  }
 
   "CoreSignals.notices (sigil #297)" should {
 
@@ -99,8 +103,8 @@ class CoreSignalsCoverageSpec extends AnyWordSpec with Matchers {
 
       val notice = ParticipantProjectionUpdated(
         conversationId = lightdb.id.Id("conv-297"),
-        participantId  = TestUser,
-        projection     = sigil.conversation.ParticipantProjection.empty(TestUser, lightdb.id.Id("conv-297"))
+        participantId = TestUser,
+        projection = sigil.conversation.ParticipantProjection.empty(TestUser, lightdb.id.Id("conv-297"))
       )
       val signalRW = summon[RW[Signal]]
       val json = signalRW.read(notice)

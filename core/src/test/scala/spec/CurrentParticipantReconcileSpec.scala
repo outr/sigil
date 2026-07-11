@@ -36,9 +36,11 @@ class CurrentParticipantReconcileSpec extends AsyncWordSpec with AsyncTaskSpec w
   private val modelId: Id[Model] = Model.id("test", "reconcile")
   TestSigil.testModel(modelId)
 
-  /** Records the tool roster of the last call it received, then settles the
-    * turn with a plain assistant message. */
-  private final class RosterRecordingProvider(seen: AtomicReference[Vector[ToolName]]) extends Provider {
+  /**
+   * Records the tool roster of the last call it received, then settles the
+   * turn with a plain assistant message.
+   */
+  final private class RosterRecordingProvider(seen: AtomicReference[Vector[ToolName]]) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -54,16 +56,18 @@ class CurrentParticipantReconcileSpec extends AsyncWordSpec with AsyncTaskSpec w
     }
   }
 
-  /** A frozen agent whose roster is exactly `[lookup]` and whose policy
-    * suppresses `find_capability` (ActiveOnly) — so nothing but the snapshot
-    * roster could ever reach the wire. */
+  /**
+   * A frozen agent whose roster is exactly `[lookup]` and whose policy
+   * suppresses `find_capability` (ActiveOnly) — so nothing but the snapshot
+   * roster could ever reach the wire.
+   */
   private def agentWith(tools: List[ToolName]): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = tools,
-      tools              = ToolPolicy.ActiveOnly(tools),
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = tools,
+      tools = ToolPolicy.ActiveOnly(tools),
+      instructions = Instructions(),
       generationSettings = GenerationSettings())
 
   private def runTurnCapturingRoster(convId: Id[Conversation]): Task[Vector[ToolName]] = {
@@ -74,11 +78,11 @@ class CurrentParticipantReconcileSpec extends AsyncWordSpec with AsyncTaskSpec w
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("hello")),
-             state          = EventState.Complete))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("hello")),
+        state = EventState.Complete))
       _ <- TestSigil.awaitSettled(convId)
     } yield seen.get()
   }
@@ -89,7 +93,7 @@ class CurrentParticipantReconcileSpec extends AsyncWordSpec with AsyncTaskSpec w
       TestSigil.resetCurrentParticipant()
       val convId = Conversation.id(s"reconcile-identity-${rapid.Unique()}")
       runTurnCapturingRoster(convId).map { roster =>
-        roster should contain (LookupTool.name)
+        roster should contain(LookupTool.name)
         // The frozen roster never had `sleep`, and ActiveOnly suppresses
         // find_capability — so it can't appear without reconciliation.
         roster should not contain SleepTool.name
@@ -109,13 +113,13 @@ class CurrentParticipantReconcileSpec extends AsyncWordSpec with AsyncTaskSpec w
         TestSigil.withDB(_.conversations.transaction(_.get(convId))).map { stored =>
           TestSigil.resetCurrentParticipant()
           // The newly-added tool reached the wire on the existing conversation.
-          roster should contain (SleepTool.name)
-          roster should contain (LookupTool.name)
+          roster should contain(SleepTool.name)
+          roster should contain(LookupTool.name)
           // Per-turn reconciliation — the persisted participant is untouched.
           val persistedTools = stored.toList.flatMap(_.participants).collect {
             case a: AgentParticipant => a.toolNames
           }.flatten
-          persistedTools should contain (LookupTool.name)
+          persistedTools should contain(LookupTool.name)
           persistedTools should not contain SleepTool.name
         }
       }
@@ -124,15 +128,16 @@ class CurrentParticipantReconcileSpec extends AsyncWordSpec with AsyncTaskSpec w
     "ignore a reconciliation result whose id differs from the persisted seat" in {
       // An app must not swap the seat's identity; the framework keeps the
       // persisted agent when the returned id doesn't match.
-      TestSigil.setCurrentParticipant(_ => Task.pure(agentWith(List(SleepTool.name)) match {
-        case a: DefaultAgentParticipant => a.copy(id = StrictAgent)
-      }))
+      TestSigil.setCurrentParticipant(_ =>
+        Task.pure(agentWith(List(SleepTool.name)) match {
+          case a: DefaultAgentParticipant => a.copy(id = StrictAgent)
+        }))
       val convId = Conversation.id(s"reconcile-idmismatch-${rapid.Unique()}")
       runTurnCapturingRoster(convId).map { roster =>
         TestSigil.resetCurrentParticipant()
         // Fell back to the persisted `[lookup]` agent — the mismatched-id
         // result (which carried `sleep`) was rejected.
-        roster should contain (LookupTool.name)
+        roster should contain(LookupTool.name)
         roster should not contain SleepTool.name
       }
     }

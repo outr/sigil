@@ -22,24 +22,24 @@ class EditFileExpectedHashGuidanceSpec extends AnyWordSpec with Matchers {
   "edit_file's expectedHash guidance (#401)" should {
 
     "warn that expectedHash goes stale after the agent's own edits" in {
-      desc should include ("stale")
-      desc should (include ("your own") or include ("previous edit"))
+      desc should include("stale")
+      desc should (include("your own") or include("previous edit"))
     }
 
     "tell the agent to omit expectedHash for a multi-edit sweep" in {
-      desc should include ("omit")
-      desc should (include ("multiple edits") or include ("sweep"))
+      desc should include("omit")
+      desc should (include("multiple edits") or include("sweep"))
     }
 
     "frame expectedHash as a concurrent-writer guard, not the default safe path" in {
-      desc should (include ("concurrent") or include ("external writer"))
+      desc should (include("concurrent") or include("external writer"))
     }
 
     "carry a sweep-style example that does NOT pass expectedHash" in {
       val sweepExamples = editFile.examples.filter { ex =>
         val label = ex.description.toLowerCase
         (label.contains("sweep") || label.contains("multiple")) &&
-          ex.input.asInstanceOf[EditFileInput].expectedHash.isEmpty
+        ex.input.asInstanceOf[EditFileInput].expectedHash.isEmpty
       }
       sweepExamples should not be empty
     }
@@ -48,7 +48,7 @@ class EditFileExpectedHashGuidanceSpec extends AnyWordSpec with Matchers {
       val hashExamples = editFile.examples.filter(_.input.asInstanceOf[EditFileInput].expectedHash.isDefined)
       hashExamples should not be empty
       hashExamples.map(_.description.toLowerCase).foreach { label =>
-        label should (include ("concurrent") or include ("external"))
+        label should (include("concurrent") or include("external"))
       }
     }
   }

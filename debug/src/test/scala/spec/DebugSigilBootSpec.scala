@@ -14,10 +14,12 @@ import sigil.debug.{DebugCollections, DebugSigil}
  */
 class DebugSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Concrete DB carrying both core SigilDB collections and DebugCollections. */
+  /**
+   * Concrete DB carrying both core SigilDB collections and DebugCollections.
+   */
   private class DebugSigilTestDB(directory: Option[java.nio.file.Path],
-                                  storeManager: lightdb.store.CollectionManager,
-                                  appUpgrades: List[lightdb.upgrade.DatabaseUpgrade] = Nil)
+                                 storeManager: lightdb.store.CollectionManager,
+                                 appUpgrades: List[lightdb.upgrade.DatabaseUpgrade] = Nil)
     extends SigilDB(directory, storeManager, appUpgrades) with DebugCollections
 
   private def freshSigil(): DebugSigil = {

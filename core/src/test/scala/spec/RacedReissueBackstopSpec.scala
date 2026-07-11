@@ -51,27 +51,29 @@ class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     }
   }
 
-  /** Pre-seed the agent's projection with `racedPriors` RACED (resulted=false)
-    * identical invocations of `find_capability(keywords)`, scoped to this turn. */
+  /**
+   * Pre-seed the agent's projection with `racedPriors` RACED (resulted=false)
+   * identical invocations of `find_capability(keywords)`, scoped to this turn.
+   */
   private def requestWithRacedPriors(convId: Id[Conversation], racedPriors: Int, keywords: String): ConversationRequest = {
-    val hash    = ToolInputCanonicalizer.argsHash(FindCapabilityInput(keywords = keywords))
+    val hash = ToolInputCanonicalizer.argsHash(FindCapabilityInput(keywords = keywords))
     val preview = ToolInputCanonicalizer.argsPreview(FindCapabilityInput(keywords = keywords))
-    val now     = Timestamp(Nowish())
-    val priors  = (1 to racedPriors).toList.map(_ =>
+    val now = Timestamp(Nowish())
+    val priors = (1 to racedPriors).toList.map(_ =>
       RecentToolInvocation(FindCapabilityTool.name, hash, preview, invokedAt = now, resulted = false))
     val projection = ParticipantProjection.empty(TestAgent, convId).copy(recentToolInvocations = priors)
     ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId, participantProjections = Map(TestAgent -> projection)),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId, participantProjections = Map(TestAgent -> projection)),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = Vector(FindCapabilityTool),
-      chain              = List(TestUser, TestAgent),
+      tools = Vector(FindCapabilityTool),
+      chain = List(TestUser, TestAgent),
       // Scope the recent window to "this turn": priors stamped `now` count.
-      turnStartedAt      = Some(Timestamp(0L))
+      turnStartedAt = Some(Timestamp(0L))
     )
   }
 
@@ -87,7 +89,7 @@ class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val convId = Conversation.id(s"raced-redirect-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, new FindCapStubProvider("x"), requestWithRacedPriors(convId, 2, "x"), conv).toList
       } yield {
         val texts = redirectMessages(signals)
@@ -103,7 +105,7 @@ class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val convId = Conversation.id(s"raced-allow-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, new FindCapStubProvider("x"), requestWithRacedPriors(convId, 1, "x"), conv).toList
       } yield {
         // Below the bound: no redirect, and the tool actually dispatches.

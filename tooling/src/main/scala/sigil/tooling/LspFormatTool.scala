@@ -12,7 +12,8 @@ import java.nio.file.{Files, Paths, StandardOpenOption}
 case class LspFormatInput(languageId: String,
                           filePath: String,
                           tabSize: Int = 2,
-                          insertSpaces: Boolean = true) extends ToolInput derives RW
+                          insertSpaces: Boolean = true)
+  extends ToolInput derives RW
 
 /**
  * Format an entire file via the language server's formatting
@@ -24,11 +25,10 @@ case class LspFormatInput(languageId: String,
  * Rust, etc.). Servers that don't have formatting support return an
  * empty edit list — the file is unchanged.
  */
-final class LspFormatTool(val manager: LspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with LspToolSupport {
-  type Input  = LspFormatInput
+final class LspFormatTool(val manager: LspManager) extends Tool with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  type Input = LspFormatInput
   type Output = LspFormatResult
-  val inputRW  = summon[RW[LspFormatInput]]
+  val inputRW = summon[RW[LspFormatInput]]
   val outputRW = summon[RW[LspFormatResult]]
   val name = ToolName("lsp_format")
   val description =
@@ -41,10 +41,11 @@ final class LspFormatTool(val manager: LspManager) extends Tool
       |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin
   override val keywords = Set("lsp", "format", "prettify", "indent", "beautify", "reformat", "style")
 
-
   override def executeOutput(input: LspFormatInput, context: ToolContext): Task[LspFormatResult] =
     withOpenDocumentOrThrow[LspFormatResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       val opts = new FormattingOptions(input.tabSize, input.insertSpaces)
       session.formatting(uri, opts).flatMap { edits =>

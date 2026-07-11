@@ -18,4 +18,5 @@ case class LookupChunk(field: String,
                        offset: Int,
                        returned: Int,
                        total: Int,
-                       nextOffset: Option[Int]) derives RW
+                       nextOffset: Option[Int])
+  derives RW

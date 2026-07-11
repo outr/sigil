@@ -32,9 +32,9 @@ import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
  * resolution to control which spaces a chain can mutate.
  */
 case object SwitchModelTool extends Tool {
-  type Input  = SwitchModelInput
+  type Input = SwitchModelInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[SwitchModelInput]]
+  val inputRW = summon[RW[SwitchModelInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("switch_model")
   val description =
@@ -79,22 +79,24 @@ case object SwitchModelTool extends Tool {
             saved.filter(_.label.equalsIgnoreCase(rawQuery)) match {
               case Nil =>
                 fuzzyStrategyMatch(rawQuery, saved) match {
-                  case Nil          => createAdHocOrRefuse(rawQuery, ctx)
+                  case Nil => createAdHocOrRefuse(rawQuery, ctx)
                   case List(single) => assign(single, ctx)
-                  case multiple     => Task.pure(disambiguateStrategies(rawQuery, multiple))
+                  case multiple => Task.pure(disambiguateStrategies(rawQuery, multiple))
                 }
               case List(single) => assign(single, ctx)
-              case multiple     => Task.pure(disambiguateStrategies(rawQuery, multiple))
+              case multiple => Task.pure(disambiguateStrategies(rawQuery, multiple))
             }
         }
       }
   }
 
-  /** Resolve a non-strategy input to a registered model id via the
-    * shared [[ModelResolution]] chain (alias → exact id → bare-model
-    * lookup). Refuses with the resolver's guidance message when none
-    * matches — eliminates the prior silent-fallthrough that stamped
-    * phantom modelIds and routed to llama by accident. */
+  /**
+   * Resolve a non-strategy input to a registered model id via the
+   * shared [[ModelResolution]] chain (alias → exact id → bare-model
+   * lookup). Refuses with the resolver's guidance message when none
+   * matches — eliminates the prior silent-fallthrough that stamped
+   * phantom modelIds and routed to llama by accident.
+   */
   private def createAdHocOrRefuse(rawQuery: String,
                                   ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ModelResolution.resolve(rawQuery, ctx).flatMap {
@@ -102,9 +104,9 @@ case object SwitchModelTool extends Tool {
         Task.pure(ToolResult.failure(guidance))
       case ModelResolutionResult.Resolved(modelId, via) =>
         val noteVia = via match {
-          case ModelResolutionResult.Resolution.Alias     => s" (resolved alias '$rawQuery' → ${modelId.value})"
+          case ModelResolutionResult.Resolution.Alias => s" (resolved alias '$rawQuery' → ${modelId.value})"
           case ModelResolutionResult.Resolution.BareModel => s" (interpreted '$rawQuery' as ${modelId.value})"
-          case ModelResolutionResult.Resolution.ExactId   => ""
+          case ModelResolutionResult.Resolution.ExactId => ""
         }
         createAdHoc(modelId, noteVia, ctx)
     }
@@ -126,7 +128,7 @@ case object SwitchModelTool extends Tool {
     )
     for {
       saved <- ctx.sigil.saveProviderStrategy(record)
-      _     <- ctx.sigil.assignProviderStrategy(ctx.conversation.space, saved._id, ctx.chain)
+      _ <- ctx.sigil.assignProviderStrategy(ctx.conversation.space, saved._id, ctx.chain)
     } yield ok(s"Switching to '${modelId.value}'$noteVia. The next message will use that model.")
   }
 
@@ -141,7 +143,8 @@ case object SwitchModelTool extends Tool {
     val list = options.map(s => s"  - ${s.label} (id=${s._id.value})").mkString("\n")
     ToolResult.failure(
       s"Multiple strategies match '$query':\n$list",
-      hint = Some("Re-run `switch_model` with the exact label or id, or pair with `respond_options` to ask the user."))
+      hint = Some("Re-run `switch_model` with the exact label or id, or pair with `respond_options` to ask the user.")
+    )
   }
 
   private def ok(text: String): ToolResult[TextToolOutput] =

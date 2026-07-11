@@ -35,52 +35,65 @@ import scala.util.Success
 case class AnthropicProvider(apiKey: String,
                              sigilRef: Sigil,
                              baseUrl: URL = url"https://api.anthropic.com",
-                             /** Per-read idle timeout for the SSE stream. Fires
-                               * only when no bytes arrive for the duration —
-                               * slow-but-working streams keep going. */
+                             /**
+                              * Per-read idle timeout for the SSE stream. Fires
+                              * only when no bytes arrive for the duration —
+                              * slow-but-working streams keep going.
+                              */
                              tokenIdleTimeout: FiniteDuration = 120.seconds,
-                             /** How to send the credential. Anthropic's direct API
-                               * uses `x-api-key` + `anthropic-version`; vendor
-                               * mirrors that expose `/v1/messages` (DigitalOcean
-                               * Inference for `anthropic-claude-*` models) use the
-                               * OpenAI-style `Authorization: Bearer`. The wire
-                               * body is identical across both modes — only the
-                               * auth + version headers differ. */
+                             /**
+                              * How to send the credential. Anthropic's direct API
+                              * uses `x-api-key` + `anthropic-version`; vendor
+                              * mirrors that expose `/v1/messages` (DigitalOcean
+                              * Inference for `anthropic-claude-*` models) use the
+                              * OpenAI-style `Authorization: Bearer`. The wire
+                              * body is identical across both modes — only the
+                              * auth + version headers differ.
+                              */
                              authMode: AnthropicAuthMode = AnthropicAuthMode.XApiKey,
-                             /** Emit `cache_control` breakpoints on the stable
-                               * request prefix (tool roster, system prompt, the
-                               * stable span of conversation history) so Anthropic
-                               * serves the unchanged prefix from its prompt cache.
-                               * Default ON — every current Claude model supports
-                               * prompt caching. Set `false` to disable (e.g. for
-                               * a vendor mirror that doesn't honour the field). */
-                             promptCaching: Boolean = true) extends Provider {
+                             /**
+                              * Emit `cache_control` breakpoints on the stable
+                              * request prefix (tool roster, system prompt, the
+                              * stable span of conversation history) so Anthropic
+                              * serves the unchanged prefix from its prompt cache.
+                              * Default ON — every current Claude model supports
+                              * prompt caching. Set `false` to disable (e.g. for
+                              * a vendor mirror that doesn't honour the field).
+                              */
+                             promptCaching: Boolean = true)
+  extends Provider {
   override def `type`: ProviderType = ProviderType.Anthropic
   override val providerKey: String = Anthropic.Provider
   override protected def sigil: Sigil = sigilRef
 
-  /** Sigil #400 — Anthropic drops the per-edge image limit from 8000 px to
-    * 2000 px for "many-image" requests (more than ~20 images) and rejects the
-    * whole request if any image exceeds it. Tighten the wire-seam clamp
-    * accordingly so a tall screenshot that was legal at 8000 stops 400ing every
-    * request once enough images accumulate in history. */
+  /**
+   * Sigil #400 — Anthropic drops the per-edge image limit from 8000 px to
+   * 2000 px for "many-image" requests (more than ~20 images) and rejects the
+   * whole request if any image exceeds it. Tighten the wire-seam clamp
+   * accordingly so a tall screenshot that was legal at 8000 stops 400ing every
+   * request once enough images accumulate in history.
+   */
   override protected def imageEdgeCapFor(imageCount: Int): Int =
     if (imageCount > _root_.sigil.image.ImageDownscale.ManyImageThreshold) _root_.sigil.image.ImageDownscale.ManyImageMaxEdge
     else _root_.sigil.image.ImageDownscale.MaxEdge
 
-  /** Anthropic's tokenizer isn't published; cl100k_base is within
-    * ~10% of empirical Claude token counts for English prose, which
-    * is plenty of accuracy for budget headroom checks. The pre-flight
-    * gate errs conservative anyway, and overshoot only triggers
-    * extra (already-cheap) shedding stages. */
+  /**
+   * Anthropic's tokenizer isn't published; cl100k_base is within
+   * ~10% of empirical Claude token counts for English prose, which
+   * is plenty of accuracy for budget headroom checks. The pre-flight
+   * gate errs conservative anyway, and overshoot only triggers
+   * extra (already-cheap) shedding stages.
+   */
   override def tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
   // ---- batch (sigil #299) ----
 
-  /** Sigil #299 — Anthropic Message Batches API supports ~50% cost
-    * reduction on Sonnet / Haiku / Opus with a 24-hour SLA, accepting
-    * up to 100K requests inline per batch (no separate file upload
-    * required, unlike OpenAI). */
+  /**
+   * Sigil #299 — Anthropic Message Batches API supports ~50% cost
+   * reduction on Sonnet / Haiku / Opus with a 24-hour SLA, accepting
+   * up to 100K requests inline per batch (no separate file upload
+   * required, unlike OpenAI).
+   */
   override def batchSupported: Boolean = true
 
   override def batch(requests: Stream[OneShotRequest]): Stream[OneShotResponse] =
@@ -92,9 +105,9 @@ case class AnthropicProvider(apiKey: String,
     val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = "anthropic"))
     Stream.force(
       for {
-        raw         <- httpRequestFor(input)
+        raw <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLinesHandle()
+        handle <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLinesHandle()
         // Sigil #284 — sniff Anthropic's per-minute input-token ceiling
         // off the response headers and persist into the model record
         // so #283's pre-flight guard fires on the next call. Async
@@ -103,7 +116,7 @@ case class AnthropicProvider(apiKey: String,
         // completes first. On Netty (async header arrival) the
         // sniff completes asynchronously; on OkHttp / JVM-HTTP (sync)
         // it's effectively instant.
-        _           <- sniffRateLimitHeaders(input.modelId, handle.responseHeaders).start
+        _ <- sniffRateLimitHeaders(input.modelId, handle.responseHeaders).start
       } yield {
         // okhttp's per-read timeout already catches network stalls
         // (no bytes for the duration); slow-but-working streams keep
@@ -112,7 +125,10 @@ case class AnthropicProvider(apiKey: String,
         // mid-flight instead of draining it to completion.
         val lines = sigilRef.providerStreams.track(input, handle)
         _root_.sigil.provider.debug.StreamWireInterceptor.attach(
-          lines, sigilRef.wireInterceptor, intercepted, sigilRef.chunkLogger
+          lines,
+          sigilRef.wireInterceptor,
+          intercepted,
+          sigilRef.chunkLogger
         ) { line =>
           Stream.emits(parseLine(line, state))
         }
@@ -120,21 +136,23 @@ case class AnthropicProvider(apiKey: String,
     )
   }
 
-  /** Sigil #284 — read `anthropic-ratelimit-input-tokens-limit` from
-    * the upstream's response headers and, when it differs from the
-    * currently cached value, merge an updated [[Model]] record into
-    * [[sigil.cache.ModelRegistry]] carrying the fresh
-    * `inputTokensPerMinute`. The first successful call after boot
-    * populates the field; subsequent calls find #283's pre-flight
-    * rate-limit guard active and gate accordingly. Plan-tier upgrades
-    * picked up on the next response automatically.
-    *
-    * Best-effort and silent: a missing / malformed header just leaves
-    * the record alone (the cache.merge is a no-op). Errors handled
-    * locally — never propagated, since this runs as a fire-and-forget
-    * fiber alongside the streaming response. */
+  /**
+   * Sigil #284 — read `anthropic-ratelimit-input-tokens-limit` from
+   * the upstream's response headers and, when it differs from the
+   * currently cached value, merge an updated [[Model]] record into
+   * [[sigil.cache.ModelRegistry]] carrying the fresh
+   * `inputTokensPerMinute`. The first successful call after boot
+   * populates the field; subsequent calls find #283's pre-flight
+   * rate-limit guard active and gate accordingly. Plan-tier upgrades
+   * picked up on the next response automatically.
+   *
+   * Best-effort and silent: a missing / malformed header just leaves
+   * the record alone (the cache.merge is a no-op). Errors handled
+   * locally — never propagated, since this runs as a fire-and-forget
+   * fiber alongside the streaming response.
+   */
   def sniffRateLimitHeaders(modelId: lightdb.id.Id[_root_.sigil.db.Model],
-                                              headersTask: Task[spice.http.Headers]): Task[Unit] =
+                            headersTask: Task[spice.http.Headers]): Task[Unit] =
     headersTask.flatMap { headers =>
       val rawLimit = headers.map.get(Anthropic.RateLimitInputTokensHeader)
         .flatMap(_.headOption).map(_.trim).filter(_.nonEmpty)
@@ -148,9 +166,10 @@ case class AnthropicProvider(apiKey: String,
           } else Task.unit
         case None => Task.unit
       }
-    }.handleError(t => Task {
-      scribe.warn(s"AnthropicProvider: rate-limit header sniff failed for ${modelId.value}: ${t.getMessage}")
-    })
+    }.handleError(t =>
+      Task {
+        scribe.warn(s"AnthropicProvider: rate-limit header sniff failed for ${modelId.value}: ${t.getMessage}")
+      })
 
   override def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
     val bodyStr = JsonFormatter.Compact(buildBody(input))
@@ -177,30 +196,34 @@ case class AnthropicProvider(apiKey: String,
 
   // ---- request body ----
 
-  /** Whether `cache_control` breakpoints should be emitted for this
-    * call: the provider toggle is on AND the target model supports
-    * prompt caching. */
+  /**
+   * Whether `cache_control` breakpoints should be emitted for this
+   * call: the provider toggle is on AND the target model supports
+   * prompt caching.
+   */
   private def cachingEnabledFor(input: ProviderCall): Boolean =
     promptCaching && Anthropic.supportsPromptCaching(Anthropic.stripProviderPrefix(input.modelId.value))
 
-  /** Resolve the `max_tokens` wire value from the typed
-    * [[OutputTokenCap]] against the registered model's
-    * `topProvider.maxCompletionTokens`. Sigil #276 / #277.
-    *
-    * The registry is the only source — [[Sigil.runAgentTurn]] resolves
-    * the Model record before constructing the [[ProviderCall]] (cache
-    * miss throws [[sigil.provider.UnregisteredModelException]]), so by
-    * the time we're here the record exists. If the registered record's
-    * `maxCompletionTokens` is empty (incomplete catalog entry), throw —
-    * Anthropic's API requires `max_tokens` and a wire reject is more
-    * useful than a silent 4096 default.
-    *
-    *   - [[OutputTokenCap.ModelMax]] (the default): use the model's
-    *     registered `topProvider.maxCompletionTokens`.
-    *   - [[OutputTokenCap.Below]]: use the caller's deliberate cap.
-    *     If it's >= the registered max, clamp DOWN with a scribe
-    *     warning — a stale `Below(64000)` against a 32K-output model
-    *     degrades gracefully. */
+  /**
+   * Resolve the `max_tokens` wire value from the typed
+   * [[OutputTokenCap]] against the registered model's
+   * `topProvider.maxCompletionTokens`. Sigil #276 / #277.
+   *
+   * The registry is the only source — [[Sigil.runAgentTurn]] resolves
+   * the Model record before constructing the [[ProviderCall]] (cache
+   * miss throws [[sigil.provider.UnregisteredModelException]]), so by
+   * the time we're here the record exists. If the registered record's
+   * `maxCompletionTokens` is empty (incomplete catalog entry), throw —
+   * Anthropic's API requires `max_tokens` and a wire reject is more
+   * useful than a silent 4096 default.
+   *
+   *   - [[OutputTokenCap.ModelMax]] (the default): use the model's
+   *     registered `topProvider.maxCompletionTokens`.
+   *   - [[OutputTokenCap.Below]]: use the caller's deliberate cap.
+   *     If it's >= the registered max, clamp DOWN with a scribe
+   *     warning — a stale `Below(64000)` against a 32K-output model
+   *     degrades gracefully.
+   */
   private def resolveMaxTokens(model: _root_.sigil.db.Model,
                                cap: OutputTokenCap): Int = {
     val strippedModelName = Anthropic.stripProviderPrefix(model._id.value)
@@ -379,8 +402,9 @@ case class AnthropicProvider(apiKey: String,
     if (caching && rendered.size >= 2) {
       val lastIdx = rendered.size - 1
       def snap(step: Int): Int = math.max(0, ((lastIdx - 1) / step) * step)
-      val marks = Set(snap(AnthropicProvider.HistoryCacheStepNear),
-                      snap(AnthropicProvider.HistoryCacheStepFar)).filter(_ < lastIdx)
+      val marks = Set(
+        snap(AnthropicProvider.HistoryCacheStepNear),
+        snap(AnthropicProvider.HistoryCacheStepFar)).filter(_ < lastIdx)
       rendered.zipWithIndex.map {
         case (msg, idx) if marks.contains(idx) =>
           AnthropicProvider.withHistoryCacheControl(msg)
@@ -468,8 +492,8 @@ case class AnthropicProvider(apiKey: String,
       // `ToolCallAccumulator` for every provider) to re-check the
       // parsed args against those constraints post-decode.
       Vector[(String, Json)](
-        "name"         -> str(s.name.value),
-        "description"  -> str(ToolDescriptionRenderer.render(t, input.currentMode, sigil)),
+        "name" -> str(s.name.value),
+        "description" -> str(ToolDescriptionRenderer.render(t, input.currentMode, sigil)),
         "input_schema" -> StrictSchema.forAnthropic(DefinitionToSchema(s.input))
       )
     }
@@ -573,9 +597,9 @@ case class AnthropicProvider(apiKey: String,
         stopReason match {
           case Some(s) =>
             val mapped = s match {
-              case "end_turn"    => StopReason.Complete
-              case "max_tokens"  => StopReason.MaxTokens
-              case "tool_use"    => StopReason.ToolCall
+              case "end_turn" => StopReason.Complete
+              case "max_tokens" => StopReason.MaxTokens
+              case "tool_use" => StopReason.ToolCall
               case "stop_sequence" => StopReason.Complete
               case other =>
                 scribe.warn(s"Unmapped stop_reason from Anthropic: '$other' — treating as Complete")
@@ -601,45 +625,51 @@ case class AnthropicProvider(apiKey: String,
         // runAgentLoop's handler (Bug #6) surfaces a user-visible
         // Failure Message instead of leaving the chat with the
         // "(agent completed without a reply)" placeholder.
-        val err  = json.get("error").getOrElse(Obj.empty)
-        val msg  = err.get("message").map(_.asString).getOrElse("unknown error")
-        val typ  = err.get("type").map(_.asString).getOrElse("error")
+        val err = json.get("error").getOrElse(Obj.empty)
+        val msg = err.get("message").map(_.asString).getOrElse("unknown error")
+        val typ = err.get("type").map(_.asString).getOrElse("error")
         val metadata = ProviderErrorMetadata(errorType = Some(typ))
         throw new ProviderStreamException(
-          providerKey = Anthropic.Provider, code = 0, typ = typ, message_ = msg,
-          status = None, errorMetadata = Some(metadata)
+          providerKey = Anthropic.Provider,
+          code = 0,
+          typ = typ,
+          message_ = msg,
+          status = None,
+          errorMetadata = Some(metadata)
         )
 
       case _ => Vector.empty
     }
   }
 
-  /** Sigil #290 — Anthropic's three input-token fields are
-    * **additive billing buckets**, not subsets of one total:
-    *
-    *   - `input_tokens`               — fresh prompt tokens
-    *   - `cache_creation_input_tokens` — tokens written into the
-    *     prompt cache on this call (billed at a small premium)
-    *   - `cache_read_input_tokens`    — tokens served from a cache
-    *     hit (billed at a steep discount)
-    *
-    * Per the framework contract on [[TokenUsage]] ("cache fields are
-    * subsets of `promptTokens`"), `promptTokens` here is the SUM of
-    * all three so cost math against the standard prompt rate
-    * accounts for every billed input token. The cache fields stay
-    * populated so the cost formula can apply per-cache rates over
-    * the same totals.
-    *
-    * Pre-fix, this method read `input_tokens` as the total and
-    * silently dropped the cache buckets — for a long agent loop
-    * with a 50K-token cached prefix, ~99% of input billing
-    * vanished. */
+  /**
+   * Sigil #290 — Anthropic's three input-token fields are
+   * **additive billing buckets**, not subsets of one total:
+   *
+   *   - `input_tokens`               — fresh prompt tokens
+   *   - `cache_creation_input_tokens` — tokens written into the
+   *     prompt cache on this call (billed at a small premium)
+   *   - `cache_read_input_tokens`    — tokens served from a cache
+   *     hit (billed at a steep discount)
+   *
+   * Per the framework contract on [[TokenUsage]] ("cache fields are
+   * subsets of `promptTokens`"), `promptTokens` here is the SUM of
+   * all three so cost math against the standard prompt rate
+   * accounts for every billed input token. The cache fields stay
+   * populated so the cost formula can apply per-cache rates over
+   * the same totals.
+   *
+   * Pre-fix, this method read `input_tokens` as the total and
+   * silently dropped the cache buckets — for a long agent loop
+   * with a 50K-token cached prefix, ~99% of input billing
+   * vanished.
+   */
   private def parseUsage(json: Json): TokenUsage = {
     val base = TokenUsage.fromJson(json, "input_tokens", "output_tokens", cacheKeys = CacheKeys.Anthropic)
     val totalPrompt = base.promptTokens + base.cacheCreationTokens + base.cacheReadTokens
     base.copy(
       promptTokens = totalPrompt,
-      totalTokens  = totalPrompt + base.completionTokens
+      totalTokens = totalPrompt + base.completionTokens
     )
   }
 
@@ -650,7 +680,7 @@ case class AnthropicProvider(apiKey: String,
 
     def flushDone(): Vector[ProviderEvent] = pendingDone match {
       case Some(sr) => pendingDone = None; Vector(ProviderEvent.Done(sr))
-      case None     => Vector.empty
+      case None => Vector.empty
     }
   }
 }
@@ -658,37 +688,45 @@ case class AnthropicProvider(apiKey: String,
 object AnthropicProvider {
   import fabric.*
 
-  /** Construct an AnthropicProvider. Models are read from
-    * [[sigil.cache.ModelRegistry]] at access time. */
+  /**
+   * Construct an AnthropicProvider. Models are read from
+   * [[sigil.cache.ModelRegistry]] at access time.
+   */
   def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://api.anthropic.com"): Task[AnthropicProvider] =
     Task.pure(AnthropicProvider(apiKey, sigil, baseUrl))
 
-  /** History cache breakpoints are snapped to these message-step boundaries
-    * so a marker stays on the same (immutable) historical message for a run of
-    * turns instead of advancing every turn — see [[renderMessages]] for why
-    * that matters. NEAR keeps the recent span cached (small fresh tail); FAR
-    * anchors the deep history so a near-advance only re-creates the span
-    * between them. Tunable against the wire log's cache_create:cache_read
-    * ratio (target: reads ≫ creates). */
+  /**
+   * History cache breakpoints are snapped to these message-step boundaries
+   * so a marker stays on the same (immutable) historical message for a run of
+   * turns instead of advancing every turn — see [[renderMessages]] for why
+   * that matters. NEAR keeps the recent span cached (small fresh tail); FAR
+   * anchors the deep history so a near-advance only re-creates the span
+   * between them. Tunable against the wire log's cache_create:cache_read
+   * ratio (target: reads ≫ creates).
+   */
   private[anthropic] val HistoryCacheStepNear = 6
-  private[anthropic] val HistoryCacheStepFar  = 40
+  private[anthropic] val HistoryCacheStepFar = 40
 
-  /** A `cache_control` value. `extendedTtl = true` requests the
-    * 1-hour cache lifetime. Used for every breakpoint — the tool roster,
-    * the system prompt, AND the (now stably-snapped) history breakpoints.
-    * The history markers used to turn over every turn and rode the default
-    * 5-minute cache; now that they're pinned to step boundaries they're as
-    * stable as the rest, so the longer TTL keeps the prefix warm across
-    * interactive gaps instead of forcing a re-create after five minutes. */
+  /**
+   * A `cache_control` value. `extendedTtl = true` requests the
+   * 1-hour cache lifetime. Used for every breakpoint — the tool roster,
+   * the system prompt, AND the (now stably-snapped) history breakpoints.
+   * The history markers used to turn over every turn and rode the default
+   * 5-minute cache; now that they're pinned to step boundaries they're as
+   * stable as the rest, so the longer TTL keeps the prefix warm across
+   * interactive gaps instead of forcing a re-create after five minutes.
+   */
   private[anthropic] def cacheControl(extendedTtl: Boolean): Json =
     if (extendedTtl) obj("type" -> str("ephemeral"), "ttl" -> str("1h"))
     else obj("type" -> str("ephemeral"))
 
-  /** Attach a default-TTL `cache_control` to the last content block of
-    * a rendered message. The message's `content` is always an array of
-    * blocks in this provider's encoding; the breakpoint rides the
-    * trailing block so the cached segment extends through it. A
-    * message with an empty content array is returned unchanged. */
+  /**
+   * Attach a default-TTL `cache_control` to the last content block of
+   * a rendered message. The message's `content` is always an array of
+   * blocks in this provider's encoding; the breakpoint rides the
+   * trailing block so the cached segment extends through it. A
+   * message with an empty content array is returned unchanged.
+   */
   private[anthropic] def withHistoryCacheControl(message: Json): Json = {
     val fields = message.asObj.value
     fields.get("content").map(_.asVector) match {

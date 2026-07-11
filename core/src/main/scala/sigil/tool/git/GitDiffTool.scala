@@ -12,11 +12,10 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * Returns the unified-diff text by default; pass `format = "hunks"`
  * for a structured [[GitDiffOutput.Hunks]] payload.
  */
-final class GitDiffTool(context: FileSystemContext)
-  extends Tool with sigil.tool.ReadOnlyExternalTool {
-  type Input  = GitDiffInput
+final class GitDiffTool(context: FileSystemContext) extends Tool with sigil.tool.ReadOnlyExternalTool {
+  type Input = GitDiffInput
   type Output = GitDiffOutput
-  val inputRW  = summon[RW[GitDiffInput]]
+  val inputRW = summon[RW[GitDiffInput]]
   val outputRW = summon[RW[GitDiffOutput]]
   val name = ToolName("git_diff")
   val description =
@@ -33,13 +32,13 @@ final class GitDiffTool(context: FileSystemContext)
   override def executeOutput(input: GitDiffInput, ctx: ToolContext): Task[GitDiffOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val stagedFlag = if (input.staged) " --staged" else ""
-      val pathArg    = input.path.fold("")(p => s" -- $p")
-      val cmd        = s"git diff$stagedFlag$pathArg"
+      val pathArg = input.path.fold("")(p => s" -- $p")
+      val cmd = s"git diff$stagedFlag$pathArg"
       context.executeCommand(cmd, dir).map { r =>
         if (r.exitCode != 0) GitDiffOutput.Failed(r.stderr, r.exitCode)
         else input.format match {
           case GitDiffFormat.Hunks => GitDiffOutput.Hunks(GitOps.parseDiff(r.stdout))
-          case GitDiffFormat.Text  => GitDiffOutput.Text(r.stdout)
+          case GitDiffFormat.Text => GitDiffOutput.Text(r.stdout)
         }
       }
     }

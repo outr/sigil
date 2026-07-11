@@ -19,7 +19,9 @@ case class InMemoryGeocoder(lookup: Point => Option[GeocodingResult]) extends Ge
     lookup(point)
   }
 
-  /** Number of times `geocode` has been invoked on this instance. */
+  /**
+   * Number of times `geocode` has been invoked on this instance.
+   */
   def invocationCount: Int = counter.get()
 }
 

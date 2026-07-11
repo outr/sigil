@@ -41,9 +41,9 @@ object JsonSchemaToDefinition {
 
   private def toDefinition(schema: Json): Definition = {
     val description = schema.get("description").map(_.asString)
-    val format      = schema.get("format").map(_.asString).map(parseFormat).getOrElse(Format.Raw)
+    val format = schema.get("format").map(_.asString).map(parseFormat).getOrElse(Format.Raw)
     val constraints = parseConstraints(schema)
-    val defType     = toDefType(schema)
+    val defType = toDefType(schema)
     Definition(defType = defType, description = description, format = format, constraints = constraints)
   }
 
@@ -52,7 +52,7 @@ object JsonSchemaToDefinition {
       // Composition keywords take precedence over `type`.
       schema.get("oneOf").orElse(schema.get("anyOf")) match {
         case Some(arr: Arr) => return buildPoly(arr.value.toList)
-        case _              => ()
+        case _ => ()
       }
       schema.get("allOf") match {
         case Some(arr: Arr) if arr.value.nonEmpty =>
@@ -61,12 +61,12 @@ object JsonSchemaToDefinition {
         case _ => ()
       }
       schema.get("type").map(_.asString) match {
-        case Some("object")  => objectType(schema)
-        case Some("string")  => DefType.Str
+        case Some("object") => objectType(schema)
+        case Some("string") => DefType.Str
         case Some("integer") => DefType.Int
-        case Some("number")  => DefType.Dec
+        case Some("number") => DefType.Dec
         case Some("boolean") => DefType.Bool
-        case Some("null")    => DefType.Null
+        case Some("null") => DefType.Null
         case Some("array") =>
           val items = schema.get("items").getOrElse(Obj.empty)
           DefType.Arr(toDefinition(items))
@@ -111,38 +111,38 @@ object JsonSchemaToDefinition {
     def asInt(j: Json): Option[Int] = j match {
       case n: NumInt => Some(n.value.toInt)
       case n: NumDec => Some(n.value.toInt)
-      case _         => None
+      case _ => None
     }
     def asDouble(j: Json): Option[Double] = j match {
       case n: NumInt => Some(n.value.toDouble)
       case n: NumDec => Some(n.value.toDouble)
-      case _         => None
+      case _ => None
     }
     Constraints(
-      pattern          = schema.get("pattern").collect { case Str(s, _) => s },
-      minLength        = schema.get("minLength").flatMap(asInt),
-      maxLength        = schema.get("maxLength").flatMap(asInt),
-      minimum          = schema.get("minimum").flatMap(asDouble),
-      maximum          = schema.get("maximum").flatMap(asDouble),
+      pattern = schema.get("pattern").collect { case Str(s, _) => s },
+      minLength = schema.get("minLength").flatMap(asInt),
+      maxLength = schema.get("maxLength").flatMap(asInt),
+      minimum = schema.get("minimum").flatMap(asDouble),
+      maximum = schema.get("maximum").flatMap(asDouble),
       exclusiveMinimum = schema.get("exclusiveMinimum").flatMap(asDouble),
       exclusiveMaximum = schema.get("exclusiveMaximum").flatMap(asDouble),
-      multipleOf       = schema.get("multipleOf").flatMap(asDouble),
-      minItems         = schema.get("minItems").flatMap(asInt),
-      maxItems         = schema.get("maxItems").flatMap(asInt),
-      uniqueItems      = schema.get("uniqueItems").collect { case Bool(b, _) => b }
+      multipleOf = schema.get("multipleOf").flatMap(asDouble),
+      minItems = schema.get("minItems").flatMap(asInt),
+      maxItems = schema.get("maxItems").flatMap(asInt),
+      uniqueItems = schema.get("uniqueItems").collect { case Bool(b, _) => b }
     )
   }
 
   private def parseFormat(name: String): Format = name match {
     case "date-time" => Format.DateTime
-    case "date"      => Format.Date
-    case "time"      => Format.Time
-    case "email"     => Format.Email
-    case "uri"       => Format.Uri
-    case "uuid"      => Format.Uuid
-    case "hostname"  => Format.Hostname
-    case "ipv4"      => Format.Ipv4
-    case "ipv6"      => Format.Ipv6
-    case _           => Format.Raw
+    case "date" => Format.Date
+    case "time" => Format.Time
+    case "email" => Format.Email
+    case "uri" => Format.Uri
+    case "uuid" => Format.Uuid
+    case "hostname" => Format.Hostname
+    case "ipv4" => Format.Ipv4
+    case "ipv6" => Format.Ipv6
+    case _ => Format.Raw
   }
 }

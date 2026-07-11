@@ -17,4 +17,5 @@ import sigil.signal.Notice
  */
 case class RequestSecretSet(secretId: Id[SecretRecord],
                             value: String,
-                            kind: SecretKind) extends Notice derives RW
+                            kind: SecretKind)
+  extends Notice derives RW

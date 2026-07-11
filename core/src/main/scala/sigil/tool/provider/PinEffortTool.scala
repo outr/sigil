@@ -26,9 +26,9 @@ case class PinEffortInput(level: String) extends ToolInput derives RW
  * `staticTools` when they want the surface exposed.
  */
 case object PinEffortTool extends Tool {
-  type Input  = PinEffortInput
+  type Input = PinEffortInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[PinEffortInput]]
+  val inputRW = summon[RW[PinEffortInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("pin_effort")
   val description =
@@ -45,19 +45,30 @@ case object PinEffortTool extends Tool {
     ToolExample("Keep it quick", PinEffortInput("low"))
   )
   override val keywords = Set(
-    "pin", "lock", "force", "always", "effort", "reasoning", "thinking",
-    "think", "depth", "deliberation", "budget", "harder", "quality"
+    "pin",
+    "lock",
+    "force",
+    "always",
+    "effort",
+    "reasoning",
+    "thinking",
+    "think",
+    "depth",
+    "deliberation",
+    "budget",
+    "harder",
+    "quality"
   )
 
   override def executeResult(input: PinEffortInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val normalized = input.level.trim.toLowerCase.replaceAll("\\s+|-|_", "")
     val parsed: Option[Effort] = normalized match {
-      case "low" | "fast" | "quick"            => Some(Effort.Low)
+      case "low" | "fast" | "quick" => Some(Effort.Low)
       case "medium" | "med" | "mid" | "default" => Some(Effort.Medium)
-      case "high"                              => Some(Effort.High)
+      case "high" => Some(Effort.High)
       case "max" | "maximum" | "highest" | "full" => Some(Effort.Max)
-      case _                                   => None
+      case _ => None
     }
     parsed match {
       case None =>
@@ -67,7 +78,7 @@ case object PinEffortTool extends Tool {
         ))
       case Some(effort) =>
         ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
-          case None       => Task.pure(None)
+          case None => Task.pure(None)
           case Some(conv) => Task.pure(Some(conv.copy(pinnedEffort = Some(effort), modified = Timestamp())))
         })).map {
           case None =>
@@ -75,7 +86,7 @@ case object PinEffortTool extends Tool {
               "Could not pin effort: conversation row not found. Try again from a live session.")
           case Some(_) =>
             ToolResult.Success(TextToolOutput(
-              s"Pinned reasoning effort to `${effort}`. The agent's turns in this conversation will " +
+              s"Pinned reasoning effort to `$effort`. The agent's turns in this conversation will " +
                 "apply that effort until `unpin_effort` is called."))
         }
     }

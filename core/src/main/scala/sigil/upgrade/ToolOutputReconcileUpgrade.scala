@@ -50,7 +50,7 @@ class ToolOutputReconcileUpgrade extends DatabaseUpgrade {
 
   override def upgrade(ldb: LightDB): Task[Unit] = ldb match {
     case db: SigilDB => reconcile(db)
-    case _           => Task.unit  // not our DB shape, skip
+    case _ => Task.unit // not our DB shape, skip
   }
 
   private def reconcile(db: SigilDB): Task[Unit] =
@@ -71,37 +71,45 @@ class ToolOutputReconcileUpgrade extends DatabaseUpgrade {
 
 object ToolOutputReconcileUpgrade {
 
-  /** Whether the row's top-level Event discriminator is `ToolInvoke`
-    * (the only event carrying a polymorphic `output`). Public for
-    * unit-test access. */
+  /**
+   * Whether the row's top-level Event discriminator is `ToolInvoke`
+   * (the only event carrying a polymorphic `output`). Public for
+   * unit-test access.
+   */
   def isToolInvoke(json: Json): Boolean =
     json.get("type").map(_.asString).contains("ToolInvoke")
 
-  /** Whether the row's `output` block can no longer be decoded as any
-    * registered [[ToolOutput]] — i.e. its discriminator names a
-    * renamed/removed subtype. Uses fabric's own poly dispatch (not
-    * name matching) so class-chain / legacy-leaf / alias forms resolve
-    * exactly as a real read would. Public for unit-test access. */
+  /**
+   * Whether the row's `output` block can no longer be decoded as any
+   * registered [[ToolOutput]] — i.e. its discriminator names a
+   * renamed/removed subtype. Uses fabric's own poly dispatch (not
+   * name matching) so class-chain / legacy-leaf / alias forms resolve
+   * exactly as a real read would. Public for unit-test access.
+   */
   def outputIsOrphan(json: Json): Boolean =
     json.get("output").exists { out =>
       scala.util.Try(out.as[ToolOutput](using summon[RW[ToolOutput]])).isFailure
     }
 
-  /** Whether the row's `input` block can no longer be decoded as any
-    * registered [[ToolInput]] (sigil #384). `input` is `Option[ToolInput]`
-    * so an absent / `Null` field is not an orphan — only a present block
-    * whose discriminator names a renamed/removed subtype. Public for
-    * unit-test access. */
+  /**
+   * Whether the row's `input` block can no longer be decoded as any
+   * registered [[ToolInput]] (sigil #384). `input` is `Option[ToolInput]`
+   * so an absent / `Null` field is not an orphan — only a present block
+   * whose discriminator names a renamed/removed subtype. Public for
+   * unit-test access.
+   */
   def inputIsOrphan(json: Json): Boolean =
     json.get("input").exists {
       case Null => false
-      case in   => scala.util.Try(in.as[ToolInput](using summon[RW[ToolInput]])).isFailure
+      case in => scala.util.Try(in.as[ToolInput](using summon[RW[ToolInput]])).isFailure
     }
 
-  /** Replace the `output` block with the [[sigil.tool.UnknownToolOutput]]
-    * shape, preserving the original block verbatim in `raw` and its
-    * discriminator in `typeTag`. Returns `None` when there is no
-    * `output` field. Pure JSON → JSON. Public for unit-test access. */
+  /**
+   * Replace the `output` block with the [[sigil.tool.UnknownToolOutput]]
+   * shape, preserving the original block verbatim in `raw` and its
+   * discriminator in `typeTag`. Returns `None` when there is no
+   * `output` field. Pure JSON → JSON. Public for unit-test access.
+   */
   def rewriteOutput(json: Json): Option[Json] =
     json.get("output").map { original =>
       val typeTag = original.get("type").map(_.asString).getOrElse("<unknown>")
@@ -109,11 +117,13 @@ object ToolOutputReconcileUpgrade {
       Obj(json.asMap.updated("output", replacement))
     }
 
-  /** Replace the `input` block with the [[sigil.tool.UnknownToolInput]]
-    * shape, preserving the original block verbatim in `raw` and its
-    * discriminator in `typeTag` (sigil #384). Returns `None` when there
-    * is no present `input` block. Pure JSON → JSON. Public for unit-test
-    * access. */
+  /**
+   * Replace the `input` block with the [[sigil.tool.UnknownToolInput]]
+   * shape, preserving the original block verbatim in `raw` and its
+   * discriminator in `typeTag` (sigil #384). Returns `None` when there
+   * is no present `input` block. Pure JSON → JSON. Public for unit-test
+   * access.
+   */
   def rewriteInput(json: Json): Option[Json] =
     json.get("input").collect {
       case original if original != Null =>
@@ -122,13 +132,15 @@ object ToolOutputReconcileUpgrade {
         Obj(json.asMap.updated("input", replacement))
     }
 
-  /** `Some(repaired Event)` only when the row is a `ToolInvoke` whose
-    * `input` and/or `output` is a genuine orphan AND the row decodes once
-    * the orphaned block(s) are rewritten. None when the row isn't a
-    * `ToolInvoke`, both poly fields are still valid, or it can't be made
-    * decodable this way. Two-tier: field rewrite alone, then also nulling
-    * the regenerable `contextFrame` projection in case its cached copy
-    * embeds the same dead discriminator. */
+  /**
+   * `Some(repaired Event)` only when the row is a `ToolInvoke` whose
+   * `input` and/or `output` is a genuine orphan AND the row decodes once
+   * the orphaned block(s) are rewritten. None when the row isn't a
+   * `ToolInvoke`, both poly fields are still valid, or it can't be made
+   * decodable this way. Two-tier: field rewrite alone, then also nulling
+   * the regenerable `contextFrame` projection in case its cached copy
+   * embeds the same dead discriminator.
+   */
   def repairedEvent(json: Json): Option[Event] = {
     if (!isToolInvoke(json)) return None
     val outOrphan = outputIsOrphan(json)
@@ -153,8 +165,10 @@ object ToolOutputReconcileUpgrade {
     }
   }
 
-  /** Recover an event row's id from its raw JSON for diagnostic
-    * logging. Mirrors lightdb's stored `_id` field. */
+  /**
+   * Recover an event row's id from its raw JSON for diagnostic
+   * logging. Mirrors lightdb's stored `_id` field.
+   */
   def extractId(json: Json): Option[String] =
     json.get("_id").map(_.asString)
 }

@@ -13,9 +13,9 @@ import scala.concurrent.duration.DurationLong
  * confirmation that the pause completed.
  */
 case object SleepTool extends Tool {
-  type Input  = SleepInput
+  type Input = SleepInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[SleepInput]]
+  val inputRW = summon[RW[SleepInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("sleep")
   val description =

@@ -14,4 +14,5 @@ import sigil.tool.ToolInput
 case class ProcessSpawnInput(command: String,
                              workingDir: Option[String] = None,
                              env: Option[Map[String, String]] = None,
-                             stdin: Option[String] = None) extends ToolInput derives RW
+                             stdin: Option[String] = None)
+  extends ToolInput derives RW

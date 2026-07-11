@@ -11,7 +11,8 @@ case class AddMcpServerInput(name: String,
                              url: Option[String] = None,
                              prefix: Option[String] = None,
                              headers: Map[String, String] = Map.empty,
-                             roots: List[String] = Nil) extends ToolInput derives RW
+                             roots: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Register an MCP server. `command` (with optional `args`) selects
@@ -20,9 +21,9 @@ case class AddMcpServerInput(name: String,
  * is available across restarts; first call lazily connects.
  */
 final class AddMcpServerTool(manager: McpManager) extends Tool {
-  type Input  = AddMcpServerInput
+  type Input = AddMcpServerInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[AddMcpServerInput]]
+  val inputRW = summon[RW[AddMcpServerInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("add_mcp_server")
@@ -53,7 +54,7 @@ final class AddMcpServerTool(manager: McpManager) extends Tool {
       case (_, Some(urlStr)) =>
         URL.get(urlStr, tldValidation = TLDValidation.Off) match {
           case Right(u) => Right(McpTransport.HttpSse(u, input.headers))
-          case Left(e)  => Left(s"Invalid url '$urlStr': $e")
+          case Left(e) => Left(s"Invalid url '$urlStr': $e")
         }
       case _ => Left("Either `command` or `url` must be provided.")
     }

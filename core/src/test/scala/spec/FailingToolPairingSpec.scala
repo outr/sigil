@@ -37,12 +37,14 @@ class FailingToolPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   case class ErpInput() extends ToolInput derives RW
   ToolInput.register(RW.static(ErpInput()))
 
-  /** A tool that returns a recoverable `ToolResult.failure` (never throws,
-    * never returns empty) — mirrors Widge's `ErpToolSupport.execute`. */
+  /**
+   * A tool that returns a recoverable `ToolResult.failure` (never throws,
+   * never returns empty) — mirrors Widge's `ErpToolSupport.execute`.
+   */
   private case object ErpTool extends Tool {
-    type Input  = ErpInput
+    type Input = ErpInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[ErpInput]]
+    val inputRW = summon[RW[ErpInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name = ToolName("erp_request")
     val description = "Test-only tool that returns a recoverable failure."
@@ -68,26 +70,26 @@ class FailingToolPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   private def runAndPublish(convId: Id[Conversation]): Task[List[Signal]] = {
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector(ErpTool, RespondTool)
+      chain = List(TestUser, TestAgent),
+      tools = Vector(ErpTool, RespondTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, new ErpCallingProvider, request, conv).toList
-      _       <- signals.foldLeft(Task.unit)((acc, s) => acc.flatMap(_ => TestSigil.publish(s).map(_ => ())))
+      _ <- signals.foldLeft(Task.unit)((acc, s) => acc.flatMap(_ => TestSigil.publish(s).map(_ => ())))
     } yield signals
   }
 
   "A failing tool call (#404)" should {
 
-    "settle its ToolInvoke via a ToolDelta carrying a Failure outcome (state Complete)" in {
+    "settle its ToolInvoke via a ToolDelta carrying a Failure outcome (state Complete)" in
       runAndPublish(Conversation.id(s"erp-fail-${rapid.Unique()}")).map { signals =>
         val invoke = signals.collectFirst { case ti: ToolInvoke if ti.toolName == ToolName("erp_request") => ti }
           .getOrElse(fail(s"expected an erp_request ToolInvoke; saw ${signals.map(_.getClass.getSimpleName)}"))
@@ -99,10 +101,9 @@ class FailingToolPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         withClue(s"settling deltas for ${invoke._id.value}: ${signals.collect { case d: ToolDelta => d }}: ") {
           failureSettle should have size 1
           failureSettle.head.state shouldBe Some(EventState.Complete)
-          failureSettle.head.outcome.collect { case f: ToolOutcome.Failure => f.reason }.get should include ("ERP request failed")
+          failureSettle.head.outcome.collect { case f: ToolOutcome.Failure => f.reason }.get should include("ERP request failed")
         }
       }
-    }
 
     "leave the settled ToolInvoke at state Complete with a Failure outcome in the event log" in {
       val convId = Conversation.id(s"erp-fail-${rapid.Unique()}")
@@ -132,15 +133,15 @@ class FailingToolPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           val frames = events.flatMap(sigil.conversation.FrameBuilder.computeFrame).toVector
           val provider = OpenAIProvider(apiKey = "sk-test-placeholder", sigilRef = TestSigil)
           val req = ConversationRequest(
-            conversationId     = convId,
-            model            = TestSigil.testModel(Model.id("openai", "gpt-5.4-nano")),
-            instructions       = Instructions(),
-            turnInput          = TurnInput(conversationId = convId, frames = frames),
-            currentMode        = ConversationMode,
-            currentTopic       = TestTopicEntry,
+            conversationId = convId,
+            model = TestSigil.testModel(Model.id("openai", "gpt-5.4-nano")),
+            instructions = Instructions(),
+            turnInput = TurnInput(conversationId = convId, frames = frames),
+            currentMode = ConversationMode,
+            currentTopic = TestTopicEntry,
             generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-            tools              = CoreTools.all,
-            chain              = List(TestUser, TestAgent)
+            tools = CoreTools.all,
+            chain = List(TestUser, TestAgent)
           )
           val body = provider.requestConverter(req).sync().content match {
             case Some(c: spice.http.content.StringContent) => c.value
@@ -150,14 +151,14 @@ class FailingToolPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           def idsOfType(t: String): List[String] = items.collect {
             case it if it.get("type").map(_.asString).contains(t) => it.get("call_id").map(_.asString).getOrElse("")
           }
-          val callIds   = idsOfType("function_call")
+          val callIds = idsOfType("function_call")
           val outputIds = idsOfType("function_call_output").toSet
           withClue(s"input items: ${items.map(_.get("type").map(_.asString))}; outputs=$outputIds: ") {
             // The failed call is present...
-            callIds should contain (callId.value)
+            callIds should contain(callId.value)
             // ...and EVERY function_call has a matching function_call_output —
             // no dangling call (the OpenAI 400 "No tool output found" cause).
-            callIds.foreach(id => outputIds should contain (id))
+            callIds.foreach(id => outputIds should contain(id))
           }
           succeed
         }

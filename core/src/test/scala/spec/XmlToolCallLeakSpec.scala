@@ -91,17 +91,17 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val captured = new ConcurrentLinkedQueue[ProviderCall]()
       TestSigil.setProvider(Task.pure(new RecordingProvider(captured)))
       val convId = Conversation.id(s"xml-leak-prompt-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("hi")),
-               state          = sigil.signal.EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("hi")),
+          state = sigil.signal.EventState.Complete
+        ))
         _ <- TestSigil.awaitSettled(convId)
       } yield {
         captured.asScala.toList should not be empty
@@ -130,17 +130,17 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         .startUnit()
       Thread.sleep(100)
       val convId = Conversation.id(s"xml-leak-e2e-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("test")),
-               state          = sigil.signal.EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("test")),
+          state = sigil.signal.EventState.Complete
+        ))
         _ <- TestSigil.awaitSettled(convId)
         _ <- Task { running = false; () }
       } yield {
@@ -153,13 +153,13 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         // promises to clean.).
         val userFacingAgentMessages = signals.collect {
           case m: Message
-            if m.participantId == TestAgent
-            && m.role == MessageRole.Standard
-            && m.visibility == MessageVisibility.All => m
+              if m.participantId == TestAgent
+                && m.role == MessageRole.Standard
+                && m.visibility == MessageVisibility.All => m
         }
         userFacingAgentMessages should not be empty
         val agentText = userFacingAgentMessages.flatMap(_.content).collect {
-          case ResponseContent.Text(t)     => t
+          case ResponseContent.Text(t) => t
           case ResponseContent.Markdown(m) => m
         }.mkString
         agentText should include(XmlToolCallSanitizer.Placeholder)
@@ -185,17 +185,17 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         .startUnit()
       Thread.sleep(100)
       val convId = Conversation.id(s"xml-leak-intervention-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("test")),
-               state          = sigil.signal.EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("test")),
+          state = sigil.signal.EventState.Complete
+        ))
         _ <- TestSigil.awaitSettled(convId)
         _ <- Task { running = false; () }
       } yield {
@@ -214,23 +214,23 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         //    clutter their UX).
         val agentDirectives = signals.collect {
           case m: Message
-            if m.role == MessageRole.Tool
-            && m.visibility == MessageVisibility.Agents
-            && m.origin.contains(syntheticInvokes.head._id) => m
+              if m.role == MessageRole.Tool
+                && m.visibility == MessageVisibility.Agents
+                && m.origin.contains(syntheticInvokes.head._id) => m
         }
         agentDirectives should not be empty
         val directiveText = agentDirectives.flatMap(_.content).collect {
-          case ResponseContent.Text(t)     => t
+          case ResponseContent.Text(t) => t
           case ResponseContent.Markdown(m) => m
         }.mkString
         // Names the violation in vocabulary the model can reason about.
-        directiveText.toLowerCase should include ("xml")
+        directiveText.toLowerCase should include("xml")
         // Tells the agent what the right wire shape is.
-        directiveText should include ("tool_calls")
+        directiveText should include("tool_calls")
         // Quotes the agent's own attempted intent back at it so it can
         // recover the desired action (the excerpt name is in the
         // RespondingWithLeakProvider's content).
-        directiveText should include ("find_capability")
+        directiveText should include("find_capability")
       }
     }
   }
@@ -241,17 +241,19 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
-  /** Provider that records every incoming `ProviderCall` so the test
-    * can inspect the rendered system prompt; emits a clean `respond`
-    * to settle the agent loop without producing any XML leak. */
-  private final class RecordingProvider(captured: ConcurrentLinkedQueue[ProviderCall]) extends Provider {
+  /**
+   * Provider that records every incoming `ProviderCall` so the test
+   * can inspect the rendered system prompt; emits a clean `respond`
+   * to settle the agent loop without producing any XML leak.
+   */
+  final private class RecordingProvider(captured: ConcurrentLinkedQueue[ProviderCall]) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -271,11 +273,13 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     }
   }
 
-  /** Provider that emits a `respond` whose `content` carries the
-    * field-repro XML leak — the agent's apparent intent was to do a
-    * `find_capability` follow-up via XML tag syntax. The sanitizer
-    * + notice must catch this before it reaches the user. */
-  private final class RespondingWithLeakProvider extends Provider {
+  /**
+   * Provider that emits a `respond` whose `content` carries the
+   * field-repro XML leak — the agent's apparent intent was to do a
+   * `find_capability` follow-up via XML tag syntax. The sanitizer
+   * + notice must catch this before it reaches the user.
+   */
+  final private class RespondingWithLeakProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -288,11 +292,11 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         ProviderEvent.ToolCallComplete(
           cid,
           RespondInput(
-            topicLabel   = "Project Connection",
+            topicLabel = "Project Connection",
             topicSummary = "Connecting the Sigil project workspace",
-            content      =
+            content =
               "I'll help you connect.\n\n<tool_call>\n<function=find_capability>\n<parameter=keywords>\nbind workspace set project root\n</parameter>\n</function>\n</tool_call>",
-            endsTurn     = true
+            endsTurn = true
           )
         ),
         ProviderEvent.Done(StopReason.Complete)

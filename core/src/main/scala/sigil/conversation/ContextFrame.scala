@@ -96,21 +96,25 @@ enum ContextFrame derives RW {
                 participantId: ParticipantId,
                 sourceEventId: Id[Event],
                 visibility: MessageVisibility = MessageVisibility.All,
-                /** Wire-level `call_id` from the provider's response when
-                  * the upstream model emitted this call (e.g. OpenAI's
-                  * `call_<hash>`). Renderers prefer this over `callId.value`
-                  * so the wire's `tool_call.id` matches what the provider's
-                  * `previous_response_id` state remembers. `None` for
-                  * synthetic / framework-emitted calls. */
+                /**
+                 * Wire-level `call_id` from the provider's response when
+                 * the upstream model emitted this call (e.g. OpenAI's
+                 * `call_<hash>`). Renderers prefer this over `callId.value`
+                 * so the wire's `tool_call.id` matches what the provider's
+                 * `previous_response_id` state remembers. `None` for
+                 * synthetic / framework-emitted calls.
+                 */
                 wireCallId: Option[String] = None,
-                /** Sigil #385 — denormalized from `ToolInvoke.internal`. A
-                  * framework-internal synthetic diagnostic (`_stall_detected`,
-                  * `_refusal_challenge`, `_cap_reached`, …) must NOT render as
-                  * an assistant `tool_use` block: the model mimics it as a real
-                  * call and gets "Unknown tool", looping. The provider renders
-                  * an `internal` frame as an out-of-band `System` note instead
-                  * (the channel ModeChange uses), and the curator sheds all but
-                  * the most recent so consumed nudges don't accumulate. */
+                /**
+                 * Sigil #385 — denormalized from `ToolInvoke.internal`. A
+                 * framework-internal synthetic diagnostic (`_stall_detected`,
+                 * `_refusal_challenge`, `_cap_reached`, …) must NOT render as
+                 * an assistant `tool_use` block: the model mimics it as a real
+                 * call and gets "Unknown tool", looping. The provider renders
+                 * an `internal` frame as an out-of-band `System` note instead
+                 * (the channel ModeChange uses), and the curator sheds all but
+                 * the most recent so consumed nudges don't accumulate.
+                 */
                 internal: Boolean = false,
                 state: ToolCallState = ToolCallState.Active)
 

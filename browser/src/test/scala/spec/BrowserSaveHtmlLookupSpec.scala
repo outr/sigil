@@ -36,20 +36,30 @@ class BrowserSaveHtmlLookupSpec extends AnyWordSpec with Matchers {
   TestBrowserSigil.initFor(getClass.getSimpleName)
 
   private val chromeAvailable: Boolean =
-    List("/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
-         "/usr/bin/chromium", "/usr/local/bin/google-chrome")
+    List(
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/local/bin/google-chrome")
       .exists(p => new java.io.File(p).canExecute)
 
   private val modelId: Id[Model] = Model.id("test", "model")
   private val model: Model = Model(
-    canonicalSlug = modelId.value, huggingFaceId = "", name = modelId.value,
-    description = "test fixture", contextLength = 131072L,
+    canonicalSlug = modelId.value,
+    huggingFaceId = "",
+    name = modelId.value,
+    description = "test fixture",
+    contextLength = 131072L,
     architecture = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
     pricing = ModelPricing(BigDecimal(0), BigDecimal(0), None, None),
     topProvider = ModelTopProvider(Some(131072L), Some(16000L), isModerated = false),
-    perRequestLimits = None, supportedParameters = Set("max_tokens"),
-    knowledgeCutoff = None, expirationDate = None, links = ModelLinks(""),
-    created = Timestamp(), _id = modelId
+    perRequestLimits = None,
+    supportedParameters = Set("max_tokens"),
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(""),
+    created = Timestamp(),
+    _id = modelId
   )
 
   private val marker = "SIGIL-377-WHOLE-PAGE-MARKER"
@@ -68,14 +78,14 @@ class BrowserSaveHtmlLookupSpec extends AnyWordSpec with Matchers {
       try {
         controller.run(_.navigate(page)).sync()
         val turn = TurnContext(
-          sigil        = TestBrowserSigil,
-          chain        = List(SpecUser),
+          sigil = TestBrowserSigil,
+          chain = List(SpecUser),
           conversation = conv,
-          turnInput    = TurnInput(ConversationView(conversationId = convId)),
-          model        = model
+          turnInput = TurnInput(ConversationView(conversationId = convId)),
+          model = model
         )
         val tool = new BrowserSaveHtmlTool
-        val ctx  = ToolContext(turn, Event.id(), tool.name)
+        val ctx = ToolContext(turn, Event.id(), tool.name)
 
         val result = tool.executeResult(BrowserSaveHtmlInput(), ctx).sync()
         val payload = result match {
@@ -93,7 +103,7 @@ class BrowserSaveHtmlLookupSpec extends AnyWordSpec with Matchers {
         info shouldBe defined
         val content = info.get match {
           case s: StoredInformation => s.content
-          case other                => fail(s"expected a StoredInformation, got $other")
+          case other => fail(s"expected a StoredInformation, got $other")
         }
         content should include(marker)
       } finally TestBrowserSigil.disposeBrowserController(convId).sync()

@@ -49,10 +49,13 @@ import scala.concurrent.duration.*
 case class DeepInfraProvider(apiKey: String,
                              sigilRef: Sigil,
                              baseUrl: URL = url"https://api.deepinfra.com",
-                             /** Per-read idle timeout for the SSE stream. Fires
-                               * only when no bytes arrive for the duration —
-                               * slow-but-working streams keep going. */
-                             tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
+                             /**
+                              * Per-read idle timeout for the SSE stream. Fires
+                              * only when no bytes arrive for the duration —
+                              * slow-but-working streams keep going.
+                              */
+                             tokenIdleTimeout: FiniteDuration = 120.seconds)
+  extends Provider {
   override def `type`: ProviderType = ProviderType.DeepInfra
   override val providerKey: String = DeepInfra.Provider
   override protected def sigil: Sigil = sigilRef

@@ -35,39 +35,44 @@ import scala.concurrent.duration.*
 class MetalsDeadlockRegressionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestMetalsSigil.initFor(getClass.getSimpleName)
 
-  override implicit val testTimeout: FiniteDuration = 60.seconds
+  implicit override val testTimeout: FiniteDuration = 60.seconds
 
   private def newWorkspace(): Path = {
     val p = Files.createTempDirectory(s"metals-deadlock-${rapid.Unique()}-")
     p.toAbsolutePath.normalize
   }
 
-  private def deleteRecursive(p: Path): Unit = {
+  private def deleteRecursive(p: Path): Unit =
     if (Files.exists(p)) {
       import scala.jdk.CollectionConverters.*
       val s = Files.walk(p)
       try s.iterator().asScala.toList.reverse.foreach(x => Files.deleteIfExists(x))
       finally s.close()
     }
-  }
 
   private def awaitNoStaleProcess(workspace: Path): Task[Unit] = Task {
     val deadline = System.currentTimeMillis() + 2000L
-    while (System.currentTimeMillis() < deadline &&
-           TestMetalsSigil.metalsManager.status.sync().exists(_.workspace == workspace)) {
+    while (
+      System.currentTimeMillis() < deadline &&
+      TestMetalsSigil.metalsManager.status.sync().exists(_.workspace == workspace)
+    )
       Thread.sleep(50)
-    }
   }
 
-  /** Write a sentinel `metals.mv.db` to the workspace so the
-    * reconcile helper has something to find. Bytes don't matter —
-    * the helper deletes the whole file. */
+  /**
+   * Write a sentinel `metals.mv.db` to the workspace so the
+   * reconcile helper has something to find. Bytes don't matter —
+   * the helper deletes the whole file.
+   */
   private def writeSentinelMvDb(workspace: Path): Path = {
     val metals = workspace.resolve(".metals")
     Files.createDirectories(metals)
     val mvDb = metals.resolve("metals.mv.db")
-    Files.writeString(mvDb, "stale-import-status-Started\n",
-      StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+    Files.writeString(
+      mvDb,
+      "stale-import-status-Started\n",
+      StandardOpenOption.CREATE,
+      StandardOpenOption.TRUNCATE_EXISTING)
     mvDb
   }
 
@@ -75,7 +80,7 @@ class MetalsDeadlockRegressionSpec extends AsyncWordSpec with AsyncTaskSpec with
 
     "wipe a stale metals.mv.db when no live peer exists" in {
       val workspace = newWorkspace()
-      val mvDb      = writeSentinelMvDb(workspace)
+      val mvDb = writeSentinelMvDb(workspace)
       Files.exists(mvDb) shouldBe true
 
       MetalsHealthCheck.reconcileStaleImportStatus(workspace, hasLivePeer = false)
@@ -86,7 +91,7 @@ class MetalsDeadlockRegressionSpec extends AsyncWordSpec with AsyncTaskSpec with
 
     "leave metals.mv.db alone when a live peer is present" in {
       val workspace = newWorkspace()
-      val mvDb      = writeSentinelMvDb(workspace)
+      val mvDb = writeSentinelMvDb(workspace)
 
       MetalsHealthCheck.reconcileStaleImportStatus(workspace, hasLivePeer = true)
 
@@ -108,23 +113,22 @@ class MetalsDeadlockRegressionSpec extends AsyncWordSpec with AsyncTaskSpec with
 
     "funnel concurrent calls onto a single spawn" in {
       val workspace = newWorkspace()
-      val n         = 10
+      val n = 10
       val parallel: List[Task[String]] = List.fill(n)(
         TestMetalsSigil.metalsManager.ensureRunning(workspace)
       )
 
       for {
-        names  <- Task.sequence(parallel)
+        names <- Task.sequence(parallel)
         status <- TestMetalsSigil.metalsManager.status
-        _      <- TestMetalsSigil.metalsManager.stop(workspace)
-        _      <- awaitNoStaleProcess(workspace)
-      } yield {
+        _ <- TestMetalsSigil.metalsManager.stop(workspace)
+        _ <- awaitNoStaleProcess(workspace)
+      } yield
         try {
           names.distinct.size shouldBe 1
           names.size shouldBe n
           status.count(_.workspace == workspace) shouldBe 1
         } finally deleteRecursive(workspace)
-      }
     }
   }
 
@@ -135,16 +139,16 @@ class MetalsDeadlockRegressionSpec extends AsyncWordSpec with AsyncTaskSpec with
 
       for {
         // Boot once + stop, simulating a prior run.
-        _   <- TestMetalsSigil.metalsManager.ensureRunning(workspace)
-        _   <- TestMetalsSigil.metalsManager.stop(workspace)
-        _   <- awaitNoStaleProcess(workspace)
+        _ <- TestMetalsSigil.metalsManager.ensureRunning(workspace)
+        _ <- TestMetalsSigil.metalsManager.stop(workspace)
+        _ <- awaitNoStaleProcess(workspace)
 
         // Plant the poisoned-status sentinel as if the prior run
         // had crashed mid-import. Status content doesn't matter —
         // the reconcile path treats any pre-existing mv.db as
         // suspect when no peer is alive.
         mvDb = writeSentinelMvDb(workspace)
-        _    = Files.exists(mvDb) shouldBe true
+        _ = Files.exists(mvDb) shouldBe true
 
         // Restart: the reconcile helper inside spawnAndResolve
         // must see "no live peer" and wipe the sentinel before
@@ -163,11 +167,10 @@ class MetalsDeadlockRegressionSpec extends AsyncWordSpec with AsyncTaskSpec with
 
         _ <- TestMetalsSigil.metalsManager.stop(workspace)
         _ <- awaitNoStaleProcess(workspace)
-      } yield {
-        try {
+      } yield
+        try
           sentinelStillExists shouldBe false
-        } finally deleteRecursive(workspace)
-      }
+        finally deleteRecursive(workspace)
     }
   }
 

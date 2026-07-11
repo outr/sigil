@@ -11,4 +11,5 @@ import fabric.rw.*
 case class GitStatusEntry(path: String,
                           indexState: GitFileState,
                           workingState: GitFileState,
-                          renamedFrom: Option[String] = None) derives RW
+                          renamedFrom: Option[String] = None)
+  derives RW

@@ -7,11 +7,13 @@ import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class ListMcpPromptsInput(server: String) extends ToolInput derives RW
 
-/** List the prompt templates advertised by a registered MCP server. */
+/**
+ * List the prompt templates advertised by a registered MCP server.
+ */
 final class ListMcpPromptsTool(manager: McpManager) extends Tool {
-  type Input  = ListMcpPromptsInput
+  type Input = ListMcpPromptsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ListMcpPromptsInput]]
+  val inputRW = summon[RW[ListMcpPromptsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("list_mcp_prompts")
@@ -21,7 +23,8 @@ final class ListMcpPromptsTool(manager: McpManager) extends Tool {
     manager.listPrompts(input.server).map { prompts =>
       val text = if (prompts.isEmpty) "(no prompts advertised)"
       else prompts.map { p =>
-        val args = if (p.arguments.isEmpty) "" else p.arguments.map { a =>
+        val args = if (p.arguments.isEmpty) ""
+        else p.arguments.map { a =>
           val req = if (a.required) "*" else ""
           s"${a.name}$req"
         }.mkString("(", ", ", ")")

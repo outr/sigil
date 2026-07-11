@@ -49,13 +49,15 @@ class OrchestratorHardStallTerminationSpec extends AsyncWordSpec with AsyncTaskS
 
   private val MaxIterations = 20
 
-  /** Repeats an identical `get_magic_number` call every iteration — a model
-    * that ignores every cooperative stall guard. Under forced synthesis the
-    * orchestrator narrows the roster to the respond family; the provider
-    * detects that (no `get_magic_number` in the offered tools) and cooperates
-    * with a `respond`, so a graceful terminal is reachable IF the framework
-    * forces synthesis early. */
-  private final class StuckRepeatProvider extends Provider {
+  /**
+   * Repeats an identical `get_magic_number` call every iteration — a model
+   * that ignores every cooperative stall guard. Under forced synthesis the
+   * orchestrator narrows the roster to the respond family; the provider
+   * detects that (no `get_magic_number` in the offered tools) and cooperates
+   * with a `respond`, so a graceful terminal is reachable IF the framework
+   * forces synthesis early.
+   */
+  final private class StuckRepeatProvider extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -69,12 +71,14 @@ class OrchestratorHardStallTerminationSpec extends AsyncWordSpec with AsyncTaskS
       if (!canCallMagic)
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, "respond"),
-          ProviderEvent.ToolCallComplete(callId, RespondInput(
-            topicLabel   = "Wrapping up",
-            topicSummary = "Summarising what was gathered",
-            content      = "Here's what I found.",
-            endsTurn     = true
-          )),
+          ProviderEvent.ToolCallComplete(
+            callId,
+            RespondInput(
+              topicLabel = "Wrapping up",
+              topicSummary = "Summarising what was gathered",
+              content = "Here's what I found.",
+              endsTurn = true
+            )),
           ProviderEvent.Done(StopReason.Complete)
         ))
       else
@@ -88,10 +92,10 @@ class OrchestratorHardStallTerminationSpec extends AsyncWordSpec with AsyncTaskS
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = List(ToolName("get_magic_number")) ++ CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = List(ToolName("get_magic_number")) ++ CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
     )
 
@@ -101,19 +105,19 @@ class OrchestratorHardStallTerminationSpec extends AsyncWordSpec with AsyncTaskS
       TestSigil.setProvider(Task.pure(provider))
       TestSigil.setMaxAgentIterations(MaxIterations)
       val convId = Conversation.id(s"hard-stall-${rapid.Unique()}")
-      val topic  = TopicEntry(id = Topic.id(s"t-${rapid.Unique()}"), label = "Stall", summary = "A stuck turn")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = List(topic), participants = List(agent), _id = convId)
+      val topic = TopicEntry(id = Topic.id(s"t-${rapid.Unique()}"), label = "Stall", summary = "A stuck turn")
+      val agent = makeAgent()
+      val conv = Conversation(topics = List(topic), participants = List(agent), _id = convId)
       val task = for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = topic.id,
-                 content        = Vector(ResponseContent.Text("Find the magic number for me.")),
-                 state          = EventState.Complete
-               ))
-        _   <- waitForAgentTurn(convId, after = 0L, timeout = 90.seconds)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = topic.id,
+          content = Vector(ResponseContent.Text("Find the magic number for me.")),
+          state = EventState.Complete
+        ))
+        _ <- waitForAgentTurn(convId, after = 0L, timeout = 90.seconds)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val callCount = provider.calls.get()

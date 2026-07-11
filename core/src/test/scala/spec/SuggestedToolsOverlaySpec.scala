@@ -35,9 +35,11 @@ class SuggestedToolsOverlaySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private val convId = Conversation.id("sst-overlay")
   private val topicId = TestTopicEntry.id
 
-  /** Tool-role events require `origin` per Sigil.validateEventInvariants
-    * — point each to a fixed synthetic id so the validator passes
-    * without having to publish a real parent ToolInvoke. */
+  /**
+   * Tool-role events require `origin` per Sigil.validateEventInvariants
+   * — point each to a fixed synthetic id so the validator passes
+   * without having to publish a real parent ToolInvoke.
+   */
   private val syntheticOrigin: Id[Event] = Id[Event]("sst-overlay-parent-invoke")
 
   // Idempotent — repeated initFor + setup blocks across tests share the same DB

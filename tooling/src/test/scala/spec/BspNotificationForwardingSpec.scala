@@ -32,23 +32,23 @@ class BspNotificationForwardingSpec extends AnyWordSpec with Matchers {
 
     "route the message text through the status callback" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
-      val params   = new LogMessageParams(MessageType.INFO, "Resolving dependencies for widge-server")
+      val client = newClient(captured)
+      val params = new LogMessageParams(MessageType.INFO, "Resolving dependencies for widge-server")
       client.onBuildLogMessage(params)
       captured.get() shouldBe List("Resolving dependencies for widge-server")
     }
 
     "still record the message into the local queue (recording behaviour preserved)" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
-      val params   = new LogMessageParams(MessageType.INFO, "Walking 8 build targets")
+      val client = newClient(captured)
+      val params = new LogMessageParams(MessageType.INFO, "Walking 8 build targets")
       client.onBuildLogMessage(params)
       client.drainLogs().map(_.getMessage) shouldBe List("Walking 8 build targets")
     }
 
     "ignore empty / null messages" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       client.onBuildLogMessage(new LogMessageParams(MessageType.INFO, ""))
       captured.get() shouldBe Nil
     }
@@ -58,20 +58,20 @@ class BspNotificationForwardingSpec extends AnyWordSpec with Matchers {
 
     "route the progress message with a percentage when total > 0" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       val params = new TaskProgressParams(new TaskId("compile-task-1"))
       params.setMessage("compiling files")
       params.setProgress(12L)
       params.setTotal(47L)
       client.onBuildTaskProgress(params)
-      captured.get().head should include ("compiling files")
+      captured.get().head should include("compiling files")
       // 12 / 47 = 0.255… → rounds to 26%
-      captured.get().head should include ("26%")
+      captured.get().head should include("26%")
     }
 
     "route just the message when total is zero or missing" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       val params = new TaskProgressParams(new TaskId("compile-task-2"))
       params.setMessage("indexing sources")
       client.onBuildTaskProgress(params)
@@ -83,7 +83,7 @@ class BspNotificationForwardingSpec extends AnyWordSpec with Matchers {
 
     "route the start message when present" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       val params = new TaskStartParams(new TaskId("compile-task-3"))
       params.setMessage("Starting compile for widge-server")
       client.onBuildTaskStart(params)
@@ -95,17 +95,17 @@ class BspNotificationForwardingSpec extends AnyWordSpec with Matchers {
 
     "combine message + status when both present" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       val params = new TaskFinishParams(new TaskId("compile-task-4"), StatusCode.OK)
       params.setMessage("Compiled widge-server")
       client.onBuildTaskFinish(params)
-      captured.get().head should include ("Compiled widge-server")
-      captured.get().head should include ("OK")
+      captured.get().head should include("Compiled widge-server")
+      captured.get().head should include("OK")
     }
 
     "surface the status alone when no message" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       val params = new TaskFinishParams(new TaskId("compile-task-5"), StatusCode.ERROR)
       client.onBuildTaskFinish(params)
       captured.get() shouldBe List("ERROR")
@@ -116,7 +116,7 @@ class BspNotificationForwardingSpec extends AnyWordSpec with Matchers {
 
     "route the message through the status callback" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       val params = new ShowMessageParams(MessageType.INFO, "Importing build via sbt-bloop")
       client.onBuildShowMessage(params)
       captured.get() shouldBe List("Importing build via sbt-bloop")
@@ -133,7 +133,7 @@ class BspNotificationForwardingSpec extends AnyWordSpec with Matchers {
 
     "no-op after callback cleared" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       client.setStatusCallback(None)
       client.onBuildLogMessage(new LogMessageParams(MessageType.INFO, "hello"))
       captured.get() shouldBe Nil

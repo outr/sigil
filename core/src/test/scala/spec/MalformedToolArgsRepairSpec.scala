@@ -35,7 +35,7 @@ class MalformedToolArgsRepairSpec extends AnyWordSpec with Matchers {
         events.collect { case e: ProviderEvent.Error => e } shouldBe empty
         events.collectFirst { case c: ProviderEvent.ToolCallComplete => c.input } match {
           case Some(in: RespondOptionsInput) => in.options.map(_.value) shouldBe List("a", "b")
-          case other                         => fail(s"expected RespondOptionsInput, got $other")
+          case other => fail(s"expected RespondOptionsInput, got $other")
         }
       }
     }
@@ -44,7 +44,7 @@ class MalformedToolArgsRepairSpec extends AnyWordSpec with Matchers {
       val args = """{"prompt":"pick","allowMultiple":false,"options":[{"label":"a","value":"a"},]}"""
       run(args).collectFirst { case c: ProviderEvent.ToolCallComplete => c.input } match {
         case Some(in: RespondOptionsInput) => in.options.map(_.value) shouldBe List("a")
-        case other                         => fail(s"expected RespondOptionsInput, got $other")
+        case other => fail(s"expected RespondOptionsInput, got $other")
       }
     }
 
@@ -54,7 +54,7 @@ class MalformedToolArgsRepairSpec extends AnyWordSpec with Matchers {
       val args = """{"prompt":"use {{item}} here","allowMultiple":false,"options":[{"label":"a","value":"a"}]}"""
       run(args).collectFirst { case c: ProviderEvent.ToolCallComplete => c.input } match {
         case Some(in: RespondOptionsInput) => in.prompt shouldBe "use {{item}} here"
-        case other                         => fail(s"expected RespondOptionsInput, got $other")
+        case other => fail(s"expected RespondOptionsInput, got $other")
       }
     }
 

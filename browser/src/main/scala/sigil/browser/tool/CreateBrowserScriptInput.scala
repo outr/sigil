@@ -18,4 +18,5 @@ case class CreateBrowserScriptInput(name: String,
                                     steps: List[BrowserStep],
                                     space: Option[String] = None,
                                     keywords: Set[String] = Set.empty,
-                                    cookieJarId: Option[String] = None) extends ToolInput derives RW
+                                    cookieJarId: Option[String] = None)
+  extends ToolInput derives RW

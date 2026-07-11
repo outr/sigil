@@ -53,26 +53,36 @@ final class MockProvider(
   private val queue = new ConcurrentLinkedQueue[MockProvider.Script](responses.asJava)
   private val captured = new CopyOnWriteArrayList[ProviderCall]()
 
-  /** All [[ProviderCall]]s observed by `call`, in order received. */
+  /**
+   * All [[ProviderCall]]s observed by `call`, in order received.
+   */
   def calls: List[ProviderCall] = captured.asScala.toList
 
-  /** Most recent [[ProviderCall]] (or None if `call` hasn't been invoked). */
+  /**
+   * Most recent [[ProviderCall]] (or None if `call` hasn't been invoked).
+   */
   def lastCall: Option[ProviderCall] =
     if (captured.isEmpty) None else Some(captured.get(captured.size() - 1))
 
-  /** Append more scripted responses; drained in FIFO order. */
+  /**
+   * Append more scripted responses; drained in FIFO order.
+   */
   def enqueue(scripts: MockProvider.Script*): Unit = scripts.foreach(queue.add)
 
-  /** Drop any not-yet-consumed scripts and clear captured calls. */
+  /**
+   * Drop any not-yet-consumed scripts and clear captured calls.
+   */
   def reset(): Unit = {
     queue.clear()
     captured.clear()
   }
 
-  /** Synthetic single model so `models` returns something usable when
-    * specs query catalogues. The real id resolves through `sigil.cache`
-    * just like any other provider, but local mock-only specs typically
-    * skip the registry. */
+  /**
+   * Synthetic single model so `models` returns something usable when
+   * specs query catalogues. The real id resolves through `sigil.cache`
+   * just like any other provider, but local mock-only specs typically
+   * skip the registry.
+   */
   override def models: List[Model] = Nil
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
@@ -100,7 +110,9 @@ object MockProvider {
 
   object Script {
 
-    /** Plain text response: a single TextDelta + Done(Complete). */
+    /**
+     * Plain text response: a single TextDelta + Done(Complete).
+     */
     def text(content: String,
              stopReason: StopReason = StopReason.Complete): Script =
       Script(List(
@@ -108,12 +120,16 @@ object MockProvider {
         ProviderEvent.Done(stopReason)
       ))
 
-    /** Streamed text in chunks: each segment becomes a separate
-      * TextDelta, terminated with Done. */
+    /**
+     * Streamed text in chunks: each segment becomes a separate
+     * TextDelta, terminated with Done.
+     */
     def stream(segments: String*)(implicit dummyImplicit: DummyImplicit): Script =
       Script(segments.map(ProviderEvent.TextDelta.apply).toList :+ ProviderEvent.Done(StopReason.Complete))
 
-    /** Tool-call response: a ToolCallStart + ToolCallComplete + Done(ToolCall). */
+    /**
+     * Tool-call response: a ToolCallStart + ToolCallComplete + Done(ToolCall).
+     */
     def toolCall(callId: CallId,
                  toolName: String,
                  input: ToolInput,
@@ -124,19 +140,25 @@ object MockProvider {
         ProviderEvent.Done(stopReason)
       ))
 
-    /** Error termination — no content, just an Error event. */
+    /**
+     * Error termination — no content, just an Error event.
+     */
     def error(message: String): Script =
       Script(List(ProviderEvent.Error(message)))
 
-    /** Custom event sequence — caller supplies every event including
-      * the terminator. Use this when the helpers above don't cover the
-      * shape under test (multi-tool calls, image generation, content
-      * blocks, mixed thinking + text, etc.). */
+    /**
+     * Custom event sequence — caller supplies every event including
+     * the terminator. Use this when the helpers above don't cover the
+     * shape under test (multi-tool calls, image generation, content
+     * blocks, mixed thinking + text, etc.).
+     */
     def custom(events: ProviderEvent*): Script = Script(events.toList)
   }
 
-  /** Convenience factory: returns a [[MockProvider]] wired against the
-    * given [[Sigil]] with an initial script list. */
+  /**
+   * Convenience factory: returns a [[MockProvider]] wired against the
+   * given [[Sigil]] with an initial script list.
+   */
   def apply(sigil: Sigil,
             responses: List[Script] = Nil,
             defaultResponse: Script = Script.text("(mock default)"),

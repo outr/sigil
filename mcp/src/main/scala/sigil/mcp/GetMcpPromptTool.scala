@@ -8,7 +8,8 @@ import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class GetMcpPromptInput(server: String,
                              prompt: String,
-                             arguments: Map[String, String] = Map.empty) extends ToolInput derives RW
+                             arguments: Map[String, String] = Map.empty)
+  extends ToolInput derives RW
 
 /**
  * Fetch a populated prompt template from a registered MCP server.
@@ -16,9 +17,9 @@ case class GetMcpPromptInput(server: String,
  * messages array); apps decide how to splice it into their context.
  */
 final class GetMcpPromptTool(manager: McpManager) extends Tool {
-  type Input  = GetMcpPromptInput
+  type Input = GetMcpPromptInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[GetMcpPromptInput]]
+  val inputRW = summon[RW[GetMcpPromptInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("get_mcp_prompt")
