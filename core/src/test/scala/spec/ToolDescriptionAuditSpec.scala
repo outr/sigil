@@ -63,6 +63,7 @@ class ToolDescriptionAuditSpec extends AnyWordSpec with Matchers {
     val cross = for (a <- respondFam; b <- respondFam if a != b) yield (a, b)
     cross ++ Set(
       "pin_complexity" -> "unpin_complexity", "unpin_complexity" -> "pin_complexity",
+      "pin_effort" -> "unpin_effort", "unpin_effort" -> "pin_effort",
       "pin_memory" -> "unpin_memory", "unpin_memory" -> "pin_memory",
       "pin_model" -> "unpin_model", "unpin_model" -> "pin_model",
       // #344 — record_consent's description names respond_options to tell
