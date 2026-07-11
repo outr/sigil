@@ -55,11 +55,28 @@ ThisBuild / scalacOptions ++= Seq(
   "-feature",
   "-unchecked"
 )
-ThisBuild / javaOptions ++= Seq("-Xmx16G", "-Xss4m", "-XX:MaxMetaspaceSize=2g")
+// Per-forked-JVM heap. Local default is generous; CI (a 4-vCPU / 16 GB
+// runner driving several concurrent forks) overrides via env so the
+// forks don't over-commit the box.
+ThisBuild / javaOptions ++= Seq(
+  s"-Xmx${sys.env.getOrElse("SIGIL_TEST_FORK_HEAP", "16G")}",
+  "-Xss4m",
+  "-XX:MaxMetaspaceSize=2g"
+)
+
+// Concurrent forked-test JVMs. Wall-clock on `sbt test` is dominated by
+// per-suite fork overhead (JVM boot + RocksDB/Lucene init across ~500
+// suites), which is init-I/O heavy rather than CPU-bound — modest
+// oversubscription of the core count helps. Env-tunable so CI can pick
+// the value matching its runner shape.
+val testForkConcurrency: Int =
+  sys.env.get("SIGIL_TEST_FORK_CONCURRENCY")
+    .flatMap(v => scala.util.Try(v.toInt).toOption)
+    .getOrElse(4)
 
 Global / concurrentRestrictions := Seq(
-  Tags.limit(Tags.ForkedTestGroup, 4),
-  Tags.limit(Tags.Test, 4)
+  Tags.limit(Tags.ForkedTestGroup, testForkConcurrency),
+  Tags.limit(Tags.Test, testForkConcurrency)
 )
 
 ThisBuild / evictionErrorLevel := Level.Info

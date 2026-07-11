@@ -2,7 +2,16 @@ name: CI
 on:
   pull_request:
   push:
+    # Master only — an unfiltered `push` made every same-repo PR branch
+    # (scala-steward especially) run the suite TWICE: once for the push
+    # event and once for the pull_request event.
+    branches: [master]
   workflow_dispatch:
+# A newer push to the same ref supersedes an in-flight run — rapid
+# consecutive pushes were each burning a full ~23-minute billed run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -28,6 +37,14 @@ jobs:
       DATABASE_URL: jdbc:postgresql://localhost:5432/basic
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
+      # Wall-clock on `sbt test` is dominated by per-suite fork overhead
+      # (JVM boot + RocksDB/Lucene init across ~500 suites) — init-I/O
+      # bound, so modest oversubscription of the 4-vCPU runner helps.
+      SIGIL_TEST_FORK_CONCURRENCY: 6
+      # Cap per-fork heap for the 16 GB runner — the local default is
+      # -Xmx16G per forked JVM, which over-commits the box with several
+      # concurrent forks.
+      SIGIL_TEST_FORK_HEAP: 2G
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -48,6 +65,20 @@ jobs:
         uses: sbt/setup-sbt@v1
       - name: Coursier cache
         uses: coursier/cache-action@v8
+      # Compiled-classes + zinc cache: restores the nearest previous
+      # build so a typical push recompiles only its delta instead of the
+      # full ~3.5-minute cold build. Keyed exact on the commit (always
+      # saves), restored by prefix (nearest ancestor build).
+      - name: Compiled targets cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            **/target
+            !**/target/wire-logs
+            project/target
+          key: targets-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/**') }}-${{ github.sha }}
+          restore-keys: |
+            targets-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/**') }}-
       - name: Set CI JVM options
         run: echo "SBT_OPTS=-Xms512M -Xmx2G -Xss16M -XX:MaxMetaspaceSize=512M -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=." >> $GITHUB_ENV
       - name: Build and test
