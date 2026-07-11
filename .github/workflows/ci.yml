@@ -7,6 +7,16 @@ on:
     # event and once for the pull_request event.
     branches: [master]
   workflow_dispatch:
+    inputs:
+      full:
+        description: 'Run the full test battery (default: smoke set only)'
+        type: boolean
+        default: false
+  schedule:
+    # Weekly full-battery safety net (Mondays 05:17 UTC) — the complete
+    # suite normally runs locally via test-all.sh; this catches the case
+    # where local full runs lapse.
+    - cron: '17 5 * * 1'
 # A newer push to the same ref supersedes an in-flight run — rapid
 # consecutive pushes were each burning a full ~23-minute billed run.
 concurrency:
@@ -45,6 +55,10 @@ jobs:
       # -Xmx16G per forked JVM, which over-commits the box with several
       # concurrent forks.
       SIGIL_TEST_FORK_HEAP: 2G
+      # Smoke mode: compile everything, execute only the allow-listed
+      # smoke suites (see build.sbt). Empty (= full battery) on the
+      # weekly schedule and on workflow_dispatch with `full: true`.
+      SIGIL_TEST_SMOKE: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.full)) && '' || '1' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5

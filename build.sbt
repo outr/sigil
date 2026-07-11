@@ -79,6 +79,45 @@ Global / concurrentRestrictions := Seq(
   Tags.limit(Tags.Test, testForkConcurrency)
 )
 
+// Smoke mode (SIGIL_TEST_SMOKE=1): `sbt test` still COMPILES every
+// module's main + test sources (the highest-signal CI check) but
+// executes only the allow-listed suites below — fast, deterministic,
+// cross-cutting framework invariants. The full ~500-suite battery runs
+// locally via test-all.sh and on CI's weekly schedule /
+// workflow_dispatch(full); per-suite fork overhead (JVM boot +
+// RocksDB/Lucene init) dominates full-run wall clock, so skipping suite
+// EXECUTION is where the time goes.
+val smokeSuites: Set[String] = Set(
+  // Wiring + registration invariants
+  "spec.SigilWiringSpec",
+  "spec.PolymorphicRegistrationOrderSpec",
+  // Source lints
+  "spec.ToolDescriptionAuditSpec",
+  "spec.ToolInputErgonomicsAuditSpec",
+  // Wire / caching pins
+  "spec.VolatileContextTailPlacementSpec",
+  "spec.AnthropicPromptCachingSpec",
+  "spec.RespondEndsTurnWordingSpec",
+  // Agent-loop contracts
+  "spec.NakedTextTerminalSpec",
+  "spec.StopContractSpec",
+  "spec.ContextOverflowRecoverySpec",
+  "spec.PostRespondContextSpec",
+  "spec.TurnScopedReadDedupSpec",
+  // Curator / budget contracts
+  "spec.CuratorBudgetTokenizerSpec",
+  "spec.ActiveTurnElisionProtectionSpec",
+  // One fast, no-external-process representative per opt-in module
+  "spec.BspCompileErrorCauseSpec",
+  "spec.BrowserNavigationGuardSpec"
+)
+
+ThisBuild / Test / testOptions ++= {
+  if (sys.env.get("SIGIL_TEST_SMOKE").exists(_.nonEmpty))
+    Seq(Tests.Filter(smokeSuites.contains))
+  else Seq.empty
+}
+
 ThisBuild / evictionErrorLevel := Level.Info
 
 Global / excludeLintKeys ++= Set(
