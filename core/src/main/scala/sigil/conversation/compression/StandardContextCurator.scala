@@ -74,6 +74,18 @@ case class StandardContextCurator(sigil: Sigil,
                                     * explicit choice when jtokkit's per-frame encoding
                                     * cost matters more than gate accuracy. */
                                   budgetTokenizer: Tokenizer = JtokkitTokenizer.OpenAIO200k,
+                                  /** Frames whose rendered content exceeds this elide
+                                    * to gist+reload-id under budget pressure (stage
+                                    * 2c). High enough that ordinary messages pass
+                                    * through untouched; low enough that a bulk tool
+                                    * result or a giant paste is caught. Consumers
+                                    * doing code / markup work (where 2K chars is a
+                                    * modest read) tune upward. */
+                                  frameElisionThreshold: Int = 2000,
+                                  /** Characters of the original content kept as the
+                                    * elision gist when the tool author supplied no
+                                    * summary. */
+                                  frameElisionHeadChars: Int = 240,
                                   pinnedShareWarningThreshold: Double = 0.20,
                                   /** Hard cap on the number of frames the per-turn
                                     * curate pass considers. When the conversation has
@@ -357,7 +369,32 @@ case class StandardContextCurator(sigil: Sigil,
             frames0, candidate => tokensOf(tentative, candidate, resolvedSummaries) <= cap)
         val tent = tentative.copy(frames = frames)
 
-        if (tokensOf(tent, frames, resolvedSummaries) <= cap) Task.pure(tent)
+        // Sigil #416 — stamp the returned TurnInput when this curate had
+        // to elide frame content so downstream consumers (the naked-text
+        // decision challenge, apps) can tell a pressured turn apart from
+        // a normal one.
+        def stampPressure(t: TurnInput, elidedCount: Int): TurnInput =
+          if (elidedCount <= 0) t
+          else t.copy(extraContext = t.extraContext +
+            (StandardContextCurator.ContextPressureKey ->
+              s"$elidedCount frame(s) elided to fit the context budget this turn"))
+
+        // Sigil #416 — final backstop applied after the full cascade: if
+        // the result STILL exceeds the cap (active-turn protection can
+        // hold a lot of content; shed floors at keepMinimum), re-run the
+        // elision with NO exemptions. Starving the active turn is the
+        // bounded worst case — better than shipping a request the
+        // provider will hard-reject.
+        def fitOrLastResort(result: TurnInput): Task[TurnInput] =
+          if (tokensOf(result, result.frames, Vector.empty) <= cap) Task.pure(result)
+          else compactLargeFrames(tentative.conversationId, result.frames, Set.empty).map { fullyElided =>
+            stampPressure(result.copy(frames = fullyElided), 1)
+          }
+
+        if (tokensOf(tent, frames, resolvedSummaries) <= cap) Task {
+          sigil.elisionPressureStreaks.remove(tentative.conversationId)
+          tent
+        }
         else {
           // Stage 1 — drop non-critical retrieved memories.
           val afterStage1 = tent.copy(memories = Vector.empty)
@@ -375,7 +412,8 @@ case class StandardContextCurator(sigil: Sigil,
               // budget genuinely can't accommodate them.
               val afterStage2b = afterStage2.copy(summaries = Vector.empty)
               if (tokensOf(afterStage2b, frames, Vector.empty) <= cap) Task.pure(afterStage2b)
-              else compactLargeFrames(tentative.conversationId, frames).flatMap { compacted =>
+              else resolveElisionProtectedIds(tentative.conversationId, frames).flatMap { elisionProtected =>
+                compactLargeFrames(tentative.conversationId, frames, elisionProtected).flatMap { compacted =>
                 // Stage 2c — elide oversized tool-result / message frames
                 // to a short summary + reload-id (#316). Targets the
                 // actual budget bloat (a giant grep result, a huge
@@ -383,16 +421,51 @@ case class StandardContextCurator(sigil: Sigil,
                 // durable and re-examinable via reload_content(eventId). This
                 // runs before the lossy frame shed, so the common case
                 // (one oversized tool result) never reaches Stage 3.
-                val afterStage2c = afterStage2b.copy(frames = compacted)
-                if (tokensOf(afterStage2c, compacted, Vector.empty) <= cap) Task.pure(afterStage2c)
+                //
+                // Sigil #416 — active-turn frames are exempt (the agent
+                // must be able to act on what it just read), and chronic
+                // elision escalates: 2c's relief is per-curate and
+                // ephemeral, so a conversation that needs it every turn
+                // would re-elide forever while stage 3's DURABLE shed
+                // (summary + clearedAt advance) never runs. After
+                // `elisionPressureEscalationStreak` consecutive eliding
+                // curates, proceed into stage 3 against the UNELIDED
+                // frames so history durably shrinks and elision stops
+                // being needed.
+                val elidedCount = frames.iterator.zip(compacted.iterator).count { case (a, b) => a ne b }
+                val streak: Int =
+                  if (elidedCount > 0)
+                    sigil.elisionPressureStreaks
+                      .merge(tentative.conversationId, Int.box(1), (a, b) => Int.box(a.intValue + b.intValue))
+                      .intValue
+                  else {
+                    sigil.elisionPressureStreaks.remove(tentative.conversationId)
+                    0
+                  }
+                // Escalation only helps when a real compressor is wired —
+                // the durable shed drops frames strictly via summary, so
+                // with NoOpContextCompressor an escalated stage 3 would
+                // no-op into the last-resort full elision instead of
+                // shrinking anything.
+                val escalate = sigil.elisionPressureEscalationStreak > 0 &&
+                  streak >= sigil.elisionPressureEscalationStreak &&
+                  (compressor ne NoOpContextCompressor)
+                val afterStage2c = stampPressure(afterStage2b.copy(frames = compacted), elidedCount)
+                if (!escalate && tokensOf(afterStage2c, compacted, Vector.empty) <= cap) Task.pure(afterStage2c)
                 else {
                 // Stage 3 — last-resort frame shed for sheer history
                 // length. Resolve the invariant-protected
                 // `sourceEventId`s once so the shed never folds the user
-                // task or cleaves a paired tool exchange.
-                resolveProtectedEventIds(tentative.conversationId, compacted).flatMap { protectedIds =>
+                // task or cleaves a paired tool exchange. Under #416
+                // escalation the shed runs against the UNELIDED frames
+                // (targeting the raw content the per-curate elision keeps
+                // rewriting) so the resulting summary + clearedAt advance
+                // durably removes it.
+                val stage3Frames = if (escalate) frames else compacted
+                val stage3Base   = if (escalate) afterStage2b else afterStage2c
+                resolveProtectedEventIds(tentative.conversationId, stage3Frames).flatMap { protectedIds =>
                   shedFramesIteratively(
-                    kept = compacted,
+                    kept = stage3Frames,
                     droppedSoFar = Vector.empty,
                     summaryCarry = None,
                     cap = cap,
@@ -401,9 +474,10 @@ case class StandardContextCurator(sigil: Sigil,
                     conversationId = tentative.conversationId,
                     protectedSourceEventIds = protectedIds,
                     tokensOfKept = (kept, summaryOpt) =>
-                      tokensOf(afterStage2c, kept, summaryOpt.toVector)
+                      tokensOf(stage3Base, kept, summaryOpt.toVector)
                   )
                 }.flatMap { case (newerKept, summaryOpt) =>
+                  if (escalate) sigil.elisionPressureStreaks.remove(tentative.conversationId)
                   summaryOpt match {
                     case Some(summary) =>
                       // Bug #147 — advance the conversation's
@@ -416,7 +490,7 @@ case class StandardContextCurator(sigil: Sigil,
                       // advance is capped below the current user task
                       // by `advanceClearedAt` (#316), so old history
                       // sheds while the task never does.
-                      val shedSlice = compacted.dropRight(newerKept.size)
+                      val shedSlice = stage3Frames.dropRight(newerKept.size)
                       val advance: Task[Unit] = shedSlice.lastOption match {
                         case Some(boundary) =>
                           sigil.withDB(_.eventsTransaction(tentative.conversationId)(_.get(boundary.sourceEventId))).flatMap {
@@ -427,13 +501,14 @@ case class StandardContextCurator(sigil: Sigil,
                           }
                         case None => Task.unit
                       }
-                      advance.map(_ => afterStage2c.copy(
+                      advance.flatMap(_ => fitOrLastResort(stage3Base.copy(
                         frames    = newerKept,
                         summaries = Vector(summary._id)
-                      ))
+                      )))
                     case None =>
-                      Task.pure(afterStage2c.copy(frames = newerKept))
+                      fitOrLastResort(stage3Base.copy(frames = newerKept))
                   }
+                }
                 }
                 }
               }
@@ -539,8 +614,20 @@ case class StandardContextCurator(sigil: Sigil,
     * `sourceEventId`s. Best-effort: a DB hiccup or a missing event
     * row degrades to an empty set so the shed still makes progress. */
   private def resolveProtectedEventIds(conversationId: Id[Conversation],
-                                        frames: Vector[ContextFrame]): Task[Set[Id[_root_.sigil.event.Event]]] = {
-    val invariants = sigil.compactionInvariants
+                                        frames: Vector[ContextFrame]): Task[Set[Id[_root_.sigil.event.Event]]] =
+    resolveInvariantIds(conversationId, frames, sigil.compactionInvariants)
+
+  /** Event ids stage 2c's frame elision must not touch: the app's
+    * configured invariants PLUS the active turn
+    * ([[CompactionInvariant.ActiveTurnEvents]]). */
+  private def resolveElisionProtectedIds(conversationId: Id[Conversation],
+                                         frames: Vector[ContextFrame]): Task[Set[Id[_root_.sigil.event.Event]]] =
+    resolveInvariantIds(conversationId, frames,
+      sigil.compactionInvariants :+ CompactionInvariant.ActiveTurnEvents)
+
+  private def resolveInvariantIds(conversationId: Id[Conversation],
+                                  frames: Vector[ContextFrame],
+                                  invariants: List[CompactionInvariant]): Task[Set[Id[_root_.sigil.event.Event]]] = {
     if (invariants.isEmpty || frames.isEmpty) Task.pure(Set.empty)
     else {
       val ids = frames.map(_.sourceEventId).distinct
@@ -554,26 +641,25 @@ case class StandardContextCurator(sigil: Sigil,
     }
   }
 
-  /** Frames whose rendered content exceeds this elide to summary+id
-    * under budget pressure (#316). High enough that ordinary messages
-    * pass through untouched; low enough that a bulk tool result or a
-    * giant paste is caught. */
-  private val frameElisionThreshold: Int = 2000
-
-  /** Characters of the original content kept as the elision's gist
-    * when the tool author supplied no summary. */
-  private val frameElisionHeadChars: Int = 240
-
   /** #316 — per-frame budget elision. Replace oversized tool-result and
     * message frame content with a short gist + a `reload_content(eventId)`
     * reload pointer, keeping the frame in place. Non-destructive: the
     * durable event retains full content, re-examinable via reload_content.
     * Prefers the tool author's `ToolInvoke.summary` for the gist (this
     * runs only on the over-budget path, over oversized frames, so the
-    * per-frame event lookup is rare), falling back to a head excerpt. */
+    * per-frame event lookup is rare), falling back to a head excerpt.
+    *
+    * `protectedIds` (typically the [[CompactionInvariant.ActiveTurnEvents]]
+    * resolution) are exempt: the agent must be able to act on what it
+    * just read — a this-turn tool result rewritten to a stub between
+    * iterations starves the work in progress. The last-resort pass in
+    * `budgetResolve` re-runs with an empty set when protection alone
+    * can't fit the cap. */
   private def compactLargeFrames(conversationId: Id[Conversation],
-                                 frames: Vector[ContextFrame]): Task[Vector[ContextFrame]] =
+                                 frames: Vector[ContextFrame],
+                                 protectedIds: Set[Id[_root_.sigil.event.Event]]): Task[Vector[ContextFrame]] =
     Task.sequence(frames.map {
+      case f if protectedIds.contains(f.sourceEventId) => Task.pure(f)
       case tc: ContextFrame.ToolCall =>
         tc.state match {
           case ToolCallState.Complete(content, images) if content.length > frameElisionThreshold =>
@@ -741,6 +827,15 @@ case class StandardContextCurator(sigil: Sigil,
 }
 
 object StandardContextCurator {
+
+  /** Sigil #416 — [[sigil.conversation.TurnInput.extraContext]] key
+    * stamped by `budgetResolve` when stage 2c had to elide frame
+    * content this curate. Downstream consumers read it to distinguish
+    * a pressured turn from a normal one — notably the orchestrator's
+    * naked-text decision challenge, which backs off rather than
+    * prodding a context-starved agent through extra iterations. */
+  val ContextPressureKey: _root_.sigil.conversation.ContextKey =
+    _root_.sigil.conversation.ContextKey("_contextPressure")
 
   /** Sigil #288 — replace oversized top-level string fields in a
     * tool-call args JSON with a short placeholder. The placeholder

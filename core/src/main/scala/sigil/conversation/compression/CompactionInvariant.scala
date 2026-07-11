@@ -115,6 +115,34 @@ object CompactionInvariant {
     }
   }
 
+  /** Protect every event of the ACTIVE turn — at or after the claim
+    * timestamp when one is in scope, else at or after the most recent
+    * user-authored Standard Message. Used by the curator's frame
+    * elision (stage 2c): the agent must be able to act on what it just
+    * read — eliding a this-turn tool result to a stub between
+    * iterations starves the very work in progress, while eliding
+    * ancient reads is healthy hygiene. NOT in [[standard]]: the
+    * intra-turn compactor's whole job is folding the active turn's
+    * older events, so this invariant is appended only where active-turn
+    * content must survive verbatim. */
+  case object ActiveTurnEvents extends CompactionInvariant {
+    override val name: String = "ActiveTurnEvents"
+
+    override def applicableIds(events: Vector[Event], ctx: TurnEventsContext): Set[Id[Event]] = {
+      val boundary: Option[Long] = ctx.claimedAt.map(_.value).orElse {
+        events.reverseIterator.collectFirst {
+          case m: Message
+            if m.role == MessageRole.Standard
+            && !m.participantId.isInstanceOf[AgentParticipantId] => m.timestamp.value
+        }
+      }
+      boundary match {
+        case Some(b) => events.iterator.filter(_.timestamp.value >= b).map(_._id).toSet
+        case None    => Set.empty
+      }
+    }
+  }
+
   /** Default set: covers every protection the framework currently
     * needs. Apps override [[sigil.Sigil.compactionInvariants]] to add
     * or remove. `RecentTail` is not in the default set — the standard

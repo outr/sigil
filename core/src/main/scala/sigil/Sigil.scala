@@ -6095,6 +6095,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * immediately, pre-#413 behaviour). */
   protected def maxOverflowCompactions: Int = 2
 
+  /** Sigil #416 — per-conversation count of consecutive curates whose
+    * stage-2c frame elision had to fire. Written by
+    * [[sigil.conversation.compression.StandardContextCurator.budgetResolve]];
+    * when the streak reaches [[elisionPressureEscalationStreak]] the
+    * cascade escalates into stage 3's DURABLE shed (summary + clearedAt
+    * advance) so chronically-pressured history shrinks for good instead
+    * of being ephemerally re-elided on every turn forever. In-memory —
+    * a restart resets streaks, which just delays escalation by a few
+    * curates. */
+  private[sigil] final val elisionPressureStreaks: ConcurrentHashMap[Id[Conversation], java.lang.Integer] =
+    new ConcurrentHashMap()
+
+  /** Sigil #416 — consecutive eliding curates after which the shed
+    * cascade escalates to the durable stage-3 path even when elision
+    * alone would fit. 0 (or negative) disables escalation. */
+  protected[sigil] def elisionPressureEscalationStreak: Int = 3
+
   /** Objective identical-call streak (same tool, same args, within one turn)
     * at which the framework force-ends the turn — MODEL-INDEPENDENTLY — by
     * triggering the forced-synthesis recovery early. Every cooperative stall

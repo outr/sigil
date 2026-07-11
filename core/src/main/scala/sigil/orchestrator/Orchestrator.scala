@@ -1511,6 +1511,13 @@ object Orchestrator {
         //     nothing is minted — the challenge carries the dropped text
         //     so the model can re-wrap it in `respond`; on the commit path
         //     a Message is minted and settled terminally.
+        // Sigil #416 — back off the decision challenge when this turn's
+        // context was elided under budget pressure. A context-starved
+        // agent can only narrate (its reads were rewritten to stubs);
+        // challenging it burns iterations without changing anything —
+        // commit the prose and let the turn end.
+        val contextPressured = request.turnInput.extraContext.contains(
+          _root_.sigil.conversation.compression.StandardContextCurator.ContextPressureKey)
         val nakedTextOutcome: Task[List[Signal]] =
           if (stopReason != StopReason.Complete || state.sawAnyToolCall) Task.pure(Nil)
           else if (state.activeMessageCreated) {
@@ -1524,7 +1531,7 @@ object Orchestrator {
                 MessageDelta(target = id, conversationId = convId,
                   contentReplacement = Some(Vector(ResponseContent.Text(text))),
                   state = Some(EventState.Complete), terminalReply = terminal))
-            if (request.forceResponseSynthesis) Task.pure(settle(terminal = true))
+            if (request.forceResponseSynthesis || contextPressured) Task.pure(settle(terminal = true))
             else turnDecisionAlreadyChallenged(sigil, convId).map {
               case true  => settle(terminal = true)
               case false =>
@@ -1549,7 +1556,7 @@ object Orchestrator {
                 contentReplacement = Some(Vector(ResponseContent.Text(text))),
                 state = Some(EventState.Complete), terminalReply = true))
             }
-            if (request.forceResponseSynthesis) Task.pure(mintTerminal)
+            if (request.forceResponseSynthesis || contextPressured) Task.pure(mintTerminal)
             else turnDecisionAlreadyChallenged(sigil, convId).map {
               case true  => mintTerminal
               case false => buildTurnDecisionSignals(caller, convId, topicId, droppedText = Some(text))
