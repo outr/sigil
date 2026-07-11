@@ -105,9 +105,40 @@ trait BspToolSupport extends sigil.tool.Tool {
                                     emptyResult: => Output)
                                    (call: (BspSession, List[BuildTargetIdentifier]) => Task[Output]): Task[Output] =
     withSessionTyped[Output](projectRoot, context, onError) { session =>
-      targetsFromInput(session, requested).flatMap { targets =>
-        if (targets.isEmpty) Task.pure(emptyResult)
-        else call(session, targets)
+      // Explicit URIs are validated against the workspace's real target
+      // set BEFORE the RPC ships. The agent constructs target URIs from
+      // `bsp_list_targets` output; a typo'd or stale URI used to sail
+      // into the server and come back as an opaque request failure —
+      // the onError message here names the unmatched URI(s) AND the
+      // valid set so the agent can self-correct. Costs one
+      // `workspaceBuildTargets` roundtrip on explicit-target calls
+      // (cheap — the server caches it).
+      session.workspaceBuildTargets.map(_.map(_.getId)).flatMap { workspace =>
+        BspToolSupport.validateRequestedTargets(requested, workspace) match {
+          case Left(reason)   => Task.pure(onError(reason))
+          case Right(Nil)     => Task.pure(emptyResult)
+          case Right(targets) => call(session, targets)
+        }
       }
+    }
+}
+
+object BspToolSupport {
+
+  /** Resolve the agent's requested target URIs against the workspace's
+    * real target set. Empty `requested` means "every workspace target".
+    * Returns `Left(reason)` naming the unmatched URI(s) and the valid
+    * set when any explicit URI doesn't resolve — the actionable message
+    * the tools' `onError` mapping carries to the agent. */
+  def validateRequestedTargets(requested: List[String],
+                               workspace: List[BuildTargetIdentifier]): Either[String, List[BuildTargetIdentifier]] =
+    if (requested.isEmpty) Right(workspace)
+    else {
+      val validUris = workspace.iterator.map(_.getUri).toSet
+      val unmatched = requested.filterNot(validUris.contains)
+      if (unmatched.isEmpty) Right(requested.map(uri => new BuildTargetIdentifier(uri)))
+      else Left(
+        s"no build target matched ${unmatched.map(u => s"`$u`").mkString(", ")} — " +
+          s"valid targets: ${workspace.map(_.getUri).mkString(", ")}")
     }
 }
