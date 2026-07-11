@@ -105,16 +105,27 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         complete.get.options.exists(_.exclusive) should be(true)
         complete.get.options.count(_.exclusive) should be(1)
       }
-    "call find_capability when the user requests an action no core tool can perform" in
+    "seek a capability when the user requests an action no core tool can perform" in
       request(
         "Post a quick update to my team's #engineering Slack channel: \"deploy finished successfully.\""
       ).map { events =>
         val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
-        start.map(_.toolName) shouldBe Some("find_capability")
-
-        val input = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: FindCapabilityInput) => i }
-        input should not be empty
-        input.get.keywords should (include("slack") or include("post") or include("message"))
+        val toolName = start.map(_.toolName)
+        // Both are valid capability-seeking moves for an out-of-roster
+        // action: discover a tool for it, or switch to a mode that might
+        // carry one — live models split between the two, and either
+        // satisfies the discovery-first contract. What this pins against
+        // is answering or refusing via the respond family without
+        // seeking at all.
+        toolName should (be(Some("find_capability")) or be(Some(ChangeModeTool.schema.name.value)))
+        if (toolName.contains("find_capability")) {
+          val input = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: FindCapabilityInput) => i }
+          input should not be empty
+          input.get.keywords should (include("slack") or include("post") or include("message"))
+        } else {
+          val input = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: ChangeModeInput) => i }
+          input should not be empty
+        }
       }
     "switch modes when the user's task belongs to a different mode" in
       request("I need to write a Scala function.").map { events =>
