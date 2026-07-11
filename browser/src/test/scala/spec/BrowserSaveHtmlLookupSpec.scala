@@ -85,7 +85,10 @@ class BrowserSaveHtmlLookupSpec extends AnyWordSpec with Matchers {
 
       val server = markerServer()
       server.start().sync()
-      val page = s"http://localhost:${server.config.listeners().head.port.getOrElse(0)}/"
+      // Explicit IPv4 — spice's listener binds 127.0.0.1 only, and CI's
+      // Chrome resolves `localhost` to ::1 first, getting connection
+      // refused and committing an empty error-page document.
+      val page = s"http://127.0.0.1:${server.config.listeners().head.port.getOrElse(0)}/"
 
       val controller = TestBrowserSigil.browserController(convId, SpecUser, List(SpecUser)).sync()
       try {

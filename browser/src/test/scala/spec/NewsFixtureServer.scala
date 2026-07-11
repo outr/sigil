@@ -92,5 +92,8 @@ final class NewsFixtureServer {
 
   def port: Int = server.config.listeners().head.port.getOrElse(0)
 
-  def indexUrl: String = s"http://localhost:$port/"
+  // Explicit IPv4 — spice's listener binds 127.0.0.1 only, and CI's
+  // Chrome resolves `localhost` to ::1 first (connection refused →
+  // empty error-page document).
+  def indexUrl: String = s"http://127.0.0.1:$port/"
 }
