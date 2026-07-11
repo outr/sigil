@@ -37,6 +37,16 @@ case object RespondTool extends RespondFamilyTool {
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("respond")
+
+  /** Unlike its always-terminal siblings, `respond`'s terminality is
+    * decided by the `endsTurn` flag — the family's unconditional
+    * `**ENDS YOUR TURN.**` headline contradicted the flag and primed
+    * models to fill `endsTurn = true` even when their own content
+    * announced work they hadn't done, settling the turn at iteration 1
+    * with zero work. The headline states the conditional truth instead. */
+  override protected def destructivePrefix: String =
+    "**ENDS YOUR TURN only when `endsTurn` = true — with `endsTurn` = false the message is " +
+      "delivered and you keep working on the next iteration.** "
   val description =
     """Deliver text to the user. Use ONLY when:
       |  (a) the user is chatting or asking a question you can answer from your own knowledge, OR
@@ -75,7 +85,10 @@ case object RespondTool extends RespondFamilyTool {
       |  work (out of scope, missing capability, a tool failed and you're reporting that). The
       |  framework stamps the resulting Message's disposition accordingly.
       |- `endsTurn` — `true` when this respond is your COMPLETE reply for this turn. Set `false`
-      |  for in-flight status pulses you intend to follow up on the same turn.""".stripMargin
+      |  for in-flight status pulses you intend to follow up on the same turn. A turn-ending
+      |  message describes what you DID, not what you are about to do: if your `content`
+      |  announces work you have not done yet ("Searching…", "Let me start…", "I'll now…"),
+      |  `endsTurn` MUST be `false`.""".stripMargin
 
   override def executeResult(input: RespondInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     // Sigil bug #226 — `endsTurn = true` is the explicit "this agent

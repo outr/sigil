@@ -66,7 +66,9 @@ object RequestProfiler {
           "Never emit `<tool_call>`, `<function=…>`, or similar XML/tag syntax inside `content` or any " +
           "other string field — those will NOT be parsed as tool calls; they will leak to the user as " +
           "text. If you want to make a follow-up tool call after responding, set `respond.endsTurn = false` " +
-          "and issue the next call on the next iteration.\n\n")
+          "and issue the next call on the next iteration. A turn-ending respond describes what you DID, " +
+          "not what you are about to do — content announcing work you have not done yet requires " +
+          "`endsTurn = false`.\n\n")
     }
 
     // 2. Mode + topic block

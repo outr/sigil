@@ -64,7 +64,10 @@ import sigil.tool.ToolInput
  * the respond's content shows the user a progress pulse rather than
  * a permanent reply. No default — the agent makes the decision
  * explicitly every turn so "Let me X…" announcements never
- * accidentally end the turn before the work happens.
+ * accidentally end the turn before the work happens. A turn-ending
+ * message describes what you DID, not what you are about to do: if
+ * `content` announces work you have not done yet ("Searching…",
+ * "Let me start…", "I'll now…"), `endsTurn` MUST be `false`.
  */
 case class RespondInput(topicLabel: String,
                         topicSummary: String,

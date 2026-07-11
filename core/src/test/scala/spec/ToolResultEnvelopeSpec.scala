@@ -216,11 +216,17 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
       }
     }
 
-    "render the **ENDS YOUR TURN.** prefix via wireDescription" in {
+    "render the terminality prefix via wireDescription" in {
       // Need a Sigil + Mode to render; use the framework's defaults.
       val mode = sigil.provider.ConversationMode
-      val rendered = RespondTool.wireDescription(mode, TestSigil)
-      rendered should startWith("**ENDS YOUR TURN.**")
+      // `respond`'s terminality is conditional on `endsTurn`, so its
+      // headline states the condition instead of the family's
+      // unconditional form (which contradicted the flag and primed
+      // models to end turns they had just announced work in).
+      RespondTool.wireDescription(mode, TestSigil) should
+        startWith("**ENDS YOUR TURN only when `endsTurn` = true")
+      // The always-terminal siblings keep the unconditional headline.
+      RespondOptionsTool.wireDescription(mode, TestSigil) should startWith("**ENDS YOUR TURN.**")
     }
   }
 

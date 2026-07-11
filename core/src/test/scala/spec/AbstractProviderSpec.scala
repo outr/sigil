@@ -127,6 +127,26 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           input should not be empty
         }
       }
+    "never mark an announce-shaped respond as turn-ending" in
+      request(
+        "Compile a list of every configuration file in my project and what each one controls."
+      ).map { events =>
+        // The model may seek a capability (ideal) or narrate a status
+        // pulse — both are fine. What must never happen is the failure
+        // shape this pins: a respond whose content ANNOUNCES work not
+        // yet done ("Searching…", "I'll now…") arriving with
+        // endsTurn = true, which settles the turn at iteration 1 with
+        // zero work behind the announcement.
+        val announceHead =
+          "(?i)^\\s*(searching|scanning|looking|checking|starting|working on|let me (?:search|check|start|look|scan|compile)|i'?ll (?:now|start|begin|search|scan|compile)|i will (?:now|start|begin|search|scan|compile))".r
+        val announcedTerminals = events.collect {
+          case ProviderEvent.ToolCallComplete(_, i: RespondInput)
+            if i.endsTurn && announceHead.findFirstIn(i.content).isDefined => i.content.take(120)
+        }
+        withClue(s"announce-shaped respond(s) ended the turn: $announcedTerminals: ") {
+          announcedTerminals shouldBe empty
+        }
+      }
     "switch modes when the user's task belongs to a different mode" in
       request("I need to write a Scala function.").map { events =>
         val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
