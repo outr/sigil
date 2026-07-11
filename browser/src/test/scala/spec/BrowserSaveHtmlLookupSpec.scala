@@ -53,8 +53,27 @@ class BrowserSaveHtmlLookupSpec extends AnyWordSpec with Matchers {
   )
 
   private val marker = "SIGIL-377-WHOLE-PAGE-MARKER"
-  private val page =
-    s"data:text/html,<html><body><h1>Heading</h1><p>$marker</p></body></html>"
+
+  /** Local fixture server for the marker page. A `data:text/html` URL
+    * was used before, but CI's Chrome build silently commits an EMPTY
+    * document for top-level `data:` navigations (the capture came back
+    * `<html><head></head><body></body></html>`) while local builds
+    * render it — the test's subject is the Information registration,
+    * not data-URL policy, so serve the page over plain HTTP like the
+    * module's other browser fixtures. */
+  private def markerServer(): spice.http.server.MutableHttpServer = {
+    val s = new spice.http.server.MutableHttpServer
+    s.config.clearListeners().addListeners(spice.http.server.config.HttpServerListener(port = None))
+    s.handler.handle { exchange =>
+      exchange.modify { response =>
+        rapid.Task(response.withContent(spice.http.content.Content.string(
+          s"<html><body><h1>Heading</h1><p>$marker</p></body></html>",
+          spice.net.ContentType.`text/html`
+        )))
+      }
+    }
+    s
+  }
 
   "browser_save_html (sigil #377)" should {
     "register a lookup-able Information so the whole captured page is retrievable" in {
@@ -63,6 +82,10 @@ class BrowserSaveHtmlLookupSpec extends AnyWordSpec with Matchers {
       val convId = Conversation.id("save-html-lookup")
       val conv = Conversation(topics = List(TopicEntry(TestTopicId, "test", "test")), _id = convId)
       TestBrowserSigil.withDB(_.conversations.transaction(_.upsert(conv))).sync()
+
+      val server = markerServer()
+      server.start().sync()
+      val page = s"http://localhost:${server.config.listeners().head.port.getOrElse(0)}/"
 
       val controller = TestBrowserSigil.browserController(convId, SpecUser, List(SpecUser)).sync()
       try {
@@ -96,7 +119,10 @@ class BrowserSaveHtmlLookupSpec extends AnyWordSpec with Matchers {
           case other                => fail(s"expected a StoredInformation, got $other")
         }
         content should include(marker)
-      } finally TestBrowserSigil.disposeBrowserController(convId).sync()
+      } finally {
+        TestBrowserSigil.disposeBrowserController(convId).sync()
+        try server.stop().sync() catch { case _: Throwable => () }
+      }
     }
   }
 

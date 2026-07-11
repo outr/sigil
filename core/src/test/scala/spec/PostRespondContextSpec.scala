@@ -107,6 +107,19 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val agent  = makeAgent()
       val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
+      // Poll until `cond` holds (or the deadline passes — the assertions
+      // then fail with the recorded shapes). Fixed sleeps were flaky
+      // under CI's 4-way fork contention: turn 1 (agent call + topic-
+      // classifier consult) routinely outran a 1500ms budget, so the
+      // assertion fired before turn 2's request ever shipped.
+      def awaitCondition(deadline: FiniteDuration)(cond: => Boolean): Task[Unit] = {
+        val end = System.currentTimeMillis() + deadline.toMillis
+        def loop: Task[Unit] =
+          if (cond || System.currentTimeMillis() > end) Task.unit
+          else Task.sleep(50.millis).flatMap(_ => loop)
+        loop
+      }
+
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
@@ -116,7 +129,9 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
                content        = Vector(ResponseContent.Text("Set up project ready field.")),
                state          = EventState.Complete
              ))
-        _ <- Task.sleep(1500.millis) // wait for iteration 1 to settle
+        // Turn 1 settles: the claim row appears (absent rows keep
+        // polling) and completes.
+        _ <- TestSigil.awaitSettled(convId, timeout = 30.seconds)
         _ <- TestSigil.publish(Message(
                participantId  = TestUser,
                conversationId = convId,
@@ -124,7 +139,12 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
                content        = Vector(ResponseContent.Text("Can you give me an overview of this project?")),
                state          = EventState.Complete
              ))
-        _ <- Task.sleep(1500.millis) // wait for iteration 2 to settle
+        // Turn 2: `awaitSettled` would race (the claim row is already
+        // Complete from turn 1 until turn 2 claims), so poll on the
+        // assertion's own predicate — a recorded wire request carrying
+        // the accumulated history.
+        _ <- awaitCondition(30.seconds)(
+               provider.calls.iterator().asScala.exists(_.messages.size >= 3))
       } yield {
         val recorded = provider.calls.iterator().asScala.toList
         withClue(s"Provider received ${recorded.size} call(s); expected 2 — iteration 1 (respond_field) + iteration 2 (respond after user reply).") {
