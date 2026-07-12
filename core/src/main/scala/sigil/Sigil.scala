@@ -3163,7 +3163,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                    ti.outcome == sigil.event.ToolOutcome.Pending =>
                               val (content, images) = FrameBuilder.toolResultPayload(e)
                               val updated = tc.copy(
-                                state = ToolCallState.Complete(content, images)
+                                state = ToolCallState.Complete(content, images),
+                                resultPending = false
                               )
                               tx.upsert(ti.withContextFrame(Some(updated))).unit
                             case _ => Task.unit
@@ -3689,6 +3690,40 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     ()
   }
 
+  /** Per-conversation ids of tool invokes whose SETTLED result has been
+    * rendered into a prompt the model consumed — the agent loop marks
+    * each iteration's frames after the response drain completes.
+    * Consulted (via [[sigil.conversation.compression.TurnEventsContext.deliveredToolResults]])
+    * by [[sigil.conversation.compression.CompactionInvariant.UndeliveredToolResults]]:
+    * an active-turn invoke NOT in this set must survive every
+    * compaction / shed / summary cover-set, or the agent never sees the
+    * outcome of its own (possibly long-running) work and re-executes
+    * it. In-memory; cleared when a fresh user Message starts the next
+    * turn. A restart clears delivery state, which over-protects (keeps
+    * more frames) for one turn — the safe direction. */
+  private final val deliveredToolResults: ConcurrentHashMap[Id[Conversation], java.util.Set[Id[Event]]] =
+    new ConcurrentHashMap()
+
+  /** Mark `ids` as delivered for `conversationId` — their settled
+    * results appeared in a prompt whose response the model produced.
+    * Called by the agent loop after each iteration's drain; public so
+    * apps with custom turn shapes (`Sigil.process` overrides) can keep
+    * the delivery tracking honest for their own prompt builds. */
+  final def markToolResultsDelivered(conversationId: Id[Conversation], ids: Iterable[Id[Event]]): Unit =
+    if (ids.nonEmpty) {
+      val set = deliveredToolResults.computeIfAbsent(conversationId, _ => ConcurrentHashMap.newKeySet[Id[Event]]())
+      ids.foreach(set.add)
+    }
+
+  /** Snapshot of the delivered-result ids for `conversationId`. */
+  final def deliveredToolResultIds(conversationId: Id[Conversation]): Set[Id[Event]] =
+    Option(deliveredToolResults.get(conversationId)) match {
+      case Some(set) =>
+        import scala.jdk.CollectionConverters.*
+        set.asScala.toSet
+      case None => Set.empty
+    }
+
   /** Sigil #415 — whether the user has requested a stop that should halt
     * further work for `conversationId` (optionally narrowed to one
     * agent). Consulted by the provider layer's transient-retry loop and
@@ -4097,15 +4132,40 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def framesFor(conversationId: Id[Conversation]): Task[Vector[ContextFrame]] =
     withDB(_.conversations.transaction(_.get(conversationId))).flatMap { convOpt =>
       val watermark = convOpt.flatMap(_.clearedAt).map(_.value).getOrElse(0L)
-      withDB(_.eventsTransaction(conversationId)(_.list)).map { all =>
-        all.iterator
-          .filter(_.conversationId == conversationId)
-          .filter(_.timestamp.value > watermark)
-          .filter(_.state == EventState.Complete)
-          .toVector
-          .sortBy(_.timestamp.value)
-          .flatMap(_.contextFrame)
-      }
+      withDB(_.eventsTransaction(conversationId) { tx =>
+        tx.list.flatMap { all =>
+          val events = all.iterator
+            .filter(_.conversationId == conversationId)
+            .filter(_.timestamp.value > watermark)
+            .filter(_.state == EventState.Complete)
+            .toVector
+            .sortBy(_.timestamp.value)
+          // Self-heal fossilized placeholders: a ToolCall frame rendered
+          // while the invoke's outcome was still Pending (`resultPending`)
+          // whose row has SINCE settled means the settle-time rewrite was
+          // missed — recompute from the row (pure) and persist, so the
+          // "result raced past the prompt" marker can never outlive the
+          // real result it stood in for.
+          val heals = Vector.newBuilder[Event]
+          val frames = events.flatMap { ev =>
+            ev.contextFrame match {
+              case Some(tc: ContextFrame.ToolCall) if tc.resultPending =>
+                ev match {
+                  case ti: ToolInvoke if ti.outcome != sigil.event.ToolOutcome.Pending =>
+                    val fresh = FrameBuilder.computeFrame(ti)
+                    heals += ti.withContextFrame(fresh)
+                    fresh
+                  case _ => ev.contextFrame
+                }
+              case other => other
+            }
+          }
+          val persistHeals = heals.result().foldLeft(Task.unit) { (acc, ev) =>
+            acc.flatMap(_ => tx.upsert(ev).unit)
+          }.handleError(_ => Task.unit)
+          persistHeals.map(_ => frames)
+        }
+      })
     }
 
   /**
@@ -5924,7 +5984,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case _ => false
     }
 
-  private final def fanOut(event: Event): Task[Unit] =
+  private final def fanOut(event: Event): Task[Unit] = {
+    // A fresh user-authored Message is the turn boundary — the prior
+    // turn's delivered-result tracking has served its purpose (its
+    // protection window ends with the turn) and must not leak across
+    // turns as the conversation ages.
+    event match {
+      case m: Message
+        if !m.participantId.isInstanceOf[AgentParticipantId] && m.role == MessageRole.Standard =>
+        deliveredToolResults.remove(event.conversationId)
+        ()
+      case _ => ()
+    }
     // Sigil #415 — honor the conversation's stop latch before waking any
     // agent. While latched, only a user-authored Message NEWER than the
     // Stop re-arms the conversation (and clears the latch); every other
@@ -5949,6 +6020,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         }
       case None => fanOutUnlatched(event)
     }
+  }
 
   private final def fanOutUnlatched(event: Event): Task[Unit] =
     withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
@@ -6817,9 +6889,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // any dangling invoke + terminates cleanly. `race` returns the
               // waiter's result and discards the cancelled drain's
               // InterruptedException, so no error surfaces.
-              stopFlag match {
+              val drained = stopFlag match {
                 case Some(flag) => Task.race(drainTask, awaitForceStop(flag)).map(_ => ())
                 case None       => drainTask
+              }
+              // The model consumed this iteration's prompt and produced a
+              // response — every settled tool result the prompt carried has
+              // now been DELIVERED. Mark them so the compaction machinery
+              // (intra-turn compactor, curator sheds, summary cover-sets)
+              // may fold them from later prompts; unmarked settled results
+              // stay whole via CompactionInvariant.UndeliveredToolResults.
+              // Skipped on a stop (the response may not have been consumed)
+              // and on drain error (the flatMap never runs) — both err
+              // toward protecting, never toward dropping.
+              drained.flatMap { _ =>
+                Task {
+                  if (!stopFlag.exists(_.requested)) markToolResultsDelivered(
+                    convId,
+                    ctx.turnInput.frames.collect {
+                      case tc: sigil.conversation.ContextFrame.ToolCall
+                        if tc.state.isInstanceOf[sigil.conversation.ToolCallState.Complete] && !tc.resultPending =>
+                        tc.callId
+                    }
+                  )
+                }
               }
           }
         }.flatMap { _ =>
@@ -7466,9 +7559,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         if (!compactor.shouldCompact(turnEvents, estimated, threshold)) Task.unit
         else {
           val ctx = _root_.sigil.conversation.compression.TurnEventsContext(
-            conversationId = convId,
-            claimedAt      = Some(claimed.timestamp),
-            agentId        = Some(agent.id)
+            conversationId       = convId,
+            claimedAt            = Some(claimed.timestamp),
+            agentId              = Some(agent.id),
+            deliveredToolResults = deliveredToolResultIds(convId)
           )
           val coverIds = compactor.selectFoldable(turnEvents, ctx).toSet
           if (coverIds.isEmpty) Task.unit

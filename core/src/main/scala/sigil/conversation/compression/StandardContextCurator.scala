@@ -635,7 +635,10 @@ case class StandardContextCurator(sigil: Sigil,
         Task.sequence(ids.toList.map(tx.get)).map(_.flatten.toVector)
       }).map { events =>
         val sorted = events.sortBy(_.timestamp.value)
-        val ctx = TurnEventsContext(conversationId = conversationId)
+        val ctx = TurnEventsContext(
+          conversationId = conversationId,
+          deliveredToolResults = sigil.deliveredToolResultIds(conversationId)
+        )
         invariants.iterator.flatMap(_.applicableIds(sorted, ctx)).toSet
       }.handleError(_ => Task.pure(Set.empty))
     }

@@ -112,7 +112,16 @@ enum ContextFrame derives RW {
                   * (the channel ModeChange uses), and the curator sheds all but
                   * the most recent so consumed nudges don't accumulate. */
                 internal: Boolean = false,
-                state: ToolCallState = ToolCallState.Active)
+                state: ToolCallState = ToolCallState.Active,
+                /** `true` when this frame's `Complete` content was rendered
+                  * while the invoke's OUTCOME was still `Pending` — the
+                  * "result raced past the prompt" placeholder, or a stale
+                  * `summary` standing in for the real output. Readers
+                  * ([[sigil.Sigil.framesFor]]) recompute the frame from the
+                  * durable row when this is set and the row has since
+                  * settled, so a missed settle-time rewrite can never
+                  * fossilize the placeholder into every later prompt. */
+                resultPending: Boolean = false)
 
   /**
    * Out-of-band framework-authored context — mode transitions, title

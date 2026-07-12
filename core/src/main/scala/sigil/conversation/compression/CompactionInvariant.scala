@@ -74,11 +74,15 @@ object CompactionInvariant {
     * protects invoke+result pairs only when BOTH halves are in the
     * slice — splitting a pair leaves a half-rendered exchange on
     * the wire; folding both is fine and the test that checks an
-    * older paired invoke gets folded relies on this behaviour.
+    * older paired invoke gets folded relies on this behaviour. A
+    * unified settled invoke (the result folded onto the invoke
+    * itself — no separate Tool-role event) IS both halves in one
+    * event, so it needs no pair protection either.
     * `unsettledOnly = true` flips the meaning: protect ONLY invokes
-    * whose result is absent from the slice (still-running tools
-    * whose return we haven't seen yet), and leave settled pairs to
-    * the shedder. */
+    * whose result hasn't been seen yet — an invoke still `Active`,
+    * one whose unified `outcome` is still `Pending`, or (legacy
+    * paired shape) one with no Tool-role result event in the slice
+    * — and leave settled exchanges to the shedder. */
   case class PairedToolResult(unsettledOnly: Boolean = false) extends CompactionInvariant {
     override val name: String = s"PairedToolResult(unsettledOnly=$unsettledOnly)"
 
@@ -91,8 +95,12 @@ object CompactionInvariant {
       events.foreach {
         case ti: ToolInvoke =>
           val matched = resultsByOrigin.getOrElse(ti._id, Vector.empty)
+          // The unified transaction shape: the settling ToolDelta folded
+          // output/outcome onto the invoke itself.
+          val settledUnified =
+            ti.state == sigil.signal.EventState.Complete && ti.outcome != sigil.event.ToolOutcome.Pending
           if (unsettledOnly) {
-            if (matched.isEmpty) out += ti._id
+            if (!settledUnified && matched.isEmpty) out += ti._id
           } else if (matched.nonEmpty) {
             out += ti._id
             matched.foreach(r => out += r._id)
@@ -143,6 +151,46 @@ object CompactionInvariant {
     }
   }
 
+  /** Protect the active turn's tool invokes until their settled result
+    * has been rendered into a prompt the model actually consumed. A
+    * settled tool call from the CURRENT turn is the most load-bearing
+    * context the next iteration has — folding it before the agent has
+    * read it once makes the agent re-execute its own completed work,
+    * skip mandatory follow-ups the result named, and misattribute the
+    * digest's record of the call to "the system". The agent loop marks
+    * results delivered after each iteration's response is consumed
+    * ([[TurnEventsContext.deliveredToolResults]]); anything not yet
+    * marked stays whole. In-flight and settled-but-unseen invokes are
+    * both covered — folding an in-flight invoke's id into a summary's
+    * cover set would hide its EVENTUAL result the same way.
+    *
+    * Scoped to the active turn (the claim window, else everything at
+    * or after the most recent user-authored Standard Message) so old
+    * turns' invokes — trivially absent from the per-turn delivery
+    * registry — stay compressible. */
+  case object UndeliveredToolResults extends CompactionInvariant {
+    override val name: String = "UndeliveredToolResults"
+
+    override def applicableIds(events: Vector[Event], ctx: TurnEventsContext): Set[Id[Event]] = {
+      val boundary: Option[Long] = ctx.claimedAt.map(_.value).orElse {
+        events.reverseIterator.collectFirst {
+          case m: Message
+            if m.role == MessageRole.Standard
+            && !m.participantId.isInstanceOf[AgentParticipantId] => m.timestamp.value
+        }
+      }
+      boundary match {
+        case None => Set.empty
+        case Some(b) =>
+          events.iterator.collect {
+            case ti: ToolInvoke
+              if ti.timestamp.value >= b
+              && !ctx.deliveredToolResults.contains(ti._id) => ti._id
+          }.toSet
+      }
+    }
+  }
+
   /** Default set: covers every protection the framework currently
     * needs. Apps override [[sigil.Sigil.compactionInvariants]] to add
     * or remove. `RecentTail` is not in the default set — the standard
@@ -150,6 +198,7 @@ object CompactionInvariant {
   val standard: List[CompactionInvariant] = List(
     CurrentUserTaskMessage,
     CurrentAgentClaimAnchor,
-    PairedToolResult()
+    PairedToolResult(),
+    UndeliveredToolResults
   )
 }

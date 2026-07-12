@@ -1659,6 +1659,13 @@ trait Provider extends Service with ModelResolver {
       .take(Provider.RecentToolsPromptCap)
     if (recent.nonEmpty) {
       sb.append("\n== Recently used tools ==\n")
+      // Agency must be unambiguous: this digest is a memory aid about
+      // the assistant's OWN prior calls, not an external log. When
+      // budget pressure has trimmed a call's full transaction from the
+      // history, this line is the only remaining record — a model that
+      // reads it as "the system did this" disowns its own actions and
+      // hands the user work it already owns.
+      sb.append("These are tool calls YOU (the assistant) made earlier in this conversation:\n")
       recent.foreach { inv =>
         val ago = Provider.humanizeAgo(now - inv.invokedAt.value)
         val previewSuffix = if (inv.argsPreview.nonEmpty) s" (${inv.argsPreview})" else ""

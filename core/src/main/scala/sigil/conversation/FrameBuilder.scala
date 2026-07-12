@@ -224,7 +224,11 @@ object FrameBuilder {
           visibility = ti.visibility,
           wireCallId = ti.callId,
           internal = ti.internal,
-          state = callState
+          state = callState,
+          // The Complete content above was rendered from a Pending
+          // outcome (the race placeholder / stale summary) — flag it so
+          // readers recompute once the row settles.
+          resultPending = ti.state == EventState.Complete && ti.outcome == ToolOutcome.Pending
         ))
 
       case mc: ModeChange =>
@@ -368,7 +372,7 @@ object FrameBuilder {
         val tc = existing(matchingIdx).asInstanceOf[ContextFrame.ToolCall]
         return existing.updated(
           matchingIdx,
-          tc.copy(state = ToolCallState.Complete(content, images))
+          tc.copy(state = ToolCallState.Complete(content, images), resultPending = false)
         )
       }
       // No matching Active ToolCall in `existing` — orphan result.
@@ -411,7 +415,8 @@ object FrameBuilder {
           visibility = ti.visibility,
           wireCallId = ti.callId,
           internal = ti.internal,
-          state = callState
+          state = callState,
+          resultPending = ti.state == EventState.Complete && ti.outcome == ToolOutcome.Pending
         )
 
       case mc: ModeChange =>

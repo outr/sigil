@@ -55,6 +55,14 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       origin         = originId
     )
 
+  /** A unified settled transaction (#265) — the result folded onto the
+    * invoke itself; no separate Tool-role event exists. */
+  private def settledInvoke(name: String, ts: Long = 1L, resultText: String = "ok"): ToolInvoke =
+    toolInvoke(name, ts).copy(
+      output  = sigil.tool.TextToolOutput(resultText),
+      outcome = sigil.event.ToolOutcome.Success
+    )
+
   private def toolResult(text: String, originId: Id[Event], ts: Long = 1L): Message =
     Message(
       participantId  = TestAgent,
@@ -157,6 +165,63 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         .applicableIds(events, emptyCtx)
       ids shouldBe Set(unpaired._id)
     }
+
+    "with unsettledOnly=true, NOT protect a unified settled invoke — its result IS on the event" in Task {
+      // The #265 shape: no Tool-role result event exists, the settling
+      // delta folded output/outcome onto the invoke. Pre-fix this was
+      // misclassified as "result absent" (and with the default flag,
+      // never protected as a pair at all).
+      val unified  = settledInvoke("grep", ts = 10L, resultText = "3 matches")
+      val inflight = toolInvoke("slow_sweep", ts = 20L) // Complete but outcome still Pending
+      val events: Vector[Event] = Vector(unified, inflight)
+      val ids = CompactionInvariant.PairedToolResult(unsettledOnly = true)
+        .applicableIds(events, emptyCtx)
+      ids shouldBe Set(inflight._id)
+    }
+  }
+
+  "CompactionInvariant.UndeliveredToolResults" should {
+
+    "protect an active-turn settled invoke the agent has not yet seen" in Task {
+      val ut    = userMsg("run the sweep", ts = 100L)
+      val sweep = settledInvoke("refactor_sweep", ts = 110L, resultText = "converged; compile next")
+      val ctx   = emptyCtx.copy(claimedAt = Some(Timestamp(100L)))
+      val ids = CompactionInvariant.UndeliveredToolResults.applicableIds(Vector(ut, sweep), ctx)
+      ids shouldBe Set(sweep._id)
+    }
+
+    "release the invoke once its result has been delivered into a consumed prompt" in Task {
+      val ut    = userMsg("run the sweep", ts = 100L)
+      val sweep = settledInvoke("refactor_sweep", ts = 110L)
+      val ctx = emptyCtx.copy(
+        claimedAt            = Some(Timestamp(100L)),
+        deliveredToolResults = Set(sweep._id)
+      )
+      CompactionInvariant.UndeliveredToolResults.applicableIds(Vector(ut, sweep), ctx) shouldBe empty
+    }
+
+    "protect an in-flight invoke — folding it would hide its EVENTUAL result the same way" in Task {
+      val ut      = userMsg("run the sweep", ts = 100L)
+      val running = toolInvoke("refactor_sweep", ts = 110L) // outcome still Pending
+      val ctx     = emptyCtx.copy(claimedAt = Some(Timestamp(100L)))
+      val ids = CompactionInvariant.UndeliveredToolResults.applicableIds(Vector(ut, running), ctx)
+      ids shouldBe Set(running._id)
+    }
+
+    "fall back to the most-recent user task as the turn boundary when no claim is threaded" in Task {
+      val oldTool = settledInvoke("old_grep", ts = 10L)
+      val ut      = userMsg("new task", ts = 100L)
+      val newTool = settledInvoke("new_grep", ts = 110L)
+      val ids = CompactionInvariant.UndeliveredToolResults.applicableIds(Vector(oldTool, ut, newTool), emptyCtx)
+      // Prior turns' invokes stay compressible — only the active turn's
+      // undelivered work is protected.
+      ids shouldBe Set(newTool._id)
+    }
+
+    "protect nothing when no turn boundary can be established" in Task {
+      val lone = settledInvoke("orphan", ts = 10L)
+      CompactionInvariant.UndeliveredToolResults.applicableIds(Vector(lone), emptyCtx) shouldBe empty
+    }
   }
 
   "CompactionInvariant.RecentTail" should {
@@ -207,16 +272,21 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     }
 
     "StandardIntraTurnCompactor.selectFoldable drops everything not in the protected union" in Task {
-      // Default invariant set + recentTailN = 3.
+      // Default invariant set + recentTailN = 3. The older tool events
+      // are marked DELIVERED (their results reached a consumed prompt in
+      // a prior iteration) so UndeliveredToolResults releases them.
       val compactor = StandardIntraTurnCompactor(recentTailN = 3)
       val ut = userMsg("the task", ts = 50L)
-      val older1 = toolInvoke("older-1", ts = 60L)
-      val older2 = toolInvoke("older-2", ts = 70L)
+      val older1 = settledInvoke("older-1", ts = 60L)
+      val older2 = settledInvoke("older-2", ts = 70L)
       val tail1 = toolInvoke("tail-1", ts = 80L)
       val tail2 = toolInvoke("tail-2", ts = 90L)
       val tail3 = toolInvoke("tail-3", ts = 100L)
       val events: Vector[Event] = Vector(ut, older1, older2, tail1, tail2, tail3)
-      val ctx = emptyCtx.copy(claimedAt = Some(Timestamp(50L)))
+      val ctx = emptyCtx.copy(
+        claimedAt            = Some(Timestamp(50L)),
+        deliveredToolResults = Set(older1._id, older2._id)
+      )
       val folded = compactor.selectFoldable(events, ctx).toSet
       // ut protected by CurrentUserTaskMessage + claim anchor
       folded should not contain ut._id
@@ -224,9 +294,33 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       folded should not contain tail1._id
       folded should not contain tail2._id
       folded should not contain tail3._id
-      // older agent-tool events are foldable
+      // older, DELIVERED agent-tool events are foldable
       folded should contain (older1._id)
       folded should contain (older2._id)
+    }
+
+    "selectFoldable never folds a settled-but-undelivered result, however old its timestamp (#418 field shape)" in Task {
+      // The observed incident: ~8 fast greps (delivered across earlier
+      // iterations), then a 14-minute sweep whose settle landed seconds
+      // before the next iteration's compaction pass. By wall clock the
+      // sweep invoke is among the OLDEST turn events — recency-based
+      // selection folds it — but its result has never reached a prompt.
+      val compactor = StandardIntraTurnCompactor(recentTailN = 2)
+      val ut    = userMsg("find and remove all references", ts = 100L)
+      val greps = (1 to 8).map(i => settledInvoke(s"grep-$i", ts = 100L + i)).toVector
+      val sweep = settledInvoke("refactor_with_instruction", ts = 200L, resultText = "Sweep converged. REQUIRED NEXT STEP: compile")
+      val tailA = toolInvoke("tail-a", ts = 1000L)
+      val tailB = toolInvoke("tail-b", ts = 1001L)
+      val events: Vector[Event] = (ut +: greps) ++ Vector(sweep, tailA, tailB)
+      val ctx = emptyCtx.copy(
+        claimedAt            = Some(Timestamp(100L)),
+        deliveredToolResults = greps.map(_._id).toSet
+      )
+      val folded = compactor.selectFoldable(events, ctx).toSet
+      // The delivered greps fold — compaction still works.
+      greps.foreach(g => folded should contain (g._id))
+      // The undelivered sweep result survives, despite being "old".
+      folded should not contain sweep._id
     }
   }
 

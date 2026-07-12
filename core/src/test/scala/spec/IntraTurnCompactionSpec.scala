@@ -174,8 +174,14 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       // Claim was established before the slice — the agent had been
       // running. The claim anchor lands on `read-1`, the first event
       // in the slice. The user task gets protected by
-      // CurrentUserTaskMessage, not by the anchor.
-      val ctx = TurnEventsContext(conversationId = convId, claimedAt = Some(Timestamp(5L)))
+      // CurrentUserTaskMessage, not by the anchor. The reads are marked
+      // DELIVERED so UndeliveredToolResults releases them — this test
+      // pins the user-task protection specifically.
+      val ctx = TurnEventsContext(
+        conversationId       = convId,
+        claimedAt            = Some(Timestamp(5L)),
+        deliveredToolResults = turnEvents.collect { case ti: ToolInvoke => ti._id }.toSet
+      )
       val folded = compactor.selectFoldable(turnEvents, ctx).toSet
       val userTaskId = turnEvents(3)._id
       folded should not contain userTaskId
