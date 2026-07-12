@@ -24,6 +24,24 @@ import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
  */
 final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageClient {
   val diagnostics: ConcurrentHashMap[String, java.util.List[Diagnostic]] = new ConcurrentHashMap()
+
+  /** Per-URI monotonic publish counter, bumped on every
+    * `publishDiagnostics` for that URI — AFTER the snapshot map is
+    * updated, so a reader that observes generation N is guaranteed to
+    * read a snapshot at least as new as N. This is the freshness
+    * signal [[LspSession.waitForDiagnostics]] polls: without it, an
+    * empty `diagnostics` entry is indistinguishable from "the server
+    * hasn't answered yet" and a validator silently converts no-answer
+    * into clean. */
+  private val diagnosticsGenerations: ConcurrentHashMap[String, java.lang.Long] = new ConcurrentHashMap()
+
+  /** Number of `publishDiagnostics` notifications received for `uri`
+    * since this client was constructed. `0` means the server has never
+    * published for that URI — whatever [[diagnostics]] returns for it
+    * is a default, not an answer. */
+  def diagnosticsGeneration(uri: String): Long =
+    Option(diagnosticsGenerations.get(uri)).map(_.longValue).getOrElse(0L)
+
   val progressTokens: ConcurrentHashMap[String, java.lang.Boolean] = new ConcurrentHashMap()
   private val serverRef: AtomicReference[LanguageServer] = new AtomicReference()
 
@@ -60,6 +78,10 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
   override def publishDiagnostics(params: PublishDiagnosticsParams): Unit = {
     markActivity()
     diagnostics.put(params.getUri, params.getDiagnostics)
+    // Bump AFTER the snapshot write — generation visibility implies
+    // snapshot visibility for pollers.
+    diagnosticsGenerations.merge(params.getUri, java.lang.Long.valueOf(1L), (a, b) => java.lang.Long.valueOf(a.longValue + b.longValue))
+    ()
   }
 
   override def telemetryEvent(params: Object): Unit = ()

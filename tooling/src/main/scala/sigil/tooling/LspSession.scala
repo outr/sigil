@@ -101,6 +101,15 @@ final class LspSession(val config: LspServerConfig,
   def allDiagnostics: Map[String, List[Diagnostic]] =
     client.diagnostics.asScala.view.mapValues(_.asScala.toList).toMap
 
+  /** Freshness marker for [[diagnosticsFor]]: the number of
+    * `publishDiagnostics` notifications the server has sent for `uri`.
+    * `0` means the server has NEVER answered for this URI — an empty
+    * [[diagnosticsFor]] result is then "no answer yet", not "clean".
+    * Capture before a `didOpen` / `didChangeFull` and pass to
+    * [[waitForDiagnostics(uri:String,sinceGeneration:Long,timeoutMs:Long,pollMs:Long)*]]
+    * to wait for the publish that reflects the new text. */
+  def publishGeneration(uri: String): Long = client.diagnosticsGeneration(uri)
+
   /** WorkDoneProgress tokens still in-flight. Agents wait on this
     * before issuing index-dependent queries — `Sage` picks up "Metals
     * is indexing your build" by checking this set. */
@@ -119,8 +128,39 @@ final class LspSession(val config: LspServerConfig,
     loop
   }
 
+  /** Blind settle window — sleeps `windowMs` and hopes the server has
+    * published by then. CANNOT distinguish "clean" from "no answer
+    * yet" from "stale": prefer the freshness-aware overload below,
+    * which waits for an actual publish newer than a captured
+    * [[publishGeneration]]. Kept for callers that genuinely just want
+    * a fixed settle pause. */
   def waitForDiagnostics(windowMs: Long): Task[Unit] =
     Task.sleep(scala.concurrent.duration.FiniteDuration(windowMs, "millis"))
+
+  /** Wait until the server publishes diagnostics for `uri` NEWER than
+    * `sinceGeneration` (capture it via [[publishGeneration]] BEFORE the
+    * `didOpen` / `didChangeFull` that triggers recompilation), or until
+    * `timeoutMs` elapses.
+    *
+    * Returns `true` when a fresh publish landed — [[diagnosticsFor]]
+    * now reflects (at least) the text that triggered it; `false` on
+    * timeout — the server has NOT answered for the new text, and the
+    * caller must treat the file's diagnostic state as UNKNOWN rather
+    * than clean (the silent-false-pass failure mode: validating a
+    * 316-file sweep against a still-indexing server "passed" files
+    * that carried dozens of compile errors).
+    *
+    * Poll-based like [[waitForIdle]] — lsp4j's push handler exposes no
+    * per-publish future. */
+  def waitForDiagnostics(uri: String, sinceGeneration: Long, timeoutMs: Long, pollMs: Long = 50L): Task[Boolean] = {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    def loop: Task[Boolean] = Task.defer {
+      if (publishGeneration(uri) > sinceGeneration) Task.pure(true)
+      else if (System.currentTimeMillis() > deadline) Task.pure(false)
+      else Task.sleep(scala.concurrent.duration.FiniteDuration(pollMs, "millis")).flatMap(_ => loop)
+    }
+    loop
+  }
 
   // ---- document lifecycle ----
 

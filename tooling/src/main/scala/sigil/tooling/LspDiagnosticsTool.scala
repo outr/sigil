@@ -42,10 +42,12 @@ final class LspDiagnosticsTool(val manager: LspManager) extends Tool
       |`languageId` selects the persisted LspServerConfig (e.g. "scala", "rust", "python").
       |`filePath` is the absolute path to the file. The session's project root is resolved
       |from the config's `rootMarkers` walked up from the file's directory.
-      |`waitMs` (default 1500) is how long to wait for the server to finish publishing
-      |diagnostics after opening the file. Pass 0 to read the existing snapshot only.
+      |`waitMs` (default 1500) is how long to wait for the server to publish diagnostics
+      |for the file's current text after opening it. Pass 0 to read the existing snapshot only.
       |
-      |Returns `{filePath, diagnostics: [{range:{start, end}, severity, message, code, source}]}`.""".stripMargin
+      |Returns `{filePath, diagnostics: [{range:{start, end}, severity, message, code, source}], fresh}`.
+      |`fresh: false` means the server did NOT answer for the current text within the wait —
+      |treat the file's diagnostic state as unknown; an empty list is then NOT "no issues".""".stripMargin
   override val keywords = Set(
     "lsp", "language", "diagnostics", "errors", "warnings", "problems",
     "lint", "compile-check", "analyze", "examine", "inspect", "review",
@@ -55,13 +57,26 @@ final class LspDiagnosticsTool(val manager: LspManager) extends Tool
 
 
   override def executeOutput(input: LspDiagnosticsInput, context: ToolContext): Task[LspDiagnosticsResult] =
-    withOpenDocumentOrThrow[LspDiagnosticsResult](
+    withSessionOrThrow[LspDiagnosticsResult](
       input.languageId, input.filePath, context
-    ) { (session, uri) =>
-      val wait = if (input.waitMs > 0) session.waitForDiagnostics(input.waitMs) else Task.unit
-      wait.map(_ => LspDiagnosticsResult(
-        filePath    = input.filePath,
-        diagnostics = session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _))
-      ))
+    ) { (session, uri, _) =>
+      // Capture the publish generation BEFORE the open so the wait
+      // below detects the publish for THIS text — not a stale answer
+      // for a previous version, and never "no answer yet" silently
+      // read as clean.
+      val genBefore = session.publishGeneration(uri)
+      val text = scala.util.Try(java.nio.file.Files.readString(java.nio.file.Paths.get(input.filePath))).toOption.getOrElse("")
+      session.didOpen(uri, input.languageId, text).flatMap { _ =>
+        val freshness: Task[Boolean] =
+          if (input.waitMs > 0) session.waitForDiagnostics(uri, genBefore, input.waitMs)
+          else Task.pure(false) // snapshot-only read: freshness unknown
+        freshness.map { fresh =>
+          LspDiagnosticsResult(
+            filePath    = input.filePath,
+            diagnostics = session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _)),
+            fresh       = fresh
+          )
+        }
+      }
     }
 }
