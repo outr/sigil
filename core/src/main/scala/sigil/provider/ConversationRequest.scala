@@ -116,6 +116,13 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                  * owning agent loop; the cap then counts every
                                  * recent invocation, preserving prior behaviour. */
                                turnStartedAt: Option[Timestamp] = None,
+                               /** The owning agent claim's tool-cancellation token,
+                                 * threaded from [[sigil.TurnContext.cancellation]] so
+                                 * the orchestrator's synthesized dispatch context
+                                 * carries it into `ToolContext.checkpoint`. `None`
+                                 * for one-shot / synthetic requests with no owning
+                                 * agent loop — checkpoints are then no-ops. */
+                               cancellation: Option[sigil.CancellationToken] = None,
                                requestId: Id[ProviderRequest] = Id())
   extends ProviderRequest {
 

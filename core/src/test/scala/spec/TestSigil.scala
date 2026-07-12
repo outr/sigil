@@ -176,7 +176,9 @@ object TestSigil extends Sigil {
       sigil.tool.util.LookupTool,
       GetMagicNumberTool,
       ProgressEmittingTool,
-      EagerActiveLatchTool
+      EagerActiveLatchTool,
+      SlowCooperativeTool,
+      SlowStubbornTool
     ): @annotation.nowarn("cat=deprecation"))
 
   // ---- registration lists ----

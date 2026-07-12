@@ -995,7 +995,11 @@ object Orchestrator {
                 // payloads — UnknownTool's closest-name suggestion reads
                 // from this; record_consent's unknown-toolName branch
                 // surfaces the closest match from the same view.
-                offeredTools = request.tools
+                offeredTools = request.tools,
+                // The claim's tool-cancellation token — without it the
+                // synthesized context would default to None and
+                // `ToolContext.checkpoint` could never observe a Stop.
+                cancellation = request.cancellation
               )
               // Thinking-reserved Message id (if a prior `ThinkingDelta`
               // allocated one) — passed to `tool.execute` so atomic content
@@ -1046,6 +1050,14 @@ object Orchestrator {
               // for durable persist; `publish` sees the eager-broadcast
               // marker and suppresses the hub re-emit, so the invoke
               // broadcasts once and persists once.
+              // Register the dispatch on the host so the agent loop's
+              // stop path can settle it out-of-band. The invoke's durable
+              // persist and its settling delta both ride THIS stream's
+              // drain — a force-stop cancels that drain mid-execution and
+              // loses both, leaving the eagerly-broadcast Active invoke
+              // unsettled forever. The registry entry is removed when the
+              // settle delta reaches `publish`.
+              sigil.registerInflightToolDispatch(deferredInvoke)
               val finalStream: Stream[Signal] = Stream.force(
                 sigil.broadcastEager(deferredInvoke).flatMap { _ =>
                   executed.toList.handleError { err =>

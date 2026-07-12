@@ -104,6 +104,14 @@ case class TurnContext(sigil: Sigil,
                          * consecutive overflow (0.5, then 0.25). `None` on
                          * normal turns. */
                        emergencyContextFactor: Option[Double] = None,
+                       /** Cooperative cancellation for in-flight tool
+                         * executions — the claim's stop-flag token, cancelled
+                         * by the framework when the user stops the agent.
+                         * Tools reach it via
+                         * [[sigil.tool.ToolContext.checkpoint]]; `None` when
+                         * no agent loop drives the turn (one-shot consults,
+                         * workflow steps with their own token). */
+                       cancellation: Option[CancellationToken] = None,
                        /** Per-agent-loop cache of `find_capability` matches,
                          * keyed by the normalised query. Populated when the
                          * agent invokes `find_capability`; rendered into the

@@ -2242,7 +2242,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             // wire roster.
             discoveredCapabilitiesRef = context.discoveredCapabilitiesRef,
             toolResultCacheRef = context.toolResultCacheRef,
-            turnStartedAt = context.turnStartedAt
+            turnStartedAt = context.turnStartedAt,
+            cancellation = context.cancellation
           )
 
           val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
@@ -2979,6 +2980,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       applyInboundTransforms(signal).flatMap { resolved =>
         for {
           _ <- withDB(_.apply(resolved))
+          // A settling ToolDelta reaching the durable pipeline releases
+          // the invoke's in-flight-dispatch registration — the stop
+          // path's out-of-band settle no longer owns it.
+          _ <- Task {
+                 resolved match {
+                   case td: ToolDelta if td.state.contains(EventState.Complete) =>
+                     inflightToolDispatches.remove(td.target)
+                     ()
+                   case _ => ()
+                 }
+               }
           _ <- attachContextFrameOnSettle(resolved)
           _ <- updateConversationProjection(resolved)
           _ <- updateView(resolved)
@@ -3622,6 +3634,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * a permanently-latched conversation is not). */
   private final val stopLatches: ConcurrentHashMap[Id[Conversation], java.lang.Long] = new ConcurrentHashMap()
 
+  /** In-flight atomic tool dispatches, keyed by invoke id. The
+    * orchestrator registers each dispatch just before the tool body
+    * starts executing; the entry is removed when the invoke's settling
+    * [[ToolDelta]] flows through [[publish]]. On the happy path the
+    * invoke's durable persist and its settle both ride the iteration's
+    * stream drain — but a force-Stop CANCELS that drain mid-execution,
+    * losing both, while the Active invoke was already eagerly broadcast
+    * to wire subscribers (clients render a running chip). Entries still
+    * present when the loop's stop path runs [[settleDanglingToolInvokes]]
+    * are persisted + settled out-of-band there so no invoke is left
+    * un-settleable. */
+  private final val inflightToolDispatches: ConcurrentHashMap[Id[Event], ToolInvoke] = new ConcurrentHashMap()
+
+  /** Record an atomic tool dispatch whose execution is about to start.
+    * Called by the orchestrator; paired with automatic removal when the
+    * invoke's settling delta reaches [[publish]]. */
+  final def registerInflightToolDispatch(invoke: ToolInvoke): Unit = {
+    inflightToolDispatches.put(invoke._id, invoke)
+    ()
+  }
+
   /** Sigil #415 — whether the user has requested a stop that should halt
     * further work for `conversationId` (optionally narrowed to one
     * agent). Consulted by the provider layer's transient-retry loop and
@@ -3700,6 +3733,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           if (matchesConv && matchesTarget) {
             matched += 1
             if (s.force) flag.force.set(true) else flag.graceful.set(true)
+            // Cancel the claim's tool-cancellation token on ANY stop so
+            // an in-flight long-running tool can exit at its next
+            // `ctx.checkpoint` instead of grinding on after the user
+            // stopped the agent.
+            flag.cancellation.cancel(s.reason.getOrElse("stopped by user"))
+            ()
           }
         }
         // Diagnostic: a Stop that matched no live claim used to be a
@@ -3747,17 +3786,34 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             && ti.outcome == sigil.event.ToolOutcome.Pending =>
           ti
       }
-      dangling.foldLeft(Task.unit) { (acc, ti) =>
-        val reason = "Stopped before the tool produced a result."
-        val settle = ToolDelta(
-          target         = ti._id,
-          conversationId = conversationId,
-          input          = None,
-          state          = Some(EventState.Complete),
-          summary        = Some(reason),
-          outcome        = Some(sigil.event.ToolOutcome.Failure(reason, recoverable = true))
-        )
-        acc.flatMap(_ => publish(settle).handleError(_ => Task.unit))
+      // Registered in-flight dispatches whose invoke never became
+      // durable — the force-stop cancelled the drain BEFORE the
+      // dispatch's stream materialized, so there is no row to find
+      // above. Re-publish the stored invoke first (its eager-broadcast
+      // marker suppresses a duplicate hub emit), then settle it below
+      // like any other dangler.
+      val durableIds = events.collect { case ti: ToolInvoke => ti._id }.toSet
+      import scala.jdk.CollectionConverters.*
+      val unpersisted = inflightToolDispatches.values.asScala.toList.filter { inv =>
+        inv.conversationId == conversationId && inv.participantId == caller && !durableIds.contains(inv._id)
+      }
+      unpersisted.foreach(inv => inflightToolDispatches.remove(inv._id))
+      val persistMissing = unpersisted.foldLeft(Task.unit) { (acc, inv) =>
+        acc.flatMap(_ => publish(inv).handleError(_ => Task.unit))
+      }
+      persistMissing.flatMap { _ =>
+        (dangling ::: unpersisted).foldLeft(Task.unit) { (acc, ti) =>
+          val reason = "Stopped before the tool produced a result."
+          val settle = ToolDelta(
+            target         = ti._id,
+            conversationId = conversationId,
+            input          = None,
+            state          = Some(EventState.Complete),
+            summary        = Some(reason),
+            outcome        = Some(sigil.event.ToolOutcome.Failure(reason, recoverable = true))
+          )
+          acc.flatMap(_ => publish(settle).handleError(_ => Task.unit))
+        }
       }
     }
 
@@ -6599,11 +6655,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // Sigil #413 — after a context-overflow recovery, carry the
               // emergency refit factor so this iteration's input is force-
               // compacted under the wire window before the request ships.
+              // Thread the claim's tool-cancellation token so in-flight
+              // tool executions can cooperate with Stop via
+              // `ctx.checkpoint`.
               val ctx0 = if (forceResponseSynthesis) rawCtx.copy(forceResponseSynthesis = true) else rawCtx
-              val ctx =
+              val ctx1 =
                 if (overflowCompactions > 0)
                   ctx0.copy(emergencyContextFactor = Some(math.pow(0.5, overflowCompactions)))
                 else ctx0
+              val ctx = stopFlag match {
+                case Some(flag) => ctx1.copy(cancellation = Some(flag.cancellation))
+                case None       => ctx1
+              }
               scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext done; dispatching agent.process")
               // Wrap the agent's signal stream with a force-stop check so a
               // Stop(force=true) mid-iteration terminates the stream promptly.
@@ -7123,10 +7186,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // prompted the stop) produced is a byproduct of the stop, not
           // a failure to surface. End quietly: no Failure bubble, no
           // recovery machinery, no re-raise — just release the claim.
+          // But ALWAYS settle in-flight tool invokes first: a force-Stop
+          // that cancels the drain mid-tool kills exactly the
+          // continuation that would have settled the invoke, and this
+          // exit was the one stop route that skipped the dangling settle
+          // — leaving the invoke Active forever (spinner never stops,
+          // permanently-unsettled row until boot reconciliation).
           scribe.info(
             s"runAgent for ${agent.id.value} in ${convId.value} ended by user Stop " +
               s"(suppressing ${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")})")
-          Task.pure(terminate(skipFallback = true).handleError(_ => Task.unit))
+          Task.pure(
+            settleDanglingToolInvokes(convId, agent.id).handleError(_ => Task.unit)
+              .flatMap(_ => terminate(skipFallback = true).handleError(_ => Task.unit)))
         case None if _root_.sigil.provider.Provider.isContextOverflow(t)
                   && overflowCompactions < maxOverflowCompactions =>
           // Sigil #413 — the provider hard-rejected the request as over

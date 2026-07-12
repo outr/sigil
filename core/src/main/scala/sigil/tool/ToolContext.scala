@@ -67,6 +67,20 @@ final case class ToolContext(turn: TurnContext,
   // ---- tool-only side channel ----
 
   /**
+   * Cooperative Stop checkpoint for long-running tool bodies. Raises
+   * [[sigil.CancellationException]] once the user has stopped the
+   * agent's turn; returns `Task.unit` otherwise (and always when no
+   * agent loop drives the turn). Call at natural boundaries — per file
+   * in a sweep, per item in a batch — so a multi-minute execution ends
+   * at the next boundary instead of grinding on after the user's Stop.
+   * The raised error flows through the standard tool-failure settle, so
+   * the invoke ends visibly ("cancelled: stopped by user"), never
+   * silently. Cheap tools simply never call it.
+   */
+  def checkpoint: rapid.Task[Unit] =
+    turn.cancellation.fold(rapid.Task.unit)(_.checkpoint)
+
+  /**
    * Publish a mid-execution progress pulse for this tool. Renders on the
    * tool-call chip without expanding it — transient Notice; no DB write.
    * Distinct from [[setSummary]], which is durable invoke state.
