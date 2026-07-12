@@ -281,7 +281,22 @@ object OpenAIChatCompletions {
       * alive-but-busy budget for streams carrying only keepalive
       * lines. `None` uses the Sigil hook; `Some(0)` disables the
       * keepalive-only check for this wire. */
-    streamingKeepaliveOnlyTimeoutMs: Option[Long] = None
+    streamingKeepaliveOnlyTimeoutMs: Option[Long] = None,
+
+    /** Per-provider override of
+      * [[sigil.Sigil.streamingKeepaliveReliefMs]] — the keepalive-only
+      * span after which the watchdog engages [[starvationRelief]].
+      * `None` uses the Sigil hook; `Some(0)` disables relief for this
+      * wire. Ignored when [[starvationRelief]] is `None`. */
+    streamingKeepaliveReliefMs: Option[Long] = None,
+
+    /** Starvation-relief hooks the silence watchdog calls when an
+      * admitted stream has carried only keepalives past the relief
+      * threshold — typically wired by the provider to its own
+      * stream-slot gate's batch hold, so fresh batch admissions pause
+      * while the backend drains toward a free slot for the starved
+      * stream. `None` (default) disables relief for this wire. */
+    starvationRelief: Option[sigil.provider.StreamStarvationRelief] = None
   )
 
   /** How Sigil expresses forced-call semantics on a chat-completions
@@ -370,19 +385,30 @@ object OpenAIChatCompletions {
         case Some(extended) if isReasoningRequest(input, config) => extended
         case _                                                   => tokenIdleTimeout
       }
-    // The watchdog's post-content budget honors the reasoning extension:
-    // a thinking model that streams no lines during a long internal
-    // reasoning pass must not be cut at the base silence budget.
+    // The watchdog's budgets honor the reasoning extension: a thinking
+    // model that produces nothing meaningful during a long internal
+    // reasoning pass must not be cut at the base budgets — neither the
+    // line-silence clock nor the keepalive-only clock.
+    val reasoningExtensionMs: Option[Long] = config.reasoningIdleTimeout match {
+      case Some(extended) if isReasoningRequest(input, config) => Some(extended.toMillis)
+      case _                                                   => None
+    }
     val watchdogPostContentMs =
       if (resolvedSilenceMs <= 0L) 0L
-      else config.reasoningIdleTimeout match {
-        case Some(extended) if isReasoningRequest(input, config) => math.max(resolvedSilenceMs, extended.toMillis)
-        case _                                                   => resolvedSilenceMs
-      }
+      else reasoningExtensionMs.fold(resolvedSilenceMs)(math.max(resolvedSilenceMs, _))
+    val watchdogKeepaliveMs =
+      if (resolvedKeepaliveMs <= 0L) 0L
+      else reasoningExtensionMs.fold(resolvedKeepaliveMs)(math.max(resolvedKeepaliveMs, _))
     Stream.force(
       for {
         raw         <- buildHttpRequest(input, sigil, baseUrl, auth, config)
         intercepted <- sigil.wireInterceptor.before(raw)
+        // `timeout` maps to the HTTP client's byte-idle read timeout —
+        // the transport-level dead-connection backstop. NOTE:
+        // `streamingTimeout` is honored only by spice's Netty client;
+        // under the okhttp implementation (the JVM default) it is a
+        // no-op, so line-level liveness on okhttp is owned entirely by
+        // [[StreamSilenceWatchdog]] below.
         handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus
                          .timeout(tokenIdleTimeout)
                          .streamingTimeout(streamingBudget)
@@ -391,17 +417,23 @@ object OpenAIChatCompletions {
         // `track` registers the stream's cancel handle so a `Stop`
         // aborts the in-flight call mid-flight instead of draining it.
         val lines = sigil.providerStreams.track(input, handle)
-        // True-line-silence is timer-enforced: the watchdog fires within
-        // one poll tick of the budget whether or not another line ever
-        // arrives, cancelling the call; `closeStream` below surfaces the
-        // recorded breach as the typed silence exception. The lazy
-        // per-line path only governs the keepalive-only budget.
+        // EVERY silence budget is timer-enforced: the watchdog fires
+        // within one poll tick of whichever budget breaches — line-
+        // silence or keepalive-only — whether or not another line ever
+        // arrives, cancelling the call; `closeStream` below surfaces
+        // the recorded breach as the typed silence exception. The lazy
+        // per-line keepalive check remains as the fast path when lines
+        // do arrive. The watchdog also drives starvation relief when
+        // the provider wired hooks.
         val watchdogStopped = new java.util.concurrent.atomic.AtomicBoolean(false)
         StreamSilenceWatchdog.run(
           state = state,
           config = config,
           postContentBudgetMs = watchdogPostContentMs,
           preContentBudgetMs = resolvedDoaMs,
+          keepaliveOnlyBudgetMs = watchdogKeepaliveMs,
+          reliefMs = config.streamingKeepaliveReliefMs.getOrElse(sigil.streamingKeepaliveReliefMs),
+          relief = config.starvationRelief,
           cancel = handle.cancel,
           stopped = watchdogStopped
         ).startUnit()
@@ -1143,8 +1175,9 @@ object OpenAIChatCompletions {
       * event — the anchor for the keepalive-only check. Set on the
       * stream's first line (arming) and bumped every time
       * [[parseChunk]] emits a meaningful event. `-1L` means "no lines
-      * seen yet". */
-    var lastMeaningfulNanos: Long = -1L
+      * seen yet". Volatile: written by the stream's pull fiber, read
+      * by the watchdog fiber's keepalive-only clock. */
+    @volatile var lastMeaningfulNanos: Long = -1L
 
     /** Wall-clock timestamp (System.nanoTime) of the most recent line
       * of ANY kind — data, keepalive, comment, blank. The

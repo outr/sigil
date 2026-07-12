@@ -93,12 +93,13 @@ class StreamSlotGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
   "the stream-slot gate" should {
 
-    "never let in-flight streams exceed maxConcurrent" in {
+    "never let in-flight streams exceed maxConcurrent — batch alone uses ALL permits" in {
       val provider = new GatedStubProvider(maxSlots = 2, gated = true)
       provider.holdLatch = new CountDownLatch(1)
       for {
         fibers <- startAll((1 to 6).map(i => provider.runGated(makeCall(s"call-$i"))).toList)
-        // Two slots fill; the other four queue at the gate.
+        // Two slots fill (no reservation held back from batch); the
+        // other four queue at the gate.
         _ <- waitFor(System.currentTimeMillis() + 5000L)(provider.active.get() == 2)
         _ <- Task.sleep(200.millis) // give a would-be third stream time to (wrongly) start
         activeWhileHeld = provider.active.get()
@@ -109,6 +110,67 @@ class StreamSlotGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         provider.peak.get() shouldBe 2
         results should have size 6
         all(results.map(_.size)) shouldBe 1
+      }
+    }
+
+    "grant a freed permit to an interactive waiter ahead of earlier-queued batch waiters" in {
+      val provider = new GatedStubProvider(maxSlots = 1, gated = true)
+      provider.holdLatch = new CountDownLatch(1)
+      for {
+        // Batch holder takes the only slot and parks.
+        fiberA <- provider.runGated(makeCall("batch-holder")).start
+        _ <- waitFor(System.currentTimeMillis() + 5000L)(provider.active.get() == 1)
+        // A batch waiter queues FIRST...
+        fiberB <- provider.runGated(makeCall("batch-queued")).start
+        _ <- Task.sleep(200.millis)
+        // ...then an interactive (agent-frame) call arrives behind it.
+        convId = Conversation.id(s"slot-gate-priority-${rapid.Unique()}")
+        fiberC <- provider.runGated(makeCall("interactive", convId = Some(convId))).start
+        _ <- Task.sleep(200.millis)
+        _ <- Task(provider.holdLatch.countDown())
+        _ <- joinAll(List(fiberA, fiberB, fiberC))
+      } yield {
+        // The freed slot went to the interactive call despite the batch
+        // waiter's earlier queue position.
+        provider.serviceOrder.iterator().asScala.toList shouldBe List("batch-holder", "interactive", "batch-queued")
+      }
+    }
+
+    "block new batch admissions during a hold while interactive flows and permits are free" in {
+      val gate = new sigil.provider.StreamSlotGate(3)
+      import sigil.provider.StreamSlotGate.Outcome
+      gate.acquire(interactive = false, () => false, 1000L) shouldBe Outcome.Acquired
+      gate.holdBatch()
+      // Permits are free, but the hold pauses fresh batch admissions...
+      gate.acquire(interactive = false, () => false, 400L) shouldBe Outcome.TimedOut
+      // ...while interactive admission is unaffected.
+      gate.acquire(interactive = true, () => false, 1000L) shouldBe Outcome.Acquired
+      gate.releaseBatchHold()
+      gate.acquire(interactive = false, () => false, 1000L) shouldBe Outcome.Acquired
+      // Nested holds compose: both must clear.
+      gate.holdBatch()
+      gate.holdBatch()
+      gate.releaseBatchHold()
+      gate.acquire(interactive = false, () => false, 300L) shouldBe Outcome.TimedOut
+      gate.releaseBatchHold()
+      Task.unit.map(_ => succeed)
+    }
+
+    "report Stopped when a queued waiter's stop check flips" in {
+      val gate = new sigil.provider.StreamSlotGate(1)
+      import sigil.provider.StreamSlotGate.Outcome
+      gate.acquire(interactive = false, () => false, 1000L) shouldBe Outcome.Acquired
+      val stop = new java.util.concurrent.atomic.AtomicBoolean(false)
+      for {
+        fiber <- Task(gate.acquire(interactive = true, () => stop.get(), 10000L)).start
+        _ <- Task.sleep(300.millis)
+        _ <- Task(stop.set(true))
+        outcome <- fiber.join
+      } yield {
+        outcome shouldBe Outcome.Stopped
+        // The permit wasn't consumed by the abandoned wait.
+        gate.release()
+        gate.acquire(interactive = false, () => false, 500L) shouldBe Outcome.Acquired
       }
     }
 

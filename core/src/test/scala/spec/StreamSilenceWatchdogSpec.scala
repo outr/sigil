@@ -48,6 +48,9 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         config = cfg,
         postContentBudgetMs = 400L,
         preContentBudgetMs = 0L,
+        keepaliveOnlyBudgetMs = 0L,
+        reliefMs = 0L,
+        relief = None,
         cancel = Task { cancelled.countDown() },
         stopped = stopped
       ).startUnit()
@@ -80,6 +83,9 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         config = cfg,
         postContentBudgetMs = 400L,
         preContentBudgetMs = 0L,
+        keepaliveOnlyBudgetMs = 0L,
+        reliefMs = 0L,
+        relief = None,
         cancel = Task { cancelled.countDown() },
         stopped = stopped
       ).startUnit()
@@ -111,6 +117,9 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         config = cfg,
         postContentBudgetMs = 10000L,
         preContentBudgetMs = 300L,
+        keepaliveOnlyBudgetMs = 0L,
+        reliefMs = 0L,
+        relief = None,
         cancel = Task { cancelled.countDown() },
         stopped = stopped
       ).startUnit()
@@ -136,6 +145,9 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         config = cfg,
         postContentBudgetMs = 10000L,
         preContentBudgetMs = 300L,
+        keepaliveOnlyBudgetMs = 0L,
+        reliefMs = 0L,
+        relief = None,
         cancel = Task { cancelled.countDown() },
         stopped = stopped
       ).startUnit()
@@ -159,6 +171,9 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         config = cfg,
         postContentBudgetMs = 500L,
         preContentBudgetMs = 0L,
+        keepaliveOnlyBudgetMs = 0L,
+        reliefMs = 0L,
+        relief = None,
         cancel = Task { cancelled.countDown() },
         stopped = stopped
       ).startUnit()
@@ -171,6 +186,173 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       } yield {
         cancelled.getCount shouldBe 1L
         state.lineSilenceBreach shouldBe empty
+      }
+    }
+  }
+
+  /** Counting relief stub — records stall/clear pairing. */
+  private final class RecordingRelief extends sigil.provider.StreamStarvationRelief {
+    val stalls = new java.util.concurrent.atomic.AtomicInteger(0)
+    val clears = new java.util.concurrent.atomic.AtomicInteger(0)
+    override def stall(): Unit = { stalls.incrementAndGet(); () }
+    override def clear(): Unit = { clears.incrementAndGet(); () }
+  }
+
+  "the keepalive-only clock (#420)" should {
+
+    "fire within tolerance of the budget with NO further line arrivals" in {
+      // The #420 field failure: the lazy check fired at 5.2× the budget
+      // because no keepalive line arrived to evaluate it. The timer
+      // must own this clock — arm the stream with one keepalive, then
+      // total line-silence (line budget OFF, as llama configures).
+      val state = newState(keepaliveMs = 400L)
+      val cancelled = new CountDownLatch(1)
+      val stopped = new AtomicBoolean(false)
+      OpenAIChatCompletions.parseLine(": keep-alive", state, cfg) shouldBe empty
+      val startedAt = System.currentTimeMillis()
+      StreamSilenceWatchdog.run(
+        state = state,
+        config = cfg,
+        postContentBudgetMs = 0L,
+        preContentBudgetMs = 0L,
+        keepaliveOnlyBudgetMs = 400L,
+        reliefMs = 0L,
+        relief = None,
+        cancel = Task { cancelled.countDown() },
+        stopped = stopped
+      ).startUnit()
+      for {
+        fired <- Task(cancelled.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        elapsed = System.currentTimeMillis() - startedAt
+      } yield {
+        stopped.set(true)
+        fired shouldBe true
+        elapsed should be >= 350L
+        elapsed should be <= 2000L
+        state.lineSilenceBreach shouldBe defined
+        val ex = intercept[ProviderStreamException](state.closeStream(cfg))
+        ex.typ shouldBe "upstream_silent"
+        ex.getMessage should include ("keepalive-only budget")
+      }
+    }
+
+    "not fire while meaningful progress keeps resetting the anchor" in {
+      val state = newState(keepaliveMs = 400L)
+      val cancelled = new CountDownLatch(1)
+      val stopped = new AtomicBoolean(false)
+      OpenAIChatCompletions.parseLine(": keep-alive", state, cfg) shouldBe empty
+      StreamSilenceWatchdog.run(
+        state = state,
+        config = cfg,
+        postContentBudgetMs = 0L,
+        preContentBudgetMs = 0L,
+        keepaliveOnlyBudgetMs = 400L,
+        reliefMs = 0L,
+        relief = None,
+        cancel = Task { cancelled.countDown() },
+        stopped = stopped
+      ).startUnit()
+      def pulse(remaining: Int): Task[Unit] =
+        if (remaining <= 0) Task.unit
+        else Task.sleep(150.millis).flatMap { _ =>
+          state.markMeaningfulProgress()
+          pulse(remaining - 1)
+        }
+      for {
+        _ <- pulse(8) // 1.2s of steady progress against a 400ms budget
+      } yield {
+        stopped.set(true)
+        cancelled.getCount shouldBe 1L
+        state.lineSilenceBreach shouldBe empty
+      }
+    }
+  }
+
+  "starvation relief" should {
+
+    "engage at the relief threshold and clear when meaningful content arrives" in {
+      val state = newState(keepaliveMs = 10000L)
+      val relief = new RecordingRelief
+      val stopped = new AtomicBoolean(false)
+      OpenAIChatCompletions.parseLine(": keep-alive", state, cfg) shouldBe empty
+      StreamSilenceWatchdog.run(
+        state = state,
+        config = cfg,
+        postContentBudgetMs = 0L,
+        preContentBudgetMs = 0L,
+        keepaliveOnlyBudgetMs = 10000L,
+        reliefMs = 200L,
+        relief = Some(relief),
+        cancel = Task.unit,
+        stopped = stopped
+      ).startUnit()
+      for {
+        // Past the 200ms relief threshold with only the arming keepalive.
+        _ <- Task.sleep(700.millis)
+        stalledAt = relief.stalls.get()
+        // The starved stream finally gets served.
+        _ <- Task { state.markMeaningfulProgress() }
+        _ <- Task.sleep(500.millis)
+      } yield {
+        stopped.set(true)
+        stalledAt shouldBe 1
+        relief.clears.get() shouldBe 1
+        state.lineSilenceBreach shouldBe empty
+      }
+    }
+
+    "clear an active stall when the stream terminates" in {
+      val state = newState(keepaliveMs = 10000L)
+      val relief = new RecordingRelief
+      val stopped = new AtomicBoolean(false)
+      OpenAIChatCompletions.parseLine(": keep-alive", state, cfg) shouldBe empty
+      StreamSilenceWatchdog.run(
+        state = state,
+        config = cfg,
+        postContentBudgetMs = 0L,
+        preContentBudgetMs = 0L,
+        keepaliveOnlyBudgetMs = 10000L,
+        reliefMs = 200L,
+        relief = Some(relief),
+        cancel = Task.unit,
+        stopped = stopped
+      ).startUnit()
+      for {
+        _ <- Task.sleep(700.millis)
+        _ <- Task { stopped.set(true) }
+        _ <- Task.sleep(400.millis)
+      } yield {
+        relief.stalls.get() shouldBe 1
+        // Exactly one clear — the terminal path pairs the stall.
+        relief.clears.get() shouldBe 1
+      }
+    }
+
+    "clear an active stall when the keepalive budget breaches" in {
+      val state = newState(keepaliveMs = 600L)
+      val relief = new RecordingRelief
+      val cancelled = new CountDownLatch(1)
+      val stopped = new AtomicBoolean(false)
+      OpenAIChatCompletions.parseLine(": keep-alive", state, cfg) shouldBe empty
+      StreamSilenceWatchdog.run(
+        state = state,
+        config = cfg,
+        postContentBudgetMs = 0L,
+        preContentBudgetMs = 0L,
+        keepaliveOnlyBudgetMs = 600L,
+        reliefMs = 200L,
+        relief = Some(relief),
+        cancel = Task { cancelled.countDown() },
+        stopped = stopped
+      ).startUnit()
+      for {
+        fired <- Task(cancelled.await(5, java.util.concurrent.TimeUnit.SECONDS))
+      } yield {
+        stopped.set(true)
+        fired shouldBe true
+        relief.stalls.get() shouldBe 1
+        relief.clears.get() shouldBe 1
+        state.lineSilenceBreach shouldBe defined
       }
     }
   }

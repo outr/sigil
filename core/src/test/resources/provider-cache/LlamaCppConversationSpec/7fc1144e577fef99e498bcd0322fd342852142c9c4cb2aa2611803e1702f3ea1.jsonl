@@ -1,0 +1,39 @@
+{"requestHash":"7fc1144e577fef99e498bcd0322fd342852142c9c4cb2aa2611803e1702f3ea1","recordedAt":1783882186007}
+{"callId":"46fbf2a70","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"46fbf2a70","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"46fbf2a70","text":"Ready","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" go","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" What","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":"'s","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" Scala","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" project","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" about","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":"?","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" Give","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" me","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" high","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":"-level","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" description","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" of","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" what","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" you","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" want","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" build","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" and","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" we","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":"'ll","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" start","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" with","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" design","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":" phase","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"46fbf2a70","input":{"topicLabel":"Scala project coding session","topicSummary":"Switched to coding mode for a multi-turn Scala project session.","content":"Ready to go. What's the Scala project about? Give me a high-level description of what you want to build, and we'll start with the design phase.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4214,"completionTokens":112,"totalTokens":4326,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

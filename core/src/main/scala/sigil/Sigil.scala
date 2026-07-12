@@ -316,14 +316,37 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * BACKEND that is dead, where keepalives flow forever and content
    * never comes. Hence the generous default.
    *
-   * Checked lazily on each arriving keepalive (keepalives ARE the
-   * signal being budgeted, so there is always a next evaluation while
-   * the condition holds). Data-chunk arrival never trips this check —
-   * a stream that just became productive is not killed for the wait
-   * that preceded it. Default `600_000` (10 minutes); override per
-   * wire via `OpenAIChatCompletions.Config.streamingKeepaliveOnlyTimeoutMs`.
+   * Timer-enforced by the silence watchdog (fires within one poll tick
+   * of the budget whether or not another line ever arrives) and ALSO
+   * checked lazily on each arriving keepalive. Data-chunk arrival
+   * never trips this check — a stream that just became productive is
+   * not killed for the wait that preceded it. Default `600_000`
+   * (10 minutes); override per wire via
+   * `OpenAIChatCompletions.Config.streamingKeepaliveOnlyTimeoutMs`.
    */
   def streamingKeepaliveOnlyTimeoutMs: Long = 600000L
+
+  /**
+   * Keepalive-only span (ms) after which the silence watchdog engages
+   * [[sigil.provider.StreamStarvationRelief]] for providers that wire
+   * it: the provider's stream-slot gate pauses NEW batch admissions so
+   * the backend drains toward a free slot and its scheduler finally
+   * serves the starved stream. Cleared as soon as the stream produces
+   * meaningful content (or terminates). Set `0` to disable.
+   *
+   * This is the fix for admitted-stream starvation: the slot gate caps
+   * on-wire streams at the backend's capacity, but a backend scheduler
+   * can still leapfrog one admitted large request with a stream of
+   * fresh small ones indefinitely — observed live as a 51-minute
+   * keepalive-only agent stream behind a consult flood. Relief bounds
+   * that to roughly this threshold plus one batch-item duration.
+   *
+   * Default `60_000` (60 seconds). Only meaningful on providers with
+   * `gateStreamingCalls` enabled AND a relief wired on their
+   * chat-completions Config (llama.cpp does both); a no-relief wire
+   * ignores it.
+   */
+  def streamingKeepaliveReliefMs: Long = 60000L
 
   /**
    * Threshold at which the curator emits

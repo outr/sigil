@@ -223,13 +223,21 @@ trait Provider extends Service with ModelResolver {
     * lands for its conversation, before any request is issued. */
   def gateStreamingCalls: Boolean = false
 
-  /** Fair FIFO semaphore for live-stream slots when
-    * [[gateStreamingCalls]] is enabled. Deliberately separate from
-    * [[capacityGate]]: the pre-flight gate's short leak-detection
-    * timeout (Bug #57) must not be re-tuned around multi-minute stream
-    * holds, and pre-flight advisory work shouldn't queue behind them. */
-  private lazy val streamGate: java.util.concurrent.Semaphore =
-    new java.util.concurrent.Semaphore(maxConcurrent, /* fair */ true)
+  /** Priority slot gate for live streams when [[gateStreamingCalls]]
+    * is enabled. Deliberately separate from [[capacityGate]]: the
+    * pre-flight gate's short leak-detection timeout (Bug #57) must not
+    * be re-tuned around multi-minute stream holds, and pre-flight
+    * advisory work shouldn't queue behind them.
+    *
+    * Interactive streams (agent-frame calls — `conversationId` set)
+    * are granted freed permits ahead of queued batch calls (one-shot
+    * consults), and the gate's batch-hold is how the silence
+    * watchdog's starvation relief pauses fresh batch admissions while
+    * an admitted stream is being starved server-side. Batch alone
+    * still uses all permits. Per provider INSTANCE — apps that point
+    * several instances at one backend account for the aggregate
+    * themselves. */
+  protected lazy val streamSlotGate: StreamSlotGate = new StreamSlotGate(maxConcurrent)
 
   /** Ceiling on a queued stream-slot wait. Generous — a single-slot
     * backend legitimately drains a batch queue for many minutes; the
@@ -238,45 +246,23 @@ trait Provider extends Service with ModelResolver {
   protected def streamSlotAcquireTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.FiniteDuration(30, "minutes")
 
-  /** Acquire a live-stream slot in FIFO order, abandoning the wait if a
-    * Stop lands for the call's conversation (checked every 250ms) or
-    * the ceiling passes. The blocking fair-semaphore acquire runs on
-    * its own fiber so FIFO position is held for the whole wait; the
-    * stop-watcher side of the race cancels it via interrupt. */
+  /** Acquire a live-stream slot — FIFO within class, interactive ahead
+    * of batch — abandoning the wait if a Stop lands for the call's
+    * conversation (polled every 250ms inside the gate) or the ceiling
+    * passes. */
   private def acquireStreamSlot(c: ProviderCall): Task[Unit] = Task.defer {
-    if (streamGate.availablePermits() <= 0) {
-      scribe.info(s"Provider($providerKey) stream slots busy (max=$maxConcurrent) — queueing FIFO")
+    if (streamSlotGate.availablePermits <= 0) {
+      scribe.info(s"Provider($providerKey) stream slots busy (max=$maxConcurrent) — queueing")
     }
-    val acquired = new java.util.concurrent.atomic.AtomicBoolean(false)
-    val abandoned = new java.util.concurrent.atomic.AtomicBoolean(false)
-    val acquireTask: Task[Boolean] = Task {
-      val ok =
-        try streamGate.tryAcquire(streamSlotAcquireTimeout.toMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
-        catch { case _: InterruptedException => false }
-      if (ok) {
-        acquired.set(true)
-        // The wait may have been abandoned between the grant and this
-        // line — hand the permit straight back. The CAS pairs with the
-        // abandoning side's so exactly one of the two releases.
-        if (abandoned.get() && acquired.compareAndSet(true, false)) streamGate.release()
-      }
-      ok
-    }
+    val interactive = c.conversationId.isDefined
     def stopRequestedNow: Boolean = c.conversationId.exists(cid => sigil.stopRequested(cid, c.agentId))
-    def stopWatch: Task[Unit] =
-      if (stopRequestedNow) Task.unit
-      else Task.sleep(scala.concurrent.duration.FiniteDuration(250, "ms")).flatMap(_ => stopWatch)
-    Task.race(acquireTask, stopWatch).flatMap {
-      case Left(true) => Task.unit
-      case Left(false) =>
+    Task(streamSlotGate.acquire(interactive, () => stopRequestedNow, streamSlotAcquireTimeout.toMillis)).flatMap {
+      case StreamSlotGate.Outcome.Acquired => Task.unit
+      case StreamSlotGate.Outcome.TimedOut =>
         scribe.warn(s"Provider($providerKey) stream-slot wait timed out (max=$maxConcurrent) — possible permit leak")
         Task.error(new StreamSlotWaitAbortedException(providerKey, maxConcurrent, timedOut = true, streamSlotAcquireTimeout))
-      case Right(_) =>
-        Task.defer {
-          abandoned.set(true)
-          if (acquired.compareAndSet(true, false)) streamGate.release()
-          Task.error(new StreamSlotWaitAbortedException(providerKey, maxConcurrent, timedOut = false, streamSlotAcquireTimeout))
-        }
+      case StreamSlotGate.Outcome.Stopped =>
+        Task.error(new StreamSlotWaitAbortedException(providerKey, maxConcurrent, timedOut = false, streamSlotAcquireTimeout))
     }
   }
 
@@ -290,8 +276,8 @@ trait Provider extends Service with ModelResolver {
     if (!gateStreamingCalls || maxConcurrent == Int.MaxValue) call(c)
     else Stream.force(
       acquireStreamSlot(c).map { _ =>
-        try call(c).guarantee(Task(streamGate.release()))
-        catch { case t: Throwable => streamGate.release(); throw t }
+        try call(c).guarantee(Task(streamSlotGate.release()))
+        catch { case t: Throwable => streamSlotGate.release(); throw t }
       }
     )
 

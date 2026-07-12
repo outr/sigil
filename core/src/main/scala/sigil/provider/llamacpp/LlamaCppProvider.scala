@@ -94,7 +94,24 @@ case class LlamaCppProvider(url: URL,
     // wire. A genuinely dead server still fails via okhttp's
     // byte-idle `readTimeout` (`tokenIdleTimeout`); an alive-but-
     // never-producing connection via the keepalive-only budget.
-    streamingSilenceTimeoutMs = Some(0L)
+    streamingSilenceTimeoutMs = Some(0L),
+    // llama.cpp's scheduler can starve an admitted large request
+    // indefinitely behind fresh cache-friendly small ones (its
+    // deferred queue is leapfrogged by new arrivals — observed live
+    // for 51 minutes). When an admitted stream has been
+    // keepalive-only past the relief threshold, pause this
+    // provider's NEW batch admissions so the server drains toward a
+    // free slot and finally serves the starved task.
+    starvationRelief = Some(new StreamStarvationRelief {
+      override def stall(): Unit = {
+        scribe.info("LlamaCpp starvation relief engaged — pausing new batch admissions until the starved stream progresses")
+        streamSlotGate.holdBatch()
+      }
+      override def clear(): Unit = {
+        scribe.info("LlamaCpp starvation relief cleared — batch admissions resume")
+        streamSlotGate.releaseBatchHold()
+      }
+    })
   )
 
   override def call(input: ProviderCall): Stream[ProviderEvent] =
