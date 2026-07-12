@@ -7,7 +7,7 @@ import rapid.{Pull, Step, Stream, Task}
 import sigil.Sigil
 import sigil.provider.*
 import sigil.provider.debug.StreamWireInterceptor
-import sigil.provider.sse.SSELineParser
+import sigil.provider.sse.{SSELine, SSELineParser}
 import sigil.tool.{DefinitionToSchema, Tool, ToolInput}
 import sigil.tool.ToolInput.given
 import spice.http.{HttpMethod, HttpRequest}
@@ -261,7 +261,27 @@ object OpenAIChatCompletions {
       * passes [[CacheKeys.DeepSeek]] for its `prompt_cache_hit_tokens`
       * / `prompt_cache_miss_tokens` siblings; backends with no cache
       * accounting pass [[CacheKeys.None]]. */
-    cacheKeys: CacheKeys = CacheKeys.OpenAIChat
+    cacheKeys: CacheKeys = CacheKeys.OpenAIChat,
+
+    /** Per-provider override of [[sigil.Sigil.streamingSilenceTimeoutMs]]
+      * — the timer-enforced true-line-silence budget. `None` uses the
+      * Sigil hook; `Some(0)` disables the silence watchdog for this
+      * wire (a local single-slot llama.cpp queues silently behind load,
+      * so it relies on the HTTP client's byte-idle timeout instead). */
+    streamingSilenceTimeoutMs: Option[Long] = None,
+
+    /** Per-provider override of
+      * [[sigil.Sigil.streamingDeadOnArrivalTimeoutMs]]. `None` uses the
+      * Sigil hook; `Some(0)` disables the shorter pre-content budget
+      * (the full silence budget then applies throughout). */
+    streamingDeadOnArrivalTimeoutMs: Option[Long] = None,
+
+    /** Per-provider override of
+      * [[sigil.Sigil.streamingKeepaliveOnlyTimeoutMs]] — the generous
+      * alive-but-busy budget for streams carrying only keepalive
+      * lines. `None` uses the Sigil hook; `Some(0)` disables the
+      * keepalive-only check for this wire. */
+    streamingKeepaliveOnlyTimeoutMs: Option[Long] = None
   )
 
   /** How Sigil expresses forced-call semantics on a chat-completions
@@ -331,11 +351,16 @@ object OpenAIChatCompletions {
         case _                         => None
       }
     }
+    // Per-provider Config overrides win over the Sigil-level hooks.
+    val resolvedSilenceMs = config.streamingSilenceTimeoutMs.getOrElse(sigil.streamingSilenceTimeoutMs)
+    val resolvedDoaMs = config.streamingDeadOnArrivalTimeoutMs.getOrElse(sigil.streamingDeadOnArrivalTimeoutMs)
+    val resolvedKeepaliveMs = config.streamingKeepaliveOnlyTimeoutMs.getOrElse(sigil.streamingKeepaliveOnlyTimeoutMs)
     val state = new StreamState(
       acc = new ToolCallAccumulator(input.tools, providerKey = config.providerName),
       responseFormatMode = rfMode,
-      streamingSilenceTimeoutMs = sigil.streamingSilenceTimeoutMs,
-      streamingDeadOnArrivalTimeoutMs = sigil.streamingDeadOnArrivalTimeoutMs
+      streamingSilenceTimeoutMs = resolvedSilenceMs,
+      streamingDeadOnArrivalTimeoutMs = resolvedDoaMs,
+      streamingKeepaliveOnlyTimeoutMs = resolvedKeepaliveMs
     )
     // Reasoning requests get the extended streaming budget (if configured)
     // so the reasoning→answer silence gap doesn't cut a slow-but-alive
@@ -344,6 +369,15 @@ object OpenAIChatCompletions {
       config.reasoningIdleTimeout match {
         case Some(extended) if isReasoningRequest(input, config) => extended
         case _                                                   => tokenIdleTimeout
+      }
+    // The watchdog's post-content budget honors the reasoning extension:
+    // a thinking model that streams no lines during a long internal
+    // reasoning pass must not be cut at the base silence budget.
+    val watchdogPostContentMs =
+      if (resolvedSilenceMs <= 0L) 0L
+      else config.reasoningIdleTimeout match {
+        case Some(extended) if isReasoningRequest(input, config) => math.max(resolvedSilenceMs, extended.toMillis)
+        case _                                                   => resolvedSilenceMs
       }
     Stream.force(
       for {
@@ -357,6 +391,20 @@ object OpenAIChatCompletions {
         // `track` registers the stream's cancel handle so a `Stop`
         // aborts the in-flight call mid-flight instead of draining it.
         val lines = sigil.providerStreams.track(input, handle)
+        // True-line-silence is timer-enforced: the watchdog fires within
+        // one poll tick of the budget whether or not another line ever
+        // arrives, cancelling the call; `closeStream` below surfaces the
+        // recorded breach as the typed silence exception. The lazy
+        // per-line path only governs the keepalive-only budget.
+        val watchdogStopped = new java.util.concurrent.atomic.AtomicBoolean(false)
+        StreamSilenceWatchdog.run(
+          state = state,
+          config = config,
+          postContentBudgetMs = watchdogPostContentMs,
+          preContentBudgetMs = resolvedDoaMs,
+          cancel = handle.cancel,
+          stopped = watchdogStopped
+        ).startUnit()
         val events = StreamWireInterceptor.attach(lines, sigil.wireInterceptor, intercepted, sigil.chunkLogger) { line =>
           Stream.emits(parseLine(line, state, config))
         }
@@ -367,6 +415,7 @@ object OpenAIChatCompletions {
         // accumulated `state`, so it must run only AFTER `events` drains —
         // see [[appendTerminal]].
         appendTerminal(events)(state.closeStream(config))
+          .guarantee(Task { watchdogStopped.set(true) })
       }
     )
   }
@@ -740,16 +789,25 @@ object OpenAIChatCompletions {
     * provider specs can drive the chunk-level paths (notably inline-error
     * detection) without spinning up a stub HTTP server. */
   def parseLine(line: String, state: StreamState, config: Config): Vector[ProviderEvent] = {
-    // Lazy keepalive-silence check fires on every incoming line —
-    // raises a typed exception when the wire has carried only
-    // comments / blanks / non-meaningful data chunks past the
-    // configured budget. Event-driven (no timer thread); the next
-    // chunk after the threshold trips the throw.
-    state.checkStreamingSilence(config)
-    SSELineParser.dispatch(line)(
-      onData = json => parseChunk(json, state, config),
-      onDone = { state.sawDoneMarker = true; state.flushDone(config) }
-    )
+    // Every arriving line — data, keepalive, comment, blank — is
+    // affirmative liveness: it resets the watchdog's true-silence
+    // clock and (on the stream's first line) arms the keepalive-only
+    // anchor.
+    state.recordLineArrival()
+    SSELineParser.parse(line) match {
+      case SSELine.Data(json) => parseChunk(json, state, config)
+      case SSELine.Done =>
+        state.sawDoneMarker = true
+        state.flushDone(config)
+      case SSELine.MalformedData(_, reason) => Vector(ProviderEvent.Error(s"parse: $reason"))
+      case SSELine.Blank | SSELine.Comment | _: SSELine.Other =>
+        // Keepalive-class lines are the only place the alive-but-busy
+        // budget is evaluated — a data chunk arriving after a long
+        // wait means the stream just became productive and must not
+        // be killed for the wait that preceded it.
+        state.checkKeepaliveOnly(config)
+        Vector.empty
+    }
   }
 
   /** Parse a single decoded SSE chunk's JSON payload into
@@ -1008,22 +1066,28 @@ object OpenAIChatCompletions {
   final class StreamState(val acc: ToolCallAccumulator,
                           val responseFormatMode: Option[ResponseFormatMode] = None,
                           val nowNanos: () => Long = () => System.nanoTime(),
-                          /** Wall-clock budget (ms) since the last meaningful
-                            * chunk before the wire layer raises a typed
-                            * [[ProviderStreamException]] with
-                            * `errorType = upstream_silent`. A "meaningful chunk"
-                            * is any chunk that emits a text / tool-call /
-                            * reasoning / image / response-state event; pure
-                            * session-start chunks and SSE comment keepalives
-                            * count as silence. `0` disables the check. */
+                          /** True-line-silence budget (ms) — NO lines of any
+                            * kind arriving — enforced on a timer by
+                            * [[StreamSilenceWatchdog]]. Keepalive / comment
+                            * lines are liveness and RESET this clock. `0`
+                            * disables the watchdog (master switch — the
+                            * dead-on-arrival budget below is off too). */
                           val streamingSilenceTimeoutMs: Long = 0L,
-                          /** Sigil #258 — shorter silence budget (ms)
+                          /** Sigil #258 — shorter line-silence budget (ms)
                             * applied before the stream has produced any
-                            * meaningful event (a dead-on-arrival
-                            * upstream emitting only keepalives). Once
-                            * content appears, [[streamingSilenceTimeoutMs]]
-                            * applies. `0` disables this shorter budget. */
-                          val streamingDeadOnArrivalTimeoutMs: Long = 0L) {
+                            * meaningful event (a dead-on-arrival upstream
+                            * that has sent nothing). Once content appears,
+                            * [[streamingSilenceTimeoutMs]] applies. `0`
+                            * disables this shorter budget. */
+                          val streamingDeadOnArrivalTimeoutMs: Long = 0L,
+                          /** Alive-but-busy budget (ms): the stream has
+                            * carried ONLY keepalive / comment lines — proof
+                            * the connection is up — but no data chunk has
+                            * arrived. Catches a gateway heartbeating a dead
+                            * backend without killing a request that is
+                            * merely queued behind load. Checked lazily on
+                            * each arriving keepalive. `0` disables. */
+                          val streamingKeepaliveOnlyTimeoutMs: Long = 0L) {
     var pendingDone: Option[StopReason] = None
 
     /** Sigil #360 — set when the `[DONE]` SSE marker is dispatched (the
@@ -1075,58 +1139,73 @@ object OpenAIChatCompletions {
       * emission so the ticker shows movement promptly). */
     var lastEstimateNanos: Long = 0L
 
-    /** Wall-clock timestamp (System.nanoTime) anchor for the
-      * keepalive-silence check. Set on the first line of the stream
-      * (data or comment) and bumped every time [[parseChunk]] emits
-      * a meaningful event. The next line that arrives compares
-      * elapsed-since-anchor to [[streamingSilenceTimeoutMs]] — over
-      * the budget raises [[ProviderStreamException]] with
-      * `errorType = upstream_silent`. `-1L` means "no chunks seen
-      * yet". */
+    /** Wall-clock timestamp (System.nanoTime) of the last meaningful
+      * event — the anchor for the keepalive-only check. Set on the
+      * stream's first line (arming) and bumped every time
+      * [[parseChunk]] emits a meaningful event. `-1L` means "no lines
+      * seen yet". */
     var lastMeaningfulNanos: Long = -1L
 
+    /** Wall-clock timestamp (System.nanoTime) of the most recent line
+      * of ANY kind — data, keepalive, comment, blank. The
+      * [[StreamSilenceWatchdog]]'s true-line-silence clock measures
+      * from here, so every arriving line (keepalives included) is
+      * affirmative liveness that resets it. Volatile: written by the
+      * stream's pull fiber, read by the watchdog fiber. `-1L` until
+      * the watchdog arms it at stream start. */
+    @volatile var lastLineNanos: Long = -1L
+
     /** Sigil #258 — flips `true` the first time the stream produces a
-      * meaningful event. While `false`, [[checkStreamingSilence]] uses
-      * the shorter [[streamingDeadOnArrivalTimeoutMs]] budget. */
-    var sawMeaningfulContent: Boolean = false
+      * meaningful event. While `false`, the watchdog uses the shorter
+      * [[streamingDeadOnArrivalTimeoutMs]] budget. Volatile: read by
+      * the watchdog fiber. */
+    @volatile var sawMeaningfulContent: Boolean = false
+
+    /** Set by [[StreamSilenceWatchdog]] when the true-line-silence
+      * budget is breached: the watchdog cancels the underlying HTTP
+      * call (which ends the line stream) and records the diagnostic
+      * here; [[closeStream]] finds it and raises the typed silence
+      * exception on the stream's own termination path. */
+    @volatile var lineSilenceBreach: Option[String] = None
+
+    /** Called by [[parseLine]] on every line: liveness for the
+      * watchdog's true-silence clock, and arming for the
+      * keepalive-only anchor on the stream's first line. */
+    def recordLineArrival(): Unit = {
+      val now = nowNanos()
+      lastLineNanos = now
+      if (lastMeaningfulNanos < 0L) lastMeaningfulNanos = now
+    }
 
     /** Called by [[parseChunk]] when a chunk produced at least one
       * meaningful event (text / tool / reasoning / image /
-      * response-state). Resets the silence anchor. */
+      * response-state). Resets both silence anchors. */
     def markMeaningfulProgress(): Unit = {
       lastMeaningfulNanos = nowNanos()
       sawMeaningfulContent = true
     }
 
-    /** Called by [[parseLine]] at the top of every SSE line. Raises a
-      * typed silence exception when the budget has elapsed since the
-      * last meaningful chunk. The first call merely arms the anchor.
-      * Comment-only keepalives advance through this check; the next
-      * keepalive after the threshold fires the throw. */
-    def checkStreamingSilence(config: Config): Unit = {
-      // `streamingSilenceTimeoutMs` is the master switch — `0` turns
-      // silence detection off entirely. Sigil #258: until the stream
-      // produces its first meaningful event the shorter
-      // dead-on-arrival budget applies, so a dead upstream is
-      // abandoned fast and the transient-retry path can try a fresh
-      // connection; once content has flowed the full budget applies.
-      if (streamingSilenceTimeoutMs <= 0L) return
-      val budget =
-        if (sawMeaningfulContent || streamingDeadOnArrivalTimeoutMs <= 0L) streamingSilenceTimeoutMs
-        else streamingDeadOnArrivalTimeoutMs
-      val now = nowNanos()
-      if (lastMeaningfulNanos < 0L) {
-        lastMeaningfulNanos = now
-        return
-      }
-      val elapsedMs = (now - lastMeaningfulNanos) / 1000000L
-      if (elapsedMs > budget) {
+    /** Called by [[parseLine]] for keepalive-class lines ONLY (SSE
+      * comments, blanks, non-SSE noise) — never for data chunks, so a
+      * stream is never killed at the exact moment it becomes
+      * productive. Raises the typed silence exception when the stream
+      * has carried only keepalives past
+      * [[streamingKeepaliveOnlyTimeoutMs]]: the connection is alive
+      * (keepalives prove it) but the backend behind it has produced
+      * nothing — the gateway-masking-a-dead-backend shape. A merely
+      * BUSY backend is expected to hold below the generous budget. */
+    def checkKeepaliveOnly(config: Config): Unit = {
+      if (streamingKeepaliveOnlyTimeoutMs <= 0L) return
+      if (lastMeaningfulNanos < 0L) return // recordLineArrival arms first
+      val elapsedMs = (nowNanos() - lastMeaningfulNanos) / 1000000L
+      if (elapsedMs > streamingKeepaliveOnlyTimeoutMs) {
         throw new ProviderStreamException(
           providerKey = config.providerNamespace,
           code = 0,
           typ = "upstream_silent",
           message_ = s"${config.providerName} emitted only keepalive chunks for ${elapsedMs}ms " +
-            s"(threshold ${budget}ms) — upstream is unresponsive.",
+            s"(keepalive-only budget ${streamingKeepaliveOnlyTimeoutMs}ms) — the connection is alive " +
+            "but the backend has produced nothing.",
           status = None,
           errorMetadata = Some(ProviderErrorMetadata(errorType = Some("upstream_silent")))
         )
@@ -1190,7 +1269,20 @@ object OpenAIChatCompletions {
       * `ProviderStrategy` can retry. A `[DONE]` already drove `flushDone`
       * (no-op here); a `finish_reason` without `[DONE]` still gets its
       * `Done` synthesized so the terminal event isn't lost. */
-    def closeStream(config: Config): Vector[ProviderEvent] =
+    def closeStream(config: Config): Vector[ProviderEvent] = {
+      // A watchdog-recorded silence breach owns the diagnosis: the
+      // watchdog cancelled the connection, so without this the close
+      // path would misreport the kill as a truncated transport.
+      lineSilenceBreach.foreach { diagnostic =>
+        if (!sawDoneMarker) throw new ProviderStreamException(
+          providerKey = config.providerNamespace,
+          code = 0,
+          typ = "upstream_silent",
+          message_ = diagnostic,
+          status = None,
+          errorMetadata = Some(ProviderErrorMetadata(errorType = Some("upstream_silent")))
+        )
+      }
       if (sawDoneMarker) Vector.empty
       else pendingDone match {
         case Some(_) => flushDone(config)
@@ -1205,6 +1297,7 @@ object OpenAIChatCompletions {
             )
           else Vector.empty
       }
+    }
   }
 
   /** Sigil bug #173 — at end-of-stream in response_format mode, parse

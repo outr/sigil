@@ -167,21 +167,23 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
       }
     }
 
-    "keepalive silence past the configured budget raises a retryable upstream_silent exception" in {
+    "keepalive-only past the keepalive budget raises a retryable upstream_silent exception" in {
       val now = new AtomicLong(0L)
       val state = new StreamState(
-        acc                       = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
-        nowNanos                  = () => now.get(),
-        streamingSilenceTimeoutMs = 30000L
+        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        nowNanos                        = () => now.get(),
+        streamingKeepaliveOnlyTimeoutMs = 30000L
       )
       val cfg = Config(providerNamespace = OpenRouter.Provider, providerName = "OpenRouter")
 
-      // First keepalive arms the silence anchor at t=0.
+      // First keepalive arms the anchor at t=0.
       OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
       // 25s elapsed — under budget, no throw.
       now.set(25000L * 1000000L)
       OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
-      // 35s elapsed — over the 30s budget, the next keepalive throws.
+      // 35s elapsed — over the 30s budget, the next keepalive throws:
+      // the connection is alive but the backend has produced nothing
+      // (a gateway heartbeating a dead upstream).
       now.set(35000L * 1000000L)
       val ex = intercept[ProviderStreamException] {
         OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg)
@@ -192,12 +194,35 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
       Task.unit.map(_ => succeed)
     }
 
-    "meaningful chunks bump the silence anchor so legitimate slow generations don't false-fire" in {
+    "keepalives never count toward the line-silence budgets — they are liveness, not silence" in {
+      val now = new AtomicLong(0L)
+      // Line-silence budgets configured tight, keepalive budget off:
+      // keepalives arriving for 10× the silence budget must not throw
+      // (those budgets belong to the timer watchdog, which every
+      // arriving line RESETS).
+      val state = new StreamState(
+        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        nowNanos                        = () => now.get(),
+        streamingSilenceTimeoutMs       = 30000L,
+        streamingDeadOnArrivalTimeoutMs = 10000L,
+        streamingKeepaliveOnlyTimeoutMs = 0L
+      )
+      val cfg = Config(providerNamespace = OpenRouter.Provider, providerName = "OpenRouter")
+
+      OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
+      (1 to 10).foreach { i =>
+        now.set(i * 30000L * 1000000L)
+        OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
+      }
+      Task.unit.map(_ => succeed)
+    }
+
+    "meaningful chunks bump the keepalive anchor so legitimate slow generations don't false-fire" in {
       val now = new AtomicLong(0L)
       val state = new StreamState(
-        acc                       = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
-        nowNanos                  = () => now.get(),
-        streamingSilenceTimeoutMs = 30000L
+        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        nowNanos                        = () => now.get(),
+        streamingKeepaliveOnlyTimeoutMs = 30000L
       )
       val cfg = Config(providerNamespace = OpenRouter.Provider, providerName = "OpenRouter")
 
@@ -216,61 +241,28 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
       Task.unit.map(_ => succeed)
     }
 
-    "a dead-on-arrival upstream (no content yet) fires upstream_silent on the shorter budget (#258)" in {
+    "a data chunk arriving after a long keepalive-only wait is parsed, never killed for the wait that preceded it" in {
       val now = new AtomicLong(0L)
       val state = new StreamState(
         acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
         nowNanos                        = () => now.get(),
-        streamingSilenceTimeoutMs       = 60000L,
-        streamingDeadOnArrivalTimeoutMs = 20000L
+        streamingKeepaliveOnlyTimeoutMs = 30000L
       )
       val cfg = Config(providerNamespace = OpenRouter.Provider, providerName = "OpenRouter")
 
-      // Arm the silence anchor at t=0.
+      // Arm, then a huge gap — the request sat queued behind load.
       OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
-      // 15s elapsed — under the 20s dead-on-arrival budget, no throw.
-      now.set(15000L * 1000000L)
-      OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
-      // 21s elapsed — past the 20s dead-on-arrival budget. The full
-      // 60s budget has NOT elapsed, but a stream that produced nothing
-      // at all is abandoned early so the transient-retry path can try
-      // a fresh connection.
-      now.set(21000L * 1000000L)
-      val ex = intercept[ProviderStreamException] {
-        OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg)
-      }
-      ex.typ shouldBe "upstream_silent"
-      ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Retry
-      Task.unit.map(_ => succeed)
-    }
-
-    "the full silence budget applies once meaningful content has flowed, not the dead-on-arrival one (#258)" in {
-      val now = new AtomicLong(0L)
-      val state = new StreamState(
-        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
-        nowNanos                        = () => now.get(),
-        streamingSilenceTimeoutMs       = 60000L,
-        streamingDeadOnArrivalTimeoutMs = 20000L
-      )
-      val cfg = Config(providerNamespace = OpenRouter.Provider, providerName = "OpenRouter")
-
-      // Arm, then a real content chunk at t=5s — the stream is no
-      // longer "dead on arrival".
-      OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
-      now.set(5000L * 1000000L)
+      // 500s later the queue drains and the FIRST REAL CHUNK arrives.
+      // The keepalive budget elapsed long ago, but the arriving line is
+      // data — the stream just became productive; killing it here fails
+      // a turn whose work succeeded (the #417 field incident).
+      now.set(500000L * 1000000L)
       val contentChunk = """data: {"choices":[{"delta":{"content":"first token"}}]}"""
-      OpenAIChatCompletions.parseLine(contentChunk, state, cfg)
-        .exists { case _: ProviderEvent.TextDelta => true; case _ => false } shouldBe true
-      // 30s after the content chunk — well past the 20s dead-on-arrival
-      // budget, but the full 60s budget now governs, so no throw.
-      now.set(35000L * 1000000L)
+      val emitted = OpenAIChatCompletions.parseLine(contentChunk, state, cfg)
+      emitted.exists { case _: ProviderEvent.TextDelta => true; case _ => false } shouldBe true
+      // And the anchor reset: a keepalive shortly after doesn't throw.
+      now.set(505000L * 1000000L)
       OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
-      // 66s after the content chunk — past the full 60s budget; throws.
-      now.set(71000L * 1000000L)
-      val ex = intercept[ProviderStreamException] {
-        OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg)
-      }
-      ex.typ shouldBe "upstream_silent"
       Task.unit.map(_ => succeed)
     }
 

@@ -253,28 +253,33 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def profileWireRequests: Boolean = true
 
   /**
-   * Wall-clock budget (ms) the framework allows a streaming provider
-   * call to spend emitting only keepalive / non-meaningful chunks
-   * before the wire layer raises a typed transient
-   * [[sigil.provider.ProviderStreamException]] (`errorType =
-   * upstream_silent`). The retry classifier promotes the typed
-   * exception to `Retry` so the framework's transient-retry wrapper
-   * re-attempts the call. Set to `0` to disable.
+   * Wall-clock budget (ms) a streaming provider call may spend with NO
+   * lines arriving at all — no data, no keepalives, nothing — before
+   * the wire layer's silence watchdog cancels the stream and raises a
+   * typed transient [[sigil.provider.ProviderStreamException]]
+   * (`errorType = upstream_silent`). The retry classifier promotes the
+   * typed exception to `Retry` so the framework's transient-retry
+   * wrapper re-attempts the call. Set to `0` to disable.
    *
-   * Default `60_000` (60 seconds). Tightening risks false-firing on
-   * legitimately slow first-token paths (reasoning models warming
-   * up); loosening trades early failure detection for keeping the
-   * user waiting longer. The check fires lazily on each incoming
-   * chunk (no timer thread) — so it actually triggers on the NEXT
-   * keepalive after the threshold rather than precisely at the
-   * threshold.
+   * Timer-enforced: a watchdog fiber fires within one poll tick of the
+   * threshold, whether or not another line ever arrives. Keepalive /
+   * comment lines are affirmative liveness — they RESET this clock and
+   * never count toward it (a busy-but-alive upstream heartbeating
+   * while queued is governed by [[streamingKeepaliveOnlyTimeoutMs]]
+   * instead).
+   *
+   * Default `60_000` (60 seconds). Providers can override per wire
+   * via `OpenAIChatCompletions.Config.streamingSilenceTimeoutMs` —
+   * e.g. a local single-slot llama.cpp disables the watchdog and
+   * relies on the HTTP client's byte-idle timeout, since a queued
+   * request may legitimately carry no lines for minutes.
    */
   def streamingSilenceTimeoutMs: Long = 60000L
 
   /**
-   * Sigil #258 — streaming-silence budget (ms) applied while a stream
-   * has NOT yet produced any meaningful content: a "dead on arrival"
-   * upstream that emitted only keepalive chunks since it opened. A
+   * Sigil #258 — line-silence budget (ms) applied while a stream has
+   * NOT yet produced any meaningful content: a "dead on arrival"
+   * upstream that has sent nothing since the connection opened. A
    * dead upstream is obvious well before the full
    * [[streamingSilenceTimeoutMs]], so this shorter budget abandons it
    * fast and lets the framework's transient-retry path try a fresh
@@ -284,12 +289,41 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * applies instead: a stall after committed work is not retried
    * aggressively.
    *
+   * Like the full budget, this measures TRUE line-silence only —
+   * keepalive lines reset it. A gateway heartbeating a dead backend
+   * is caught by [[streamingKeepaliveOnlyTimeoutMs]].
+   *
    * Default `20_000` (20 s). `0` disables the dead-on-arrival budget
    * (the full `streamingSilenceTimeoutMs` then applies throughout).
    * The master switch is `streamingSilenceTimeoutMs` — setting THAT
    * to `0` turns off silence detection entirely, this budget included.
    */
   def streamingDeadOnArrivalTimeoutMs: Long = 20000L
+
+  /**
+   * Wall-clock budget (ms) a streaming provider call may spend
+   * emitting ONLY keepalive / comment lines — no data chunks — before
+   * the wire layer raises a typed transient
+   * [[sigil.provider.ProviderStreamException]] (`errorType =
+   * upstream_silent`). Set to `0` to disable.
+   *
+   * Keepalives are affirmative liveness: the connection is up and the
+   * server is choosing to heartbeat, which usually means the request
+   * is queued or processing behind load — a busy single-slot llama.cpp
+   * legitimately heartbeats for many minutes behind batch work, and
+   * killing that stream fails a turn whose work would have succeeded.
+   * The budget exists for the opposite case: a gateway heartbeating a
+   * BACKEND that is dead, where keepalives flow forever and content
+   * never comes. Hence the generous default.
+   *
+   * Checked lazily on each arriving keepalive (keepalives ARE the
+   * signal being budgeted, so there is always a next evaluation while
+   * the condition holds). Data-chunk arrival never trips this check —
+   * a stream that just became productive is not killed for the wait
+   * that preceded it. Default `600_000` (10 minutes); override per
+   * wire via `OpenAIChatCompletions.Config.streamingKeepaliveOnlyTimeoutMs`.
+   */
+  def streamingKeepaliveOnlyTimeoutMs: Long = 600000L
 
   /**
    * Threshold at which the curator emits

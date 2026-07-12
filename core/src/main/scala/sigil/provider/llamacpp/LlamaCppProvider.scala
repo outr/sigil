@@ -47,6 +47,13 @@ case class LlamaCppProvider(url: URL,
       .handleError(_ => Task.pure(1))
       .sync()
 
+  /** llama.cpp queues excess requests server-side while holding their
+    * connections open — a batch tool fanning out hundreds of calls
+    * leaves every stream idling for minutes and a Stop can't reach the
+    * queued work. Gate live streams to `total_slots` so excess calls
+    * wait in-process, FIFO, and abandon the wait on Stop for free. */
+  override def gateStreamingCalls: Boolean = true
+
   /** Llama.cpp's chat-completions wire is the OpenAI shape, with three
     * provider-specific twists expressed via [[OpenAIChatCompletions.Config]]:
     *
@@ -80,7 +87,14 @@ case class LlamaCppProvider(url: URL,
     multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.TextOnlyWithWarning,
     preprocess = preprocessForLlamaCpp,
     toolCallIdNormalizer = LlamaCppProvider.normalizeWireId,
-    inlineErrorThrows = true
+    inlineErrorThrows = true,
+    // A request queued behind this server's slots may legitimately
+    // carry no stream lines for minutes — the line-silence watchdog
+    // would kill provably-recoverable turns, so it's off for this
+    // wire. A genuinely dead server still fails via okhttp's
+    // byte-idle `readTimeout` (`tokenIdleTimeout`); an alive-but-
+    // never-producing connection via the keepalive-only budget.
+    streamingSilenceTimeoutMs = Some(0L)
   )
 
   override def call(input: ProviderCall): Stream[ProviderEvent] =
