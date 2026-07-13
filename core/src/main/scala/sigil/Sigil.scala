@@ -625,6 +625,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def findSkills(request: sigil.tool.DiscoveryRequest): rapid.Task[List[sigil.skill.Skill]] =
     sigil.skill.DbSkillFinder(this).apply(request)
 
+  /**
+   * The [[sigil.skill.Skill.alwaysOn]] skills that apply to
+   * `conversation`, materialized as render-ready
+   * [[sigil.conversation.ActiveSkillSlot]]s: enabled, always-on, space
+   * matching the conversation's space (or [[GlobalSpace]]), and mode
+   * matching the conversation's current mode (or mode-unrestricted).
+   *
+   * Queried fresh at every turn build — no per-conversation activation
+   * state exists, so registering a new always-on skill or editing an
+   * existing one reaches every conversation in the space on its next
+   * iteration, and disabling one withdraws it just as immediately.
+   */
+  final def alwaysOnSkillsFor(conversation: Conversation): Task[Vector[sigil.conversation.ActiveSkillSlot]] =
+    withDB(_.skills.transaction(_.query.filter(_.alwaysOnIndex === true).toList)).map { skills =>
+      skills.iterator
+        .filter { s =>
+          s.enabled &&
+            (s.space == conversation.space || s.space == GlobalSpace) &&
+            (s.modes.isEmpty || s.modes.contains(conversation.currentMode.id))
+        }
+        .map(s => sigil.conversation.ActiveSkillSlot(s.name, s.content))
+        .toVector
+    }
+
   /** Maximum number of memory matches surfaced by [[findCapabilitiesMemories]].
     * Memory catalogs grow large; an aggressive cap keeps `find_capability`
     * results focused. */
@@ -766,7 +790,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           description = s.description,
           capabilityType = CapabilityType.Skill,
           score = (skills.size - i).toDouble,
-          status = CapabilityStatus.RequiresSetup(s"""activate_skill("${s.name}")""")
+          // An always-on skill returned by the finder is in scope (the
+          // finder already applied space + mode affinity) and therefore
+          // ALREADY in this conversation's prompt — advertising an
+          // `activate_skill` step for it would send the agent on a
+          // pointless round-trip.
+          status =
+            if (s.alwaysOn) CapabilityStatus.Ready
+            else CapabilityStatus.RequiresSetup(s"""activate_skill("${s.name}")""")
         )
       }
       val memoryMatches = memories.map { case (m, score) =>
@@ -8539,13 +8570,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                       throw new sigil.provider.UnregisteredModelException(routedModelId, cache.all.map(_._id))
                     )
       input         <- curate(conv._id, routedModelId, chain)
+      // Space-scoped always-on skills are injected HERE — after the
+      // curator, at the framework-owned choke point every agent turn
+      // passes through — so custom curators and apps that suppress
+      // `find_capability` still get per-space baseline context with no
+      // wiring, and skill edits apply on the very next iteration.
+      alwaysOn      <- alwaysOnSkillsFor(conv)
     } yield {
       val triggers: Stream[Event] = Stream.emits(triggerEvents)
       val ctx = TurnContext(
         sigil               = this,
         chain               = chain,
         conversation        = conv,
-        turnInput           = input,
+        turnInput           = input.copy(alwaysOnSkills = alwaysOn),
         model               = routedModel,
         currentAgentStateId = Some(claimedId),
         turnStartedAt       = Some(claimedTimestamp),
