@@ -8439,6 +8439,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               "The conversation has grown past the model's context window, and automatic emergency " +
                 "compaction could not bring it back under the limit. Start a new conversation, or reduce " +
                 "the request (fewer attached files / shorter input) and try again."
+            else if (_root_.sigil.provider.Provider.isInvalidRequest(t))
+              // A non-overflow invalid_request 400 — malformed content the
+              // model API refused. Surface the provider's concise message
+              // (it names the offending part, e.g. an empty image source)
+              // instead of the raw wire blob the #410 scrub would pass
+              // through: the scrub strips vendor identity, not JSON noise.
+              _root_.sigil.provider.Provider.invalidRequestDetail(t) match {
+                case Some(detail) =>
+                  s"The provider rejected the request as invalid: ${sanitizeProviderError("provider", detail)}"
+                case None =>
+                  "The provider rejected the request as invalid (malformed content in the conversation)."
+              }
             else sanitizeProviderError("provider", Option(t.getMessage).filter(_.nonEmpty)
               .map(m => s"${t.getClass.getSimpleName}: $m")
               .getOrElse(t.getClass.getSimpleName))

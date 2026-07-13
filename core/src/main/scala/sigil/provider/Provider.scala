@@ -1288,18 +1288,31 @@ trait Provider extends Service with ModelResolver {
     * not resolve to a StoredFile — pass through unchanged. Runs once
     * over the translated call so every provider benefits. */
   private[provider] def normalizeStoredImages(call: ProviderCall): Task[ProviderCall] = {
-    // Returns None to DROP the image block (#393 — an external image that
-    // couldn't be fetched/downscaled; its caption survives as a sibling Text
-    // block). Some(mc) otherwise.
+    // Returns None to DROP the image block. Unresolvable images —
+    // empty stored bytes, a missing blob or row, an empty external
+    // fetch, empty inline base64 — are replaced by a caption-carrying
+    // `[image unavailable]` Text marker instead: an empty image block
+    // hard-400s the whole request on every subsequent turn
+    // ("image cannot be empty"), permanently bricking the
+    // conversation. The durable frame is untouched — only its wire
+    // rendering changes — so a conversation that already captured a
+    // bad image heals on its next turn.
     def normalizeContent(mc: MessageContent): Task[Option[MessageContent]] = mc match {
       case MessageContent.Image(url, altText, quality) =>
         storedFileIdFrom(url) match {
           case Some(id) =>
             sigil.withDB(_.storedFiles.transaction(_.get(id))).flatMap {
-              case None       => Task.pure(Some(mc))
+              case None =>
+                // Storage-shaped URL with no row. A public URL that merely
+                // contains `/storage/` may still be fetchable — route it
+                // through the external path; anything else (the default
+                // `sigil://` scheme) is unreachable by the provider and
+                // must not ship as a `{type:url}` source.
+                if (Provider.isFetchableImageUrl(url.toString)) materializeExternalImage(url.toString, quality, altText)
+                else Task.pure(Some(Provider.imageUnavailableMarker(altText)))
               case Some(file) =>
                 sigil.storageProvider.download(file.path).map {
-                  case Some(bytes) =>
+                  case Some(bytes) if bytes.nonEmpty =>
                     // Sigil #382 — downscale to the quality tier before
                     // encoding; never ship original-resolution pixels. #401 —
                     // a re-encode can change the media type (webp → PNG), so
@@ -1311,7 +1324,12 @@ trait Provider extends Service with ModelResolver {
                       altText = altText,
                       quality = quality
                     ))
-                  case None => Some(mc)
+                  case _ =>
+                    // Empty or missing blob — a zero-byte capture stored by a
+                    // flaky producer, or storage that lost the bytes.
+                    scribe.warn(s"normalizeStoredImages: stored image ${id.value} resolved to no bytes — " +
+                      "rendering an [image unavailable] marker instead of an empty image block")
+                    Some(Provider.imageUnavailableMarker(altText))
                 }
             }
           case None =>
@@ -1336,10 +1354,13 @@ trait Provider extends Service with ModelResolver {
         // only the hard per-edge cap. `resize` returns the same array when
         // already within the cap, so the common case re-encodes nothing.
         Task {
-          val raw = java.util.Base64.getDecoder.decode(base64)
-          val r = _root_.sigil.image.ImageDownscale.resizeTyped(raw, maxPixels = 0L, mediaType = mediaType)
-          if (r.bytes eq raw) Some(mc)
-          else Some(MessageContent.ImageBytes(r.mediaType, java.util.Base64.getEncoder.encodeToString(r.bytes), altText, quality))
+          val raw = scala.util.Try(java.util.Base64.getDecoder.decode(base64)).getOrElse(Array.emptyByteArray)
+          if (raw.isEmpty) Some(Provider.imageUnavailableMarker(altText))
+          else {
+            val r = _root_.sigil.image.ImageDownscale.resizeTyped(raw, maxPixels = 0L, mediaType = mediaType)
+            if (r.bytes eq raw) Some(mc)
+            else Some(MessageContent.ImageBytes(r.mediaType, java.util.Base64.getEncoder.encodeToString(r.bytes), altText, quality))
+          }
         }
       case other => Task.pure(Some(other))
     }
@@ -1413,14 +1434,20 @@ trait Provider extends Service with ModelResolver {
       case Some((ct, b64)) => Task.pure(Some(MessageContent.ImageBytes(ct, b64, altText, quality)))
       case None =>
         sigil.fetchExternalImageBytes(urlStr).map {
-          case Some((bytes, contentType)) =>
+          case Some((bytes, contentType)) if bytes.nonEmpty =>
             val ct = if (contentType.toLowerCase.startsWith("image/")) contentType else "image/png"
             val r = _root_.sigil.image.ImageDownscale.resizeTyped(bytes, quality.maxPixels, ct)
             val b64 = java.util.Base64.getEncoder.encodeToString(r.bytes)
             // Cache the POST-resize media type (#401 — a webp may have become PNG).
             Provider.cacheExternalImage(key, (r.mediaType, b64))
             Some(MessageContent.ImageBytes(r.mediaType, b64, altText, quality))
-          case None => None
+          case _ =>
+            // Fetch failed or returned no bytes. A caption-carrying marker
+            // (never cached — the fetch may succeed next turn) instead of a
+            // silent drop: the caption tells the model the image named in
+            // its context isn't visually present, and an empty image block
+            // would 400 the whole request.
+            Some(Provider.imageUnavailableMarker(altText))
         }
     }
   }
@@ -2229,6 +2256,48 @@ object Provider {
     "exceeds the maximum number of tokens",  // Google Gemini
     "input token count"                      // Google Gemini variant
   )
+
+  /** Text stand-in for an image whose bytes could not be resolved at
+    * wire-render time (empty stored file, missing blob or row, failed
+    * or empty external fetch, empty inline base64). Emitted in the
+    * image block's place: an empty image block hard-400s the entire
+    * request ("image cannot be empty") on every turn that re-renders
+    * the frame, permanently bricking the conversation, while a raw
+    * unreachable URL invites the same class of rejection. The caption
+    * survives so the model knows the image named in its context isn't
+    * visually present — the caption-preserving-eviction spirit. */
+  private[provider] def imageUnavailableMarker(altText: Option[String]): MessageContent =
+    MessageContent.Text(altText.filter(_.nonEmpty) match {
+      case Some(alt) => s"[image unavailable: $alt]"
+      case None      => "[image unavailable]"
+    })
+
+  /** Whether `t` (anywhere in its cause chain) is a provider
+    * invalid-request rejection that is NOT a context overflow —
+    * malformed content the model API refused (empty image source,
+    * schema violation, …). Overflow has its own recovery path
+    * ([[isContextOverflow]]); everything else in this class needs a
+    * readable failure surface instead of a raw wire blob. */
+  def isInvalidRequest(t: Throwable): Boolean =
+    !isContextOverflow(t) && messageChainContains(t, "invalid_request_error")
+
+  /** Best-effort extraction of the concise human-readable message from
+    * an invalid-request error body anywhere in `t`'s cause chain —
+    * e.g. `messages.140.content.1.image.source.base64: image cannot
+    * be empty` out of the full JSON envelope. `None` when no message
+    * field is recoverable. */
+  def invalidRequestDetail(t: Throwable): Option[String] = {
+    val pattern = """"message"\s*:\s*"((?:[^"\\]|\\.)*)"""".r
+    val seen = scala.collection.mutable.Set.empty[Throwable]
+    @scala.annotation.tailrec
+    def loop(cur: Throwable): Option[String] =
+      if (cur == null || seen.contains(cur)) None
+      else Option(cur.getMessage).flatMap(m => pattern.findFirstMatchIn(m).map(_.group(1))) match {
+        case some @ Some(_) => some
+        case None => seen += cur; loop(cur.getCause)
+      }
+    loop(t)
+  }
 
   /** Whether `t` (anywhere in its cause chain) is a context-window
     * overflow — either the framework's own pre-flight

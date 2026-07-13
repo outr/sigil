@@ -85,24 +85,92 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
       }
     }
 
-    "DROP an external image URL that can't be fetched — caption survives (sigil #393)" in {
+    "replace an unfetchable external image with an [image unavailable] marker (sigil #393/#417)" in {
       val deadUrl = spice.net.URL.get("https://cdn.example.com/too-big.png").toOption.get
       TestSigil.onFetchExternalImage { _ => Task.pure(None) }
       FakeProvider.normalizeStoredImages(
-        callWith(MessageContent.Text("Store file gid://… — a hero"), MessageContent.Image(deadUrl))
+        callWith(MessageContent.Text("Store file gid://… — a hero"), MessageContent.Image(deadUrl, altText = Some("hero banner")))
       ).map { normalized =>
-        // The unfetchable image is dropped; its caption Text block remains.
-        imageContents(normalized) shouldBe Vector(MessageContent.Text("Store file gid://… — a hero"))
+        // No image block ships (an empty one would 400 the whole request);
+        // the caption survives in the marker so the model knows the image
+        // isn't visually present.
+        imageContents(normalized) shouldBe Vector(
+          MessageContent.Text("Store file gid://… — a hero"),
+          MessageContent.Text("[image unavailable: hero banner]")
+        )
         TestSigil.resetFetchExternalImage()
         succeed
       }
     }
 
-    "leave a storage-shaped URL whose id does not resolve untouched" in {
+    "not cache an unavailable external image — a later successful fetch recovers it" in {
+      val flaky = spice.net.URL.get("https://cdn.example.com/flaky.png").toOption.get
+      val calls = new java.util.concurrent.atomic.AtomicInteger(0)
+      TestSigil.onFetchExternalImage { _ =>
+        Task {
+          if (calls.incrementAndGet() == 1) None else Some((tinyPng, "image/png"))
+        }
+      }
+      val act = for {
+        first  <- FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(flaky)))
+        second <- FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(flaky)))
+      } yield (first, second)
+      act.map { case (first, second) =>
+        imageContents(first) shouldBe Vector(MessageContent.Text("[image unavailable]"))
+        imageContents(second).head.isInstanceOf[MessageContent.ImageBytes] shouldBe true
+        TestSigil.resetFetchExternalImage()
+        succeed
+      }
+    }
+
+    "replace an unresolvable sigil://storage URL with a marker — the provider can never fetch it (sigil #417)" in {
       val dangling = spice.net.URL.get("sigil://storage/no-such-file",
         tldValidation = spice.net.TLDValidation.Off).toOption.get
-      FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(dangling))).map { normalized =>
-        imageContents(normalized) shouldBe Vector(MessageContent.Image(dangling))
+      FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(dangling, altText = Some("lost render")))).map { normalized =>
+        imageContents(normalized) shouldBe Vector(MessageContent.Text("[image unavailable: lost render]"))
+      }
+    }
+
+    "route an http storage-shaped URL with no local row through the external fetch" in {
+      val foreign = spice.net.URL.get("https://cdn.example.com/storage/some-public-file").toOption.get
+      TestSigil.onFetchExternalImage { _ => Task.pure(Some((tinyPng, "image/png"))) }
+      FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(foreign))).map { normalized =>
+        imageContents(normalized).head.isInstanceOf[MessageContent.ImageBytes] shouldBe true
+        TestSigil.resetFetchExternalImage()
+        succeed
+      }
+    }
+
+    "replace a ZERO-BYTE stored image with a marker instead of an empty image block (sigil #417 field shape)" in {
+      // The bricking mechanism: a flaky capture stored an empty webp; every
+      // request re-rendering the frame shipped base64 "" and the provider
+      // rejected the ENTIRE request ("image cannot be empty") — forever.
+      TestSigil.storeBytes(GlobalSpace, Array.emptyByteArray, "image/webp").flatMap { stored =>
+        FakeProvider.normalizeStoredImages(
+          callWith(MessageContent.Image(TestSigil.storageUrl(stored), altText = Some("theme preview")))
+        ).map { normalized =>
+          imageContents(normalized) shouldBe Vector(MessageContent.Text("[image unavailable: theme preview]"))
+        }
+      }
+    }
+
+    "replace a stored image whose blob is gone with a marker" in {
+      TestSigil.storeBytes(GlobalSpace, tinyPng, "image/png").flatMap { stored =>
+        TestSigil.storageProvider.delete(stored.path).flatMap { _ =>
+          FakeProvider.normalizeStoredImages(
+            callWith(MessageContent.Image(TestSigil.storageUrl(stored)))
+          ).map { normalized =>
+            imageContents(normalized) shouldBe Vector(MessageContent.Text("[image unavailable]"))
+          }
+        }
+      }
+    }
+
+    "replace an empty inline ImageBytes with a marker" in {
+      FakeProvider.normalizeStoredImages(
+        callWith(MessageContent.ImageBytes("image/webp", "", altText = Some("inline capture")))
+      ).map { normalized =>
+        imageContents(normalized) shouldBe Vector(MessageContent.Text("[image unavailable: inline capture]"))
       }
     }
 
@@ -222,6 +290,40 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
         val (_, h) = dims(imageBytesOf(normalized).find(b => dims(b.base64)._2 > 100).get.base64)
         h shouldBe 4380
       }
+    }
+  }
+
+  "invalid-request classification (sigil #417)" should {
+
+    "detect a non-overflow invalid_request and extract the provider's concise message" in Task {
+      val fieldError = new RuntimeException(
+        """HTTP 400: {"type":"error","error":{"type":"invalid_request_error","message":"messages.140.content.1.image.source.base64: image cannot be empty"}}"""
+      )
+      Provider.isInvalidRequest(fieldError) shouldBe true
+      Provider.invalidRequestDetail(fieldError) shouldBe
+        Some("messages.140.content.1.image.source.base64: image cannot be empty")
+    }
+
+    "classify a context overflow as overflow, never as generic invalid_request" in Task {
+      val overflow = new RuntimeException(
+        """HTTP 400: {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 200277 tokens > 200000 maximum"}}"""
+      )
+      Provider.isContextOverflow(overflow) shouldBe true
+      Provider.isInvalidRequest(overflow) shouldBe false
+    }
+
+    "walk the cause chain for the invalid_request body" in Task {
+      val inner = new RuntimeException(
+        """{"type":"error","error":{"type":"invalid_request_error","message":"tools.3.custom.input_schema: JSON schema is invalid"}}"""
+      )
+      val outer = new RuntimeException("stream failed", inner)
+      Provider.isInvalidRequest(outer) shouldBe true
+      Provider.invalidRequestDetail(outer) shouldBe Some("tools.3.custom.input_schema: JSON schema is invalid")
+    }
+
+    "stay quiet for unrelated errors" in Task {
+      Provider.isInvalidRequest(new RuntimeException("connection reset")) shouldBe false
+      Provider.invalidRequestDetail(new RuntimeException("connection reset")) shouldBe None
     }
   }
 
