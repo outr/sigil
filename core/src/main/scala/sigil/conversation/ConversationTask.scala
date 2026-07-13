@@ -74,6 +74,27 @@ object ConversationTask {
       workflowSourceId = "worker"
     )
 
+  /** Project a detached tool execution (sigil.tool.DetachedToolTask —
+    * a [[sigil.tool.Tool.detachable]] tool promoted past the detach
+    * threshold) into a panel task. Keyed by the invoke id — the same
+    * handle the invoke's frame names — and named with the workspace
+    * the tool is operating on, so concurrent conversation activity
+    * over that workspace is visible rather than implicit. */
+  def fromDetachedTool(task: sigil.tool.DetachedToolTask): ConversationTask =
+    ConversationTask(
+      taskId           = task.invokeId.value,
+      conversationId   = task.conversationId,
+      name             = task.workspace match {
+        case Some(ws) => s"${task.toolName.value} (detached; workspace: $ws)"
+        case None     => s"${task.toolName.value} (detached)"
+      },
+      status           = WorkflowStatus.Running,
+      displayStatus    = TaskDisplayStatus.Running,
+      startedAt        = task.startedAt,
+      modifiedAt       = task.detachedAt.getOrElse(task.startedAt),
+      workflowSourceId = "detached-tool"
+    )
+
   /** Refine Strider's lifecycle status with Sigil-specific
     * waiting flavors based on which step the run is parked on. */
   private def computeDisplayStatus(wf: Workflow): TaskDisplayStatus = wf.status match {

@@ -53,6 +53,13 @@ object Orchestrator {
   val UserVisibleTerminalTools: Set[String] =
     Set("respond", "respond_options", "no_response")
 
+  /** `Event.source` marker on the Tool-role continuation trigger a
+    * detached tool's completion publishes. The agent loop's
+    * own-emissions filter treats a marked event as EXTERNAL so a
+    * completion landing mid-turn queues a continuation iteration
+    * instead of evaporating with the turn. */
+  val DetachedContinuationSource: String = "detached-continuation"
+
   /** Synthetic-invoke name for the naked-text decision challenge: a
     * plain-prose `end_turn` carries no explicit continue-vs-yield
     * decision (`respond`'s required `endsTurn`), so the first
@@ -1127,8 +1134,12 @@ object Orchestrator {
                   // ambiguous "raced past, retry" placeholder (the materialized
                   // grep frame-race). Synthesize a recoverable Failure so it
                   // settles definitively with an actionable message instead.
+                  // A DETACH settle counts: the invoke deliberately stays
+                  // outcome-Pending while the promoted background task
+                  // runs; the completion watcher owns the real settle.
                   val outcomeSettled = collected.exists {
-                    case td: ToolDelta if td.target == invokeId            => td.outcome.isDefined
+                    case td: ToolDelta if td.target == invokeId =>
+                      td.outcome.isDefined || td.detached.contains(true)
                     case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) => true
                     case _                                                  => false
                   }
@@ -2083,15 +2094,22 @@ object Orchestrator {
     // stream errors and slide past that handler. Slow path
     // (preconditions or consent gate) accepts that small shift in
     // error semantics — the tradeoff for declarable gates.
+    // Detachable tools take the fiber-backed dispatch that can promote
+    // a long execution to a background task; everything else keeps the
+    // inline path.
+    def dispatch(): Stream[Signal] =
+      if (tool.detachable) runDetachableExecute(tool, input, context, originatingInvokeId, currentMessageId, invokedName)
+      else runExecute(tool, input, context, originatingInvokeId, currentMessageId, invokedName)
+
     if (tool.preconditions.isEmpty && !tool.requiresUserConsent)
-      runExecute(tool, input, context, originatingInvokeId, currentMessageId, invokedName)
+      dispatch()
     else Stream.force(consentOutcome(tool, context, originatingInvokeId).flatMap {
       case Left(blockedSignals) => Task.pure(Stream.emits(blockedSignals))
       case Right(()) =>
         if (tool.preconditions.isEmpty)
-          Task.pure(runExecute(tool, input, context, originatingInvokeId, currentMessageId, invokedName))
+          Task.pure(dispatch())
         else preflightOutcome(tool, context, originatingInvokeId).map {
-          case Right(()) => runExecute(tool, input, context, originatingInvokeId, currentMessageId, invokedName)
+          case Right(()) => dispatch()
           case Left(blockedSignals) => Stream.emits(blockedSignals)
         }
     })
@@ -2186,6 +2204,173 @@ object Orchestrator {
         Stream.emit(td.copy(internal = true))
       case other => Stream.emit(other)
     }
+  }
+
+  /** Dispatch path for [[Tool.detachable]] tools — mirrors
+    * [[Tool.execute]]'s framework glue (resolution → ancillary events →
+    * settling delta) but runs the tool body on its OWN fiber and polls
+    * completion up to [[Sigil.toolDetachThresholdMs]]:
+    *
+    *   - **Completes in time** → the inline path, emission-identical
+    *     to a non-detachable tool.
+    *   - **Still running at the threshold** → DETACH: the invoke
+    *     settles `Complete` with a tracking handle (`outcome` stays
+    *     `Pending`, `detached = true`), the turn proceeds without it,
+    *     and a completion watcher publishes the real settling delta
+    *     plus a Tool-role continuation trigger when the work lands.
+    *     `ctx.reportProgress` keeps flowing on the original invoke
+    *     throughout.
+    *
+    * The execution observes a FRESH per-invoke [[CancellationToken]]
+    * (registered on the host at dispatch) instead of the claim's — the
+    * claim dies when the turn ends, and a conversation Stop must reach
+    * the detached phase too ([[Sigil.applyStop]] cancels registry
+    * tokens unless [[Tool.detachedKeepRunningOnStop]]). A cancelled
+    * task settles its invoke with the Failure its checkpoint raised
+    * and publishes NO continuation. */
+  private def runDetachableExecute(tool: Tool,
+                                   input: ToolInput,
+                                   context: TurnContext,
+                                   originatingInvokeId: Id[Event],
+                                   currentMessageId: Option[Id[Event]],
+                                   invokedName: ToolName): Stream[Signal] = {
+    val sigil = context.sigil
+    val toolIsInternal = Orchestrator.UserVisibleTerminalTools.contains(invokedName.value)
+    val token = new _root_.sigil.CancellationToken(s"tool:${originatingInvokeId.value}")
+    val toolCtx = _root_.sigil.tool.ToolContext(
+      turn = context.copy(cancellation = Some(token)),
+      invokeId = originatingInvokeId,
+      toolName = invokedName,
+      currentMessageId = currentMessageId
+    )
+
+    def stamp(signals: List[Signal]): List[Signal] = signals.flatMap {
+      case ev: Event =>
+        val stamped = if (ev.origin.isDefined) ev else ev.withOrigin(Some(originatingInvokeId))
+        List[Signal](
+          stamped,
+          StateDelta(target = stamped._id, conversationId = stamped.conversationId, state = EventState.Complete)
+        )
+      case td: ToolDelta if toolIsInternal && !td.internal => List(td.copy(internal = true))
+      case other => List(other)
+    }
+
+    Stream.force(
+      for {
+        workspace <- sigil.resolvedWorkspaceFor(context.conversation.id).handleError(_ => Task.pure(None))
+        _ <- Task {
+          sigil.registerDetachableDispatch(_root_.sigil.tool.DetachedToolTask(
+            invokeId          = originatingInvokeId,
+            conversationId    = context.conversation.id,
+            toolName          = invokedName,
+            workspace         = workspace.map(_.toString),
+            keepRunningOnStop = tool.detachedKeepRunningOnStop,
+            cancellation      = token,
+            startedAt         = lightdb.time.Timestamp(lightdb.util.Nowish()),
+            detachedAt        = None
+          ))
+        }
+        completed = new java.util.concurrent.atomic.AtomicReference[Option[_root_.sigil.tool.ToolResult[tool.Output]]](None)
+        fiber <- tool.runResolution(input, toolCtx).map { r => completed.set(Some(r)); r }.start
+        outcome <- awaitWithinThreshold(completed, sigil.toolDetachThresholdMs)
+        signals <- outcome match {
+          case Some(result) =>
+            // Sub-threshold completion — inline, identical to Tool.execute.
+            sigil.completeDetachedTool(originatingInvokeId)
+            tool.buildResultDelta(result, toolCtx).map { delta =>
+              stamp(toolCtx.emittedEvents.map(e => e: Signal) :+ (delta: Signal))
+            }
+          case None =>
+            // DETACH. Drain what the body has emitted so far; anything
+            // emitted later publishes with the completion.
+            val drainedNow = toolCtx.emittedEvents
+            sigil.markToolDetached(originatingInvokeId)
+            val detachDelta = ToolDelta(
+              target         = originatingInvokeId,
+              conversationId = context.conversation.id,
+              state          = Some(EventState.Complete),
+              detached       = Some(true),
+              internal       = toolIsInternal,
+              summary        = Some(
+                s"Detached: `${invokedName.value}` is still running in the background as task " +
+                  s"${originatingInvokeId.value}. Progress continues on this call; the full result " +
+                  "will arrive as a tool result when it completes. Do not re-issue this call."
+              )
+            )
+            scribe.info(
+              s"Tool `${invokedName.value}` promoted to detached task ${originatingInvokeId.value} " +
+                s"(conversation ${context.conversation.id.value}); the turn proceeds without it")
+            // Completion watcher — publishes the real settle + the
+            // continuation trigger outside the (long-gone) turn batch.
+            fiber.join.flatMap { result =>
+              val lateEvents = toolCtx.emittedEvents.drop(drainedNow.size)
+              tool.buildResultDelta(result, toolCtx).flatMap { delta =>
+                val cancelled = token.isCancelled
+                val publishLate = stamp(lateEvents.map(e => e: Signal)).foldLeft(Task.unit) { (acc, sig) =>
+                  acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
+                }
+                val publishSettle = sigil.publish(delta).handleError(t => Task {
+                  scribe.error(s"Detached tool ${invokedName.value} (${originatingInvokeId.value}): settle publish failed", t)
+                })
+                val continuation =
+                  if (cancelled) Task {
+                    scribe.info(s"Detached task ${originatingInvokeId.value} (`${invokedName.value}`) settled after cancellation — no continuation")
+                  }
+                  else {
+                    val summaryText = delta.summary.orElse(delta.output.flatMap {
+                      case t: _root_.sigil.tool.TextToolOutput => Some(t.text)
+                      case _                                   => None
+                    }).getOrElse("(see the settled tool call for the result)")
+                    val trigger = Message(
+                      participantId  = context.caller,
+                      conversationId = context.conversation.id,
+                      topicId        = context.conversation.currentTopicId,
+                      role           = MessageRole.Tool,
+                      content        = Vector(ResponseContent.Text(
+                        s"Detached tool `${invokedName.value}` (task ${originatingInvokeId.value}) completed: $summaryText"
+                      )),
+                      state          = EventState.Complete,
+                      visibility     = MessageVisibility.Agents,
+                      origin         = Some(originatingInvokeId),
+                      // Although agent-attributed (the agent made the call),
+                      // this is EXTERNAL work arriving — the loop's
+                      // own-emissions filter must not swallow it when the
+                      // completion lands mid-turn.
+                      source         = Some(Orchestrator.DetachedContinuationSource)
+                    )
+                    sigil.publish(trigger).map { _ =>
+                      scribe.info(s"Detached task ${originatingInvokeId.value} (`${invokedName.value}`) completed — continuation trigger published")
+                    }.handleError(t => Task {
+                      scribe.error(s"Detached tool ${invokedName.value}: continuation publish failed", t)
+                    })
+                  }
+                publishLate.flatMap(_ => publishSettle).flatMap(_ => continuation)
+              }
+            }.guarantee(Task(sigil.completeDetachedTool(originatingInvokeId)))
+              .handleError(t => Task {
+                scribe.error(s"Detached tool ${invokedName.value} (${originatingInvokeId.value}): completion watcher failed", t)
+              })
+              .startUnit()
+            Task.pure(stamp(drainedNow.map(e => e: Signal)) :+ (detachDelta: Signal))
+        }
+      } yield Stream.emits(signals)
+    )
+  }
+
+  /** Poll `completed` every 25ms up to `thresholdMs`. Deliberately NOT
+    * `Task.race` — racing would cancel the losing side, and the tool's
+    * resolution fiber must keep running when the threshold wins. */
+  private def awaitWithinThreshold[A](completed: java.util.concurrent.atomic.AtomicReference[Option[A]],
+                                      thresholdMs: Long): Task[Option[A]] = {
+    val deadline = System.currentTimeMillis() + math.max(0L, thresholdMs)
+    def loop: Task[Option[A]] = Task.defer {
+      completed.get() match {
+        case some @ Some(_) => Task.pure(some)
+        case None if System.currentTimeMillis() >= deadline => Task.pure(None)
+        case None => Task.sleep(scala.concurrent.duration.FiniteDuration(25, "ms")).flatMap(_ => loop)
+      }
+    }
+    loop
   }
 
   /** Run every [[Tool.preconditions]] check. If any returns

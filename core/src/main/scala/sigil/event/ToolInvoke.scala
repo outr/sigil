@@ -95,6 +95,17 @@ case class ToolInvoke(toolName: ToolName,
                         * turns. `None` for synthetic / framework-emitted
                         * invokes (no provider call backing them). */
                       modelId: Option[Id[Model]] = None,
+                      /** `true` once this invoke has been DETACHED: the tool's
+                        * execution outlived the detach threshold and was
+                        * promoted to a background task, the invoke settled
+                        * `Complete` with a tracking handle (outcome still
+                        * `Pending`), and the turn ended without it. The real
+                        * result folds on later via [[sigil.signal.ToolDelta]]
+                        * followed by a Tool-role continuation trigger. The
+                        * typed flag lets restart reconciliation find detached
+                        * invokes whose background fiber died with the
+                        * process. */
+                      detached: Boolean = false,
                       override val origin: Option[Id[Event]] = None,
                       override val source: Option[String] = None,
                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,

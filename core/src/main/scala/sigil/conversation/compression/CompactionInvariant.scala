@@ -3,7 +3,7 @@ package sigil.conversation.compression
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import sigil.conversation.Conversation
-import sigil.event.{Event, Message, MessageRole, ToolInvoke}
+import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.participant.{AgentParticipantId, ParticipantId}
 
 /**
@@ -179,7 +179,7 @@ object CompactionInvariant {
             && !m.participantId.isInstanceOf[AgentParticipantId] => m.timestamp.value
         }
       }
-      boundary match {
+      val activeTurn: Set[Id[Event]] = boundary match {
         case None => Set.empty
         case Some(b) =>
           events.iterator.collect {
@@ -188,6 +188,15 @@ object CompactionInvariant {
               && !ctx.deliveredToolResults.contains(ti._id) => ti._id
           }.toSet
       }
+      // Detached invokes still awaiting their background result are
+      // protected regardless of turn boundaries — the task may outlive
+      // several user turns, and folding the tracking handle hides the
+      // eventual result the same way folding an active-turn invoke
+      // would. Bounded: only still-running detached tasks qualify.
+      val pendingDetached: Set[Id[Event]] = events.iterator.collect {
+        case ti: ToolInvoke if ti.detached && ti.outcome == ToolOutcome.Pending => ti._id
+      }.toSet
+      activeTurn ++ pendingDetached
     }
   }
 

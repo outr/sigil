@@ -115,7 +115,7 @@ trait Tool extends RecordDocument[Tool] {
   /** Run [[executeResult]] against a defensively-cast input, mapping any
     * throwable (including a `ClassCastException` from a mismatched input)
     * to a recoverable [[ToolResult.Failure]]. Total — never errors. */
-  private def runResolution(input: ToolInput, context: ToolContext): Task[ToolResult[Output]] =
+  private[sigil] def runResolution(input: ToolInput, context: ToolContext): Task[ToolResult[Output]] =
     Task(input.asInstanceOf[Input])
       .flatMap(typed => executeResult(typed, context))
       .handleError { err =>
@@ -128,7 +128,7 @@ trait Tool extends RecordDocument[Tool] {
   /** Build the settling [[ToolDelta]] from a resolution — folds output,
     * outcome, and `state = Complete` onto the originating `ToolInvoke`
     * in one update. Sigil #265. */
-  private def buildResultDelta(result: ToolResult[Output], context: ToolContext): Task[ToolDelta] = {
+  private[sigil] def buildResultDelta(result: ToolResult[Output], context: ToolContext): Task[ToolDelta] = {
     val invokeId = context.invokeId
     result match {
       case ToolResult.Success(value) =>
@@ -404,6 +404,30 @@ trait Tool extends RecordDocument[Tool] {
     * during exploratory iterations read this flag. Default `false`
     * — annotation is opt-in per tool. */
   def readOnly: Boolean = false
+
+  /** True when this tool's execution may be DETACHED: if it is still
+    * running when [[sigil.Sigil.toolDetachThresholdMs]] passes, the
+    * orchestrator settles the invoke with a tracking handle, lets the
+    * turn finish, and keeps the work running as a background task.
+    * The real result folds onto the original invoke when it lands and
+    * a Tool-role continuation trigger re-invokes the agent with it.
+    *
+    * Opt in for tools whose legitimate runtime is minutes-to-hours (a
+    * repo-wide refactor sweep, a bulk import): holding the turn open
+    * for the tool's whole life blocks the conversation and leaves the
+    * agent loop's next iteration stream idling against the same
+    * backend the tool is saturating. Fast completions (under the
+    * threshold) stay fully synchronous — identical to a
+    * non-detachable tool. Default `false`. */
+  def detachable: Boolean = false
+
+  /** For [[detachable]] tools: whether a detached task should survive
+    * a user Stop on its conversation. Default `false` — Stop cancels
+    * the conversation's detached tasks through the same cooperative
+    * `ctx.checkpoint` seam the attached phase honors. Set `true` for
+    * work that should run to completion once started regardless of
+    * conversation state. */
+  def detachedKeepRunningOnStop: Boolean = false
 
   /** **MCP-style annotation.** True when calling this tool affects
     * user-visible state irreversibly. The `respond_*` family is

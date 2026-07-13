@@ -58,7 +58,11 @@ case class ToolDelta(target: Id[Event],
                        * onto [[sigil.event.ToolInvoke.outcome]]. Set
                        * alongside `output` when the tool settles.
                        * `None` means no change. */
-                     outcome: Option[sigil.event.ToolOutcome] = None)
+                     outcome: Option[sigil.event.ToolOutcome] = None,
+                     /** Folded onto [[sigil.event.ToolInvoke.detached]] when
+                       * the orchestrator promotes a still-running tool to a
+                       * background task. `None` means no change. */
+                     detached: Option[Boolean] = None)
   extends Delta derives RW {
 
   /**
@@ -72,15 +76,17 @@ case class ToolDelta(target: Id[Event],
       val nextState   = state.getOrElse(t.state)
       val nextUsage   = usage.getOrElse(t.usage)
       val nextSummary = summary.getOrElse(t.summary)
-      val nextOutput  = output.getOrElse(t.output)
-      val nextOutcome = outcome.getOrElse(t.outcome)
+      val nextOutput   = output.getOrElse(t.output)
+      val nextOutcome  = outcome.getOrElse(t.outcome)
+      val nextDetached = detached.getOrElse(t.detached)
       t.copy(
-        input   = nextInput,
-        state   = nextState,
-        usage   = nextUsage,
-        summary = nextSummary,
-        output  = nextOutput,
-        outcome = nextOutcome
+        input    = nextInput,
+        state    = nextState,
+        usage    = nextUsage,
+        summary  = nextSummary,
+        output   = nextOutput,
+        outcome  = nextOutcome,
+        detached = nextDetached
       )
     case other => other
   }

@@ -178,7 +178,9 @@ object TestSigil extends Sigil {
       ProgressEmittingTool,
       EagerActiveLatchTool,
       SlowCooperativeTool,
-      SlowStubbornTool
+      SlowStubbornTool,
+      DetachableSweepTool,
+      FastDetachableTool
     ): @annotation.nowarn("cat=deprecation"))
 
   // ---- registration lists ----
@@ -433,6 +435,24 @@ object TestSigil extends Sigil {
 
   override def pinCoversAuxiliaryCalls: Boolean =
     pinCoversAuxiliaryCallsOverride.get().getOrElse(super.pinCoversAuxiliaryCalls)
+
+  /** Per-spec override of the detach threshold so DetachedToolSpec can
+    * promote a fixture tool in milliseconds instead of the 60s
+    * framework default. `None` uses the default. */
+  val toolDetachThresholdOverride =
+    new java.util.concurrent.atomic.AtomicReference[Option[Long]](None)
+  override def toolDetachThresholdMs: Long =
+    toolDetachThresholdOverride.get().getOrElse(super.toolDetachThresholdMs)
+
+  /** Per-spec override of the intra-turn compactor. Specs that count
+    * scripted-provider round-trips exactly (DetachedToolSpec) disable
+    * compaction — its `compressCovering` issues its own LLM call at
+    * respond boundaries, which pollutes call-count assertions. `None`
+    * uses the framework default. */
+  val intraTurnCompactorOverride =
+    new AtomicReference[Option[sigil.conversation.compression.IntraTurnCompactor]](None)
+  override def intraTurnCompactor: sigil.conversation.compression.IntraTurnCompactor =
+    intraTurnCompactorOverride.get().getOrElse(super.intraTurnCompactor)
 
   // ---- setters (per-test overrides) ----
 

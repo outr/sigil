@@ -3747,6 +3747,88 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case None => Set.empty
     }
 
+  // -- detached tool tasks --
+
+  /** How long a [[sigil.tool.Tool.detachable]] tool may run attached
+    * before the orchestrator promotes it to a DETACHED background
+    * task: the invoke settles with a tracking handle, the turn
+    * finishes normally, the work continues on its own fiber, and the
+    * real result folds onto the original invoke followed by a
+    * Tool-role continuation trigger when it lands. Sub-threshold
+    * completions stay fully synchronous. `0` promotes a detachable
+    * tool immediately. Non-detachable tools ignore this entirely. */
+  def toolDetachThresholdMs: Long = 60000L
+
+  /** Live detachable-tool executions, keyed by invoke id (which
+    * doubles as the task handle). Registered at DISPATCH — so a Stop
+    * reaches the execution's [[CancellationToken]] in the attached
+    * phase too — and promoted in place at detach. In-memory: the
+    * durable marker is the invoke row's `detached` flag, which
+    * [[reconcileLostDetachedTools]] compares against this registry to
+    * settle tasks whose fiber died with the process. */
+  private final val detachedToolTasks: ConcurrentHashMap[Id[Event], sigil.tool.DetachedToolTask] =
+    new ConcurrentHashMap()
+
+  private[sigil] final def registerDetachableDispatch(task: sigil.tool.DetachedToolTask): Unit = {
+    detachedToolTasks.put(task.invokeId, task)
+    ()
+  }
+
+  private[sigil] final def markToolDetached(invokeId: Id[Event]): Unit = {
+    detachedToolTasks.computeIfPresent(
+      invokeId,
+      (_, t) => t.copy(detachedAt = Some(lightdb.time.Timestamp(lightdb.util.Nowish())))
+    )
+    ()
+  }
+
+  private[sigil] final def completeDetachedTool(invokeId: Id[Event]): Unit = {
+    detachedToolTasks.remove(invokeId)
+    ()
+  }
+
+  /** Detached tasks currently running for `conversationId`, projected
+    * for the "what's running?" panel. Attached-phase registrations
+    * (not yet promoted) are excluded — those are ordinary in-turn tool
+    * calls. `WorkflowSigil.activeTasksFor` unions these with workflow
+    * runs so detached sweeps appear beside `delegate_task` workers. */
+  final def detachedToolTasksFor(conversationId: Id[Conversation]): List[sigil.conversation.ConversationTask] = {
+    import scala.jdk.CollectionConverters.*
+    detachedToolTasks.values.asScala.iterator
+      .filter(t => t.conversationId == conversationId && t.detachedAt.isDefined)
+      .map(sigil.conversation.ConversationTask.fromDetachedTool)
+      .toList
+  }
+
+  /** Settle detached invokes whose background task no longer exists —
+    * the process restarted (or the fiber was lost) between detach and
+    * completion. Runs once per agent claim: without it, a lost task's
+    * invoke reads "running as task X" forever and the continuation the
+    * agent is waiting on never comes. Best-effort. */
+  private[sigil] final def reconcileLostDetachedTools(conversationId: Id[Conversation]): Task[Unit] =
+    withDB(_.eventsTransaction(conversationId)(_.list)).flatMap { events =>
+      val lost = events.collect {
+        case ti: ToolInvoke
+          if ti.detached
+            && ti.state == EventState.Complete
+            && ti.outcome == sigil.event.ToolOutcome.Pending
+            && !detachedToolTasks.containsKey(ti._id) =>
+          ti
+      }
+      lost.foldLeft(Task.unit) { (acc, ti) =>
+        val reason = s"Detached tool `${ti.toolName.value}` was lost to a process restart before completing. " +
+          "Its partial work may be on disk; re-issue the tool if you still need the result."
+        val settle = ToolDelta(
+          target         = ti._id,
+          conversationId = conversationId,
+          state          = Some(EventState.Complete),
+          summary        = Some(reason),
+          outcome        = Some(sigil.event.ToolOutcome.Failure(reason, recoverable = true))
+        )
+        acc.flatMap(_ => publish(settle).handleError(_ => Task.unit))
+      }
+    }.handleError(_ => Task.unit)
+
   /** Sigil #415 — whether the user has requested a stop that should halt
     * further work for `conversationId` (optionally narrowed to one
     * agent). Consulted by the provider layer's transient-retry loop and
@@ -3830,6 +3912,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             // `ctx.checkpoint` instead of grinding on after the user
             // stopped the agent.
             flag.cancellation.cancel(s.reason.getOrElse("stopped by user"))
+            ()
+          }
+        }
+        // Cancel the conversation's detachable-tool executions —
+        // attached or detached — through the same cooperative
+        // `ctx.checkpoint` seam, unless the tool opted into surviving
+        // Stop. A cancelled task settles its invoke with a Failure and
+        // publishes NO continuation trigger.
+        detachedToolTasks.values.iterator().asScala.foreach { t =>
+          if (t.conversationId == s.conversationId && !t.keepRunningOnStop) {
+            t.cancellation.cancel(s.reason.getOrElse("stopped by user"))
             ()
           }
         }
@@ -6442,6 +6535,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                         conv: Conversation,
                                         claimed: AgentState,
                                         greeting: Boolean): Task[Unit] =
+    // Once per claim: settle any detached invoke whose background task
+    // died with a prior process — otherwise its frame reads "running as
+    // task X" forever and the continuation the agent is waiting on
+    // never comes.
+    reconcileLostDetachedTools(conv._id).flatMap(_ =>
     runAgentLoop(
       agent,
       conv._id,
@@ -6484,7 +6582,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // Sigil #313 — correlation id shared across the durable triple
       // (CorruptionDetected → Healed → Exhausted) for THIS turn.
       healCorrelationId = new AtomicReference(None)
-    )
+    ))
 
   /** Sigil #392 — completes once `flag.force` is set. Polled (not callback-
     * driven) because `StopFlag.force` is a plain `AtomicBoolean` flipped by
@@ -7260,7 +7358,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // `forceResponseSynthesis` branch raises
               // AgentRunawayException — model is broken; surface the
               // hard failure instead of papering over it.
-              if (userVisibleSeen.get()) Task(terminate())
+              if (userVisibleSeen.get()) {
+                scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration yielding terminate continuation")
+                Task(terminate())
+              }
               else if (forceResponseSynthesis)
                 // Routed through the handleError below for the failure
                 // publish + post-commit terminal release.
@@ -8513,7 +8614,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
       all.exists(e => e.conversationId == conv._id
                    && e.timestamp.value > sinceTimestamp.value
-                   && e.participantId != agent.id
+                   // A detached tool's completion trigger is agent-
+                   // attributed (the agent made the call) but is
+                   // genuinely EXTERNAL work arriving — without this, a
+                   // completion landing mid-turn evaporates with the
+                   // turn and the agent never sees the result.
+                   && (e.participantId != agent.id
+                       || e.source.contains(sigil.orchestrator.Orchestrator.DetachedContinuationSource))
                    && TriggerFilter.isTriggerFor(agent, e))
     }
 
@@ -9063,7 +9170,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _.query.filter(_.parentConversationId === Some(conversationId)).toList
     )).flatMap { children =>
       val workers = children.filter(!_.archived)
-      Task.sequence(workers.map(workerTaskFor)).map(_.flatten)
+      Task.sequence(workers.map(workerTaskFor)).map { workerTasks =>
+        // Detached tool executions appear beside delegate_task workers —
+        // a long sweep the conversation is waiting on IS a running task.
+        workerTasks.flatten ++ detachedToolTasksFor(conversationId)
+      }
     }
 
   /** Project a worker sub-conversation into a [[sigil.conversation.ConversationTask]],
@@ -9104,8 +9215,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // runs in memory — but only over the worker set, not all conversations).
     withDB(_.conversations.transaction(_.query.filter(_.parentConversationId !== None).toList)).flatMap { children =>
       val workers = children.filter(c => !c.archived && c.participants.exists(_.id == viewer))
-      Task.sequence(workers.map(workerTaskFor))
-        .map(_.flatten.sortBy(_.modifiedAt.value)(using Ordering.Long.reverse))
+      Task.sequence(workers.map(workerTaskFor)).flatMap { workerTasks =>
+        // Detached tool executions surface in the global sidebar the
+        // same way delegate_task workers do — visibility follows
+        // conversation membership.
+        import scala.jdk.CollectionConverters.*
+        val detached = detachedToolTasks.values.asScala.toList.filter(_.detachedAt.isDefined)
+        Task.sequence(detached.map { t =>
+          withDB(_.conversations.transaction(_.get(t.conversationId))).map {
+            case Some(conv) if conv.participants.exists(_.id == viewer) =>
+              Some(sigil.conversation.ConversationTask.fromDetachedTool(t))
+            case _ => None
+          }
+        }).map { detachedTasks =>
+          (workerTasks.flatten ++ detachedTasks.flatten)
+            .sortBy(_.modifiedAt.value)(using Ordering.Long.reverse)
+        }
+      }
     }
 
   /**
