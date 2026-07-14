@@ -5,6 +5,7 @@ import rapid.Task
 import sigil.Sigil
 import sigil.conversation.Conversation
 import sigil.event.Event
+import sigil.participant.ParticipantId
 import sigil.signal.Signal
 import spice.http.durable.EventLog
 
@@ -35,12 +36,24 @@ import java.util.concurrent.atomic.AtomicLong
  *     replay through spice's in-memory ring; only across-session /
  *     post-restart reconnect bottoms out at this Event-subset.
  *
+ * **Visibility**: `viewer` scopes every replay to what that
+ * participant may see — [[Sigil.canSee]] filtering plus
+ * [[Sigil.viewerTransforms]] redaction, identical to the live wire.
+ * The `None` default returns the RAW log and is only appropriate for
+ * trusted channels (agent-to-agent bridges, admin tooling): a durable
+ * socket serving a user UI MUST pass its viewer, or Agents-visibility
+ * internals (checkpoint directives, diagnostics) leak into chat on
+ * cross-restart resume. Servers multiplexing several viewers over one
+ * log construct one adapter per viewer, or supply their own EventLog.
+ *
  * Apps that key channels differently (per-viewer, composite) supply
  * their own EventLog implementation — `SignalTransport.attach`
  * doesn't need this adapter at all (it queries `SigilDB.events`
  * directly).
  */
-final class SigilDbEventLog(sigil: Sigil) extends EventLog[LId[Conversation], Signal] {
+final class SigilDbEventLog(sigil: Sigil,
+                            viewer: Option[ParticipantId] = None)
+  extends EventLog[LId[Conversation], Signal] {
 
   private val seqCounters: ConcurrentHashMap[LId[Conversation], AtomicLong] =
     new ConcurrentHashMap[LId[Conversation], AtomicLong]()
@@ -62,7 +75,9 @@ final class SigilDbEventLog(sigil: Sigil) extends EventLog[LId[Conversation], Si
     // The canonical paged read: conversationId narrows the channel,
     // the exclusive lower timestamp bound applies the resume cursor,
     // no message cap returns the whole post-cursor window oldest-first.
-    sigil.eventsFor(channelId, maxMessages = None, minTimestamp = Some(lightdb.time.Timestamp(afterSeq))).map { page =>
+    // Viewer-scoped when a viewer is bound (see class docs).
+    sigil.eventsFor(channelId, maxMessages = None, minTimestamp = Some(lightdb.time.Timestamp(afterSeq)),
+      viewer = viewer).map { page =>
       page.events.map(e => (e.timestamp.value, e: Signal))
     }
 }

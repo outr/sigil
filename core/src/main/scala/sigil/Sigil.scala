@@ -3551,7 +3551,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // event log oldest-first (the live-edge merge picks up any
         // in-flight iteration events); the trailing `limit` events
         // are the most-recent window the snapshot delivers.
-        eventsFor(convId, maxMessages = None).flatMap { page =>
+        // Viewer-scoped read — an Agents-visibility event (checkpoint
+        // directives, internal diagnostics) must never ship to a user
+        // UI through the history path when the live wire filters it.
+        eventsFor(convId, maxMessages = None, viewer = Some(fromViewer)).flatMap { page =>
           val cap = math.max(0, limit)
           val sorted = page.events
           val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
@@ -3564,7 +3567,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // bound returns every event older than the `beforeMs` cursor,
         // oldest-first; the trailing `limit` of that set is the page
         // closest to the cursor.
-        eventsFor(convId, maxMessages = None, maxTimestamp = Some(lightdb.time.Timestamp(beforeMs))).flatMap { page =>
+        eventsFor(convId, maxMessages = None, maxTimestamp = Some(lightdb.time.Timestamp(beforeMs)),
+                  viewer = Some(fromViewer)).flatMap { page =>
           val cap = math.max(0, limit)
           val sorted = page.events
           val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
@@ -4365,7 +4369,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 maxMessages: Option[Int] = None,
                 topicId: Option[Id[Topic]] = None,
                 minTimestamp: Option[Timestamp] = None,
-                maxTimestamp: Option[Timestamp] = None): Task[EventsPage] = {
+                maxTimestamp: Option[Timestamp] = None,
+                /** When set, the page is scoped to what this viewer may
+                  * see: events failing [[canSee]] are dropped BEFORE
+                  * pagination (so `maxMessages` counts visible messages)
+                  * and [[viewerTransforms]] redact the survivors —
+                  * identical to the live wire's `signalsFor` semantics.
+                  * `None` returns the raw log: framework internals
+                  * (compaction, reconciliation, agent prompt builds)
+                  * must see everything. ANY path that delivers history
+                  * to a client passes the viewer — an Agents-visibility
+                  * checkpoint directive reaching a user UI on a hard
+                  * refresh is an information-scope leak, not a
+                  * cosmetic one. */
+                viewer: Option[ParticipantId] = None): Task[EventsPage] = {
     import lightdb.filter.*
     val safePage = math.max(0, page)
 
@@ -4373,9 +4390,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // and to the batched-scope accumulator so both halves of a page-0
     // merge are narrowed the same way.
     def passesFilters(e: Event): Boolean =
-      topicId.forall(t => e.topicId == t) &&
+      (topicId.forall(t => e.topicId == t) &&
         minTimestamp.forall(min => e.timestamp.value > min.value) &&
-        maxTimestamp.forall(max => e.timestamp.value < max.value)
+        maxTimestamp.forall(max => e.timestamp.value < max.value)) &&
+        viewer.forall(v => canSee(e, v))
+
+    def redactFor(e: Event): Event = viewer match {
+      case Some(v) => applyViewerTransforms(e, v) match {
+        case ev: Event => ev
+        case _         => e
+      }
+      case None => e
+    }
 
     // Indexed conversation-scoped query, newest-first. The timestamp
     // bounds fold into the same indexed query; `topicId` is not an
@@ -4408,7 +4434,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           }
         } else committedDesc
 
-      eventsForPage(mergedDesc, safePage, maxMessages)
+      eventsForPage(mergedDesc.map(redactFor), safePage, maxMessages)
     }
   }
 
