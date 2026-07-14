@@ -21,13 +21,21 @@ import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
 
 /**
- * Sigil #407 — a tool whose large/slow result keeps RACING past the frame
+ * Sigil #407/#420 — a tool whose slow result keeps RACING past the frame
  * settles Pending, so its re-issues are excluded from the duplicate-call cap
  * (#354). A transient race is fine to retry, but a PERSISTENT racer would
  * re-issue unboundedly and never progress. After `maxRacedReissues` raced
  * identical re-issues this turn, the orchestrator stops inviting re-issue and
- * refuses with a non-escalating Failure that redirects the agent to the
- * externalized result (read/grep the overflow file).
+ * refuses with a non-escalating Failure that tells the TRUTH about the raced
+ * call (#420 — the old unconditional "read the overflow file" pointed at a
+ * file that small results never write, and its failure framing made agents
+ * destructively undo writes that had succeeded):
+ *
+ *   - result settled → the refusal carries the actual rendered result inline
+ *     and states plainly that the call SUCCEEDED (or names its failure);
+ *   - still in flight → an honest still-finishing notice with an explicit
+ *     "do not assume it failed / do not undo" — no ghost path, no
+ *     hardcoded recovery tools the roster may not carry.
  */
 class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -81,10 +89,73 @@ class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   "Raced-reissue backstop (#407)" should {
 
-    "redirect to the overflow file after maxRacedReissues raced re-issues" in {
-      // Default maxRacedReissues = 2 → seed 2 raced priors so this is the
-      // re-issue that gets redirected instead of dispatched again.
-      val convId = Conversation.id(s"raced-redirect-${rapid.Unique()}")
+    "hand the agent the settled SUCCESS result inline — never a ghost file, never a failure framing (#420 field shape)" in {
+      // The field incident: set_metaobject (slow Shopify write, ~50-byte
+      // result) raced; the old refusal claimed an overflow file that small
+      // results never write, the agent inferred failure and DELETED the
+      // entry it had just created, looping destructively for 16 minutes.
+      val convId = Conversation.id(s"raced-settled-${rapid.Unique()}")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
+      val settledRow = ToolInvoke(
+        toolName       = FindCapabilityTool.name,
+        participantId  = TestAgent,
+        conversationId = convId,
+        topicId        = TestTopicEntry.id,
+        input          = Some(FindCapabilityInput(keywords = "x")),
+        output         = sigil.tool.TextToolOutput("Created ingredient entry (id 63444255077, handle bacopa)."),
+        outcome        = sigil.event.ToolOutcome.Success,
+        state          = sigil.signal.EventState.Complete
+      )
+      for {
+        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _       <- TestSigil.withDB(_.eventsTransaction(convId)(_.upsert(settledRow)))
+        signals <- Orchestrator.process(TestSigil, new FindCapStubProvider("x"), requestWithRacedPriors(convId, 2, "x"), conv).toList
+      } yield {
+        val texts = redirectMessages(signals)
+        withClue(s"tool-failure messages: $texts\n") {
+          val refusal = texts.find(_.contains("SUCCEEDED")).getOrElse(fail("no truthful refusal emitted"))
+          // The actual result rides inline — the agent needs nothing else.
+          refusal should include ("Created ingredient entry (id 63444255077, handle bacopa).")
+          refusal should include ("Do NOT re-issue")
+          refusal should include ("undo")
+          // No ghost file, no hardcoded recovery tools.
+          refusal should not include ".sigil/output/"
+          refusal should not include "read_file"
+          // It's a redirect, NOT the duplicate-call escalation cap.
+          texts.exists(_.contains("Refused to dispatch")) shouldBe false
+        }
+      }
+    }
+
+    "name the settled FAILURE instead of inviting a blind identical retry" in {
+      val convId = Conversation.id(s"raced-failed-${rapid.Unique()}")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
+      val failedRow = ToolInvoke(
+        toolName       = FindCapabilityTool.name,
+        participantId  = TestAgent,
+        conversationId = convId,
+        topicId        = TestTopicEntry.id,
+        input          = Some(FindCapabilityInput(keywords = "x")),
+        outcome        = sigil.event.ToolOutcome.Failure("rate limited by upstream", recoverable = true),
+        state          = sigil.signal.EventState.Complete
+      )
+      for {
+        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _       <- TestSigil.withDB(_.eventsTransaction(convId)(_.upsert(failedRow)))
+        signals <- Orchestrator.process(TestSigil, new FindCapStubProvider("x"), requestWithRacedPriors(convId, 2, "x"), conv).toList
+      } yield {
+        val texts = redirectMessages(signals)
+        withClue(s"tool-failure messages: $texts\n") {
+          val refusal = texts.find(_.contains("COMPLETED WITH A FAILURE")).getOrElse(fail("no truthful refusal emitted"))
+          refusal should include ("rate limited by upstream")
+          refusal should not include ".sigil/output/"
+        }
+      }
+    }
+
+    "say still-finishing when no settled row exists — no ghost file, no failure inference" in {
+      // No durable settled invoke seeded: the call is genuinely in flight.
+      val convId = Conversation.id(s"raced-inflight-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
         _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
@@ -92,8 +163,10 @@ class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       } yield {
         val texts = redirectMessages(signals)
         withClue(s"tool-failure messages: $texts\n") {
-          texts.exists(t => t.contains(".sigil/output/") && t.contains("read_file")) shouldBe true
-          // It's a redirect, NOT the duplicate-call escalation cap.
+          val refusal = texts.find(_.contains("still")).getOrElse(fail("no still-finishing refusal emitted"))
+          refusal should include ("do NOT assume it failed")
+          refusal should not include ".sigil/output/"
+          refusal should not include "read_file"
           texts.exists(_.contains("Refused to dispatch")) shouldBe false
         }
       }

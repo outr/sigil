@@ -770,16 +770,15 @@ object Orchestrator {
                 // counts every recent invocation for one-shot / synthetic
                 // requests that have no owning turn.
                 val turnStartMs = request.turnStartedAt.map(_.value).getOrElse(Long.MinValue)
-                // Sigil #407 — a large/slow tool (e.g. grep overflowing to
-                // `.sigil/output/`) whose result keeps racing past the frame
-                // settles Pending, so its re-issues are cap-EXCLUDED below
-                // (#354). A TRANSIENT race self-heals in a turn or two; a
-                // PERSISTENT racer would otherwise re-issue unboundedly and
-                // never see the result. After `maxRacedReissues` raced identical
-                // re-issues THIS turn, stop inviting re-issue: refuse with a
-                // NON-escalating Failure that redirects the agent to the
-                // externalized result, so it pivots to reading the overflow file
-                // instead of losing the race again.
+                // Sigil #407 — a slow tool whose result keeps racing past the
+                // frame settles Pending, so its re-issues are cap-EXCLUDED
+                // below (#354). A TRANSIENT race self-heals in a turn or two;
+                // a PERSISTENT racer would otherwise re-issue unboundedly and
+                // never see the result. After `maxRacedReissues` raced
+                // identical re-issues THIS turn, stop inviting re-issue:
+                // refuse with a NON-escalating Failure that hands the agent
+                // the settled result inline (or an honest still-finishing
+                // notice) so it stops losing the race.
                 val racedReissueLimit = sigil.maxRacedReissues
                 if (racedReissueLimit > 0) {
                   val racedPrior = request.turnInput
@@ -790,28 +789,62 @@ object Orchestrator {
                                && inv.invokedAt.value >= turnStartMs
                                && !inv.resulted)
                   if (racedPrior >= racedReissueLimit) {
-                    val overflowDir = s".sigil/output/${convId.value}/"
-                    val body =
-                      s"`$toolName` has been issued $racedPrior times this turn and its result keeps " +
-                        s"racing past the turn — a large/slow result that overflowed to a file. Re-issuing " +
-                        s"loses the race again and makes no progress. The completed result was written under " +
-                        s"`$overflowDir` (as `$toolName-<callId>.txt`); read it with `read_file` or search it " +
-                        s"with `grep` there instead of calling `$toolName` again."
-                    val racedMsg = Message(
-                      participantId  = caller,
-                      conversationId = convId,
-                      topicId        = topicId,
-                      role           = MessageRole.Tool,
-                      content        = Vector(ResponseContent.Text(body)),
-                      state          = EventState.Complete,
-                      disposition    = MessageDisposition.Failure(recoverable = true),
-                      visibility     = MessageVisibility.Agents,
-                      origin         = Some(invokeId)
+                    // Sigil #420 — the refusal must tell the truth about the
+                    // raced call, not guess. "Raced" only means the result
+                    // settled after the frame — a SLOW tool; it says nothing
+                    // about size, so no overflow file may exist, and the old
+                    // unconditional "read `.sigil/output/…`" sent agents
+                    // hunting a ghost path and — for write tools — inferring
+                    // failure and destructively undoing work that had
+                    // SUCCEEDED. Resolve the durable row: if it settled,
+                    // hand the agent the actual rendered result inline (a
+                    // non-overflowed result is small by definition; an
+                    // overflowed one renders as its own head+path summary,
+                    // which names the real file and callId). If it truly
+                    // hasn't settled, say it's still finishing — never name
+                    // a file, never imply failure, never prescribe tools
+                    // the roster may not carry.
+                    return Stream.force(
+                      racedResultLookup(sigil, convId, toolName, canonicalHash, turnStartMs).map { settled =>
+                        val body = settled match {
+                          case Some((outcome, rendered)) =>
+                            val bounded =
+                              if (rendered.length <= 4000) rendered
+                              else rendered.take(4000) + "… [truncated]"
+                            val outcomeLine = outcome match {
+                              case ToolOutcome.Failure(reason, _) =>
+                                s"That call COMPLETED WITH A FAILURE (it did not race silently): $reason. " +
+                                  "Act on the failure — do not blindly re-issue the identical call."
+                              case _ =>
+                                "That call SUCCEEDED — its result simply arrived after the prompt was built. " +
+                                  "Do NOT re-issue it, and do NOT undo or retry its effects."
+                            }
+                            s"`$toolName` has been issued $racedPrior times this turn; its result kept " +
+                              s"arriving after the prompt was built. $outcomeLine\n\nIts result was:\n$bounded"
+                          case None =>
+                            s"`$toolName` has been issued $racedPrior times this turn and is still " +
+                              "finishing — re-issuing loses the race again and makes no progress. The result " +
+                              "will appear in your context on a later iteration. Do NOT re-issue this call, " +
+                              "and do NOT assume it failed — for a write tool, undoing its work now would " +
+                              "destroy a change that likely succeeded. Continue with other work or wait."
+                        }
+                        val racedMsg = Message(
+                          participantId  = caller,
+                          conversationId = convId,
+                          topicId        = topicId,
+                          role           = MessageRole.Tool,
+                          content        = Vector(ResponseContent.Text(body)),
+                          state          = EventState.Complete,
+                          disposition    = MessageDisposition.Failure(recoverable = true),
+                          visibility     = MessageVisibility.Agents,
+                          origin         = Some(invokeId)
+                        )
+                        Stream.emits(toolDeltaPrefix ::: List[Signal](
+                          racedMsg,
+                          StateDelta(target = racedMsg._id, conversationId = convId, state = EventState.Complete)
+                        ))
+                      }
                     )
-                    return Stream.emits(toolDeltaPrefix ::: List[Signal](
-                      racedMsg,
-                      StateDelta(target = racedMsg._id, conversationId = convId, state = EventState.Complete)
-                    ))
                   }
                 }
                 val matchingPrior = request.turnInput
@@ -1917,6 +1950,40 @@ object Orchestrator {
       reason      = reason,
       disposition = MessageDisposition.Failure(recoverable = true))
   }
+
+  /** Sigil #420 — resolve the latest SETTLED invoke of
+    * `(toolName, argsHash)` from this turn's durable events, returning
+    * its outcome plus the rendered result content (the same rendering
+    * the invoke's frame carries — for an overflowed result that is its
+    * own head + real-file-path summary). `None` when no matching
+    * invoke has settled yet — the call is genuinely still in flight.
+    * Best-effort: a lookup failure degrades to the still-finishing
+    * wording rather than crashing the dispatch. */
+  private def racedResultLookup(sigil: Sigil,
+                                convId: lightdb.id.Id[Conversation],
+                                toolName: String,
+                                argsHash: String,
+                                turnStartMs: Long): Task[Option[(ToolOutcome, String)]] =
+    sigil.withDB(_.eventsTransaction(convId)(_.list)).map { events =>
+      events.iterator
+        .collect {
+          case ti: ToolInvoke
+            if ti.conversationId == convId
+              && ti.toolName.value == toolName
+              && ti.timestamp.value >= turnStartMs
+              && ti.state == _root_.sigil.signal.EventState.Complete
+              && ti.outcome != ToolOutcome.Pending
+              && ti.input.exists(i => _root_.sigil.tool.ToolInputCanonicalizer.argsHash(i) == argsHash) =>
+            ti
+        }
+        .toList
+        .sortBy(-_.timestamp.value)
+        .headOption
+        .map { ti =>
+          val (content, _) = _root_.sigil.conversation.FrameBuilder.toolInvokePayload(ti)
+          (ti.outcome, content)
+        }
+    }.handleError(_ => Task.pure(None))
 
   /** How many `_turn_decision_required` challenges have fired since
     * the last user-authored Message — the per-user-turn budget input
