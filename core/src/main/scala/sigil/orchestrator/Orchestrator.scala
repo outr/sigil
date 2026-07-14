@@ -1508,15 +1508,19 @@ object Orchestrator {
         // required `endsTurn` field, which prose bypasses. Treating the
         // prose as an implicit yield is the announce-then-stall failure
         // mode: the model narrates its next step, stops, and the turn
-        // ends with the announced work undone. So the FIRST naked-text
-        // terminal per user turn is not committed as terminal — it gets
-        // a `_turn_decision_required` challenge (a Tool-role diagnostic
+        // ends with the announced work undone. So a naked-text terminal
+        // is not committed as terminal — it gets a
+        // `_turn_decision_required` challenge (a Tool-role diagnostic
         // that re-triggers the loop) instructing the model to either
         // execute the announced work or end the turn explicitly via the
-        // respond family. Loop safety mirrors the refusal challenge:
-        // challenge once per user turn; a naked text on a turn already
-        // challenged — or on a forced-synthesis recovery turn, where the
-        // framework has had its say — commits as the terminal reply.
+        // respond family. The challenge re-fires with an ESCALATED
+        // directive when the model answers it with more prose (a
+        // one-shot guard would guarantee the second narration is
+        // accepted as terminal — the exact stall it exists to break),
+        // bounded per user turn by `Sigil.nakedTextChallengeLimit` for
+        // loop safety. A naked text past the budget — or on a
+        // forced-synthesis recovery turn, where the framework has had
+        // its say — commits as the terminal reply.
         //
         // Two wire shapes carry the prose:
         //   - `ContentBlockDelta` (Anthropic / OpenAI Responses / Google) —
@@ -1555,11 +1559,11 @@ object Orchestrator {
                   contentReplacement = Some(Vector(ResponseContent.Text(text))),
                   state = Some(EventState.Complete), terminalReply = terminal))
             if (request.forceResponseSynthesis || contextPressured) Task.pure(settle(terminal = true))
-            else turnDecisionAlreadyChallenged(sigil, convId).map {
-              case true  => settle(terminal = true)
-              case false =>
+            else turnDecisionChallengeCount(sigil, convId).map { count =>
+              if (count >= sigil.nakedTextChallengeLimit) settle(terminal = true)
+              else
                 settle(terminal = false) ++
-                  buildTurnDecisionSignals(caller, convId, topicId, droppedText = None)
+                  buildTurnDecisionSignals(caller, convId, topicId, droppedText = None, priorChallenges = count)
             }
           } else if (state.plainTextBuffer.nonEmpty && Provider.rejectsForcedToolChoice(request.modelId)) {
             val text = state.plainTextBuffer.toString
@@ -1580,9 +1584,9 @@ object Orchestrator {
                 state = Some(EventState.Complete), terminalReply = true))
             }
             if (request.forceResponseSynthesis || contextPressured) Task.pure(mintTerminal)
-            else turnDecisionAlreadyChallenged(sigil, convId).map {
-              case true  => mintTerminal
-              case false => buildTurnDecisionSignals(caller, convId, topicId, droppedText = Some(text))
+            else turnDecisionChallengeCount(sigil, convId).map { count =>
+              if (count >= sigil.nakedTextChallengeLimit) mintTerminal
+              else buildTurnDecisionSignals(caller, convId, topicId, droppedText = Some(text), priorChallenges = count)
             }
           } else Task.pure(Nil)
         Stream.force(nakedTextOutcome.map(naked =>
@@ -1914,14 +1918,15 @@ object Orchestrator {
       disposition = MessageDisposition.Failure(recoverable = true))
   }
 
-  /** Whether a `_turn_decision_required` challenge already fired since
-    * the last user-authored Message — the once-per-user-turn bound on
-    * the naked-text decision challenge. A conversation with no user
-    * message yet (greeting turns, agent-only spawns) checks the whole
-    * event log, which bounds the challenge to once until a user
+  /** How many `_turn_decision_required` challenges have fired since
+    * the last user-authored Message — the per-user-turn budget input
+    * for the naked-text decision challenge (bounded by
+    * [[Sigil.nakedTextChallengeLimit]]). A conversation with no user
+    * message yet (greeting turns, agent-only spawns) counts over the
+    * whole event log, which bounds the challenges until a user
     * message arrives. */
-  private def turnDecisionAlreadyChallenged(sigil: Sigil,
-                                            convId: lightdb.id.Id[Conversation]): Task[Boolean] =
+  private def turnDecisionChallengeCount(sigil: Sigil,
+                                         convId: lightdb.id.Id[Conversation]): Task[Int] =
     sigil.withDB(_.conversationEvents(convId)).map { allEvents =>
       val convEvents = allEvents
         .filter(_.conversationId == convId)
@@ -1931,7 +1936,7 @@ object Orchestrator {
         case _          => false
       }
       val tail = if (lastUserIdx < 0) convEvents else convEvents.drop(lastUserIdx + 1)
-      tail.exists {
+      tail.count {
         case ti: ToolInvoke => ti.toolName.value == TurnDecisionToolName
         case _              => false
       }
@@ -1949,16 +1954,26 @@ object Orchestrator {
   private def buildTurnDecisionSignals(caller: ParticipantId,
                                        convId: lightdb.id.Id[Conversation],
                                        topicId: lightdb.id.Id[Topic],
-                                       droppedText: Option[String]): List[Signal] = {
+                                       droppedText: Option[String],
+                                       priorChallenges: Int): List[Signal] = {
+    // The Nth bare narration is STRONGER evidence of an announce-then-
+    // stall than the first — the agent answered the prior challenge
+    // with more prose. Escalate the directive instead of repeating it.
+    val escalation =
+      if (priorChallenges <= 0) ""
+      else s"You have now produced ${priorChallenges + 1} plain-prose replies in a row without acting — " +
+        "you announced work and did not do it. Do NOT narrate again. "
     val reason = droppedText match {
       case Some(text) =>
         val snippet = if (text.length <= 200) text else text.take(200) + "…"
-        "Your previous reply was plain prose and was dropped — prose carries no explicit turn decision " +
+        escalation +
+          "Your previous reply was plain prose and was dropped — prose carries no explicit turn decision " +
           "(`respond`'s required `endsTurn`). Decide now: if the work for this turn is complete, call " +
           "`respond` with your answer and `endsTurn = true`. If your reply announced further steps, execute " +
           s"them now with tool calls instead of stopping. Dropped text was: $snippet"
       case None =>
-        "Your previous reply was plain prose, which carries no explicit turn decision (`respond`'s required " +
+        escalation +
+          "Your previous reply was plain prose, which carries no explicit turn decision (`respond`'s required " +
           "`endsTurn`). The message HAS been delivered to the user — do not repeat it. Decide now: if the " +
           "work for this turn is complete and that message was your full answer, call `no_response` to end " +
           "the turn. If your reply announced further steps, execute them now with tool calls instead of " +

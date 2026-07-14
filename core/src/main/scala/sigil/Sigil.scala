@@ -3794,6 +3794,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * tool immediately. Non-detachable tools ignore this entirely. */
   def toolDetachThresholdMs: Long = 60000L
 
+  /** How many times per user turn the orchestrator challenges a
+    * naked-text terminal (a plain-prose `end_turn` with no tool call —
+    * it carries no explicit continue-vs-yield decision) before
+    * committing the prose as the terminal reply.
+    *
+    * A single challenge assumes the agent responds by ACTING; an agent
+    * that responds by narrating again ("…Starting now.") would then
+    * yield the turn with zero work done — the announce-then-stall
+    * failure the challenge exists to break, guaranteed by the guard
+    * itself. The second bare narration is stronger evidence of a
+    * stall than the first, so the challenge re-fires with an
+    * escalated directive up to this bound. Any tool call clears the
+    * pattern naturally (the intercept only fires on zero-tool-call
+    * completions); forced-synthesis and context-pressured turns
+    * commit immediately as before. Default `2`. */
+  def nakedTextChallengeLimit: Int = 2
+
   /** Live detachable-tool executions, keyed by invoke id (which
     * doubles as the task handle). Registered at DISPATCH — so a Stop
     * reaches the execution's [[CancellationToken]] in the attached

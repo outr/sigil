@@ -155,29 +155,37 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   "Naked-text terminal decision" should {
 
-    "challenge the first naked text, then commit the repeat — bounded at one challenge per turn" in {
+    "re-fire the challenge on a second narration with an escalated directive, then commit at the budget (#419)" in {
       val provider = new NakedTextProvider
       for {
         convId <- runUserTurn(provider)
         evs    <- eventsFor(convId)
       } yield {
-        // First call: prose settles as a visible (non-terminal) message and
-        // the decision challenge re-triggers the loop. Second call: this
-        // provider naked-texts again — already challenged, so it commits as
-        // the terminal reply. Exactly two calls, never a re-request spiral.
-        provider.calls.get() shouldBe 2
+        // Call 1: prose → challenge 1. Call 2: prose AGAIN — the second
+        // bare narration is stronger stall evidence, so the challenge
+        // re-fires with an escalated directive (a one-shot guard would
+        // have committed it: the announce-then-stall failure, guaranteed
+        // by the guard itself). Call 3: budget (2) spent — commits as the
+        // terminal reply. Bounded — never a re-request spiral.
+        provider.calls.get() shouldBe 3
         val challenges = evs.collect {
           case ti: sigil.event.ToolInvoke if ti.toolName.value == Orchestrator.TurnDecisionToolName => ti
         }
-        challenges should have size 1
-        // Both prose messages committed Complete and user-visible — the
-        // streamed text is never lost, even from a model that ignores the
+        challenges should have size 2
+        // The second challenge escalates explicitly.
+        val challengeTexts = evs.collect {
+          case m: Message if m.role == MessageRole.Tool && m.origin.exists(o => challenges.exists(_._id == o)) =>
+            m.content.collect { case t: ResponseContent.Text => t.text }.mkString
+        }
+        challengeTexts.count(_.contains("without acting")) shouldBe 1
+        // Every prose message committed Complete and user-visible — the
+        // streamed text is never lost, even from a model that ignores every
         // challenge.
         val replies = evs.collect {
           case m: Message if m.participantId == TestAgent && m.role == MessageRole.Standard
                           && m.state == EventState.Complete && m.isSuccess => m
         }
-        replies should have size 2
+        replies should have size 3
         replies.foreach(
           _.content.collect { case t: ResponseContent.Text => t.text }.mkString should include("Use Huron Test"))
         succeed
@@ -193,15 +201,15 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         convId <- runUserTurn(provider, rejecterModelId)
         evs    <- eventsFor(convId)
       } yield {
-        provider.calls.get() shouldBe 2
+        provider.calls.get() shouldBe 3
         val challenges = evs.collect {
           case ti: sigil.event.ToolInvoke if ti.toolName.value == Orchestrator.TurnDecisionToolName => ti
         }
-        challenges should have size 1
-        // The buffered prose was NOT minted on the challenged first call —
-        // only the post-challenge repeat committed, so the user sees exactly
-        // one bubble. The challenge diagnostic carried the dropped text for
-        // the model to re-wrap.
+        challenges should have size 2
+        // The buffered prose was NOT minted on the challenged calls —
+        // only the past-budget repeat committed, so the user sees exactly
+        // one bubble. The challenge diagnostics carried the dropped text
+        // for the model to re-wrap.
         val replies = evs.collect {
           case m: Message if m.participantId == TestAgent && m.role == MessageRole.Standard
                           && m.state == EventState.Complete && m.isSuccess => m
