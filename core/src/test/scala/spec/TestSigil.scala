@@ -180,7 +180,8 @@ object TestSigil extends Sigil {
       SlowCooperativeTool,
       SlowStubbornTool,
       DetachableSweepTool,
-      FastDetachableTool
+      FastDetachableTool,
+      MutatingSpecTool
     ): @annotation.nowarn("cat=deprecation"))
 
   // ---- registration lists ----
@@ -494,6 +495,11 @@ object TestSigil extends Sigil {
   override def progressCheckpointInterval: Int =
     progressCheckpointIntervalRef.get().getOrElse(super.progressCheckpointInterval)
   def setProgressCheckpointInterval(n: Int): Unit = progressCheckpointIntervalRef.set(Some(n))
+
+  /** Spec access to the protected checkpoint-context builder. */
+  def progressContextFor(convId: lightdb.id.Id[sigil.conversation.Conversation],
+                         agentId: sigil.participant.ParticipantId): rapid.Task[sigil.conversation.ProgressContext] =
+    loadProgressContext(convId, agentId)
   def resetProgressCheckpointInterval(): Unit     = progressCheckpointIntervalRef.set(None)
 
   /** Settable hard-stall (identical-call) limit so a spec can disable the

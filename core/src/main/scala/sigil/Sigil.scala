@@ -7887,10 +7887,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       loadProgressContext(convId, agent.id).flatMap { ctx =>
         val systemPrompt =
           """You are reflecting on the agent's progress on a specific user task. Given the
-            |user's request, the tool history since that request, and the prior checkpoint
-            |status, assess whether meaningful progress has been made. Be honest: if your
-            |current status looks identical to the prior status, set meaningfulProgress = false
-            |so the framework can intervene.
+            |user's request, the tool activity in the window since the prior checkpoint, and
+            |the prior checkpoint status, assess whether THIS WINDOW moved the task forward.
+            |Be honest: if nothing changed since the prior status, set
+            |meaningfulProgress = false so the framework can intervene — but describe the
+            |window in your own words; never copy the prior status verbatim.
             |
             |What counts as meaningful progress (Sigil #385 — do NOT inflate it):
             |  - NEW information that materially advances toward the deliverable, or a
@@ -7899,8 +7900,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             |  - Reading, viewing, examining, listing, searching, or "gathering context"
             |    is NOT progress by itself — when the task is to DO something, repeatedly
             |    inspecting files/images while producing nothing is a stall, however many
-            |    distinct things were inspected. If the recent history is all reads/views
-            |    and no deliverable, set meaningfulProgress = false.
+            |    distinct things were inspected. If the window is all reads/views and no
+            |    deliverable, set meaningfulProgress = false.
+            |  - A respond marked "mid-task status update" is NOT a final answer — continued
+            |    tool calls after it are normal, not a contradiction. Never report the task
+            |    complete because a status update went out; the task is complete when the
+            |    WORK is done.
             |  - A status of "acknowledged / summarized / ready / awaiting next instruction"
             |    while the agent is STILL calling tools is a contradiction, not completion:
             |    set meaningfulProgress = false and shouldAskUser = false. The agent isn't
@@ -7939,7 +7944,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             // `meaningfulProgress = false` regardless of what the agent
             // said, and `stuckOn` carries the detector's reason so the
             // intervention message names the loop concretely.
-            val effectiveMeaningful = report.meaningfulProgress && !stall.detected
+            //
+            // The mechanical evidence cuts the other way too: settled
+            // successful invocations of destructive-annotated tools in
+            // this window are objective proof that external state
+            // changed — a turn actively applying edits must never
+            // accumulate a no-progress streak on the strength of the
+            // reflector's status text alone. The StallDetector keeps
+            // veto authority over both signals (an identical-args write
+            // loop is still a stall, however many "successes" it
+            // settles).
+            val effectiveMeaningful =
+              (report.meaningfulProgress || ctx.windowMutations > 0) && !stall.detected
             val effectiveStuckOn    = stall.reason.orElse(report.stuckOn)
             val checkpoint = sigil.event.ProgressCheckpoint(
               participantId        = agent.id,
@@ -8052,77 +8068,113 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   }
 
   /** Load the context the reflection prompt needs: the user's most
-    * recent substantive Message + the agent's tool-call history
-    * since that message. Best-effort — failures fall through to
-    * empty context rather than aborting the checkpoint. */
-  private final def loadProgressContext(convId: Id[Conversation],
-                                        agentId: ParticipantId): Task[ProgressContext] =
-    withDB(_.conversationEvents(convId)).map { all =>
-      val convEvents = all.iterator
-        .collect { case e: Event if e.conversationId == convId => e }
-        .toList
-        .sortBy(_.timestamp.value)
-      // #320 — the objective is the most-recent substantive (non-
-      // continuation) user message, NOT the latest turn. A bare
-      // "Proceed" advances the task; it isn't the task. Render the
-      // continuation alongside so the reflector sees what was just
-      // asked while judging progress against the real goal.
-      val userMsgs = convEvents.collect {
-        case m: Message
-          if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
-             m.role == MessageRole.Standard &&
-             m.content.nonEmpty =>
-          m
-      }
-      val (substantiveUser, directive) =
-        sigil.conversation.ProgressTaskSelector.select(userMsgs, m => textOfContent(m.content))
-      // #330 (defense in depth, same family as #320) — re-anchor on the
-      // active objective when there's no substantive user message to judge
-      // against (agent-initiated turns, and any non-user-driven loop). Use
-      // the earliest substantive Standard message in the conversation as
-      // the objective rather than treating "no user message" as evidence
-      // of idle cycling and asking for clarification.
-      val substantive = substantiveUser.orElse(
-        convEvents.collect {
-          case m: Message if m.role == MessageRole.Standard && m.content.nonEmpty => m
-        }.minByOption(_.timestamp.value)
-      )
-      val task: Option[String]            = substantive.map(m => textOfContent(m.content))
-      val latestDirective: Option[String] = directive.map(m => textOfContent(m.content))
-      // Tool calls + agent responds since the OBJECTIVE (not the
-      // continuation), so the history covers the whole arc of work.
-      val cutoff = substantive.map(_.timestamp.value).getOrElse(0L)
-      val historyEntries = scala.collection.mutable.ListBuffer.empty[String]
-      // Sigil #265 — each tool transaction lives on a single stateful
-      // ToolInvoke; the post-settle outcome is on the invoke itself,
-      // so per-invoke rendering reads directly off the row.
-      val invokesById = convEvents.collect {
-        case ti: sigil.event.ToolInvoke if ti.timestamp.value > cutoff && ti.participantId == agentId => ti
-      }
-      val sortedInvokes = invokesById.sortBy(_.timestamp.value).take(20)  // cap the history
-      sortedInvokes.foreach { ti =>
-        val tail = ti.outcome match {
-          case sigil.event.ToolOutcome.Success         => "OK"
-          case sigil.event.ToolOutcome.Failure(_, _)   => "FAIL"
-          case sigil.event.ToolOutcome.Pending         => "(no result yet)"
+    * recent substantive Message + the agent's tool-call history in the
+    * window since the prior checkpoint. Best-effort — failures fall
+    * through to empty context rather than aborting the checkpoint.
+    *
+    * The window scoping matters more than it looks: the history was
+    * previously the whole arc since the objective, head-capped — so
+    * past ~20 calls the reflector's input FROZE, its status echoed
+    * verbatim forever, and the "identical status = no progress" rule
+    * marched every long healthy turn into a forced kill. */
+  protected final def loadProgressContext(convId: Id[Conversation],
+                                          agentId: ParticipantId): Task[ProgressContext] =
+    withDB { db =>
+      db.conversationEvents(convId).flatMap { all =>
+        val convEvents = all.iterator
+          .collect { case e: Event if e.conversationId == convId => e }
+          .toList
+          .sortBy(_.timestamp.value)
+        // #320 — the objective is the most-recent substantive (non-
+        // continuation) user message, NOT the latest turn. A bare
+        // "Proceed" advances the task; it isn't the task. Render the
+        // continuation alongside so the reflector sees what was just
+        // asked while judging progress against the real goal.
+        val userMsgs = convEvents.collect {
+          case m: Message
+            if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
+               m.role == MessageRole.Standard &&
+               m.content.nonEmpty =>
+            m
         }
-        historyEntries += s"${ti.toolName.value} → $tail"
+        val (substantiveUser, directive) =
+          sigil.conversation.ProgressTaskSelector.select(userMsgs, m => textOfContent(m.content))
+        // #330 (defense in depth, same family as #320) — re-anchor on the
+        // active objective when there's no substantive user message to judge
+        // against (agent-initiated turns, and any non-user-driven loop). Use
+        // the earliest substantive Standard message in the conversation as
+        // the objective rather than treating "no user message" as evidence
+        // of idle cycling and asking for clarification.
+        val substantive = substantiveUser.orElse(
+          convEvents.collect {
+            case m: Message if m.role == MessageRole.Standard && m.content.nonEmpty => m
+          }.minByOption(_.timestamp.value)
+        )
+        val task: Option[String]            = substantive.map(m => textOfContent(m.content))
+        val latestDirective: Option[String] = directive.map(m => textOfContent(m.content))
+        val objectiveCutoff = substantive.map(_.timestamp.value).getOrElse(0L)
+        // The window opens at the prior checkpoint — never before the
+        // objective (a checkpoint left over from an earlier task must
+        // not stretch the window backwards).
+        val windowCutoff =
+          math.max(objectiveCutoff, priorCheckpointCutoff(convEvents, agentId).getOrElse(0L))
+        // Sigil #265 — each tool transaction lives on a single stateful
+        // ToolInvoke; the post-settle outcome is on the invoke itself,
+        // so per-invoke rendering reads directly off the row. Internal
+        // framework diagnostics (`_stall_detected`, challenge invokes)
+        // are bookkeeping, not agent activity — excluded.
+        val arcInvokes = convEvents.collect {
+          case ti: sigil.event.ToolInvoke
+            if ti.timestamp.value > objectiveCutoff && ti.participantId == agentId && !ti.internal => ti
+        }.sortBy(_.timestamp.value)
+        val windowInvokes = arcInvokes.filter(_.timestamp.value > windowCutoff)
+        val shown = windowInvokes.takeRight(20)
+        db.tools.transaction(_.list).map { toolRows =>
+          val destructiveNames = toolRows.iterator.filter(_.destructive).map(_.name.value).toSet
+          val mutations = windowInvokes.count(ti =>
+            ti.outcome == sigil.event.ToolOutcome.Success && destructiveNames.contains(ti.toolName.value))
+          ProgressContext(
+            userTask        = task,
+            toolHistory     = shown.map(renderInvokeHistoryLine),
+            latestDirective = latestDirective,
+            earlierCalls    = arcInvokes.size - shown.size,
+            windowMutations = mutations
+          )
+        }
       }
-      // Agent's own respond Messages count too — they're the "let me X" drafts.
-      val agentResponds = convEvents.collect {
-        case m: Message
-          if m.timestamp.value > cutoff &&
-             m.participantId == agentId &&
-             m.role == MessageRole.Standard &&
-             m.content.nonEmpty =>
-          textOfContent(m.content)
-      }
-      if (agentResponds.size >= 2)
-        historyEntries += s"respond × ${agentResponds.size} (latest: \"${snippet(agentResponds.last, 80)}\")"
-      else
-        agentResponds.foreach(r => historyEntries += s"respond → \"${snippet(r, 80)}\"")
-      ProgressContext(userTask = task, toolHistory = historyEntries.toList, latestDirective = latestDirective)
     }.handleError(_ => Task.pure(ProgressContext(None, Nil)))
+
+  /** One reflection-history line for a window invoke. Respond calls
+    * carry their `endsTurn` framing: a mid-task status update must not
+    * read as the final reply, or the reflector concludes "final
+    * response delivered" while the work is still in flight and every
+    * later checkpoint inherits the false completion. */
+  private final def renderInvokeHistoryLine(ti: sigil.event.ToolInvoke): String = {
+    val tail = ti.outcome match {
+      case sigil.event.ToolOutcome.Success       => "OK"
+      case sigil.event.ToolOutcome.Failure(_, _) => "FAIL"
+      case sigil.event.ToolOutcome.Pending       => "(no result yet)"
+    }
+    ti.input match {
+      case Some(r: sigil.tool.model.RespondInput) =>
+        val framing =
+          if (r.endsTurn) "final reply"
+          else "endsTurn = false — mid-task status update, NOT a final reply"
+        s"${ti.toolName.value} ($framing) → \"${snippet(r.content, 80)}\" → $tail"
+      case _ => s"${ti.toolName.value} → $tail"
+    }
+  }
+
+  /** Timestamp of the agent's most recent settled [[sigil.event.ProgressCheckpoint]]
+    * — the shared lower bound for the inter-checkpoint window that both
+    * the reflection context and the stall detectors evaluate. */
+  private final def priorCheckpointCutoff(convEvents: List[Event], agentId: ParticipantId): Option[Long] =
+    convEvents.reverseIterator.collectFirst {
+      case c: sigil.event.ProgressCheckpoint
+        if c.participantId == agentId &&
+           c.state == EventState.Complete =>
+        c.timestamp.value
+    }
 
   /** Evaluate the agent's recent tool-call tail for objective stall
     * signals — identical-call streaks and empty-payload streaks.
@@ -8185,13 +8237,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // Resolve the prior-checkpoint timestamp as the lower bound,
       // falling back to the most recent user Message when no prior
       // checkpoint exists, falling back to 0 otherwise.
-      val priorCheckpointAt = convEvents.reverseIterator.collectFirst {
-        case c: sigil.event.ProgressCheckpoint
-          if c.participantId == agentId &&
-             c.state == EventState.Complete =>
-          c.timestamp.value
-      }
-      val cutoff = priorCheckpointAt.orElse {
+      val cutoff = priorCheckpointCutoff(convEvents, agentId).orElse {
         convEvents.reverseIterator.collectFirst {
           case m: Message
             if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
@@ -8246,20 +8292,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         s"The user's request:\n\"$t\"\n\n" + directiveLine
       case None    => "The user's request: (no recent substantive user message found)\n\n"
     }
+    val earlierLine =
+      if (ctx.earlierCalls > 0)
+        s"(${ctx.earlierCalls} earlier calls preceded this window — judge progress on the window below.)\n"
+      else ""
     val historyBlock = ctx.toolHistory match {
-      case Nil => "What you've done since: (no tool calls yet)\n\n"
+      case Nil => s"${earlierLine}What you've done since the last checkpoint: (no tool calls this window)\n\n"
       case list =>
         val numbered = list.zipWithIndex.map { case (line, i) => s"  ${i + 1}. $line" }.mkString("\n")
-        s"What you've done since:\n$numbered\n\n"
+        s"${earlierLine}What you've done since the last checkpoint:\n$numbered\n\n"
     }
+    val mutationsLine =
+      if (ctx.windowMutations > 0)
+        s"This window includes ${ctx.windowMutations} successful state-changing tool call(s) — " +
+          "objective evidence that work was applied.\n\n"
+      else ""
     val priorBlock = priorStatus match {
       case Some(s) => s"Prior checkpoint status: \"$s\"\n\n"
       case None    => "Prior checkpoint status: (first checkpoint)\n\n"
     }
     val ask =
       s"You are at iteration $iteration. " +
-        s"Pick a one-line currentStatus describing where things stand RIGHT NOW. Set " +
-        s"meaningfulProgress = true ONLY when you're substantively further than the prior status. " +
+        s"Pick a one-line currentStatus describing where things stand RIGHT NOW, in this window's " +
+        s"terms — never repeat the prior status verbatim; if nothing changed, say so plainly. Set " +
+        s"meaningfulProgress = true ONLY when this window moved the task substantively past the prior status. " +
         s"One-line remainingSteps for what's left. Empty stuckOn unless you genuinely can't proceed. " +
         // #353 — a call shown as "OK" has COMPLETED; large results (images,
         // big reads) are stored out-of-line and won't appear inline. Only
@@ -8269,7 +8325,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         s"A tool call listed as \"OK\" SUCCEEDED — its result exists even if large and not shown here; " +
         s"only \"(no result yet)\" is still pending. Never set shouldAskUser because completed calls " +
         s"look resultless. shouldAskUser = true ONLY if the user must genuinely clarify something."
-    taskBlock + historyBlock + priorBlock + ask
+    taskBlock + historyBlock + mutationsLine + priorBlock + ask
   }
 
   /** Publish a `Failure`-content Message into the conversation when

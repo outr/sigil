@@ -44,7 +44,7 @@ class ProgressCheckpointContextSpec extends AnyWordSpec with Matchers {
         )
       )
       val rendered = TestSigil.renderCheckpointPrompt(ctx, priorStatus = None, iteration = 15)
-      rendered should include ("What you've done since:")
+      rendered should include ("What you've done since the last checkpoint:")
       rendered should include ("set_workspace → OK")
       rendered should include ("start_metals → OK")
       rendered should include ("respond × 6")
@@ -80,7 +80,7 @@ class ProgressCheckpointContextSpec extends AnyWordSpec with Matchers {
       val ctx = ProgressContext(userTask = None, toolHistory = Nil)
       val rendered = TestSigil.renderCheckpointPrompt(ctx, priorStatus = None, iteration = 1)
       rendered should include ("(no recent substantive user message found)")
-      rendered should include ("(no tool calls yet)")
+      rendered should include ("(no tool calls this window)")
     }
 
     "repro: the live wire-log scenario surfaces the paraphrase loop in the prompt" in {
