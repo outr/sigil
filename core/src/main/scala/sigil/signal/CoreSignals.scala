@@ -50,7 +50,8 @@ object CoreSignals {
     summon[RW[AgentStateDelta]],
     summon[RW[LocationDelta]],
     summon[RW[ImageDelta]],
-    summon[RW[ReadStateDelta]]
+    summon[RW[ReadStateDelta]],
+    summon[RW[TopicDelta]]
   )
 
   val notices: List[RW[? <: Notice]] = List(

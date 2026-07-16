@@ -35,7 +35,7 @@ import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffec
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.service.Service
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta}
+import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
@@ -3068,6 +3068,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       applyInboundTransforms(signal).flatMap { resolved =>
         for {
           _ <- withDB(_.apply(resolved))
+          // Feed the founding-turn topic sweep's per-claim event log
+          // (no-op when no claim is live for the conversation).
+          _ <- Task {
+                 resolved match {
+                   case e: Event => recordTurnEvent(e)
+                   case _        => ()
+                 }
+               }
           // A settling ToolDelta reaching the durable pipeline releases
           // the invoke's in-flight-dispatch registration — the stop
           // path's out-of-band settle no longer owns it.
@@ -3711,6 +3719,37 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * owns the claim. Populated when `tryFire` wins a claim and removed
     * when `releaseClaim` completes (successfully or via error). */
   private final val stopFlags: ConcurrentHashMap[Id[Event], StopFlag] = new ConcurrentHashMap()
+
+  /** Per-turn event log for the founding-turn topic sweep, keyed by
+    * conversation (one live claim per conversation by design). Created
+    * when `tryFire` wins a claim — seeded with the claim row itself —
+    * appended by [[publish]] for every Event while the claim is live,
+    * and consumed + removed by [[releaseClaim]]. Recording ids and
+    * original topic stamps here — rather than querying the store at
+    * turn end — keeps the sweep immune to the split store's
+    * asynchronous index refresh: a turn-end query can miss the turn's
+    * own tail, while deltas against recorded ids hit exact rows. The
+    * founding user message publishes BEFORE the claim exists, so the
+    * sweep resolves it separately from committed history. */
+  private final class TurnEventLog {
+    val stamps: ConcurrentHashMap[Id[Event], Id[Topic]] = new ConcurrentHashMap()
+    val switches: java.util.concurrent.ConcurrentLinkedQueue[TopicChange] =
+      new java.util.concurrent.ConcurrentLinkedQueue()
+    def record(e: Event): Unit = {
+      stamps.putIfAbsent(e._id, e.topicId)
+      e match {
+        case tc: TopicChange if tc.kind.isInstanceOf[TopicChangeKind.Switch] => switches.add(tc); ()
+        case _ => ()
+      }
+    }
+  }
+
+  private final val activeTurnEvents: ConcurrentHashMap[Id[Conversation], TurnEventLog] = new ConcurrentHashMap()
+
+  /** Record an Event into the owning conversation's live turn log, if
+    * a claim is currently held. Cheap no-op otherwise. */
+  private final def recordTurnEvent(e: Event): Unit =
+    Option(activeTurnEvents.get(e.conversationId)).foreach(_.record(e))
 
   /** Sigil #415 — conversation-level stop latch that OUTLIVES claims.
     * [[stopFlags]] only interrupts a claim that is live at the moment the
@@ -6332,6 +6371,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // We won the claim. Register a StopFlag for this claim so any
           // Stop events published against this agent can interrupt.
           stopFlags.put(claim._id, new StopFlag)
+          // Open the turn's event log for the founding-turn topic
+          // sweep, seeded with the claim row (written via tx.modify,
+          // so the publish hook never sees it).
+          val turnLog = new TurnEventLog
+          turnLog.record(claim)
+          activeTurnEvents.put(conv._id, turnLog)
           // Reconcile the persisted agent against the app's current definition
           // (default identity) so a new tool added to a discovery-suppressed
           // roster reaches this existing conversation. Keep the original on a
@@ -8585,14 +8630,111 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       checkpointStates.remove(claimed._id)
       ()
     }
-    publish(AgentStateDelta(
-      target = claimed._id,
-      conversationId = claimed.conversationId,
-      activity = Some(AgentActivity.Idle),
-      state = Some(EventState.Complete)))
+    // Founding-turn topic re-stamp runs before the Idle delta so
+    // clients receive the turn's TopicDeltas while the turn is still
+    // visually "settling". The turn log closes here regardless of
+    // sweep outcome; best-effort — a sweep failure never blocks the
+    // release.
+    Task(Option(activeTurnEvents.remove(claimed.conversationId)))
+      .flatMap {
+        case Some(turnLog) => restampTopicFoundingTurn(claimed.conversationId, turnLog)
+        case None          => Task.unit
+      }
+      .handleError(t => Task(scribe.warn(
+        s"founding-turn topic re-stamp failed for ${claimed.conversationId.value}: ${t.getMessage}")))
+      .flatMap(_ => publish(AgentStateDelta(
+        target = claimed._id,
+        conversationId = claimed.conversationId,
+        activity = Some(AgentActivity.Idle),
+        state = Some(EventState.Complete))))
       .flatMap(_ => cleanup)
       .handleError(t => cleanup.flatMap(_ => Task.error(t)))
   }
+
+  /**
+   * Re-home the founding turn of a topic switch onto the topic it
+   * founded. A [[TopicChange]] Switch lands at the END of its turn —
+   * the classifier only decides once the respond proposes a label —
+   * so every event of the turn that CAUSED the change (the triggering
+   * user message included) was stamped with the previous topic, and
+   * the misattribution would otherwise be permanent: the divider
+   * claims a boundary the stamps beside it contradict, and anything
+   * topic-scoped (per-topic history, topic summaries feeding
+   * compression) attributes the new topic's most defining content to
+   * the topic before it.
+   *
+   * Runs at claim release (every terminal exit of the agent loop),
+   * consuming the [[TurnEventLog]] the claim opened: the turn's event
+   * ids and their original topic stamps were recorded as they
+   * published (plus the trigger events, recorded at context build),
+   * so the sweep needs no store query — the split store's index
+   * refresh is asynchronous and a turn-end query can miss the turn's
+   * own tail. Each Switch folds a [[TopicDelta]] onto every recorded
+   * event still carrying the pre-switch topic — persistence,
+   * broadcast, and replay all ride the standard Delta plumbing.
+   *
+   * Events from before the turn keep their stamps — they legitimately
+   * belong to the previous topic. Rename changes need no sweep (same
+   * topic id), and the bootstrap-era rename path never emits a
+   * Switch.
+   */
+  private final def restampTopicFoundingTurn(convId: Id[Conversation], turnLog: TurnEventLog): Task[Unit] = {
+    import scala.jdk.CollectionConverters.*
+    val switches = turnLog.switches.asScala.toList.sortBy(_.timestamp.value)
+    if (switches.isEmpty) Task.unit
+    else withDB(_.conversations.transaction(_.get(convId))).flatMap {
+      case None => Task.unit
+      case Some(conv) =>
+        // The founding user message published BEFORE the claim opened
+        // the turn log, so the publish hook missed it. It is pre-turn
+        // committed data — safely queryable, unlike the turn's own
+        // tail (whose index refresh the log exists to sidestep).
+        withDB(_.conversationEvents(convId)).flatMap { history =>
+          def foundingMessage(tc: TopicChange): Option[Event] =
+            history.iterator
+              .filter(e => e.timestamp.value <= tc.timestamp.value && !turnLog.stamps.containsKey(e._id))
+              .foldLeft(Option.empty[Event]) { (best, e) =>
+                e match {
+                  case m: Message
+                    if m.role == MessageRole.Standard
+                      && !m.participantId.isInstanceOf[AgentParticipantId]
+                      && best.forall(_.timestamp.value < m.timestamp.value) => Some(m)
+                  case _ => best
+                }
+              }
+          // Fold over the switches with a live view of each event's
+          // current stamp, so a turn with chained switches re-homes
+          // its events through each hop.
+          val stamps = scala.collection.mutable.Map.from(turnLog.stamps.asScala)
+          switches.foldLeft(Task.unit) { (acc, tc) =>
+            acc.flatMap { _ =>
+              val newIdx = conv.topics.indexWhere(_.id == tc.topicId)
+              val previousTopicId = tc.kind match {
+                case TopicChangeKind.Switch(prev) => prev
+                case _                            => tc.topicId
+              }
+              if (newIdx < 0 || previousTopicId == tc.topicId) Task.unit
+              else {
+                foundingMessage(tc).foreach(m => stamps.getOrElseUpdate(m._id, m.topicId))
+                val affected = stamps.iterator.collect {
+                  case (id, topicId) if topicId == previousTopicId && id != tc._id => id
+                }.toList
+                affected.foreach(id => stamps.update(id, tc.topicId))
+                affected.foldLeft(Task.unit) { (a, id) =>
+                  a.flatMap(_ => publish(TopicDelta(
+                    target         = id,
+                    conversationId = convId,
+                    topicId        = tc.topicId,
+                    topicIndex     = newIdx
+                  )).unit)
+                }
+              }
+            }
+          }
+        }
+    }
+  }
+
 
   private final def buildContext(agent: AgentParticipant,
                                  conv: Conversation,
