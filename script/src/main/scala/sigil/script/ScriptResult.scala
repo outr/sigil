@@ -37,6 +37,7 @@ case class ScriptResult(participantId: ParticipantId,
                         _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)

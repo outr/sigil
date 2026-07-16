@@ -38,6 +38,7 @@ case class BalanceRead(balance: Double,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
@@ -58,6 +59,7 @@ case class IbanRead(iban: String,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
@@ -78,6 +80,7 @@ case class TransactionsRead(transactions: List[BankingTransaction],
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
@@ -98,6 +101,7 @@ case class ScheduledTransactionsRead(transactions: List[BankingTransaction],
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
@@ -119,6 +123,7 @@ case class FileRead(filePath: String,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
@@ -142,6 +147,7 @@ case class UserInfoRead(firstName: String,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
@@ -165,6 +171,7 @@ case class MoneyTransferred(recipient: String,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
@@ -189,6 +196,7 @@ case class TransactionScheduled(recipient: String,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
@@ -209,6 +217,7 @@ case class ScheduledTransactionUpdated(transactionId: Int,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
@@ -229,6 +238,7 @@ case class ScheduledTransactionNotFound(transactionId: Int,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
@@ -248,6 +258,7 @@ case class PasswordUpdated(participantId: ParticipantId,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)

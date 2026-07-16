@@ -154,6 +154,47 @@ class ReservedTopicLabelsSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       }
     }
 
+    "flag a reserved current label as a placeholder so the classifier biases toward Refine" in {
+      // "greeting" → "actual subject" is the conversation finding its
+      // subject, not a subject change — without the note the
+      // classifier reliably answers New and mints a second topic for
+      // the same thread of work.
+      val provider = new CapturingClassifierProvider("Refine")
+      TestSigil.setProvider(Task.pure(provider))
+      TestSigil.classifyTopicShift(
+        modelId         = modelId,
+        chain           = List(TestUser, TestAgent),
+        current         = TopicEntry(
+          id      = sigil.conversation.Topic.id("topic-greet"),
+          label   = "Greeting",
+          summary = "Fresh conversation start."
+        ),
+        priors          = Nil,
+        proposedLabel   = "sigil project setup",
+        proposedSummary = "Setting up the sigil project.",
+        userMessage     = "Let's set up the project."
+      ).map { result =>
+        provider.capturedUserPrompt.get() should include ("conversation-opening placeholder")
+        result shouldBe TopicShiftResult.Refine
+      }
+    }
+
+    "not flag an established current label as a placeholder" in {
+      val provider = new CapturingClassifierProvider("New")
+      TestSigil.setProvider(Task.pure(provider))
+      TestSigil.classifyTopicShift(
+        modelId         = modelId,
+        chain           = List(TestUser, TestAgent),
+        current         = current,
+        priors          = Nil,
+        proposedLabel   = "Type-class derivation",
+        proposedSummary = "Working on type-class derivation issues.",
+        userMessage     = "Let's look at the type-class derivation."
+      ).map { _ =>
+        provider.capturedUserPrompt.get() should not include "conversation-opening placeholder"
+      }
+    }
+
     "still match against non-reserved priors when classifier returns one of them" in {
       val provider = new CapturingClassifierProvider("Compiler bug")
       TestSigil.setProvider(Task.pure(provider))

@@ -5318,6 +5318,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val priorsBlock =
       if (filteredPriors.isEmpty) "  (none)"
       else filteredPriors.map(p => s"  - \"${p.label}\" — ${p.summary}").mkString("\n")
+    // A reserved / default-seed current label is a conversation-opening
+    // placeholder, not established subject matter. Telling the
+    // classifier so biases the first concrete label toward Refine
+    // (relabel the placeholder in place) instead of New (mint a second
+    // topic) — "greeting" → "actual subject" is the conversation
+    // finding its subject, not a subject change.
+    val currentIsPlaceholder =
+      reservedLowered.contains(current.label.toLowerCase) ||
+        current.label.equalsIgnoreCase(Topic.DefaultLabel)
+    val placeholderNote =
+      if (currentIsPlaceholder)
+        "\n\nNote: the Current topic is a conversation-opening placeholder, not established subject matter. " +
+          "If the proposed topic is the conversation's first concrete subject, answer \"Refine\" — " +
+          "reserve \"New\" for a shift away from established work."
+      else ""
     val systemPrompt =
       """You categorize how a proposed topic relates to a conversation's existing topics.
         |Pick exactly one value from the enum:
@@ -5337,7 +5352,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
          |Proposed topic for this turn:
          |  - "$proposedLabel" — $proposedSummary
          |
-         |Pick exactly one value from the enum.""".stripMargin
+         |Pick exactly one value from the enum.$placeholderNote""".stripMargin
     val tool = new TopicClassifierTool(filteredPriors.map(_.label))
     // Sampling settings are baseline `temperature = 0.0` (deterministic
     // classification) — but only when the model supports it. GPT-5 +
@@ -5481,6 +5496,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     else previousTopics.find(_.label.equalsIgnoreCase(proposedLabel)) match {
       case Some(prior) =>
         Task.pure(List(buildSwitch(caller, conversation._id, currentTopic.id, prior.id, prior.label, prior.summary)))
+      case None if conversation.topics.sizeIs == 1 && userMessage.trim.isEmpty =>
+        // A label proposed before any user input reaches the context
+        // (greeting turns, agent-initiated openers) is relabeling the
+        // seed topic, not opening a second subject — the seed is a
+        // placeholder and there is no established work to shift away
+        // from. Adopt the proposal as a rename without consulting the
+        // classifier; a `labelLocked` seed is respected (no-op) by
+        // resolveRenameTopic.
+        resolveRenameTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
       case None =>
         classifyTopicShift(modelId, chain, currentTopic, previousTopics, proposedLabel, proposedSummary, userMessage,
                            conversationId = Some(conversation._id)).flatMap {
@@ -6291,6 +6315,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           participantId = agent.id,
           conversationId = conv._id,
           topicId = conv.currentTopicId,
+          // Written via tx.modify, so the canonicalizing inbound
+          // transform never sees this row — stamp the current topic's
+          // index directly.
+          topicIndex = math.max(0, conv.topics.length - 1),
           activity = AgentActivity.Thinking,
           state = EventState.Active,
           timestamp = Timestamp(Nowish()),

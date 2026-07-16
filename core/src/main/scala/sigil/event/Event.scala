@@ -41,8 +41,10 @@ trait Event extends Signal with Document[Event] {
    * Populated by [[sigil.pipeline.TopicIndexCanonicalizingTransform]]
    * at `Sigil.publish` time from
    * `conversation.topics.indexWhere(_.id == topicId)`. Inbound events
-   * that arrive with a stale or made-up index get overwritten — the
-   * server is the single source of truth.
+   * that arrive with a stale or made-up index get overwritten, and an
+   * event whose `topicId` isn't on the stack at all (client
+   * placeholder, truncated topic) is re-homed onto the current topic
+   * — the server is the single source of truth for both fields.
    *
    * Default `0` covers the bootstrap topic and synthetic events
    * constructed in tests. The canonicalizer overwrites whatever the
@@ -101,6 +103,18 @@ trait Event extends Signal with Document[Event] {
    * implements via its own `copy(conversationId = conversationId)`.
    */
   def withConversationId(conversationId: Id[Conversation]): Event
+
+  /**
+   * Returns a copy of this event with its `topicId` and `topicIndex`
+   * replaced. [[sigil.pipeline.TopicIndexCanonicalizingTransform]]
+   * uses this to stamp the server-canonical topic on every inbound
+   * event — correcting a stale index, and re-homing an event whose
+   * `topicId` isn't on the conversation's topic stack (client
+   * placeholder, truncated topic) onto the current topic. Each
+   * concrete Event implements via its own
+   * `copy(topicId = topicId, topicIndex = topicIndex)`.
+   */
+  def withTopic(topicId: Id[Topic], topicIndex: Int): Event
 
   /**
    * The Event that caused this one, when known — forms a parent chain

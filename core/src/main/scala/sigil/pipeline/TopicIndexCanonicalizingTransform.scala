@@ -2,78 +2,71 @@ package sigil.pipeline
 
 import rapid.Task
 import sigil.Sigil
-import sigil.event.{
-  AgentState, CapabilityResults, Event, Message, ModeChange,
-  Reaction, ReadState, Reasoning, Stop, ToolInvoke, ToolLog,
-  TopicChange
-}
+import sigil.event.{Event, TopicChange}
 import sigil.signal.Signal
 
 /**
- * Pre-persist transform that overwrites every topic-bearing
- * event's [[Event.topicIndex]] with the server-canonical index
- * derived from the conversation's current topic stack
- * (`conversation.topics.indexWhere(_.id == topicId)`). Sigil bug
- * #80.
+ * Pre-persist transform that stamps every event with its
+ * server-canonical topic, so client-side topic visualisations
+ * (per-topic colour strips, dividers, ordinal badges) can trust the
+ * event's `topicId` / [[Event.topicIndex]] pair without re-deriving
+ * anything. The server is the single source of truth for "which
+ * position in the stack does this topicId occupy"; hashing
+ * `topicId.value` collides on small palettes (~50% chance by topic 5
+ * in a 12-colour palette) and walking `TopicChange` history to
+ * reconstruct order duplicates work the server already has.
  *
- * Stable client-side topic visualisation (per-topic colour strips,
- * dividers, ordinal badges) needs an integer ordinal — hashing
- * `topicId.value` collides on small palettes (~50% chance by
- * topic 5 in a 12-colour palette) and walking `TopicChange`
- * history to reconstruct order duplicates work the server already
- * has. The server is the single source of truth for "which
- * position in the stack does this topicId occupy"; clients trust
- * the stamped index without re-deriving.
+ * Three canonicalization rules, applied against the conversation's
+ * current topic stack (`conversation.topics`):
  *
- * Inbound events that arrive with a stale or made-up index
- * (placeholder pushed by a client that hasn't seen the latest
- * stack, regenerated id, etc.) are overwritten by the canonical
- * value. A `topicId` not currently on the stack falls back to
- * `0` — the bootstrap topic's index — rather than `-1` so
- * downstream colour-palette indexing stays in-bounds. Worker /
- * sub-conversation events whose `topicId` doesn't resolve to
- * the parent conversation's stack also fall back to `0`.
+ *   - **On-stack `topicId`** — `topicIndex` is overwritten with
+ *     `topics.indexWhere(_.id == topicId)`. Inbound events that
+ *     arrive with a stale or made-up index (placeholder pushed by a
+ *     client that hasn't seen the latest stack, regenerated id,
+ *     etc.) get the canonical value.
+ *   - **Off-stack `topicId`** — the event is re-homed onto the
+ *     current topic: both `topicId` and `topicIndex` are replaced.
+ *     Clients may stamp a placeholder id on outbound events (they
+ *     don't track the topic stack); the framework resolves the real
+ *     topic here, so a user Message lands on the active topic
+ *     instead of carrying an id no Topic record backs. An id that
+ *     fell off the stack via a switch-back truncation folds into
+ *     the topic the conversation returned to.
+ *   - **[[TopicChange]]** — the change's own index reflects the
+ *     stack AFTER it applies, because the projection that mutates
+ *     the stack runs post-persist: a Switch to a topic not yet on
+ *     the stack gets the position it is about to occupy
+ *     (`topics.length`); a switch-back or rename keeps the target's
+ *     existing position. Without this, every switch-to-new divider
+ *     would carry the off-stack fallback instead of the new topic's
+ *     ordinal.
  */
 object TopicIndexCanonicalizingTransform extends InboundTransform {
 
   override def apply(signal: Signal, self: Sigil): Task[Signal] = signal match {
     case e: Event =>
       self.withDB(_.conversations.transaction(_.get(e.conversationId))).map {
-        case Some(conv) =>
-          val canonical = conv.topics.indexWhere(_.id == e.topicId) match {
-            case n if n >= 0 => n
-            case _           => 0
+        case Some(conv) if conv.topics.nonEmpty =>
+          e match {
+            case tc: TopicChange =>
+              val canonical = conv.topics.indexWhere(_.id == tc.topicId) match {
+                case n if n >= 0 => n
+                case _           => conv.topics.length
+              }
+              if (tc.topicIndex == canonical) tc
+              else tc.withTopic(tc.topicId, canonical)
+            case _ =>
+              conv.topics.indexWhere(_.id == e.topicId) match {
+                case n if n >= 0 =>
+                  if (e.topicIndex == n) e
+                  else e.withTopic(e.topicId, n)
+                case _ =>
+                  val current = conv.currentTopic
+                  e.withTopic(current.id, conv.topics.length - 1)
+              }
           }
-          if (e.topicIndex == canonical) e
-          else withTopicIndex(e, canonical)
-        case None => e
+        case _ => e
       }
     case other => Task.pure(other)
-  }
-
-  /** Pattern-match dispatch for `withTopicIndex(idx)`. The trait
-    * doesn't carry the method (would force an abstract on every
-    * Event subtype to implement, churning unrelated callsites);
-    * each concrete subtype copies through here. New event types
-    * must be added — the catch-all returns the event unchanged
-    * so downstream consumers don't break, but the canonical
-    * index won't apply until the case is added. */
-  private def withTopicIndex(e: Event, idx: Int): Event = e match {
-    case m: Message            => m.copy(topicIndex = idx)
-    case ti: ToolInvoke        => ti.copy(topicIndex = idx)
-    case tl: ToolLog           => tl.copy(topicIndex = idx)
-    case mc: ModeChange        => mc.copy(topicIndex = idx)
-    case tc: TopicChange       => tc.copy(topicIndex = idx)
-    case cr: CapabilityResults => cr.copy(topicIndex = idx)
-    case s: Stop               => s.copy(topicIndex = idx)
-    case as: AgentState        => as.copy(topicIndex = idx)
-    case r: Reaction           => r.copy(topicIndex = idx)
-    case rs: ReadState         => rs.copy(topicIndex = idx)
-    case rr: Reasoning         => rr.copy(topicIndex = idx)
-    case wc: sigil.workflow.event.WorkflowRunCompleted  => wc.copy(topicIndex = idx)
-    case wf: sigil.workflow.event.WorkflowRunFailed     => wf.copy(topicIndex = idx)
-    case wt: sigil.workflow.event.WorkflowRunStarted    => wt.copy(topicIndex = idx)
-    case ws: sigil.workflow.event.WorkflowStepCompleted => ws.copy(topicIndex = idx)
-    case other                                          => other
   }
 }

@@ -4,9 +4,9 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
-import sigil.conversation.{ConversationView, Conversation, Topic, TopicEntry, TurnInput}
+import sigil.conversation.{ContextFrame, ConversationView, Conversation, Topic, TopicEntry, TurnInput}
 import sigil.db.Model
-import sigil.event.{Message, TopicChange, TopicChangeKind}
+import sigil.event.{Event, Message, TopicChange, TopicChangeKind}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{CallId, ConversationRequest, GenerationSettings, Instructions, ConversationMode, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
 import sigil.signal.Signal
@@ -102,7 +102,14 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       conversationId = convId,
       model = TestSigil.testModel(modelId),
       instructions = Instructions(),
-      turnInput = TurnInput(conversationId = viewConvId),
+      // A user message in context keeps these scenarios on the
+      // classifier path — a proposal with NO user input in context
+      // is the bootstrap-era rename (BootstrapTopicShiftSpec).
+      turnInput = TurnInput(conversationId = viewConvId, frames = Vector(ContextFrame.Text(
+        content = "scripted user prompt",
+        participantId = TestUser,
+        sourceEventId = Event.id()
+      ))),
       currentMode = ConversationMode,
       currentTopic = currentEntry,
       previousTopics = priors,

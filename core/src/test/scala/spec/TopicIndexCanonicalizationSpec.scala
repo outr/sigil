@@ -12,10 +12,9 @@ import sigil.tool.ToolName
 import sigil.tool.model.ResponseContent
 
 /**
- * Coverage for sigil bug #80 — every topic-bearing Event carries a
- * server-canonical `topicIndex: Int` corresponding to its
- * `topicId`'s position in the conversation's topic stack at
- * emission time.
+ * Every topic-bearing Event carries the server-canonical
+ * `topicId` / `topicIndex` pair — the topic's position in the
+ * conversation's topic stack at emission time.
  *
  * Verifies:
  *   1. A Message published with `topicIndex = 0` (default) but a
@@ -23,10 +22,16 @@ import sigil.tool.model.ResponseContent
  *      canonicalized: persisted record has `topicIndex = 2`.
  *   2. An unrelated/wrong `topicIndex` (e.g. client pushed an old
  *      stamped index) is overwritten by the canonical value.
- *   3. A `topicId` not on the stack falls back to `0` rather than
- *      `-1` (downstream palette indexing stays in-bounds).
+ *   3. A `topicId` not on the stack (client placeholder — clients
+ *      don't track the topic stack) is re-homed onto the current
+ *      topic: both id and index are replaced.
  *   4. Events with the SAME conversation but different topic-bearing
- *      types (Message, ToolInvoke, ModeChange) all canonicalize.
+ *      types (Message, ToolInvoke, ModeChange, RouteResolved) all
+ *      canonicalize — including ControlPlaneEvent subtypes.
+ *   5. A TopicChange's own index reflects the post-change stack: a
+ *      Switch to a brand-new topic carries the position it is about
+ *      to occupy; a switch-back carries the target's existing
+ *      position.
  */
 class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -80,20 +85,27 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
       } yield loaded.get.topicIndex shouldBe 0
     }
 
-    "fall back to 0 when topicId isn't on the stack (defensive)" in {
+    "re-home an off-stack topicId (client placeholder) onto the current topic" in {
+      // Clients don't track the topic stack — they stamp a placeholder
+      // id and trust the server to resolve the real topic. Without the
+      // re-home, every client-authored event stays at palette index 0
+      // forever, no matter which topic the conversation is on.
       for {
-        conv <- freshConv(List("Only"))
+        conv <- freshConv(List("Alpha", "Beta", "Gamma"))
         msg = Message(
           participantId  = TestUser,
           conversationId = conv._id,
-          topicId        = Topic.id("orphan-topic-id"),
+          topicId        = Topic.id(s"topic-${conv._id.value}"),
           topicIndex     = 5,
-          content        = Vector(ResponseContent.Text("orphan")),
+          content        = Vector(ResponseContent.Text("placeholder-stamped")),
           state          = EventState.Complete
         )
         _ <- TestSigil.publish(msg)
         loaded <- fetchPersisted(msg._id)
-      } yield loaded.get.topicIndex shouldBe 0
+      } yield {
+        loaded.get.topicId shouldBe conv.topics.last.id
+        loaded.get.topicIndex shouldBe 2
+      }
     }
 
     "canonicalize across multiple event types in the same conversation" in {
@@ -133,6 +145,78 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
         loadedTi.get.topicIndex shouldBe 1
         loadedMc.get.topicIndex shouldBe 1
       }
+    }
+
+    "canonicalize ControlPlaneEvent subtypes (RouteResolved)" in {
+      for {
+        conv <- freshConv(List("Alpha", "Beta"))
+        rr = sigil.event.RouteResolved(
+          participantId       = TestAgent,
+          conversationId      = conv._id,
+          topicId             = conv.topics(1).id,
+          userMessageId       = None,
+          inferredWorkType    = None,
+          inferredComplexity  = None,
+          candidateChain      = Nil,
+          chosenModelId       = sigil.db.Model.id("test", "route"),
+          skipReasons         = Map.empty,
+          classifierLatencyMs = None,
+          escalationCount     = 0
+        )
+        _ <- TestSigil.publish(rr)
+        loaded <- fetchPersisted(rr._id)
+      } yield loaded.get.topicIndex shouldBe 1
+    }
+
+    "stamp a Switch-to-new TopicChange with the position it is about to occupy" in {
+      // The stack projection applies AFTER the transform, so the new
+      // entry isn't on the stack yet when the index is computed — the
+      // divider must still carry the NEW topic's ordinal, not the
+      // off-stack fallback.
+      for {
+        conv <- freshConv(List("Alpha", "Beta"))
+        newTopic <- TestSigil.withDB(_.topics.transaction(_.upsert(Topic(
+          conversationId = conv._id,
+          label          = "Gamma",
+          summary        = "a brand new subject",
+          createdBy      = TestAgent
+        ))))
+        tc = sigil.event.TopicChange(
+          kind           = sigil.event.TopicChangeKind.Switch(previousTopicId = conv.topics.last.id),
+          newLabel       = newTopic.label,
+          newSummary     = newTopic.summary,
+          participantId  = TestAgent,
+          conversationId = conv._id,
+          topicId        = newTopic._id,
+          state          = EventState.Complete
+        )
+        _ <- TestSigil.publish(tc)
+        loadedTc   <- fetchPersisted(tc._id)
+        loadedConv <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
+      } yield {
+        loadedTc.get.topicIndex shouldBe 2
+        // ...and the projection did put it exactly there.
+        loadedConv.get.topics.indexWhere(_.id == newTopic._id) shouldBe 2
+      }
+    }
+
+    "stamp a switch-back TopicChange with the target's existing position" in {
+      for {
+        conv <- freshConv(List("Alpha", "Beta", "Gamma"))
+        prior = conv.topics.head
+        tc = sigil.event.TopicChange(
+          kind           = sigil.event.TopicChangeKind.Switch(previousTopicId = conv.topics.last.id),
+          newLabel       = prior.label,
+          newSummary     = prior.summary,
+          participantId  = TestAgent,
+          conversationId = conv._id,
+          topicId        = prior.id,
+          topicIndex     = 7,
+          state          = EventState.Complete
+        )
+        _ <- TestSigil.publish(tc)
+        loadedTc <- fetchPersisted(tc._id)
+      } yield loadedTc.get.topicIndex shouldBe 0
     }
   }
 
