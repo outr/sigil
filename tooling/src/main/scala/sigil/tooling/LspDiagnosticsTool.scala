@@ -45,9 +45,10 @@ final class LspDiagnosticsTool(val manager: LspManager) extends Tool
       |`waitMs` (default 1500) is how long to wait for the server to publish diagnostics
       |for the file's current text after opening it. Pass 0 to read the existing snapshot only.
       |
-      |Returns `{filePath, diagnostics: [{range:{start, end}, severity, message, code, source}], fresh}`.
-      |`fresh: false` means the server did NOT answer for the current text within the wait —
-      |treat the file's diagnostic state as unknown; an empty list is then NOT "no issues".""".stripMargin
+      |Returns a verdict line (counts, or an explicit "clean" / "freshness UNKNOWN") followed by
+      |one diagnostic per line, errors first. A "freshness UNKNOWN" verdict means the server did
+      |NOT answer for the current text within the wait — treat the file's diagnostic state as
+      |unknown; an empty stale snapshot is NOT "no issues".""".stripMargin
   override val keywords = Set(
     "lsp", "language", "diagnostics", "errors", "warnings", "problems",
     "lint", "compile-check", "analyze", "examine", "inspect", "review",

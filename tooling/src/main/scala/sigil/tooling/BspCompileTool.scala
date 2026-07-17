@@ -32,10 +32,10 @@ final class BspCompileTool(val manager: BspManager) extends Tool
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is a list of target URIs; empty compiles every workspace target.
-      |Returns `{projectRoot, status, targetCount, diagnostics: [{filePath, range, severity, message, code, source}], cause?}`.
-      |On ERROR, read `diagnostics` for per-file compile errors; when `diagnostics` is empty, `cause`
-      |carries why (an unresolved target, a connection/build-import failure, or the build server's
-      |raw error output).""".stripMargin
+      |Returns a status line (`ERROR — N error(s), M warning(s) across F file(s) · T target(s)`)
+      |followed by one diagnostic per line (`path:line:col: error: message`), errors first, grouped
+      |by file. On ERROR with no diagnostics, a `cause:` line carries why (an unresolved target, a
+      |connection/build-import failure, or the build server's raw error output).""".stripMargin
   override val keywords = Set(
     "bsp", "compile", "build", "type-check", "verify",
     "errors", "warnings", "compile-check", "examine", "inspect",
