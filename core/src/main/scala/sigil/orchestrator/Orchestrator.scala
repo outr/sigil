@@ -5,11 +5,15 @@ import lightdb.time.Timestamp
 import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
-import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome}
+import sigil.event.{
+  Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome
+}
 import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, ProviderImage, StopReason, XmlToolCallSanitizer}
 import sigil.storage.StoredFileCategory
-import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ThinkingChunk, ToolDelta, XmlToolCallLeak}
+import sigil.signal.{
+  MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ThinkingChunk, ToolDelta, XmlToolCallLeak
+}
 import sigil.tool.core.{CoreTools, FindCapabilityInput}
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent}
 import sigil.tool.ToolName
@@ -45,48 +49,58 @@ import sigil.tool.{Tool, ToolInput, ToolPreconditionResult}
  */
 object Orchestrator {
 
-  /** Names of the framework's terminal user-visible tools. Completion
-    * of any one of these means the agent "spoke" — i.e. produced
-    * something the user (or the orchestrator's silent-turn detector
-    * in [[Sigil.runAgentLoop]]) recognizes as a closing signal for
-    * the turn. Used for bug #46's silent-completion fallback. */
+  /**
+   * Names of the framework's terminal user-visible tools. Completion
+   * of any one of these means the agent "spoke" — i.e. produced
+   * something the user (or the orchestrator's silent-turn detector
+   * in [[Sigil.runAgentLoop]]) recognizes as a closing signal for
+   * the turn. Used for bug #46's silent-completion fallback.
+   */
   val UserVisibleTerminalTools: Set[String] =
     Set("respond", "respond_options", "no_response")
 
-  /** `Event.source` marker on the Tool-role continuation trigger a
-    * detached tool's completion publishes. The agent loop's
-    * own-emissions filter treats a marked event as EXTERNAL so a
-    * completion landing mid-turn queues a continuation iteration
-    * instead of evaporating with the turn. */
+  /**
+   * `Event.source` marker on the Tool-role continuation trigger a
+   * detached tool's completion publishes. The agent loop's
+   * own-emissions filter treats a marked event as EXTERNAL so a
+   * completion landing mid-turn queues a continuation iteration
+   * instead of evaporating with the turn.
+   */
   val DetachedContinuationSource: String = "detached-continuation"
 
-  /** Synthetic-invoke name for the naked-text decision challenge: a
-    * plain-prose `end_turn` carries no explicit continue-vs-yield
-    * decision (`respond`'s required `endsTurn`), so the first
-    * occurrence per user turn is challenged instead of committed as
-    * terminal. The name doubles as the once-per-turn marker and as
-    * the agent loop's continue signal. */
+  /**
+   * Synthetic-invoke name for the naked-text decision challenge: a
+   * plain-prose `end_turn` carries no explicit continue-vs-yield
+   * decision (`respond`'s required `endsTurn`), so the first
+   * occurrence per user turn is challenged instead of committed as
+   * terminal. The name doubles as the once-per-turn marker and as
+   * the agent loop's continue signal.
+   */
   val TurnDecisionToolName: String = "_turn_decision_required"
 
-  /** Canonicalise a `find_capability` keywords string for repeated-
-    * query detection (sigil bug #159). Lowercases, trims, and
-    * collapses whitespace runs so trivial formatting differences
-    * (`"foo  bar"` vs `" foo bar "`) don't slip past the
-    * once-per-turn intercept. */
+  /**
+   * Canonicalise a `find_capability` keywords string for repeated-
+   * query detection (sigil bug #159). Lowercases, trims, and
+   * collapses whitespace runs so trivial formatting differences
+   * (`"foo  bar"` vs `" foo bar "`) don't slip past the
+   * once-per-turn intercept.
+   */
   def normalizeQuery(s: String): String = s.trim.toLowerCase.replaceAll("\\s+", " ")
 
-  /** Read the caller agent's [[sigil.provider.SafetyPosture]] from
-    * the turn context. The orchestrator's consent gate (sigil bug
-    * #160) bypasses `requiresUserConsent` when this is
-    * `Autonomous` — the user has pre-authorized the agent and the
-    * gate would only force the agent to call `record_consent` on
-    * itself.
-    *
-    * Walks the conversation's participants to find the caller's
-    * instance and reads `instructions.posture`. Non-agent callers
-    * (or chains where the caller isn't a registered participant)
-    * default to `Confirming` — the framework refuses to bypass
-    * gates for callers it can't attribute. */
+  /**
+   * Read the caller agent's [[sigil.provider.SafetyPosture]] from
+   * the turn context. The orchestrator's consent gate (sigil bug
+   * #160) bypasses `requiresUserConsent` when this is
+   * `Autonomous` — the user has pre-authorized the agent and the
+   * gate would only force the agent to call `record_consent` on
+   * itself.
+   *
+   * Walks the conversation's participants to find the caller's
+   * instance and reads `instructions.posture`. Non-agent callers
+   * (or chains where the caller isn't a registered participant)
+   * default to `Confirming` — the framework refuses to bypass
+   * gates for callers it can't attribute.
+   */
   def isAutonomousPosture(context: TurnContext): Boolean =
     context.conversation.participants
       .find(_.id == context.caller)
@@ -137,21 +151,22 @@ object Orchestrator {
     // ref + `state.activeCalls` to publish any unsettled orphans.
     val capturedError = new java.util.concurrent.atomic.AtomicReference[Option[Throwable]](None)
 
-    /** Publish orphan-settle signals for any tool calls left
-      * in-flight when the stream terminates. Runs at termination
-      * regardless of how the stream ended; idempotent because
-      * `settleOrphanToolInvoke` clears `state.activeCalls` after
-      * walking it.
-      *
-      * `settleOrphanMessage` ONLY fires when an error was actually
-      * observed — it stamps the in-flight streaming Message with a
-      * Failure disposition + "Tool call failed before settling"
-      * text, and we must not corrupt a perfectly-good streaming
-      * Message on the success path just because
-      * `state.activeMessageId` hasn't been cleared yet (a respond
-      * turn whose plain-text stream the model emits without
-      * wrapping in a tool call is a legitimate success shape).
-      */
+    /**
+     * Publish orphan-settle signals for any tool calls left
+     * in-flight when the stream terminates. Runs at termination
+     * regardless of how the stream ended; idempotent because
+     * `settleOrphanToolInvoke` clears `state.activeCalls` after
+     * walking it.
+     *
+     * `settleOrphanMessage` ONLY fires when an error was actually
+     * observed — it stamps the in-flight streaming Message with a
+     * Failure disposition + "Tool call failed before settling"
+     * text, and we must not corrupt a perfectly-good streaming
+     * Message on the success path just because
+     * `state.activeMessageId` hasn't been cleared yet (a respond
+     * turn whose plain-text stream the model emits without
+     * wrapping in a tool call is a legitimate success shape).
+     */
     def reconcileInflight: Task[Unit] = {
       val errOpt = capturedError.get()
       // Sigil #410 — scrub vendor identity (support URLs / backend name) from a
@@ -172,14 +187,13 @@ object Orchestrator {
       // settleOrphanToolInvoke owns them.
       val richlyHandled: List[lightdb.id.Id[Event]] = state.activeMessageId.toList
       val orphanToolInvokes = settleOrphanToolInvoke(
-        state, convId,
+        state,
+        convId,
         caller = callerForOrphan,
         topicId = request.currentTopic.id,
         error = errorMsg,
         reasonFor = a =>
-          errorMsg.fold(s"Tool `${a.toolName}` did not produce a result")(
-            err => s"Tool `${a.toolName}` did not complete: $err"
-          ),
+          errorMsg.fold(s"Tool `${a.toolName}` did not produce a result")(err => s"Tool `${a.toolName}` did not complete: $err"),
         recoverable = true
       )
       val orphanMessage = if (errOpt.isDefined) settleOrphanMessage(state, convId, error = errorMsg) else Nil
@@ -219,139 +233,174 @@ object Orchestrator {
       })
   }
 
-  /** A tool call that's been started but not yet settled. Tracks the
-    * provider's `CallId` (origin of routing for parallel tool calls)
-    * alongside the framework-side invokeId and the wire-level tool
-    * name. Stored in a `LinkedHashMap` keyed by `CallId` so iteration
-    * order is insertion order (the orchestrator's streaming-text path
-    * routes ContentBlock events to the most recently started tool —
-    * which is `activeCalls.lastOption.map(_._2)`). */
-  private final case class ActiveCall(toolName: String, invokeId: lightdb.id.Id[Event])
+  /**
+   * A tool call that's been started but not yet settled. Tracks the
+   * provider's `CallId` (origin of routing for parallel tool calls)
+   * alongside the framework-side invokeId and the wire-level tool
+   * name. Stored in a `LinkedHashMap` keyed by `CallId` so iteration
+   * order is insertion order (the orchestrator's streaming-text path
+   * routes ContentBlock events to the most recently started tool —
+   * which is `activeCalls.lastOption.map(_._2)`).
+   */
+  final private case class ActiveCall(toolName: String, invokeId: lightdb.id.Id[Event])
 
-  private final class State {
-    /** Tool calls in flight, keyed by the provider's `CallId`. OpenAI
-      * (and Anthropic with `parallel_tool_use: true`) interleave
-      * deltas for multiple calls inside one turn; the orchestrator
-      * needs to route each `ToolCallComplete` back to the matching
-      * `ToolCallStart`'s invokeId rather than tracking a single
-      * "active" call. Pre-fix this map was an `Option[Id[Event]]`
-      * which silently dropped invokeIds when a second `Start` arrived
-      * before the first `Complete`. */
+  final private class State {
+
+    /**
+     * Tool calls in flight, keyed by the provider's `CallId`. OpenAI
+     * (and Anthropic with `parallel_tool_use: true`) interleave
+     * deltas for multiple calls inside one turn; the orchestrator
+     * needs to route each `ToolCallComplete` back to the matching
+     * `ToolCallStart`'s invokeId rather than tracking a single
+     * "active" call. Pre-fix this map was an `Option[Id[Event]]`
+     * which silently dropped invokeIds when a second `Start` arrived
+     * before the first `Complete`.
+     */
     val activeCalls: scala.collection.mutable.LinkedHashMap[CallId, ActiveCall] =
       scala.collection.mutable.LinkedHashMap.empty
 
-    /** Bug #69 — track the most recently settled ToolInvoke's id so a
-      * `ProviderEvent.Error` arriving after `ToolCallComplete` (e.g. a
-      * stream-level error after the tool itself succeeded) can still
-      * stamp `origin` on the error Message. Without this fallback the
-      * post-completion error path would emit a Tool-role event with
-      * no parent, violating the framework's invariant. */
+    /**
+     * Bug #69 — track the most recently settled ToolInvoke's id so a
+     * `ProviderEvent.Error` arriving after `ToolCallComplete` (e.g. a
+     * stream-level error after the tool itself succeeded) can still
+     * stamp `origin` on the error Message. Without this fallback the
+     * post-completion error path would emit a Tool-role event with
+     * no parent, violating the framework's invariant.
+     */
     var lastSettledInvokeId: Option[lightdb.id.Id[Event]] = None
 
-    /** Most-recent active tool name — used by streaming-text paths
-      * (ContentBlockStart/Delta) that want to route to whichever tool
-      * is "currently" producing content. With parallel tool calls
-      * this is the most recently started; `respond`-style streaming
-      * is rarely paralleled in practice so the heuristic holds. */
+    /**
+     * Most-recent active tool name — used by streaming-text paths
+     * (ContentBlockStart/Delta) that want to route to whichever tool
+     * is "currently" producing content. With parallel tool calls
+     * this is the most recently started; `respond`-style streaming
+     * is rarely paralleled in practice so the heuristic holds.
+     */
     def activeToolName: Option[String] = activeCalls.lastOption.map(_._2.toolName)
     def activeToolInvokeId: Option[lightdb.id.Id[Event]] = activeCalls.lastOption.map(_._2.invokeId)
     var activeMessageId: Option[lightdb.id.Id[Event]] = None
-    /** Tracks whether the in-flight [[activeMessageId]] has actually
-      * been emitted as a `Message` event yet. `ThinkingDelta` reserves
-      * the id ahead of any user-visible content so [[ThinkingChunk]]
-      * `target` matches the eventual settled Message, but the Message
-      * itself is only "born" once `ContentBlockDelta` lands real
-      * content. Downstream branches that distinguish streaming-Message
-      * from atomic-tool dispatch (`toolCallCompleteInner`,
-      * `settleOrphanMessage`, the `Usage` fallback) read THIS flag,
-      * not `activeMessageId.isDefined`. */
+
+    /**
+     * Tracks whether the in-flight [[activeMessageId]] has actually
+     * been emitted as a `Message` event yet. `ThinkingDelta` reserves
+     * the id ahead of any user-visible content so [[ThinkingChunk]]
+     * `target` matches the eventual settled Message, but the Message
+     * itself is only "born" once `ContentBlockDelta` lands real
+     * content. Downstream branches that distinguish streaming-Message
+     * from atomic-tool dispatch (`toolCallCompleteInner`,
+     * `settleOrphanMessage`, the `Usage` fallback) read THIS flag,
+     * not `activeMessageId.isDefined`.
+     */
     var activeMessageCreated: Boolean = false
 
-    /** Bug #55 — id of the most recently emitted user-visible Message
-      * for this turn (`role != MessageRole.Tool`). Used as the fallback
-      * target when [[ProviderEvent.Usage]] arrives but no streaming
-      * `activeMessageId` exists — for tool-call-only models (llama.cpp
-      * grammar-constrained `respond` invocations) the agent's
-      * user-visible Message is built inside the tool's `executeResult`,
-      * so the streaming-text path never fires. Without this fallback
-      * the per-turn token usage would land nowhere and clients render
-      * `usage = (0,0,0)` on the agent's bubble. */
+    /**
+     * Bug #55 — id of the most recently emitted user-visible Message
+     * for this turn (`role != MessageRole.Tool`). Used as the fallback
+     * target when [[ProviderEvent.Usage]] arrives but no streaming
+     * `activeMessageId` exists — for tool-call-only models (llama.cpp
+     * grammar-constrained `respond` invocations) the agent's
+     * user-visible Message is built inside the tool's `executeResult`,
+     * so the streaming-text path never fires. Without this fallback
+     * the per-turn token usage would land nowhere and clients render
+     * `usage = (0,0,0)` on the agent's bubble.
+     */
     var lastUserVisibleMessageId: Option[lightdb.id.Id[Event]] = None
     var currentKind: Option[ContentKind] = None
     var currentArg: Option[String] = None
-    /** Accumulated text for the current open content block. Flushed as a
-      * `MessageContentDelta(complete = true, delta = full text)` when the block
-      * closes (next ContentBlockStart or ToolCallComplete). */
+
+    /**
+     * Accumulated text for the current open content block. Flushed as a
+     * `MessageContentDelta(complete = true, delta = full text)` when the block
+     * closes (next ContentBlockStart or ToolCallComplete).
+     */
     val currentBuffer: StringBuilder = new StringBuilder
-    /** Accumulates every text fragment the agent produced across the
-      * whole turn. Used by the per-turn memory extractor after `Done`. */
+
+    /**
+     * Accumulates every text fragment the agent produced across the
+     * whole turn. Used by the per-turn memory extractor after `Done`.
+     */
     val turnBuffer: StringBuilder = new StringBuilder
-    /** Stable Message id per image-generation callId. The first
-      * ImageGenerationPartial creates an Active Message; subsequent
-      * partials emit `ImageDelta` updates targeting this id; the
-      * `Complete` settles it via a final `ImageDelta` plus
-      * `StateDelta(Complete)`. */
+
+    /**
+     * Stable Message id per image-generation callId. The first
+     * ImageGenerationPartial creates an Active Message; subsequent
+     * partials emit `ImageDelta` updates targeting this id; the
+     * `Complete` settles it via a final `ImageDelta` plus
+     * `StateDelta(Complete)`.
+     */
     var imageMessageIds: Map[String, lightdb.id.Id[Event]] = Map.empty
 
-    /** Open-Message registry — every [[Message]] this turn emitted
-      * with `state = Active`. Maintained automatically by
-      * [[Orchestrator.trackOpenEvent]] as signals stream past, and
-      * swept by `reconcileInflight` at turn end so no Active Message
-      * outlives its turn — regardless of which kind of Message, and
-      * with no per-kind wiring to forget. Scoped to Messages: tool
-      * invokes have their own settle path (`settleOrphanToolInvoke`)
-      * and some framework events (e.g. the refusal-challenge invoke)
-      * have deliberate cross-turn lifecycles. */
+    /**
+     * Open-Message registry — every [[Message]] this turn emitted
+     * with `state = Active`. Maintained automatically by
+     * [[Orchestrator.trackOpenEvent]] as signals stream past, and
+     * swept by `reconcileInflight` at turn end so no Active Message
+     * outlives its turn — regardless of which kind of Message, and
+     * with no per-kind wiring to forget. Scoped to Messages: tool
+     * invokes have their own settle path (`settleOrphanToolInvoke`)
+     * and some framework events (e.g. the refusal-challenge invoke)
+     * have deliberate cross-turn lifecycles.
+     */
     val openEvents: scala.collection.mutable.Set[lightdb.id.Id[Event]] =
       scala.collection.mutable.Set.empty
 
-    /** Bug #75 — track whether the model emitted free-form text
-      * (`ProviderEvent.TextDelta`, dispatched by providers when the
-      * LLM sends `delta.content` outside of a tool call) AND whether
-      * any tool call was started. Smaller / quantised models drift
-      * to plain-text output despite `tool_choice: required` after
-      * long contexts; pre-fix that text was silently dropped, the
-      * turn settled silent, and bug-#46's placeholder fired with no
-      * feedback to the model. Post-fix the orchestrator emits a
-      * `MessageDisposition.Failure` diagnostic the agent's next
-      * iteration reads and can self-correct from. */
+    /**
+     * Bug #75 — track whether the model emitted free-form text
+     * (`ProviderEvent.TextDelta`, dispatched by providers when the
+     * LLM sends `delta.content` outside of a tool call) AND whether
+     * any tool call was started. Smaller / quantised models drift
+     * to plain-text output despite `tool_choice: required` after
+     * long contexts; pre-fix that text was silently dropped, the
+     * turn settled silent, and bug-#46's placeholder fired with no
+     * feedback to the model. Post-fix the orchestrator emits a
+     * `MessageDisposition.Failure` diagnostic the agent's next
+     * iteration reads and can self-correct from.
+     */
     val plainTextBuffer: StringBuilder = new StringBuilder
     var sawAnyToolCall: Boolean = false
 
-    /** Bug #87 — keys (toolName + canonical args JSON) of atomic tool
-      * calls already dispatched this turn. When the model emits
-      * multiple `function_call`s in one completion that share a key
-      * (parallel hedging on a deterministic-failure tool, e.g. a
-      * `requiresUserConsent` tool retried in parallel), the
-      * duplicates are routed to a synthesized Tool-role result
-      * pointing at the first dispatch instead of executing the same
-      * (tool, args) N times. Wire shape stays well-formed —
-      * `function_call` ↔ `function_call_output` pairing is satisfied
-      * for every call_id; the underlying execution happens once. */
+    /**
+     * Bug #87 — keys (toolName + canonical args JSON) of atomic tool
+     * calls already dispatched this turn. When the model emits
+     * multiple `function_call`s in one completion that share a key
+     * (parallel hedging on a deterministic-failure tool, e.g. a
+     * `requiresUserConsent` tool retried in parallel), the
+     * duplicates are routed to a synthesized Tool-role result
+     * pointing at the first dispatch instead of executing the same
+     * (tool, args) N times. Wire shape stays well-formed —
+     * `function_call` ↔ `function_call_output` pairing is satisfied
+     * for every call_id; the underlying execution happens once.
+     */
     val dispatchedKeys: scala.collection.mutable.Map[String, lightdb.id.Id[Event]] =
       scala.collection.mutable.Map.empty
 
-    /** Tool-role result content keyed by the originating ToolInvoke id.
-      * Populated as Tool-role Messages flow through `tracked.evalMap`
-      * so a subsequent duplicate dispatch can inline the original
-      * result into its own paired Tool-role Message rather than
-      * pointing the agent at a `call_id` reference it can't
-      * dereference from inside its prompt. */
+    /**
+     * Tool-role result content keyed by the originating ToolInvoke id.
+     * Populated as Tool-role Messages flow through `tracked.evalMap`
+     * so a subsequent duplicate dispatch can inline the original
+     * result into its own paired Tool-role Message rather than
+     * pointing the agent at a `call_id` reference it can't
+     * dereference from inside its prompt.
+     */
     val dispatchedResultContent: scala.collection.mutable.Map[lightdb.id.Id[Event], Vector[ResponseContent]] =
       scala.collection.mutable.Map.empty
 
-    /** #369 — count of non-essential (action) tool calls dispatched in THIS
-      * response. Once it reaches `Sigil.maxToolCallsPerResponse`, further
-      * action calls in the same completion are refused with a corrective note
-      * — a model that fired a whole discovered family when it needed the
-      * rank-1 tool. The respond family / no_response / stop never count. */
+    /**
+     * #369 — count of non-essential (action) tool calls dispatched in THIS
+     * response. Once it reaches `Sigil.maxToolCallsPerResponse`, further
+     * action calls in the same completion are refused with a corrective note
+     * — a model that fired a whole discovered family when it needed the
+     * rank-1 tool. The respond family / no_response / stop never count.
+     */
     var dispatchedActionCount: Int = 0
 
-    /** Wire `callId`s whose `ToolCallComplete` has already been
-      * processed in this provider stream. Some OpenAI-compat backends
-      * occasionally emit two complete chunks for the same call (parser
-      * quirk on chunked streams); the duplicate must not re-dispatch
-      * the tool or synthesize a phantom `ToolInvoke`. */
+    /**
+     * Wire `callId`s whose `ToolCallComplete` has already been
+     * processed in this provider stream. Some OpenAI-compat backends
+     * occasionally emit two complete chunks for the same call (parser
+     * quirk on chunked streams); the duplicate must not re-dispatch
+     * the tool or synthesize a phantom `ToolInvoke`.
+     */
     val completedCallIds: scala.collection.mutable.Set[CallId] =
       scala.collection.mutable.Set.empty
   }
@@ -432,11 +481,13 @@ object Orchestrator {
         // without "birthing" the Message), so the flag — not id presence
         // — gates Message creation.
         val (createMessageSignal, msgId) = if (state.activeMessageCreated) {
-          (None, state.activeMessageId.getOrElse {
-            val id = Event.id()
-            state.activeMessageId = Some(id)
-            id
-          })
+          (
+            None,
+            state.activeMessageId.getOrElse {
+              val id = Event.id()
+              state.activeMessageId = Some(id)
+              id
+            })
         } else {
           val id = state.activeMessageId.getOrElse(Event.id())
           state.activeMessageId = Some(id)
@@ -527,24 +578,26 @@ object Orchestrator {
         // Sigil bug #204 — emit the deferred ToolInvoke NOW with
         // parsed `input` populated, then the settle delta.
         val deferredInvoke: ToolInvoke = ToolInvoke(
-          toolName       = ToolName(active.toolName),
-          participantId  = caller,
+          toolName = ToolName(active.toolName),
+          participantId = caller,
           conversationId = convId,
-          topicId        = topicId,
-          _id            = invokeId,
-          state          = EventState.Active,
-          internal       = isInternal,
-          input          = Some(input),
-          callId         = Some(callId.value),
-          modelId        = Some(request.modelId)
-        )
-        val toolDeltaPrefix: List[Signal] = List(deferredInvoke, ToolDelta(
-          target = invokeId,
-          conversationId = convId,
+          topicId = topicId,
+          _id = invokeId,
+          state = EventState.Active,
+          internal = isInternal,
           input = Some(input),
-          state = Some(EventState.Complete),
-          internal = isInternal
-        ))
+          callId = Some(callId.value),
+          modelId = Some(request.modelId)
+        )
+        val toolDeltaPrefix: List[Signal] = List(
+          deferredInvoke,
+          ToolDelta(
+            target = invokeId,
+            conversationId = convId,
+            input = Some(input),
+            state = Some(EventState.Complete),
+            internal = isInternal
+          ))
         // Local def so `return` statements inside the streaming /
         // atomic branches (refusal challenge, repeated-query intercept)
         // return from THIS def rather than from `translate`. That
@@ -570,12 +623,12 @@ object Orchestrator {
             // tool call — atomic OR streaming — settles its invoke by
             // construction, so no wire-side orphan-heal is needed.
             val streamingSettleDelta: Signal = ToolDelta(
-              target         = invokeId,
+              target = invokeId,
               conversationId = convId,
-              state          = Some(EventState.Complete),
-              output         = Some(_root_.sigil.tool.TextToolOutput("")),
-              outcome        = Some(ToolOutcome.Success),
-              internal       = isInternal
+              state = Some(EventState.Complete),
+              output = Some(_root_.sigil.tool.TextToolOutput("")),
+              outcome = Some(ToolOutcome.Success),
+              internal = isInternal
             )
             (Some(active.toolName), input) match {
               case (Some("respond"), r: RespondInput) =>
@@ -598,17 +651,17 @@ object Orchestrator {
                     Orchestrator.normalizeForDedup(t.content) == Orchestrator.normalizeForDedup(r.content))
                 if (isInTurnRepeat) {
                   val endTurnSettle = ToolDelta(
-                    target         = invokeId,
+                    target = invokeId,
                     conversationId = convId,
-                    input          = Some(r.copy(endsTurn = true)),
-                    state          = Some(EventState.Complete),
-                    internal       = isInternal
+                    input = Some(r.copy(endsTurn = true)),
+                    state = Some(EventState.Complete),
+                    internal = isInternal
                   )
                   val suppress = MessageDelta(
-                    target             = msgId,
-                    conversationId     = convId,
+                    target = msgId,
+                    conversationId = convId,
                     contentReplacement = Some(Vector.empty),
-                    state              = Some(EventState.Complete)
+                    state = Some(EventState.Complete)
                   )
                   return Stream.emits(closeBlock ::: List[Signal](deferredInvoke, endTurnSettle, suppress, streamingSettleDelta))
                 }
@@ -625,17 +678,17 @@ object Orchestrator {
                   if (sanitized.leakedSpans.nonEmpty) {
                     val firstExcerpt = sanitized.leakedSpans.head.take(200)
                     sigil.publish(XmlToolCallLeak(
-                      conversationId     = convId,
-                      modelId            = Some(request.modelId),
-                      leakedSpanCount    = sanitized.leakedSpans.size,
+                      conversationId = convId,
+                      modelId = Some(request.modelId),
+                      leakedSpanCount = sanitized.leakedSpans.size,
                       firstLeakedExcerpt = firstExcerpt
                     )).handleError(_ => rapid.Task.unit).startUnit()
                     SyntheticDiagnostic(
-                      name    = XmlToolCallSanitizer.SyntheticInvokeName,
-                      caller  = caller,
-                      convId  = convId,
+                      name = XmlToolCallSanitizer.SyntheticInvokeName,
+                      caller = caller,
+                      convId = convId,
                       topicId = conversation.currentTopicId,
-                      reason  = XmlToolCallSanitizer.interventionDirective(firstExcerpt)
+                      reason = XmlToolCallSanitizer.interventionDirective(firstExcerpt)
                     )
                   } else Nil
                 val parsed = MarkdownContentParser.parse(sanitized.content)
@@ -659,15 +712,15 @@ object Orchestrator {
                 Stream.force(
                   for {
                     topicEvents <- sigil.resolveTopicShift(
-                      proposedLabel   = r.topicLabel,
+                      proposedLabel = r.topicLabel,
                       proposedSummary = r.topicSummary,
-                      caller          = caller,
-                      conversation    = conversation,
-                      currentTopic    = request.currentTopic,
-                      previousTopics  = request.previousTopics,
-                      modelId         = request.modelId,
-                      chain           = request.chain,
-                      userMessage     = userMessage
+                      caller = caller,
+                      conversation = conversation,
+                      currentTopic = request.currentTopic,
+                      previousTopics = request.previousTopics,
+                      modelId = request.modelId,
+                      chain = request.chain,
+                      userMessage = userMessage
                     )
                     _ <- sigil.updateConversationKeywords(convId, r.keywords)
                   } yield {
@@ -677,7 +730,8 @@ object Orchestrator {
                         StateDelta(target = tc._id, conversationId = tc.conversationId, state = EventState.Complete)
                       )
                     }
-                    Stream.emits(prelude ::: closeBlock ::: toolDeltaPrefix ::: List[Signal](settle, streamingSettleDelta) ::: interventionSignals)
+                    Stream.emits(prelude ::: closeBlock ::: toolDeltaPrefix ::: List[Signal](settle, streamingSettleDelta) :::
+                      interventionSignals)
                   }
                 )
               case _ =>
@@ -732,15 +786,15 @@ object Orchestrator {
                         "response. Call only the one tool you need for your goal, not several at once. " +
                         "Re-issue just that one."
                   val capMsg = Message(
-                    participantId  = caller,
+                    participantId = caller,
                     conversationId = convId,
-                    topicId        = topicId,
-                    role           = MessageRole.Tool,
-                    content        = Vector(ResponseContent.Text(body)),
-                    state          = EventState.Complete,
-                    disposition    = MessageDisposition.Failure(recoverable = true),
-                    visibility     = MessageVisibility.Agents,
-                    origin         = Some(invokeId)
+                    topicId = topicId,
+                    role = MessageRole.Tool,
+                    content = Vector(ResponseContent.Text(body)),
+                    state = EventState.Complete,
+                    disposition = MessageDisposition.Failure(recoverable = true),
+                    visibility = MessageVisibility.Agents,
+                    origin = Some(invokeId)
                   )
                   return Stream.emits(toolDeltaPrefix ::: List[Signal](
                     capMsg,
@@ -784,10 +838,11 @@ object Orchestrator {
                   val racedPrior = request.turnInput
                     .projectionFor(caller)
                     .recentToolInvocations
-                    .count(inv => inv.toolName.value == toolName
-                               && inv.argsHash == canonicalHash
-                               && inv.invokedAt.value >= turnStartMs
-                               && !inv.resulted)
+                    .count(inv =>
+                      inv.toolName.value == toolName
+                        && inv.argsHash == canonicalHash
+                        && inv.invokedAt.value >= turnStartMs
+                        && !inv.resulted)
                   if (racedPrior >= racedReissueLimit) {
                     // Sigil #420 — the refusal must tell the truth about the
                     // raced call, not guess. "Raced" only means the result
@@ -829,15 +884,15 @@ object Orchestrator {
                               "destroy a change that likely succeeded. Continue with other work or wait."
                         }
                         val racedMsg = Message(
-                          participantId  = caller,
+                          participantId = caller,
                           conversationId = convId,
-                          topicId        = topicId,
-                          role           = MessageRole.Tool,
-                          content        = Vector(ResponseContent.Text(body)),
-                          state          = EventState.Complete,
-                          disposition    = MessageDisposition.Failure(recoverable = true),
-                          visibility     = MessageVisibility.Agents,
-                          origin         = Some(invokeId)
+                          topicId = topicId,
+                          role = MessageRole.Tool,
+                          content = Vector(ResponseContent.Text(body)),
+                          state = EventState.Complete,
+                          disposition = MessageDisposition.Failure(recoverable = true),
+                          visibility = MessageVisibility.Agents,
+                          origin = Some(invokeId)
                         )
                         Stream.emits(toolDeltaPrefix ::: List[Signal](
                           racedMsg,
@@ -850,17 +905,18 @@ object Orchestrator {
                 val matchingPrior = request.turnInput
                   .projectionFor(caller)
                   .recentToolInvocations
-                  .filter(inv => inv.toolName.value == toolName
-                             && inv.argsHash == canonicalHash
-                             && inv.invokedAt.value >= turnStartMs
-                             // Sigil #354 — only count invocations that actually
-                             // produced a result. A prior identical call whose
-                             // result raced past the frame (settled Pending, the
-                             // agent saw only a placeholder) is not the agent
-                             // spinning; retrying to obtain the missing result is
-                             // rational and must not trip the cap → escalation →
-                             // roster-restriction spiral.
-                             && inv.resulted)
+                  .filter(inv =>
+                    inv.toolName.value == toolName
+                      && inv.argsHash == canonicalHash
+                      && inv.invokedAt.value >= turnStartMs
+                      // Sigil #354 — only count invocations that actually
+                      // produced a result. A prior identical call whose
+                      // result raced past the frame (settled Pending, the
+                      // agent saw only a placeholder) is not the agent
+                      // spinning; retrying to obtain the missing result is
+                      // rational and must not trip the cap → escalation →
+                      // roster-restriction spiral.
+                      && inv.resulted)
                 val priorIdentical = matchingPrior.size
                 if (priorIdentical >= identicalLimit - 1) {
                   val attemptedCount = priorIdentical + 1
@@ -905,15 +961,15 @@ object Orchestrator {
                       "different approach: narrow the pattern, switch to a different tool, or ask " +
                       "the user for clarification." + escalationText
                   val capMsg = Message(
-                    participantId  = caller,
+                    participantId = caller,
                     conversationId = convId,
-                    topicId        = topicId,
-                    role           = MessageRole.Tool,
-                    content        = Vector(ResponseContent.Text(body)),
-                    state          = EventState.Complete,
-                    disposition    = MessageDisposition.Failure(recoverable = true),
-                    visibility     = MessageVisibility.Agents,
-                    origin         = Some(invokeId)
+                    topicId = topicId,
+                    role = MessageRole.Tool,
+                    content = Vector(ResponseContent.Text(body)),
+                    state = EventState.Complete,
+                    disposition = MessageDisposition.Failure(recoverable = true),
+                    visibility = MessageVisibility.Agents,
+                    origin = Some(invokeId)
                   )
                   return Stream.emits(toolDeltaPrefix ::: List[Signal](
                     capMsg,
@@ -952,14 +1008,14 @@ object Orchestrator {
                   val inlinedContent: Vector[ResponseContent] =
                     state.dispatchedResultContent.getOrElse(firstInvokeId, Vector.empty)
                   val dupeMsg = Message(
-                    participantId  = caller,
+                    participantId = caller,
                     conversationId = convId,
-                    topicId        = topicId,
-                    role           = MessageRole.Tool,
-                    content        = inlinedContent,
-                    state          = EventState.Complete,
-                    visibility     = MessageVisibility.Agents,
-                    origin         = Some(invokeId)
+                    topicId = topicId,
+                    role = MessageRole.Tool,
+                    content = inlinedContent,
+                    state = EventState.Complete,
+                    visibility = MessageVisibility.Agents,
+                    origin = Some(invokeId)
                   )
                   return Stream.emits(toolDeltaPrefix ::: List[Signal](
                     dupeMsg,
@@ -1001,14 +1057,14 @@ object Orchestrator {
                 request.toolResultCacheRef.get().get(argsKey) match {
                   case Some(cached) =>
                     val cacheMsg = Message(
-                      participantId  = caller,
+                      participantId = caller,
                       conversationId = convId,
-                      topicId        = topicId,
-                      role           = MessageRole.Tool,
-                      content        = cached,
-                      state          = EventState.Complete,
-                      visibility     = MessageVisibility.Agents,
-                      origin         = Some(invokeId)
+                      topicId = topicId,
+                      role = MessageRole.Tool,
+                      content = cached,
+                      state = EventState.Complete,
+                      visibility = MessageVisibility.Agents,
+                      origin = Some(invokeId)
                     )
                     return Stream.emits(toolDeltaPrefix ::: List[Signal](
                       cacheMsg,
@@ -1054,17 +1110,17 @@ object Orchestrator {
                 Task(executeAtomic(tool, input, context, invokeId, currentMessageIdForTool, ToolName(active.toolName))).handleError { err =>
                   scribe.error(s"Atomic tool '$toolName' threw while building its dispatch", err)
                   Task.pure(Stream.emit[Signal](Message(
-                    participantId  = caller,
+                    participantId = caller,
                     conversationId = convId,
-                    topicId        = topicId,
-                    role           = MessageRole.Tool,
-                    content        = Vector(ResponseContent.Text(
+                    topicId = topicId,
+                    role = MessageRole.Tool,
+                    content = Vector(ResponseContent.Text(
                       s"Tool '$toolName' execution failed: ${err.getClass.getSimpleName}: ${err.getMessage}"
                     )),
-                    state          = EventState.Complete,
-                    disposition    = MessageDisposition.Failure(recoverable = true),
-                    visibility     = MessageVisibility.Agents,
-                    origin         = Some(invokeId)
+                    state = EventState.Complete,
+                    disposition = MessageDisposition.Failure(recoverable = true),
+                    visibility = MessageVisibility.Agents,
+                    origin = Some(invokeId)
                   )))
                 }
               )
@@ -1101,94 +1157,96 @@ object Orchestrator {
               val finalStream: Stream[Signal] = Stream.force(
                 sigil.broadcastEager(deferredInvoke).flatMap { _ =>
                   executed.toList.handleError { err =>
-                  scribe.error(
-                    s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) stream " +
-                      s"errored mid-dispatch (${err.getClass.getSimpleName}: ${err.getMessage}). " +
-                      "Pairing the invoke with a Failure result.",
-                    err
-                  )
-                  Task.pure(List[Signal](Message(
-                    participantId  = caller,
-                    conversationId = convId,
-                    topicId        = topicId,
-                    role           = MessageRole.Tool,
-                    content        = Vector(ResponseContent.Text(
-                      s"Tool `${active.toolName}` failed during execution: " +
-                        s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("(no message)")}."
-                    )),
-                    state          = EventState.Complete,
-                    disposition    = MessageDisposition.Failure(recoverable = true),
-                    visibility     = MessageVisibility.Agents,
-                    origin         = Some(invokeId)
-                  )))
-                }.map { collected =>
-                  collected.foreach {
-                    // Sigil #265 — the settling [[ToolDelta]] carries the
-                    // typed output + failure summary on the invoke itself.
-                    // Render it for the duplicate-call inlining cache so
-                    // repeated calls inline the prior result without
-                    // re-running the tool.
-                    case td: ToolDelta if td.target == invokeId =>
-                      val rendered: String = td.outcome match {
-                        case Some(_root_.sigil.event.ToolOutcome.Failure(reason, _)) =>
-                          td.summary.getOrElse(reason)
-                        case _ =>
-                          td.summary.orElse {
-                            td.output.flatMap { o =>
-                              try Some(fabric.io.JsonFormatter.Default(summon[fabric.rw.RW[_root_.sigil.tool.ToolOutput]].read(o)))
-                              catch { case _: Throwable => None }
-                            }
-                          }.getOrElse("")
-                      }
-                      if (rendered.nonEmpty) {
-                        val settledContent = Vector(ResponseContent.Text(rendered))
-                        state.dispatchedResultContent(invokeId) = settledContent
-                        // Sigil #411 — cache a READ tool's settled result under the
-                        // turn cache so a later iteration's identical call is served
-                        // from here instead of re-executing.
-                        if (tool.readOnly) request.toolResultCacheRef.updateAndGet(_ + (argsKey -> settledContent))
-                      }
-                    case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) =>
-                      state.dispatchedResultContent(invokeId) = m.content
-                      if (tool.readOnly) request.toolResultCacheRef.updateAndGet(_ + (argsKey -> m.content)) // Sigil #411
-                    case _ =>
-                  }
-                  // `respond` publishes its user-visible Message via
-                  // `ctx.emit`; the framework drains those events into
-                  // `executed`, so we recover the id from `collected`.
-                  collected.reverseIterator.collectFirst {
-                    case m: Message if m.role != MessageRole.Tool => m._id
-                  }.foreach(id => state.lastUserVisibleMessageId = Some(id))
-                  // Sigil #354 — guarantee the invoke settles with an OUTCOME.
-                  // `toolDeltaPrefix` already flipped it to `Complete` (the input
-                  // settle), so if the tool's execution produced no settling
-                  // event — an empty / interrupted result stream — the invoke
-                  // dangles Complete-but-Pending and the agent reads the
-                  // ambiguous "raced past, retry" placeholder (the materialized
-                  // grep frame-race). Synthesize a recoverable Failure so it
-                  // settles definitively with an actionable message instead.
-                  // A DETACH settle counts: the invoke deliberately stays
-                  // outcome-Pending while the promoted background task
-                  // runs; the completion watcher owns the real settle.
-                  val outcomeSettled = collected.exists {
-                    case td: ToolDelta if td.target == invokeId =>
-                      td.outcome.isDefined || td.detached.contains(true)
-                    case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) => true
-                    case _                                                  => false
-                  }
-                  val settleGuard: List[Signal] =
-                    if (outcomeSettled) Nil
-                    else List[Signal](ToolDelta(
-                      target         = invokeId,
+                    scribe.error(
+                      s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) stream " +
+                        s"errored mid-dispatch (${err.getClass.getSimpleName}: ${err.getMessage}). " +
+                        "Pairing the invoke with a Failure result.",
+                      err
+                    )
+                    Task.pure(List[Signal](Message(
+                      participantId = caller,
                       conversationId = convId,
-                      output         = Some(_root_.sigil.tool.TextToolOutput("")),
-                      outcome        = Some(_root_.sigil.event.ToolOutcome.Failure(
-                        s"Tool `${active.toolName}` returned no result (its execution produced no output — likely interrupted mid-run). Re-issue it if you still need the result.",
-                        recoverable = true)),
-                      state          = Some(EventState.Complete),
-                      internal       = isInternal
-                    ))
-                  Stream.emits(toolDeltaPrefix ::: collected ::: settleGuard)
+                      topicId = topicId,
+                      role = MessageRole.Tool,
+                      content = Vector(ResponseContent.Text(
+                        s"Tool `${active.toolName}` failed during execution: " +
+                          s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("(no message)")}."
+                      )),
+                      state = EventState.Complete,
+                      disposition = MessageDisposition.Failure(recoverable = true),
+                      visibility = MessageVisibility.Agents,
+                      origin = Some(invokeId)
+                    )))
+                  }.map { collected =>
+                    collected.foreach {
+                      // Sigil #265 — the settling [[ToolDelta]] carries the
+                      // typed output + failure summary on the invoke itself.
+                      // Render it for the duplicate-call inlining cache so
+                      // repeated calls inline the prior result without
+                      // re-running the tool.
+                      case td: ToolDelta if td.target == invokeId =>
+                        val rendered: String = td.outcome match {
+                          case Some(_root_.sigil.event.ToolOutcome.Failure(reason, _)) =>
+                            td.summary.getOrElse(reason)
+                          case _ =>
+                            td.summary.orElse {
+                              td.output.flatMap { o =>
+                                try Some(fabric.io.JsonFormatter.Default(summon[fabric.rw.RW[_root_.sigil.tool.ToolOutput]].read(o)))
+                                catch { case _: Throwable => None }
+                              }
+                            }.getOrElse("")
+                        }
+                        if (rendered.nonEmpty) {
+                          val settledContent = Vector(ResponseContent.Text(rendered))
+                          state.dispatchedResultContent(invokeId) = settledContent
+                          // Sigil #411 — cache a READ tool's settled result under the
+                          // turn cache so a later iteration's identical call is served
+                          // from here instead of re-executing.
+                          if (tool.readOnly) request.toolResultCacheRef.updateAndGet(_ + (argsKey -> settledContent))
+                        }
+                      case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) =>
+                        state.dispatchedResultContent(invokeId) = m.content
+                        if (tool.readOnly) request.toolResultCacheRef.updateAndGet(_ + (argsKey -> m.content)) // Sigil #411
+                      case _ =>
+                    }
+                    // `respond` publishes its user-visible Message via
+                    // `ctx.emit`; the framework drains those events into
+                    // `executed`, so we recover the id from `collected`.
+                    collected.reverseIterator.collectFirst {
+                      case m: Message if m.role != MessageRole.Tool => m._id
+                    }.foreach(id => state.lastUserVisibleMessageId = Some(id))
+                    // Sigil #354 — guarantee the invoke settles with an OUTCOME.
+                    // `toolDeltaPrefix` already flipped it to `Complete` (the input
+                    // settle), so if the tool's execution produced no settling
+                    // event — an empty / interrupted result stream — the invoke
+                    // dangles Complete-but-Pending and the agent reads the
+                    // ambiguous "raced past, retry" placeholder (the materialized
+                    // grep frame-race). Synthesize a recoverable Failure so it
+                    // settles definitively with an actionable message instead.
+                    // A DETACH settle counts: the invoke deliberately stays
+                    // outcome-Pending while the promoted background task
+                    // runs; the completion watcher owns the real settle.
+                    val outcomeSettled = collected.exists {
+                      case td: ToolDelta if td.target == invokeId =>
+                        td.outcome.isDefined || td.detached.contains(true)
+                      case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) => true
+                      case _ => false
+                    }
+                    val settleGuard: List[Signal] =
+                      if (outcomeSettled) Nil
+                      else List[Signal](ToolDelta(
+                        target = invokeId,
+                        conversationId = convId,
+                        output = Some(_root_.sigil.tool.TextToolOutput("")),
+                        outcome = Some(_root_.sigil.event.ToolOutcome.Failure(
+                          s"Tool `${active.toolName}` returned no result (its execution produced no output — likely interrupted mid-run). Re-issue it if you still need the result.",
+                          recoverable =
+                            true
+                        )),
+                        state = Some(EventState.Complete),
+                        internal = isInternal
+                      ))
+                    Stream.emits(toolDeltaPrefix ::: collected ::: settleGuard)
                   }
                 }
               )
@@ -1205,11 +1263,17 @@ object Orchestrator {
                   // content.
                   r.disposition match {
                     case _root_.sigil.tool.model.ResponseDisposition.Failure =>
-                      // Explicit failure — agent has decided, no
-                      // challenge.
+                    // Explicit failure — agent has decided, no
+                    // challenge.
                     case _root_.sigil.tool.model.ResponseDisposition.Success =>
                       if (r.content.nonEmpty) {
-                        return Stream.force(refusalChallengeOutcome(sigil, findCapabilityAvailable, r.content, convId, caller, topicId).map {
+                        return Stream.force(refusalChallengeOutcome(
+                          sigil,
+                          findCapabilityAvailable,
+                          r.content,
+                          convId,
+                          caller,
+                          topicId).map {
                           case Some(challengeSignals) =>
                             Stream.emits(toolDeltaPrefix ::: challengeSignals)
                           case None =>
@@ -1247,12 +1311,12 @@ object Orchestrator {
                         "Suppressed -- this repeats a `find_capability` query you already ran this turn. " +
                           "The ranker is deterministic; see the guidance that follows."
                       val settle = ToolDelta(
-                        target         = invokeId,
+                        target = invokeId,
                         conversationId = convId,
-                        output         = Some(_root_.sigil.tool.TextToolOutput(note)),
-                        outcome        = Some(ToolOutcome.Failure(note, recoverable = true)),
-                        state          = Some(EventState.Complete),
-                        internal       = isInternal
+                        output = Some(_root_.sigil.tool.TextToolOutput(note)),
+                        outcome = Some(ToolOutcome.Failure(note, recoverable = true)),
+                        state = Some(EventState.Complete),
+                        internal = isInternal
                       )
                       Stream.emits(toolDeltaPrefix ::: List[Signal](settle) ::: interceptSignals)
                     case None =>
@@ -1332,8 +1396,8 @@ object Orchestrator {
             id
         }
         Stream.emit(ThinkingChunk(target = msgId, conversationId = convId, delta = text))
-      case ProviderEvent.ServerToolStart(_, _, _)         => Stream.empty
-      case ProviderEvent.ServerToolComplete(_, _)         => Stream.empty
+      case ProviderEvent.ServerToolStart(_, _, _) => Stream.empty
+      case ProviderEvent.ServerToolComplete(_, _) => Stream.empty
 
       case ProviderEvent.ResponseStateCaptured(maybeId, messageCount) =>
         // Persist the provider's server-side state handle on the
@@ -1344,7 +1408,7 @@ object Orchestrator {
         // typically `previous_response_not_found` on an expired id.
         val persist: Task[Unit] = maybeId match {
           case Some(id) => sigil.setProviderResponseState(convId, caller, id, messageCount)
-          case None     => sigil.clearProviderResponseState(convId, caller)
+          case None => sigil.clearProviderResponseState(convId, caller)
         }
         Stream.force(persist.handleError(_ => Task.unit).map(_ => Stream.empty[Signal]))
 
@@ -1359,13 +1423,13 @@ object Orchestrator {
         // `ContextFrame.Reasoning` out of the rendered messages and
         // emits it back onto the wire in its original position.
         Stream.emits(List[Signal](Reasoning(
-          providerItemId   = providerItemId,
-          summary          = summary,
+          providerItemId = providerItemId,
+          summary = summary,
           encryptedContent = encryptedContent,
-          participantId    = caller,
-          conversationId   = convId,
-          topicId          = topicId,
-          visibility       = MessageVisibility.Participants(Set(caller))
+          participantId = caller,
+          conversationId = convId,
+          topicId = topicId,
+          visibility = MessageVisibility.Participants(Set(caller))
         )))
 
       case ProviderEvent.ImageGenerationPartial(callId, image) =>
@@ -1430,7 +1494,7 @@ object Orchestrator {
           }
         )
 
-      case ProviderEvent.Done(stopReason)                 =>
+      case ProviderEvent.Done(stopReason) =>
         // Settle any in-flight tool call before terminating. If the
         // provider stream ends between `ToolCallStart` and
         // `ToolCallComplete` (token-budget cutoff, network drop, mid-args
@@ -1472,8 +1536,12 @@ object Orchestrator {
               case Some(hit) =>
                 scribe.warn(s"orchestrator: degenerate generation detected (${hit.occurrences}/${hit.totalSentences} sentences " +
                   s"= ${math.round(hit.share * 100)}% repetition) in conversation $convId — emitting Failure diagnostic")
-                SyntheticDiagnostic("_degenerate_generation", caller, convId, topicId,
-                  reason      = hit.renderDiagnostic(text.length),
+                SyntheticDiagnostic(
+                  "_degenerate_generation",
+                  caller,
+                  convId,
+                  topicId,
+                  reason = hit.renderDiagnostic(text.length),
                   disposition = MessageDisposition.Failure(recoverable = true))
               case None => Nil
             }
@@ -1531,8 +1599,12 @@ object Orchestrator {
                 "(`respond`, `respond_options`, `no_response`) appropriate to your situation. " +
                 "When a tool result IS the " +
                 s"user-facing answer, call `respond` with that content. Dropped text was: $snippet"
-            SyntheticDiagnostic("_plain_text_reply", caller, convId, topicId,
-              reason      = reason,
+            SyntheticDiagnostic(
+              "_plain_text_reply",
+              caller,
+              convId,
+              topicId,
+              reason = reason,
               disposition = MessageDisposition.Failure(recoverable = true))
           } else Nil
         // A naked-text terminal (`end_turn` → StopReason.Complete with
@@ -1588,9 +1660,12 @@ object Orchestrator {
             val text = state.currentBuffer.toString
             def settle(terminal: Boolean): List[Signal] =
               state.activeMessageId.toList.map(id =>
-                MessageDelta(target = id, conversationId = convId,
+                MessageDelta(
+                  target = id,
+                  conversationId = convId,
                   contentReplacement = Some(Vector(ResponseContent.Text(text))),
-                  state = Some(EventState.Complete), terminalReply = terminal))
+                  state = Some(EventState.Complete),
+                  terminalReply = terminal))
             if (request.forceResponseSynthesis || contextPressured) Task.pure(settle(terminal = true))
             else turnDecisionChallengeCount(sigil, convId).map { count =>
               if (count >= sigil.nakedTextChallengeLimit) settle(terminal = true)
@@ -1612,9 +1687,15 @@ object Orchestrator {
                 _id = id,
                 state = EventState.Active
               )
-              List(msg, MessageDelta(target = id, conversationId = convId,
-                contentReplacement = Some(Vector(ResponseContent.Text(text))),
-                state = Some(EventState.Complete), terminalReply = true))
+              List(
+                msg,
+                MessageDelta(
+                  target = id,
+                  conversationId = convId,
+                  contentReplacement = Some(Vector(ResponseContent.Text(text))),
+                  state = Some(EventState.Complete),
+                  terminalReply = true)
+              )
             }
             if (request.forceResponseSynthesis || contextPressured) Task.pure(mintTerminal)
             else turnDecisionChallengeCount(sigil, convId).map { count =>
@@ -1624,7 +1705,7 @@ object Orchestrator {
           } else Task.pure(Nil)
         Stream.force(nakedTextOutcome.map(naked =>
           Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic ++ naked)))
-      case ProviderEvent.Error(msg)                       =>
+      case ProviderEvent.Error(msg) =>
         // Bug #50 — surface the provider/validator failure as a
         // Tool-role Message so the agent's next iteration sees a
         // concrete error and can retry with corrected args. Without
@@ -1687,12 +1768,12 @@ object Orchestrator {
         // escalation path through `ProviderStrategy`.
         val reason = s"Provider error: $safeMsg"
         val errorResult: Signal = ToolDelta(
-          target         = originId,
+          target = originId,
           conversationId = convId,
-          state          = Some(EventState.Complete),
-          summary        = Some(reason),
-          outcome        = Some(ToolOutcome.Failure(reason, recoverable = true)),
-          error          = Some(reason)
+          state = Some(EventState.Complete),
+          summary = Some(reason),
+          outcome = Some(ToolOutcome.Failure(reason, recoverable = true)),
+          error = Some(reason)
         )
         // Sigil #273 — pair the failure with a Tool-role Message so
         // `TriggerFilter` (`role == MessageRole.Tool` → re-fire) wakes the
@@ -1705,25 +1786,27 @@ object Orchestrator {
         // (or chooses a different tool / `respond`s), and the runaway only
         // fires for its real signal: genuinely zero `tool_use` emitted.
         val errorMessage: Signal = Message(
-          participantId  = caller,
+          participantId = caller,
           conversationId = convId,
-          topicId        = topicId,
-          role           = MessageRole.Tool,
-          content        = Vector(ResponseContent.Text(reason)),
-          state          = EventState.Complete,
-          disposition    = MessageDisposition.Failure(recoverable = true),
-          visibility     = MessageVisibility.Agents,
-          origin         = Some(originId)
+          topicId = topicId,
+          role = MessageRole.Tool,
+          content = Vector(ResponseContent.Text(reason)),
+          state = EventState.Complete,
+          disposition = MessageDisposition.Failure(recoverable = true),
+          visibility = MessageVisibility.Agents,
+          origin = Some(originId)
         )
         Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals ++ List(errorResult, errorMessage))
     }
   }
 
-  /** Maintain `state.openEvents` as signals stream past — the
-    * automatic registration that lets the turn-end settle guarantee
-    * cover every kind of Active Message without per-kind wiring. An
-    * Active Message registers; a settling StateDelta / MessageDelta,
-    * or a Message emitted already Complete, deregisters. */
+  /**
+   * Maintain `state.openEvents` as signals stream past — the
+   * automatic registration that lets the turn-end settle guarantee
+   * cover every kind of Active Message without per-kind wiring. An
+   * Active Message registers; a settling StateDelta / MessageDelta,
+   * or a Message emitted already Complete, deregisters.
+   */
   private def trackOpenEvent(state: State, signal: Signal): Unit = signal match {
     case m: Message =>
       if (m.state == EventState.Active) state.openEvents.add(m._id)
@@ -1735,16 +1818,18 @@ object Orchestrator {
     case _ => ()
   }
 
-  /** Generic turn-end settle for every Message still registered in
-    * `state.openEvents` — the universal backstop guaranteeing no
-    * Active Message outlives its turn, whatever kind it is (image
-    * messages, and any future kind, are covered with no new code).
-    * Runs from the termination-guarantee block, which fires on every
-    * exit path — clean Done, error, mid-stream abort, cancellation.
-    * Settles with a Failure disposition when the turn ended in error,
-    * else to Complete. The streaming Message is removed from the
-    * registry by `reconcileInflight` before this runs — it gets the
-    * richer `settleOrphanMessage` handling. Clears the registry. */
+  /**
+   * Generic turn-end settle for every Message still registered in
+   * `state.openEvents` — the universal backstop guaranteeing no
+   * Active Message outlives its turn, whatever kind it is (image
+   * messages, and any future kind, are covered with no new code).
+   * Runs from the termination-guarantee block, which fires on every
+   * exit path — clean Done, error, mid-stream abort, cancellation.
+   * Settles with a Failure disposition when the turn ended in error,
+   * else to Complete. The streaming Message is removed from the
+   * registry by `reconcileInflight` before this runs — it gets the
+   * richer `settleOrphanMessage` handling. Clears the registry.
+   */
   private def settleOpenEvents(state: State, convId: Id[Conversation], failed: Boolean): List[Signal] = {
     val settles: List[Signal] = state.openEvents.toList.map { id =>
       if (failed)
@@ -1761,14 +1846,16 @@ object Orchestrator {
     settles
   }
 
-  /** Settle every in-flight `ToolInvoke` and pair each with a durable
-    * Tool-role failure Message. The pairing keeps the conversation's
-    * frame trail well-formed; without it, subsequent turns'
-    * `renderInput` finds dangling ToolInvokes and falls into its
-    * defensive synthesis path. `reasonFor` lets the caller customize
-    * the failure text per orphan (e.g. the MaxTokens-truncation path
-    * supplies a more actionable diagnosis); the default is a brief
-    * generic phrasing. */
+  /**
+   * Settle every in-flight `ToolInvoke` and pair each with a durable
+   * Tool-role failure Message. The pairing keeps the conversation's
+   * frame trail well-formed; without it, subsequent turns'
+   * `renderInput` finds dangling ToolInvokes and falls into its
+   * defensive synthesis path. `reasonFor` lets the caller customize
+   * the failure text per orphan (e.g. the MaxTokens-truncation path
+   * supplies a more actionable diagnosis); the default is a brief
+   * generic phrasing.
+   */
   private def settleOrphanToolInvoke(state: State,
                                      convId: lightdb.id.Id[Conversation],
                                      caller: ParticipantId,
@@ -1789,13 +1876,13 @@ object Orchestrator {
       // would silently no-op against a non-existent event, and the
       // pairedFailure's `origin` would dangle.
       val synthInvoke: Signal = ToolInvoke(
-        toolName       = ToolName(active.toolName),
-        participantId  = caller,
+        toolName = ToolName(active.toolName),
+        participantId = caller,
         conversationId = convId,
-        topicId        = topicId,
-        _id            = active.invokeId,
-        state          = EventState.Active,
-        internal       = isInternal
+        topicId = topicId,
+        _id = active.invokeId,
+        state = EventState.Active,
+        internal = isInternal
       )
       // Sigil #265 — the orphan settle is one [[ToolDelta]] folding
       // input + state = Complete + outcome = Failure(reason, recoverable)
@@ -1807,13 +1894,13 @@ object Orchestrator {
       // reserved for genuinely-mid-flight calls.
       val reason = reasonFor(active)
       val settleDelta: Signal = ToolDelta(
-        target         = active.invokeId,
+        target = active.invokeId,
         conversationId = convId,
-        input          = None,
-        state          = Some(EventState.Complete),
-        summary        = Some(reason),
-        outcome        = Some(ToolOutcome.Failure(reason, recoverable = recoverable)),
-        error          = error
+        input = None,
+        state = Some(EventState.Complete),
+        summary = Some(reason),
+        outcome = Some(ToolOutcome.Failure(reason, recoverable = recoverable)),
+        error = error
       )
       List(synthInvoke, settleDelta)
     }
@@ -1862,41 +1949,42 @@ object Orchestrator {
           if (routedToAgent) Vector.empty[ResponseContent]
           else Vector(ResponseContent.Text(s"Model output failed to produce a valid reply: $reason"))
         val delta: Signal = MessageDelta(
-          target             = msgId,
-          conversationId     = convId,
+          target = msgId,
+          conversationId = convId,
           contentReplacement = Some(replacement),
-          state              = Some(EventState.Complete),
-          disposition        = Some(sigil.event.MessageDisposition.Failure(recoverable = true))
+          state = Some(EventState.Complete),
+          disposition = Some(sigil.event.MessageDisposition.Failure(recoverable = true))
         )
         List(delta)
     }
 
-  /** Bug #126 — decide whether an atomic `respond` should be
-    * suppressed and replaced with a refusal-challenge diagnostic.
-    *
-    * Returns:
-    *   - `Some(signals)` when the content reads as a refusal AND
-    *     the agent didn't consult `find_capability` since the last
-    *     user-authored Message AND we haven't already challenged
-    *     this user turn. The signals are a synthetic
-    *     `_refusal_challenge` ToolInvoke + a paired Tool-role
-    *     `Failure` Message the agent reads on its next iteration.
-    *   - `None` when the content isn't a refusal, when the agent
-    *     DID call `find_capability` (an informed refusal is valid),
-    *     or when a prior `_refusal_challenge` is already on the
-    *     tail (loop-safety — challenge once, then step aside).
-    *
-    * Apps tune the refusal-detection itself via
-    * [[sigil.Sigil.refusalDetector]] — e.g. apps where refusal is
-    * a legitimate outcome plug in [[RefusalDetector.Never]] to
-    * disable the intercept entirely.
-    */
+  /**
+   * Bug #126 — decide whether an atomic `respond` should be
+   * suppressed and replaced with a refusal-challenge diagnostic.
+   *
+   * Returns:
+   *   - `Some(signals)` when the content reads as a refusal AND
+   *     the agent didn't consult `find_capability` since the last
+   *     user-authored Message AND we haven't already challenged
+   *     this user turn. The signals are a synthetic
+   *     `_refusal_challenge` ToolInvoke + a paired Tool-role
+   *     `Failure` Message the agent reads on its next iteration.
+   *   - `None` when the content isn't a refusal, when the agent
+   *     DID call `find_capability` (an informed refusal is valid),
+   *     or when a prior `_refusal_challenge` is already on the
+   *     tail (loop-safety — challenge once, then step aside).
+   *
+   * Apps tune the refusal-detection itself via
+   * [[sigil.Sigil.refusalDetector]] — e.g. apps where refusal is
+   * a legitimate outcome plug in [[RefusalDetector.Never]] to
+   * disable the intercept entirely.
+   */
   private def refusalChallengeOutcome(sigil: Sigil,
                                       findCapabilityAvailable: Boolean,
                                       content: String,
                                       convId: lightdb.id.Id[Conversation],
                                       caller: ParticipantId,
-                                      topicId: lightdb.id.Id[Topic]): Task[Option[List[Signal]]] = {
+                                      topicId: lightdb.id.Id[Topic]): Task[Option[List[Signal]]] =
     // Sigil #397 — the challenge's whole corrective is "call `find_capability`
     // before refusing". With discovery suppressed (ToolPolicy.ActiveOnly/None/
     // Exclusive) there is no such tool, so an informed refusal is the only
@@ -1912,30 +2000,31 @@ object Orchestrator {
       // intent to defend against.
       val lastUserIdx = convEvents.lastIndexWhere {
         case m: Message => !m.participantId.isInstanceOf[_root_.sigil.participant.AgentParticipantId]
-        case _          => false
+        case _ => false
       }
       if (lastUserIdx < 0) None
       else {
         val tail = convEvents.drop(lastUserIdx + 1)
         val discoveryAttempted = tail.exists {
           case ti: ToolInvoke if ti.toolName.value == "find_capability" => true
-          case _                                                        => false
+          case _ => false
         }
         val alreadyChallenged = tail.exists {
           case ti: ToolInvoke if ti.toolName.value == "_refusal_challenge" => true
-          case _                                                           => false
+          case _ => false
         }
         if (discoveryAttempted || alreadyChallenged) None
         else Some(buildRefusalChallengeSignals(caller, convId, topicId))
       }
     }
-  }
 
-  /** Construct the (synthetic-invoke, Failure-message) pair the
-    * orchestrator emits when [[refusalChallengeOutcome]] fires. The
-    * invoke's `_refusal_challenge` name doubles as the marker
-    * `refusalChallengeOutcome` walks for on subsequent iterations
-    * to enforce the once-per-user-turn limit. */
+  /**
+   * Construct the (synthetic-invoke, Failure-message) pair the
+   * orchestrator emits when [[refusalChallengeOutcome]] fires. The
+   * invoke's `_refusal_challenge` name doubles as the marker
+   * `refusalChallengeOutcome` walks for on subsequent iterations
+   * to enforce the once-per-user-turn limit.
+   */
   private def buildRefusalChallengeSignals(caller: ParticipantId,
                                            convId: lightdb.id.Id[Conversation],
                                            topicId: lightdb.id.Id[Topic]): List[Signal] = {
@@ -1946,19 +2035,25 @@ object Orchestrator {
         "describing what the user asked, review the matches, then decide whether to refuse based on " +
         "what discovery actually returns. If no relevant capability surfaces, refuse with the " +
         "specifics of what you searched and what wasn't there."
-    SyntheticDiagnostic("_refusal_challenge", caller, convId, topicId,
-      reason      = reason,
+    SyntheticDiagnostic(
+      "_refusal_challenge",
+      caller,
+      convId,
+      topicId,
+      reason = reason,
       disposition = MessageDisposition.Failure(recoverable = true))
   }
 
-  /** Sigil #420 — resolve the latest SETTLED invoke of
-    * `(toolName, argsHash)` from this turn's durable events, returning
-    * its outcome plus the rendered result content (the same rendering
-    * the invoke's frame carries — for an overflowed result that is its
-    * own head + real-file-path summary). `None` when no matching
-    * invoke has settled yet — the call is genuinely still in flight.
-    * Best-effort: a lookup failure degrades to the still-finishing
-    * wording rather than crashing the dispatch. */
+  /**
+   * Sigil #420 — resolve the latest SETTLED invoke of
+   * `(toolName, argsHash)` from this turn's durable events, returning
+   * its outcome plus the rendered result content (the same rendering
+   * the invoke's frame carries — for an overflowed result that is its
+   * own head + real-file-path summary). `None` when no matching
+   * invoke has settled yet — the call is genuinely still in flight.
+   * Best-effort: a lookup failure degrades to the still-finishing
+   * wording rather than crashing the dispatch.
+   */
   private def racedResultLookup(sigil: Sigil,
                                 convId: lightdb.id.Id[Conversation],
                                 toolName: String,
@@ -1968,12 +2063,12 @@ object Orchestrator {
       events.iterator
         .collect {
           case ti: ToolInvoke
-            if ti.conversationId == convId
-              && ti.toolName.value == toolName
-              && ti.timestamp.value >= turnStartMs
-              && ti.state == _root_.sigil.signal.EventState.Complete
-              && ti.outcome != ToolOutcome.Pending
-              && ti.input.exists(i => _root_.sigil.tool.ToolInputCanonicalizer.argsHash(i) == argsHash) =>
+              if ti.conversationId == convId
+                && ti.toolName.value == toolName
+                && ti.timestamp.value >= turnStartMs
+                && ti.state == _root_.sigil.signal.EventState.Complete
+                && ti.outcome != ToolOutcome.Pending
+                && ti.input.exists(i => _root_.sigil.tool.ToolInputCanonicalizer.argsHash(i) == argsHash) =>
             ti
         }
         .toList
@@ -1985,13 +2080,15 @@ object Orchestrator {
         }
     }.handleError(_ => Task.pure(None))
 
-  /** How many `_turn_decision_required` challenges have fired since
-    * the last user-authored Message — the per-user-turn budget input
-    * for the naked-text decision challenge (bounded by
-    * [[Sigil.nakedTextChallengeLimit]]). A conversation with no user
-    * message yet (greeting turns, agent-only spawns) counts over the
-    * whole event log, which bounds the challenges until a user
-    * message arrives. */
+  /**
+   * How many `_turn_decision_required` challenges have fired since
+   * the last user-authored Message — the per-user-turn budget input
+   * for the naked-text decision challenge (bounded by
+   * [[Sigil.nakedTextChallengeLimit]]). A conversation with no user
+   * message yet (greeting turns, agent-only spawns) counts over the
+   * whole event log, which bounds the challenges until a user
+   * message arrives.
+   */
   private def turnDecisionChallengeCount(sigil: Sigil,
                                          convId: lightdb.id.Id[Conversation]): Task[Int] =
     sigil.withDB(_.conversationEvents(convId)).map { allEvents =>
@@ -2000,24 +2097,26 @@ object Orchestrator {
         .sortBy(_.timestamp.value)
       val lastUserIdx = convEvents.lastIndexWhere {
         case m: Message => !m.participantId.isInstanceOf[_root_.sigil.participant.AgentParticipantId]
-        case _          => false
+        case _ => false
       }
       val tail = if (lastUserIdx < 0) convEvents else convEvents.drop(lastUserIdx + 1)
       tail.count {
         case ti: ToolInvoke => ti.toolName.value == TurnDecisionToolName
-        case _              => false
+        case _ => false
       }
     }
 
-  /** Construct the (synthetic-invoke, Failure-message) pair emitted
-    * when a naked-text terminal is intercepted for an explicit turn
-    * decision. The invoke's `_turn_decision_required` name doubles as
-    * the marker [[turnDecisionAlreadyChallenged]] walks for. When the
-    * prose was buffered-and-dropped (chat-completions wire),
-    * `droppedText` carries it so the model can re-wrap the content in
-    * `respond`; when the prose already streamed to the user as a
-    * Message, the wording steers toward `no_response` (nothing more to
-    * deliver) or further work instead of a duplicate reply. */
+  /**
+   * Construct the (synthetic-invoke, Failure-message) pair emitted
+   * when a naked-text terminal is intercepted for an explicit turn
+   * decision. The invoke's `_turn_decision_required` name doubles as
+   * the marker [[turnDecisionAlreadyChallenged]] walks for. When the
+   * prose was buffered-and-dropped (chat-completions wire),
+   * `droppedText` carries it so the model can re-wrap the content in
+   * `respond`; when the prose already streamed to the user as a
+   * Message, the wording steers toward `no_response` (nothing more to
+   * deliver) or further work instead of a duplicate reply.
+   */
   private def buildTurnDecisionSignals(caller: ParticipantId,
                                        convId: lightdb.id.Id[Conversation],
                                        topicId: lightdb.id.Id[Topic],
@@ -2046,28 +2145,34 @@ object Orchestrator {
           "the turn. If your reply announced further steps, execute them now with tool calls instead of " +
           "stopping. If you still owe the user a final answer, call `respond` with `endsTurn = true`."
     }
-    SyntheticDiagnostic(TurnDecisionToolName, caller, convId, topicId,
-      reason      = reason,
+    SyntheticDiagnostic(
+      TurnDecisionToolName,
+      caller,
+      convId,
+      topicId,
+      reason = reason,
       disposition = MessageDisposition.Failure(recoverable = true))
   }
 
-  /** Bug #159 — decide whether a `find_capability` dispatch should be
-    * suppressed because the agent already issued the same query
-    * earlier in this user turn.
-    *
-    * Returns:
-    *   - `Some(signals)` when a prior `find_capability` invoke since
-    *     the last user-authored Message carries identical normalized
-    *     keywords AND no `_repeated_query_intercept` marker is
-    *     already on the tail. The signals are a synthetic
-    *     `_repeated_query_intercept` ToolInvoke + a paired Tool-role
-    *     `Failure` that tells the agent to refine the query or pick
-    *     a different result from the previous hits.
-    *   - `None` when no duplicate is on the tail, when the prior
-    *     query had different keywords, when no prior `find_capability`
-    *     exists this turn, or when a prior intercept is already
-    *     present (once-per-turn limit — same shape as the refusal
-    *     challenge's loop safety). */
+  /**
+   * Bug #159 — decide whether a `find_capability` dispatch should be
+   * suppressed because the agent already issued the same query
+   * earlier in this user turn.
+   *
+   * Returns:
+   *   - `Some(signals)` when a prior `find_capability` invoke since
+   *     the last user-authored Message carries identical normalized
+   *     keywords AND no `_repeated_query_intercept` marker is
+   *     already on the tail. The signals are a synthetic
+   *     `_repeated_query_intercept` ToolInvoke + a paired Tool-role
+   *     `Failure` that tells the agent to refine the query or pick
+   *     a different result from the previous hits.
+   *   - `None` when no duplicate is on the tail, when the prior
+   *     query had different keywords, when no prior `find_capability`
+   *     exists this turn, or when a prior intercept is already
+   *     present (once-per-turn limit — same shape as the refusal
+   *     challenge's loop safety).
+   */
   private def repeatedQueryOutcome(sigil: Sigil,
                                    keywords: String,
                                    convId: lightdb.id.Id[Conversation],
@@ -2080,14 +2185,14 @@ object Orchestrator {
         .sortBy(_.timestamp.value)
       val lastUserIdx = convEvents.lastIndexWhere {
         case m: Message => !m.participantId.isInstanceOf[_root_.sigil.participant.AgentParticipantId]
-        case _          => false
+        case _ => false
       }
       if (lastUserIdx < 0) None
       else {
         val tail = convEvents.drop(lastUserIdx + 1)
         val alreadyIntercepted = tail.exists {
           case ti: ToolInvoke if ti.toolName.value == "_repeated_query_intercept" => true
-          case _                                                                  => false
+          case _ => false
         }
         if (alreadyIntercepted) None
         else {
@@ -2107,11 +2212,13 @@ object Orchestrator {
     }
   }
 
-  /** Construct the (synthetic-invoke, Failure-message) pair the
-    * orchestrator emits when [[repeatedQueryOutcome]] fires. The
-    * `_repeated_query_intercept` invoke name doubles as the marker
-    * the detector walks for to enforce once-per-user-turn loop
-    * safety. */
+  /**
+   * Construct the (synthetic-invoke, Failure-message) pair the
+   * orchestrator emits when [[repeatedQueryOutcome]] fires. The
+   * `_repeated_query_intercept` invoke name doubles as the marker
+   * the detector walks for to enforce once-per-user-turn loop
+   * safety.
+   */
   private def buildRepeatedQuerySignals(caller: ParticipantId,
                                         convId: lightdb.id.Id[Conversation],
                                         topicId: lightdb.id.Id[Topic],
@@ -2123,16 +2230,21 @@ object Orchestrator {
         "`find_capability` result Message in your context), or call `find_capability` again " +
         "with DIFFERENT keywords that describe the action shape more specifically. Repeating " +
         "the same search will not produce a different answer."
-    SyntheticDiagnostic("_repeated_query_intercept", caller, convId, topicId,
-      reason      = reason,
+    SyntheticDiagnostic(
+      "_repeated_query_intercept",
+      caller,
+      convId,
+      topicId,
+      reason = reason,
       disposition = MessageDisposition.Failure(recoverable = true))
   }
 
-
-  /** Public alias for [[executeAtomic]] — exposes the consent +
-    * precondition gates the agent loop runs before dispatching a
-    * tool's `execute`, so apps and specs can drive the same path
-    * without going through a full provider round-trip. */
+  /**
+   * Public alias for [[executeAtomic]] — exposes the consent +
+   * precondition gates the agent loop runs before dispatching a
+   * tool's `execute`, so apps and specs can drive the same path
+   * without going through a full provider round-trip.
+   */
   def dispatchAtomic(tool: Tool,
                      input: ToolInput,
                      context: TurnContext,
@@ -2145,14 +2257,15 @@ object Orchestrator {
     // UnknownTool can render it in its failure message.
     executeAtomic(tool, input, context, originatingInvokeId, currentMessageId, invokedName.getOrElse(tool.name))
 
-  /** Dispatches an atomic tool's `execute` and forwards its events as
-    * signals. Each event the tool emits is followed by a
-    * `StateDelta(Complete)` so the uniform Active → Complete lifecycle
-    * holds for atomic tools too: subscribers see a reactive pulse on the
-    * event, then a settle via the delta. Tools that explicitly emit
-    * `state = Complete` still get a closing `StateDelta`, which is an
-    * idempotent no-op (the event is already Complete).
-    */
+  /**
+   * Dispatches an atomic tool's `execute` and forwards its events as
+   * signals. Each event the tool emits is followed by a
+   * `StateDelta(Complete)` so the uniform Active → Complete lifecycle
+   * holds for atomic tools too: subscribers see a reactive pulse on the
+   * event, then a settle via the delta. Tools that explicitly emit
+   * `state = Complete` still get a closing `StateDelta`, which is an
+   * idempotent no-op (the event is already Complete).
+   */
   private def executeAtomic(tool: Tool,
                             input: ToolInput,
                             context: TurnContext,
@@ -2197,17 +2310,19 @@ object Orchestrator {
     })
   }
 
-  /** Bug #83 — verify a [[sigil.event.ToolApproval]] exists before
-    * dispatching a tool whose `requiresUserConsent` flag is set.
-    * Returns `Right(())` to proceed; `Left(signals)` to short-
-    * circuit dispatch with a Tool-role refusal Message that the
-    * agent reads on its next iteration.
-    *
-    * Three outcomes:
-    *   - tool doesn't require consent → `Right(())`, fast path
-    *   - approved record exists → `Right(())`, proceed
-    *   - declined record exists → `Left(refusal-with-decline-reason)`
-    *   - no record exists → `Left(refusal-prompting-record_consent)` */
+  /**
+   * Bug #83 — verify a [[sigil.event.ToolApproval]] exists before
+   * dispatching a tool whose `requiresUserConsent` flag is set.
+   * Returns `Right(())` to proceed; `Left(signals)` to short-
+   * circuit dispatch with a Tool-role refusal Message that the
+   * agent reads on its next iteration.
+   *
+   * Three outcomes:
+   *   - tool doesn't require consent → `Right(())`, fast path
+   *   - approved record exists → `Right(())`, proceed
+   *   - declined record exists → `Left(refusal-with-decline-reason)`
+   *   - no record exists → `Left(refusal-prompting-record_consent)`
+   */
   private def consentOutcome(tool: Tool,
                              context: TurnContext,
                              originatingInvokeId: Id[Event]): Task[Either[List[Signal], Unit]] =
@@ -2236,17 +2351,17 @@ object Orchestrator {
     }
 
   private def refusalSignals(body: String,
-                              context: TurnContext,
-                              originatingInvokeId: Id[Event]): List[Signal] = {
+                             context: TurnContext,
+                             originatingInvokeId: Id[Event]): List[Signal] = {
     val msg = Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(body)),
-      disposition    = MessageDisposition.Failure(recoverable = true),
-      role           = MessageRole.Tool,
-      state          = EventState.Complete,
-      origin         = Some(originatingInvokeId)
+      topicId = context.conversation.currentTopicId,
+      content = Vector(ResponseContent.Text(body)),
+      disposition = MessageDisposition.Failure(recoverable = true),
+      role = MessageRole.Tool,
+      state = EventState.Complete,
+      origin = Some(originatingInvokeId)
     )
     List[Signal](
       msg,
@@ -2254,20 +2369,22 @@ object Orchestrator {
     )
   }
 
-  /** Tool execution path — drive the tool's `Stream[Signal]` (Sigil
-    * #265) and origin-stamp / settle ancillary Events. Pass-through
-    * for the settling [[ToolDelta]] the tool emits last (it already
-    * carries `state = Some(Complete)` and targets the originating
-    * invoke). Extracted so both fast (no-precondition) and slow
-    * (precondition-gated) executeAtomic paths share one
-    * implementation.
-    *
-    * Bug #56 follow-up — when the tool is in [[UserVisibleTerminalTools]]
-    * (the respond family + `no_response`), stamp `internal = true` on
-    * any [[ToolDelta]] in the output stream so the result-settle delta
-    * matches the input-settle delta the orchestrator already emitted
-    * with that flag set. Clients filtering chips by `internal` see a
-    * consistent lifecycle. */
+  /**
+   * Tool execution path — drive the tool's `Stream[Signal]` (Sigil
+   * #265) and origin-stamp / settle ancillary Events. Pass-through
+   * for the settling [[ToolDelta]] the tool emits last (it already
+   * carries `state = Some(Complete)` and targets the originating
+   * invoke). Extracted so both fast (no-precondition) and slow
+   * (precondition-gated) executeAtomic paths share one
+   * implementation.
+   *
+   * Bug #56 follow-up — when the tool is in [[UserVisibleTerminalTools]]
+   * (the respond family + `no_response`), stamp `internal = true` on
+   * any [[ToolDelta]] in the output stream so the result-settle delta
+   * matches the input-settle delta the orchestrator already emitted
+   * with that flag set. Clients filtering chips by `internal` see a
+   * consistent lifecycle.
+   */
   private def runExecute(tool: Tool,
                          input: ToolInput,
                          context: TurnContext,
@@ -2288,28 +2405,30 @@ object Orchestrator {
     }
   }
 
-  /** Dispatch path for [[Tool.detachable]] tools — mirrors
-    * [[Tool.execute]]'s framework glue (resolution → ancillary events →
-    * settling delta) but runs the tool body on its OWN fiber and polls
-    * completion up to [[Sigil.toolDetachThresholdMs]]:
-    *
-    *   - **Completes in time** → the inline path, emission-identical
-    *     to a non-detachable tool.
-    *   - **Still running at the threshold** → DETACH: the invoke
-    *     settles `Complete` with a tracking handle (`outcome` stays
-    *     `Pending`, `detached = true`), the turn proceeds without it,
-    *     and a completion watcher publishes the real settling delta
-    *     plus a Tool-role continuation trigger when the work lands.
-    *     `ctx.reportProgress` keeps flowing on the original invoke
-    *     throughout.
-    *
-    * The execution observes a FRESH per-invoke [[CancellationToken]]
-    * (registered on the host at dispatch) instead of the claim's — the
-    * claim dies when the turn ends, and a conversation Stop must reach
-    * the detached phase too ([[Sigil.applyStop]] cancels registry
-    * tokens unless [[Tool.detachedKeepRunningOnStop]]). A cancelled
-    * task settles its invoke with the Failure its checkpoint raised
-    * and publishes NO continuation. */
+  /**
+   * Dispatch path for [[Tool.detachable]] tools — mirrors
+   * [[Tool.execute]]'s framework glue (resolution → ancillary events →
+   * settling delta) but runs the tool body on its OWN fiber and polls
+   * completion up to [[Sigil.toolDetachThresholdMs]]:
+   *
+   *   - **Completes in time** → the inline path, emission-identical
+   *     to a non-detachable tool.
+   *   - **Still running at the threshold** → DETACH: the invoke
+   *     settles `Complete` with a tracking handle (`outcome` stays
+   *     `Pending`, `detached = true`), the turn proceeds without it,
+   *     and a completion watcher publishes the real settling delta
+   *     plus a Tool-role continuation trigger when the work lands.
+   *     `ctx.reportProgress` keeps flowing on the original invoke
+   *     throughout.
+   *
+   * The execution observes a FRESH per-invoke [[CancellationToken]]
+   * (registered on the host at dispatch) instead of the claim's — the
+   * claim dies when the turn ends, and a conversation Stop must reach
+   * the detached phase too ([[Sigil.applyStop]] cancels registry
+   * tokens unless [[Tool.detachedKeepRunningOnStop]]). A cancelled
+   * task settles its invoke with the Failure its checkpoint raised
+   * and publishes NO continuation.
+   */
   private def runDetachableExecute(tool: Tool,
                                    input: ToolInput,
                                    context: TurnContext,
@@ -2342,14 +2461,14 @@ object Orchestrator {
         workspace <- sigil.resolvedWorkspaceFor(context.conversation.id).handleError(_ => Task.pure(None))
         _ <- Task {
           sigil.registerDetachableDispatch(_root_.sigil.tool.DetachedToolTask(
-            invokeId          = originatingInvokeId,
-            conversationId    = context.conversation.id,
-            toolName          = invokedName,
-            workspace         = workspace.map(_.toString),
+            invokeId = originatingInvokeId,
+            conversationId = context.conversation.id,
+            toolName = invokedName,
+            workspace = workspace.map(_.toString),
             keepRunningOnStop = tool.detachedKeepRunningOnStop,
-            cancellation      = token,
-            startedAt         = lightdb.time.Timestamp(lightdb.util.Nowish()),
-            detachedAt        = None
+            cancellation = token,
+            startedAt = lightdb.time.Timestamp(lightdb.util.Nowish()),
+            detachedAt = None
           ))
         }
         completed = new java.util.concurrent.atomic.AtomicReference[Option[_root_.sigil.tool.ToolResult[tool.Output]]](None)
@@ -2368,12 +2487,12 @@ object Orchestrator {
             val drainedNow = toolCtx.emittedEvents
             sigil.markToolDetached(originatingInvokeId)
             val detachDelta = ToolDelta(
-              target         = originatingInvokeId,
+              target = originatingInvokeId,
               conversationId = context.conversation.id,
-              state          = Some(EventState.Complete),
-              detached       = Some(true),
-              internal       = toolIsInternal,
-              summary        = Some(
+              state = Some(EventState.Complete),
+              detached = Some(true),
+              internal = toolIsInternal,
+              summary = Some(
                 s"Detached: `${invokedName.value}` is still running in the background as task " +
                   s"${originatingInvokeId.value}. Progress continues on this call; the full result " +
                   "will arrive as a tool result when it completes. Do not re-issue this call."
@@ -2391,47 +2510,52 @@ object Orchestrator {
                 val publishLate = stamp(lateEvents.map(e => e: Signal)).foldLeft(Task.unit) { (acc, sig) =>
                   acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
                 }
-                val publishSettle = sigil.publish(delta).handleError(t => Task {
-                  scribe.error(s"Detached tool ${invokedName.value} (${originatingInvokeId.value}): settle publish failed", t)
-                })
+                val publishSettle = sigil.publish(delta).handleError(t =>
+                  Task {
+                    scribe.error(s"Detached tool ${invokedName.value} (${originatingInvokeId.value}): settle publish failed", t)
+                  })
                 val continuation =
                   if (cancelled) Task {
-                    scribe.info(s"Detached task ${originatingInvokeId.value} (`${invokedName.value}`) settled after cancellation — no continuation")
+                    scribe.info(
+                      s"Detached task ${originatingInvokeId.value} (`${invokedName.value}`) settled after cancellation — no continuation")
                   }
                   else {
                     val summaryText = delta.summary.orElse(delta.output.flatMap {
                       case t: _root_.sigil.tool.TextToolOutput => Some(t.text)
-                      case _                                   => None
+                      case _ => None
                     }).getOrElse("(see the settled tool call for the result)")
                     val trigger = Message(
-                      participantId  = context.caller,
+                      participantId = context.caller,
                       conversationId = context.conversation.id,
-                      topicId        = context.conversation.currentTopicId,
-                      role           = MessageRole.Tool,
-                      content        = Vector(ResponseContent.Text(
+                      topicId = context.conversation.currentTopicId,
+                      role = MessageRole.Tool,
+                      content = Vector(ResponseContent.Text(
                         s"Detached tool `${invokedName.value}` (task ${originatingInvokeId.value}) completed: $summaryText"
                       )),
-                      state          = EventState.Complete,
-                      visibility     = MessageVisibility.Agents,
-                      origin         = Some(originatingInvokeId),
+                      state = EventState.Complete,
+                      visibility = MessageVisibility.Agents,
+                      origin = Some(originatingInvokeId),
                       // Although agent-attributed (the agent made the call),
                       // this is EXTERNAL work arriving — the loop's
                       // own-emissions filter must not swallow it when the
                       // completion lands mid-turn.
-                      source         = Some(Orchestrator.DetachedContinuationSource)
+                      source = Some(Orchestrator.DetachedContinuationSource)
                     )
                     sigil.publish(trigger).map { _ =>
-                      scribe.info(s"Detached task ${originatingInvokeId.value} (`${invokedName.value}`) completed — continuation trigger published")
-                    }.handleError(t => Task {
-                      scribe.error(s"Detached tool ${invokedName.value}: continuation publish failed", t)
-                    })
+                      scribe.info(
+                        s"Detached task ${originatingInvokeId.value} (`${invokedName.value}`) completed — continuation trigger published")
+                    }.handleError(t =>
+                      Task {
+                        scribe.error(s"Detached tool ${invokedName.value}: continuation publish failed", t)
+                      })
                   }
                 publishLate.flatMap(_ => publishSettle).flatMap(_ => continuation)
               }
             }.guarantee(Task(sigil.completeDetachedTool(originatingInvokeId)))
-              .handleError(t => Task {
-                scribe.error(s"Detached tool ${invokedName.value} (${originatingInvokeId.value}): completion watcher failed", t)
-              })
+              .handleError(t =>
+                Task {
+                  scribe.error(s"Detached tool ${invokedName.value} (${originatingInvokeId.value}): completion watcher failed", t)
+                })
               .startUnit()
             Task.pure(stamp(drainedNow.map(e => e: Signal)) :+ (detachDelta: Signal))
         }
@@ -2439,9 +2563,11 @@ object Orchestrator {
     )
   }
 
-  /** Poll `completed` every 25ms up to `thresholdMs`. Deliberately NOT
-    * `Task.race` — racing would cancel the losing side, and the tool's
-    * resolution fiber must keep running when the threshold wins. */
+  /**
+   * Poll `completed` every 25ms up to `thresholdMs`. Deliberately NOT
+   * `Task.race` — racing would cancel the losing side, and the tool's
+   * resolution fiber must keep running when the threshold wins.
+   */
   private def awaitWithinThreshold[A](completed: java.util.concurrent.atomic.AtomicReference[Option[A]],
                                       thresholdMs: Long): Task[Option[A]] = {
     val deadline = System.currentTimeMillis() + math.max(0L, thresholdMs)
@@ -2455,11 +2581,13 @@ object Orchestrator {
     loop
   }
 
-  /** Run every [[Tool.preconditions]] check. If any returns
-    * [[ToolPreconditionResult.Unsatisfied]], yield a Role.Tool
-    * Message describing the blocked state instead of letting the
-    * tool's `execute` run. The Message is paired to the originating
-    * ToolInvoke so FrameBuilder threads it under that call. */
+  /**
+   * Run every [[Tool.preconditions]] check. If any returns
+   * [[ToolPreconditionResult.Unsatisfied]], yield a Role.Tool
+   * Message describing the blocked state instead of letting the
+   * tool's `execute` run. The Message is paired to the originating
+   * ToolInvoke so FrameBuilder threads it under that call.
+   */
   private def preflightOutcome(tool: Tool,
                                context: TurnContext,
                                originatingInvokeId: Id[Event]): Task[Either[List[Signal], Unit]] =
@@ -2497,15 +2625,16 @@ object Orchestrator {
       }
     }
 
-
   private def kindOf(name: String): ContentKind =
     scala.util.Try(ContentKind.valueOf(name)).getOrElse(ContentKind.Text)
 
-  /** Bug #87 — canonical key for (toolName, args) so the
-    * orchestrator can detect duplicate parallel calls in a single
-    * completion. Falls back to `toString` for robustness — if
-    * fabric's RW path throws on a particular ToolInput shape, the
-    * dedupe just doesn't fire for that call rather than crashing. */
+  /**
+   * Bug #87 — canonical key for (toolName, args) so the
+   * orchestrator can detect duplicate parallel calls in a single
+   * completion. Falls back to `toString` for robustness — if
+   * fabric's RW path throws on a particular ToolInput shape, the
+   * dedupe just doesn't fire for that call rather than crashing.
+   */
   private def canonicalArgsKey(toolName: String, input: sigil.tool.ToolInput): String = {
     val argsJson =
       try fabric.io.JsonFormatter.Compact(summon[fabric.rw.RW[sigil.tool.ToolInput]].read(input))
@@ -2513,11 +2642,13 @@ object Orchestrator {
     s"$toolName:$argsJson"
   }
 
-  /** Whitespace-normalised form used to compare a streaming respond's
-    * content against the caller's preceding message. Collapses runs of
-    * whitespace and trims so markdown paragraph-join differences (a
-    * rendered frame joins blocks with single newlines; the raw arg may
-    * use blank lines) don't mask an otherwise-identical repeat. */
+  /**
+   * Whitespace-normalised form used to compare a streaming respond's
+   * content against the caller's preceding message. Collapses runs of
+   * whitespace and trims so markdown paragraph-join differences (a
+   * rendered frame joins blocks with single newlines; the raw arg may
+   * use blank lines) don't mask an otherwise-identical repeat.
+   */
   private[orchestrator] def normalizeForDedup(s: String): String =
     s.trim.replaceAll("\\s+", " ")
 
@@ -2532,7 +2663,7 @@ object Orchestrator {
   private def closeCurrentBlock(state: State, convId: lightdb.id.Id[Conversation]): List[Signal] = {
     val emit = for {
       msgId <- state.activeMessageId
-      kind  <- state.currentKind
+      kind <- state.currentKind
       if state.currentBuffer.nonEmpty
     } yield {
       val text = state.currentBuffer.toString
@@ -2548,11 +2679,13 @@ object Orchestrator {
     emit.toList
   }
 
-  /** Resolve a [[ProviderImage]] to a fetchable URL. A
-    * [[ProviderImage.Hosted]] URL passes through unchanged;
-    * [[ProviderImage.Inline]] bytes are persisted via `storeBytes` so
-    * the multi-megabyte payload never enters conversation history, and
-    * the stored file's URL is returned. */
+  /**
+   * Resolve a [[ProviderImage]] to a fetchable URL. A
+   * [[ProviderImage.Hosted]] URL passes through unchanged;
+   * [[ProviderImage.Inline]] bytes are persisted via `storeBytes` so
+   * the multi-megabyte payload never enters conversation history, and
+   * the stored file's URL is returned.
+   */
   private def resolveProviderImage(sigil: Sigil,
                                    image: ProviderImage,
                                    category: StoredFileCategory,
@@ -2561,7 +2694,11 @@ object Orchestrator {
       case ProviderImage.Hosted(url) => Task.pure(url)
       case ProviderImage.Inline(base64, contentType) =>
         val bytes = java.util.Base64.getDecoder.decode(base64)
-        sigil.storeBytes(_root_.sigil.GlobalSpace, bytes, contentType,
-          category = category, expiresAt = expiresAt).map(sigil.storageUrl)
+        sigil.storeBytes(
+          _root_.sigil.GlobalSpace,
+          bytes,
+          contentType,
+          category = category,
+          expiresAt = expiresAt).map(sigil.storageUrl)
     }
 }

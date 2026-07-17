@@ -24,9 +24,9 @@ import scala.jdk.CollectionConverters.*
  * agent knows whether to refine the query.
  */
 final class BrowserXPathQueryTool extends Tool {
-  type Input  = BrowserXPathQueryInput
+  type Input = BrowserXPathQueryInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[BrowserXPathQueryInput]]
+  val inputRW = summon[RW[BrowserXPathQueryInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("browser_xpath_query")
@@ -50,39 +50,39 @@ final class BrowserXPathQueryTool extends Tool {
   override def executeResult(input: BrowserXPathQueryInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.fetchStoredFile(Id[StoredFile](input.htmlFileId), ctx.chain).map {
-        case None =>
-          ToolResult.failure(s"htmlFileId '${input.htmlFileId}' not found or not authorized")
-        case Some((_, bytes)) =>
-          val html = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
-          val doc  = Jsoup.parse(html)
-          val all  = doc.selectXpath(input.xpath).iterator().asScala.toList
-          val totalCount = all.size
-          val limited    = all.take(input.maxResults)
+      case None =>
+        ToolResult.failure(s"htmlFileId '${input.htmlFileId}' not found or not authorized")
+      case Some((_, bytes)) =>
+        val html = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
+        val doc = Jsoup.parse(html)
+        val all = doc.selectXpath(input.xpath).iterator().asScala.toList
+        val totalCount = all.size
+        val limited = all.take(input.maxResults)
 
-          val matches: List[Json] = limited.map { el =>
-            val attrs = el.attributes().iterator().asScala.toList.map { a =>
-              a.getKey -> str(a.getValue)
-            }
-            val base = List(
-              "xpath"      -> str(BrowserHtmlOverview.xpathOf(el)),
-              "tag"        -> str(el.tagName()),
-              "text"       -> str(BrowserHtmlOverview.squish(el.text()).take(500)),
-              "attributes" -> obj(attrs*)
-            )
-            val full =
-              if (input.includeOuterHtml) base :+ ("outerHtml" -> str(el.outerHtml().take(4000)))
-              else base
-            obj(full*)
+        val matches: List[Json] = limited.map { el =>
+          val attrs = el.attributes().iterator().asScala.toList.map { a =>
+            a.getKey -> str(a.getValue)
           }
+          val base = List(
+            "xpath" -> str(BrowserHtmlOverview.xpathOf(el)),
+            "tag" -> str(el.tagName()),
+            "text" -> str(BrowserHtmlOverview.squish(el.text()).take(500)),
+            "attributes" -> obj(attrs*)
+          )
+          val full =
+            if (input.includeOuterHtml) base :+ ("outerHtml" -> str(el.outerHtml().take(4000)))
+            else base
+          obj(full*)
+        }
 
-          ToolResult.Success(BrowserToolBase.toolResult(
-            obj(
-              "htmlFileId" -> str(input.htmlFileId),
-              "xpath"      -> str(input.xpath),
-              "matches"    -> arr(matches*),
-              "totalCount" -> num(totalCount),
-              "returned"   -> num(limited.size)
-            )
-          ))
+        ToolResult.Success(BrowserToolBase.toolResult(
+          obj(
+            "htmlFileId" -> str(input.htmlFileId),
+            "xpath" -> str(input.xpath),
+            "matches" -> arr(matches*),
+            "totalCount" -> num(totalCount),
+            "returned" -> num(limited.size)
+          )
+        ))
     }
 }

@@ -19,27 +19,32 @@ import sigil.provider.ProviderEvent
  */
 case class CachedResponse(requestHash: String,
                           recordedAt: Timestamp,
-                          events: List[ProviderEvent]) derives RW
+                          events: List[ProviderEvent])
+  derives RW
 
 object CachedResponse {
 
   private val rw: RW[ProviderEvent] = summon[RW[ProviderEvent]]
 
-  /** Render `response` as JSONL — one event per line, compact JSON.
-    * The first line is a header carrying `requestHash` + `recordedAt`
-    * so a cache file is self-describing without an external manifest. */
+  /**
+   * Render `response` as JSONL — one event per line, compact JSON.
+   * The first line is a header carrying `requestHash` + `recordedAt`
+   * so a cache file is self-describing without an external manifest.
+   */
   def toJsonl(response: CachedResponse): String = {
     val header = fabric.obj(
       "requestHash" -> fabric.str(response.requestHash),
-      "recordedAt"  -> fabric.num(response.recordedAt.value)
+      "recordedAt" -> fabric.num(response.recordedAt.value)
     )
     val body = response.events.iterator.map(event => JsonFormatter.Compact(rw.read(event)))
     (Iterator.single(JsonFormatter.Compact(header)) ++ body).mkString("\n") + "\n"
   }
 
-  /** Parse a JSONL payload produced by [[toJsonl]] back into a
-    * [[CachedResponse]]. The first non-blank line is the header; every
-    * subsequent non-blank line is a [[ProviderEvent]]. */
+  /**
+   * Parse a JSONL payload produced by [[toJsonl]] back into a
+   * [[CachedResponse]]. The first non-blank line is the header; every
+   * subsequent non-blank line is a [[ProviderEvent]].
+   */
   def fromJsonl(jsonl: String): CachedResponse = {
     val lines = jsonl.linesIterator.filter(_.trim.nonEmpty).toList
     lines match {

@@ -50,4 +50,5 @@ import spice.net.URL
 case class ImageToolOutput(url: URL,
                            alt: String = "",
                            text: Option[String] = None,
-                           quality: ImageQuality = ImageQuality.Low) extends ToolOutput derives RW
+                           quality: ImageQuality = ImageQuality.Low)
+  extends ToolOutput derives RW

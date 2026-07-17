@@ -27,41 +27,53 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   private val server: HttpServer = {
     val s = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
-    s.createContext("/echo", new HttpHandler {
-      override def handle(ex: HttpExchange): Unit = {
-        val body = new String(ex.getRequestBody.readAllBytes(), "UTF-8")
-        val hdrs = ex.getRequestHeaders.entrySet.iterator.asScala
-          .map(e => e.getKey -> e.getValue.iterator.asScala.mkString(", "))
-          .toMap
-        captured.set(Some(CapturedRequest(
-          method = ex.getRequestMethod, path = ex.getRequestURI.toString, headers = hdrs, body = body
-        )))
-        val responseBody = s"""{"echoed":${body.length},"method":"${ex.getRequestMethod}"}"""
-        val bytes = responseBody.getBytes("UTF-8")
-        ex.getResponseHeaders.set("Content-Type", "application/json")
-        ex.sendResponseHeaders(200, bytes.length.toLong)
-        val os = ex.getResponseBody; os.write(bytes); os.close()
+    s.createContext(
+      "/echo",
+      new HttpHandler {
+        override def handle(ex: HttpExchange): Unit = {
+          val body = new String(ex.getRequestBody.readAllBytes(), "UTF-8")
+          val hdrs = ex.getRequestHeaders.entrySet.iterator.asScala
+            .map(e => e.getKey -> e.getValue.iterator.asScala.mkString(", "))
+            .toMap
+          captured.set(Some(CapturedRequest(
+            method = ex.getRequestMethod,
+            path = ex.getRequestURI.toString,
+            headers = hdrs,
+            body = body
+          )))
+          val responseBody = s"""{"echoed":${body.length},"method":"${ex.getRequestMethod}"}"""
+          val bytes = responseBody.getBytes("UTF-8")
+          ex.getResponseHeaders.set("Content-Type", "application/json")
+          ex.sendResponseHeaders(200, bytes.length.toLong)
+          val os = ex.getResponseBody; os.write(bytes); os.close()
+        }
       }
-    })
-    s.createContext("/notfound", new HttpHandler {
-      override def handle(ex: HttpExchange): Unit = {
-        val msg = "missing"
-        val bytes = msg.getBytes("UTF-8")
-        ex.getResponseHeaders.set("Content-Type", "text/plain")
-        ex.sendResponseHeaders(404, bytes.length.toLong)
-        val os = ex.getResponseBody; os.write(bytes); os.close()
+    )
+    s.createContext(
+      "/notfound",
+      new HttpHandler {
+        override def handle(ex: HttpExchange): Unit = {
+          val msg = "missing"
+          val bytes = msg.getBytes("UTF-8")
+          ex.getResponseHeaders.set("Content-Type", "text/plain")
+          ex.sendResponseHeaders(404, bytes.length.toLong)
+          val os = ex.getResponseBody; os.write(bytes); os.close()
+        }
       }
-    })
-    s.createContext("/large", new HttpHandler {
-      override def handle(ex: HttpExchange): Unit = {
-        // Emit 200 KB so the test can verify truncation behavior.
-        val payload = "x" * 200_000
-        val bytes = payload.getBytes("UTF-8")
-        ex.getResponseHeaders.set("Content-Type", "text/plain")
-        ex.sendResponseHeaders(200, bytes.length.toLong)
-        val os = ex.getResponseBody; os.write(bytes); os.close()
+    )
+    s.createContext(
+      "/large",
+      new HttpHandler {
+        override def handle(ex: HttpExchange): Unit = {
+          // Emit 200 KB so the test can verify truncation behavior.
+          val payload = "x" * 200_000
+          val bytes = payload.getBytes("UTF-8")
+          ex.getResponseHeaders.set("Content-Type", "text/plain")
+          ex.sendResponseHeaders(200, bytes.length.toLong)
+          val os = ex.getResponseBody; os.write(bytes); os.close()
+        }
       }
-    })
+    )
     s.start()
     s
   }
@@ -75,13 +87,13 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   private val convId = Conversation.id("http-tool-spec-conv")
   private val ctx: TurnContext = TurnContext(
-    sigil            = TestSigil,
-    chain            = List(TestUser),
-    conversation     = Conversation(
+    sigil = TestSigil,
+    chain = List(TestUser),
+    conversation = Conversation(
       topics = List(TopicEntry(TestTopicId, "test", "test")),
-      _id    = convId
+      _id = convId
     ),
-    turnInput        = TurnInput(ConversationView(conversationId = convId)),
+    turnInput = TurnInput(ConversationView(conversationId = convId)),
     model = TestSigil.defaultTestModel
   )
 
@@ -103,10 +115,10 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val body = """{"hello":"world"}"""
       HttpRequestTool.invoke(
         HttpRequestInput(
-          url     = s"$baseUrl/echo",
-          method  = HttpRequestMethod.Post,
+          url = s"$baseUrl/echo",
+          method = HttpRequestMethod.Post,
           headers = Map("X-Custom-Header" -> "marker-42"),
-          body    = Some(body)
+          body = Some(body)
         ),
         ToolContext(ctx, Event.id(), HttpRequestTool.name)
       ).map { out =>
@@ -120,14 +132,13 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       }
     }
 
-    "surface non-2xx status without throwing" in {
+    "surface non-2xx status without throwing" in
       HttpRequestTool.invoke(HttpRequestInput(url = s"$baseUrl/notfound"), ToolContext(ctx, Event.id(), HttpRequestTool.name)).map { out =>
         out.status shouldBe 404
         out.body shouldBe "missing"
       }
-    }
 
-    "truncate response bodies past `maxResponseBytes` and flag the truncation" in {
+    "truncate response bodies past `maxResponseBytes` and flag the truncation" in
       HttpRequestTool.invoke(
         HttpRequestInput(url = s"$baseUrl/large", maxResponseBytes = 4096),
         ToolContext(ctx, Event.id(), HttpRequestTool.name)
@@ -136,7 +147,6 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         out.body.length shouldBe 4096
         out.bodyTruncated shouldBe true
       }
-    }
 
     "map a non-GET method enum onto the wire request" in {
       captured.set(None)

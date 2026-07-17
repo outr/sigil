@@ -41,12 +41,14 @@ class OrphanStreamingMessageSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private val modelId: Id[Model] = Model.id("test", "orphan-msg-model")
 
-  /** Provider that streams a ToolCallStart + ContentBlockStart +
-    * ContentBlockDelta (creating the in-flight Message), THEN emits
-    * a ProviderEvent.Error before any ToolCallComplete settles the
-    * Message. Mirrors the wire-log captured failure mode where
-    * args parse failure fired after the respond Message was already
-    * being streamed to the UI. */
+  /**
+   * Provider that streams a ToolCallStart + ContentBlockStart +
+   * ContentBlockDelta (creating the in-flight Message), THEN emits
+   * a ProviderEvent.Error before any ToolCallComplete settles the
+   * Message. Mirrors the wire-log captured failure mode where
+   * args parse failure fired after the respond Message was already
+   * being streamed to the UI.
+   */
   private class MidStreamErrorProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -67,37 +69,36 @@ class OrphanStreamingMessageSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private def runOrchestrator(): Task[List[Signal]] = {
     val convId = Conversation.id("orphan-msg-test")
-    val conv   = Conversation(topics = TestTopicStack, _id = convId)
+    val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector.empty
+      chain = List(TestUser, TestAgent),
+      tools = Vector.empty
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, new MidStreamErrorProvider, request, conv).toList
     } yield signals
   }
 
   "Bug #171.A — orphan streaming Message cleanup" should {
 
-    "create the in-flight Message at Active state on ContentBlockDelta" in {
+    "create the in-flight Message at Active state on ContentBlockDelta" in
       runOrchestrator().map { signals =>
         val messages = signals.collect { case m: Message => m }
         // First Message creation is the streaming respond placeholder.
         messages should not be empty
         messages.head.state shouldBe EventState.Active
       }
-    }
 
-    "emit a terminal MessageDelta with state=Complete after the parse failure" in {
+    "emit a terminal MessageDelta with state=Complete after the parse failure" in
       runOrchestrator().map { signals =>
         val streamingMsg = signals.collectFirst { case m: Message => m }
           .getOrElse(fail("expected a streaming Message"))
@@ -106,9 +107,8 @@ class OrphanStreamingMessageSpec extends AsyncWordSpec with AsyncTaskSpec with M
         }
         terminalForStreaming should not be empty
       }
-    }
 
-    "stamp the terminal MessageDelta with Failure disposition" in {
+    "stamp the terminal MessageDelta with Failure disposition" in
       runOrchestrator().map { signals =>
         val streamingMsg = signals.collectFirst { case m: Message => m }
           .getOrElse(fail("expected a streaming Message"))
@@ -116,11 +116,10 @@ class OrphanStreamingMessageSpec extends AsyncWordSpec with AsyncTaskSpec with M
           case d: MessageDelta if d.target == streamingMsg._id && d.state.contains(EventState.Complete) => d
         }.headOption.getOrElse(fail("no terminal delta for streaming Message"))
         terminal.disposition shouldBe defined
-        terminal.disposition.get shouldBe a [MessageDisposition.Failure]
+        terminal.disposition.get shouldBe a[MessageDisposition.Failure]
       }
-    }
 
-    "settle the streamed placeholder with empty content — failure routed to the agent" in {
+    "settle the streamed placeholder with empty content — failure routed to the agent" in
       runOrchestrator().map { signals =>
         val streamingMsg = signals.collectFirst { case m: Message => m }
           .getOrElse(fail("expected a streaming Message"))
@@ -132,7 +131,6 @@ class OrphanStreamingMessageSpec extends AsyncWordSpec with AsyncTaskSpec with M
         // to empty content (still Complete + Failure so typing stops).
         terminal.contentReplacement shouldBe Some(Vector.empty)
       }
-    }
   }
 
   "tear down" should {

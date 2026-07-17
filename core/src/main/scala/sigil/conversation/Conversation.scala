@@ -84,45 +84,53 @@ case class Conversation(topics: List[TopicEntry],
                         parentConversationId: Option[Id[Conversation]] = None,
                         stagingFor: Option[Id[Conversation]] = None,
                         archived: Boolean = false,
-                        /** Sigil #386 — app-defined, durable lifecycle/category
-                          * marker. The framework persists, serializes, and
-                          * indexes (via [[Conversation.statusKey]]) it but
-                          * assigns it NO meaning — the app defines the subtypes
-                          * and owns every transition. Defaults to
-                          * [[ConversationStatus.Open]]; set via
-                          * `Sigil.setConversationStatus`. For DURABLE intent
-                          * (Saved / Completed / Escalated), NOT transient runtime
-                          * state (mid-turn / awaiting user) — derive that from
-                          * the event log. See [[ConversationStatus]]. */
+                        /**
+                         * Sigil #386 — app-defined, durable lifecycle/category
+                         * marker. The framework persists, serializes, and
+                         * indexes (via [[Conversation.statusKey]]) it but
+                         * assigns it NO meaning — the app defines the subtypes
+                         * and owns every transition. Defaults to
+                         * [[ConversationStatus.Open]]; set via
+                         * `Sigil.setConversationStatus`. For DURABLE intent
+                         * (Saved / Completed / Escalated), NOT transient runtime
+                         * state (mid-turn / awaiting user) — derive that from
+                         * the event log. See [[ConversationStatus]].
+                         */
                         status: ConversationStatus = ConversationStatus.Open,
-                        /** Conversation-level pinned model — when set, every LLM
-                          * dispatch in the conversation (agent turns AND framework
-                          * auxiliary calls — classifier, memory extractor, curate
-                          * compression) routes to this model, overriding mode-
-                          * driven strategy selection and space-level strategy
-                          * assignment. Cleared via the `unpin_model` tool. */
+                        /**
+                         * Conversation-level pinned model — when set, every LLM
+                         * dispatch in the conversation (agent turns AND framework
+                         * auxiliary calls — classifier, memory extractor, curate
+                         * compression) routes to this model, overriding mode-
+                         * driven strategy selection and space-level strategy
+                         * assignment. Cleared via the `unpin_model` tool.
+                         */
                         pinnedModelId: Option[lightdb.id.Id[sigil.db.Model]] = None,
-                        /** Conversation-level pinned complexity tier — when set,
-                          * every per-turn classification skips
-                          * [[sigil.provider.RoutedStrategy.inferComplexity]] and
-                          * uses this tier instead. Lets the user lock the
-                          * routing chain to a specific tier without naming a
-                          * model (cost ceiling, classifier override, diagnostic
-                          * forcing). Cleared via the `unpin_complexity` tool.
-                          * Pin wins over inference; inference wins over the
-                          * strategy's `Complexity.Medium` default. Bug #152. */
+                        /**
+                         * Conversation-level pinned complexity tier — when set,
+                         * every per-turn classification skips
+                         * [[sigil.provider.RoutedStrategy.inferComplexity]] and
+                         * uses this tier instead. Lets the user lock the
+                         * routing chain to a specific tier without naming a
+                         * model (cost ceiling, classifier override, diagnostic
+                         * forcing). Cleared via the `unpin_complexity` tool.
+                         * Pin wins over inference; inference wins over the
+                         * strategy's `Complexity.Medium` default. Bug #152.
+                         */
                         pinnedComplexity: Option[sigil.provider.Complexity] = None,
-                        /** Conversation-level pinned reasoning effort — when set,
-                          * the main agent turn's resolved [[sigil.provider.GenerationSettings]]
-                          * is overlaid with this effort (and reasoning forced on
-                          * so it engages on providers whose default is
-                          * thinking-off). Lets a consumer expose a per-conversation
-                          * effort picker (Low / Medium / High / Max) without
-                          * touching the deployment-global strategy candidate
-                          * settings. Governs the user-facing agent turn only —
-                          * framework auxiliary calls (classifier, memory
-                          * extractor, summarization) keep their own settings.
-                          * Cleared via the `unpin_effort` tool. */
+                        /**
+                         * Conversation-level pinned reasoning effort — when set,
+                         * the main agent turn's resolved [[sigil.provider.GenerationSettings]]
+                         * is overlaid with this effort (and reasoning forced on
+                         * so it engages on providers whose default is
+                         * thinking-off). Lets a consumer expose a per-conversation
+                         * effort picker (Low / Medium / High / Max) without
+                         * touching the deployment-global strategy candidate
+                         * settings. Governs the user-facing agent turn only —
+                         * framework auxiliary calls (classifier, memory
+                         * extractor, summarization) keep their own settings.
+                         * Cleared via the `unpin_effort` tool.
+                         */
                         pinnedEffort: Option[sigil.provider.Effort] = None,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
@@ -163,28 +171,36 @@ object Conversation extends RecordDocumentModel[Conversation] with JsonConversio
 
   override def id(value: String = Unique()): Id[Conversation] = Id(value)
 
-  /** Index on `stagingFor` so the orphan-staging maintenance sweep
-    * can scan staging conversations cheaply, and apps can list
-    * "imports in progress for conversation X." */
+  /**
+   * Index on `stagingFor` so the orphan-staging maintenance sweep
+   * can scan staging conversations cheaply, and apps can list
+   * "imports in progress for conversation X."
+   */
   val stagingFor: I[Option[Id[Conversation]]] = field.index(_.stagingFor)
 
-  /** Index on `created` so the orphan-staging sweep can age-out
-    * abandoned imports without a full table scan. */
+  /**
+   * Index on `created` so the orphan-staging sweep can age-out
+   * abandoned imports without a full table scan.
+   */
   val createdAt: I[Long] = field.index("createdAt", _.created.value)
 
-  /** Sigil #289 — index on `parentConversationId` so the
-    * [[sigil.transport.SignalTransport]] can resolve "all
-    * conversations whose parent is in this set" cheaply when
-    * expanding per-conversation subscriptions to include worker
-    * sub-conversations. Apps that subscribe to a parent
-    * conversation transitively receive its workers' signals
-    * without explicit per-worker subscriptions. */
+  /**
+   * Sigil #289 — index on `parentConversationId` so the
+   * [[sigil.transport.SignalTransport]] can resolve "all
+   * conversations whose parent is in this set" cheaply when
+   * expanding per-conversation subscriptions to include worker
+   * sub-conversations. Apps that subscribe to a parent
+   * conversation transitively receive its workers' signals
+   * without explicit per-worker subscriptions.
+   */
   val parentConversationId: I[Option[Id[Conversation]]] = field.index(_.parentConversationId)
 
-  /** Sigil #386 — payload-independent index over the app-defined
-    * [[ConversationStatus.key]] so apps can list conversations by status
-    * category ("all Resolved") server-side without a side-collection join.
-    * A `String` index (not the whole poly value) so a data-carrying status
-    * still answers a category query. */
+  /**
+   * Sigil #386 — payload-independent index over the app-defined
+   * [[ConversationStatus.key]] so apps can list conversations by status
+   * category ("all Resolved") server-side without a side-collection join.
+   * A `String` index (not the whole poly value) so a data-carrying status
+   * still answers a category query.
+   */
   val statusKey: I[String] = field.index("statusKey", _.status.key)
 }

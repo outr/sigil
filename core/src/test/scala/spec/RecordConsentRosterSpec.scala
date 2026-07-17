@@ -21,11 +21,11 @@ class RecordConsentRosterSpec extends AnyWordSpec with Matchers {
 
   private case class PlainInput() extends ToolInput derives RW
   private case object PlainTool extends Tool {
-    type Input  = PlainInput
+    type Input = PlainInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[PlainInput]]
+    val inputRW = summon[RW[PlainInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("plain_action")
+    val name = ToolName("plain_action")
     val description = "An action that needs no consent."
     override def executeResult(input: PlainInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
@@ -33,11 +33,11 @@ class RecordConsentRosterSpec extends AnyWordSpec with Matchers {
 
   private case class GatedInput() extends ToolInput derives RW
   private case object GatedTool extends Tool {
-    type Input  = GatedInput
+    type Input = GatedInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[GatedInput]]
+    val inputRW = summon[RW[GatedInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("gated_action")
+    val name = ToolName("gated_action")
     val description = "An action that requires user consent."
     override def requiresUserConsent: Boolean = true
     override def executeResult(input: GatedInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

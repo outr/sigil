@@ -20,9 +20,9 @@ class OpenAIBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private def req(text: String): OneShotRequest = OneShotRequest(
-    model        = TestSigil.testModel(sigil.db.Model.id("openai", "gpt-4o-mini")),
+    model = TestSigil.testModel(sigil.db.Model.id("openai", "gpt-4o-mini")),
     systemPrompt = "You are a classifier.",
-    userPrompt   = text
+    userPrompt = text
   )
 
   "OpenAIBatch.renderJsonlLine" should {
@@ -50,10 +50,10 @@ class OpenAIBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "render ImageBytes content as a data: image_url block" in rapid.Task {
       val r = OneShotRequest(
-        model        = TestSigil.testModel(sigil.db.Model.id("openai", "gpt-4o")),
+        model = TestSigil.testModel(sigil.db.Model.id("openai", "gpt-4o")),
         systemPrompt = "Describe.",
-        userPrompt   = "",
-        userContent  = Vector(
+        userPrompt = "",
+        userContent = Vector(
           ResponseContent.Text("What's in this image?"),
           ResponseContent.ImageBytes("image/png", "iVBORw0KGgo", Some("test"))
         )
@@ -73,7 +73,8 @@ class OpenAIBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "decode a successful chat-completions response" in rapid.Task {
       val customId = "ps-success-001"
-      val line = """{"id":"batch_req_xyz","custom_id":"""" + customId + """","response":{"status_code":200,"body":{"choices":[{"message":{"role":"assistant","content":"foo bar"}}],"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}},"error":null}"""
+      val line = """{"id":"batch_req_xyz","custom_id":"""" + customId +
+        """","response":{"status_code":200,"body":{"choices":[{"message":{"role":"assistant","content":"foo bar"}}],"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}},"error":null}"""
       val parsed = OpenAIBatch.parseResultLine(line)
       parsed shouldBe defined
       val r = parsed.get
@@ -86,7 +87,8 @@ class OpenAIBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "decode a per-line error" in rapid.Task {
       val customId = "ps-error-002"
-      val line = """{"id":"batch_req_xyz","custom_id":"""" + customId + """","response":null,"error":{"code":"invalid_request_error","message":"prompt is too long"}}"""
+      val line = """{"id":"batch_req_xyz","custom_id":"""" + customId +
+        """","response":null,"error":{"code":"invalid_request_error","message":"prompt is too long"}}"""
       val parsed = OpenAIBatch.parseResultLine(line)
       parsed shouldBe defined
       val r = parsed.get
@@ -110,7 +112,7 @@ class OpenAIBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   "OpenAIProvider.batchSupported" should {
     "be true (native batch override is wired)" in rapid.Task {
       val provider = sigil.provider.openai.OpenAIProvider(
-        apiKey   = "test-key",
+        apiKey = "test-key",
         sigilRef = TestSigil
       )
       provider.batchSupported shouldBe true

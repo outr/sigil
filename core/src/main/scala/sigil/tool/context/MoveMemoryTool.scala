@@ -26,10 +26,10 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * preserved.
  */
 case object MoveMemoryTool extends Tool {
-  type Input  = MoveMemoryInput
+  type Input = MoveMemoryInput
   type Output = TextToolOutput
-  val inputRW: RW[MoveMemoryInput]  = summon[RW[MoveMemoryInput]]
-  val outputRW: RW[TextToolOutput]  = summon[RW[TextToolOutput]]
+  val inputRW: RW[MoveMemoryInput] = summon[RW[MoveMemoryInput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("move_memory")
   val description: String =
@@ -89,7 +89,7 @@ case object MoveMemoryTool extends Tool {
         case None =>
           context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
             case some @ Some(m) if spaces.contains(m.spaceId) => some
-            case _                                            => None
+            case _ => None
           }
       }
     }

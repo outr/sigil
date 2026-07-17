@@ -12,10 +12,12 @@ import sigil.script.{ScalaScriptExecutor, ScriptCompileException}
  */
 class ScriptExecutorSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Bug #58 — the default `ScalaScriptExecutor` constructor now
-    * auto-detects classpath from the context `URLClassLoader` when
-    * `java.class.path` is incomplete (sbt 2 test workers, IDE
-    * runners, etc.). No explicit override needed in tests. */
+  /**
+   * Bug #58 — the default `ScalaScriptExecutor` constructor now
+   * auto-detects classpath from the context `URLClassLoader` when
+   * `java.class.path` is incomplete (sbt 2 test workers, IDE
+   * runners, etc.). No explicit override needed in tests.
+   */
   private def newExecutor(): ScalaScriptExecutor = new ScalaScriptExecutor
 
   "ScalaScriptExecutor" should {

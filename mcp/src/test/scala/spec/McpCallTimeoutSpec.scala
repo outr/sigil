@@ -25,8 +25,10 @@ class McpCallTimeoutSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     override val value: String = "timeout-agent"
   }
 
-  /** `callTool` blocks far longer than the configured per-call timeout —
-    * stands in for a build server stuck on a cold import. */
+  /**
+   * `callTool` blocks far longer than the configured per-call timeout —
+   * stands in for a build server stuck on a cold import.
+   */
   private class HangingClient(override val config: McpServerConfig) extends McpClient {
     override def start(): Task[Unit] = Task.unit
     override def close(): Task[Unit] = Task.unit
@@ -40,8 +42,10 @@ class McpCallTimeoutSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     override def cancelRequest(requestId: Long, reason: Option[String] = None): Task[Unit] = Task.unit
   }
 
-  /** Returns immediately — guards that the timeout wrapper doesn't break
-    * the normal fast path. */
+  /**
+   * Returns immediately — guards that the timeout wrapper doesn't break
+   * the normal fast path.
+   */
   private class FastClient(override val config: McpServerConfig) extends McpClient {
     override def start(): Task[Unit] = Task.unit
     override def close(): Task[Unit] = Task.unit
@@ -58,8 +62,8 @@ class McpCallTimeoutSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
   "McpManager.callTool" should {
     "time out a hung call instead of blocking indefinitely" in {
       val cfg = McpServerConfig(
-        name          = "wedged-bsp",
-        transport     = McpTransport.Stdio("/bin/true", Nil),
+        name = "wedged-bsp",
+        transport = McpTransport.Stdio("/bin/true", Nil),
         callTimeoutMs = 400L
       )
       val manager = TestMcpSigil.mcpManager
@@ -70,7 +74,7 @@ class McpCallTimeoutSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         withClue(s"result=$result elapsed=${elapsed}ms: ") {
           result match {
             case Failure(_: McpCallTimeoutException) => succeed
-            case other                               => fail(s"expected McpCallTimeoutException, got $other")
+            case other => fail(s"expected McpCallTimeoutException, got $other")
           }
           elapsed should be < 3000L
         }
@@ -79,8 +83,8 @@ class McpCallTimeoutSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
     "leave a fast call unaffected by the timeout wrapper" in {
       val cfg = McpServerConfig(
-        name          = "fast-server",
-        transport     = McpTransport.Stdio("/bin/true", Nil),
+        name = "fast-server",
+        transport = McpTransport.Stdio("/bin/true", Nil),
         callTimeoutMs = 400L
       )
       val manager = TestMcpSigil.mcpManager

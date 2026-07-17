@@ -35,15 +35,20 @@ class SamplingParamSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def rejection(message: String): ProviderStreamException =
     new ProviderStreamException(
-      providerKey = "anthropic", code = 0, typ = "invalid_request_error",
-      message_ = message, status = Some(400)
+      providerKey = "anthropic",
+      code = 0,
+      typ = "invalid_request_error",
+      message_ = message,
+      status = Some(400)
     )
 
-  /** Fake provider that records the temperature of every call. On the
-    * first call WHILE a sampling param is set it raises the deprecation
-    * 400; once the framework retries with sampling stripped it emits a
-    * clean `respond`. */
-  private final class SamplingRejectsThenSucceeds extends Provider {
+  /**
+   * Fake provider that records the temperature of every call. On the
+   * first call WHILE a sampling param is set it raises the deprecation
+   * 400; once the framework retries with sampling stripped it emits a
+   * clean `respond`.
+   */
+  final private class SamplingRejectsThenSucceeds extends Provider {
     val temperatures: java.util.concurrent.ConcurrentLinkedQueue[Option[Double]] =
       new java.util.concurrent.ConcurrentLinkedQueue[Option[Double]]()
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -71,10 +76,10 @@ class SamplingParamSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       // The conversation's agent sends a sampling param — the thing these
       // models reject.
       generationSettings = GenerationSettings(temperature = Some(0.7))
@@ -83,17 +88,17 @@ class SamplingParamSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private def runUserTurn(provider: Provider): Task[Id[Conversation]] = {
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"sampling-heal-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Say hi.")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Say hi.")),
+        state = EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId)
     } yield convId
   }
@@ -123,7 +128,7 @@ class SamplingParamSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val provider = new SamplingRejectsThenSucceeds
       for {
         convId <- runUserTurn(provider)
-        evs    <- eventsFor(convId)
+        evs <- eventsFor(convId)
       } yield {
         val seen = provider.temperatures.asScala.toList
         // First call went out WITH temperature (the agent's setting); the

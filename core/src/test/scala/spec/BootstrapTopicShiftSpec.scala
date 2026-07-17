@@ -39,8 +39,10 @@ class BootstrapTopicShiftSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   private val modelId: Id[Model] = Model.id("test", "bootstrap-shift")
   TestSigil.testModel(modelId)
 
-  /** Classifier stub that counts consults; the framework must not
-    * reach it on the bootstrap path. */
+  /**
+   * Classifier stub that counts consults; the framework must not
+   * reach it on the bootstrap path.
+   */
   private class CountingClassifierProvider(scriptedKind: String) extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -61,27 +63,31 @@ class BootstrapTopicShiftSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private def seedConversation(label: String, labelLocked: Boolean = false, extraTopic: Option[String] = None): Task[Conversation] = {
     val convId = Conversation.id(s"bootstrap-${rapid.Unique()}")
-    val seed = Topic(conversationId = convId, label = label, summary = s"$label summary",
-      labelLocked = labelLocked, createdBy = TestUser)
+    val seed = Topic(
+      conversationId = convId,
+      label = label,
+      summary = s"$label summary",
+      labelLocked = labelLocked,
+      createdBy = TestUser)
     val extra = extraTopic.map(l => Topic(conversationId = convId, label = l, summary = s"$l summary", createdBy = TestUser))
     val entries = (seed :: extra.toList).map(t => TopicEntry(t._id, t.label, t.summary))
     for {
-      _ <- TestSigil.withDB(_.topics.transaction { tx => (seed :: extra.toList).map(tx.upsert).last })
+      _ <- TestSigil.withDB(_.topics.transaction(tx => (seed :: extra.toList).map(tx.upsert).last))
       conv <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(_id = convId, topics = entries))))
     } yield conv
   }
 
   private def shift(conv: Conversation, proposed: String, userMessage: String): Task[List[sigil.event.Event]] =
     TestSigil.resolveTopicShift(
-      proposedLabel   = proposed,
+      proposedLabel = proposed,
       proposedSummary = s"$proposed summary",
-      caller          = TestAgent,
-      conversation    = conv,
-      currentTopic    = conv.currentTopic,
-      previousTopics  = conv.previousTopics,
-      modelId         = modelId,
-      chain           = List(TestUser, TestAgent),
-      userMessage     = userMessage
+      caller = TestAgent,
+      conversation = conv,
+      currentTopic = conv.currentTopic,
+      previousTopics = conv.previousTopics,
+      modelId = modelId,
+      chain = List(TestUser, TestAgent),
+      userMessage = userMessage
     )
 
   "resolveTopicShift on a bootstrap-era conversation" should {

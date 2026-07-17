@@ -56,13 +56,15 @@ case class McpServerConfig(name: String,
                            roots: List[String] = Nil,
                            refreshIntervalMs: Long = 30L * 60L * 1000L,
                            idleTimeoutMs: Long = 5L * 60L * 1000L,
-                           /** Per-call execution timeout. A tool call that
-                             * doesn't return within this bound fails with an
-                             * [[McpCallTimeoutException]] instead of hanging the
-                             * agent's turn (e.g. a build server wedged on a cold
-                             * import). Generous by default so a legitimately slow
-                             * import still completes; apps tune per server. `0`
-                             * disables the timeout. */
+                           /**
+                            * Per-call execution timeout. A tool call that
+                            * doesn't return within this bound fails with an
+                            * [[McpCallTimeoutException]] instead of hanging the
+                            * agent's turn (e.g. a build server wedged on a cold
+                            * import). Generous by default so a legitimately slow
+                            * import still completes; apps tune per server. `0`
+                            * disables the timeout.
+                            */
                            callTimeoutMs: Long = 5L * 60L * 1000L,
                            created: Timestamp = Timestamp(),
                            modified: Timestamp = Timestamp(),
@@ -74,6 +76,8 @@ object McpServerConfig extends RecordDocumentModel[McpServerConfig] with JsonCon
 
   override def id(value: String = rapid.Unique()): Id[McpServerConfig] = Id(value)
 
-  /** Stable id derived from server name — one record per name. */
+  /**
+   * Stable id derived from server name — one record per name.
+   */
   def idFor(name: String): Id[McpServerConfig] = Id(name)
 }

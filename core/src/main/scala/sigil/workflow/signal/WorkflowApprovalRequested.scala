@@ -22,4 +22,5 @@ case class WorkflowApprovalRequested(conversationId: Id[Conversation],
                                      stepName: String,
                                      prompt: String,
                                      options: List[String],
-                                     timeoutMs: Option[Long]) extends Notice derives RW
+                                     timeoutMs: Option[Long])
+  extends Notice derives RW

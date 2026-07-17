@@ -11,7 +11,8 @@ import strider.step.Step
 
 case class ResumeWorkflowInput(runId: String,
                                stepId: String,
-                               payload: Option[String] = None) extends ToolInput derives RW
+                               payload: Option[String] = None)
+  extends ToolInput derives RW
 
 /**
  * Resume a workflow run paused on a [[strider.step.Approval]] or
@@ -24,9 +25,9 @@ case class ResumeWorkflowInput(runId: String,
  * `Json.Null`.
  */
 final class ResumeWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = ResumeWorkflowInput
+  type Input = ResumeWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ResumeWorkflowInput]]
+  val inputRW = summon[RW[ResumeWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("resume_workflow")
   val description =
@@ -55,7 +56,9 @@ final class ResumeWorkflowTool extends Tool with WorkflowToolSupport {
             val payloadJson: Json = input.payload.filter(_.nonEmpty).fold[Json](Null)(str)
             val payloadDisplay = input.payload.getOrElse("")
             host.workflowManager.resume(workflowId, Id[Step](input.stepId), payloadJson)
-              .map(_ => ToolResult.success(TextToolOutput(s"Workflow run '${input.runId}' resumed at step '${input.stepId}' with payload '$payloadDisplay'.")))
+              .map(_ =>
+                ToolResult.success(
+                  TextToolOutput(s"Workflow run '${input.runId}' resumed at step '${input.stepId}' with payload '$payloadDisplay'.")))
               .handleError(e => Task.pure(ToolResult.failure(s"Resume failed: ${e.getMessage}")))
         }
     }

@@ -38,9 +38,11 @@ final class EmbeddingBackedToolFinder(sigil: Sigil,
   private val vectorWired: Boolean =
     embedding.dimensions > 0 && (vectors ne NoOpVectorIndex)
 
-  /** Upsert this tool's embedding into the vector index. Apps call
-    * this when adding tools at runtime (marketplace install, MCP
-    * discovery). */
+  /**
+   * Upsert this tool's embedding into the vector index. Apps call
+   * this when adding tools at runtime (marketplace install, MCP
+   * discovery).
+   */
   def indexTool(tool: Tool): Task[Unit] =
     if (!vectorWired) Task.unit
     else embedding.embed(tool.description).flatMap { vec =>
@@ -48,14 +50,16 @@ final class EmbeddingBackedToolFinder(sigil: Sigil,
         id = s"tool:${tool.schema.name.value}",
         vector = vec,
         payload = Map(
-          "kind"     -> "tool",
+          "kind" -> "tool",
           "toolName" -> tool.schema.name.value
         )
       ))
     }
 
-  /** Bulk-index every tool currently in [[Sigil]]'s tool collection.
-    * Idempotent — safe to run on every startup. */
+  /**
+   * Bulk-index every tool currently in [[Sigil]]'s tool collection.
+   * Idempotent — safe to run on every startup.
+   */
   def indexAll: Task[Int] =
     if (!vectorWired) Task.pure(0)
     else sigil.withDB(_.tools.transaction(_.list)).flatMap { tools =>
@@ -88,8 +92,10 @@ final class EmbeddingBackedToolFinder(sigil: Sigil,
 
 object EmbeddingBackedToolFinder {
 
-  /** Convenience: wrap a [[DbToolFinder]] with embedding-backed
-    * discovery when vectors are wired. */
+  /**
+   * Convenience: wrap a [[DbToolFinder]] with embedding-backed
+   * discovery when vectors are wired.
+   */
   def overDb(sigil: Sigil, toolInputRWs: List[RW[? <: ToolInput]]): EmbeddingBackedToolFinder =
     new EmbeddingBackedToolFinder(
       sigil = sigil,

@@ -62,23 +62,87 @@ case class HybridSearch(inner: VectorIndex,
 
 object HybridSearch {
 
-  /** Conventional payload key under which the original indexed text
-    * is stored so [[HybridSearch]] can compute keyword overlap. */
+  /**
+   * Conventional payload key under which the original indexed text
+   * is stored so [[HybridSearch]] can compute keyword overlap.
+   */
   val TextKey: String = "text"
 
   private val stopWords: Set[String] = Set(
-    "a", "an", "the", "and", "or", "but", "if", "then", "else", "of",
-    "to", "in", "on", "at", "by", "for", "with", "as", "is", "are",
-    "was", "were", "be", "been", "being", "have", "has", "had",
-    "do", "does", "did", "this", "that", "these", "those", "it",
-    "its", "i", "you", "he", "she", "we", "they", "me", "him", "her",
-    "us", "them", "my", "your", "his", "our", "their",
-    "how", "what", "when", "where", "why", "who", "which",
-    "am", "can", "could", "should", "would", "will", "may", "might"
+    "a",
+    "an",
+    "the",
+    "and",
+    "or",
+    "but",
+    "if",
+    "then",
+    "else",
+    "of",
+    "to",
+    "in",
+    "on",
+    "at",
+    "by",
+    "for",
+    "with",
+    "as",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "this",
+    "that",
+    "these",
+    "those",
+    "it",
+    "its",
+    "i",
+    "you",
+    "he",
+    "she",
+    "we",
+    "they",
+    "me",
+    "him",
+    "her",
+    "us",
+    "them",
+    "my",
+    "your",
+    "his",
+    "our",
+    "their",
+    "how",
+    "what",
+    "when",
+    "where",
+    "why",
+    "who",
+    "which",
+    "am",
+    "can",
+    "could",
+    "should",
+    "would",
+    "will",
+    "may",
+    "might"
   )
 
-  /** Tokenize preserving repetition (BM25 uses term frequencies). */
-  def tokenizeList(text: String): List[String] = {
+  /**
+   * Tokenize preserving repetition (BM25 uses term frequencies).
+   */
+  def tokenizeList(text: String): List[String] =
     if (text == null || text.isEmpty) Nil
     else text
       .toLowerCase
@@ -87,19 +151,22 @@ object HybridSearch {
       .filter(_.nonEmpty)
       .filter(t => !stopWords.contains(t))
       .toList
-  }
 
-  /** Back-compat set tokenizer. BM25 uses [[tokenizeList]]. */
+  /**
+   * Back-compat set tokenizer. BM25 uses [[tokenizeList]].
+   */
   def tokenize(text: String): Set[String] = tokenizeList(text).toSet
 
-  /** Okapi BM25 over a candidate pool. `docs.length` is used as the
-    * effective corpus size for IDF — not true global IDF, but a
-    * reasonable within-pool approximation since we only care about
-    * relative ranking of candidates the vector step already surfaced. */
+  /**
+   * Okapi BM25 over a candidate pool. `docs.length` is used as the
+   * effective corpus size for IDF — not true global IDF, but a
+   * reasonable within-pool approximation since we only care about
+   * relative ranking of candidates the vector step already surfaced.
+   */
   def bm25Scores(query: List[String],
                  docs: List[List[String]],
                  k1: Double = 1.5,
-                 b: Double = 0.75): List[Double] = {
+                 b: Double = 0.75): List[Double] =
     if (docs.isEmpty) Nil
     else {
       val n = docs.size
@@ -108,7 +175,7 @@ object HybridSearch {
         if (n == 0) 0.0 else total / n
       }
       val qTerms = query.distinct
-      val df: Map[String, Int] = qTerms.map { t => t -> docs.count(_.contains(t)) }.toMap
+      val df: Map[String, Int] = qTerms.map(t => t -> docs.count(_.contains(t))).toMap
       // BM25+ smoothing so common terms still contribute positively.
       val idf: Map[String, Double] = df.view.mapValues { f =>
         math.log(1.0 + (n - f + 0.5) / (f + 0.5))
@@ -127,12 +194,13 @@ object HybridSearch {
         }.sum
       }
     }
-  }
 
-  /** Min/max scale a list of non-negative scores into `[0, 1]`. If
-    * all scores are equal (including all-zero), returns zeros — the
-    * BM25 signal has no discriminative power on this pool. */
-  def minMaxNormalize(scores: List[Double]): List[Double] = {
+  /**
+   * Min/max scale a list of non-negative scores into `[0, 1]`. If
+   * all scores are equal (including all-zero), returns zeros — the
+   * BM25 signal has no discriminative power on this pool.
+   */
+  def minMaxNormalize(scores: List[Double]): List[Double] =
     if (scores.isEmpty) Nil
     else {
       val lo = scores.min
@@ -141,16 +209,16 @@ object HybridSearch {
       if (range <= 0.0) scores.map(_ => 0.0)
       else scores.map(s => (s - lo) / range)
     }
-  }
 
-  /** Kept for callers outside the hybrid path; BM25 replaced Jaccard
-    * as the internal scorer in [[HybridSearch.search]]. */
-  def jaccard(a: Set[String], b: Set[String]): Double = {
+  /**
+   * Kept for callers outside the hybrid path; BM25 replaced Jaccard
+   * as the internal scorer in [[HybridSearch.search]].
+   */
+  def jaccard(a: Set[String], b: Set[String]): Double =
     if (a.isEmpty || b.isEmpty) 0.0
     else {
       val inter = a.intersect(b).size.toDouble
       val union = a.union(b).size.toDouble
       if (union == 0.0) 0.0 else inter / union
     }
-  }
 }

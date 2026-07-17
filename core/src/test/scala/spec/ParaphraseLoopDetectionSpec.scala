@@ -29,20 +29,20 @@ import sigil.participant.ParticipantId
 class ParaphraseLoopDetectionSpec extends AnyWordSpec with Matchers {
 
   private val agent: ParticipantId = TestAgent
-  private val user: ParticipantId  = TestUser
+  private val user: ParticipantId = TestUser
 
   private def text(content: String, who: ParticipantId): ContextFrame.Text =
     ContextFrame.Text(
-      content       = content,
+      content = content,
       participantId = who,
       sourceEventId = Id[Event](rapid.Unique())
     )
 
   private def toolCall(name: String): ContextFrame.ToolCall =
     ContextFrame.ToolCall(
-      toolName      = sigil.tool.ToolName(name),
-      argsJson      = "{}",
-      callId        = Id[Event](rapid.Unique()),
+      toolName = sigil.tool.ToolName(name),
+      argsJson = "{}",
+      callId = Id[Event](rapid.Unique()),
       participantId = agent,
       sourceEventId = Id[Event](rapid.Unique())
     )
@@ -75,10 +75,10 @@ class ParaphraseLoopDetectionSpec extends AnyWordSpec with Matchers {
         text("Found many password files. Let me pull up the full list.", agent)
       )
       val rendered = detector.detect(frames, agent).get.render()
-      rendered should include ("FRAMEWORK OBSERVATION")
-      rendered should include ("paraphrase")
-      rendered should include ("non-respond tool")
-      rendered should include ("Let me pull up")
+      rendered should include("FRAMEWORK OBSERVATION")
+      rendered should include("paraphrase")
+      rendered should include("non-respond tool")
+      rendered should include("Let me pull up")
     }
 
     "NOT fire on substantively different responds" in {
@@ -106,8 +106,8 @@ class ParaphraseLoopDetectionSpec extends AnyWordSpec with Matchers {
       val pattern = detector.detect(frames, agent)
       pattern shouldBe defined
       pattern.get.count shouldBe 6
-      pattern.get.escalated shouldBe true   // 6 ≥ escalationThreshold(5)
-      pattern.get.render() should include ("SECOND OCCURRENCE")
+      pattern.get.escalated shouldBe true // 6 ≥ escalationThreshold(5)
+      pattern.get.render() should include("SECOND OCCURRENCE")
     }
 
     "clear when the agent breaks the pattern with a real tool call" in {
@@ -117,7 +117,7 @@ class ParaphraseLoopDetectionSpec extends AnyWordSpec with Matchers {
         text("Found many files. Let me pull up the full list.", agent),
         text("Found many files. Let me pull up the full list.", agent),
         text("Found many files. Let me pull up the full list.", agent),
-        toolCall("read_file")  // boundary — pattern cleared
+        toolCall("read_file") // boundary — pattern cleared
       )
       detector.detect(frames, agent) shouldBe None
     }
@@ -128,7 +128,7 @@ class ParaphraseLoopDetectionSpec extends AnyWordSpec with Matchers {
       val pattern = detector.detect(frames, agent)
       pattern shouldBe defined
       pattern.get.escalated shouldBe true
-      pattern.get.render() should include ("SECOND OCCURRENCE")
+      pattern.get.render() should include("SECOND OCCURRENCE")
     }
 
     "respect the agentId filter — drafts from a different agent don't count" in {

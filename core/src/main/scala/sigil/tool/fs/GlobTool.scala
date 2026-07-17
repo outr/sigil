@@ -14,9 +14,9 @@ import sigil.tool.{PlaceholderInputDetector, TextToolOutput, Tool, ToolExample, 
  * grep the paths it returned.
  */
 final class GlobTool(context: FileSystemContext) extends Tool with sigil.tool.ReadOnlyExternalTool {
-  type Input  = GlobInput
+  type Input = GlobInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[GlobInput]]
+  val inputRW = summon[RW[GlobInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("glob")
@@ -30,9 +30,21 @@ final class GlobTool(context: FileSystemContext) extends Tool with sigil.tool.Re
   )
 
   override val keywords: Set[String] = Set(
-    "glob", "find", "list", "files", "pattern",
-    "directory", "tree", "match", "wildcard", "path", "discover",
-    "ls", "look", "browse", "enumerate"
+    "glob",
+    "find",
+    "list",
+    "files",
+    "pattern",
+    "directory",
+    "tree",
+    "match",
+    "wildcard",
+    "path",
+    "discover",
+    "ls",
+    "look",
+    "browse",
+    "enumerate"
   )
 
   // Bug #86 — generic primitive: ranks below domain-specific tools.

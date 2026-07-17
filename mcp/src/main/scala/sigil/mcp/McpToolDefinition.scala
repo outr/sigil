@@ -11,11 +11,14 @@ import fabric.rw.*
  */
 case class McpToolDefinition(name: String,
                              description: Option[String] = None,
-                             inputSchema: Json = Obj.empty) derives RW
+                             inputSchema: Json = Obj.empty)
+  derives RW
 
 object McpToolDefinition {
 
-  /** Parse a single `tools/list` entry. */
+  /**
+   * Parse a single `tools/list` entry.
+   */
   def fromJson(entry: Json): McpToolDefinition =
     McpToolDefinition(
       name = entry.get("name").map(_.asString).getOrElse(""),
@@ -23,7 +26,9 @@ object McpToolDefinition {
       inputSchema = entry.get("inputSchema").getOrElse(Obj.empty)
     )
 
-  /** Parse the `tools` array out of a `tools/list` RPC result. */
+  /**
+   * Parse the `tools` array out of a `tools/list` RPC result.
+   */
   def listFrom(result: Json): List[McpToolDefinition] =
     result.get("tools").map(_.asVector.toList.map(fromJson)).getOrElse(Nil)
 }

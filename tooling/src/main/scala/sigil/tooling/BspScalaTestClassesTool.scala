@@ -9,7 +9,8 @@ import sigil.tooling.types.{BspTargetTestClasses, BspTestClassesResult}
 import scala.jdk.CollectionConverters.*
 
 case class BspScalaTestClassesInput(projectRoot: String,
-                                    targets: List[String] = Nil) extends ToolInput derives RW
+                                    targets: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * List discovered Scala test classes for each target — i.e. every
@@ -22,9 +23,9 @@ case class BspScalaTestClassesInput(projectRoot: String,
  * shipped by sbt and Bloop).
  */
 final class BspScalaTestClassesTool(val manager: BspManager) extends Tool with BspToolSupport {
-  type Input  = BspScalaTestClassesInput
+  type Input = BspScalaTestClassesInput
   type Output = BspTestClassesResult
-  val inputRW  = summon[RW[BspScalaTestClassesInput]]
+  val inputRW = summon[RW[BspScalaTestClassesInput]]
   val outputRW = summon[RW[BspTestClassesResult]]
 
   val name = ToolName("bsp_scala_test_classes")
@@ -36,11 +37,12 @@ final class BspScalaTestClassesTool(val manager: BspManager) extends Tool with B
       |Returns each target's test framework + class names.""".stripMargin
   override val keywords = Set("bsp", "test classes", "tests", "scala", "find tests", "test suite")
 
-
   override def executeOutput(input: BspScalaTestClassesInput,
                              context: ToolContext): Task[BspTestClassesResult] =
     withTargets[BspTestClassesResult](
-      input.projectRoot, context, input.targets,
+      input.projectRoot,
+      context,
+      input.targets,
       onError = msg => BspTestClassesResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspTestClassesResult(input.projectRoot, Nil)
     ) { (session, targets) =>
@@ -49,9 +51,9 @@ final class BspScalaTestClassesTool(val manager: BspManager) extends Tool with B
           projectRoot = input.projectRoot,
           items = items.map { item =>
             BspTargetTestClasses(
-              target    = item.getTarget.getUri,
+              target = item.getTarget.getUri,
               framework = Option(item.getFramework).filter(_.nonEmpty),
-              classes   = Option(item.getClasses).map(_.asScala.toList).getOrElse(Nil)
+              classes = Option(item.getClasses).map(_.asScala.toList).getOrElse(Nil)
             )
           }
         )

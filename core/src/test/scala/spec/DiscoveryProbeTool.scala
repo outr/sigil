@@ -4,7 +4,9 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
 
-/** Input for [[DiscoveryProbeTool]] — `count` controls how many items it emits. */
+/**
+ * Input for [[DiscoveryProbeTool]] — `count` controls how many items it emits.
+ */
 case class DiscoveryProbeInput(count: Int) extends ToolInput derives RW
 
 /**
@@ -14,9 +16,9 @@ case class DiscoveryProbeInput(count: Int) extends ToolInput derives RW
  * text output, no hand-built array) without standing up a live filesystem.
  */
 case object DiscoveryProbeTool extends Tool {
-  type Input  = DiscoveryProbeInput
+  type Input = DiscoveryProbeInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[DiscoveryProbeInput]]
+  val inputRW = summon[RW[DiscoveryProbeInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("discovery_probe")
   val description = "Emits N newline-separated items — a discovery-step stand-in for workflow tests."

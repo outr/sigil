@@ -26,4 +26,5 @@ case class CapabilityMatch(name: String,
                            description: String,
                            capabilityType: CapabilityType,
                            score: Double,
-                           status: CapabilityStatus) derives RW
+                           status: CapabilityStatus)
+  derives RW

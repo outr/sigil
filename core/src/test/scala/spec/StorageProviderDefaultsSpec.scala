@@ -22,10 +22,12 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class StorageProviderDefaultsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** In-memory [[StorageProvider]] with deliberately minimal
-    * overrides — only the four base methods. read + writeIfMatch
-    * fall through to the trait defaults. */
-  private final class InMemoryProvider extends StorageProvider {
+  /**
+   * In-memory [[StorageProvider]] with deliberately minimal
+   * overrides — only the four base methods. read + writeIfMatch
+   * fall through to the trait defaults.
+   */
+  final private class InMemoryProvider extends StorageProvider {
     private val store: ConcurrentHashMap[String, Array[Byte]] = new ConcurrentHashMap()
     override def upload(path: String, data: Array[Byte], contentType: String): Task[String] = Task {
       store.put(path, data); path
@@ -41,7 +43,7 @@ class StorageProviderDefaultsSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val p = new InMemoryProvider
       val bytes = "default-read".getBytes("UTF-8")
       for {
-        _    <- p.upload("k", bytes, "text/plain")
+        _ <- p.upload("k", bytes, "text/plain")
         snap <- p.read("k")
       } yield {
         snap shouldBe defined
@@ -60,12 +62,12 @@ class StorageProviderDefaultsSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val initial = "v1".getBytes("UTF-8")
       val updated = "v2".getBytes("UTF-8")
       for {
-        _      <- p.upload("k", initial, "text/plain")
-        snap   <- p.read("k")
+        _ <- p.upload("k", initial, "text/plain")
+        snap <- p.read("k")
         result <- p.writeIfMatch("k", updated, "text/plain", snap.get.version)
-        bytes  <- p.download("k")
+        bytes <- p.download("k")
       } yield {
-        result shouldBe a [WriteResult.Written]
+        result shouldBe a[WriteResult.Written]
         result.asInstanceOf[WriteResult.Written].version.hash shouldBe FileVersion.hashOf(updated)
         new String(bytes.get, "UTF-8") shouldBe "v2"
       }
@@ -78,11 +80,11 @@ class StorageProviderDefaultsSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val current = "v2".getBytes("UTF-8")
       val poison = "v3".getBytes("UTF-8")
       for {
-        _      <- p.upload("k", current, "text/plain")  // v2 already in place
+        _ <- p.upload("k", current, "text/plain") // v2 already in place
         result <- p.writeIfMatch("k", poison, "text/plain", staleVersion)
-        bytes  <- p.download("k")
+        bytes <- p.download("k")
       } yield {
-        result shouldBe a [WriteResult.Stale]
+        result shouldBe a[WriteResult.Stale]
         val stale = result.asInstanceOf[WriteResult.Stale]
         stale.current.version.hash shouldBe FileVersion.hashOf(current)
         new String(stale.current.bytes, "UTF-8") shouldBe "v2"

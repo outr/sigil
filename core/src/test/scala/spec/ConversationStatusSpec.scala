@@ -40,9 +40,9 @@ class ConversationStatusSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
     "persist an app-defined status" in {
       for {
-        conv    <- newConv()
+        conv <- newConv()
         updated <- TestSigil.setConversationStatus(conv._id, TestSavedStatus)
-        rel     <- reload(conv._id)
+        rel <- reload(conv._id)
       } yield {
         updated.status shouldBe TestSavedStatus
         rel.status shouldBe TestSavedStatus
@@ -53,8 +53,8 @@ class ConversationStatusSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "round-trip a DATA-carrying status and preserve its category key" in {
       for {
         conv <- newConv()
-        _    <- TestSigil.setConversationStatus(conv._id, TestCompletedStatus(at = 1234L))
-        rel  <- reload(conv._id)
+        _ <- TestSigil.setConversationStatus(conv._id, TestCompletedStatus(at = 1234L))
+        rel <- reload(conv._id)
       } yield {
         rel.status shouldBe TestCompletedStatus(1234L)
         rel.status.key shouldBe "test-completed"
@@ -63,20 +63,19 @@ class ConversationStatusSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
     "be an idempotent no-op when the status is unchanged" in {
       for {
-        conv  <- newConv()
-        _     <- TestSigil.setConversationStatus(conv._id, TestSavedStatus)
+        conv <- newConv()
+        _ <- TestSigil.setConversationStatus(conv._id, TestSavedStatus)
         again <- TestSigil.setConversationStatus(conv._id, TestSavedStatus)
       } yield again.status shouldBe TestSavedStatus
     }
 
-    "raise ConversationNotFoundException for a missing conversation" in {
+    "raise ConversationNotFoundException for a missing conversation" in
       TestSigil.setConversationStatus(Conversation.id("cs-missing"), TestSavedStatus)
         .map(_ => fail("expected ConversationNotFoundException"))
         .handleError {
           case _: ConversationNotFoundException => Task.pure(succeed)
-          case other                            => Task.error(other)
+          case other => Task.error(other)
         }
-    }
   }
 
   "the statusKey index" should {
@@ -107,7 +106,7 @@ class ConversationStatusSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   "ConversationStatusChanged" should {
     "broadcast on a real change and stay silent on a redundant set" in {
       val recorded = new ConcurrentLinkedQueue[Signal]()
-      val running  = new AtomicBoolean(true)
+      val running = new AtomicBoolean(true)
       TestSigil.signals.takeWhile(_ => running.get())
         .evalMap(s => Task { recorded.add(s); () }).drain.startUnit()
 
@@ -117,11 +116,11 @@ class ConversationStatusSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         }.toList
 
       for {
-        _    <- Task.sleep(100.millis) // let the subscription establish
+        _ <- Task.sleep(100.millis) // let the subscription establish
         conv <- newConv()
-        _    <- TestSigil.setConversationStatus(conv._id, TestSavedStatus)
-        _    <- TestSigil.setConversationStatus(conv._id, TestSavedStatus) // redundant → no notice
-        _    <- Task.sleep(200.millis)
+        _ <- TestSigil.setConversationStatus(conv._id, TestSavedStatus)
+        _ <- TestSigil.setConversationStatus(conv._id, TestSavedStatus) // redundant → no notice
+        _ <- Task.sleep(200.millis)
       } yield {
         running.set(false)
         val notices = statusNotices(conv._id)

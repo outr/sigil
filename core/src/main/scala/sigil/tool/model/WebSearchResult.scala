@@ -13,4 +13,5 @@ case class WebSearchResult(title: String,
                            url: String,
                            snippet: String,
                            score: Option[Double] = None,
-                           rawContent: Option[String] = None) derives RW
+                           rawContent: Option[String] = None)
+  derives RW

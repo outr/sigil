@@ -33,84 +33,93 @@ case class ConversationTask(taskId: String,
                             displayStatus: TaskDisplayStatus,
                             startedAt: Timestamp,
                             modifiedAt: Timestamp,
-                            workflowSourceId: String) derives RW
+                            workflowSourceId: String)
+  derives RW
 
 object ConversationTask {
 
-  /** Project a Strider [[Workflow]] run into the panel-display
-    * [[ConversationTask]]. Workflows without a `conversationId`
-    * (autonomous cron / background) return None — those don't
-    * belong to any conversation's panel. */
+  /**
+   * Project a Strider [[Workflow]] run into the panel-display
+   * [[ConversationTask]]. Workflows without a `conversationId`
+   * (autonomous cron / background) return None — those don't
+   * belong to any conversation's panel.
+   */
   def fromWorkflow(wf: Workflow): Option[ConversationTask] =
     wf.conversationId.map { convIdStr =>
       ConversationTask(
-        taskId           = wf._id.value,
-        conversationId   = Id[Conversation](convIdStr),
-        name             = wf.name,
-        status           = wf.status,
-        displayStatus    = computeDisplayStatus(wf),
-        startedAt        = wf.created,
-        modifiedAt       = wf.modified,
+        taskId = wf._id.value,
+        conversationId = Id[Conversation](convIdStr),
+        name = wf.name,
+        status = wf.status,
+        displayStatus = computeDisplayStatus(wf),
+        startedAt = wf.created,
+        modifiedAt = wf.modified,
         workflowSourceId = wf.sourceId.value
       )
     }
 
-  /** Project a worker sub-conversation (sigil #327 agent-bridge
-    * delegation) into a panel task. `active` reflects the worker
-    * agent's current [[sigil.event.AgentState]] — `Running` while it
-    * holds an Active claim (mid-turn), `Waiting` once it has yielded
-    * (responded; awaiting its supervisor). The task is keyed by the
-    * worker conversation id and attributed to the parent conversation
-    * that spawned it. */
+  /**
+   * Project a worker sub-conversation (sigil #327 agent-bridge
+   * delegation) into a panel task. `active` reflects the worker
+   * agent's current [[sigil.event.AgentState]] — `Running` while it
+   * holds an Active claim (mid-turn), `Waiting` once it has yielded
+   * (responded; awaiting its supervisor). The task is keyed by the
+   * worker conversation id and attributed to the parent conversation
+   * that spawned it.
+   */
   def fromWorkerConversation(conv: Conversation, active: Boolean): ConversationTask =
     ConversationTask(
-      taskId           = conv._id.value,
-      conversationId   = conv.parentConversationId.getOrElse(conv._id),
-      name             = conv.currentTopic.label,
-      status           = if (active) WorkflowStatus.Running else WorkflowStatus.Waiting,
-      displayStatus    = if (active) TaskDisplayStatus.Running else TaskDisplayStatus.Waiting,
-      startedAt        = conv.created,
-      modifiedAt       = conv.modified,
+      taskId = conv._id.value,
+      conversationId = conv.parentConversationId.getOrElse(conv._id),
+      name = conv.currentTopic.label,
+      status = if (active) WorkflowStatus.Running else WorkflowStatus.Waiting,
+      displayStatus = if (active) TaskDisplayStatus.Running else TaskDisplayStatus.Waiting,
+      startedAt = conv.created,
+      modifiedAt = conv.modified,
       workflowSourceId = "worker"
     )
 
-  /** Project a detached tool execution (sigil.tool.DetachedToolTask —
-    * a [[sigil.tool.Tool.detachable]] tool promoted past the detach
-    * threshold) into a panel task. Keyed by the invoke id — the same
-    * handle the invoke's frame names — and named with the workspace
-    * the tool is operating on, so concurrent conversation activity
-    * over that workspace is visible rather than implicit. */
+  /**
+   * Project a detached tool execution (sigil.tool.DetachedToolTask —
+   * a [[sigil.tool.Tool.detachable]] tool promoted past the detach
+   * threshold) into a panel task. Keyed by the invoke id — the same
+   * handle the invoke's frame names — and named with the workspace
+   * the tool is operating on, so concurrent conversation activity
+   * over that workspace is visible rather than implicit.
+   */
   def fromDetachedTool(task: sigil.tool.DetachedToolTask): ConversationTask =
     ConversationTask(
-      taskId           = task.invokeId.value,
-      conversationId   = task.conversationId,
-      name             = task.workspace match {
+      taskId = task.invokeId.value,
+      conversationId = task.conversationId,
+      name = task.workspace match {
         case Some(ws) => s"${task.toolName.value} (detached; workspace: $ws)"
-        case None     => s"${task.toolName.value} (detached)"
+        case None => s"${task.toolName.value} (detached)"
       },
-      status           = WorkflowStatus.Running,
-      displayStatus    = TaskDisplayStatus.Running,
-      startedAt        = task.startedAt,
-      modifiedAt       = task.detachedAt.getOrElse(task.startedAt),
+      status = WorkflowStatus.Running,
+      displayStatus = TaskDisplayStatus.Running,
+      startedAt = task.startedAt,
+      modifiedAt = task.detachedAt.getOrElse(task.startedAt),
       workflowSourceId = "detached-tool"
     )
 
-  /** Refine Strider's lifecycle status with Sigil-specific
-    * waiting flavors based on which step the run is parked on. */
+  /**
+   * Refine Strider's lifecycle status with Sigil-specific
+   * waiting flavors based on which step the run is parked on.
+   */
   private def computeDisplayStatus(wf: Workflow): TaskDisplayStatus = wf.status match {
-    case WorkflowStatus.Pending   => TaskDisplayStatus.Pending
+    case WorkflowStatus.Pending => TaskDisplayStatus.Pending
     case WorkflowStatus.Scheduled => TaskDisplayStatus.Scheduled
-    case WorkflowStatus.Running   => TaskDisplayStatus.Running
-    case WorkflowStatus.Success   => TaskDisplayStatus.Success
-    case WorkflowStatus.Failure   => TaskDisplayStatus.Failure
+    case WorkflowStatus.Running => TaskDisplayStatus.Running
+    case WorkflowStatus.Success => TaskDisplayStatus.Success
+    case WorkflowStatus.Failure => TaskDisplayStatus.Failure
     case WorkflowStatus.Cancelled => TaskDisplayStatus.Cancelled
-    case WorkflowStatus.TimedOut  => TaskDisplayStatus.TimedOut
-    case WorkflowStatus.Waiting   =>
+    case WorkflowStatus.TimedOut => TaskDisplayStatus.TimedOut
+    case WorkflowStatus.Waiting =>
       val waitingStep = wf.waitingStepId.flatMap(id => wf.byStepId(id))
       waitingStep match {
         case Some(_: SigilApproval) => TaskDisplayStatus.WaitingForApproval
-        case _                      => TaskDisplayStatus.Waiting
+        case _ => TaskDisplayStatus.Waiting
       }
-    case WorkflowStatus.Paused    => TaskDisplayStatus.Paused
+    case WorkflowStatus.Paused => TaskDisplayStatus.Paused
   }
 }

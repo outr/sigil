@@ -35,12 +35,11 @@ class RecordConsentDescriptionSpec extends AnyWordSpec with Matchers {
       rendered should not include "start_metals"
     }
 
-    "frame every example as a reaction to a consent refusal" in {
+    "frame every example as a reaction to a consent refusal" in
       // Both shipped examples react to `load_claude_state` being refused
       // pending consent — the approved and declined branches.
       RecordConsentTool.examples.map(_.description).foreach { d =>
         d.toLowerCase should include("refused pending consent")
       }
-    }
   }
 }

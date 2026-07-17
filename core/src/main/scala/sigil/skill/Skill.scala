@@ -47,55 +47,71 @@ trait Skill extends RecordDocument[Skill] {
 
   def name: String
 
-  /** What the skill does — surfaced in `find_capability` matches. */
+  /**
+   * What the skill does — surfaced in `find_capability` matches.
+   */
   def description: String
 
-  /** The system-prompt overlay activated under
-    * [[sigil.conversation.SkillSource.Discovery]] when the agent calls
-    * `activate_skill`. Multi-line markdown is fine; the framework
-    * concatenates active skills into the rendered system prompt. */
+  /**
+   * The system-prompt overlay activated under
+   * [[sigil.conversation.SkillSource.Discovery]] when the agent calls
+   * `activate_skill`. Multi-line markdown is fine; the framework
+   * concatenates active skills into the rendered system prompt.
+   */
   def content: String
 
   // ---- defaults ----
 
-  /** Conversation modes this skill is available in. Empty = visible in
-    * every mode (rare; most skills are mode-specific). */
+  /**
+   * Conversation modes this skill is available in. Empty = visible in
+   * every mode (rare; most skills are mode-specific).
+   */
   def modes: Set[Id[Mode]] = Set.empty
 
-  /** The single [[SpaceId]] this skill is visible under. Defaults to
-    * [[GlobalSpace]] — visible to every caller. */
+  /**
+   * The single [[SpaceId]] this skill is visible under. Defaults to
+   * [[GlobalSpace]] — visible to every caller.
+   */
   def space: SpaceId = GlobalSpace
 
-  /** Curated keywords boosting BM25 discovery score. */
+  /**
+   * Curated keywords boosting BM25 discovery score.
+   */
   def keywords: Set[String] = Set.empty
 
-  /** Whether this skill is active. `false` disables it without deleting the
-    * record: discovery ([[sigil.skill.DbSkillFinder]] / `find_capability`)
-    * filters out disabled skills the same way `modes` / `space` gate
-    * visibility, so a disabled skill never surfaces for activation while its
-    * content is preserved — a user can toggle it back on later (#395). Mirrors
-    * [[sigil.workflow.WorkflowTemplate.enabled]]. */
+  /**
+   * Whether this skill is active. `false` disables it without deleting the
+   * record: discovery ([[sigil.skill.DbSkillFinder]] / `find_capability`)
+   * filters out disabled skills the same way `modes` / `space` gate
+   * visibility, so a disabled skill never surfaces for activation while its
+   * content is preserved — a user can toggle it back on later (#395). Mirrors
+   * [[sigil.workflow.WorkflowTemplate.enabled]].
+   */
   def enabled: Boolean = true
 
-  /** When `true`, this skill is ALWAYS included in the prompt of every
-    * conversation whose `Conversation.space` matches [[space]] (a
-    * [[GlobalSpace]] skill applies to every conversation) — no
-    * discovery or `activate_skill` step required, and it works even
-    * for apps that suppress `find_capability` entirely. Still gated by
-    * [[enabled]] and [[modes]].
-    *
-    * Intended for per-tenant baseline context: org policy, domain
-    * facts, tone. The content is materialized fresh from this record
-    * at every turn build, so registering a new always-on skill or
-    * editing an existing one applies to EVERY conversation in the
-    * space on its next iteration — no per-conversation activation
-    * state, nothing to go stale. Default `false` (discovery-driven
-    * opt-in, unchanged). */
+  /**
+   * When `true`, this skill is ALWAYS included in the prompt of every
+   * conversation whose `Conversation.space` matches [[space]] (a
+   * [[GlobalSpace]] skill applies to every conversation) — no
+   * discovery or `activate_skill` step required, and it works even
+   * for apps that suppress `find_capability` entirely. Still gated by
+   * [[enabled]] and [[modes]].
+   *
+   * Intended for per-tenant baseline context: org policy, domain
+   * facts, tone. The content is materialized fresh from this record
+   * at every turn build, so registering a new always-on skill or
+   * editing an existing one applies to EVERY conversation in the
+   * space on its next iteration — no per-conversation activation
+   * state, nothing to go stale. Default `false` (discovery-driven
+   * opt-in, unchanged).
+   */
   def alwaysOn: Boolean = false
 
-  /** The participant that authored the skill. `None` for static
-    * (app-shipped) skills; set for user-created records so
-    * `StaticSkillSyncUpgrade` knows not to prune them. */
+  /**
+   * The participant that authored the skill. `None` for static
+   * (app-shipped) skills; set for user-created records so
+   * `StaticSkillSyncUpgrade` knows not to prune them.
+   */
   def createdBy: Option[ParticipantId] = None
 
   def _id: Id[Skill] = Id(name)
@@ -103,26 +119,34 @@ trait Skill extends RecordDocument[Skill] {
   def modified: Timestamp = Skill.Epoch
 }
 
-object Skill extends PolyType[Skill]()(using scala.reflect.ClassTag(classOf[Skill])) with RecordDocumentModel[Skill] with JsonConversion[Skill] {
-  /** Sentinel epoch for static skill timestamps. Dynamic skills set their own. */
+object Skill
+  extends PolyType[Skill]()(using scala.reflect.ClassTag(classOf[Skill])) with RecordDocumentModel[Skill] with JsonConversion[Skill] {
+
+  /**
+   * Sentinel epoch for static skill timestamps. Dynamic skills set their own.
+   */
   val Epoch: Timestamp = Timestamp(0L)
 
   implicit override val rw: RW[Skill] = polyRW
 
-  val skillName: I[String]              = field.index(_.name)
-  val modeIds: I[Set[String]]           = field.index(_.modes.map(_.value))
-  val spaceId: I[String]                = field.index(_.space.value)
-  val keywordIndex: I[Set[String]]      = field.index(_.keywords)
+  val skillName: I[String] = field.index(_.name)
+  val modeIds: I[Set[String]] = field.index(_.modes.map(_.value))
+  val spaceId: I[String] = field.index(_.space.value)
+  val keywordIndex: I[Set[String]] = field.index(_.keywords)
   val createdByIndex: I[Option[String]] = field.index(_.createdBy.map(_.value))
-  val enabledIndex: I[Boolean]          = field.index(_.enabled)
-  val alwaysOnIndex: I[Boolean]         = field.index(_.alwaysOn)
+  val enabledIndex: I[Boolean] = field.index(_.enabled)
+  val alwaysOnIndex: I[Boolean] = field.index(_.alwaysOn)
 
-  /** Tokenized full-text index over name + description + content +
-    * keywords. Backs `find_capability`'s BM25-scored search via
-    * [[sigil.skill.DbSkillFinder]] — same shape as
-    * [[sigil.tool.Tool.searchText]]. */
+  /**
+   * Tokenized full-text index over name + description + content +
+   * keywords. Backs `find_capability`'s BM25-scored search via
+   * [[sigil.skill.DbSkillFinder]] — same shape as
+   * [[sigil.tool.Tool.searchText]].
+   */
   val searchText: lightdb.field.Field.Tokenized[Skill] =
-    field.tokenized("searchText", (s: Skill) =>
-      s"${s.name} ${s.description} ${s.content} ${s.keywords.mkString(" ")}"
+    field.tokenized(
+      "searchText",
+      (s: Skill) =>
+        s"${s.name} ${s.description} ${s.content} ${s.keywords.mkString(" ")}"
     )
 }

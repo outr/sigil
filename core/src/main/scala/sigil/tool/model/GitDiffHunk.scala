@@ -11,4 +11,5 @@ import fabric.rw.*
 case class GitDiffHunk(file: String,
                        oldStart: Int,
                        newStart: Int,
-                       lines: List[GitDiffLine]) derives RW
+                       lines: List[GitDiffLine])
+  derives RW

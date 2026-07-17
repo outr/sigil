@@ -9,7 +9,9 @@ import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
 
-/** Empty input — `get_balance` takes no arguments. */
+/**
+ * Empty input — `get_balance` takes no arguments.
+ */
 final case class GetBalanceInput() extends ToolInput derives RW
 
 /**
@@ -25,7 +27,6 @@ final class GetBalanceTool(state: AtomicReference[BankingEnvironment]) extends T
 
   val name: ToolName = ToolName("get_balance")
   val description: String = "Get the balance of the account."
-
 
   override def executeResult(input: GetBalanceInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val balance = state.get.bankAccount.balance

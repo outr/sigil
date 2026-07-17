@@ -7,7 +7,8 @@ import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapVariablesInput(sessionId: String,
                              variablesReference: Int,
-                             maxResults: Int = 100) extends ToolInput derives RW
+                             maxResults: Int = 100)
+  extends ToolInput derives RW
 
 /**
  * Fetch variables from a scope or expanded structured value.

@@ -43,25 +43,28 @@ import sigil.tool.model.ResponseContent
 case class OneShotResponse(requestId: Id[ProviderRequest],
                            content: Vector[ResponseContent] = Vector.empty,
                            usage: Option[TokenUsage] = None,
-                           error: Option[OneShotResponse.Error] = None) derives RW
+                           error: Option[OneShotResponse.Error] = None)
+  derives RW
 
 object OneShotResponse {
 
-  /** Per-request failure surfaced through a batch. The wire / SDK
-    * idiosyncrasies of OpenAI / Anthropic / Gemini batch APIs collapse
-    * here so downstream consumers can fan-out on the same shape
-    * regardless of provider.
-    *
-    * @param message    short human-readable cause
-    * @param code       provider's error code when present
-    *                   (`invalid_request_error`, `rate_limit_error`, …)
-    * @param recoverable whether retrying the same request might
-    *                   succeed (transient — 429 / 502 / upstream
-    *                   timeout) or it's terminal (4xx auth, malformed
-    *                   request, content-filter refusal). Consumers
-    *                   re-queue recoverable entries.
-    */
+  /**
+   * Per-request failure surfaced through a batch. The wire / SDK
+   * idiosyncrasies of OpenAI / Anthropic / Gemini batch APIs collapse
+   * here so downstream consumers can fan-out on the same shape
+   * regardless of provider.
+   *
+   * @param message    short human-readable cause
+   * @param code       provider's error code when present
+   *                   (`invalid_request_error`, `rate_limit_error`, …)
+   * @param recoverable whether retrying the same request might
+   *                   succeed (transient — 429 / 502 / upstream
+   *                   timeout) or it's terminal (4xx auth, malformed
+   *                   request, content-filter refusal). Consumers
+   *                   re-queue recoverable entries.
+   */
   case class Error(message: String,
                    code: Option[String] = None,
-                   recoverable: Boolean = false) derives RW
+                   recoverable: Boolean = false)
+    derives RW
 }

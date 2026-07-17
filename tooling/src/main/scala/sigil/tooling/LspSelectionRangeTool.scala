@@ -9,7 +9,8 @@ import sigil.tooling.types.{LspRange, LspSelectionRangeChain, LspSelectionRangeR
 
 case class LspSelectionRangeInput(languageId: String,
                                   filePath: String,
-                                  positions: List[LspSelectionRangeInput.Pos]) extends ToolInput derives RW
+                                  positions: List[LspSelectionRangeInput.Pos])
+  extends ToolInput derives RW
 
 object LspSelectionRangeInput {
   case class Pos(line: Int, character: Int) derives RW
@@ -27,11 +28,10 @@ object LspSelectionRangeInput {
  * essential when the agent is reasoning about "the entire surrounding
  * context" for an edit.
  */
-final class LspSelectionRangeTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
-  type Input  = LspSelectionRangeInput
+final class LspSelectionRangeTool(val manager: LspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input = LspSelectionRangeInput
   type Output = LspSelectionRangeResult
-  val inputRW  = summon[RW[LspSelectionRangeInput]]
+  val inputRW = summon[RW[LspSelectionRangeInput]]
   val outputRW = summon[RW[LspSelectionRangeResult]]
 
   val name = ToolName("lsp_selection_range")
@@ -44,16 +44,17 @@ final class LspSelectionRangeTool(val manager: LspManager) extends Tool
       |Returns `{filePath, chains: [{ranges: [innermost, ..., outermost]}]}` — one chain per input position.""".stripMargin
   override val keywords = Set("lsp", "selection", "expand selection", "smart selection")
 
-
   override def executeOutput(input: LspSelectionRangeInput, context: ToolContext): Task[LspSelectionRangeResult] =
     withOpenDocumentOrThrow[LspSelectionRangeResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       val positions = input.positions.map(p => new Position(p.line, p.character))
       session.selectionRange(uri, positions).map { results =>
         LspSelectionRangeResult(
           filePath = input.filePath,
-          chains   = results.map(r => LspSelectionRangeChain(flatten(r)))
+          chains = results.map(r => LspSelectionRangeChain(flatten(r)))
         )
       }
     }

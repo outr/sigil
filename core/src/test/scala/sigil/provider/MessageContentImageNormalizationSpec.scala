@@ -17,7 +17,9 @@ import spice.http.HttpRequest
 class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** A real 1x1 transparent PNG. */
+  /**
+   * A real 1x1 transparent PNG.
+   */
   private val tinyPng: Array[Byte] = java.util.Base64.getDecoder.decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII="
   )
@@ -48,7 +50,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
 
   "normalizeStoredImages" should {
 
-    "rewrite an internally-stored image to inline ImageBytes" in {
+    "rewrite an internally-stored image to inline ImageBytes" in
       TestSigil.storeBytes(GlobalSpace, tinyPng, "image/png").flatMap { stored =>
         FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(TestSigil.storageUrl(stored)))).map { normalized =>
           imageContents(normalized) match {
@@ -59,12 +61,11 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
           }
         }
       }
-    }
 
     "fetch + downscale an EXTERNAL image URL to inline ImageBytes (sigil #393)" in {
       val publicUrl = spice.net.URL.get("https://cdn.example.com/pic.png").toOption.get
       val calls = new java.util.concurrent.atomic.AtomicInteger(0)
-      TestSigil.onFetchExternalImage { _ => Task { calls.incrementAndGet(); Some((tinyPng, "image/png")) } }
+      TestSigil.onFetchExternalImage(_ => Task { calls.incrementAndGet(); Some((tinyPng, "image/png")) })
       val act = for {
         a <- FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(publicUrl)))
         // Second call with the same url+quality must hit the process cache —
@@ -87,7 +88,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
 
     "replace an unfetchable external image with an [image unavailable] marker (sigil #393/#417)" in {
       val deadUrl = spice.net.URL.get("https://cdn.example.com/too-big.png").toOption.get
-      TestSigil.onFetchExternalImage { _ => Task.pure(None) }
+      TestSigil.onFetchExternalImage(_ => Task.pure(None))
       FakeProvider.normalizeStoredImages(
         callWith(MessageContent.Text("Store file gid://… — a hero"), MessageContent.Image(deadUrl, altText = Some("hero banner")))
       ).map { normalized =>
@@ -112,7 +113,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
         }
       }
       val act = for {
-        first  <- FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(flaky)))
+        first <- FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(flaky)))
         second <- FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(flaky)))
       } yield (first, second)
       act.map { case (first, second) =>
@@ -124,7 +125,8 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
     }
 
     "replace an unresolvable sigil://storage URL with a marker — the provider can never fetch it (sigil #417)" in {
-      val dangling = spice.net.URL.get("sigil://storage/no-such-file",
+      val dangling = spice.net.URL.get(
+        "sigil://storage/no-such-file",
         tldValidation = spice.net.TLDValidation.Off).toOption.get
       FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(dangling, altText = Some("lost render")))).map { normalized =>
         imageContents(normalized) shouldBe Vector(MessageContent.Text("[image unavailable: lost render]"))
@@ -133,7 +135,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
 
     "route an http storage-shaped URL with no local row through the external fetch" in {
       val foreign = spice.net.URL.get("https://cdn.example.com/storage/some-public-file").toOption.get
-      TestSigil.onFetchExternalImage { _ => Task.pure(Some((tinyPng, "image/png"))) }
+      TestSigil.onFetchExternalImage(_ => Task.pure(Some((tinyPng, "image/png"))))
       FakeProvider.normalizeStoredImages(callWith(MessageContent.Image(foreign))).map { normalized =>
         imageContents(normalized).head.isInstanceOf[MessageContent.ImageBytes] shouldBe true
         TestSigil.resetFetchExternalImage()
@@ -141,7 +143,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
       }
     }
 
-    "replace a ZERO-BYTE stored image with a marker instead of an empty image block (sigil #417 field shape)" in {
+    "replace a ZERO-BYTE stored image with a marker instead of an empty image block (sigil #417 field shape)" in
       // The bricking mechanism: a flaky capture stored an empty webp; every
       // request re-rendering the frame shipped base64 "" and the provider
       // rejected the ENTIRE request ("image cannot be empty") — forever.
@@ -152,9 +154,8 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
           imageContents(normalized) shouldBe Vector(MessageContent.Text("[image unavailable: theme preview]"))
         }
       }
-    }
 
-    "replace a stored image whose blob is gone with a marker" in {
+    "replace a stored image whose blob is gone with a marker" in
       TestSigil.storeBytes(GlobalSpace, tinyPng, "image/png").flatMap { stored =>
         TestSigil.storageProvider.delete(stored.path).flatMap { _ =>
           FakeProvider.normalizeStoredImages(
@@ -164,21 +165,18 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
           }
         }
       }
-    }
 
-    "replace an empty inline ImageBytes with a marker" in {
+    "replace an empty inline ImageBytes with a marker" in
       FakeProvider.normalizeStoredImages(
         callWith(MessageContent.ImageBytes("image/webp", "", altText = Some("inline capture")))
       ).map { normalized =>
         imageContents(normalized) shouldBe Vector(MessageContent.Text("[image unavailable: inline capture]"))
       }
-    }
 
-    "leave text content untouched" in {
+    "leave text content untouched" in
       FakeProvider.normalizeStoredImages(callWith(MessageContent.Text("hello"))).map { normalized =>
         imageContents(normalized) shouldBe Vector(MessageContent.Text("hello"))
       }
-    }
 
     // A conversation that already captured an oversized inline image (a tall
     // full-page screenshot whose height exceeds Anthropic's 8000 px cap) must
@@ -201,7 +199,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
         imageContents(normalized) match {
           case Vector(MessageContent.ImageBytes(_, base64, _, _)) =>
             val (w, h) = dims(base64)
-            withClue(s"clamped to ${w}x${h}: ") {
+            withClue(s"clamped to ${w}x$h: ") {
               h should be <= _root_.sigil.image.ImageDownscale.MaxEdge
               w should be <= _root_.sigil.image.ImageDownscale.MaxEdge
             }
@@ -258,13 +256,12 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
     def tiny: MessageContent.ImageBytes =
       MessageContent.ImageBytes("image/png", java.util.Base64.getEncoder.encodeToString(tinyPng))
 
-    "leave a tall image alone when the request is within the many-image threshold" in {
+    "leave a tall image alone when the request is within the many-image threshold" in
       ManyImageCapProvider.normalizeStoredImages(callWith((tall +: Vector.fill(4)(tiny)): _*)).map { normalized =>
         val (_, h) = dims(imageBytesOf(normalized).head.base64)
         // 4380 ≤ 8000 — untouched; legibility preserved for a few-image request.
         h shouldBe 4380
       }
-    }
 
     "clamp every image's long edge to 2000 once the request crosses the many-image threshold" in {
       // 21 images (> 20): the many-image cap kicks in for the WHOLE request.
@@ -274,7 +271,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
         images should have size 21
         images.foreach { ib =>
           val (w, h) = dims(ib.base64)
-          withClue(s"image ${w}x${h} exceeds the 2000px many-image cap: ") {
+          withClue(s"image ${w}x$h exceeds the 2000px many-image cap: ") {
             w should be <= _root_.sigil.image.ImageDownscale.ManyImageMaxEdge
             h should be <= _root_.sigil.image.ImageDownscale.ManyImageMaxEdge
           }

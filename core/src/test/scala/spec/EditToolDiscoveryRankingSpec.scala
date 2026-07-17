@@ -20,7 +20,7 @@ class EditToolDiscoveryRankingSpec extends AnyWordSpec with Matchers {
   private val editAtRange = new EditAtRangeTool(fs)
 
   private def ranksEditFileFirst(intent: String): Unit = {
-    val fileScore  = DiscoveryFilter.score(editFile, intent)
+    val fileScore = DiscoveryFilter.score(editFile, intent)
     val rangeScore = DiscoveryFilter.score(editAtRange, intent)
     withClue(s"intent='$intent': edit_file=$fileScore edit_at_range=$rangeScore — ") {
       fileScore should be > rangeScore
@@ -29,13 +29,11 @@ class EditToolDiscoveryRankingSpec extends AnyWordSpec with Matchers {
 
   "find_capability ranking for broad-edit intents (#400)" should {
 
-    "rank edit_file above edit_at_range for a refactor/patch sweep" in {
+    "rank edit_file above edit_at_range for a refactor/patch sweep" in
       ranksEditFileFirst("refactor and patch every file in the codebase")
-    }
 
-    "rank edit_file above edit_at_range for a rewrite sweep" in {
+    "rank edit_file above edit_at_range for a rewrite sweep" in
       ranksEditFileFirst("rewrite the imports in every file")
-    }
   }
 
   "edit_at_range self-description (#400)" should {
@@ -47,7 +45,7 @@ class EditToolDiscoveryRankingSpec extends AnyWordSpec with Matchers {
     }
 
     "name the text-anchored sibling so the model has somewhere to go" in {
-      editAtRange.description should include ("edit_file")
+      editAtRange.description should include("edit_file")
     }
   }
 }

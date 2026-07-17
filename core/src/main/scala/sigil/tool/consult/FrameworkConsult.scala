@@ -35,14 +35,18 @@ import sigil.provider.{GenerationSettings, WorkType}
  */
 trait FrameworkConsult {
 
-  /** Work category for [[sigil.provider.ProviderStrategy]] routing —
-    * callers resolve the concrete model from this rather than reusing
-    * the agent's conversation-tier model. */
+  /**
+   * Work category for [[sigil.provider.ProviderStrategy]] routing —
+   * callers resolve the concrete model from this rather than reusing
+   * the agent's conversation-tier model.
+   */
   def consultWorkType: WorkType
 
-  /** Canonical generation settings for this consult: tight
-    * `maxOutputTokens` for the structured payload, `ReasoningMode.Off`.
-    * [[ConsultTool]] uses this as the default when no explicit
-    * override is supplied. */
+  /**
+   * Canonical generation settings for this consult: tight
+   * `maxOutputTokens` for the structured payload, `ReasoningMode.Off`.
+   * [[ConsultTool]] uses this as the default when no explicit
+   * override is supplied.
+   */
   def consultSettings: GenerationSettings
 }

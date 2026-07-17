@@ -30,11 +30,11 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
   case class GenericInput(payload: String) extends ToolInput derives RW
 
   case object GrepLikeTool extends Tool {
-    type Input  = GenericInput
+    type Input = GenericInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[GenericInput]]
+    val inputRW = summon[RW[GenericInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("grep_like")
+    val name = ToolName("grep_like")
     val description = "Search files by regex."
     override val keywords: Set[String] = Set("grep", "search", "regex", "find", "match", "lines")
     override def preferIfNoBetter: Boolean = true
@@ -43,11 +43,11 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
   }
 
   case object ReadFileLikeTool extends Tool {
-    type Input  = GenericInput
+    type Input = GenericInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[GenericInput]]
+    val inputRW = summon[RW[GenericInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("read_file_like")
+    val name = ToolName("read_file_like")
     val description = "Read a file's contents."
     override val keywords: Set[String] = Set("read", "file", "open", "load")
     override def preferIfNoBetter: Boolean = true
@@ -63,27 +63,26 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def request(keywords: String): DiscoveryRequest =
     DiscoveryRequest(
-      keywords       = keywords,
-      chain          = List(TestUser, TestAgent),
-      mode           = sigil.provider.ConversationMode,
-      callerSpaces   = Set(GlobalSpace),
+      keywords = keywords,
+      chain = List(TestUser, TestAgent),
+      mode = sigil.provider.ConversationMode,
+      callerSpaces = Set(GlobalSpace),
       conversationId = Some(Conversation.id(s"prefer-rank-${rapid.Unique()}"))
     )
 
   "Tool ranking (#90)" should {
 
-    "surface a `preferIfNoBetter` tool that matches the query" in {
+    "surface a `preferIfNoBetter` tool that matches the query" in
       // Query that names grep directly. The grep tool MUST appear
       // even though it carries the preferIfNoBetter penalty.
       TestSigil.findCapabilities(request("grep search regex find lines")).map { matches =>
         val toolNames = matches
           .filter(_.capabilityType.toString.toLowerCase.contains("tool"))
           .map(_.name)
-        toolNames should contain ("grep_like")
+        toolNames should contain("grep_like")
       }
-    }
 
-    "rank a directly-matching tool above modes whose keywords don't clearly match" in {
+    "rank a directly-matching tool above modes whose keywords don't clearly match" in
       // The query keywords match the tool's curated set strongly; the
       // registered Modes (TestCodingMode, TestSkilledMode,
       // WebResearchMode) do not have these as curated keywords. The
@@ -94,12 +93,11 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
         topTool.map(_.name) shouldBe Some("grep_like")
         topMode match {
           case Some(m) => topTool.get.score should be >= m.score
-          case None    => succeed
+          case None => succeed
         }
       }
-    }
 
-    "preserve preferIfNoBetter ordering between two tools that both match" in {
+    "preserve preferIfNoBetter ordering between two tools that both match" in
       // Query that touches both tools' keyword sets so both surface,
       // but matches grep more strongly than read_file_like. The
       // uniform penalty applied to both shouldn't perturb the
@@ -108,11 +106,10 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
         val tools = matches
           .filter(_.capabilityType.toString.toLowerCase.contains("tool"))
           .map(_.name)
-        tools should contain ("grep_like")
-        tools should contain ("read_file_like")
+        tools should contain("grep_like")
+        tools should contain("read_file_like")
         tools.indexOf("grep_like") should be < tools.indexOf("read_file_like")
       }
-    }
   }
 
   "tear down" should {

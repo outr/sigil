@@ -27,11 +27,10 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * with a classified [[GitPushError]] otherwise so the agent can
  * pattern-match without parsing raw stderr.
  */
-final class GitPushTool(context: FileSystemContext)
-  extends Tool with sigil.tool.DestructiveExternalTool {
-  type Input  = GitPushInput
+final class GitPushTool(context: FileSystemContext) extends Tool with sigil.tool.DestructiveExternalTool {
+  type Input = GitPushInput
   type Output = GitPushOutput
-  val inputRW  = summon[RW[GitPushInput]]
+  val inputRW = summon[RW[GitPushInput]]
   val outputRW = summon[RW[GitPushOutput]]
   val name = ToolName("git_push")
   val description =
@@ -48,10 +47,10 @@ final class GitPushTool(context: FileSystemContext)
       |unknown) so the agent can react programmatically without parsing raw stderr.""".stripMargin
   override val examples = List(
     ToolExample("Push current branch to its upstream", GitPushInput()),
-    ToolExample("First push of a feature branch",      GitPushInput(setUpstream = true)),
-    ToolExample("Push tags too",                       GitPushInput(tags = true)),
-    ToolExample("Force-with-lease (safer force)",      GitPushInput(forceWithLease = true)),
-    ToolExample("Explicit remote and branch",          GitPushInput(remote = Some("upstream"), branch = Some("feature/x")))
+    ToolExample("First push of a feature branch", GitPushInput(setUpstream = true)),
+    ToolExample("Push tags too", GitPushInput(tags = true)),
+    ToolExample("Force-with-lease (safer force)", GitPushInput(forceWithLease = true)),
+    ToolExample("Explicit remote and branch", GitPushInput(remote = Some("upstream"), branch = Some("feature/x")))
   )
   override val keywords = Set("git", "push", "publish", "upload", "remote", "upstream", "deploy", "sync")
 
@@ -62,10 +61,10 @@ final class GitPushTool(context: FileSystemContext)
           Task.pure(GitPushOutput.Failed(error = GitPushError.ForcePushBlocked, detail = reason))
         case None =>
           val flagsParts = List(
-            if (input.setUpstream)    Some("--set-upstream") else None,
-            if (input.force)          Some("--force") else None,
+            if (input.setUpstream) Some("--set-upstream") else None,
+            if (input.force) Some("--force") else None,
             if (input.forceWithLease) Some("--force-with-lease") else None,
-            if (input.tags)           Some("--tags") else None
+            if (input.tags) Some("--tags") else None
           ).flatten
           val flagsStr = if (flagsParts.isEmpty) "" else " " + flagsParts.mkString(" ")
           // `--set-upstream` REQUIRES an explicit `<remote> <branch>`
@@ -84,9 +83,9 @@ final class GitPushTool(context: FileSystemContext)
           val targetArgsTask: Task[String] = branchTask.map { branchOpt =>
             (input.remote, branchOpt) match {
               case (Some(r), Some(b)) => s" $r $b"
-              case (Some(r), None)    => s" $r"
-              case (None, Some(b))    => s" origin $b" // explicit branch needs an explicit remote
-              case (None, None)       => ""
+              case (Some(r), None) => s" $r"
+              case (None, Some(b)) => s" origin $b" // explicit branch needs an explicit remote
+              case (None, None) => ""
             }
           }
           // Materialize the command lazily so `branchTask` runs first.
@@ -96,10 +95,10 @@ final class GitPushTool(context: FileSystemContext)
               if (r.exitCode != 0) {
                 val (error, detail) = classifyPushError(r.stderr)
                 GitPushOutput.Failed(
-                  error    = error,
-                  detail   = detail,
+                  error = error,
+                  detail = detail,
                   exitCode = Some(r.exitCode),
-                  stderr   = Some(r.stderr)
+                  stderr = Some(r.stderr)
                 )
               } else
                 // git reports progress on stderr even on success — surface it
@@ -110,23 +109,27 @@ final class GitPushTool(context: FileSystemContext)
       }
     }
 
-  /** Protected-branch gating. Force / force-with-lease on main /
-    * master / develop without `confirmForcePush = true` returns a
-    * refusal reason. Apps override by subclassing and replacing this
-    * method (e.g. allow force on `release/...` branches). */
+  /**
+   * Protected-branch gating. Force / force-with-lease on main /
+   * master / develop without `confirmForcePush = true` returns a
+   * refusal reason. Apps override by subclassing and replacing this
+   * method (e.g. allow force on `release/...` branches).
+   */
   protected def validateForcePushGate(input: GitPushInput): Option[String] = {
     val protectedBranches = Set("main", "master", "develop")
     val isProtected = input.branch.exists(protectedBranches.contains)
-    val isForcing   = input.force || input.forceWithLease
+    val isForcing = input.force || input.forceWithLease
     if (isProtected && isForcing && !input.confirmForcePush)
       Some(s"Refusing to force-push protected branch '${input.branch.get}' without confirmForcePush = true. " +
-           "Set confirmForcePush = true to override, or push a non-protected branch.")
+        "Set confirmForcePush = true to override, or push a non-protected branch.")
     else None
   }
 
-  /** Map git's stderr signals onto a classified [[GitPushError]] plus
-    * a human-readable detail string. Falls through to
-    * [[GitPushError.Unknown]] when no specific signal matches. */
+  /**
+   * Map git's stderr signals onto a classified [[GitPushError]] plus
+   * a human-readable detail string. Falls through to
+   * [[GitPushError.Unknown]] when no specific signal matches.
+   */
   private def classifyPushError(stderr: String): (GitPushError, String) = stderr match {
     case s if s.contains("non-fast-forward") =>
       GitPushError.NonFastForward -> "non-fast-forward (remote has commits you don't; run git_pull then retry)"

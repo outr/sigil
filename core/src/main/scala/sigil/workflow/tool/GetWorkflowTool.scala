@@ -18,9 +18,9 @@ case class GetWorkflowInput(workflowId: String) extends ToolInput derives RW
  * existence across tenant boundaries).
  */
 final class GetWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = GetWorkflowInput
+  type Input = GetWorkflowInput
   type Output = GetWorkflowOutput
-  val inputRW  = summon[RW[GetWorkflowInput]]
+  val inputRW = summon[RW[GetWorkflowInput]]
   val outputRW = summon[RW[GetWorkflowOutput]]
   val name = ToolName("get_workflow")
   val description =
@@ -31,10 +31,12 @@ final class GetWorkflowTool extends Tool with WorkflowToolSupport {
   override val examples = List(ToolExample("fetch by id", GetWorkflowInput(workflowId = "wf-abc")))
   override val keywords = Set("workflow", "get", "describe")
 
-  /** Internal retry budget for the not-yet-visible window. A template fetched
-    * right after `create_workflow` may not be queryable for a few hundred ms;
-    * retrying inside the call absorbs that window rather than returning a
-    * `NotFound` the agent re-fetches across a whole LLM turn. `0` disables. */
+  /**
+   * Internal retry budget for the not-yet-visible window. A template fetched
+   * right after `create_workflow` may not be queryable for a few hundred ms;
+   * retrying inside the call absorbs that window rather than returning a
+   * `NotFound` the agent re-fetches across a whole LLM turn. `0` disables.
+   */
   protected def fetchAttempts: Int = 5
   protected def fetchRetryDelay: FiniteDuration = 150.millis
 
@@ -46,43 +48,47 @@ final class GetWorkflowTool extends Tool with WorkflowToolSupport {
           case None => Task.pure(ToolResult.success(GetWorkflowOutput.NotFound(input.workflowId)))
           case Some(template) =>
             authorizeAccess(host, template, ctx.chain).map {
-              case Left(_)  => ToolResult.success(GetWorkflowOutput.NotFound(input.workflowId)) // hide cross-space existence
+              case Left(_) => ToolResult.success(GetWorkflowOutput.NotFound(input.workflowId)) // hide cross-space existence
               case Right(t) => ToolResult.success(project(t))
             }
         }
     }
 
-  /** Read the template, retrying past a brief not-yet-visible window before
-    * giving up. Only a genuine miss (after all attempts) yields `None`. */
+  /**
+   * Read the template, retrying past a brief not-yet-visible window before
+   * giving up. Only a genuine miss (after all attempts) yields `None`.
+   */
   private def fetchTemplate(host: WorkflowSigil,
                             id: Id[WorkflowTemplate],
                             attemptsLeft: Int): Task[Option[WorkflowTemplate]] =
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-      case found @ Some(_)            => Task.pure(found)
-      case None if attemptsLeft > 1   => Task.sleep(fetchRetryDelay).flatMap(_ => fetchTemplate(host, id, attemptsLeft - 1))
-      case None                       => Task.pure(None)
+      case found @ Some(_) => Task.pure(found)
+      case None if attemptsLeft > 1 => Task.sleep(fetchRetryDelay).flatMap(_ => fetchTemplate(host, id, attemptsLeft - 1))
+      case None => Task.pure(None)
     }
 
   private def project(t: WorkflowTemplate): GetWorkflowOutput.Found =
     GetWorkflowOutput.Found(
-      workflowId  = t._id.value,
-      name        = t.name,
-      enabled     = t.enabled,
+      workflowId = t._id.value,
+      name = t.name,
+      enabled = t.enabled,
       description = t.description,
-      space       = t.space.value,
-      steps       = t.steps.flatMap(toSpec),
-      triggers    = t.triggers,
-      variables   = t.variableDefs.map(v => GetWorkflowVariable(v.name, v.required)),
-      tags        = t.tags.toList
+      space = t.space.value,
+      steps = t.steps.flatMap(toSpec),
+      triggers = t.triggers,
+      variables = t.variableDefs.map(v => GetWorkflowVariable(v.name, v.required)),
+      tags = t.tags.toList
     )
 
-  /** Reverse of [[WorkflowStepSpec.lower]]: project a stored
-    * [[WorkflowStepInput]] IR node back to the flat, `kind`-tagged
-    * [[WorkflowStepSpec]](s) `update_workflow` accepts. Nested Loop bodies /
-    * Parallel branches are flattened back out as their own top-level entries,
-    * referenced by id — the same flat shape the agent originally authored.
-    * App-defined `WorkflowStepInput` subtypes (no `WorkflowStepKind`) can't be
-    * expressed as a spec and are omitted. */
+  /**
+   * Reverse of [[WorkflowStepSpec.lower]]: project a stored
+   * [[WorkflowStepInput]] IR node back to the flat, `kind`-tagged
+   * [[WorkflowStepSpec]](s) `update_workflow` accepts. Nested Loop bodies /
+   * Parallel branches are flattened back out as their own top-level entries,
+   * referenced by id — the same flat shape the agent originally authored.
+   * App-defined `WorkflowStepInput` subtypes (no `WorkflowStepKind`) can't be
+   * expressed as a spec and are omitted.
+   */
   private def toSpec(step: WorkflowStepInput): List[WorkflowStepSpec] = step match {
     case s: JobStepInput =>
       List(WorkflowStepSpec(

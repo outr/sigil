@@ -19,7 +19,8 @@ class WebpDownscaleSpec extends AnyWordSpec with Matchers {
 
   private val tallWebp: Array[Byte] = {
     val in = getClass.getResourceAsStream("/images/tall.webp")
-    try in.readAllBytes() finally in.close()
+    try in.readAllBytes()
+    finally in.close()
   }
 
   private def dims(bytes: Array[Byte]): (Int, Int) = {
@@ -38,14 +39,15 @@ class WebpDownscaleSpec extends AnyWordSpec with Matchers {
       val r = ImageDownscale.resizeTyped(tallWebp, maxPixels = 0L, mediaType = "image/webp", maxEdge = ImageDownscale.ManyImageMaxEdge)
       // It actually shrank (was 4380 tall, cap 2000).
       val (w, h) = dims(r.bytes)
-      withClue(s"resized to ${w}x${h} as ${r.mediaType}: ") {
+      withClue(s"resized to ${w}x$h as ${r.mediaType}: ") {
         h should be <= ImageDownscale.ManyImageMaxEdge
         w should be <= ImageDownscale.ManyImageMaxEdge
       }
       // No webp writer → re-encoded to PNG, and the reported media type matches
       // the bytes (not the input webp).
       r.mediaType shouldBe "image/png"
-      ImageIO.getImageReaders(ImageIO.createImageInputStream(new ByteArrayInputStream(r.bytes))).next().getFormatName.toLowerCase should include("png")
+      ImageIO.getImageReaders(ImageIO.createImageInputStream(new ByteArrayInputStream(r.bytes))).next().getFormatName.toLowerCase should
+        include("png")
     }
 
     "leave a within-budget webp untouched (same bytes, same media type)" in {

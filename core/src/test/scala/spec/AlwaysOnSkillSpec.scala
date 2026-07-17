@@ -44,7 +44,8 @@ class AlwaysOnSkillSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
                        override val space: sigil.SpaceId = GlobalSpace,
                        override val modes: Set[Id[Mode]] = Set.empty,
                        override val enabled: Boolean = true,
-                       override val alwaysOn: Boolean = false) extends Skill derives RW
+                       override val alwaysOn: Boolean = false)
+    extends Skill derives RW
   Skill.register(summon[RW[TestSkill]])
 
   private def upsert(skills: TestSkill*): Task[Unit] =
@@ -53,7 +54,10 @@ class AlwaysOnSkillSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     })
 
   private def convIn(space: sigil.SpaceId, mode: Mode = ConversationMode): Conversation =
-    Conversation(topics = TestTopicStack, currentMode = mode, space = space,
+    Conversation(
+      topics = TestTopicStack,
+      currentMode = mode,
+      space = space,
       _id = Conversation.id(s"always-on-${rapid.Unique()}"))
 
   "alwaysOnSkillsFor" should {
@@ -68,8 +72,8 @@ class AlwaysOnSkillSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         slots <- TestSigil.alwaysOnSkillsFor(convIn(TestSpace))
       } yield {
         val names = slots.map(_.name).toSet
-        names should contain ("org-policy")
-        names should contain ("global-baseline")
+        names should contain("org-policy")
+        names should contain("global-baseline")
         // Another tenant's skill never leaks across spaces.
         names should not contain "other-org"
         slots.find(_.name == "org-policy").map(_.content) shouldBe Some("ORG-POLICY-CONTENT")
@@ -93,14 +97,19 @@ class AlwaysOnSkillSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "gate by mode: a mode-restricted always-on skill applies only in its modes" in {
       for {
         _ <- upsert(
-          TestSkill("coding-baseline", "coding-only baseline", "CODING-CONTENT",
-            space = TestSpace, modes = Set(TestCodingMode.id), alwaysOn = true)
+          TestSkill(
+            "coding-baseline",
+            "coding-only baseline",
+            "CODING-CONTENT",
+            space = TestSpace,
+            modes = Set(TestCodingMode.id),
+            alwaysOn = true)
         )
         inConversation <- TestSigil.alwaysOnSkillsFor(convIn(TestSpace, mode = ConversationMode))
-        inCoding       <- TestSigil.alwaysOnSkillsFor(convIn(TestSpace, mode = TestCodingMode))
+        inCoding <- TestSigil.alwaysOnSkillsFor(convIn(TestSpace, mode = TestCodingMode))
       } yield {
         inConversation.map(_.name) should not contain "coding-baseline"
-        inCoding.map(_.name) should contain ("coding-baseline")
+        inCoding.map(_.name) should contain("coding-baseline")
       }
     }
   }
@@ -112,7 +121,7 @@ class AlwaysOnSkillSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val projection = ParticipantProjection.empty(TestAgent, convId).copy(
         activeSkills = Map(
           SkillSource.Discovery -> ActiveSkillSlot("org-policy", "ACTIVATED-COPY"),
-          SkillSource.Mode      -> ActiveSkillSlot("mode-skill", "MODE-CONTENT")
+          SkillSource.Mode -> ActiveSkillSlot("mode-skill", "MODE-CONTENT")
         )
       )
       val turn = TurnInput(
@@ -148,12 +157,14 @@ class AlwaysOnSkillSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           val cid = CallId(s"respond-${rapid.Unique()}")
           Stream.emits(List[ProviderEvent](
             ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(cid, RespondInput(
-              topicLabel   = TestTopicEntry.label,
-              topicSummary = TestTopicEntry.summary,
-              content      = "Understood.",
-              endsTurn     = true
-            )),
+            ProviderEvent.ToolCallComplete(
+              cid,
+              RespondInput(
+                topicLabel = TestTopicEntry.label,
+                topicSummary = TestTopicEntry.summary,
+                content = "Understood.",
+                endsTurn = true
+              )),
             ProviderEvent.Done(StopReason.Complete)
           ))
         }
@@ -163,20 +174,20 @@ class AlwaysOnSkillSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       // The widge shape: no find_capability in the roster — always-on
       // skills must not depend on discovery existing at all.
       val agent = DefaultAgentParticipant(
-        id                 = TestAgent,
-        modelId            = modelId,
-        toolNames          = CoreTools.coreToolNames,
-        tools              = sigil.provider.ToolPolicy.None,
-        instructions       = Instructions(),
+        id = TestAgent,
+        modelId = modelId,
+        toolNames = CoreTools.coreToolNames,
+        tools = sigil.provider.ToolPolicy.None,
+        instructions = Instructions(),
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
       )
       val conv = convIn(TestSpace).copy(participants = List(agent))
       def userMsg(text: String) = TestSigil.publish(Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = conv._id,
-        topicId        = TestTopicEntry.id,
-        content        = Vector(ResponseContent.Text(text)),
-        state          = EventState.Complete
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text(text)),
+        state = EventState.Complete
       ))
       def waitForCalls(n: Int): Task[Unit] = {
         val deadline = System.currentTimeMillis() + 15000L
@@ -200,10 +211,10 @@ class AlwaysOnSkillSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       } yield {
         val rendered = systems.iterator().asScala.toList
         rendered.size should be >= 2
-        rendered.head should include ("WIRE-BASELINE-V1")
-        rendered.head should include ("wire-org-policy")
+        rendered.head should include("WIRE-BASELINE-V1")
+        rendered.head should include("wire-org-policy")
         // No stale copy: the edit applied to the same conversation.
-        rendered(1) should include ("WIRE-BASELINE-V2")
+        rendered(1) should include("WIRE-BASELINE-V2")
         rendered(1) should not include "WIRE-BASELINE-V1"
       }
     }

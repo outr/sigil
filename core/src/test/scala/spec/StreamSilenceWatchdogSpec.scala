@@ -51,7 +51,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         keepaliveOnlyBudgetMs = 0L,
         reliefMs = 0L,
         relief = None,
-        cancel = Task { cancelled.countDown() },
+        cancel = Task(cancelled.countDown()),
         stopped = stopped
       ).startUnit()
       for {
@@ -70,7 +70,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         // stream's own close path.
         val ex = intercept[ProviderStreamException](state.closeStream(cfg))
         ex.typ shouldBe "upstream_silent"
-        ex.getMessage should include ("no stream lines")
+        ex.getMessage should include("no stream lines")
       }
     }
 
@@ -86,7 +86,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         keepaliveOnlyBudgetMs = 0L,
         reliefMs = 0L,
         relief = None,
-        cancel = Task { cancelled.countDown() },
+        cancel = Task(cancelled.countDown()),
         stopped = stopped
       ).startUnit()
       // Keepalives every 100ms for 3× the budget — the connection is
@@ -120,7 +120,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         keepaliveOnlyBudgetMs = 0L,
         reliefMs = 0L,
         relief = None,
-        cancel = Task { cancelled.countDown() },
+        cancel = Task(cancelled.countDown()),
         stopped = stopped
       ).startUnit()
       for {
@@ -148,7 +148,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         keepaliveOnlyBudgetMs = 0L,
         reliefMs = 0L,
         relief = None,
-        cancel = Task { cancelled.countDown() },
+        cancel = Task(cancelled.countDown()),
         stopped = stopped
       ).startUnit()
       for {
@@ -174,14 +174,14 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         keepaliveOnlyBudgetMs = 0L,
         reliefMs = 0L,
         relief = None,
-        cancel = Task { cancelled.countDown() },
+        cancel = Task(cancelled.countDown()),
         stopped = stopped
       ).startUnit()
       // The stream ends (cleanly) 100ms in — the guarantee sets the
       // stopped flag; the watchdog's next tick exits without firing.
       for {
         _ <- Task.sleep(100.millis)
-        _ <- Task { stopped.set(true) }
+        _ <- Task(stopped.set(true))
         _ <- Task.sleep(900.millis)
       } yield {
         cancelled.getCount shouldBe 1L
@@ -190,8 +190,10 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     }
   }
 
-  /** Counting relief stub — records stall/clear pairing. */
-  private final class RecordingRelief extends sigil.provider.StreamStarvationRelief {
+  /**
+   * Counting relief stub — records stall/clear pairing.
+   */
+  final private class RecordingRelief extends sigil.provider.StreamStarvationRelief {
     val stalls = new java.util.concurrent.atomic.AtomicInteger(0)
     val clears = new java.util.concurrent.atomic.AtomicInteger(0)
     override def stall(): Unit = { stalls.incrementAndGet(); () }
@@ -218,7 +220,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         keepaliveOnlyBudgetMs = 400L,
         reliefMs = 0L,
         relief = None,
-        cancel = Task { cancelled.countDown() },
+        cancel = Task(cancelled.countDown()),
         stopped = stopped
       ).startUnit()
       for {
@@ -232,7 +234,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         state.lineSilenceBreach shouldBe defined
         val ex = intercept[ProviderStreamException](state.closeStream(cfg))
         ex.typ shouldBe "upstream_silent"
-        ex.getMessage should include ("keepalive-only budget")
+        ex.getMessage should include("keepalive-only budget")
       }
     }
 
@@ -249,7 +251,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         keepaliveOnlyBudgetMs = 400L,
         reliefMs = 0L,
         relief = None,
-        cancel = Task { cancelled.countDown() },
+        cancel = Task(cancelled.countDown()),
         stopped = stopped
       ).startUnit()
       def pulse(remaining: Int): Task[Unit] =
@@ -291,7 +293,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         _ <- Task.sleep(700.millis)
         stalledAt = relief.stalls.get()
         // The starved stream finally gets served.
-        _ <- Task { state.markMeaningfulProgress() }
+        _ <- Task(state.markMeaningfulProgress())
         _ <- Task.sleep(500.millis)
       } yield {
         stopped.set(true)
@@ -319,7 +321,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       ).startUnit()
       for {
         _ <- Task.sleep(700.millis)
-        _ <- Task { stopped.set(true) }
+        _ <- Task(stopped.set(true))
         _ <- Task.sleep(400.millis)
       } yield {
         relief.stalls.get() shouldBe 1
@@ -342,7 +344,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         keepaliveOnlyBudgetMs = 600L,
         reliefMs = 200L,
         relief = Some(relief),
-        cancel = Task { cancelled.countDown() },
+        cancel = Task(cancelled.countDown()),
         stopped = stopped
       ).startUnit()
       for {

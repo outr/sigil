@@ -24,9 +24,9 @@ import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, T
  * ancillary event.
  */
 case object CreateScriptToolTool extends Tool {
-  type Input  = CreateScriptToolInput
+  type Input = CreateScriptToolInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[CreateScriptToolInput]]
+  val inputRW = summon[RW[CreateScriptToolInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("create_script_tool")
@@ -64,18 +64,20 @@ case object CreateScriptToolTool extends Tool {
   )
   override val keywords = Set("create", "tool", "script", "build", "author", "register", "new")
 
-  /** Append the active executor's advertised surface (Bug #54) so the
-    * LLM knows which library identifiers are pre-imported and which
-    * Scala-2 idioms to avoid. Without this the model writes
-    * `scala.util.parsing.json.JSON` and falls into a compile-error
-    * loop. */
+  /**
+   * Append the active executor's advertised surface (Bug #54) so the
+   * LLM knows which library identifiers are pre-imported and which
+   * Scala-2 idioms to avoid. Without this the model writes
+   * `scala.util.parsing.json.JSON` and falls into a compile-error
+   * loop.
+   */
   override def descriptionFor(mode: _root_.sigil.provider.Mode,
                               sigilInstance: _root_.sigil.Sigil): String =
     sigilInstance match {
       case s: ScriptSigil =>
         s.scriptExecutor.advertisedSurface match {
-          case Some(surface) => s"${description}\n\n$surface"
-          case None          => description
+          case Some(surface) => s"$description\n\n$surface"
+          case None => description
         }
       case _ => description
     }
@@ -85,13 +87,13 @@ case object CreateScriptToolTool extends Tool {
     case s: ScriptSigil =>
       s.scriptToolSpace(context.chain, input.space).flatMap { resolvedSpace =>
         val tool = ScriptTool(
-          name        = ToolName(input.name),
+          name = ToolName(input.name),
           description = input.description,
-          code        = input.code,
-          parameters  = JsonSchemaToDefinition(input.parameters),
-          space       = resolvedSpace,
-          keywords    = input.keywords,
-          createdBy   = Some(context.caller)
+          code = input.code,
+          parameters = JsonSchemaToDefinition(input.parameters),
+          space = resolvedSpace,
+          keywords = input.keywords,
+          createdBy = Some(context.caller)
         )
         context.sigil.createTool(tool).flatMap { stored =>
           // Pin the just-created tool to this conversation as
@@ -100,8 +102,8 @@ case object CreateScriptToolTool extends Tool {
           val overlayTask = context.sigil.addConversationToolOverlay(
             _root_.sigil.conversation.ConversationToolOverlay(
               conversationId = context.conversation.id,
-              source         = s"create_script_tool:${stored.name.value}",
-              policy         = _root_.sigil.provider.ToolPolicy.Active(List(stored.name))
+              source = s"create_script_tool:${stored.name.value}",
+              policy = _root_.sigil.provider.ToolPolicy.Active(List(stored.name))
             )
           ).handleError { t =>
             Task(scribe.warn(s"create_script_tool: ConversationToolOverlay install failed: ${t.getMessage}"))
@@ -112,12 +114,12 @@ case object CreateScriptToolTool extends Tool {
           // back in conversation. Emitted as an ancillary event;
           // it is not this tool's result.
           val modePop = ModeChange(
-            mode           = ConversationMode,
-            reason         = Some(s"auto-pop after create_script_tool '${stored.name.value}'"),
-            participantId  = context.caller,
+            mode = ConversationMode,
+            reason = Some(s"auto-pop after create_script_tool '${stored.name.value}'"),
+            participantId = context.caller,
             conversationId = context.conversation.id,
-            topicId        = context.conversation.currentTopicId,
-            role           = MessageRole.Standard
+            topicId = context.conversation.currentTopicId,
+            role = MessageRole.Standard
           )
           overlayTask.flatMap(_ => context.emit(modePop)).map { _ =>
             // The result text carries the confirmation, the schema,
@@ -149,4 +151,3 @@ case object CreateScriptToolTool extends Tool {
       ))
   }
 }
-

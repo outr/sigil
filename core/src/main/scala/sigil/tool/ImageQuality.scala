@@ -23,54 +23,70 @@ enum ImageQuality derives RW {
   case Low
   case High
 
-  /** Nominal long-edge in pixels for a square image. Kept as the tier's
-    * human-facing "size" and the basis for [[maxPixels]]; the downscaler
-    * itself budgets by total pixels (see [[maxPixels]]) so it can't crush
-    * a tall image's width. */
+  /**
+   * Nominal long-edge in pixels for a square image. Kept as the tier's
+   * human-facing "size" and the basis for [[maxPixels]]; the downscaler
+   * itself budgets by total pixels (see [[maxPixels]]) so it can't crush
+   * a tall image's width.
+   */
   def maxLongEdge: Int = this match {
     case ImageQuality.Thumbnail => 128
-    case ImageQuality.Low       => 512
-    case ImageQuality.High      => 1568
+    case ImageQuality.Low => 512
+    case ImageQuality.High => 1568
   }
 
-  /** Total-pixel budget the downscaler clamps to, preserving aspect
-    * ratio (#383). Budgeting by area rather than long edge keeps a tall
-    * full-page screenshot legible — a 1280×10000 capture at `High`
-    * reduces to ~561×4380 (a readable 561 px wide) instead of the
-    * ~201 px sliver a long-edge cap produced. Derived as `maxLongEdge²`
-    * so a square image still lands at exactly `maxLongEdge` per side and
-    * the tiers mirror the provider tokenizers' area-based image cost. */
+  /**
+   * Total-pixel budget the downscaler clamps to, preserving aspect
+   * ratio (#383). Budgeting by area rather than long edge keeps a tall
+   * full-page screenshot legible — a 1280×10000 capture at `High`
+   * reduces to ~561×4380 (a readable 561 px wide) instead of the
+   * ~201 px sliver a long-edge cap produced. Derived as `maxLongEdge²`
+   * so a square image still lands at exactly `maxLongEdge` per side and
+   * the tiers mirror the provider tokenizers' area-based image cost.
+   */
   def maxPixels: Long = maxLongEdge.toLong * maxLongEdge.toLong
 
-  /** OpenAI's native image `detail` flag (`low` | `high`). Anthropic and
-    * Gemini have no equivalent — our server-side downscale is the control
-    * there. `Thumbnail`/`Low` map to `low`; `High` to `high`. */
+  /**
+   * OpenAI's native image `detail` flag (`low` | `high`). Anthropic and
+   * Gemini have no equivalent — our server-side downscale is the control
+   * there. `Thumbnail`/`Low` map to `low`; `High` to `high`.
+   */
   def openAIDetail: String = this match {
     case ImageQuality.High => "high"
-    case _                 => "low"
+    case _ => "low"
   }
 }
 
 object ImageQuality {
 
-  /** Internal query param that carries quality across the persisted
-    * `frame.images: List[URL]` boundary, whose element type can't change
-    * without re-introducing a frame-decode migration (#374/#380).
-    * [[sigil.conversation.FrameBuilder]] stamps it when lifting an
-    * [[ImageToolOutput]]'s URL; the provider parses it back into the
-    * typed wire content and strips it before resolving the StoredFile. */
+  /**
+   * Internal query param that carries quality across the persisted
+   * `frame.images: List[URL]` boundary, whose element type can't change
+   * without re-introducing a frame-decode migration (#374/#380).
+   * [[sigil.conversation.FrameBuilder]] stamps it when lifting an
+   * [[ImageToolOutput]]'s URL; the provider parses it back into the
+   * typed wire content and strips it before resolving the StoredFile.
+   */
   val UrlParam: String = "_q"
 
-  /** Parse a quality by name (case-insensitive); `None` if unknown. */
+  /**
+   * Parse a quality by name (case-insensitive); `None` if unknown.
+   */
   def of(name: String): Option[ImageQuality] =
     values.find(_.toString.equalsIgnoreCase(name))
 
-  /** Stamp the quality onto a URL as the [[UrlParam]]. */
+  /**
+   * Stamp the quality onto a URL as the [[UrlParam]].
+   */
   def stamp(url: URL, quality: ImageQuality): URL = url.withParam(UrlParam, quality.toString)
 
-  /** Read the quality off a URL's [[UrlParam]] (default [[Low]]). */
+  /**
+   * Read the quality off a URL's [[UrlParam]] (default [[Low]]).
+   */
   def fromUrl(url: URL): ImageQuality = url.param(UrlParam).flatMap(of).getOrElse(ImageQuality.Low)
 
-  /** Drop the [[UrlParam]] — e.g. before resolving a StoredFile id. */
+  /**
+   * Drop the [[UrlParam]] — e.g. before resolving a StoredFile id.
+   */
   def strip(url: URL): URL = url.removeParam(UrlParam)
 }

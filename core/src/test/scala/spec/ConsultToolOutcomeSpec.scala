@@ -40,9 +40,9 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   ToolInput.register(RW.static(ProbeInput()))
 
   private case object ProbeTool extends Tool {
-    type Input  = ProbeInput
+    type Input = ProbeInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[ProbeInput]]
+    val inputRW = summon[RW[ProbeInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name = ToolName("consult_probe")
     val description = "Probe target for ConsultTool outcome tests."
@@ -51,10 +51,12 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       Task.pure(ToolResult.Success(TextToolOutput(input.answer)))
   }
 
-  /** Build a fake provider that yields the supplied event stream
-    * for `call`. Captures the request's effective `generationSettings`
-    * so the #196 default-application can be asserted. */
-  private final class ScriptedProvider(events: List[ProviderEvent]) extends Provider {
+  /**
+   * Build a fake provider that yields the supplied event stream
+   * for `call`. Captures the request's effective `generationSettings`
+   * so the #196 default-application can be asserted.
+   */
+  final private class ScriptedProvider(events: List[ProviderEvent]) extends Provider {
     @volatile var lastSettings: Option[GenerationSettings] = None
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -82,12 +84,12 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       ))
       withProvider(provider) {
         ConsultTool.invoke[ProbeInput](
-          sigil        = TestSigil,
-          modelId      = modelId,
-          chain        = List(TestUser),
+          sigil = TestSigil,
+          modelId = modelId,
+          chain = List(TestUser),
           systemPrompt = "sys",
-          userPrompt   = "ask",
-          tool         = ProbeTool
+          userPrompt = "ask",
+          tool = ProbeTool
           // generationSettings omitted — should default to classifierDefault.
         ).map { _ =>
           val settings = provider.lastSettings.get
@@ -120,15 +122,15 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       ))
       withProvider(provider) {
         ConsultTool.invokeRich[ProbeInput](
-          sigil        = TestSigil,
-          modelId      = modelId,
-          chain        = List(TestUser),
+          sigil = TestSigil,
+          modelId = modelId,
+          chain = List(TestUser),
           systemPrompt = "sys",
-          userPrompt   = "ask",
-          tool         = ProbeTool
+          userPrompt = "ask",
+          tool = ProbeTool
         ).map {
           case ConsultOutcome.Parsed(v) => v.answer shouldBe "yes"
-          case other                    => fail(s"expected Parsed, got $other")
+          case other => fail(s"expected Parsed, got $other")
         }
       }
     }
@@ -140,15 +142,15 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       ))
       withProvider(provider) {
         ConsultTool.invokeRich[ProbeInput](
-          sigil        = TestSigil,
-          modelId      = modelId,
-          chain        = List(TestUser),
+          sigil = TestSigil,
+          modelId = modelId,
+          chain = List(TestUser),
           systemPrompt = "sys",
-          userPrompt   = "ask",
-          tool         = ProbeTool
+          userPrompt = "ask",
+          tool = ProbeTool
         ).map {
           case ConsultOutcome.NoOpinion => succeed
-          case other                    => fail(s"expected NoOpinion, got $other")
+          case other => fail(s"expected NoOpinion, got $other")
         }
       }
     }
@@ -164,15 +166,15 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       ))
       withProvider(provider) {
         ConsultTool.invokeRich[ProbeInput](
-          sigil        = TestSigil,
-          modelId      = modelId,
-          chain        = List(TestUser),
+          sigil = TestSigil,
+          modelId = modelId,
+          chain = List(TestUser),
           systemPrompt = "sys",
-          userPrompt   = "ask",
-          tool         = ProbeTool
+          userPrompt = "ask",
+          tool = ProbeTool
         ).map {
           case f: ConsultOutcome.Failed => f.cause.getMessage should include("empty completion")
-          case other                    => fail(s"expected Failed, got $other")
+          case other => fail(s"expected Failed, got $other")
         }
       }
     }
@@ -184,12 +186,12 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       ))
       withProvider(provider) {
         ConsultTool.invokeRich[ProbeInput](
-          sigil        = TestSigil,
-          modelId      = modelId,
-          chain        = List(TestUser),
+          sigil = TestSigil,
+          modelId = modelId,
+          chain = List(TestUser),
           systemPrompt = "sys",
-          userPrompt   = "ask",
-          tool         = ProbeTool
+          userPrompt = "ask",
+          tool = ProbeTool
         ).map {
           case t: ConsultOutcome.Truncated =>
             t.promptTokens shouldBe Some(7500)
@@ -207,12 +209,12 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       ))
       withProvider(provider) {
         ConsultTool.invoke[ProbeInput](
-          sigil        = TestSigil,
-          modelId      = modelId,
-          chain        = List(TestUser),
+          sigil = TestSigil,
+          modelId = modelId,
+          chain = List(TestUser),
           systemPrompt = "sys",
-          userPrompt   = "ask",
-          tool         = ProbeTool
+          userPrompt = "ask",
+          tool = ProbeTool
         ).map {
           _ shouldBe None
         }

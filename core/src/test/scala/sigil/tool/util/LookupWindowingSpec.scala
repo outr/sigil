@@ -16,14 +16,16 @@ class LookupWindowingSpec extends AnyWordSpec with Matchers {
 
   private val threshold = 4096L
 
-  /** A payload shaped like an Information record: a big `content` field
-    * plus small metadata. */
+  /**
+   * A payload shaped like an Information record: a big `content` field
+   * plus small metadata.
+   */
   private def payload(contentLen: Int): Obj =
     obj(
-      "id"          -> str("OJGY0Qur"),
+      "id" -> str("OJGY0Qur"),
       "contentType" -> str("text/html"),
-      "summary"     -> str("a captured page"),
-      "content"     -> str("x" * contentLen)
+      "summary" -> str("a captured page"),
+      "content" -> str("x" * contentLen)
     )
 
   private def contentOf(j: Json): String = j("content").asString
@@ -68,7 +70,7 @@ class LookupWindowingSpec extends AnyWordSpec with Matchers {
         sb.append(contentOf(out))
         chunk.get.nextOffset match {
           case Some(n) => offset = Some(n)
-          case None    => done = true
+          case None => done = true
         }
       }
       done shouldBe true
@@ -77,9 +79,9 @@ class LookupWindowingSpec extends AnyWordSpec with Matchers {
 
     "window the LARGEST string field when several are present" in {
       val p = obj(
-        "title"   -> str("short"),
+        "title" -> str("short"),
         "content" -> str("y" * 40_000), // the dominant field
-        "note"    -> str("also short")
+        "note" -> str("also short")
       )
       val (_, chunk) = LookupTool.windowPayload(p, None, threshold)
       chunk.get.field shouldBe "content"

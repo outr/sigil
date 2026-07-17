@@ -44,11 +44,13 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
   private val modelId: Id[Model] = Model.id("test", "iteration-boundary-model")
   TestSigil.testModel(modelId)
 
-  /** Two-iteration provider: first call emits `change_mode` (a
-    * non-terminal tool call that doesn't satisfy `userVisibleSeen`,
-    * so the loop iterates), second call emits `respond`. The two
-    * iterations run inside one outer claim; the per-iteration
-    * boundary pulses must appear between them. */
+  /**
+   * Two-iteration provider: first call emits `change_mode` (a
+   * non-terminal tool call that doesn't satisfy `userVisibleSeen`,
+   * so the loop iterates), second call emits `respond`. The two
+   * iterations run inside one outer claim; the per-iteration
+   * boundary pulses must appear between them.
+   */
   private class TwoIterationProvider extends Provider {
     private val callCount = new atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -84,10 +86,10 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = ToolName("change_mode") :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = ToolName("change_mode") :: CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -102,11 +104,11 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
     val provider = new TwoIterationProvider
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"iteration-boundary-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
@@ -120,9 +122,10 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
     // from 10 to 200 (sigil bug #109).
     def waitForTerminal(deadline: Long): Task[Unit] = Task.defer {
       val terminal = recorded.iterator().asScala.exists {
-        case d: AgentStateDelta if d.activity.contains(AgentActivity.Idle)
-                                && d.state.contains(EventState.Complete)
-                                && d.conversationId == convId => true
+        case d: AgentStateDelta
+            if d.activity.contains(AgentActivity.Idle)
+              && d.state.contains(EventState.Complete)
+              && d.conversationId == convId => true
         case _ => false
       }
       if (terminal) Task.unit
@@ -134,12 +137,12 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
       _ <- Task.sleep(100.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Switch to coding then say hi.")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Switch to coding then say hi.")),
+        state = EventState.Complete
+      ))
       _ <- waitForTerminal(System.currentTimeMillis() + 10_000L)
     } yield {
       running.set(false)
@@ -149,7 +152,7 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
 
   "Sigil.runAgentLoop (bug #54 / #349)" should {
 
-    "emit NO mid-turn Idle, and exactly one terminal Idle, across a multi-iteration turn (#349)" in {
+    "emit NO mid-turn Idle, and exactly one terminal Idle, across a multi-iteration turn (#349)" in
       runScenario().map { signals =>
         val idleDeltas = signals.collect {
           case d: AgentStateDelta if d.activity.contains(AgentActivity.Idle) => d
@@ -164,9 +167,8 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
           idleDeltas.head.state shouldBe Some(EventState.Complete)
         }
       }
-    }
 
-    "emit AgentStateDelta(Thinking) at the start of subsequent iterations" in {
+    "emit AgentStateDelta(Thinking) at the start of subsequent iterations" in
       runScenario().map { signals =>
         val thinkingDeltas = signals.collect {
           case d: AgentStateDelta if d.activity.contains(AgentActivity.Thinking) => d
@@ -176,17 +178,16 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
         // at least one such Delta on a multi-iteration turn.
         thinkingDeltas should not be empty
       }
-    }
 
-    "still emit a terminal AgentStateDelta(Idle, Complete) when the outer loop releases the claim" in {
+    "still emit a terminal AgentStateDelta(Idle, Complete) when the outer loop releases the claim" in
       runScenario().map { signals =>
         val terminalIdle = signals.reverseIterator.collectFirst {
-          case d: AgentStateDelta if d.activity.contains(AgentActivity.Idle)
-                                  && d.state.contains(EventState.Complete) => d
+          case d: AgentStateDelta
+              if d.activity.contains(AgentActivity.Idle)
+                && d.state.contains(EventState.Complete) => d
         }
         terminalIdle should not be empty
       }
-    }
   }
 
   "tear down" should {

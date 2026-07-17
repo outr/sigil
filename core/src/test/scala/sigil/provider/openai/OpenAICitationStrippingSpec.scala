@@ -22,7 +22,7 @@ class OpenAICitationStrippingSpec extends AnyWordSpec with Matchers {
 
   private def runLines(lines: List[String]): Vector[ProviderEvent] = {
     val provider = OpenAIProvider("", TestSigil, url"https://api.openai.com")
-    val state    = new provider.StreamState(new ToolCallAccumulator())
+    val state = new provider.StreamState(new ToolCallAccumulator())
     lines.flatMap(line => provider.parseLine(line, state)).toVector
   }
 

@@ -35,21 +35,21 @@ class ContextFrameToolResultMigrationSpec extends AnyWordSpec with Matchers {
   // retired `ToolResult` discriminator.
   private def orphanRow(eventId: String, callId: String, content: String): Json = {
     val baseMessage = Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = lightdb.id.Id(s"conv-$eventId"),
-      topicId        = TestTopicId,
-      state          = EventState.Complete,
-      _id            = lightdb.id.Id(eventId)
+      topicId = TestTopicId,
+      state = EventState.Complete,
+      _id = lightdb.id.Id(eventId)
     )
     val baseJson = summon[RW[sigil.event.Event]].read(baseMessage)
     // Splice in the legacy `contextFrame: ToolResult(...)` shape that
     // the current ContextFrame enum no longer accepts.
     val legacyContextFrame = obj(
-      "type"          -> str("ToolResult"),
-      "callId"        -> str(callId),
-      "content"       -> str(content),
+      "type" -> str("ToolResult"),
+      "callId" -> str(callId),
+      "content" -> str(content),
       "sourceEventId" -> str(eventId),
-      "visibility"    -> obj("type" -> str("All"))
+      "visibility" -> obj("type" -> str("All"))
     )
     baseJson.merge(obj("contextFrame" -> legacyContextFrame))
   }
@@ -63,10 +63,10 @@ class ContextFrameToolResultMigrationSpec extends AnyWordSpec with Matchers {
 
     "leave non-orphan rows alone" in {
       val cleanMessage = Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = lightdb.id.Id("conv-clean"),
-        topicId        = TestTopicId,
-        state          = EventState.Complete
+        topicId = TestTopicId,
+        state = EventState.Complete
       )
       val cleanJson = summon[RW[sigil.event.Event]].read(cleanMessage)
       ContextFrameToolResultMigrationUpgrade.isOrphanToolResult(cleanJson) shouldBe false
@@ -78,7 +78,7 @@ class ContextFrameToolResultMigrationSpec extends AnyWordSpec with Matchers {
       val rewritten = ContextFrameToolResultMigrationUpgrade.rewriteOrphanRow(orphan)
       rewritten shouldBe defined
       val event = rewritten.get
-      event shouldBe a [Message]
+      event shouldBe a[Message]
       val asMessage = event.asInstanceOf[Message]
       asMessage.contextFrame shouldBe None
       asMessage._id.value shouldBe "evt-2"
@@ -103,12 +103,12 @@ class ContextFrameToolResultMigrationSpec extends AnyWordSpec with Matchers {
     "detect rows whose top-level `type` is a retired Event discriminator" in {
       val deadToolResults = obj(
         "type" -> str("ToolResults"),
-        "_id"  -> str("evt-tr-1"),
+        "_id" -> str("evt-tr-1"),
         "outcome" -> obj("type" -> str("Success"))
       )
       val deadToolCall = obj(
         "type" -> str("ToolCall"),
-        "_id"  -> str("evt-tc-1")
+        "_id" -> str("evt-tc-1")
       )
       val liveMessage = obj("type" -> str("Message"), "_id" -> str("evt-msg-1"))
       ContextFrameToolResultMigrationUpgrade.isDeadOuterEvent(deadToolResults) shouldBe true
@@ -119,28 +119,28 @@ class ContextFrameToolResultMigrationSpec extends AnyWordSpec with Matchers {
     "classify a mixed batch into drops + rewrites" in {
       val deadOuter = obj(
         "type" -> str("ToolResults"),
-        "_id"  -> str("evt-tr-classify"),
+        "_id" -> str("evt-tr-classify"),
         "origin" -> str("evt-paired-1"),
         "outcome" -> obj("type" -> str("Success"))
       )
       val deadInnerOnly = orphanRow("evt-inner-classify", "call-inner", "inner-content")
       val deadBoth = obj(
         "type" -> str("ToolCall"),
-        "_id"  -> str("evt-both-classify"),
+        "_id" -> str("evt-both-classify"),
         "contextFrame" -> obj("type" -> str("ToolResult"))
       )
       val clean = summon[RW[sigil.event.Event]].read(Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = lightdb.id.Id("conv-clean-classify"),
-        topicId        = TestTopicId,
-        state          = EventState.Complete
+        topicId = TestTopicId,
+        state = EventState.Complete
       ))
       val (drops, rewrites) = ContextFrameToolResultMigrationUpgrade.classifyRows(
         List(deadOuter, deadInnerOnly, deadBoth, clean)
       )
       // dead-outer rows AND dead-both rows drop; clean and inner-only stay.
-      drops should contain ("evt-tr-classify")
-      drops should contain ("evt-both-classify")
+      drops should contain("evt-tr-classify")
+      drops should contain("evt-both-classify")
       drops should not contain "evt-inner-classify"
       // Only the inner-only orphan produces a rewrite.
       rewrites.map(_._id.value) shouldBe List("evt-inner-classify")
@@ -149,7 +149,7 @@ class ContextFrameToolResultMigrationSpec extends AnyWordSpec with Matchers {
     "drop wins over rewrite when a row is both dead-outer AND dead-inner" in {
       val deadBoth = obj(
         "type" -> str("ToolResults"),
-        "_id"  -> str("evt-both-drop"),
+        "_id" -> str("evt-both-drop"),
         "outcome" -> obj("type" -> str("Success")),
         "contextFrame" -> obj("type" -> str("ToolResult"))
       )

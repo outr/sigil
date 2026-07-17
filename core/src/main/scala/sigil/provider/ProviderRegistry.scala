@@ -33,14 +33,16 @@ final class ProviderRegistry(val providers: List[Provider]) extends ModelResolve
   private val byKey: Map[String, Provider] =
     providers.iterator.map(p => p.providerKey -> p).toMap
 
-  /** Provider keys this registry can serve — surfaced in
-    * resolution-miss diagnostics. */
+  /**
+   * Provider keys this registry can serve — surfaced in
+   * resolution-miss diagnostics.
+   */
   def knownKeys: List[String] = providers.map(_.providerKey)
 
   override def resolve(modelId: Id[Model]): Option[ProviderModel] = {
     val namespace = modelId.value.split("/", 2) match {
       case Array(ns, _) => ns
-      case _            => modelId.value
+      case _ => modelId.value
     }
     byKey.get(namespace).flatMap(_.resolve(modelId))
   }

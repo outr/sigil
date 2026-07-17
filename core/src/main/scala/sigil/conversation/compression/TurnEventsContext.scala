@@ -24,13 +24,15 @@ import sigil.participant.ParticipantId
 case class TurnEventsContext(conversationId: Id[Conversation],
                              claimedAt: Option[Timestamp] = None,
                              agentId: Option[ParticipantId] = None,
-                             /** Ids of tool invokes whose SETTLED result has
-                               * already been rendered into a prompt the model
-                               * consumed (tracked per-turn by the agent loop).
-                               * [[CompactionInvariant.UndeliveredToolResults]]
-                               * protects active-turn invokes NOT in this set —
-                               * folding a result the agent never saw makes the
-                               * agent re-execute its own completed work. Empty
-                               * when the caller has no delivery tracking in
-                               * scope (over-protects one turn; safe). */
+                             /**
+                              * Ids of tool invokes whose SETTLED result has
+                              * already been rendered into a prompt the model
+                              * consumed (tracked per-turn by the agent loop).
+                              * [[CompactionInvariant.UndeliveredToolResults]]
+                              * protects active-turn invokes NOT in this set —
+                              * folding a result the agent never saw makes the
+                              * agent re-execute its own completed work. Empty
+                              * when the caller has no delivery tracking in
+                              * scope (over-protects one turn; safe).
+                              */
                              deliveredToolResults: Set[Id[sigil.event.Event]] = Set.empty)

@@ -13,9 +13,9 @@ import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
  * SIGKILL.
  */
 final class ProcessSignalTool(registry: ProcessRegistry) extends Tool {
-  type Input  = ProcessSignalInput
+  type Input = ProcessSignalInput
   type Output = ProcessSignalOutput
-  val inputRW  = summon[RW[ProcessSignalInput]]
+  val inputRW = summon[RW[ProcessSignalInput]]
   val outputRW = summon[RW[ProcessSignalOutput]]
 
   val name = ToolName("process_signal")
@@ -24,7 +24,7 @@ final class ProcessSignalTool(registry: ProcessRegistry) extends Tool {
       |then SIGKILL on grace timeout), `interrupt` (SIGINT-equivalent), `kill` (SIGKILL).
       |Returns the handle, the delivered signal, and whether delivery succeeded.""".stripMargin
   override val examples = List(
-    ToolExample("Terminate gracefully",  ProcessSignalInput(handle = "p1")),
+    ToolExample("Terminate gracefully", ProcessSignalInput(handle = "p1")),
     ToolExample("Force-kill a hung proc", ProcessSignalInput(handle = "p1", signal = sigil.tool.model.ProcessSignal.Kill))
   )
   override val keywords = Set("process", "signal", "terminate", "kill", "stop")

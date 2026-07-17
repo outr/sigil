@@ -15,9 +15,9 @@ case class UnpinModelInput() extends ToolInput derives RW
  * auto-registered.
  */
 case object UnpinModelTool extends Tool {
-  type Input  = UnpinModelInput
+  type Input = UnpinModelInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[UnpinModelInput]]
+  val inputRW = summon[RW[UnpinModelInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("unpin_model")
   val description =
@@ -28,7 +28,7 @@ case object UnpinModelTool extends Tool {
   override def executeResult(input: UnpinModelInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
-      case None       => Task.pure(None)
+      case None => Task.pure(None)
       case Some(conv) => Task.pure(Some(conv.copy(pinnedModelId = None, modified = Timestamp())))
     })).map {
       case None =>

@@ -16,10 +16,10 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * [[ConsultTool.invoke]] with `tool_choice = required`.
  */
 case object ClassifyMemoryTool extends Tool with FrameworkConsult {
-  type Input  = ClassifyMemoryInput
+  type Input = ClassifyMemoryInput
   type Output = TextToolOutput
   val inputRW: RW[ClassifyMemoryInput] = summon[RW[ClassifyMemoryInput]]
-  val outputRW: RW[TextToolOutput]     = summon[RW[TextToolOutput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("classify_memory")
   val description: String =
@@ -52,20 +52,25 @@ case object ClassifyMemoryTool extends Tool with FrameworkConsult {
       |4. `ambiguityReason` — required when `space == "ambiguous"`; one short sentence telling
       |   the user what's unclear ("could apply to user or project; please pick").""".stripMargin
 
-
-  /** Categorical decision — routes through the cheap classification tier. */
+  /**
+   * Categorical decision — routes through the cheap classification tier.
+   */
   override def consultWorkType: WorkType = ClassificationWork
 
-  /** Output is a short keyword list, an enum, a space token, and an
-    * optional one-sentence reason. 256 tokens covers the payload plus
-    * the reasoning-spill margin. */
+  /**
+   * Output is a short keyword list, an enum, a space token, and an
+   * optional one-sentence reason. 256 tokens covers the payload plus
+   * the reasoning-spill margin.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(256),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   override def executeResult(input: ClassifyMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

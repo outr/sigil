@@ -28,4 +28,5 @@ import sigil.viewer.ViewerStatePayload
  * upsert.
  */
 case class UpdateViewerStateDelta(scope: String,
-                                  patch: ViewerStatePayload) extends Notice derives RW
+                                  patch: ViewerStatePayload)
+  extends Notice derives RW

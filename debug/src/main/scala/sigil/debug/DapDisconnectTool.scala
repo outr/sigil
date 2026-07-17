@@ -6,7 +6,8 @@ import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapDisconnectInput(sessionId: String,
-                              terminateDebuggee: Boolean = false) extends ToolInput derives RW
+                              terminateDebuggee: Boolean = false)
+  extends ToolInput derives RW
 
 /**
  * End a debug session. `terminateDebuggee = true` kills the

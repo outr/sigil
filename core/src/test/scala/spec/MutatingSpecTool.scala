@@ -14,9 +14,9 @@ final case class MutatingSpecInput(step: String) extends ToolInput derives RW
  * stall detector.
  */
 case object MutatingSpecTool extends Tool with DestructiveExternalTool {
-  type Input  = MutatingSpecInput
+  type Input = MutatingSpecInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[MutatingSpecInput]]
+  val inputRW = summon[RW[MutatingSpecInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("mutate_spec_state")
   val description = "Test-only state-changing tool; applies the named step."

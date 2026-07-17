@@ -28,4 +28,5 @@ import lightdb.time.Timestamp
  *                  (`Timestamp()` for the never-refreshed default).
  */
 case class Models(list: List[Model] = Nil,
-                  refreshed: Timestamp = Timestamp()) derives RW
+                  refreshed: Timestamp = Timestamp())
+  derives RW

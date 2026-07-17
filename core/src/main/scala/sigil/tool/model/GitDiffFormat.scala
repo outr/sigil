@@ -7,10 +7,14 @@ import fabric.rw.*
  */
 enum GitDiffFormat derives RW {
 
-  /** Raw unified-diff text under a `text` field. */
+  /**
+   * Raw unified-diff text under a `text` field.
+   */
   case Text
 
-  /** A structured hunk array: `{hunks: [{file, oldStart, newStart,
-    * lines: [{kind, text}]}]}`. */
+  /**
+   * A structured hunk array: `{hunks: [{file, oldStart, newStart,
+   * lines: [{kind, text}]}]}`.
+   */
   case Hunks
 }

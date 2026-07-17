@@ -43,13 +43,15 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   case class EchoInput(text: String) extends ToolInput derives RW
 
-  /** Tool that produces a typed text result echoing the input text.
-    * Lets the test verify the duplicate inlines that exact text
-    * rather than a reference. */
-  private final class EchoTool(toolName: ToolName) extends Tool {
-    type Input  = EchoInput
+  /**
+   * Tool that produces a typed text result echoing the input text.
+   * Lets the test verify the duplicate inlines that exact text
+   * rather than a reference.
+   */
+  final private class EchoTool(toolName: ToolName) extends Tool {
+    type Input = EchoInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[EchoInput]]
+    val inputRW = summon[RW[EchoInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name: ToolName = toolName
     val description: String = "Echo input"
@@ -59,8 +61,10 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
       Task.pure(ToolResult.Success(TextToolOutput(s"echoed: ${input.text}")))
   }
 
-  /** Provider that emits TWO identical tool calls back-to-back so
-    * the dedup path fires for the second one. */
+  /**
+   * Provider that emits TWO identical tool calls back-to-back so
+   * the dedup path fires for the second one.
+   */
   private class TwoIdenticalCallsProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -88,19 +92,19 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val echoTool = new EchoTool(ToolName("echo"))
       val request = ConversationRequest(
-        conversationId     = convId,
-        model            = TestSigil.testModel(modelId),
-        instructions       = Instructions(),
-        turnInput          = TurnInput(conversationId = convId),
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
-        previousTopics     = Nil,
+        conversationId = convId,
+        model = TestSigil.testModel(modelId),
+        instructions = Instructions(),
+        turnInput = TurnInput(conversationId = convId),
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
+        previousTopics = Nil,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-        chain              = List(TestUser, TestAgent),
-        tools              = Vector(echoTool)
+        chain = List(TestUser, TestAgent),
+        tools = Vector(echoTool)
       )
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, new TwoIdenticalCallsProvider, request, conv).toList
       } yield {
         val invokes = signals.collect { case t: ToolInvoke => t }

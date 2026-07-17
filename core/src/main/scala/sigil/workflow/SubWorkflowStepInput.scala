@@ -18,4 +18,5 @@ case class SubWorkflowStepInput(id: String,
                                 workflowId: String,
                                 name: Option[String] = None,
                                 variables: Map[String, String] = Map.empty,
-                                output: Option[String] = None) extends WorkflowStepInput derives RW
+                                output: Option[String] = None)
+  extends WorkflowStepInput derives RW

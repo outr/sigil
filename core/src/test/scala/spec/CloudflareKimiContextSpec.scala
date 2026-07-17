@@ -36,9 +36,9 @@ class CloudflareKimiContextSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   "find_capability discovery for a filesystem code-search task" should {
     "surface grep, NOT conversation/semantic-search tools that only match generic 'search'/'find'" in {
       val request = DiscoveryRequest(
-        keywords     = "grep search find text pattern match",
-        chain        = List(TestUser, TestAgent),
-        mode         = ConversationMode,
+        keywords = "grep search find text pattern match",
+        chain = List(TestUser, TestAgent),
+        mode = ConversationMode,
         callerSpaces = Set(GlobalSpace)
       )
       KimiContextSigil.findCapabilities(request).map { matches =>
@@ -57,9 +57,11 @@ class CloudflareKimiContextSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   }
 }
 
-/** Minimal Sigil whose catalog includes the filesystem + search tools the
-  * Sage scenario exercised, so `findCapabilities` ranks/surfaces them for
-  * real. No provider — discovery never calls the model. */
+/**
+ * Minimal Sigil whose catalog includes the filesystem + search tools the
+ * Sage scenario exercised, so `findCapabilities` ranks/surfaces them for
+ * real. No provider — discovery never calls the model.
+ */
 object KimiContextSigil extends Sigil {
   override type DB = sigil.db.DefaultSigilDB
   override protected def buildDB(directory: Option[java.nio.file.Path],
@@ -85,33 +87,35 @@ object KimiContextSigil extends Sigil {
       providerRef.get().flatMap(p => cache.find(modelId).map(ProviderModel(p(), _)))
   }
 
-  /** Register a Model record so the agent loop can resolve the live
-    * Kimi id against the cache. Idempotent. */
+  /**
+   * Register a Model record so the agent loop can resolve the live
+   * Kimi id against the cache. Idempotent.
+   */
   def registerModel(modelId: Id[Model]): Model =
     cache.find(modelId).getOrElse {
       val now = lightdb.time.Timestamp()
       val m = Model(
-        canonicalSlug       = modelId.value,
-        huggingFaceId       = "",
-        name                = modelId.value,
-        description         = s"Live model fixture for ${modelId.value}.",
-        contextLength       = 131072L,
-        architecture        = ModelArchitecture(
-          modality         = "text->text",
-          inputModalities  = List("text"),
+        canonicalSlug = modelId.value,
+        huggingFaceId = "",
+        name = modelId.value,
+        description = s"Live model fixture for ${modelId.value}.",
+        contextLength = 131072L,
+        architecture = ModelArchitecture(
+          modality = "text->text",
+          inputModalities = List("text"),
           outputModalities = List("text"),
-          tokenizer        = "GPT",
-          instructType     = None
+          tokenizer = "GPT",
+          instructType = None
         ),
-        pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
-        topProvider         = ModelTopProvider(contextLength = Some(131072L), maxCompletionTokens = Some(16000L), isModerated = false),
-        perRequestLimits    = None,
+        pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+        topProvider = ModelTopProvider(contextLength = Some(131072L), maxCompletionTokens = Some(16000L), isModerated = false),
+        perRequestLimits = None,
         supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
-        knowledgeCutoff     = None,
-        expirationDate      = None,
-        links               = ModelLinks(details = ""),
-        created             = now,
-        _id                 = modelId
+        knowledgeCutoff = None,
+        expirationDate = None,
+        links = ModelLinks(details = ""),
+        created = now,
+        _id = modelId
       )
       cache.merge(List(m)).sync()
       m

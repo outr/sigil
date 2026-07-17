@@ -29,20 +29,23 @@ case class Instructions private (safety: String = Instructions.ConfirmingSafety,
                                  personality: String = Instructions.DefaultPersonality,
                                  guidelines: List[String] = Nil,
                                  toolsTrailer: String = Instructions.DefaultToolsTrailer,
-                                 /** The agent's safety posture (sigil bug
-                                   * #160). `Confirming` keeps the
-                                   * orchestrator's `requiresUserConsent`
-                                   * gate active; `Autonomous` bypasses
-                                   * it because the user has pre-
-                                   * authorized the agent. Independent of
-                                   * the [[safety]] prose — that's the
-                                   * model-facing wording; this is the
-                                   * structural flag the orchestrator
-                                   * keys off. The two should usually
-                                   * agree (set both via
-                                   * [[Instructions.autonomous]] or
-                                   * [[Instructions.apply]]). */
-                                 posture: SafetyPosture = SafetyPosture.Confirming) derives RW {
+                                 /**
+                                  * The agent's safety posture (sigil bug
+                                  * #160). `Confirming` keeps the
+                                  * orchestrator's `requiresUserConsent`
+                                  * gate active; `Autonomous` bypasses
+                                  * it because the user has pre-
+                                  * authorized the agent. Independent of
+                                  * the [[safety]] prose — that's the
+                                  * model-facing wording; this is the
+                                  * structural flag the orchestrator
+                                  * keys off. The two should usually
+                                  * agree (set both via
+                                  * [[Instructions.autonomous]] or
+                                  * [[Instructions.apply]]).
+                                  */
+                                 posture: SafetyPosture = SafetyPosture.Confirming)
+  derives RW {
   assert(personality.nonEmpty, "Personality must not be empty!")
 
   def withPersonality(personality: String): Instructions = copy(personality = personality)
@@ -55,12 +58,16 @@ case class Instructions private (safety: String = Instructions.ConfirmingSafety,
 
   def withGuidelines(guidelines: String*): Instructions = copy(guidelines = this.guidelines ::: guidelines.toList)
 
-  /** Set or disable the trailing tool-call recap. Pass `""` to suppress. */
+  /**
+   * Set or disable the trailing tool-call recap. Pass `""` to suppress.
+   */
   def withToolsTrailer(toolsTrailer: String): Instructions = copy(toolsTrailer = toolsTrailer)
 
-  /** Set the structural safety posture. Distinct from [[withSafety]] —
-    * that swaps the model-facing safety prose; this flips the
-    * orchestrator's consent-gate behaviour. */
+  /**
+   * Set the structural safety posture. Distinct from [[withSafety]] —
+   * that swaps the model-facing safety prose; this flips the
+   * orchestrator's consent-gate behaviour.
+   */
   def withPosture(posture: SafetyPosture): Instructions = copy(posture = posture)
 
   /**
@@ -78,9 +85,8 @@ case class Instructions private (safety: String = Instructions.ConfirmingSafety,
    * recency-biased attention even after long conversation histories
    * push the front-of-prompt content out of view.
    */
-  lazy val render: String =
-    (List(personality, core) ::: guidelines ::: List(toolsTrailer))
-      .filter(_.nonEmpty).mkString("\n\n")
+  lazy val render: String = (List(personality, core) ::: guidelines ::: List(toolsTrailer))
+    .filter(_.nonEmpty).mkString("\n\n")
 
   /**
    * Render variant that omits the [[tools]] discovery block — used
@@ -217,9 +223,14 @@ object Instructions {
             guidelines: List[String] = Nil,
             toolsTrailer: String = DefaultToolsTrailer,
             posture: SafetyPosture = SafetyPosture.Confirming): Instructions =
-    new Instructions(safety = safety, behavior = behavior, tools = tools,
-                     personality = personality, guidelines = guidelines,
-                     toolsTrailer = toolsTrailer, posture = posture)
+    new Instructions(
+      safety = safety,
+      behavior = behavior,
+      tools = tools,
+      personality = personality,
+      guidelines = guidelines,
+      toolsTrailer = toolsTrailer,
+      posture = posture)
 
   /**
    * Convenience factory for autonomous-action posture — the agent acts
@@ -236,7 +247,9 @@ object Instructions {
    */
   def autonomous(personality: String = DefaultPersonality,
                  guidelines: List[String] = Nil): Instructions =
-    apply(safety = AutonomousSafety, personality = personality, guidelines = guidelines,
-          posture = SafetyPosture.Autonomous)
+    apply(
+      safety = AutonomousSafety,
+      personality = personality,
+      guidelines = guidelines,
+      posture = SafetyPosture.Autonomous)
 }
-

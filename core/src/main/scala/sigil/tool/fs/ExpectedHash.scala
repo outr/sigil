@@ -16,8 +16,10 @@ object ExpectedHash {
 
   private val Sentinels: Set[String] = Set("none", "null", "nil", "undefined")
 
-  /** The effective expected hash: `None` for a real-absent or sentinel value,
-    * `Some(trimmed)` for a plausible hash. */
+  /**
+   * The effective expected hash: `None` for a real-absent or sentinel value,
+   * `Some(trimmed)` for a plausible hash.
+   */
   def normalize(expectedHash: Option[String]): Option[String] =
     expectedHash.map(_.trim).filter(h => h.nonEmpty && !Sentinels.contains(h.toLowerCase))
 }

@@ -8,7 +8,8 @@ import sigil.tooling.types.LspDidChangeResult
 
 case class LspDidChangeInput(languageId: String,
                              filePath: String,
-                             text: String) extends ToolInput derives RW
+                             text: String)
+  extends ToolInput derives RW
 
 /**
  * Send a full-document content update to the language server.
@@ -21,11 +22,10 @@ case class LspDidChangeInput(languageId: String,
  * `workspace/didChangeWatchedFiles` notification is the typical
  * fan-out path. This tool exists for explicit "refresh now" flows.
  */
-final class LspDidChangeTool(val manager: LspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with LspToolSupport {
-  type Input  = LspDidChangeInput
+final class LspDidChangeTool(val manager: LspManager) extends Tool with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  type Input = LspDidChangeInput
   type Output = LspDidChangeResult
-  val inputRW  = summon[RW[LspDidChangeInput]]
+  val inputRW = summon[RW[LspDidChangeInput]]
   val outputRW = summon[RW[LspDidChangeResult]]
   val name = ToolName("lsp_did_change")
   val description =
@@ -41,9 +41,8 @@ final class LspDidChangeTool(val manager: LspManager) extends Tool
       |the document version is bumped.""".stripMargin
   override val keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit")
 
-
   override def executeResult(input: LspDidChangeInput,
-                             context: ToolContext): Task[ToolResult[LspDidChangeResult]] = {
+                             context: ToolContext): Task[ToolResult[LspDidChangeResult]] =
     // Bug #131 — Sage's wire log showed the agent calling lsp_did_change
     // with 17-character `text` values ("AdminUsersService") trying to
     // QUERY the file. Each call silently overwrote the LSP's in-memory
@@ -68,26 +67,30 @@ final class LspDidChangeTool(val manager: LspManager) extends Tool
       ))
     } else {
       withSessionOrThrow[LspDidChangeResult](
-        input.languageId, input.filePath, context
+        input.languageId,
+        input.filePath,
+        context
       ) { (session, uri, _) =>
         session.didChangeFull(uri, input.text).map(_ => LspDidChangeResult(uri))
       }.map(r => ToolResult.success(r))
         .handleError { err =>
           Task.pure(ToolResult.failure(
             message = Option(err.getMessage).getOrElse(err.getClass.getSimpleName),
-            args    = Some(s"filePath=${input.filePath}, languageId=${input.languageId}")
+            args = Some(s"filePath=${input.filePath}, languageId=${input.languageId}")
           ))
         }
     }
-  }
 }
 
 object LspDidChangeTool {
-  /** Minimum `text` payload length before lsp_did_change accepts it as a
-    * plausible full-document update. Below this, the tool refuses with
-    * a Failure pointing at read_file — the bug #131 wire-log scenario
-    * (agent passing 17-char query strings as `text`) trips here. Apps
-    * with legitimately tiny source files (single-line scripts) can
-    * override the tool to lower the bar. */
+
+  /**
+   * Minimum `text` payload length before lsp_did_change accepts it as a
+   * plausible full-document update. Below this, the tool refuses with
+   * a Failure pointing at read_file — the bug #131 wire-log scenario
+   * (agent passing 17-char query strings as `text`) trips here. Apps
+   * with legitimately tiny source files (single-line scripts) can
+   * override the tool to lower the bar.
+   */
   val MinPlausibleDocumentLength: Int = 30
 }

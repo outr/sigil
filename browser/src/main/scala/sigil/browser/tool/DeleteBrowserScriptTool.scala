@@ -8,13 +8,15 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
-/** Delete a stored [[BrowserScript]] by name. Authz: caller's
-  * `accessibleSpaces` must include the script's space (or the
-  * script must live in [[GlobalSpace]]). */
+/**
+ * Delete a stored [[BrowserScript]] by name. Authz: caller's
+ * `accessibleSpaces` must include the script's space (or the
+ * script must live in [[GlobalSpace]]).
+ */
 case object DeleteBrowserScriptTool extends Tool {
-  type Input  = DeleteBrowserScriptInput
+  type Input = DeleteBrowserScriptInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[DeleteBrowserScriptInput]]
+  val inputRW = summon[RW[DeleteBrowserScriptInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("delete_browser_script")
@@ -43,6 +45,7 @@ case object DeleteBrowserScriptTool extends Tool {
               s"Tool '${input.name}' exists but is not a browser script."))
         }
       })
-    }.handleError(t => Task.pure(ToolResult.failure(
-      s"Failed to delete browser script: ${t.getMessage}")))
+    }.handleError(t =>
+      Task.pure(ToolResult.failure(
+        s"Failed to delete browser script: ${t.getMessage}")))
 }

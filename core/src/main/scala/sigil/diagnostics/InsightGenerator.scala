@@ -47,7 +47,8 @@ object InsightGenerator {
       out += ContextManagementInsight(
         level = InsightLevel.Warning,
         category = InsightCategory.Budget,
-        message = f"Total context usage at ${total.toDouble / cfg.contextLength * 100}%.0f%% (${total} / ${cfg.contextLength} tok) — consider reviewing what's pinned",
+        message =
+          f"Total context usage at ${total.toDouble / cfg.contextLength * 100}%.0f%% ($total / ${cfg.contextLength} tok) — consider reviewing what's pinned",
         suggestedAction = Some("context_breakdown")
       )
     }
@@ -55,7 +56,7 @@ object InsightGenerator {
     val criticalTokens = profile.sections.getOrElse(ProfileSection.CriticalMemories, 0)
     if (total > 0 && criticalTokens.toDouble / total > cfg.criticalShareThreshold) {
       val top = topContributorsByTokens(criticalMemories, tokenizer, n = 3)
-      val topStr = top.map { case (key, tok) => s"$key @${tok} tok" }.mkString(", ")
+      val topStr = top.map { case (key, tok) => s"$key @$tok tok" }.mkString(", ")
       out += ContextManagementInsight(
         level = InsightLevel.Recommendation,
         category = InsightCategory.Memory,
@@ -71,7 +72,7 @@ object InsightGenerator {
         out += ContextManagementInsight(
           level = InsightLevel.Recommendation,
           category = InsightCategory.Memory,
-          message = s"Memory `${displayKey(m)}` (${factTokens} tok) has no summary; setting one would shrink the rendered cost",
+          message = s"Memory `${displayKey(m)}` ($factTokens tok) has no summary; setting one would shrink the rendered cost",
           suggestedAction = None
         )
       }
@@ -82,7 +83,8 @@ object InsightGenerator {
       out += ContextManagementInsight(
         level = InsightLevel.Info,
         category = InsightCategory.Memory,
-        message = f"Retrieved memories are ${retrievedTokens.toDouble / total * 100}%.0f%% of context — agent could trim if not all are relevant this turn",
+        message =
+          f"Retrieved memories are ${retrievedTokens.toDouble / total * 100}%.0f%% of context — agent could trim if not all are relevant this turn",
         suggestedAction = None
       )
     }
@@ -92,7 +94,8 @@ object InsightGenerator {
       out += ContextManagementInsight(
         level = InsightLevel.Info,
         category = InsightCategory.Tools,
-        message = f"Tool roster is ${toolRosterTokens.toDouble / total * 100}%.0f%% of context (${toolRosterTokens} tok) — consider mode-scoping the available tools",
+        message =
+          f"Tool roster is ${toolRosterTokens.toDouble / total * 100}%.0f%% of context ($toolRosterTokens tok) — consider mode-scoping the available tools",
         suggestedAction = None
       )
     }
@@ -102,7 +105,8 @@ object InsightGenerator {
       out += ContextManagementInsight(
         level = InsightLevel.Info,
         category = InsightCategory.Frames,
-        message = f"Conversation history is ${frameTokens.toDouble / cfg.contextLength * 100}%.0f%% of context — compression likely imminent",
+        message =
+          f"Conversation history is ${frameTokens.toDouble / cfg.contextLength * 100}%.0f%% of context — compression likely imminent",
         suggestedAction = None
       )
     }
@@ -111,7 +115,8 @@ object InsightGenerator {
       out += ContextManagementInsight(
         level = InsightLevel.Info,
         category = InsightCategory.Frames,
-        message = s"This turn includes ${summaries.size} summary record(s) from prior compression — older history is preserved in compressed form",
+        message =
+          s"This turn includes ${summaries.size} summary record(s) from prior compression — older history is preserved in compressed form",
         suggestedAction = None
       )
     }

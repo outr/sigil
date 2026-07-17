@@ -22,9 +22,9 @@ import sigil.tool.model.{NoResponseInput, ResponseContent}
  * doesn't get silence after the model produced a deliverable message.
  */
 case object NoResponseTool extends RespondFamilyTool {
-  type Input  = NoResponseInput
+  type Input = NoResponseInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[NoResponseInput]]
+  val inputRW = summon[RW[NoResponseInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("no_response")
@@ -44,35 +44,54 @@ case object NoResponseTool extends RespondFamilyTool {
         scribe.warn(s"NoResponseTool: auto-promoting prose-shaped reason to a respond Message — " +
           s"the agent should call respond directly for user-directed text. Reason: ${reason.take(80)}…")
         context.emit(Message(
-          participantId  = context.caller,
+          participantId = context.caller,
           conversationId = context.conversation.id,
-          topicId        = context.conversation.currentTopicId,
-          content        = Vector(ResponseContent.Markdown(reason)),
-          state          = EventState.Complete,
-          modelId        = Some(context.modelId)
+          topicId = context.conversation.currentTopicId,
+          content = Vector(ResponseContent.Markdown(reason)),
+          state = EventState.Complete,
+          modelId = Some(context.modelId)
         )).map(_ => ToolResult.Success(TextToolOutput(reason)))
       case _ =>
         Task.pure(ToolResult.Success(TextToolOutput("")))
     }
 
-  /** Heuristic: a `reason` with any of the following looks like
-    * user-directed prose mis-routed into `no_response`, not a debug
-    * breadcrumb:
-    *   - longer than 120 characters
-    *   - starts with first-person / apology / refusal phrasing
-    *   - contains a sentence boundary (`. ` followed by a capital)
-    *
-    * Conservative: short third-person debug reasons ("off-topic",
-    * "stop signal received") pass through unchanged. */
+  /**
+   * Heuristic: a `reason` with any of the following looks like
+   * user-directed prose mis-routed into `no_response`, not a debug
+   * breadcrumb:
+   *   - longer than 120 characters
+   *   - starts with first-person / apology / refusal phrasing
+   *   - contains a sentence boundary (`. ` followed by a capital)
+   *
+   * Conservative: short third-person debug reasons ("off-topic",
+   * "stop signal received") pass through unchanged.
+   */
   private def isUserDirectedProse(reason: String): Boolean = {
     val text = reason.trim
     if (text.length > 120) return true
     val starts = List(
-      "I ", "I'm ", "I'd ", "I've ", "I cannot", "I can't", "I don't",
-      "I do not", "I'm not", "I am not",
-      "Sorry", "Unfortunately", "Apologies", "My apolog",
-      "Hi", "Hello", "Hey",
-      "It seems", "It looks like", "You can", "You'll need", "You should"
+      "I ",
+      "I'm ",
+      "I'd ",
+      "I've ",
+      "I cannot",
+      "I can't",
+      "I don't",
+      "I do not",
+      "I'm not",
+      "I am not",
+      "Sorry",
+      "Unfortunately",
+      "Apologies",
+      "My apolog",
+      "Hi",
+      "Hello",
+      "Hey",
+      "It seems",
+      "It looks like",
+      "You can",
+      "You'll need",
+      "You should"
     )
     if (starts.exists(text.startsWith)) return true
     val sentenceBoundary = "[.!?]\\s+[A-Z]".r

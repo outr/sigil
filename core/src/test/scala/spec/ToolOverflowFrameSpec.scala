@@ -23,19 +23,19 @@ class ToolOverflowFrameSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private val convId = Conversation.id(s"overflow-${rapid.Unique()}")
   private val ctx: TurnContext = TurnContext(
-    sigil        = TestSigil,
-    chain        = List(TestUser),
+    sigil = TestSigil,
+    chain = List(TestUser),
     conversation = Conversation(topics = List(TopicEntry(TestTopicId, "t", "t")), _id = convId),
-    turnInput    = TurnInput(ConversationView(conversationId = convId)),
-    model        = TestSigil.defaultTestModel
+    turnInput = TurnInput(ConversationView(conversationId = convId)),
+    model = TestSigil.defaultTestModel
   )
 
   private val bigText = "x" * 50000
 
   private case object BigOutputTool extends Tool {
-    type Input  = OverflowProbeInput
+    type Input = OverflowProbeInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[OverflowProbeInput]]
+    val inputRW = summon[RW[OverflowProbeInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name = ToolName("big_output")
     val description = "Returns a result far larger than the inline threshold."
@@ -44,7 +44,7 @@ class ToolOverflowFrameSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   }
 
   "A tool whose result overflows inlineContentThreshold" should {
-    "settle the invoke with a BOUNDED output, not the full result" in {
+    "settle the invoke with a BOUNDED output, not the full result" in
       BigOutputTool.execute(OverflowProbeInput(), ctx, Event.id()).toList.map { signals =>
         val delta = signals.collect { case d: ToolDelta if d.output.isDefined => d }.last
         val outText = delta.output.collect { case t: TextToolOutput => t.text }.getOrElse(bigText)
@@ -57,7 +57,6 @@ class ToolOverflowFrameSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           outText should not include "{\"text\""
         }
       }
-    }
   }
 
   "tear down" should {

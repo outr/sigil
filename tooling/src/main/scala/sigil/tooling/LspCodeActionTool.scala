@@ -14,7 +14,8 @@ case class LspCodeActionInput(languageId: String,
                               startCharacter: Int,
                               endLine: Int,
                               endCharacter: Int,
-                              onlyKinds: List[String] = Nil) extends ToolInput derives RW
+                              onlyKinds: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Request available code actions for a range — quick fixes,
@@ -27,11 +28,10 @@ case class LspCodeActionInput(languageId: String,
  * `["quickfix"]`, `["refactor.extract"]`, `["source.organizeImports"]`
  * — defined in the spec under "CodeActionKind".
  */
-final class LspCodeActionTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
-  type Input  = LspCodeActionInput
+final class LspCodeActionTool(val manager: LspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input = LspCodeActionInput
   type Output = LspCodeActionResult
-  val inputRW  = summon[RW[LspCodeActionInput]]
+  val inputRW = summon[RW[LspCodeActionInput]]
   val outputRW = summon[RW[LspCodeActionResult]]
   val name = ToolName("lsp_code_action")
   val description =
@@ -45,15 +45,29 @@ final class LspCodeActionTool(val manager: LspManager) extends Tool
       |Returns `{filePath, items: [{index, kind, title}]}`. The listing is cached for a
       |separate apply-by-index tool.""".stripMargin
   override val keywords = Set(
-    "lsp", "code action", "fix", "quickfix", "refactor", "refactoring", "suggestion",
-    "quick fix", "auto fix", "improve", "extract method", "extract variable",
-    "organize imports", "transform", "modify", "change"
+    "lsp",
+    "code action",
+    "fix",
+    "quickfix",
+    "refactor",
+    "refactoring",
+    "suggestion",
+    "quick fix",
+    "auto fix",
+    "improve",
+    "extract method",
+    "extract variable",
+    "organize imports",
+    "transform",
+    "modify",
+    "change"
   )
-
 
   override def executeOutput(input: LspCodeActionInput, context: ToolContext): Task[LspCodeActionResult] =
     withOpenDocumentOrThrow[LspCodeActionResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       val range = new Range(
         new Position(input.startLine, input.startCharacter),
@@ -62,7 +76,7 @@ final class LspCodeActionTool(val manager: LspManager) extends Tool
       session.codeAction(uri, range, input.onlyKinds).map { actions =>
         LspCodeActionResult(
           filePath = input.filePath,
-          items    = actions.zipWithIndex.map { case (a, idx) => toItem(a, idx) }
+          items = actions.zipWithIndex.map { case (a, idx) => toItem(a, idx) }
         )
       }
     }

@@ -11,7 +11,8 @@ import strider.step.Step
 
 case class DeclineWorkflowInput(runId: String,
                                 stepId: String,
-                                reason: Option[String] = None) extends ToolInput derives RW
+                                reason: Option[String] = None)
+  extends ToolInput derives RW
 
 /**
  * Decline a workflow run paused on an [[strider.step.Approval]]
@@ -25,9 +26,9 @@ case class DeclineWorkflowInput(runId: String,
  * Idempotent against an already-resumed run.
  */
 final class DeclineWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = DeclineWorkflowInput
+  type Input = DeclineWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[DeclineWorkflowInput]]
+  val inputRW = summon[RW[DeclineWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("decline_workflow")
   val description =
@@ -37,9 +38,11 @@ final class DeclineWorkflowTool extends Tool with WorkflowToolSupport {
       |optional free-form text — appended to the resume payload so the workflow's
       |branching can match on it.""".stripMargin
   override val examples = List(
-    ToolExample("Decline a deploy approval",
+    ToolExample(
+      "Decline a deploy approval",
       DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate")),
-    ToolExample("Decline with a reason",
+    ToolExample(
+      "Decline with a reason",
       DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate", reason = Some("staging tests failing")))
   )
   override val keywords = Set("workflow", "decline", "reject", "no", "deny", "refuse")

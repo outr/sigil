@@ -25,9 +25,9 @@ import scala.jdk.CollectionConverters.*
  * [[GrepInput.includeIgnored]].
  */
 final class GrepTool(context: FileSystemContext) extends Tool with sigil.tool.ReadOnlyExternalTool {
-  type Input  = GrepInput
+  type Input = GrepInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[GrepInput]]
+  val inputRW = summon[RW[GrepInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("grep")
@@ -53,14 +53,33 @@ final class GrepTool(context: FileSystemContext) extends Tool with sigil.tool.Re
 
   override val examples: List[ToolExample] = List(
     ToolExample("Which Scala files mention TODO", GrepInput(path = "src", pattern = "TODO", glob = Some("**/*.scala"))),
-    ToolExample("Show the matching lines for a definition", GrepInput(path = ".", pattern = "def myFunction",
-      outputMode = GrepOutputMode.Content, contextLines = 2))
+    ToolExample(
+      "Show the matching lines for a definition",
+      GrepInput(
+        path = ".",
+        pattern = "def myFunction",
+        outputMode = GrepOutputMode.Content,
+        contextLines = 2))
   )
 
   override val keywords: Set[String] = Set(
-    "grep", "search", "regex", "find", "match", "lines",
-    "lookup", "ripgrep", "rg", "code", "text", "files", "pattern",
-    "scan", "look", "occurrence", "string"
+    "grep",
+    "search",
+    "regex",
+    "find",
+    "match",
+    "lines",
+    "lookup",
+    "ripgrep",
+    "rg",
+    "code",
+    "text",
+    "files",
+    "pattern",
+    "scan",
+    "look",
+    "occurrence",
+    "string"
   )
 
   // Bug #86 — generic primitive: ranks below domain-specific tools
@@ -78,7 +97,9 @@ final class GrepTool(context: FileSystemContext) extends Tool with sigil.tool.Re
         }
     }
 
-  /** Render the matches per the chosen mode, capped at `headLimit`. */
+  /**
+   * Render the matches per the chosen mode, capped at `headLimit`.
+   */
   private def render(mode: GrepOutputMode, headLimit: Int, matches: List[GrepMatch]): String = mode match {
     case GrepOutputMode.FilesWithMatches =>
       capped(matches.map(_.filePath).distinct.sorted, headLimit, "files")
@@ -88,7 +109,7 @@ final class GrepTool(context: FileSystemContext) extends Tool with sigil.tool.Re
     case GrepOutputMode.Content =>
       val lines = matches.sortBy(m => (m.filePath, m.lineNumber)).map { m =>
         val before = m.contextBefore.map(c => s"${m.filePath}-     $c")
-        val after  = m.contextAfter.map(c => s"${m.filePath}-     $c")
+        val after = m.contextAfter.map(c => s"${m.filePath}-     $c")
         (before :+ s"${m.filePath}:${m.lineNumber}: ${m.content}") ++ after
       }
       capped(lines.flatten, headLimit, "matches")
@@ -99,47 +120,72 @@ final class GrepTool(context: FileSystemContext) extends Tool with sigil.tool.Re
     else {
       val body = entries.take(headLimit).mkString("\n")
       if (entries.size > headLimit)
-        body + s"\n\n[showing $headLimit of ${entries.size} $unit — narrow with a more specific pattern, a glob, or a subpath to see the rest]"
+        body +
+          s"\n\n[showing $headLimit of ${entries.size} $unit — narrow with a more specific pattern, a glob, or a subpath to see the rest]"
       else body
     }
 }
 
 object GrepTool {
 
-  /** Path segments that mark a directory as noise — build outputs,
-    * IDE state, package-manager caches, VCS metadata, and Claude
-    * Code throwaway worktrees. A file is excluded when ANY segment
-    * of its relative path matches one of these (parent-directory
-    * check, NOT filename match).
-    *
-    * Conservative on purpose: every entry here is a directory that
-    * almost always contains generated / duplicated / cached content
-    * rather than source. Callers who specifically need to grep inside
-    * one (e.g. inspecting a compiled artifact) opt in via
-    * [[GrepInput.includeIgnored]].
-    */
+  /**
+   * Path segments that mark a directory as noise — build outputs,
+   * IDE state, package-manager caches, VCS metadata, and Claude
+   * Code throwaway worktrees. A file is excluded when ANY segment
+   * of its relative path matches one of these (parent-directory
+   * check, NOT filename match).
+   *
+   * Conservative on purpose: every entry here is a directory that
+   * almost always contains generated / duplicated / cached content
+   * rather than source. Callers who specifically need to grep inside
+   * one (e.g. inspecting a compiled artifact) opt in via
+   * [[GrepInput.includeIgnored]].
+   */
   val DefaultExcludedSegments: Set[String] = Set(
     // VCS metadata
-    ".git", ".svn", ".hg",
+    ".git",
+    ".svn",
+    ".hg",
     // IDE / editor state
-    ".idea", ".vscode", ".metals", ".bloop", ".bsp",
+    ".idea",
+    ".vscode",
+    ".metals",
+    ".bloop",
+    ".bsp",
     // Build outputs (JVM / Scala / Kotlin)
-    "target", "build", "out", ".gradle", ".sbt", ".mill", ".mvn",
+    "target",
+    "build",
+    "out",
+    ".gradle",
+    ".sbt",
+    ".mill",
+    ".mvn",
     // Node / JS / TS
-    "node_modules", "dist", ".next", ".nuxt", ".turbo", ".parcel-cache",
+    "node_modules",
+    "dist",
+    ".next",
+    ".nuxt",
+    ".turbo",
+    ".parcel-cache",
     // Python
-    ".venv", "venv", "__pycache__",
+    ".venv",
+    "venv",
+    "__pycache__",
     // Other common throwaways
-    ".cache", ".tox", ".pytest_cache",
+    ".cache",
+    ".tox",
+    ".pytest_cache",
     // Claude Code worktrees
     ".claude"
   )
 
-  /** True when `relPath` has any path segment matching
-    * [[DefaultExcludedSegments]] or ending in `.egg-info` (Python
-    * package install metadata). The check is per-segment — a file
-    * literally named `target.txt` whose parent isn't `target/` is
-    * NOT excluded. */
+  /**
+   * True when `relPath` has any path segment matching
+   * [[DefaultExcludedSegments]] or ending in `.egg-info` (Python
+   * package install metadata). The check is per-segment — a file
+   * literally named `target.txt` whose parent isn't `target/` is
+   * NOT excluded.
+   */
   def isExcluded(relPath: Path): Boolean = {
     val it = relPath.iterator().asScala
     it.exists { seg =>

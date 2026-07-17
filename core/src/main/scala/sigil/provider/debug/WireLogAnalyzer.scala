@@ -21,13 +21,17 @@ import scala.jdk.CollectionConverters.*
  */
 object WireLogAnalyzer {
 
-  /** A structural problem in a request body. */
+  /**
+   * A structural problem in a request body.
+   */
   case class Finding(file: String, requestIdx: Int, path: String, issue: String) {
     override def toString: String = s"$file [request #$requestIdx] $path — $issue"
   }
 
-  /** Walk `dir` (non-recursive); return all findings across every
-    * `*.jsonl` file. Ordered by file name, then by request index. */
+  /**
+   * Walk `dir` (non-recursive); return all findings across every
+   * `*.jsonl` file. Ordered by file name, then by request index.
+   */
   def analyze(dir: Path): List[Finding] = {
     if (!Files.exists(dir)) return Nil
     val files = Files.list(dir).iterator().asScala.toList
@@ -58,10 +62,12 @@ object WireLogAnalyzer {
     findings.result()
   }
 
-  /** Validate a request body recursively. The interesting patterns
-    * live inside the `tools` array (custom function tools use JSON
-    * Schema, and that's where strict validators bite), but we also
-    * catch top-level smells (empty `input`, missing `model`). */
+  /**
+   * Validate a request body recursively. The interesting patterns
+   * live inside the `tools` array (custom function tools use JSON
+   * Schema, and that's where strict validators bite), but we also
+   * catch top-level smells (empty `input`, missing `model`).
+   */
   private def analyzeBody(file: String, idx: Int, body: Json): List[Finding] = {
     if (!body.isObj) return Nil
     val out = List.newBuilder[Finding]
@@ -95,9 +101,10 @@ object WireLogAnalyzer {
         }
       }
     }
-    names.foreach { case (n, c) if c > 1 =>
-      out += Finding(file, idx, "tools", s"duplicate tool name '$n' appears $c times")
-    case _ => ()
+    names.foreach {
+      case (n, c) if c > 1 =>
+        out += Finding(file, idx, "tools", s"duplicate tool name '$n' appears $c times")
+      case _ => ()
     }
 
     // Message-log surfaces (chat-completions `messages`, Responses `input`)
@@ -142,9 +149,11 @@ object WireLogAnalyzer {
     out.result()
   }
 
-  /** Recursively walk a JSON Schema fragment looking for structural
-    * issues that strict validators (OpenAI gpt-4o-mini, JSON Schema
-    * validators like ajv in strict mode) reject. */
+  /**
+   * Recursively walk a JSON Schema fragment looking for structural
+   * issues that strict validators (OpenAI gpt-4o-mini, JSON Schema
+   * validators like ajv in strict mode) reject.
+   */
   private def analyzeSchema(file: String, idx: Int, path: String, schema: Json): List[Finding] = {
     if (!schema.isObj) return Nil
     val out = List.newBuilder[Finding]

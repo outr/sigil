@@ -17,7 +17,9 @@ final case class UpdateScheduledTransactionInput(@description("ID of the transac
                                                  @description("Is the transaction recurring (optional)") recurring: Option[Boolean] = None)
   extends ToolInput derives RW
 
-/** `update_scheduled_transaction` — patch a scheduled transaction by id. */
+/**
+ * `update_scheduled_transaction` — patch a scheduled transaction by id.
+ */
 final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = UpdateScheduledTransactionInput
   type Output = TextToolOutput
@@ -27,7 +29,6 @@ final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnviron
 
   val name: ToolName = ToolName("update_scheduled_transaction")
   val description: String = "Update a scheduled transaction."
-
 
   override def executeResult(input: UpdateScheduledTransactionInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val before = state.get

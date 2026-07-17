@@ -27,12 +27,12 @@ class FindCapabilitySuppressionSpec extends AnyWordSpec with Matchers {
 
   private def agentWith(toolNames: List[ToolName], policy: ToolPolicy): DefaultAgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = toolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = toolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(),
-      tools              = policy
+      tools = policy
     )
 
   // A roster that inadvertently contains find_capability (the natural case:
@@ -43,38 +43,50 @@ class FindCapabilitySuppressionSpec extends AnyWordSpec with Matchers {
 
     "strip find_capability under ActiveOnly even when it's in agent.toolNames" in {
       val names = TestSigil.effectiveToolNames(
-        agentWith(rosterWithFc, ToolPolicy.ActiveOnly(rosterWithFc)), ConversationMode, suggested = Nil)
+        agentWith(rosterWithFc, ToolPolicy.ActiveOnly(rosterWithFc)),
+        ConversationMode,
+        suggested = Nil)
       names should not contain fc
     }
 
     "strip find_capability under ActiveOnly even when it's in the policy's names" in {
       // toolNames clean, but the policy names list carries find_capability.
       val names = TestSigil.effectiveToolNames(
-        agentWith(List(respond), ToolPolicy.ActiveOnly(List(respond, fc))), ConversationMode, suggested = Nil)
+        agentWith(List(respond), ToolPolicy.ActiveOnly(List(respond, fc))),
+        ConversationMode,
+        suggested = Nil)
       names should not contain fc
     }
 
     "strip find_capability under ActiveOnly even when it arrives via suggested" in {
       val names = TestSigil.effectiveToolNames(
-        agentWith(List(respond), ToolPolicy.ActiveOnly(List(respond))), ConversationMode, suggested = List(fc))
+        agentWith(List(respond), ToolPolicy.ActiveOnly(List(respond))),
+        ConversationMode,
+        suggested = List(fc))
       names should not contain fc
     }
 
     "strip find_capability under ToolPolicy.None even when listed" in {
       val names = TestSigil.effectiveToolNames(
-        agentWith(rosterWithFc, ToolPolicy.None), ConversationMode, suggested = List(fc))
+        agentWith(rosterWithFc, ToolPolicy.None),
+        ConversationMode,
+        suggested = List(fc))
       names should not contain fc
     }
 
     "still INCLUDE find_capability under the default Standard policy" in {
       val names = TestSigil.effectiveToolNames(
-        agentWith(List(respond), ToolPolicy.Standard), ConversationMode, suggested = Nil)
+        agentWith(List(respond), ToolPolicy.Standard),
+        ConversationMode,
+        suggested = Nil)
       names should contain(fc)
     }
 
     "leave the rest of the roster intact when stripping find_capability" in {
       val names = TestSigil.effectiveToolNames(
-        agentWith(rosterWithFc, ToolPolicy.ActiveOnly(rosterWithFc)), ConversationMode, suggested = Nil)
+        agentWith(rosterWithFc, ToolPolicy.ActiveOnly(rosterWithFc)),
+        ConversationMode,
+        suggested = Nil)
       names should contain(respond) // a real tool the agent asked for survives
     }
   }

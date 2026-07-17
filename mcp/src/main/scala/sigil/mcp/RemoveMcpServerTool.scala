@@ -7,11 +7,13 @@ import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class RemoveMcpServerInput(name: String) extends ToolInput derives RW
 
-/** Tear down an MCP server's persisted config and active connection. */
+/**
+ * Tear down an MCP server's persisted config and active connection.
+ */
 final class RemoveMcpServerTool(manager: McpManager) extends Tool {
-  type Input  = RemoveMcpServerInput
+  type Input = RemoveMcpServerInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RemoveMcpServerInput]]
+  val inputRW = summon[RW[RemoveMcpServerInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("remove_mcp_server")

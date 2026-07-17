@@ -32,21 +32,21 @@ class ToolProgressSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def runScenario(invokeId: Id[Event]): Task[List[Signal]] = {
     val conv = Conversation(
-      topics       = List(TopicEntry(TestTopicId, "test", "test")),
+      topics = List(TopicEntry(TestTopicId, "test", "test")),
       participants = Nil,
-      _id          = convId
+      _id = convId
     )
 
     val ctx = TurnContext(
-      sigil               = TestSigil,
-      chain               = List(TestUser),
-      conversation        = conv,
-      turnInput           = TurnInput(conversationId = convId),
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(conversationId = convId),
       model = TestSigil.defaultTestModel
     )
 
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })

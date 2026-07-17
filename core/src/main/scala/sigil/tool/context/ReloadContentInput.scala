@@ -20,4 +20,5 @@ import sigil.tool.ToolInput
  *     [[sigil.Sigil.canReadConversation]] (parent / worker only).
  */
 case class ReloadContentInput(referenceId: String,
-                              conversationId: Option[Id[Conversation]] = None) extends ToolInput derives RW
+                              conversationId: Option[Id[Conversation]] = None)
+  extends ToolInput derives RW

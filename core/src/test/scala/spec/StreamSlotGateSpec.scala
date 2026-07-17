@@ -36,10 +36,12 @@ class StreamSlotGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
   private val modelId: Id[Model] = Model.id("test", "slot-gate-model")
 
-  /** Test provider exposing the (protected) gated dispatch. Each call
-    * registers itself, parks on `holdLatch`, and tears its
-    * registration down when its stream terminates. */
-  private final class GatedStubProvider(maxSlots: Int, gated: Boolean) extends Provider {
+  /**
+   * Test provider exposing the (protected) gated dispatch. Each call
+   * registers itself, parks on `holdLatch`, and tears its
+   * registration down when its stream terminates.
+   */
+  final private class GatedStubProvider(maxSlots: Int, gated: Boolean) extends Provider {
     val active = new AtomicInteger(0)
     val peak = new AtomicInteger(0)
     val serviceOrder = new ConcurrentLinkedQueue[String]()
@@ -129,11 +131,10 @@ class StreamSlotGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         _ <- Task.sleep(200.millis)
         _ <- Task(provider.holdLatch.countDown())
         _ <- joinAll(List(fiberA, fiberB, fiberC))
-      } yield {
+      } yield
         // The freed slot went to the interactive call despite the batch
         // waiter's earlier queue position.
         provider.serviceOrder.iterator().asScala.toList shouldBe List("batch-holder", "interactive", "batch-queued")
-      }
     }
 
     "block new batch admissions during a hold while interactive flows and permits are free" in {

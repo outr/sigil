@@ -14,4 +14,5 @@ import fabric.rw.*
 case class TriggerStepInput(id: String,
                             trigger: WorkflowTrigger,
                             name: Option[String] = None,
-                            output: Option[String] = None) extends WorkflowStepInput derives RW
+                            output: Option[String] = None)
+  extends WorkflowStepInput derives RW

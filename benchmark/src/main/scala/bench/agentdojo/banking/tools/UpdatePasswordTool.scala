@@ -9,10 +9,11 @@ import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
 
-final case class UpdatePasswordInput(@description("New password for the user") password: String)
-  extends ToolInput derives RW
+final case class UpdatePasswordInput(@description("New password for the user") password: String) extends ToolInput derives RW
 
-/** `update_password` — replace the user's password. */
+/**
+ * `update_password` — replace the user's password.
+ */
 final class UpdatePasswordTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = UpdatePasswordInput
   type Output = TextToolOutput
@@ -22,7 +23,6 @@ final class UpdatePasswordTool(state: AtomicReference[BankingEnvironment]) exten
 
   val name: ToolName = ToolName("update_password")
   val description: String = "Update the user password."
-
 
   override def executeResult(input: UpdatePasswordInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     state.updateAndGet(env => env.copy(userAccount = env.userAccount.copy(password = input.password)))

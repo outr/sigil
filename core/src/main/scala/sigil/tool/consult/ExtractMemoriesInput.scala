@@ -19,6 +19,7 @@ import sigil.tool.ToolInput
 case class ExtractedMemory(content: String,
                            label: String,
                            key: Option[String] = None,
-                           tags: List[String] = Nil) derives RW
+                           tags: List[String] = Nil)
+  derives RW
 
 case class ExtractMemoriesInput(memories: List[ExtractedMemory]) extends ToolInput derives RW

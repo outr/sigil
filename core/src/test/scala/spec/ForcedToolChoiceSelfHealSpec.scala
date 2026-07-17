@@ -39,15 +39,20 @@ class ForcedToolChoiceSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private def rejection(message: String): ProviderStreamException =
     new ProviderStreamException(
-      providerKey = "anthropic", code = 0, typ = "invalid_request_error",
-      message_ = message, status = Some(400)
+      providerKey = "anthropic",
+      code = 0,
+      typ = "invalid_request_error",
+      message_ = message,
+      status = Some(400)
     )
 
-  /** Fake provider that records the `tool_choice` of every call. On the
-    * first call WHILE the choice is forced it raises the forced-tool-
-    * choice 400; once the framework retries with `Auto` it emits a clean
-    * `respond`. */
-  private final class ForcedChoiceRejectsThenSucceeds extends Provider {
+  /**
+   * Fake provider that records the `tool_choice` of every call. On the
+   * first call WHILE the choice is forced it raises the forced-tool-
+   * choice 400; once the framework retries with `Auto` it emits a clean
+   * `respond`.
+   */
+  final private class ForcedChoiceRejectsThenSucceeds extends Provider {
     val choices: java.util.concurrent.ConcurrentLinkedQueue[ToolChoice] =
       new java.util.concurrent.ConcurrentLinkedQueue[ToolChoice]()
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -77,27 +82,27 @@ class ForcedToolChoiceSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings()
     )
 
   private def runUserTurn(provider: Provider): Task[Id[Conversation]] = {
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"self-heal-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Say hi.")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Say hi.")),
+        state = EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId)
     } yield convId
   }
@@ -141,7 +146,7 @@ class ForcedToolChoiceSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with
       val provider = new ForcedChoiceRejectsThenSucceeds
       for {
         convId <- runUserTurn(provider)
-        evs    <- eventsFor(convId)
+        evs <- eventsFor(convId)
       } yield {
         val seen = provider.choices.asScala.toList
         // First call went out forced (the framework's default for a

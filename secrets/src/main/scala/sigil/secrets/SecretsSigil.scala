@@ -88,10 +88,12 @@ trait SecretsSigil extends Sigil {
    */
   def secretStore: SecretStore = defaultSecretStore
 
-  private final lazy val defaultSecretStore: SecretStore =
+  final private lazy val defaultSecretStore: SecretStore =
     new DatabaseSecretStore(this, secretStoreKey)
 
-  /** [[SecretSubmission]] is the secrets module's only durable Event. */
+  /**
+   * [[SecretSubmission]] is the secrets module's only durable Event.
+   */
   override protected def eventRegistrations: List[RW[? <: Event]] =
     List(summon[RW[SecretSubmission]])
 
@@ -140,7 +142,7 @@ trait SecretsSigil extends Sigil {
     case RequestSecretSet(secretId, value, kind) =>
       val store: Task[Unit] = kind match {
         case sigil.security.SecretKind.Encrypted => secretStore.setEncrypted[String](secretId, value)
-        case sigil.security.SecretKind.Hashed    => secretStore.setHashed[String](secretId, value)
+        case sigil.security.SecretKind.Hashed => secretStore.setHashed[String](secretId, value)
       }
       store.attempt.flatMap { result =>
         publishTo(fromViewer, SecretSetResult(secretId, result.isSuccess))
@@ -152,4 +154,3 @@ trait SecretsSigil extends Sigil {
     case _ => super.handleNotice(notice, fromViewer)
   }
 }
-

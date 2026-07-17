@@ -33,14 +33,14 @@ class ChunkLoggerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private val fakeRequest: HttpRequest = HttpRequest(
     method = HttpMethod.Post,
-    url    = url"https://test.example/api/v1/chat/completions"
+    url = url"https://test.example/api/v1/chat/completions"
   )
 
   "FileChunkLogger + StreamWireInterceptor.attach" should {
 
     "emit one chunk line per SSE data line plus a stream-end summary on clean termination" in {
       val logPath = freshLogPath
-      val logger  = FileChunkLogger(logPath)
+      val logger = FileChunkLogger(logPath)
 
       // Fake SSE wire-line stream: 3 data chunks plus an empty
       // separator line (which must NOT count toward the chunk index).
@@ -57,16 +57,16 @@ class ChunkLoggerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         Stream.empty
       }.drain.map { _ =>
         val written = readLines(logPath)
-        val parsed  = written.map(JsonParser.apply)
-        val chunks  = parsed.filter(_.get("kind").exists(_.asString == "chunk"))
-        val ends    = parsed.filter(_.get("kind").exists(_.asString == "stream-end"))
+        val parsed = written.map(JsonParser.apply)
+        val chunks = parsed.filter(_.get("kind").exists(_.asString == "chunk"))
+        val ends = parsed.filter(_.get("kind").exists(_.asString == "stream-end"))
         chunks should have size 3
         ends should have size 1
         chunks.zipWithIndex.foreach { case (c, i) =>
           c("chunkIndex").asInt shouldBe i
           c("byteSize").asInt should be > 0
           c("elapsedSinceRequestMs").asInt should be >= 0
-          c("preview").asString should startWith ("data:")
+          c("preview").asString should startWith("data:")
         }
         ends.head("totalChunks").asInt shouldBe 3
         ends.head("terminatedBy").asString shouldBe "clean"
@@ -75,7 +75,7 @@ class ChunkLoggerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "report the largest inter-chunk gap correctly on stream-end" in {
       val logPath = freshLogPath
-      val logger  = FileChunkLogger(logPath)
+      val logger = FileChunkLogger(logPath)
 
       // Three chunks: small gap, large gap, small gap. The
       // longestGapAtChunkIndex should point at chunk 2 (the chunk
@@ -96,7 +96,7 @@ class ChunkLoggerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         Stream.empty
       }.drain.map { _ =>
         val parsed = readLines(logPath).map(JsonParser.apply)
-        val end    = parsed.find(_.get("kind").exists(_.asString == "stream-end")).get
+        val end = parsed.find(_.get("kind").exists(_.asString == "stream-end")).get
         end("longestGapAtChunkIndex").asInt shouldBe 2
         end("longestInterChunkGapMs").asInt should be >= 150
       }
@@ -104,7 +104,7 @@ class ChunkLoggerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "respect previewBytes = 0 by emitting empty preview strings" in {
       val logPath = freshLogPath
-      val logger  = FileChunkLogger(logPath, previewBytes = 0)
+      val logger = FileChunkLogger(logPath, previewBytes = 0)
 
       val lines = Stream.force[String](Task {
         Stream.emit("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}")
@@ -122,7 +122,7 @@ class ChunkLoggerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "mark terminatedBy = error when the line stream errors mid-flight" in {
       val logPath = freshLogPath
-      val logger  = FileChunkLogger(logPath)
+      val logger = FileChunkLogger(logPath)
 
       // Mimic production: a single line-stream whose pull task errors
       // mid-flight (analogous to spice's HTTP streamLines raising on
@@ -140,7 +140,7 @@ class ChunkLoggerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         val written = readLines(logPath)
         withClue(s"log lines: $written: ") {
           val parsed = written.map(JsonParser.apply)
-          val end    = parsed.find(_.get("kind").exists(_.asString == "stream-end")).get
+          val end = parsed.find(_.get("kind").exists(_.asString == "stream-end")).get
           end("terminatedBy").asString shouldBe "error"
         }
       }

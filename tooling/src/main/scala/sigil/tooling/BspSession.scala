@@ -35,25 +35,28 @@ final class BspSession(val config: BspBuildConfig,
   def touch(): Unit = lastUseAt.set(System.currentTimeMillis())
   def idleSince: Long = lastUseAt.get()
 
-  /** Default silence window for BSP requests. BSP queries vary
-    * wildly in duration — `dependencyModules` on a cold cache can
-    * legitimately take minutes; `workspaceBuildTargets` is fast.
-    * The window is generous; the client's `lastActivityAtMillis`
-    * (progress notifications, log lines) keeps long-but-working
-    * operations from tripping it. */
+  /**
+   * Default silence window for BSP requests. BSP queries vary
+   * wildly in duration — `dependencyModules` on a cold cache can
+   * legitimately take minutes; `workspaceBuildTargets` is fast.
+   * The window is generous; the client's `lastActivityAtMillis`
+   * (progress notifications, log lines) keeps long-but-working
+   * operations from tripping it.
+   */
   protected def defaultSilenceWindow: FiniteDuration = 5.minutes
 
-  /** Wrap a BSP request in [[DurableJsonRpc.issueDurable]] so a
-    * lost JSON-RPC response is recovered via idempotent retry
-    * rather than stranding the calling Task forever (see bug
-    * notes in [[JsonRpcTransportException]]). All BSP queries
-    * Sigil performs are idempotent — the retry just re-asks the
-    * server for the (cached) result. */
+  /**
+   * Wrap a BSP request in [[DurableJsonRpc.issueDurable]] so a
+   * lost JSON-RPC response is recovered via idempotent retry
+   * rather than stranding the calling Task forever (see bug
+   * notes in [[JsonRpcTransportException]]). All BSP queries
+   * Sigil performs are idempotent — the retry just re-asks the
+   * server for the (cached) result.
+   */
   protected def issueDurable[T](operation: String,
-                                silenceWindow: FiniteDuration = defaultSilenceWindow)
-                               (makeRequest: () => CompletableFuture[T]): Task[T] =
+                                silenceWindow: FiniteDuration = defaultSilenceWindow)(makeRequest: () => CompletableFuture[T]): Task[T] =
     DurableJsonRpc.issueDurable(
-      operation     = operation,
+      operation = operation,
       silenceWindow = silenceWindow
     )(activitySource = () => client.lastActivityAtMillis)(makeRequest)
 
@@ -180,9 +183,12 @@ final class BspSession(val config: BspBuildConfig,
   // ---- shutdown ----
 
   def shutdown(): Task[Unit] = Task {
-    try { server.buildShutdown().get(2, java.util.concurrent.TimeUnit.SECONDS); () } catch { case _: Throwable => () }
-    try { server.onBuildExit() } catch { case _: Throwable => () }
-    try { process.destroy() } catch { case _: Throwable => () }
+    try { server.buildShutdown().get(2, java.util.concurrent.TimeUnit.SECONDS); () }
+    catch { case _: Throwable => () }
+    try server.onBuildExit()
+    catch { case _: Throwable => () }
+    try process.destroy()
+    catch { case _: Throwable => () }
     if (process.isAlive) {
       process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
       if (process.isAlive) process.destroyForcibly()
@@ -193,10 +199,12 @@ final class BspSession(val config: BspBuildConfig,
 
 object BspSession {
 
-  /** Spawn a BSP server subprocess and run the `build/initialize`
-    * handshake. The server proxy is typed as [[CombinedBuildServer]]
-    * so both the BSP base contract and the Scala / JVM extensions
-    * are reachable. */
+  /**
+   * Spawn a BSP server subprocess and run the `build/initialize`
+   * handshake. The server proxy is typed as [[CombinedBuildServer]]
+   * so both the BSP base contract and the Scala / JVM extensions
+   * are reachable.
+   */
   def spawn(config: BspBuildConfig,
             client: BspRecordingBuildClient = new BspRecordingBuildClient): Task[BspSession] = Task.defer {
     val pb = new ProcessBuilder((config.command :: config.args).asJava)
@@ -240,7 +248,7 @@ object BspSession {
       if (error != null) {
         val unwrapped = error match {
           case ce: java.util.concurrent.CompletionException if ce.getCause != null => ce.getCause
-          case other                                                               => other
+          case other => other
         }
         completable.failure(unwrapped)
       } else completable.success(value)

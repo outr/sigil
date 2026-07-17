@@ -24,9 +24,9 @@ import scala.reflect.ClassTag
  *    machinery that needs structured sub-decisions.
  */
 case object ConsultTool extends Tool {
-  type Input  = ConsultInput
+  type Input = ConsultInput
   type Output = TextToolOutput
-  val inputRW: RW[ConsultInput]    = summon[RW[ConsultInput]]
+  val inputRW: RW[ConsultInput] = summon[RW[ConsultInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("consult")
@@ -59,7 +59,6 @@ case object ConsultTool extends Tool {
       )
     )
   )
-
 
   override def executeResult(input: ConsultInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task(context.sigil.resolveProviderModel(input.modelId)).flatMap { pm =>
@@ -112,7 +111,7 @@ case object ConsultTool extends Tool {
                                          GenerationSettings.classifierDefault): Task[Option[I]] =
     invokeRich[I](sigil, modelId, chain, systemPrompt, userPrompt, tool, generationSettings).map {
       case ConsultOutcome.Parsed(v) => Some(v)
-      case _                        => None
+      case _ => None
     }
 
   /**
@@ -171,7 +170,7 @@ case object ConsultTool extends Tool {
           case Some(v) => ConsultOutcome.Parsed(v)
           case None =>
             val usage = events.collectFirst { case ProviderEvent.Usage(u) => u }
-            val stop  = events.collectFirst { case ProviderEvent.Done(reason) => reason }
+            val stop = events.collectFirst { case ProviderEvent.Done(reason) => reason }
             // Sigil #342 — distinguish "the provider returned NOTHING for a
             // single-tool consult" (no content, no tool call — often 0
             // completion tokens, e.g. Cloudflare/Kimi treating
@@ -180,20 +179,20 @@ case object ConsultTool extends Tool {
             // tool). The former is a provider failure the caller can fall
             // back on or retry elsewhere — not something to absorb silently.
             val producedSomething = events.exists {
-              case _: ProviderEvent.TextDelta         => true
+              case _: ProviderEvent.TextDelta => true
               case _: ProviderEvent.ContentBlockDelta => true
-              case _: ProviderEvent.ToolCallStart     => true
-              case _: ProviderEvent.ToolCallComplete  => true
-              case _                                  => false
+              case _: ProviderEvent.ToolCallStart => true
+              case _: ProviderEvent.ToolCallComplete => true
+              case _ => false
             }
             stop match {
               case Some(StopReason.MaxTokens) => ConsultOutcome.truncated(usage)
-              case _ if !producedSomething    =>
+              case _ if !producedSomething =>
                 ConsultOutcome.Failed(new RuntimeException(
                   "provider returned an empty completion for a single-tool consult (no content, no tool call" +
                     usage.map(u => s", ${u.completionTokens} completion tokens").getOrElse("") +
                     ") — the forced tool call was not honored"))
-              case _                          => ConsultOutcome.NoOpinion
+              case _ => ConsultOutcome.NoOpinion
             }
         }
       }
@@ -230,7 +229,13 @@ case object ConsultTool extends Tool {
                                              userPrompt: String,
                                              generationSettings: Option[GenerationSettings] = None): Task[Option[I]] =
     sigil.routedModelFor(tool.consultWorkType, chain, fallbackModelId).flatMap { modelId =>
-      invoke[I](sigil, modelId, chain, systemPrompt, userPrompt, tool,
+      invoke[I](
+        sigil,
+        modelId,
+        chain,
+        systemPrompt,
+        userPrompt,
+        tool,
         generationSettings.getOrElse(settingsFor(tool)))
     }
 
@@ -246,15 +251,15 @@ case object ConsultTool extends Tool {
    */
   def settingsFor(tool: Tool): GenerationSettings = tool match {
     case fc: FrameworkConsult => fc.consultSettings
-    case _                    => GenerationSettings.classifierDefault
+    case _ => GenerationSettings.classifierDefault
   }
 
   private[consult] def collectText(events: List[ProviderEvent]): String = {
     val sb = new StringBuilder
     events.foreach {
       case ProviderEvent.ContentBlockDelta(_, t) => sb.append(t)
-      case ProviderEvent.TextDelta(t)            => sb.append(t)
-      case _                                     => ()
+      case ProviderEvent.TextDelta(t) => sb.append(t)
+      case _ => ()
     }
     sb.toString
   }

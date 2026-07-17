@@ -24,24 +24,29 @@ case class ModelSummary(id: String,
                         displayName: Option[String],
                         contextLength: Long,
                         description: String,
-                        pricing: ModelPricingSummary) derives RW
+                        pricing: ModelPricingSummary)
+  derives RW
 
-/** Pricing slice — per-million-token cost in USD. Mirrors the prompt /
-  * completion fields of [[sigil.db.ModelPricing]]; auxiliary fields
-  * (web-search, cache-read) are omitted because most agent decisions
-  * only need the headline rate. */
+/**
+ * Pricing slice — per-million-token cost in USD. Mirrors the prompt /
+ * completion fields of [[sigil.db.ModelPricing]]; auxiliary fields
+ * (web-search, cache-read) are omitted because most agent decisions
+ * only need the headline rate.
+ */
 case class ModelPricingSummary(prompt: BigDecimal, completion: BigDecimal) derives RW
 
 object ModelSummary {
 
-  /** Build a [[ModelSummary]] from the full catalog record. */
+  /**
+   * Build a [[ModelSummary]] from the full catalog record.
+   */
   def from(m: sigil.db.Model): ModelSummary = ModelSummary(
-    id            = m._id.value,
-    provider      = m.provider,
-    model         = m.model,
-    displayName   = m.displayName,
+    id = m._id.value,
+    provider = m.provider,
+    model = m.model,
+    displayName = m.displayName,
     contextLength = m.contextLength,
-    description   = m.description,
-    pricing       = ModelPricingSummary(m.pricing.prompt, m.pricing.completion)
+    description = m.description,
+    pricing = ModelPricingSummary(m.pricing.prompt, m.pricing.completion)
   )
 }

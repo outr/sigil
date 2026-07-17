@@ -79,15 +79,13 @@ class ContentExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec with M
       )
       for {
         rewritten <- sigil.pipeline.ContentExternalizationTransform.apply(msg, TestSigil).map(_.asInstanceOf[Message])
-        ref        = rewritten.content.head.asInstanceOf[ResponseContent.StoredFileReference]
+        ref = rewritten.content.head.asInstanceOf[ResponseContent.StoredFileReference]
         rehydrated <- ref.dereference(TestSigil, List(TestUser))
-      } yield {
-        rehydrated match {
-          case ResponseContent.Code(c, lang) =>
-            c shouldBe original
-            lang shouldBe Some("scala")
-          case other => fail(s"Expected Code, got $other")
-        }
+      } yield rehydrated match {
+        case ResponseContent.Code(c, lang) =>
+          c shouldBe original
+          lang shouldBe Some("scala")
+        case other => fail(s"Expected Code, got $other")
       }
     }
 
@@ -139,11 +137,14 @@ class ContentExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val plain = ResponseContent.Text("hello")
       for {
         stored <- TestSigil.storeBytes(GlobalSpace, original.getBytes("UTF-8"), "text/x-scala")
-        ref     = ResponseContent.StoredFileReference(
-                    fileId = stored._id, title = "code.scala", language = Some("scala"),
-                    contentType = "text/x-scala", size = original.length.toLong
-                  )
-        out    <- ResponseContentOps.dereferenceAll(TestSigil, List(TestUser), Vector(plain, ref))
+        ref = ResponseContent.StoredFileReference(
+          fileId = stored._id,
+          title = "code.scala",
+          language = Some("scala"),
+          contentType = "text/x-scala",
+          size = original.length.toLong
+        )
+        out <- ResponseContentOps.dereferenceAll(TestSigil, List(TestUser), Vector(plain, ref))
       } yield {
         out should have size 2
         out(0) shouldBe plain

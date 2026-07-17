@@ -47,4 +47,5 @@ case class RecentToolInvocation(toolName: ToolName,
                                 argsPreview: String,
                                 invokedAt: Timestamp,
                                 resulted: Boolean = true,
-                                failed: Boolean = false) derives RW
+                                failed: Boolean = false)
+  derives RW

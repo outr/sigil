@@ -71,19 +71,21 @@ case class ContextMemory(fact: String,
                          createdBy: Option[ParticipantId] = None,
                          location: Option[Place] = None,
                          extraContext: Map[ContextKey, String] = Map.empty,
-                         /** Per-[[Mode]] retrieval gate. When non-empty, the
-                           * memory only surfaces during turns whose
-                           * [[Conversation.currentMode]] id is in this set.
-                           * Empty (the default) = the memory is universal —
-                           * surfaces regardless of current mode.
-                           *
-                           * Scoping critical directives to the mode they
-                           * apply to avoids loading them into every turn of
-                           * conversations that swap modes — a "always create
-                           * failing tests before fixing" directive captured
-                           * during Coding mode is wasted prompt budget when
-                           * the conversation switches back to Conversation
-                           * mode. Sigil bug #195. */
+                         /**
+                          * Per-[[Mode]] retrieval gate. When non-empty, the
+                          * memory only surfaces during turns whose
+                          * [[Conversation.currentMode]] id is in this set.
+                          * Empty (the default) = the memory is universal —
+                          * surfaces regardless of current mode.
+                          *
+                          * Scoping critical directives to the mode they
+                          * apply to avoids loading them into every turn of
+                          * conversations that swap modes — a "always create
+                          * failing tests before fixing" directive captured
+                          * during Coding mode is wasted prompt budget when
+                          * the conversation switches back to Conversation
+                          * mode. Sigil bug #195.
+                          */
                          modeAffinity: Set[Id[Mode]] = Set.empty,
                          created: Timestamp = Timestamp(),
                          modified: Timestamp = Timestamp(),
@@ -102,27 +104,34 @@ object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConvers
   val statusName: I[String] = field.index(_.status.toString)
   val pinned: I[Boolean] = field.index(_.pinned)
   val conversationId: I[Option[Id[Conversation]]] = field.index(_.conversationId)
-  /** `expiresAt.value` projected for indexing — Lucene can't filter on
-    * the polymorphic `Timestamp` directly. Records with no expiry
-    * project as `None`. Backs the opt-in expiry sweep
-    * ([[Sigil.expiredMemorySweepInterval]]). */
+
+  /**
+   * `expiresAt.value` projected for indexing — Lucene can't filter on
+   * the polymorphic `Timestamp` directly. Records with no expiry
+   * project as `None`. Backs the opt-in expiry sweep
+   * ([[Sigil.expiredMemorySweepInterval]]).
+   */
   val expiresAtValue: I[Option[Long]] = field.index("expiresAtValue", _.expiresAt.map(_.value))
 
-  /** Tokenized full-text index over key + label + summary + fact +
-    * keywords. Backs `find_capability`'s BM25-scored memory search
-    * AND the lexical leg of [[StandardMemoryRetriever]]'s hybrid
-    * retrieval. `keywords` is the union of agent-supplied tags and
-    * the unified classifier's LLM-extracted retrieval signals — both
-    * arrive in the same field so semantically-relevant queries that
-    * don't share lexical tokens with `fact` / `summary` still hit.
-    * Memory matches in `find_capability` carry only the key + summary
-    * — the agent calls `lookup(capabilityType=Memory, name=key)` to
-    * pull the full fact when it judges the memory worth the tokens. */
+  /**
+   * Tokenized full-text index over key + label + summary + fact +
+   * keywords. Backs `find_capability`'s BM25-scored memory search
+   * AND the lexical leg of [[StandardMemoryRetriever]]'s hybrid
+   * retrieval. `keywords` is the union of agent-supplied tags and
+   * the unified classifier's LLM-extracted retrieval signals — both
+   * arrive in the same field so semantically-relevant queries that
+   * don't share lexical tokens with `fact` / `summary` still hit.
+   * Memory matches in `find_capability` carry only the key + summary
+   * — the agent calls `lookup(capabilityType=Memory, name=key)` to
+   * pull the full fact when it judges the memory worth the tokens.
+   */
   val searchText: lightdb.field.Field.Tokenized[ContextMemory] =
-    field.tokenized("searchText", (m: ContextMemory) => {
-      val k = m.key.getOrElse("")
-      s"$k ${m.label} ${m.summary} ${m.fact} ${m.keywords.mkString(" ")}"
-    })
+    field.tokenized(
+      "searchText",
+      (m: ContextMemory) => {
+        val k = m.key.getOrElse("")
+        s"$k ${m.label} ${m.summary} ${m.fact} ${m.keywords.mkString(" ")}"
+      })
 
   override def id(value: String = Unique()): Id[ContextMemory] = Id(value)
 }

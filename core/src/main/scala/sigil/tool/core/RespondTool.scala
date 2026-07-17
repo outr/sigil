@@ -31,19 +31,21 @@ import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseDispositio
  * and tool-call-only) produces the same TopicChange shape.
  */
 case object RespondTool extends RespondFamilyTool {
-  type Input  = RespondInput
+  type Input = RespondInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RespondInput]]
+  val inputRW = summon[RW[RespondInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("respond")
 
-  /** Unlike its always-terminal siblings, `respond`'s terminality is
-    * decided by the `endsTurn` flag — the family's unconditional
-    * `**ENDS YOUR TURN.**` headline contradicted the flag and primed
-    * models to fill `endsTurn = true` even when their own content
-    * announced work they hadn't done, settling the turn at iteration 1
-    * with zero work. The headline states the conditional truth instead. */
+  /**
+   * Unlike its always-terminal siblings, `respond`'s terminality is
+   * decided by the `endsTurn` flag — the family's unconditional
+   * `**ENDS YOUR TURN.**` headline contradicted the flag and primed
+   * models to fill `endsTurn = true` even when their own content
+   * announced work they hadn't done, settling the turn at iteration 1
+   * with zero work. The headline states the conditional truth instead.
+   */
   override protected def destructivePrefix: String =
     "**ENDS YOUR TURN only when `endsTurn` = true — with `endsTurn` = false the message is " +
       "delivered and you keep working on the next iteration.** "
@@ -106,9 +108,9 @@ case object RespondTool extends RespondFamilyTool {
         val firstExcerpt = sanitized.leakedSpans.head.take(200)
         // 1. Operator-side diagnostic Notice (existing #225 behaviour).
         val notice = context.sigil.publish(XmlToolCallLeak(
-          conversationId     = context.conversation.id,
-          modelId            = Some(context.modelId),
-          leakedSpanCount    = sanitized.leakedSpans.size,
+          conversationId = context.conversation.id,
+          modelId = Some(context.modelId),
+          leakedSpanCount = sanitized.leakedSpans.size,
           firstLeakedExcerpt = firstExcerpt
         )).handleError(_ => rapid.Task.unit)
         // 2. Sigil #304 — agent-side intervention. The sanitizer
@@ -119,17 +121,18 @@ case object RespondTool extends RespondFamilyTool {
         // iteration sees what went wrong and can retry with proper
         // JSON.
         val pair = sigil.orchestrator.SyntheticDiagnostic(
-          name        = XmlToolCallSanitizer.SyntheticInvokeName,
-          caller      = context.caller,
-          convId      = context.conversation.id,
-          topicId     = context.conversation.currentTopicId,
-          reason      = XmlToolCallSanitizer.interventionDirective(firstExcerpt)
+          name = XmlToolCallSanitizer.SyntheticInvokeName,
+          caller = context.caller,
+          convId = context.conversation.id,
+          topicId = context.conversation.currentTopicId,
+          reason = XmlToolCallSanitizer.interventionDirective(firstExcerpt)
         )
         val emit = pair.foldLeft(rapid.Task.unit) { (acc, signal) =>
-          acc.flatMap(_ => signal match {
-            case ev: sigil.event.Event => context.emit(ev)
-            case _                     => rapid.Task.unit
-          })
+          acc.flatMap(_ =>
+            signal match {
+              case ev: sigil.event.Event => context.emit(ev)
+              case _ => rapid.Task.unit
+            })
         }
         notice.flatMap(_ => emit)
       } else rapid.Task.unit
@@ -146,22 +149,22 @@ case object RespondTool extends RespondFamilyTool {
     val message = context.currentMessageId match {
       case Some(id) =>
         Message(
-          participantId  = context.caller,
+          participantId = context.caller,
           conversationId = context.conversation.id,
-          topicId        = context.conversation.currentTopicId,
-          content        = blocks,
-          disposition    = disposition,
-          modelId        = Some(context.modelId),
-          _id            = id
+          topicId = context.conversation.currentTopicId,
+          content = blocks,
+          disposition = disposition,
+          modelId = Some(context.modelId),
+          _id = id
         )
       case None =>
         Message(
-          participantId  = context.caller,
+          participantId = context.caller,
           conversationId = context.conversation.id,
-          topicId        = context.conversation.currentTopicId,
-          content        = blocks,
-          disposition    = disposition,
-          modelId        = Some(context.modelId)
+          topicId = context.conversation.currentTopicId,
+          content = blocks,
+          disposition = disposition,
+          modelId = Some(context.modelId)
         )
     }
     // The user-visible reply Message and any TopicChange events are
@@ -180,15 +183,15 @@ case object RespondTool extends RespondFamilyTool {
     val emitAncillary: Task[Unit] =
       for {
         topicEvents <- context.sigil.resolveTopicShift(
-          proposedLabel   = input.topicLabel,
+          proposedLabel = input.topicLabel,
           proposedSummary = input.topicSummary,
-          caller          = context.caller,
-          conversation    = context.conversation,
-          currentTopic    = context.conversation.currentTopic,
-          previousTopics  = context.conversation.previousTopics,
-          modelId         = context.modelId,
-          chain           = context.chain,
-          userMessage     = userMessage
+          caller = context.caller,
+          conversation = context.conversation,
+          currentTopic = context.conversation.currentTopic,
+          previousTopics = context.conversation.previousTopics,
+          modelId = context.modelId,
+          chain = context.chain,
+          userMessage = userMessage
         )
         _ <- context.sigil.updateConversationKeywords(context.conversation.id, input.keywords)
         _ <- topicEvents.foldLeft(Task.unit)((acc, e) => acc.flatMap(_ => context.emit(e)))

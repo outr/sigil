@@ -30,9 +30,11 @@ final class EventLogger(path: Path, viewer: ParticipantId):
   private val writeOpts: Array[OpenOption] =
     Array(StandardOpenOption.CREATE, StandardOpenOption.APPEND)
 
-  /** Subscribe the viewer's signal stream and append each signal.
-    * Returns a `Task` that runs forever — start it as a background
-    * fiber at boot. */
+  /**
+   * Subscribe the viewer's signal stream and append each signal.
+   * Returns a `Task` that runs forever — start it as a background
+   * fiber at boot.
+   */
   def attach(sigil: Sigil): Task[Unit] =
     sigil.signalsFor(viewer).evalMap { signal =>
       Task {
@@ -48,8 +50,9 @@ final class EventLogger(path: Path, viewer: ParticipantId):
       try Signal.rw.read(signal)
       catch
         case t: Throwable =>
-          obj("error" -> str(s"serialization failed: ${t.getMessage}"),
-              "toString" -> str(signal.toString))
+          obj(
+            "error" -> str(s"serialization failed: ${t.getMessage}"),
+            "toString" -> str(signal.toString))
     appendLine(obj(
       "kind" -> str("event"),
       "ts" -> str(Timestamp().toString),

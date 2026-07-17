@@ -54,12 +54,12 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
       for {
         conv <- freshConv(List("Topic A", "Topic B", "Topic C"))
         msg = Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = conv.topics(2).id,  // 3rd topic on the stack
-          topicIndex     = 0,                  // wrong / stale
-          content        = Vector(ResponseContent.Text("hello")),
-          state          = EventState.Complete
+          topicId = conv.topics(2).id, // 3rd topic on the stack
+          topicIndex = 0, // wrong / stale
+          content = Vector(ResponseContent.Text("hello")),
+          state = EventState.Complete
         )
         _ <- TestSigil.publish(msg)
         loaded <- fetchPersisted(msg._id)
@@ -73,12 +73,12 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
       for {
         conv <- freshConv(List("First", "Second"))
         msg = Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = conv.topics.head.id,  // index 0
-          topicIndex     = 99,                   // wildly wrong
-          content        = Vector(ResponseContent.Text("hi")),
-          state          = EventState.Complete
+          topicId = conv.topics.head.id, // index 0
+          topicIndex = 99, // wildly wrong
+          content = Vector(ResponseContent.Text("hi")),
+          state = EventState.Complete
         )
         _ <- TestSigil.publish(msg)
         loaded <- fetchPersisted(msg._id)
@@ -93,12 +93,12 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
       for {
         conv <- freshConv(List("Alpha", "Beta", "Gamma"))
         msg = Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = Topic.id(s"topic-${conv._id.value}"),
-          topicIndex     = 5,
-          content        = Vector(ResponseContent.Text("placeholder-stamped")),
-          state          = EventState.Complete
+          topicId = Topic.id(s"topic-${conv._id.value}"),
+          topicIndex = 5,
+          content = Vector(ResponseContent.Text("placeholder-stamped")),
+          state = EventState.Complete
         )
         _ <- TestSigil.publish(msg)
         loaded <- fetchPersisted(msg._id)
@@ -111,35 +111,35 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
     "canonicalize across multiple event types in the same conversation" in {
       for {
         conv <- freshConv(List("Alpha", "Beta", "Gamma"))
-        topicIdMid = conv.topics(1).id  // index 1
+        topicIdMid = conv.topics(1).id // index 1
         msg = Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = topicIdMid,
-          content        = Vector(ResponseContent.Text("mid")),
-          state          = EventState.Complete
+          topicId = topicIdMid,
+          content = Vector(ResponseContent.Text("mid")),
+          state = EventState.Complete
         )
         ti = ToolInvoke(
-          toolName       = ToolName("test"),
-          participantId  = TestUser,
+          toolName = ToolName("test"),
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = topicIdMid,
-          state          = EventState.Complete
+          topicId = topicIdMid,
+          state = EventState.Complete
         )
         mc = ModeChange(
-          mode           = sigil.provider.ConversationMode,
-          participantId  = TestUser,
+          mode = sigil.provider.ConversationMode,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = topicIdMid,
-          timestamp      = Timestamp(),
-          state          = EventState.Complete
+          topicId = topicIdMid,
+          timestamp = Timestamp(),
+          state = EventState.Complete
         )
         _ <- TestSigil.publish(msg)
         _ <- TestSigil.publish(ti)
         _ <- TestSigil.publish(mc)
         loadedMsg <- fetchPersisted(msg._id)
-        loadedTi  <- fetchPersisted(ti._id)
-        loadedMc  <- fetchPersisted(mc._id)
+        loadedTi <- fetchPersisted(ti._id)
+        loadedMc <- fetchPersisted(mc._id)
       } yield {
         loadedMsg.get.topicIndex shouldBe 1
         loadedTi.get.topicIndex shouldBe 1
@@ -151,17 +151,17 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
       for {
         conv <- freshConv(List("Alpha", "Beta"))
         rr = sigil.event.RouteResolved(
-          participantId       = TestAgent,
-          conversationId      = conv._id,
-          topicId             = conv.topics(1).id,
-          userMessageId       = None,
-          inferredWorkType    = None,
-          inferredComplexity  = None,
-          candidateChain      = Nil,
-          chosenModelId       = sigil.db.Model.id("test", "route"),
-          skipReasons         = Map.empty,
+          participantId = TestAgent,
+          conversationId = conv._id,
+          topicId = conv.topics(1).id,
+          userMessageId = None,
+          inferredWorkType = None,
+          inferredComplexity = None,
+          candidateChain = Nil,
+          chosenModelId = sigil.db.Model.id("test", "route"),
+          skipReasons = Map.empty,
           classifierLatencyMs = None,
-          escalationCount     = 0
+          escalationCount = 0
         )
         _ <- TestSigil.publish(rr)
         loaded <- fetchPersisted(rr._id)
@@ -177,21 +177,21 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
         conv <- freshConv(List("Alpha", "Beta"))
         newTopic <- TestSigil.withDB(_.topics.transaction(_.upsert(Topic(
           conversationId = conv._id,
-          label          = "Gamma",
-          summary        = "a brand new subject",
-          createdBy      = TestAgent
+          label = "Gamma",
+          summary = "a brand new subject",
+          createdBy = TestAgent
         ))))
         tc = sigil.event.TopicChange(
-          kind           = sigil.event.TopicChangeKind.Switch(previousTopicId = conv.topics.last.id),
-          newLabel       = newTopic.label,
-          newSummary     = newTopic.summary,
-          participantId  = TestAgent,
+          kind = sigil.event.TopicChangeKind.Switch(previousTopicId = conv.topics.last.id),
+          newLabel = newTopic.label,
+          newSummary = newTopic.summary,
+          participantId = TestAgent,
           conversationId = conv._id,
-          topicId        = newTopic._id,
-          state          = EventState.Complete
+          topicId = newTopic._id,
+          state = EventState.Complete
         )
         _ <- TestSigil.publish(tc)
-        loadedTc   <- fetchPersisted(tc._id)
+        loadedTc <- fetchPersisted(tc._id)
         loadedConv <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
       } yield {
         loadedTc.get.topicIndex shouldBe 2
@@ -205,14 +205,14 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
         conv <- freshConv(List("Alpha", "Beta", "Gamma"))
         prior = conv.topics.head
         tc = sigil.event.TopicChange(
-          kind           = sigil.event.TopicChangeKind.Switch(previousTopicId = conv.topics.last.id),
-          newLabel       = prior.label,
-          newSummary     = prior.summary,
-          participantId  = TestAgent,
+          kind = sigil.event.TopicChangeKind.Switch(previousTopicId = conv.topics.last.id),
+          newLabel = prior.label,
+          newSummary = prior.summary,
+          participantId = TestAgent,
           conversationId = conv._id,
-          topicId        = prior.id,
-          topicIndex     = 7,
-          state          = EventState.Complete
+          topicId = prior.id,
+          topicIndex = 7,
+          state = EventState.Complete
         )
         _ <- TestSigil.publish(tc)
         loadedTc <- fetchPersisted(tc._id)

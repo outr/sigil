@@ -12,9 +12,9 @@ import sigil.tool.model.{RandomChoiceInput, RandomChoiceOutput}
  * structures (positions, labels, side metadata).
  */
 case object RandomChoiceTool extends Tool {
-  type Input  = RandomChoiceInput
+  type Input = RandomChoiceInput
   type Output = RandomChoiceOutput
-  val inputRW  = summon[RW[RandomChoiceInput]]
+  val inputRW = summon[RW[RandomChoiceInput]]
   val outputRW = summon[RW[RandomChoiceOutput]]
 
   val name = ToolName("random_choice")
@@ -35,13 +35,13 @@ case object RandomChoiceTool extends Tool {
 
   override def executeOutput(input: RandomChoiceInput, context: ToolContext): Task[RandomChoiceOutput] = Task {
     require(input.items.nonEmpty, "random_choice: `items` must be non-empty")
-    val rng   = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)
+    val rng = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)
     val index = rng.nextInt(input.items.size)
     RandomChoiceOutput(
-      chosen    = input.items(index),
-      index     = index,
+      chosen = input.items(index),
+      index = index,
       itemCount = input.items.size,
-      seed      = input.seed
+      seed = input.seed
     )
   }
 }

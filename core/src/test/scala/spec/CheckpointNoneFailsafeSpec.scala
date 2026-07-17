@@ -46,10 +46,12 @@ class CheckpointNoneFailsafeSpec extends AsyncWordSpec with AsyncTaskSpec with M
   private val modelId: Id[Model] = Model.id("test", "checkpoint-none")
   TestSigil.testModel(modelId)
 
-  /** reflector (report_progress roster) → NAKED TEXT (no tool → None);
-    * forced-synthesis (Specific(respond)) → respond (terminal); otherwise →
-    * identical `change_mode` so the loop iterates and stalls. */
-  private final class NoneReflectorProvider extends Provider {
+  /**
+   * reflector (report_progress roster) → NAKED TEXT (no tool → None);
+   * forced-synthesis (Specific(respond)) → respond (terminal); otherwise →
+   * identical `change_mode` so the loop iterates and stalls.
+   */
+  final private class NoneReflectorProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -66,7 +68,8 @@ class CheckpointNoneFailsafeSpec extends AsyncWordSpec with AsyncTaskSpec with M
         else if (input.toolChoice == ToolChoice.Specific(RespondTool.schema.name))
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId,
+            ProviderEvent.ToolCallComplete(
+              callId,
               RespondInput(topicLabel = "Done", topicSummary = "stopping", content = "Stopping — I was looping.", endsTurn = true)),
             ProviderEvent.Done(StopReason.Complete)
           )
@@ -82,11 +85,12 @@ class CheckpointNoneFailsafeSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private def agent: AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = ToolName("change_mode") :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
-      generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)))
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = ToolName("change_mode") :: CoreTools.coreToolNames,
+      instructions = Instructions(),
+      generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
+    )
 
   private def eventsFor(convId: Id[Conversation]): Task[List[sigil.event.Event]] =
     TestSigil.withDB(_.events.transaction(_.list)).map(_.filter(_.conversationId == convId))
@@ -104,13 +108,15 @@ class CheckpointNoneFailsafeSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val convId = Conversation.id(s"checkpoint-none-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = TestTopicEntry.id,
-                 content        = Vector(ResponseContent.Text("Rename the theme.")),
-                 state          = EventState.Complete))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Rename the theme.")),
+          state =
+            EventState.Complete
+        ))
         evs <- awaitStallOrDeadline(convId, System.currentTimeMillis() + 30_000L)
       } yield {
         // The objective StallDetector caught the change_mode loop and the

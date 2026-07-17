@@ -8,15 +8,21 @@ import fabric.rw.*
  */
 enum MemoryWriteOutcome derives RW {
 
-  /** A new memory record was persisted — either an unkeyed append
-    * or the first save under a previously-unused key. */
+  /**
+   * A new memory record was persisted — either an unkeyed append
+   * or the first save under a previously-unused key.
+   */
   case Stored
 
-  /** A keyed save found an existing record with unchanged content;
-    * only the timestamp moved forward. */
+  /**
+   * A keyed save found an existing record with unchanged content;
+   * only the timestamp moved forward.
+   */
   case Refreshed
 
-  /** A keyed save superseded a prior version — the old version was
-    * archived and a new one written. */
+  /**
+   * A keyed save superseded a prior version — the old version was
+   * archived and a new one written.
+   */
   case Versioned
 }

@@ -24,12 +24,13 @@ class EstimateToolBytesCallCountSpec extends AnyWordSpec with Matchers {
   case class WideInput(field01: String = "",
                        field02: String = "",
                        field03: String = "",
-                       field04: String = "") extends ToolInput derives RW
+                       field04: String = "")
+    extends ToolInput derives RW
 
   case object WideTool extends Tool {
-    type Input  = WideInput
+    type Input = WideInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[WideInput]]
+    val inputRW = summon[RW[WideInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name = ToolName("wide_tool")
     val description = "A short description."

@@ -26,8 +26,10 @@ import sigil.tool.ToolName
  */
 object LspRefactorSuite {
 
-  /** The refactor / navigation / inspection tools that compose well
-    * during a typical coding session. */
+  /**
+   * The refactor / navigation / inspection tools that compose well
+   * during a typical coding session.
+   */
   val toolNames: List[ToolName] = List(
     ToolName("lsp_rename"),
     ToolName("lsp_prepare_rename"),

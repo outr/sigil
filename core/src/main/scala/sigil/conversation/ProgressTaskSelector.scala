@@ -14,13 +14,31 @@ import sigil.event.Message
  */
 object ProgressTaskSelector {
 
-  /** Bare acknowledgements/continuations that carry no objective of
-    * their own. Matched case-insensitively after stripping punctuation
-    * and collapsing whitespace. */
+  /**
+   * Bare acknowledgements/continuations that carry no objective of
+   * their own. Matched case-insensitively after stripping punctuation
+   * and collapsing whitespace.
+   */
   val Continuations: Set[String] = Set(
-    "proceed", "continue", "go on", "go ahead", "keep going", "carry on",
-    "yes", "y", "yep", "yeah", "ok", "okay", "k", "sure", "do it",
-    "next", "go", "please continue", "please proceed"
+    "proceed",
+    "continue",
+    "go on",
+    "go ahead",
+    "keep going",
+    "carry on",
+    "yes",
+    "y",
+    "yep",
+    "yeah",
+    "ok",
+    "okay",
+    "k",
+    "sure",
+    "do it",
+    "next",
+    "go",
+    "please continue",
+    "please proceed"
   )
 
   def isContinuation(text: String): Boolean = {

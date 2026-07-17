@@ -6,14 +6,16 @@ import sigil.TurnContext
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 import sigil.tool.ToolContext
 
-/** Test-only tool that unconditionally throws when executed. Used by
-  * [[LlamaCppWorkerSpec]] to verify a worker's tool-dispatch path
-  * surfaces tool failures cleanly: the workflow must reach a
-  * terminal status (Failure) rather than hang. */
+/**
+ * Test-only tool that unconditionally throws when executed. Used by
+ * [[LlamaCppWorkerSpec]] to verify a worker's tool-dispatch path
+ * surfaces tool failures cleanly: the workflow must reach a
+ * terminal status (Failure) rather than hang.
+ */
 case object FailingTool extends Tool {
-  type Input  = FailingToolInput
+  type Input = FailingToolInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[FailingToolInput]]
+  val inputRW = summon[RW[FailingToolInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("intentional_failure")
   val description = "Test-only tool that always throws an exception when called."

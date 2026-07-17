@@ -23,10 +23,10 @@ class RespondStreamLifecycleSpec extends AnyWordSpec with Matchers {
 
   private val cfg = Config(
     providerNamespace = "test",
-    providerName      = "Test",
+    providerName = "Test",
     strictModeCapable = true,
-    honorsStrict      = true,
-    forcedCallShape   = ForcedCallShape.ToolChoice
+    honorsStrict = true,
+    forcedCallShape = ForcedCallShape.ToolChoice
   )
 
   private val tools = CoreTools.all.toVector
@@ -34,7 +34,7 @@ class RespondStreamLifecycleSpec extends AnyWordSpec with Matchers {
   private def runWire(rawChunks: List[String]): Vector[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(tools, providerKey = "test"))
     val out = Vector.newBuilder[ProviderEvent]
-    rawChunks.foreach { c => out ++= OpenAIChatCompletions.parseChunk(JsonParser(c), state, cfg) }
+    rawChunks.foreach(c => out ++= OpenAIChatCompletions.parseChunk(JsonParser(c), state, cfg))
     out ++= state.flushDone(cfg)
     out.result()
   }
@@ -72,7 +72,7 @@ class RespondStreamLifecycleSpec extends AnyWordSpec with Matchers {
       // → MessageDelta(content) → MessageDelta(Complete, usage)) never
       // ran and every respond settled with usage=(0,0,0).
       deltas should not be empty
-      deltas.map(_.text).mkString should include ("Hello, world.")
+      deltas.map(_.text).mkString should include("Hello, world.")
 
       completes should have size 1
       usages should have size 1

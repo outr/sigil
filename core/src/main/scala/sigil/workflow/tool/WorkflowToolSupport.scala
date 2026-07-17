@@ -93,7 +93,7 @@ trait WorkflowToolSupport {
               case DefType.Obj(fields) =>
                 val provided = step.arguments match {
                   case Some(Obj(m)) => m.keySet
-                  case _            => Set.empty[String]
+                  case _ => Set.empty[String]
                 }
                 val unknown = (provided -- fields.keySet).toList.sorted
                 if (unknown.isEmpty) acc

@@ -11,7 +11,8 @@ case class LspCompletionInput(languageId: String,
                               filePath: String,
                               line: Int,
                               character: Int,
-                              maxResults: Int = 50) extends ToolInput derives RW
+                              maxResults: Int = 50)
+  extends ToolInput derives RW
 
 /**
  * Request completion candidates at a source position. The server
@@ -24,11 +25,10 @@ case class LspCompletionInput(languageId: String,
  * pressing Ctrl-Space. Far higher signal than scanning files for
  * naming conventions.
  */
-final class LspCompletionTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
-  type Input  = LspCompletionInput
+final class LspCompletionTool(val manager: LspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input = LspCompletionInput
   type Output = LspCompletionResult
-  val inputRW  = summon[RW[LspCompletionInput]]
+  val inputRW = summon[RW[LspCompletionInput]]
   val outputRW = summon[RW[LspCompletionResult]]
   val name = ToolName("lsp_completion")
   val description =
@@ -40,26 +40,27 @@ final class LspCompletionTool(val manager: LspManager) extends Tool
       |Returns `{filePath, items: [{label, kind, detail}], totalCount, truncated}`.""".stripMargin
   override val keywords = Set("lsp", "completion", "complete", "autocomplete", "suggest", "suggestion", "intellisense")
 
-
   override def executeOutput(input: LspCompletionInput, context: ToolContext): Task[LspCompletionResult] =
     withOpenDocumentOrThrow[LspCompletionResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.completion(uri, input.line, input.character).map { items =>
         val capped = items.take(input.maxResults).map(toItem)
         LspCompletionResult(
-          filePath   = input.filePath,
-          items      = capped,
+          filePath = input.filePath,
+          items = capped,
           totalCount = items.size,
-          truncated  = items.size > input.maxResults
+          truncated = items.size > input.maxResults
         )
       }
     }
 
   private def toItem(item: CompletionItem): LspCompletionItem =
     LspCompletionItem(
-      label  = item.getLabel,
-      kind   = Option(item.getKind).map(_.toString.toLowerCase),
+      label = item.getLabel,
+      kind = Option(item.getKind).map(_.toString.toLowerCase),
       detail = Option(item.getDetail)
     )
 }

@@ -31,82 +31,104 @@ import sigil.signal.{FrameworkWorkflowNotice, FrameworkWorkflowPhase}
  */
 trait RunUnit[T] {
 
-  /** User-facing label for the operation — appears verbatim in the
-    * `Started` Notice. Short, action-shaped ("rendering pre-flight",
-    * "compressing context", "agent loop"). */
+  /**
+   * User-facing label for the operation — appears verbatim in the
+   * `Started` Notice. Short, action-shaped ("rendering pre-flight",
+   * "compressing context", "agent loop").
+   */
   def label: String
 
-  /** Coarse-grained category for client-side filtering / grouping.
-    * Opaque to the framework. Existing categories: `"preflight"`,
-    * `"compress"`, `"agent-loop"`. Apps add their own. */
+  /**
+   * Coarse-grained category for client-side filtering / grouping.
+   * Opaque to the framework. Existing categories: `"preflight"`,
+   * `"compress"`, `"agent-loop"`. Apps add their own.
+   */
   def workflowType: String
 
-  /** Conversation scope when applicable. `None` is the rare
-    * cross-conversation case (e.g. a global maintenance task). Used by
-    * client UIs to scope rendering to the active conversation. */
+  /**
+   * Conversation scope when applicable. `None` is the rare
+   * cross-conversation case (e.g. a global maintenance task). Used by
+   * client UIs to scope rendering to the active conversation.
+   */
   def conversationId: Option[Id[Conversation]]
 
-  /** Forward-compat hint at the parent conversation when the unit is
-    * spawned by another (sub-conversation tooling). [[RunUnit.execute]]
-    * does NOT publish cross-conversation echoes — that stays the
-    * responsibility of the surface emitting the persistent Event.
-    * Defined here so a future operational cross-conversation Notice
-    * (if/when justified) finds the metadata already plumbed. */
+  /**
+   * Forward-compat hint at the parent conversation when the unit is
+   * spawned by another (sub-conversation tooling). [[RunUnit.execute]]
+   * does NOT publish cross-conversation echoes — that stays the
+   * responsibility of the surface emitting the persistent Event.
+   * Defined here so a future operational cross-conversation Notice
+   * (if/when justified) finds the metadata already plumbed.
+   */
   def parentConversationId: Option[Id[Conversation]] = None
 
-  /** The work to perform. Whatever this Task produces flows through
-    * [[onCompleted]] on success; whatever it raises flows through
-    * [[onFailed]] before being re-thrown. */
+  /**
+   * The work to perform. Whatever this Task produces flows through
+   * [[onCompleted]] on success; whatever it raises flows through
+   * [[onFailed]] before being re-thrown.
+   */
   def run: Task[T]
 
-  /** Observation hook fired on successful completion. Default no-op.
-    * Apps override to fold the result into custom telemetry / hand
-    * to a downstream effect / wire to a custom Notice channel. NOT
-    * a recovery hook — see [[RunUnit.execute]] for the failure
-    * contract. */
+  /**
+   * Observation hook fired on successful completion. Default no-op.
+   * Apps override to fold the result into custom telemetry / hand
+   * to a downstream effect / wire to a custom Notice channel. NOT
+   * a recovery hook — see [[RunUnit.execute]] for the failure
+   * contract.
+   */
   def onCompleted(result: T): Task[Unit] = Task.unit
 
-  /** Observation hook fired on failure. Default no-op. Apps override
-    * to capture error telemetry / wire a custom Notice / record a
-    * trace. NOT a recovery hook — the failure is re-thrown by
-    * [[RunUnit.execute]] regardless of what this returns. */
+  /**
+   * Observation hook fired on failure. Default no-op. Apps override
+   * to capture error telemetry / wire a custom Notice / record a
+   * trace. NOT a recovery hook — the failure is re-thrown by
+   * [[RunUnit.execute]] regardless of what this returns.
+   */
   def onFailed(t: Throwable): Task[Unit] = Task.unit
 
-  /** Whether [[RunUnit.execute]] should publish a `Started` Notice on
-    * entry. Default `true`. Callsites that already emit a persistent
-    * `Started` Event (e.g. workflow runs with Strider's
-    * `onWorkflowStarted` hook) and don't need a parallel operational
-    * pulse override to `false`. Suppressing this does NOT silence the
-    * terminal Notice — `Completed` / `Failed` still fire. */
+  /**
+   * Whether [[RunUnit.execute]] should publish a `Started` Notice on
+   * entry. Default `true`. Callsites that already emit a persistent
+   * `Started` Event (e.g. workflow runs with Strider's
+   * `onWorkflowStarted` hook) and don't need a parallel operational
+   * pulse override to `false`. Suppressing this does NOT silence the
+   * terminal Notice — `Completed` / `Failed` still fire.
+   */
   def emitStarted: Boolean = true
 
-  /** Whether [[RunUnit.execute]] should publish a `Completed` Notice
-    * on success. Default `true`. The agent-loop wrap sets this to
-    * `false` because the loop already publishes a richer settled-state
-    * signal (the `AgentStateDelta` carrying `Idle` / `Complete`) and
-    * a duplicate operational `Completed` would only add noise. The
-    * `Failed` Notice still fires when relevant; observers always have
-    * a terminal pulse to act on. */
+  /**
+   * Whether [[RunUnit.execute]] should publish a `Completed` Notice
+   * on success. Default `true`. The agent-loop wrap sets this to
+   * `false` because the loop already publishes a richer settled-state
+   * signal (the `AgentStateDelta` carrying `Idle` / `Complete`) and
+   * a duplicate operational `Completed` would only add noise. The
+   * `Failed` Notice still fires when relevant; observers always have
+   * a terminal pulse to act on.
+   */
   def emitCompleted: Boolean = true
 
-  /** Stable identifier for this unit's pulses. Every Notice emitted by
-    * [[RunUnit.execute]] for this unit carries this id, so client UIs
-    * can correlate `Started` / `Step` / `Completed` / `Failed` to one
-    * concrete run. Defaults to a freshly-generated UUID computed
-    * once per unit instance via the [[freshWorkflowId]] helper.
-    * Adapters that share a single id with an external surface
-    * (e.g. the legacy [[FrameworkWorkflowControl]] step-callback path
-    * needs the same id on its Step pulses as on the outer Started /
-    * Failed) override this to keep IDs aligned. */
+  /**
+   * Stable identifier for this unit's pulses. Every Notice emitted by
+   * [[RunUnit.execute]] for this unit carries this id, so client UIs
+   * can correlate `Started` / `Step` / `Completed` / `Failed` to one
+   * concrete run. Defaults to a freshly-generated UUID computed
+   * once per unit instance via the [[freshWorkflowId]] helper.
+   * Adapters that share a single id with an external surface
+   * (e.g. the legacy [[FrameworkWorkflowControl]] step-callback path
+   * needs the same id on its Step pulses as on the outer Started /
+   * Failed) override this to keep IDs aligned.
+   */
   lazy val workflowId: String = RunUnit.freshWorkflowId()
 }
 
 object RunUnit {
 
-  /** Default workflow-id factory. Exposed so the existing
-    * [[Sigil.runAsFrameworkWorkflow]] path can hand its
-    * [[CancellationToken]] a matching id (the token's workflowId is
-    * what `cancel_framework_workflow` keys on). */
+  /**
+   * Default workflow-id factory. Exposed so the existing
+   * [[Sigil.runAsFrameworkWorkflow]] path can hand its
+   * [[CancellationToken]] a matching id (the token's workflowId is
+   * what `cancel_framework_workflow` keys on).
+   */
   def freshWorkflowId(): String = java.util.UUID.randomUUID().toString
 
   /**
@@ -142,7 +164,7 @@ object RunUnit {
    */
   def execute[T](unit: RunUnit[T])(using sigil: Sigil): Task[T] = {
     val workflowId = unit.workflowId
-    val started    = System.currentTimeMillis()
+    val started = System.currentTimeMillis()
     def elapsed: Long = System.currentTimeMillis() - started
     def emit(phase: FrameworkWorkflowPhase): Task[Unit] =
       sigil.publish(FrameworkWorkflowNotice(workflowId, unit.workflowType, phase, unit.conversationId))
@@ -154,8 +176,7 @@ object RunUnit {
         result match {
           case scala.util.Success(value) =>
             unit.onCompleted(value).handleError(t =>
-              Task(scribe.warn(s"RunUnit.onCompleted handler raised on $workflowId: ${t.getMessage}"))
-            ).flatMap { _ =>
+              Task(scribe.warn(s"RunUnit.onCompleted handler raised on $workflowId: ${t.getMessage}"))).flatMap { _ =>
               val completedEmit: Task[Unit] =
                 if (unit.emitCompleted) emit(FrameworkWorkflowPhase.Completed(elapsed))
                 else Task.unit
@@ -164,8 +185,7 @@ object RunUnit {
           case scala.util.Failure(err) =>
             val reason = s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("")}"
             unit.onFailed(err).handleError(t =>
-              Task(scribe.warn(s"RunUnit.onFailed handler raised on $workflowId: ${t.getMessage}"))
-            ).flatMap { _ =>
+              Task(scribe.warn(s"RunUnit.onFailed handler raised on $workflowId: ${t.getMessage}"))).flatMap { _ =>
               emit(FrameworkWorkflowPhase.Failed(reason, elapsed))
                 .flatMap(_ => Task.error(err))
             }

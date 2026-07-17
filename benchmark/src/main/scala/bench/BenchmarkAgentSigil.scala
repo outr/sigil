@@ -46,45 +46,49 @@ final class BenchmarkAgentSigil(viewer: ParticipantId,
                                 extraSignalRegistrations: List[RW[? <: Signal]] = Nil,
                                 wireLogPath: Option[java.nio.file.Path] = None,
                                 override val embeddingProvider: EmbeddingProvider = NoOpEmbeddingProvider,
-                                override val vectorIndex: VectorIndex = NoOpVectorIndex) extends Sigil {
+                                override val vectorIndex: VectorIndex = NoOpVectorIndex)
+  extends Sigil {
 
   override type DB = sigil.db.DefaultSigilDB
   override protected def buildDB(directory: Option[java.nio.file.Path],
-                                  storeManager: lightdb.store.CollectionManager,
-                                  appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
+                                 storeManager: lightdb.store.CollectionManager,
+                                 appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
     new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
 
   private val toolFinderRef = new AtomicReference[ToolFinder](InMemoryToolFinder(Nil))
 
-  /** Install a [[ToolFinder]] for subsequent agent turns. Returns the
-    * previous finder so callers can restore it. */
+  /**
+   * Install a [[ToolFinder]] for subsequent agent turns. Returns the
+   * previous finder so callers can restore it.
+   */
   def setToolFinder(finder: ToolFinder): ToolFinder = toolFinderRef.getAndSet(finder)
 
-  /** Static catalog of framework essentials (`respond`, `no_response`,
-    * `change_mode`, `stop`, `find_capability`) — always available to
-    * the agent regardless of which scenario tool finder is installed.
-    * Without these, the agent has no way to finalize a turn (the
-    * system prompt instructs it to use `respond` but the tool isn't
-    * findable, so the agent loops on data tools until
-    * `maxAgentIterations`). */
+  /**
+   * Static catalog of framework essentials (`respond`, `no_response`,
+   * `change_mode`, `stop`, `find_capability`) — always available to
+   * the agent regardless of which scenario tool finder is installed.
+   * Without these, the agent has no way to finalize a turn (the
+   * system prompt instructs it to use `respond` but the tool isn't
+   * findable, so the agent loops on data tools until
+   * `maxAgentIterations`).
+   */
   private val coreFinder: ToolFinder = InMemoryToolFinder(CoreTools.all.toList)
 
-  /** Active finder. The wrapper always reports the union of
-    * `toolInputs` and core-tool input RWs as its `toolInputRWs` (so
-    * Sigil's init-time `ToolInput.register` call sees every benchmark
-    * input type plus the essentials), and forwards `apply` / `byName`
-    * to a fall-through chain: scenario finder first, then
-    * [[coreFinder]]. The scenario can shadow a core tool by emitting
-    * the same name, but in practice they don't overlap. */
+  /**
+   * Active finder. The wrapper always reports the union of
+   * `toolInputs` and core-tool input RWs as its `toolInputRWs` (so
+   * Sigil's init-time `ToolInput.register` call sees every benchmark
+   * input type plus the essentials), and forwards `apply` / `byName`
+   * to a fall-through chain: scenario finder first, then
+   * [[coreFinder]]. The scenario can shadow a core tool by emitting
+   * the same name, but in practice they don't overlap.
+   */
   override def findTools: ToolFinder = new ToolFinder {
-    override val toolInputRWs: List[RW[? <: ToolInput]] =
-      (toolInputs ++ coreFinder.toolInputRWs).distinctBy(_.definition.className)
+    override val toolInputRWs: List[RW[? <: ToolInput]] = (toolInputs ++ coreFinder.toolInputRWs).distinctBy(_.definition.className)
     override def apply(request: DiscoveryRequest) =
       toolFinderRef.get().apply(request).flatMap(scenario =>
         coreFinder.apply(request).map(core =>
-          (scenario ++ core).distinctBy(_.name.value)
-        )
-      )
+          (scenario ++ core).distinctBy(_.name.value)))
     override def byName(name: ToolName) =
       toolFinderRef.get().byName(name).flatMap {
         case Some(t) => rapid.Task.pure(Some(t))
@@ -94,10 +98,12 @@ final class BenchmarkAgentSigil(viewer: ParticipantId,
 
   override def toolInputRegistrations: List[RW[? <: ToolInput]] = toolInputs
 
-  /** Empty static catalog — the framework essentials live in
-    * [[coreFinder]] (returned via the `findTools` fallback) rather
-    * than persisted to `SigilDB.tools`, since this benchmark Sigil
-    * doesn't run [[sigil.tool.StaticToolSyncUpgrade]]. */
+  /**
+   * Empty static catalog — the framework essentials live in
+   * [[coreFinder]] (returned via the `findTools` fallback) rather
+   * than persisted to `SigilDB.tools`, since this benchmark Sigil
+   * doesn't run [[sigil.tool.StaticToolSyncUpgrade]].
+   */
   override def staticTools: List[sigil.tool.Tool] = Nil
 
   override protected def signalRegistrations: List[RW[? <: Signal]] = extraSignalRegistrations

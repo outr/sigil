@@ -21,7 +21,7 @@ import sigil.vector.{NoOpVectorIndex, VectorPoint, VectorPointId}
  * is NoOp), it short-circuits with zero cost.
  */
 object MessageIndexingEffect extends SettledEffect {
-  override def apply(signal: Signal, self: Sigil): Task[Unit] = {
+  override def apply(signal: Signal, self: Sigil): Task[Unit] =
     if (!vectorWired(self)) Task.unit
     else signal match {
       case m: Message if m.state == EventState.Complete => indexMessage(m, self)
@@ -32,7 +32,6 @@ object MessageIndexingEffect extends SettledEffect {
         }
       case _ => Task.unit
     }
-  }
 
   private def vectorWired(self: Sigil): Boolean =
     self.embeddingProvider.dimensions > 0 && (self.vectorIndex ne NoOpVectorIndex)
@@ -44,11 +43,11 @@ object MessageIndexingEffect extends SettledEffect {
     // author access to their own externalized content.
     dereferenceAll(self, List(m.participantId), m.content).flatMap { resolved =>
       val text = resolved.collect {
-        case ResponseContent.Text(t)        => t
-        case ResponseContent.Code(c, _)     => c
-        case ResponseContent.Diff(d, _)     => d
-        case ResponseContent.Markdown(t)    => t
-        case ResponseContent.Heading(t)     => t
+        case ResponseContent.Text(t) => t
+        case ResponseContent.Code(c, _) => c
+        case ResponseContent.Diff(d, _) => d
+        case ResponseContent.Markdown(t) => t
+        case ResponseContent.Heading(t) => t
       }.mkString("\n").trim
 
       if (text.isEmpty) Task.unit

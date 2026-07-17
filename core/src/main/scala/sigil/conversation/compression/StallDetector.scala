@@ -44,58 +44,70 @@ import sigil.tool.model.ResponseContent
  */
 object StallDetector {
 
-  /** Detection thresholds. Tuned empirically against the live
-    * wire-log scenarios that motivated bug #124. Apps with
-    * different agent loop shapes override via the
-    * `Sigil.stallDetector*` knobs. */
+  /**
+   * Detection thresholds. Tuned empirically against the live
+   * wire-log scenarios that motivated bug #124. Apps with
+   * different agent loop shapes override via the
+   * `Sigil.stallDetector*` knobs.
+   */
   val DefaultIdenticalThreshold: Int = 3
-  val DefaultEmptyThreshold: Int     = 4
-  val DefaultLowInfoThreshold: Int   = 3
+  val DefaultEmptyThreshold: Int = 4
+  val DefaultLowInfoThreshold: Int = 3
 
-  /** Minimum pairwise Jaccard between consecutive non-empty
-    * outputs for the low-information heuristic to count them as
-    * overlapping. 0.7 = at least 70 % of the atomized payload
-    * tokens shared. */
+  /**
+   * Minimum pairwise Jaccard between consecutive non-empty
+   * outputs for the low-information heuristic to count them as
+   * overlapping. 0.7 = at least 70 % of the atomized payload
+   * tokens shared.
+   */
   val DefaultLowInfoJaccard: Double = 0.7
 
-  /** Minimum atoms per output before the low-information
-    * heuristic considers a pair. Below this, a single shared
-    * token trips false positives — tiny outputs (`{"ok":true}`
-    * style success markers) overlap trivially. */
+  /**
+   * Minimum atoms per output before the low-information
+   * heuristic considers a pair. Below this, a single shared
+   * token trips false positives — tiny outputs (`{"ok":true}`
+   * style success markers) overlap trivially.
+   */
   val DefaultLowInfoMinAtoms: Int = 5
 
-  /** Result of evaluating the tail. `reason` is non-empty when
-    * `detected = true`; the reflector folds it into the
-    * checkpoint's `stuckOn` field. */
+  /**
+   * Result of evaluating the tail. `reason` is non-empty when
+   * `detected = true`; the reflector folds it into the
+   * checkpoint's `stuckOn` field.
+   */
   final case class Signal(detected: Boolean, reason: Option[String])
 
   object Signal {
     val Empty: Signal = Signal(detected = false, reason = None)
   }
 
-  /** One unit of agent-side activity since the prior checkpoint.
-    * The framework collects these from the event log in
-    * chronological order; the detector walks them tail-first.
-    *
-    *   - `invoke` — the settled ToolInvoke event (carries name +
-    *     input + the typed `output` + `outcome` post-#265).
-    *   - `resultMessage` — Tool-role Message diagnostics paired to
-    *     the invoke (orchestrator-synthesised refusal / repeated-
-    *     query intercepts); surfaces empty-payload detection
-    *     against rendered text when the result lives on a Message
-    *     rather than the invoke's typed output. */
+  /**
+   * One unit of agent-side activity since the prior checkpoint.
+   * The framework collects these from the event log in
+   * chronological order; the detector walks them tail-first.
+   *
+   *   - `invoke` — the settled ToolInvoke event (carries name +
+   *     input + the typed `output` + `outcome` post-#265).
+   *   - `resultMessage` — Tool-role Message diagnostics paired to
+   *     the invoke (orchestrator-synthesised refusal / repeated-
+   *     query intercepts); surfaces empty-payload detection
+   *     against rendered text when the result lives on a Message
+   *     rather than the invoke's typed output.
+   */
   final case class CallRecord(invoke: ToolInvoke,
                               resultMessage: Option[Message])
 
-  /** Evaluate the tail of recent calls. Returns a positive signal
-    * as soon as any heuristic fires (narrowest first); otherwise
-    * `Signal.Empty`. */
+  /**
+   * Evaluate the tail of recent calls. Returns a positive signal
+   * as soon as any heuristic fires (narrowest first); otherwise
+   * `Signal.Empty`.
+   */
   def evaluate(tail: List[CallRecord],
                identicalThreshold: Int = DefaultIdenticalThreshold,
                emptyThreshold: Int = DefaultEmptyThreshold,
                lowInfoThreshold: Int = DefaultLowInfoThreshold,
                lowInfoJaccard: Double = DefaultLowInfoJaccard,
-               lowInfoMinAtoms: Int = DefaultLowInfoMinAtoms): Signal = {
+               lowInfoMinAtoms: Int = DefaultLowInfoMinAtoms): Signal =
     if (tail.isEmpty) Signal.Empty
     else {
       val identical = identicalStreak(tail, identicalThreshold)
@@ -106,19 +118,20 @@ object StallDetector {
         else lowInformationStreak(tail, lowInfoThreshold, lowInfoJaccard, lowInfoMinAtoms)
       }
     }
-  }
 
-  /** Input-only identical-call streak — counts consecutive tail calls
-    * sharing `(toolName, inputJson)`, IGNORING output. The output-sensitive
-    * [[identicalStreak]] deliberately distinguishes "same call, different
-    * answer" (a legitimate re-query) from a true stall; but a model that
-    * re-emits a byte-identical call every iteration while the framework
-    * refuses it defeats that check, because each refusal Message carries a
-    * varying attempt count so the outputs differ. This input-only variant —
-    * used ONLY at a high threshold as a model-independent hard-stop signal —
-    * catches that pathology: N identical inputs in one turn is stuck no
-    * matter what comes back. */
-  def identicalInputStreak(tail: List[CallRecord], threshold: Int): Signal = {
+  /**
+   * Input-only identical-call streak — counts consecutive tail calls
+   * sharing `(toolName, inputJson)`, IGNORING output. The output-sensitive
+   * [[identicalStreak]] deliberately distinguishes "same call, different
+   * answer" (a legitimate re-query) from a true stall; but a model that
+   * re-emits a byte-identical call every iteration while the framework
+   * refuses it defeats that check, because each refusal Message carries a
+   * varying attempt count so the outputs differ. This input-only variant —
+   * used ONLY at a high threshold as a model-independent hard-stop signal —
+   * catches that pathology: N identical inputs in one turn is stuck no
+   * matter what comes back.
+   */
+  def identicalInputStreak(tail: List[CallRecord], threshold: Int): Signal =
     if (threshold <= 0 || tail.size < threshold) Signal.Empty
     else {
       val fingerprints = tail.reverseIterator.map(r => (r.invoke.toolName.value, inputFingerprint(r.invoke))).toList
@@ -135,16 +148,15 @@ object StallDetector {
         val (name, _) = head
         Signal(
           detected = true,
-          reason   = Some(
+          reason = Some(
             s"You've called `$name` $run times this turn with identical arguments without making progress. " +
               "Stop now — call `respond` with what you've gathered so far, or `cancel` the task."
           )
         )
       } else Signal.Empty
     }
-  }
 
-  private def identicalStreak(tail: List[CallRecord], threshold: Int): Signal = {
+  private def identicalStreak(tail: List[CallRecord], threshold: Int): Signal =
     if (tail.size < threshold) Signal.Empty
     else {
       // Compute fingerprint = (toolName, inputJson, outputFingerprint).
@@ -164,16 +176,15 @@ object StallDetector {
         val (name, _, _) = head
         Signal(
           detected = true,
-          reason   = Some(
+          reason = Some(
             s"You've called `$name` $run times with the same arguments, each returning the same result. " +
               "Change your approach — try a different tool, ask the user for clarification via `respond`, or `cancel` the task."
           )
         )
       } else Signal.Empty
     }
-  }
 
-  private def emptyStreak(tail: List[CallRecord], threshold: Int): Signal = {
+  private def emptyStreak(tail: List[CallRecord], threshold: Int): Signal =
     if (tail.size < threshold) Signal.Empty
     else {
       var run = 0
@@ -193,19 +204,20 @@ object StallDetector {
       }
       if (run >= threshold) emitEmptySignal(run, distinctNames.toList) else Signal.Empty
     }
-  }
 
-  /** Heuristic 3 — the agent's last N non-empty outputs share
-    * most of their atomized payload across consecutive pairs.
-    * Catches "you have enough to answer, you're now just
-    * confirming" patterns that #124's identical / empty
-    * heuristics miss when each call's input genuinely differs
-    * (slight keyword variations on grep, follow-up reads on the
-    * same file, etc.). */
+  /**
+   * Heuristic 3 — the agent's last N non-empty outputs share
+   * most of their atomized payload across consecutive pairs.
+   * Catches "you have enough to answer, you're now just
+   * confirming" patterns that #124's identical / empty
+   * heuristics miss when each call's input genuinely differs
+   * (slight keyword variations on grep, follow-up reads on the
+   * same file, etc.).
+   */
   def lowInformationStreak(tail: List[CallRecord],
                            threshold: Int,
                            jaccardThreshold: Double,
-                           minAtoms: Int): Signal = {
+                           minAtoms: Int): Signal =
     if (tail.size < threshold) Signal.Empty
     else {
       // Walk tail-first, pick the most-recent N non-empty calls
@@ -233,7 +245,7 @@ object StallDetector {
           val avgOverlap = math.round(pairs.sum / pairs.size * 100).toInt
           Signal(
             detected = true,
-            reason   = Some(
+            reason = Some(
               s"Your last ${recent.size} non-empty tool calls ($toolList) returned ~$avgOverlap% overlapping data — " +
                 "you're confirming facts already in hand rather than learning anything new. Stop gathering and call " +
                 "`respond` with what you have, or shift to a different shape of action (edit/save/send) if the user " +
@@ -243,12 +255,13 @@ object StallDetector {
         } else Signal.Empty
       }
     }
-  }
 
-  /** Jaccard similarity of two atom sets. Defined as
-    * `|a ∩ b| / |a ∪ b|`. Empty + empty → 1.0 (degenerate); empty
-    * + non-empty → 0.0. */
-  def jaccard(a: Set[String], b: Set[String]): Double = {
+  /**
+   * Jaccard similarity of two atom sets. Defined as
+   * `|a ∩ b| / |a ∪ b|`. Empty + empty → 1.0 (degenerate); empty
+   * + non-empty → 0.0.
+   */
+  def jaccard(a: Set[String], b: Set[String]): Double =
     if (a.isEmpty && b.isEmpty) 1.0
     else if (a.isEmpty || b.isEmpty) 0.0
     else {
@@ -256,13 +269,14 @@ object StallDetector {
       val union = a.union(b).size.toDouble
       inter / union
     }
-  }
 
-  /** Atomize a call's output — typed JSON payload preferred (the
-    * invoke's settled `output` rendered through its polymorphic RW),
-    * then the invoke's `summary`, then any paired Tool-role Message
-    * content. Used by [[lowInformationStreak]] to compare payloads
-    * across heterogenous tool shapes. */
+  /**
+   * Atomize a call's output — typed JSON payload preferred (the
+   * invoke's settled `output` rendered through its polymorphic RW),
+   * then the invoke's `summary`, then any paired Tool-role Message
+   * content. Used by [[lowInformationStreak]] to compare payloads
+   * across heterogenous tool shapes.
+   */
   def outputAtoms(r: CallRecord): Set[String] = typedOutputJson(r.invoke) match {
     case Some(j) => jsonAtoms(j)
     case None =>
@@ -270,50 +284,56 @@ object StallDetector {
       if (viaSummary.nonEmpty) viaSummary
       else r.resultMessage match {
         case Some(m) => m.content.flatMap {
-          case ResponseContent.Text(t)        => textAtoms(t)
-          case ResponseContent.Markdown(t)    => textAtoms(t)
-          case ResponseContent.Code(code, _)  => textAtoms(code)
-          case _                              => Set.empty[String]
-        }.toSet
+            case ResponseContent.Text(t) => textAtoms(t)
+            case ResponseContent.Markdown(t) => textAtoms(t)
+            case ResponseContent.Code(code, _) => textAtoms(code)
+            case _ => Set.empty[String]
+          }.toSet
         case None => Set.empty
       }
   }
 
-  /** Render the invoke's settled typed output to JSON with the
-    * polymorphic `type` discriminator stripped, returning `None`
-    * for pending / progress / unrenderable values. Used by the
-    * atomization + fingerprint + emptiness helpers to inspect the
-    * typed payload that lives on the invoke post-#265. */
+  /**
+   * Render the invoke's settled typed output to JSON with the
+   * polymorphic `type` discriminator stripped, returning `None`
+   * for pending / progress / unrenderable values. Used by the
+   * atomization + fingerprint + emptiness helpers to inspect the
+   * typed payload that lives on the invoke post-#265.
+   */
   private def typedOutputJson(ti: ToolInvoke): Option[Json] = ti.output match {
-    case ToolOutput.Pending      => None
-    case _: ToolOutput.Progress  => None
-    case other                   =>
-      try {
+    case ToolOutput.Pending => None
+    case _: ToolOutput.Progress => None
+    case other =>
+      try
         summon[RW[ToolOutput]].read(other) match {
           case o: Obj => Some(Obj(o.value - "type"))
-          case j      => Some(j)
+          case j => Some(j)
         }
-      } catch { case _: Throwable => None }
+      catch { case _: Throwable => None }
   }
 
-  /** Recursively atomize a JSON payload. Strings tokenize via
-    * [[textAtoms]]; numbers / bools / null become their string
-    * form; arrays and objects flatten their atoms into the
-    * combined set. Object keys are NOT atomized — they're
-    * structural metadata, not content. */
+  /**
+   * Recursively atomize a JSON payload. Strings tokenize via
+   * [[textAtoms]]; numbers / bools / null become their string
+   * form; arrays and objects flatten their atoms into the
+   * combined set. Object keys are NOT atomized — they're
+   * structural metadata, not content.
+   */
   def jsonAtoms(j: Json): Set[String] = j match {
-    case Null      => Set("null")
-    case b: Bool   => Set(b.value.toString)
+    case Null => Set("null")
+    case b: Bool => Set(b.value.toString)
     case n: NumInt => Set(n.value.toString)
     case n: NumDec => Set(n.value.toString)
-    case s: Str    => textAtoms(s.value)
-    case a: Arr    => a.value.iterator.flatMap(jsonAtoms).toSet
-    case o: Obj    => o.value.values.iterator.flatMap(jsonAtoms).toSet
+    case s: Str => textAtoms(s.value)
+    case a: Arr => a.value.iterator.flatMap(jsonAtoms).toSet
+    case o: Obj => o.value.values.iterator.flatMap(jsonAtoms).toSet
   }
 
-  /** Tokenize a text fragment into a set of normalized atoms.
-    * Splits on non-alphanumeric runs, lowercases, drops tokens
-    * shorter than 3 chars (noise; doesn't carry meaning). */
+  /**
+   * Tokenize a text fragment into a set of normalized atoms.
+   * Splits on non-alphanumeric runs, lowercases, drops tokens
+   * shorter than 3 chars (noise; doesn't carry meaning).
+   */
   def textAtoms(text: String): Set[String] =
     text.split("[^A-Za-z0-9_]+").iterator
       .filter(_.length >= 3)
@@ -325,26 +345,30 @@ object StallDetector {
       (if (distinctNames.size > 5) s" + ${distinctNames.size - 5} more" else "")
     Signal(
       detected = true,
-      reason   = Some(
+      reason = Some(
         s"Your last $count tool calls ($toolList) all returned empty or null results — no new information is flowing back. " +
           "Change your approach — try a different shape of tool (read a file, grep, ask the user), or `cancel` the task."
       )
     )
   }
 
-  /** Stable JSON fingerprint of the invoke's input. Two invokes
-    * with the same toolName + same input shape produce equal
-    * fingerprints. */
+  /**
+   * Stable JSON fingerprint of the invoke's input. Two invokes
+   * with the same toolName + same input shape produce equal
+   * fingerprints.
+   */
   def inputFingerprint(invoke: ToolInvoke): String =
     invoke.input.map(_.json).map(canonicalize).map(_.toString).getOrElse("<no-input>")
 
-  /** Output fingerprint — used by the identical-call detector to
-    * tell apart "same call, same answer" (real stall) from "same
-    * call, different answer" (legit re-query). For invokes with a
-    * typed payload, fingerprint the canonical JSON; for failure
-    * outcomes, fingerprint the failure reason; for Tool-role Message
-    * diagnostics, fingerprint the text content; for pending (no
-    * settled output), fingerprint `"<pending>"`. */
+  /**
+   * Output fingerprint — used by the identical-call detector to
+   * tell apart "same call, same answer" (real stall) from "same
+   * call, different answer" (legit re-query). For invokes with a
+   * typed payload, fingerprint the canonical JSON; for failure
+   * outcomes, fingerprint the failure reason; for Tool-role Message
+   * diagnostics, fingerprint the text content; for pending (no
+   * settled output), fingerprint `"<pending>"`.
+   */
   def outputFingerprint(r: CallRecord): String = typedOutputJson(r.invoke) match {
     case Some(j) => canonicalize(j).toString
     case None =>
@@ -355,34 +379,36 @@ object StallDetector {
           r.resultMessage match {
             case Some(m) =>
               val text = m.content.collect {
-                case ResponseContent.Text(t)     => t
+                case ResponseContent.Text(t) => t
                 case ResponseContent.Markdown(t) => t
               }.mkString("\n").trim
               m.disposition match {
                 case _: sigil.event.MessageDisposition.Failure => "FAIL:" + text
-                case sigil.event.MessageDisposition.Success    => text
+                case sigil.event.MessageDisposition.Success => text
               }
             case None => "<pending>"
           }
       }
   }
 
-  /** True when the call's output carries no information.
-    * Recognises empty arrays / objects / `null`, an empty-string
-    * summary sentinel on the invoke, and Tool-role Message
-    * diagnostics whose rendered content collapses to whitespace. */
+  /**
+   * True when the call's output carries no information.
+   * Recognises empty arrays / objects / `null`, an empty-string
+   * summary sentinel on the invoke, and Tool-role Message
+   * diagnostics whose rendered content collapses to whitespace.
+   */
   def isEmpty(r: CallRecord): Boolean = typedOutputJson(r.invoke) match {
     case Some(j) => isEmptyJson(j)
     case None =>
       r.invoke.outcome match {
         case ToolOutcome.Failure(reason, _) => reason.trim.isEmpty
-        case ToolOutcome.Pending             => false
+        case ToolOutcome.Pending => false
         case ToolOutcome.Success =>
           if (r.invoke.summary.nonEmpty) r.invoke.summary.trim.isEmpty
           else r.resultMessage match {
             case Some(m) =>
               m.content.collect {
-                case ResponseContent.Text(t)     => t
+                case ResponseContent.Text(t) => t
                 case ResponseContent.Markdown(t) => t
               }.mkString("").trim.isEmpty
             case None => false
@@ -391,23 +417,25 @@ object StallDetector {
   }
 
   private def isEmptyJson(j: Json): Boolean = j match {
-    case Null      => true
-    case s: Str    => s.value.trim.isEmpty
-    case a: Arr    => a.value.isEmpty
-    case o: Obj    =>
+    case Null => true
+    case s: Str => s.value.trim.isEmpty
+    case a: Arr => a.value.isEmpty
+    case o: Obj =>
       // Treat objects with only conventionally-meaningless fields as empty.
       val meaningful = o.value.filterNot { case (k, _) => k.startsWith("_") }
       meaningful.isEmpty || meaningful.values.forall(isEmptyJson)
-    case _         => false
+    case _ => false
   }
 
-  /** Best-effort canonical JSON for fingerprinting — sorts object
-    * keys so the fingerprint is order-invariant. */
+  /**
+   * Best-effort canonical JSON for fingerprinting — sorts object
+   * keys so the fingerprint is order-invariant.
+   */
   private def canonicalize(j: Json): Json = j match {
     case o: Obj =>
       val sorted = o.value.toSeq.sortBy(_._1).map { case (k, v) => k -> canonicalize(v) }
       Obj(scala.collection.immutable.VectorMap.from(sorted))
     case a: Arr => Arr(a.value.map(canonicalize))
-    case other  => other
+    case other => other
   }
 }

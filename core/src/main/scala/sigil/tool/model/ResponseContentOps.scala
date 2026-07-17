@@ -43,10 +43,11 @@ object ResponseContentOps {
             if (ct.startsWith("image/")) {
               // No live URL on dereference — round-trip through a
               // data URL so renderers always have something to show.
-              spice.net.URL.get(s"data:${ref.contentType};base64,${java.util.Base64.getEncoder.encodeToString(bytes)}",
+              spice.net.URL.get(
+                s"data:${ref.contentType};base64,${java.util.Base64.getEncoder.encodeToString(bytes)}",
                 tldValidation = spice.net.TLDValidation.Off).toOption match {
                 case Some(url) => ResponseContent.Image(url, altText = Some(ref.title))
-                case None      => ResponseContent.Text("[file could not be rendered]")
+                case None => ResponseContent.Text("[file could not be rendered]")
               }
             } else if (ct.startsWith("text/") || ct == "application/json" || ct == "application/xml") {
               ResponseContent.Code(new String(bytes, "UTF-8"), language = ref.language)
@@ -54,7 +55,8 @@ object ResponseContentOps {
               // Unknown binary — preserve as base64 inside a Code block
               // so the LLM can still reason about it (and apps can choose
               // whether to render or skip).
-              ResponseContent.Code(java.util.Base64.getEncoder.encodeToString(bytes),
+              ResponseContent.Code(
+                java.util.Base64.getEncoder.encodeToString(bytes),
                 language = ref.language.orElse(Some("base64")))
             }
         }
@@ -63,7 +65,9 @@ object ResponseContentOps {
     }
   }
 
-  /** Dereference every block in a content vector, preserving order. */
+  /**
+   * Dereference every block in a content vector, preserving order.
+   */
   def dereferenceAll(sigil: Sigil,
                      chain: List[ParticipantId],
                      content: Vector[ResponseContent]): Task[Vector[ResponseContent]] =

@@ -28,11 +28,11 @@ class ContextVirtualizationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def toolCtx(conv: Conversation): ToolContext = {
     val turn = TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser, TestAgent),
+      sigil = TestSigil,
+      chain = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv._id),
-      model        = TestSigil.testModel(modelId)
+      turnInput = TurnInput(conversationId = conv._id),
+      model = TestSigil.testModel(modelId)
     )
     ToolContext(turn, Event.id(), ReloadContentTool.name)
   }
@@ -42,14 +42,18 @@ class ContextVirtualizationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val convId = Conversation.id(s"ctxvirt-cap-${rapid.Unique()}")
       val taskTs = 1000L
       val task = Message(
-        participantId = TestUser, conversationId = convId, topicId = TestTopicEntry.id,
-        role = MessageRole.Standard, content = Vector(ResponseContent.Text("the task")),
-        state = EventState.Complete, timestamp = Timestamp(taskTs)
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        role = MessageRole.Standard,
+        content = Vector(ResponseContent.Text("the task")),
+        state = EventState.Complete,
+        timestamp = Timestamp(taskTs)
       )
       for {
-        _    <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(topics = TestTopicStack, _id = convId))))
-        _    <- TestSigil.withDB(_.events.transaction(_.upsert(task)))
-        _    <- TestSigil.advanceClearedAt(convId, Timestamp(5000L)) // far past the task
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(topics = TestTopicStack, _id = convId))))
+        _ <- TestSigil.withDB(_.events.transaction(_.upsert(task)))
+        _ <- TestSigil.advanceClearedAt(convId, Timestamp(5000L)) // far past the task
         conv <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
         val cleared = conv.flatMap(_.clearedAt).map(_.value)
@@ -62,32 +66,38 @@ class ContextVirtualizationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   "reload_content reload-by-id (#316 keystone)" should {
     "reload a single event's full content by event id" in {
       val convId = Conversation.id(s"ctxvirt-event-${rapid.Unique()}")
-      val big    = "X" * 9000
-      val evId   = Event.id()
+      val big = "X" * 9000
+      val evId = Event.id()
       val ev = Message(
-        _id = evId, participantId = TestAgent, conversationId = convId, topicId = TestTopicEntry.id,
-        role = MessageRole.Standard, content = Vector(ResponseContent.Text(big)), state = EventState.Complete
+        _id = evId,
+        participantId = TestAgent,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        role = MessageRole.Standard,
+        content = Vector(ResponseContent.Text(big)),
+        state = EventState.Complete
       )
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.withDB(_.events.transaction(_.upsert(ev)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.events.transaction(_.upsert(ev)))
         res <- ReloadContentTool.invoke(ReloadContentInput(referenceId = evId.value), toolCtx(conv))
-      } yield {
-        res.text.count(_ == 'X') shouldBe 9000
-      }
+      } yield res.text.count(_ == 'X') shouldBe 9000
     }
 
     "browse a summary's covered events by summary id" in {
       val convId = Conversation.id(s"ctxvirt-summary-${rapid.Unique()}")
       val e1 = Event.id()
       val e2 = Event.id()
-      val conv    = Conversation(topics = TestTopicStack, _id = convId)
-      val summary = ContextSummary(text = "earlier work", conversationId = convId, tokenEstimate = 10,
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
+      val summary = ContextSummary(
+        text = "earlier work",
+        conversationId = convId,
+        tokenEstimate = 10,
         coversEventIds = List(e1, e2))
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.persistSummary(summary)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.persistSummary(summary)
         res <- ReloadContentTool.invoke(ReloadContentInput(referenceId = summary._id.value), toolCtx(conv))
       } yield {
         res.text should include(e1.value)

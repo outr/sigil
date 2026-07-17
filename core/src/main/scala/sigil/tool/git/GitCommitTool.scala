@@ -14,11 +14,10 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * the default `AllShippedTools` list. Apps that want commit authorship
  * register an instance explicitly.
  */
-final class GitCommitTool(context: FileSystemContext)
-  extends Tool with sigil.tool.DestructiveExternalTool {
-  type Input  = GitCommitInput
+final class GitCommitTool(context: FileSystemContext) extends Tool with sigil.tool.DestructiveExternalTool {
+  type Input = GitCommitInput
   type Output = GitCommitOutput
-  val inputRW  = summon[RW[GitCommitInput]]
+  val inputRW = summon[RW[GitCommitInput]]
   val outputRW = summon[RW[GitCommitOutput]]
   val name = ToolName("git_commit")
   val description =
@@ -27,7 +26,7 @@ final class GitCommitTool(context: FileSystemContext)
       |register it on top of `AllShippedTools`.""".stripMargin
   override val examples = List(
     ToolExample("Commit all tracked changes", GitCommitInput(message = "Fix typo")),
-    ToolExample("Commit specific paths",      GitCommitInput(message = "Add config", paths = Some(List("config/app.yaml"))))
+    ToolExample("Commit specific paths", GitCommitInput(message = "Add config", paths = Some(List("config/app.yaml"))))
   )
   override val keywords = Set("git", "commit", "save", "checkpoint")
 
@@ -35,12 +34,12 @@ final class GitCommitTool(context: FileSystemContext)
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val pathsToStage = input.paths.getOrElse(Nil)
       val addCmd = pathsToStage match {
-        case Nil   => "git add -u"
+        case Nil => "git add -u"
         case paths => "git add -- " + paths.map(GitOps.shellQuote).mkString(" ")
       }
       val emptyFlag = if (input.allowEmpty) " --allow-empty" else ""
       val commitCmd = s"""git commit$emptyFlag -m ${GitOps.shellQuote(input.message)}"""
-      val shaCmd    = "git rev-parse HEAD"
+      val shaCmd = "git rev-parse HEAD"
 
       for {
         addResult <- context.executeCommand(addCmd, dir)
@@ -50,14 +49,13 @@ final class GitCommitTool(context: FileSystemContext)
         shaResult <-
           if (commitResult.exitCode != 0) Task.pure(commitResult)
           else context.executeCommand(shaCmd, dir)
-      } yield {
+      } yield
         if (commitResult.exitCode != 0 || shaResult.exitCode != 0)
           GitCommitOutput.Failed(
-            error    = if (commitResult.stderr.nonEmpty) commitResult.stderr else shaResult.stderr,
+            error = if (commitResult.stderr.nonEmpty) commitResult.stderr else shaResult.stderr,
             exitCode = if (commitResult.exitCode != 0) commitResult.exitCode else shaResult.exitCode
           )
         else
           GitCommitOutput.Committed(sha = shaResult.stdout.trim, message = input.message)
-      }
     }
 }

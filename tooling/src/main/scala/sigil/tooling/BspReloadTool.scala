@@ -14,11 +14,10 @@ case class BspReloadInput(projectRoot: String) extends ToolInput derives RW
  * `Cargo.toml`, etc.) so subsequent compile/test calls see the new
  * targets / dependencies.
  */
-final class BspReloadTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
-  type Input  = BspReloadInput
+final class BspReloadTool(val manager: BspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input = BspReloadInput
   type Output = BspReloadResult
-  val inputRW  = summon[RW[BspReloadInput]]
+  val inputRW = summon[RW[BspReloadInput]]
   val outputRW = summon[RW[BspReloadResult]]
 
   val name = ToolName("bsp_reload")
@@ -28,10 +27,10 @@ final class BspReloadTool(val manager: BspManager) extends Tool
       |`projectRoot` selects the persisted BspBuildConfig.""".stripMargin
   override val keywords = Set("bsp", "reload", "refresh", "rebuild", "reinitialise", "rescan")
 
-
   override def executeOutput(input: BspReloadInput, context: ToolContext): Task[BspReloadResult] =
     withSessionTyped[BspReloadResult](
-      input.projectRoot, context,
+      input.projectRoot,
+      context,
       onError = msg => BspReloadResult(input.projectRoot, error = Some(msg))
     ) { session =>
       session.reload.map(_ => BspReloadResult(input.projectRoot))

@@ -9,7 +9,8 @@ import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 case class LspDiagnosticsInput(languageId: String,
                                filePath: String,
-                               waitMs: Long = 1500L) extends ToolInput derives RW
+                               waitMs: Long = 1500L)
+  extends ToolInput derives RW
 
 /**
  * Returns the language server's current diagnostics for a file —
@@ -29,11 +30,10 @@ case class LspDiagnosticsInput(languageId: String,
  * the typed list and pattern-match on severity instead of regex-
  * parsing rendered strings.
  */
-final class LspDiagnosticsTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
-  type Input  = LspDiagnosticsInput
+final class LspDiagnosticsTool(val manager: LspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input = LspDiagnosticsInput
   type Output = LspDiagnosticsResult
-  val inputRW  = summon[RW[LspDiagnosticsInput]]
+  val inputRW = summon[RW[LspDiagnosticsInput]]
   val outputRW = summon[RW[LspDiagnosticsResult]]
   val name = ToolName("lsp_diagnostics")
   val description =
@@ -49,16 +49,33 @@ final class LspDiagnosticsTool(val manager: LspManager) extends Tool
       |`fresh: false` means the server did NOT answer for the current text within the wait —
       |treat the file's diagnostic state as unknown; an empty list is then NOT "no issues".""".stripMargin
   override val keywords = Set(
-    "lsp", "language", "diagnostics", "errors", "warnings", "problems",
-    "lint", "compile-check", "analyze", "examine", "inspect", "review",
-    "evaluate", "what's broken", "issues", "semantic",
-    "scala", "type", "fix", "code"
+    "lsp",
+    "language",
+    "diagnostics",
+    "errors",
+    "warnings",
+    "problems",
+    "lint",
+    "compile-check",
+    "analyze",
+    "examine",
+    "inspect",
+    "review",
+    "evaluate",
+    "what's broken",
+    "issues",
+    "semantic",
+    "scala",
+    "type",
+    "fix",
+    "code"
   )
-
 
   override def executeOutput(input: LspDiagnosticsInput, context: ToolContext): Task[LspDiagnosticsResult] =
     withSessionOrThrow[LspDiagnosticsResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri, _) =>
       // Capture the publish generation BEFORE the open so the wait
       // below detects the publish for THIS text — not a stale answer
@@ -72,9 +89,9 @@ final class LspDiagnosticsTool(val manager: LspManager) extends Tool
           else Task.pure(false) // snapshot-only read: freshness unknown
         freshness.map { fresh =>
           LspDiagnosticsResult(
-            filePath    = input.filePath,
+            filePath = input.filePath,
             diagnostics = session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _)),
-            fresh       = fresh
+            fresh = fresh
           )
         }
       }

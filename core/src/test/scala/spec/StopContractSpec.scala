@@ -46,8 +46,10 @@ class StopContractSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private val modelId: Id[Model] = Model.id("test", "stop-contract-model")
   TestSigil.testModel(modelId)
 
-  /** Answers every call with a terminal respond (topic fast-path). */
-  private final class RespondProvider extends Provider {
+  /**
+   * Answers every call with a terminal respond (topic fast-path).
+   */
+  final private class RespondProvider extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -59,23 +61,27 @@ class StopContractSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val cid = CallId(s"respond-${rapid.Unique()}")
       Stream.emits(List[ProviderEvent](
         ProviderEvent.ToolCallStart(cid, "respond"),
-        ProviderEvent.ToolCallComplete(cid, RespondInput(
-          topicLabel   = TestTopicEntry.label,
-          topicSummary = TestTopicEntry.summary,
-          content      = "Resumed after the stop.",
-          endsTurn     = true
-        )),
+        ProviderEvent.ToolCallComplete(
+          cid,
+          RespondInput(
+            topicLabel = TestTopicEntry.label,
+            topicSummary = TestTopicEntry.summary,
+            content = "Resumed after the stop.",
+            endsTurn = true
+          )),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }
   }
 
-  /** Publishes a Stop for its own conversation from INSIDE the first call,
-    * then throws a transient (retry-classified) provider error. Without the
-    * retry-loop stop guard, `callWithTransientRetry` re-issues the call
-    * after its backoff — a fresh wire request the already-fired stream
-    * cancel can never reach. */
-  private final class StopMidCallProvider(convId: Id[Conversation]) extends Provider {
+  /**
+   * Publishes a Stop for its own conversation from INSIDE the first call,
+   * then throws a transient (retry-classified) provider error. Without the
+   * retry-loop stop guard, `callWithTransientRetry` re-issues the call
+   * after its backoff — a fresh wire request the already-fired stream
+   * cancel can never reach.
+   */
+  final private class StopMidCallProvider(convId: Id[Conversation]) extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -86,43 +92,44 @@ class StopContractSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       calls.incrementAndGet()
       Stream.emit(()).evalMap[ProviderEvent] { _ =>
         TestSigil.publish(Stop(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = convId,
-          topicId        = TestTopicEntry.id,
-          force          = false,
-          reason         = Some("user pressed stop")
-        )).flatMap(_ => Task.error[ProviderEvent](new ProviderStreamException(
-          providerKey = "test",
-          code        = 503,
-          typ         = "provider_unavailable",
-          message_    = "upstream briefly saturated"
-        )))
+          topicId = TestTopicEntry.id,
+          force = false,
+          reason = Some("user pressed stop")
+        )).flatMap(_ =>
+          Task.error[ProviderEvent](new ProviderStreamException(
+            providerKey = "test",
+            code = 503,
+            typ = "provider_unavailable",
+            message_ = "upstream briefly saturated"
+          )))
       }
     }
   }
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def freshConv(prefix: String): Task[Id[Conversation]] = {
     val convId = Conversation.id(s"$prefix-${rapid.Unique()}")
-    val conv   = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
+    val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map(_ => convId)
   }
 
   private def userMessage(convId: Id[Conversation], text: String): Message =
     Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete
     )
 
   private def eventsFor(convId: Id[Conversation]): Task[List[sigil.event.Event]] =
@@ -137,18 +144,21 @@ class StopContractSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         convId <- freshConv("stop-latch")
         // Stop lands with NO claim live — pre-fix this was a total no-op.
         _ <- TestSigil.publish(Stop(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               force          = true
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          force = true
+        ))
         _ <- Task.sleep(150.millis)
         // A framework-style Tool-role diagnostic — the exact shape the
         // challenge / auto-continue machinery uses to re-trigger an agent.
         _ <- Task.sequence(SyntheticDiagnostic(
-               "_stall_detected", TestAgent, convId, TestTopicEntry.id,
-               reason = "queued re-trigger from before the stop"
-             ).collect { case e: sigil.event.Event => TestSigil.publish(e) })
+          "_stall_detected",
+          TestAgent,
+          convId,
+          TestTopicEntry.id,
+          reason = "queued re-trigger from before the stop"
+        ).collect { case e: sigil.event.Event => TestSigil.publish(e) })
         _ <- Task.sleep(300.millis)
         suppressedCalls = provider.calls.get()
         // A fresh user message re-arms the conversation.

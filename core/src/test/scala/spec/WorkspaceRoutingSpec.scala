@@ -52,16 +52,18 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       _id = convId
     )
     TurnContext(
-      sigil            = TestSigil,
-      chain            = List(TestUser),
-      conversation     = conv,
-      turnInput        = TurnInput(ConversationView(conversationId = convId)),
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
       model = TestSigil.defaultTestModel
     )
   }
 
-  /** Build a [[ToolContext]] for callers (like [[WorkspacePathResolver]])
-    * that take ToolContext rather than TurnContext. */
+  /**
+   * Build a [[ToolContext]] for callers (like [[WorkspacePathResolver]])
+   * that take ToolContext rather than TurnContext.
+   */
   private def toolCtx(convId: Id[Conversation]): ToolContext =
     ToolContext(turnCtx(convId), Event.id(), ToolName("workspace_test"))
 
@@ -71,9 +73,11 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     file
   }
 
-  /** Recover the typed payload from the settling [[ToolDelta]]'s
-    * `output` — the same concrete instance the tool produced, no
-    * JSON round-trip. */
+  /**
+   * Recover the typed payload from the settling [[ToolDelta]]'s
+   * `output` — the same concrete instance the tool produced, no
+   * JSON round-trip.
+   */
   private def typed[T <: sigil.tool.ToolOutput](signals: List[Signal])(using ct: ClassTag[T]): T =
     signals.collectFirst {
       case d: ToolDelta if d.output.exists(o => ct.runtimeClass.isInstance(o)) =>
@@ -90,23 +94,20 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   "WorkspacePathResolver" should {
 
-    "resolve a relative path against the conversation's workspace" in {
+    "resolve a relative path against the conversation's workspace" in
       WorkspacePathResolver.resolve(toolCtx(convA), "build.sbt").map { resolved =>
         Path.of(resolved).normalize shouldBe projectA.resolve("build.sbt").normalize
       }
-    }
 
-    "leave an absolute path untouched even when a workspace is configured" in {
+    "leave an absolute path untouched even when a workspace is configured" in
       WorkspacePathResolver.resolve(toolCtx(convA), "/etc/hosts").map { resolved =>
         resolved shouldBe "/etc/hosts"
       }
-    }
 
-    "fall through to the relative path when no workspace is configured" in {
+    "fall through to the relative path when no workspace is configured" in
       WorkspacePathResolver.resolve(toolCtx(convNoWorkspace), "build.sbt").map { resolved =>
         resolved shouldBe "build.sbt"
       }
-    }
 
     // #325 — a delegate_task worker conversation has no workspace of its
     // own (the app only binds one to the user-facing parent). Without
@@ -117,25 +118,25 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "inherit the parent conversation's workspace via parentConversationId for a worker" in {
       val parentId = Conversation.id(s"ws-parent-${rapid.Unique()}")
       val workerId = Conversation.id(s"ws-worker-${rapid.Unique()}")
-      TestSigil.setWorkspace(parentId, Some(projectA))  // worker itself: none
+      TestSigil.setWorkspace(parentId, Some(projectA)) // worker itself: none
       val workerConv = Conversation(
-        topics               = List(TopicEntry(TestTopicId, "worker", "worker")),
+        topics = List(TopicEntry(TestTopicId, "worker", "worker")),
         parentConversationId = Some(parentId),
-        _id                  = workerId
+        _id = workerId
       )
       val workerCtx = ToolContext(
         TurnContext(
-          sigil        = TestSigil,
-          chain        = List(TestUser),
+          sigil = TestSigil,
+          chain = List(TestUser),
           conversation = workerConv,
-          turnInput    = TurnInput(ConversationView(conversationId = workerId)),
-          model        = TestSigil.defaultTestModel
+          turnInput = TurnInput(ConversationView(conversationId = workerId)),
+          model = TestSigil.defaultTestModel
         ),
         Event.id(),
         ToolName("workspace_test")
       )
       for {
-        _        <- TestSigil.withDB(_.conversations.transaction(_.upsert(workerConv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(workerConv)))
         resolved <- WorkspacePathResolver.resolve(workerCtx, "build.sbt")
       } yield Path.of(resolved).normalize shouldBe projectA.resolve("build.sbt").normalize
     }
@@ -173,21 +174,19 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val read = new ReadFileTool(fs)
       for {
         out <- read.execute(ReadFileInput(absScratch.toString), turnCtx(convA), Event.id()).toList
-      } yield {
-        try {
+      } yield
+        try
           typed[ReadFileOutput](out).content shouldBe "absolute-passthrough"
-        } finally Files.deleteIfExists(absScratch)
-      }
+        finally Files.deleteIfExists(absScratch)
     }
   }
 
-  override protected def afterAll(): Unit = {
+  override protected def afterAll(): Unit =
     List(projectA, projectB).foreach { p =>
       if (Files.exists(p)) {
         Files.walk(p).iterator().asScala.toList.reverse.foreach(Files.deleteIfExists)
       }
     }
-  }
 
   "tear down" should {
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)

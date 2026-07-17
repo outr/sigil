@@ -42,9 +42,9 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   private object SatisfiedTool extends Tool {
-    type Input  = NoResponseInput
+    type Input = NoResponseInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[NoResponseInput]]
+    val inputRW = summon[RW[NoResponseInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name: ToolName = ToolName("gate_satisfied")
     val description: String = "tool whose preconditions pass"
@@ -59,9 +59,9 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   private object BlockedTool extends Tool {
-    type Input  = NoResponseInput
+    type Input = NoResponseInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[NoResponseInput]]
+    val inputRW = summon[RW[NoResponseInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name: ToolName = ToolName("gate_blocked")
     val description: String = "tool with one unsatisfied precondition"
@@ -95,24 +95,24 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     val convId = Conversation.id(s"precondition-$suffix")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(Model.id("test", "model")),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(ConversationView(conversationId = convId)),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(Model.id("test", "model")),
+      instructions = Instructions(),
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = tools
+      chain = List(TestUser, TestAgent),
+      tools = tools
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator + Tool.preconditions" should {
-    "let a tool run when all preconditions return Satisfied" in {
+    "let a tool run when all preconditions return Satisfied" in
       runWith(new StubProvider(SatisfiedTool.name.value, "ok-call"), Vector(SatisfiedTool), "ok").map { signals =>
         // A satisfied tool runs and settles its ToolInvoke via a
         // ToolDelta carrying the typed payload — no precondition-
@@ -125,9 +125,8 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         results should have size 1
         results.head.output.collect { case TextToolOutput(t) => t } shouldBe Some("RAN")
       }
-    }
 
-    "block tool execution when any precondition returns Unsatisfied — body not invoked" in {
+    "block tool execution when any precondition returns Unsatisfied — body not invoked" in
       runWith(new StubProvider(BlockedTool.name.value, "block-call"), Vector(BlockedTool), "block").map { signals =>
         val toolMsgs = signals.collect { case m: Message if m.role == MessageRole.Tool => m }
         toolMsgs should have size 1
@@ -135,12 +134,11 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         // The blocked-precondition Message is a Failure disposition; its
         // content carries the diagnostic, not SHOULD_NOT_RUN.
         val texts = toolMsgs.head.content.collect { case ResponseContent.Text(t) => t }
-        texts shouldNot contain ("SHOULD_NOT_RUN")
+        texts shouldNot contain("SHOULD_NOT_RUN")
         toolMsgs.head.isFailure shouldBe true
       }
-    }
 
-    "emit a Failure-disposition Message describing the blocked precondition + suggestedFix" in {
+    "emit a Failure-disposition Message describing the blocked precondition + suggestedFix" in
       runWith(new StubProvider(BlockedTool.name.value, "block-fail-call"), Vector(BlockedTool), "block-fail").map { signals =>
         val toolMsgs = signals.collect { case m: Message if m.role == MessageRole.Tool => m }
         toolMsgs.head.isFailure shouldBe true
@@ -153,9 +151,8 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           case _ => fail("expected Failure disposition")
         }
       }
-    }
 
-    "stamp the originating ToolInvoke id on the blocked Message (frame-pairing invariant)" in {
+    "stamp the originating ToolInvoke id on the blocked Message (frame-pairing invariant)" in
       runWith(new StubProvider(BlockedTool.name.value, "block-stamp-call"), Vector(BlockedTool), "block-stamp").map { signals =>
         val invokes = signals.collect { case ti: ToolInvoke => ti }
         invokes should have size 1
@@ -163,7 +160,6 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         val toolMsgs = signals.collect { case m: Message if m.role == MessageRole.Tool => m }
         toolMsgs.head.origin shouldBe Some(invokeId)
       }
-    }
   }
 
   "tear down" should {

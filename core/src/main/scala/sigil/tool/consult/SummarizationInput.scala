@@ -13,4 +13,5 @@ import sigil.tool.ToolInput
  * the curator trusts this for downstream budget math.
  */
 case class SummarizationInput(summary: String,
-                              tokenEstimate: Int) extends ToolInput derives RW
+                              tokenEstimate: Int)
+  extends ToolInput derives RW

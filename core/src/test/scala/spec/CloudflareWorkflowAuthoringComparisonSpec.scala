@@ -7,9 +7,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.provider.cloudflare.CloudflareProvider
-import sigil.provider.{
-  GenerationSettings, MessageContent, ProviderCall, ProviderEvent, ProviderMessage, ReasoningMode, ToolChoice
-}
+import sigil.provider.{GenerationSettings, MessageContent, ProviderCall, ProviderEvent, ProviderMessage, ReasoningMode, ToolChoice}
 import sigil.workflow.{WorkflowStepKind, WorkflowStepSpec}
 import sigil.workflow.tool.{CreateWorkflowInput, CreateWorkflowTool}
 
@@ -36,7 +34,7 @@ class CloudflareWorkflowAuthoringComparisonSpec extends AsyncWordSpec with Async
 
   override protected val testTimeout: FiniteDuration = 12.minutes
 
-  private val apiTokenOpt  = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
+  private val apiTokenOpt = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
   private val accountIdOpt = sys.env.get("CLOUDFLARE_ACCOUNT_ID").filter(_.nonEmpty)
 
   // Candidates ordered strongest-first; Kimi LAST as the baseline so its known
@@ -56,15 +54,21 @@ class CloudflareWorkflowAuthoringComparisonSpec extends AsyncWordSpec with Async
     val id = Model.id("cloudflare", slug)
     TestWorkflowSigil.cache.find(id).getOrElse {
       val m = Model(
-        canonicalSlug = id.value, huggingFaceId = "", name = id.value,
-        description = "Live comparison fixture.", contextLength = 131072L,
+        canonicalSlug = id.value,
+        huggingFaceId = "",
+        name = id.value,
+        description = "Live comparison fixture.",
+        contextLength = 131072L,
         architecture = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
         pricing = ModelPricing(BigDecimal(0), BigDecimal(0), None, None),
         topProvider = ModelTopProvider(Some(131072L), Some(16000L), isModerated = false),
         perRequestLimits = None,
         supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
-        knowledgeCutoff = None, expirationDate = None, links = ModelLinks(""),
-        created = lightdb.time.Timestamp(), _id = id
+        knowledgeCutoff = None,
+        expirationDate = None,
+        links = ModelLinks(""),
+        created = lightdb.time.Timestamp(),
+        _id = id
       )
       TestWorkflowSigil.cache.merge(List(m)).sync(); m
     }
@@ -112,12 +116,12 @@ class CloudflareWorkflowAuthoringComparisonSpec extends AsyncWordSpec with Async
 
   private def argsPopulated(s: WorkflowStepSpec): Boolean = s.arguments.exists {
     case Obj(m) => m.nonEmpty
-    case _      => false
+    case _ => false
   }
 
   private def score(in: CreateWorkflowInput): String = {
     val steps = in.steps
-    val jobs  = steps.filter(_.kind == WorkflowStepKind.Job)
+    val jobs = steps.filter(_.kind == WorkflowStepKind.Job)
     val discoveryJob = jobs.find(_.tool.exists(discoveryTools.contains))
     val nonDegenerate = steps.sizeIs >= 2 && discoveryJob.isDefined
     val argsOk = discoveryJob.exists(argsPopulated)

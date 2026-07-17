@@ -14,4 +14,5 @@ final case class BankingTransaction(id: Int,
                                     amount: Double,
                                     subject: String,
                                     date: String,
-                                    recurring: Boolean) derives RW
+                                    recurring: Boolean)
+  derives RW

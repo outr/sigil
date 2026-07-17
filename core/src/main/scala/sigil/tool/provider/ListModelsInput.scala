@@ -18,4 +18,5 @@ import sigil.tool.ToolInput
  */
 case class ListModelsInput(provider: Option[String] = None,
                            query: Option[String] = None,
-                           limit: Option[Int] = None) extends ToolInput derives RW
+                           limit: Option[Int] = None)
+  extends ToolInput derives RW

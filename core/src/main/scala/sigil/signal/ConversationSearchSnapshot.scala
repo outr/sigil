@@ -19,4 +19,5 @@ import sigil.tool.model.SearchConversationHit
  * eventId, timestamp, participantId, topicId, eventType, snippet.
  */
 case class ConversationSearchSnapshot(query: String,
-                                      hits: List[SearchConversationHit]) extends Notice derives RW
+                                      hits: List[SearchConversationHit])
+  extends Notice derives RW

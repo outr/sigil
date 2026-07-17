@@ -40,9 +40,11 @@ final class BrowserController private[browser] (val conversationId: Id[Conversat
   @volatile private var _lastTouchMs: Long = System.currentTimeMillis()
   private val _disposed: AtomicBoolean = new AtomicBoolean(false)
 
-  /** Run a block against the live browser. Updates the
-    * last-touched timestamp on entry so idle reaping doesn't fire
-    * mid-action. */
+  /**
+   * Run a block against the live browser. Updates the
+   * last-touched timestamp on entry so idle reaping doesn't fire
+   * mid-action.
+   */
   def run[A](f: RoboBrowser => Task[A]): Task[A] =
     if (_disposed.get())
       Task.error(new IllegalStateException(s"BrowserController for $conversationId is disposed"))
@@ -53,12 +55,13 @@ final class BrowserController private[browser] (val conversationId: Id[Conversat
 
   def lastTouchMs: Long = _lastTouchMs
 
-  def isIdle(thresholdMs: Long, now: Long = System.currentTimeMillis()): Boolean =
-    (now - _lastTouchMs) > thresholdMs
+  def isIdle(thresholdMs: Long, now: Long = System.currentTimeMillis()): Boolean = (now - _lastTouchMs) > thresholdMs
 
   def isDisposed: Boolean = _disposed.get()
 
-  /** Dispose the underlying [[RoboBrowser]]. Idempotent. */
+  /**
+   * Dispose the underlying [[RoboBrowser]]. Idempotent.
+   */
   def dispose: Task[Unit] =
     if (_disposed.compareAndSet(false, true)) browser.dispose()
     else Task.unit

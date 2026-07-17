@@ -9,40 +9,60 @@ import fabric.rw.*
  */
 enum GitFileState derives RW {
 
-  /** No change in this column (porcelain space). */
+  /**
+   * No change in this column (porcelain space).
+   */
   case Unmodified
 
-  /** Modified. */
+  /**
+   * Modified.
+   */
   case Modified
 
-  /** Added to the index. */
+  /**
+   * Added to the index.
+   */
   case Added
 
-  /** Deleted. */
+  /**
+   * Deleted.
+   */
   case Deleted
 
-  /** Renamed. */
+  /**
+   * Renamed.
+   */
   case Renamed
 
-  /** Copied. */
+  /**
+   * Copied.
+   */
   case Copied
 
-  /** Updated but unmerged (conflict). */
+  /**
+   * Updated but unmerged (conflict).
+   */
   case Unmerged
 
-  /** Untracked — not tracked by git. */
+  /**
+   * Untracked — not tracked by git.
+   */
   case Untracked
 
-  /** Ignored by `.gitignore`. */
+  /**
+   * Ignored by `.gitignore`.
+   */
   case Ignored
 }
 
 object GitFileState {
 
-  /** Map a single porcelain status character to its typed state.
-    * Unknown characters fall back to [[Unmodified]] — the parser is
-    * lenient because git can emit codes the schema doesn't enumerate
-    * (e.g. type-change `T`). */
+  /**
+   * Map a single porcelain status character to its typed state.
+   * Unknown characters fall back to [[Unmodified]] — the parser is
+   * lenient because git can emit codes the schema doesn't enumerate
+   * (e.g. type-change `T`).
+   */
   def fromChar(c: String): GitFileState = c match {
     case " " => Unmodified
     case "M" => Modified
@@ -53,6 +73,6 @@ object GitFileState {
     case "U" => Unmerged
     case "?" => Untracked
     case "!" => Ignored
-    case _   => Unmodified
+    case _ => Unmodified
   }
 }

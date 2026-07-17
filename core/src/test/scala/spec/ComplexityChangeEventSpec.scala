@@ -10,9 +10,7 @@ import sigil.db.Model
 import sigil.event.{ComplexityChange, Event, Message, MessageVisibility}
 import sigil.signal.ToolDelta
 import sigil.provider.Complexity
-import sigil.tool.provider.{
-  PinComplexityInput, PinComplexityTool, UnpinComplexityInput, UnpinComplexityTool
-}
+import sigil.tool.provider.{PinComplexityInput, PinComplexityTool, UnpinComplexityInput, UnpinComplexityTool}
 import sigil.TurnContext
 
 /**
@@ -30,8 +28,8 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private def freshConv(label: String, pinned: Option[Complexity] = None): Task[Conversation] = {
     val convId = Conversation.id(s"$label-${rapid.Unique()}")
     val conv = Conversation(
-      topics           = TestTopicStack,
-      _id              = convId,
+      topics = TestTopicStack,
+      _id = convId,
       pinnedComplexity = pinned
     )
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map(_ => conv)
@@ -39,10 +37,10 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def buildCtx(conv: Conversation): TurnContext =
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser),
+      sigil = TestSigil,
+      chain = List(TestUser),
       conversation = conv,
-      turnInput    = sigil.conversation.TurnInput(conversationId = conv._id, frames = Vector.empty),
+      turnInput = sigil.conversation.TurnInput(conversationId = conv._id, frames = Vector.empty),
       model = TestSigil.defaultTestModel
     )
 
@@ -50,7 +48,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "fire with Reason.Pinned + previousTier=None when no prior pin" in {
       for {
-        conv   <- freshConv("pin-first")
+        conv <- freshConv("pin-first")
         events <- PinComplexityTool.execute(PinComplexityInput("medium"), buildCtx(conv), Event.id()).toList
       } yield {
         val ccs = events.collect { case cc: ComplexityChange => cc }
@@ -63,7 +61,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "fire with Reason.Repinned + previousTier=Some(prior) when replacing a pin" in {
       for {
-        conv   <- freshConv("pin-repin", pinned = Some(Complexity.Medium))
+        conv <- freshConv("pin-repin", pinned = Some(Complexity.Medium))
         events <- PinComplexityTool.execute(PinComplexityInput("high"), buildCtx(conv), Event.id()).toList
       } yield {
         val ccs = events.collect { case cc: ComplexityChange => cc }
@@ -76,7 +74,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "emit ComplexityChange BEFORE the settling ToolDelta (reducers update first)" in {
       for {
-        conv   <- freshConv("pin-order")
+        conv <- freshConv("pin-order")
         events <- PinComplexityTool.execute(PinComplexityInput("low"), buildCtx(conv), Event.id()).toList
       } yield {
         val ccIdx = events.indexWhere(_.isInstanceOf[ComplexityChange])
@@ -89,7 +87,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "use visibility=All so UI consumers receive the event" in {
       for {
-        conv   <- freshConv("pin-vis")
+        conv <- freshConv("pin-vis")
         events <- PinComplexityTool.execute(PinComplexityInput("medium"), buildCtx(conv), Event.id()).toList
       } yield {
         val cc = events.collectFirst { case cc: ComplexityChange => cc }.value
@@ -99,11 +97,9 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "NOT fire when the tier string is unrecognised" in {
       for {
-        conv   <- freshConv("pin-unrecognised")
+        conv <- freshConv("pin-unrecognised")
         events <- PinComplexityTool.execute(PinComplexityInput("ultra"), buildCtx(conv), Event.id()).toList
-      } yield {
-        events.collect { case cc: ComplexityChange => cc } shouldBe empty
-      }
+      } yield events.collect { case cc: ComplexityChange => cc } shouldBe empty
     }
   }
 
@@ -111,7 +107,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "fire with Reason.Unpinned + previousTier=Some(prior), newTier=None" in {
       for {
-        conv   <- freshConv("unpin-prior", pinned = Some(Complexity.High))
+        conv <- freshConv("unpin-prior", pinned = Some(Complexity.High))
         events <- UnpinComplexityTool.execute(UnpinComplexityInput(), buildCtx(conv), Event.id()).toList
       } yield {
         val ccs = events.collect { case cc: ComplexityChange => cc }
@@ -124,7 +120,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "still emit when nothing was pinned (UI sees user intent)" in {
       for {
-        conv   <- freshConv("unpin-noop")
+        conv <- freshConv("unpin-noop")
         events <- UnpinComplexityTool.execute(UnpinComplexityInput(), buildCtx(conv), Event.id()).toList
       } yield {
         val ccs = events.collect { case cc: ComplexityChange => cc }
@@ -141,19 +137,17 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       for {
         conv <- freshConv("project")
         cc = ComplexityChange(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = conv.currentTopicId,
-          previousTier   = None,
-          newTier        = Some(Complexity.VeryHigh),
-          reason         = ComplexityChange.Reason.Pinned
+          topicId = conv.currentTopicId,
+          previousTier = None,
+          newTier = Some(Complexity.VeryHigh),
+          reason = ComplexityChange.Reason.Pinned
         )
         _ <- TestSigil.publish(cc)
         _ <- Task.sleep(scala.concurrent.duration.FiniteDuration(200, "ms"))
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
-      } yield {
-        reloaded.flatMap(_.pinnedComplexity) shouldBe Some(Complexity.VeryHigh)
-      }
+      } yield reloaded.flatMap(_.pinnedComplexity) shouldBe Some(Complexity.VeryHigh)
     }
   }
 

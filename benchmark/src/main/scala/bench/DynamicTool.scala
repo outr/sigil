@@ -30,7 +30,8 @@ object DynamicToolInput {
  */
 case class DynamicTool(toolName: String,
                        toolDescription: String,
-                       paramsDefinition: Definition) extends Tool {
+                       paramsDefinition: Definition)
+  extends Tool {
   type Input = DynamicToolInput
   type Output = TextToolOutput
 
@@ -40,10 +41,11 @@ case class DynamicTool(toolName: String,
   val name: ToolName = ToolName(toolName)
   val description: String = toolDescription
 
-
-  /** Override the schema's input definition with the hand-built one
-    * (the LLM sees the bench-supplied schema; the parser returns raw
-    * JSON via DynamicToolInput.rw regardless). */
+  /**
+   * Override the schema's input definition with the hand-built one
+   * (the LLM sees the bench-supplied schema; the parser returns raw
+   * JSON via DynamicToolInput.rw regardless).
+   */
   override def inputDefinition: Definition = paramsDefinition
 
   override def executeResult(input: DynamicToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =

@@ -38,12 +38,14 @@ import scala.collection.mutable
  */
 class SignalPipelineCompositionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Build a fresh Sigil for the test, with the supplied transforms +
-    * effects wired. We don't share TestSigil because the override
-    * lists would leak across specs. */
+  /**
+   * Build a fresh Sigil for the test, with the supplied transforms +
+   * effects wired. We don't share TestSigil because the override
+   * lists would leak across specs.
+   */
   private def buildSigil(transformsList: List[InboundTransform],
-                          effectsList: List[SettledEffect],
-                          dbName: String): Sigil = {
+                         effectsList: List[SettledEffect],
+                         dbName: String): Sigil = {
     profig.Profig.merge(fabric.obj("sigil" -> fabric.obj("dbPath" -> fabric.str(s"db/test/SignalPipelineCompositionSpec-$dbName"))))
     new Sigil {
       override type DB = sigil.db.DefaultSigilDB
@@ -79,13 +81,15 @@ class SignalPipelineCompositionSpec extends AsyncWordSpec with AsyncTaskSpec wit
     role = MessageRole.Standard
   )
 
-  /** Inbound transform that prepends a tag to Message text and records
-    * it ran. Composes with sibling transforms by passing the rewritten
-    * signal through. */
+  /**
+   * Inbound transform that prepends a tag to Message text and records
+   * it ran. Composes with sibling transforms by passing the rewritten
+   * signal through.
+   */
   private class TaggingTransform(tag: String, log: mutable.ListBuffer[String]) extends InboundTransform {
     override def apply(signal: Signal, self: Sigil): Task[Signal] = signal match {
       case m: Message =>
-        log.synchronized { log += tag }
+        log.synchronized(log += tag)
         val rewritten = m.copy(content = m.content.map {
           case ResponseContent.Text(t) => ResponseContent.Text(s"[$tag] $t")
           case other => other
@@ -95,23 +99,29 @@ class SignalPipelineCompositionSpec extends AsyncWordSpec with AsyncTaskSpec wit
     }
   }
 
-  /** Inbound transform that throws on every Message — used to verify
-    * that a transform-level exception fails the publish. */
+  /**
+   * Inbound transform that throws on every Message — used to verify
+   * that a transform-level exception fails the publish.
+   */
   private object ExplodingTransform extends InboundTransform {
     override def apply(signal: Signal, self: Sigil): Task[Signal] =
       Task.error(new RuntimeException("synthetic transform failure"))
   }
 
-  /** Settled effect that records its invocation. */
+  /**
+   * Settled effect that records its invocation.
+   */
   private class RecordingEffect(name: String, log: mutable.ListBuffer[String]) extends SettledEffect {
     override def apply(signal: Signal, self: Sigil): Task[Unit] = Task {
-      log.synchronized { log += name }
+      log.synchronized(log += name)
       ()
     }
   }
 
-  /** Settled effect that throws — used to verify subsequent effects
-    * still run despite this one's failure. */
+  /**
+   * Settled effect that throws — used to verify subsequent effects
+   * still run despite this one's failure.
+   */
   private object FailingEffect extends SettledEffect {
     val invoked: AtomicInteger = new AtomicInteger(0)
     override def apply(signal: Signal, self: Sigil): Task[Unit] = {
@@ -138,7 +148,7 @@ class SignalPipelineCompositionSpec extends AsyncWordSpec with AsyncTaskSpec wit
         // Read the persisted message back to confirm both transforms applied.
         events <- s.withDB(_.events.transaction(_.list))
       } yield {
-        log.toList shouldBe List("A", "B")  // declaration order
+        log.toList shouldBe List("A", "B") // declaration order
         // Both tags should be applied in order: B(A(input)) → "[B] [A] hello".
         val persisted = events.collectFirst { case m: Message if m._id == inbound._id => m }
         persisted should not be empty
@@ -183,9 +193,7 @@ class SignalPipelineCompositionSpec extends AsyncWordSpec with AsyncTaskSpec wit
       for {
         _ <- s.instance
         _ <- s.publish(syntheticMessage("ordered effects"))
-      } yield {
-        log.toList shouldBe List("first", "second")
-      }
+      } yield log.toList shouldBe List("first", "second")
     }
 
     "propagate an unhandled effect failure through publish, halting subsequent effects" in {
@@ -227,7 +235,7 @@ class SignalPipelineCompositionSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val resilientFailing = new SettledEffect {
         override def apply(signal: Signal, self: Sigil): Task[Unit] =
           Task.error(new RuntimeException("contained failure"))
-            .handleError(_ => Task.unit)  // app-side resilience
+            .handleError(_ => Task.unit) // app-side resilience
       }
       val s = buildSigil(
         transformsList = Nil,
@@ -241,9 +249,7 @@ class SignalPipelineCompositionSpec extends AsyncWordSpec with AsyncTaskSpec wit
       for {
         _ <- s.instance
         _ <- s.publish(syntheticMessage("effect-error-contained"))
-      } yield {
-        log.toList shouldBe List("first", "third")
-      }
+      } yield log.toList shouldBe List("first", "third")
     }
   }
 }

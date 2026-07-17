@@ -15,11 +15,12 @@ import sigil.tool.{Tool, ToolName}
  * Pair with [[CurrentModelTool]] for "you're on X; here are
  * alternatives Y, Z, …".
  *
- * **Not auto-registered.** Apps add to `staticTools` to expose. */
+ * **Not auto-registered.** Apps add to `staticTools` to expose.
+ */
 case object ListModelsTool extends Tool {
-  type Input  = ListModelsInput
+  type Input = ListModelsInput
   type Output = ListModelsOutput
-  val inputRW  = summon[RW[ListModelsInput]]
+  val inputRW = summon[RW[ListModelsInput]]
   val outputRW = summon[RW[ListModelsOutput]]
 
   val name = ToolName("list_models")
@@ -36,8 +37,17 @@ case object ListModelsTool extends Tool {
       |a friendly name like "local" or "gpt" against the actual registry
       |before calling pin_model / switch_model.""".stripMargin
   override val keywords = Set(
-    "list", "models", "available", "provider", "options",
-    "switch", "pin", "alternatives", "what", "which", "catalog"
+    "list",
+    "models",
+    "available",
+    "provider",
+    "options",
+    "switch",
+    "pin",
+    "alternatives",
+    "what",
+    "which",
+    "catalog"
   )
 
   override def executeOutput(input: ListModelsInput, ctx: ToolContext): Task[ListModelsOutput] = Task {
@@ -46,18 +56,18 @@ case object ListModelsTool extends Tool {
     val filtered = q match {
       case None => all
       case Some(needle) => all.filter { m =>
-        m._id.value.toLowerCase.contains(needle) ||
+          m._id.value.toLowerCase.contains(needle) ||
           m.name.toLowerCase.contains(needle) ||
           m.description.toLowerCase.contains(needle)
-      }
+        }
     }
     val sorted = filtered.sortBy(_._id.value)
-    val total  = sorted.size
+    val total = sorted.size
     val window = input.limit.fold(sorted)(n => sorted.take(math.max(0, n)))
     ListModelsOutput(
-      total    = total,
+      total = total,
       returned = window.size,
-      models   = window.map(ModelSummary.from)
+      models = window.map(ModelSummary.from)
     )
   }
 }

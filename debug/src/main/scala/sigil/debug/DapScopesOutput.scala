@@ -9,7 +9,10 @@ import sigil.tool.ToolOutput
  */
 case class DapScopeInfo(name: String,
                         variablesReference: Int,
-                        expensive: Boolean) derives RW
+                        expensive: Boolean)
+  derives RW
 
-/** Typed result of `dap_scopes` — the frame's variable scopes. */
+/**
+ * Typed result of `dap_scopes` — the frame's variable scopes.
+ */
 case class DapScopesOutput(scopes: List[DapScopeInfo]) extends ToolOutput derives RW
