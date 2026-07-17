@@ -1,7 +1,6 @@
 package sigil.tooling
 
 import fabric.rw.*
-import org.eclipse.lsp4j.DocumentDiagnosticReport
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
@@ -39,8 +38,10 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
     """Pull diagnostics for a file synchronously (LSP 3.17 pull-model).
       |
       |`languageId` + `filePath` identify the document.
-      |Returns `{filePath, diagnostics: [...]}`. Servers without pull-model support fall back to
-      |a push-snapshot.""".stripMargin
+      |Returns a verdict line (counts, or an explicit "clean" / "freshness UNKNOWN") followed by one
+      |diagnostic per line, errors first. A pull answer is authoritative — an empty result genuinely
+      |means the file is clean. Servers without pull-model support fall back to a push-snapshot,
+      |which is marked as potentially stale.""".stripMargin
   override val keywords = Set(
     "lsp", "diagnostics", "errors", "warnings", "problems", "lint",
     "analyze", "examine", "inspect", "review", "what's broken",
@@ -53,30 +54,28 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
     withOpenDocumentOrThrow[LspDiagnosticsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>
-      // Sigil bug #100 — gate the pull request on the server's
-      // advertised capability. LSP 3.17 says clients MUST NOT call
-      // `textDocument/diagnostic` unless the server's
-      // `serverCapabilities.diagnosticProvider` is set during
-      // `initialize`. Metals (and many production servers) implement
-      // only the legacy push flow via `publishDiagnostics`; calling
-      // pull against them returns `MethodNotFound`. When the server
-      // doesn't advertise pull, fall back to the push-cache
-      // [[LspSession.diagnosticsFor]] populated by the recording
-      // client's notification handler — agents get a synchronous
-      // answer either way.
-      val serverSupportsPull = Option(session.serverCapabilities.getDiagnosticProvider).isDefined
-      val task: Task[List[LspDiagnostic]] =
-        if (serverSupportsPull) {
-          session.pullDiagnostics(uri).map { report =>
-            val items = report match {
-              case Some(r) if r.isLeft => Option(r.getLeft.getItems).map(_.asScala.toList).getOrElse(Nil)
-              case _                   => Nil
-            }
-            items.map(LspDiagnostic.fromLsp4j(input.filePath, _))
-          }
-        } else {
-          Task(session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _)))
-        }
-      task.map(diags => LspDiagnosticsResult(filePath = input.filePath, diagnostics = diags))
+      // Sigil bug #100 — the verdict API gates the pull request on the
+      // server's advertised capability (LSP 3.17 forbids calling
+      // `textDocument/diagnostic` otherwise; push-only servers like
+      // Metals answer `MethodNotFound`). A verdict is a genuine answer
+      // for the file's CURRENT text — `fresh = true`, empty list means
+      // clean. No verdict (capability missing, request failure,
+      // unchanged-kind report) falls back to the push-cache snapshot,
+      // which never waited for a publish and MUST NOT claim freshness:
+      // an empty stale snapshot is "unknown", not "clean".
+      session.pullDiagnosticsVerdict(uri).map {
+        case Some(items) =>
+          LspDiagnosticsResult(
+            filePath    = input.filePath,
+            diagnostics = items.map(LspDiagnostic.fromLsp4j(input.filePath, _)),
+            fresh       = true
+          )
+        case None =>
+          LspDiagnosticsResult(
+            filePath    = input.filePath,
+            diagnostics = session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _)),
+            fresh       = false
+          )
+      }
     }
 }

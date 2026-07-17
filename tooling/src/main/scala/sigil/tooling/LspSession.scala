@@ -150,6 +150,18 @@ final class LspSession(val config: LspServerConfig,
     * 316-file sweep against a still-indexing server "passed" files
     * that carried dozens of compile errors).
     *
+    * **Prefer [[pullDiagnosticsVerdict]] when
+    * [[supportsPullDiagnostics]] is true.** The push model has a
+    * structural blind spot this wait cannot fix: a server that finds
+    * nothing wrong with an opened overlay generally does not publish
+    * an empty list (publishes CLEAR old diagnostics; they don't ack
+    * cleanliness), so "fresh publish or timeout" degrades to
+    * "timeout" for precisely the files that are fine — a per-file
+    * validator burns its full timeout on every clean file and still
+    * gets no verdict. Pull diagnostics is a request the server must
+    * answer, empty result included. This generation-based wait is the
+    * fallback for servers without the pull capability.
+    *
     * Poll-based like [[waitForIdle]] — lsp4j's push handler exposes no
     * per-publish future. */
   def waitForDiagnostics(uri: String, sinceGeneration: Long, timeoutMs: Long, pollMs: Long = 50L): Task[Boolean] = {
@@ -363,6 +375,39 @@ final class LspSession(val config: LspServerConfig,
     val params = new DocumentDiagnosticParams(new TextDocumentIdentifier(uri))
     issueDurable("textDocument/diagnostic")(() => server.getTextDocumentService.diagnostic(params)).map(Option(_))
   }
+
+  /** Whether the server advertised LSP 3.17 pull diagnostics
+    * (`serverCapabilities.diagnosticProvider`) during `initialize`.
+    * The spec forbids calling `textDocument/diagnostic` otherwise —
+    * push-only servers answer `MethodNotFound`. */
+  def supportsPullDiagnostics: Boolean =
+    Option(serverCapabilities.getDiagnosticProvider).isDefined
+
+  /** Diagnostic VERDICT for `uri` via pull diagnostics — the shape a
+    * per-file validator needs:
+    *
+    *   - `Some(list)` — the server answered with a full report;
+    *     an empty list is a genuine "this file is clean" verdict.
+    *     Pull is a request the server must answer, so — unlike the
+    *     push model, where a clean overlay open typically produces
+    *     NO publish at all — cleanliness gets an explicit ack.
+    *   - `None` — no verdict: the server doesn't advertise the pull
+    *     capability, the request failed or timed out, or it answered
+    *     with an `unchanged`-kind report (only possible against a
+    *     `previousResultId`, which this call never sends — treated
+    *     as no-verdict rather than guessed at). Callers fall back to
+    *     the push path: [[publishGeneration]] +
+    *     [[waitForDiagnostics(uri:String,sinceGeneration:Long,timeoutMs:Long,pollMs:Long)*]].
+    *
+    * Never conflates "clean" with "unanswered" — the exact
+    * distinction the push model cannot express. */
+  def pullDiagnosticsVerdict(uri: String): Task[Option[List[Diagnostic]]] =
+    if (!supportsPullDiagnostics) Task.pure(None)
+    else pullDiagnostics(uri).map {
+      case Some(report) if report.isLeft =>
+        Some(Option(report.getLeft.getItems).map(_.asScala.toList).getOrElse(Nil))
+      case _ => None
+    }.handleError(_ => Task.pure(None))
 
   def inlayHints(uri: String, range: Range): Task[List[InlayHint]] = Task.defer {
     touch()
