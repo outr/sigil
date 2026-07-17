@@ -181,7 +181,8 @@ object TestSigil extends Sigil {
       SlowStubbornTool,
       DetachableSweepTool,
       FastDetachableTool,
-      MutatingSpecTool
+      MutatingSpecTool,
+      VerifyingSpecTool
     ): @annotation.nowarn("cat=deprecation"))
 
   // ---- registration lists ----

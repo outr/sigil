@@ -34,6 +34,7 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
   val outputRW = summon[RW[LspDiagnosticsResult]]
 
   val name = ToolName("lsp_pull_diagnostics")
+  override def verification: Boolean = true
   val description =
     """Pull diagnostics for a file synchronously (LSP 3.17 pull-model).
       |

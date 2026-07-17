@@ -31,14 +31,30 @@ package sigil.conversation
  *     Rendered so the reflector knows the window sits inside a longer
  *     arc.
  *   - `windowMutations` — count of successfully-settled invocations of
- *     `destructive`-annotated tools in the window: objective, mechanical
- *     evidence that external state changed. The checkpoint machinery
- *     treats a non-zero count as meaningful progress regardless of the
- *     reflector's self-assessment (the objective StallDetector retains
- *     veto authority over both).
+ *     `destructive`-annotated tools in the window (user-visible
+ *     terminal tools like the respond family excluded — a status
+ *     pulse is not external work): objective, mechanical evidence
+ *     that external state changed. The checkpoint machinery treats a
+ *     non-zero count as meaningful progress regardless of the
+ *     reflector's self-assessment — UNLESS the mutations are
+ *     same-target churn (see `windowMutationTargets`); the objective
+ *     StallDetector retains veto authority over everything.
+ *   - `windowMutationTargets` — the known targets (via
+ *     `Tool.mutationTarget`, e.g. file paths) of the window's
+ *     successful mutations. The checkpoint compares consecutive
+ *     windows: mutations touching only already-seen targets with no
+ *     verification anywhere between them is churn, not progress.
+ *     Unknown-target mutations (`bash`) don't appear here and never
+ *     contribute to a churn verdict.
+ *   - `windowVerified` — whether a successfully-settled
+ *     `verification`-annotated call (compile, test, diagnostics)
+ *     landed in the window. Verification resets the churn chain:
+ *     fix → compile → fix-again is legitimate iteration.
  */
 final case class ProgressContext(userTask: Option[String],
                                  toolHistory: List[String],
                                  latestDirective: Option[String] = None,
                                  earlierCalls: Int = 0,
-                                 windowMutations: Int = 0)
+                                 windowMutations: Int = 0,
+                                 windowMutationTargets: Set[String] = Set.empty,
+                                 windowVerified: Boolean = false)

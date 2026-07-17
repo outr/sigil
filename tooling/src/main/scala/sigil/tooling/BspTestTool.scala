@@ -28,6 +28,7 @@ final class BspTestTool(val manager: BspManager) extends Tool
   val outputRW = summon[RW[BspExecResult]]
 
   val name = ToolName("bsp_test")
+  override def verification: Boolean = true
   val description =
     """Run tests for build targets via the BSP server.
       |

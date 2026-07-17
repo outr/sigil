@@ -27,6 +27,7 @@ final class BspCompileTool(val manager: BspManager) extends Tool
   val outputRW = summon[RW[BspCompileResult]]
 
   val name = ToolName("bsp_compile")
+  override def verification: Boolean = true
   val description =
     """Compile build targets via the project's BSP server (sbt or Bloop).
       |

@@ -36,6 +36,7 @@ final class LspDiagnosticsTool(val manager: LspManager) extends Tool
   val inputRW  = summon[RW[LspDiagnosticsInput]]
   val outputRW = summon[RW[LspDiagnosticsResult]]
   val name = ToolName("lsp_diagnostics")
+  override def verification: Boolean = true
   val description =
     """Fetch the language server's diagnostics for a file (errors, warnings, hints).
       |

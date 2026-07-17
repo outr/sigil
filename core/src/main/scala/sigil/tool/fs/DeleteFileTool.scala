@@ -18,6 +18,7 @@ final class DeleteFileTool(context: FileSystemContext)
   val inputRW  = summon[RW[DeleteFileInput]]
   val outputRW = summon[RW[DeleteFileOutput]]
   val name        = ToolName("delete_file")
+  override def mutationTarget(input: DeleteFileInput): Option[String] = Some(input.path)
   val description = "Delete a file. Returns `{deleted: Boolean}` — true when the file existed and was removed; false when it did not exist."
   override val examples = List(
     ToolExample("Remove a temp file", DeleteFileInput(path = "/tmp/scratch.txt"))

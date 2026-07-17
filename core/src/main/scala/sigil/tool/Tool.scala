@@ -443,6 +443,34 @@ trait Tool extends RecordDocument[Tool] {
     * Default `false`. */
   def destructive: Boolean = false
 
+  /** **Annotation.** True when this tool VERIFIES state rather than
+    * changing it — compiles, test runs, diagnostics pulls. The
+    * progress checkpoint reads this: repeated mutations of the same
+    * target are legitimate iteration only when a verification-class
+    * call separates the rounds (fix → compile → fix-again); the same
+    * target re-edited across checkpoint windows with no verification
+    * anywhere is churn, not progress. Consumer-defined verify tools
+    * annotate this like [[readOnly]] / [[destructive]]. Default
+    * `false`. */
+  def verification: Boolean = false
+
+  /** The external target a [[destructive]] call mutates, when the
+    * input names one — for file tools, the path. The progress
+    * checkpoint uses this to distinguish a bulk sweep touching new
+    * targets every window (progress) from the same target re-edited
+    * round after round with no verification in between (churn).
+    * `None` (default) means the target is unknowable from the input
+    * (`bash`, `respond`); unknown-target mutations never contribute
+    * to a churn verdict. */
+  def mutationTarget(input: Input): Option[String] = None
+
+  /** Untyped dispatch for [[mutationTarget]] — the checkpoint
+    * machinery holds `ToolInput`s off event rows. Best-effort: a
+    * type mismatch reads as unknown target, never an error. */
+  private[sigil] final def mutationTargetOf(input: ToolInput): Option[String] =
+    try mutationTarget(input.asInstanceOf[Input])
+    catch { case _: Throwable => None }
+
   /** **MCP-style annotation.** True when calling this tool twice
     * with identical args produces the same result. `read_file` on
     * an unchanging file is idempotent; `bash` (non-pure commands)

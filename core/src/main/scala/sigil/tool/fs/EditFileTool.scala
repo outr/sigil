@@ -36,6 +36,7 @@ final class EditFileTool(context: FileSystemContext)
   val inputRW  = summon[RW[EditFileInput]]
   val outputRW = summon[RW[EditFileOutput]]
   val name = ToolName("edit_file")
+  override def mutationTarget(input: EditFileInput): Option[String] = Some(input.path)
   val description =
     """Find and replace text in a file. By default replaces the first occurrence; pass `replaceAll = true`
       |to replace every occurrence. Use literal strings — they are escaped before matching. The `oldString`

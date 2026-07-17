@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.{DestructiveExternalTool, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
 
-final case class MutatingSpecInput(step: String) extends ToolInput derives RW
+final case class MutatingSpecInput(step: String, target: Option[String] = None) extends ToolInput derives RW
 
 /**
  * Test-only destructive-annotated tool: a stand-in for `edit_file` /
@@ -21,6 +21,11 @@ case object MutatingSpecTool extends Tool with DestructiveExternalTool {
   val name = ToolName("mutate_spec_state")
   val description = "Test-only state-changing tool; applies the named step."
   override val keywords: Set[String] = Set("mutate", "test")
+  /** Target defaults to the step itself — each distinct step models a
+    * distinct file, like a bulk sweep; churn specs pin `target` to
+    * model re-editing one file. */
+  override def mutationTarget(input: MutatingSpecInput): Option[String] =
+    Some(input.target.getOrElse(input.step))
 
   override def executeResult(input: MutatingSpecInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.Success(TextToolOutput(s"applied ${input.step}")))

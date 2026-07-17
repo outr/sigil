@@ -3949,13 +3949,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   /** Per-claim progress-checkpoint state. Keyed by the AgentState id
     * that owns the claim. Carries the prior checkpoint's `currentStatus`
-    * (anchor for the next checkpoint's "did things change?" question)
-    * and the count of consecutive `meaningfulProgress = false`
+    * (anchor for the next checkpoint's "did things change?" question),
+    * the count of consecutive `meaningfulProgress = false`
     * checkpoints — the framework intervenes when the count reaches
-    * [[consecutiveNoProgressLimit]]. Populated on first checkpoint;
-    * cleared on `releaseClaim`. */
+    * [[consecutiveNoProgressLimit]] — and the churn chain: the prior
+    * window's mutation targets plus how many consecutive windows have
+    * re-mutated only already-seen targets without any verification
+    * call. Populated on first checkpoint; cleared on `releaseClaim`. */
   private final case class CheckpointState(@volatile var lastStatus: Option[String],
-                                            @volatile var noProgressStreak: Int)
+                                            @volatile var noProgressStreak: Int,
+                                            @volatile var lastMutationTargets: Set[String] = Set.empty,
+                                            @volatile var repeatUnverifiedWindows: Int = 0)
   private final val checkpointStates: ConcurrentHashMap[Id[Event], CheckpointState] = new ConcurrentHashMap()
 
   /** On a [[Stop]] event, set the matching flag(s): one specific agent if
@@ -7906,6 +7910,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             |    tool calls after it are normal, not a contradiction. Never report the task
             |    complete because a status update went out; the task is complete when the
             |    WORK is done.
+            |  - Edits alone are not self-evidently progress: re-editing the same file
+            |    window after window with no compile/test/diagnostics call in between is
+            |    churn — nothing in the loop can learn whether anything was fixed. If your
+            |    summary would repeat "applied N edits… continuing" again, that repetition
+            |    is itself evidence of churn, not progress.
             |  - A status of "acknowledged / summarized / ready / awaiting next instruction"
             |    while the agent is STILL calling tools is a contradiction, not completion:
             |    set meaningfulProgress = false and shouldAskUser = false. The agent isn't
@@ -7932,10 +7941,39 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // report AND (fail-safe) for a stall-synthesized report when the
         // reflector returned None but the objective StallDetector saw a stall.
         def processCheckpointReport(report: sigil.tool.consult.ProgressReflectionInput,
-                                    stall: sigil.conversation.compression.StallDetector.Signal): Task[Option[CheckpointIntervention]] =
+                                    rawStall: sigil.conversation.compression.StallDetector.Signal): Task[Option[CheckpointIntervention]] =
           withDB(_.conversations.transaction(_.get(convId))).flatMap { convOpt =>
             val topicId = convOpt.flatMap(_.topics.lastOption.map(_.id))
               .getOrElse(_root_.sigil.conversation.Topic.id("__no_topic__"))
+            // Same-target churn: a window whose mutations touch only
+            // already-seen targets with no verification call is not
+            // iteration — nothing in it could learn whether anything
+            // was fixed. One such window is ambiguous (the verify may
+            // be queued); two consecutive make it churn, an objective
+            // stall signal that overrides both the mutation veto AND
+            // the reflector's own blessing (the observed loop had the
+            // reflector approving "successfully applied edits" while
+            // the same lines were re-edited nine times). New targets
+            // or a verification call reset the chain, so fix →
+            // compile → fix-again and bulk many-file sweeps are
+            // untouched. The per-window StallDetector tail cannot see
+            // this pattern — it resets at every checkpoint.
+            val targets = ctx.windowMutationTargets
+            val churnWindow = targets.nonEmpty && !ctx.windowVerified &&
+              targets.subsetOf(state.lastMutationTargets)
+            state.repeatUnverifiedWindows = if (churnWindow) state.repeatUnverifiedWindows + 1 else 0
+            state.lastMutationTargets = targets
+            val stall =
+              if (rawStall.detected) rawStall
+              else if (state.repeatUnverifiedWindows >= 2)
+                sigil.conversation.compression.StallDetector.Signal(
+                  detected = true,
+                  reason   = Some(
+                    s"You have re-edited the same target(s) (${targets.toList.sorted.take(3).mkString(", ")}) across " +
+                      s"${state.repeatUnverifiedWindows + 1} checkpoint windows without any compile/test/diagnostics call — " +
+                      "editing again cannot tell you whether anything is fixed. VERIFY the current state (compile, run " +
+                      "diagnostics) before touching those targets again."))
+              else sigil.conversation.compression.StallDetector.Signal.Empty
             // Sigil bug #124 — fold the objective stall signal into the
             // reflector's self-assessment. The agent's `meaningfulProgress`
             // self-report is necessary but not sufficient; if the
@@ -8044,10 +8082,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // naked text → None) must not silently switch OFF stall detection
           // (observed: 44 of 64 checkpoints returned None on Fable, the streak
           // never built, zero interventions across 84 iterations). Fall back to
-          // the objective StallDetector verdict so an incapable checkpoint
-          // model can't disable the guardrail entirely.
+          // the objective signals — the StallDetector verdict and the
+          // same-target churn chain — so an incapable checkpoint model
+          // can't disable the guardrails entirely.
           stallTask.flatMap { stall =>
-            if (stall.detected)
+            val wouldChurn = ctx.windowMutationTargets.nonEmpty && !ctx.windowVerified &&
+              ctx.windowMutationTargets.subsetOf(state.lastMutationTargets) &&
+              state.repeatUnverifiedWindows + 1 >= 2
+            if (stall.detected || wouldChurn)
               processCheckpointReport(
                 sigil.tool.consult.ProgressReflectionInput(
                   currentStatus      = stall.reason.getOrElse("Repeating the same kind of action without new information."),
@@ -8130,15 +8172,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         val windowInvokes = arcInvokes.filter(_.timestamp.value > windowCutoff)
         val shown = windowInvokes.takeRight(20)
         db.tools.transaction(_.list).map { toolRows =>
-          val destructiveNames = toolRows.iterator.filter(_.destructive).map(_.name.value).toSet
-          val mutations = windowInvokes.count(ti =>
-            ti.outcome == sigil.event.ToolOutcome.Success && destructiveNames.contains(ti.toolName.value))
+          val toolsByName = toolRows.iterator.map(t => t.name.value -> t).toMap
+          // Respond-family pulses publish a Message — user-visible
+          // delivery, not external work. Counting them as mutations
+          // would let a status-pulse-per-window loop veto stalls
+          // forever.
+          def isMutation(ti: sigil.event.ToolInvoke): Boolean =
+            ti.outcome == sigil.event.ToolOutcome.Success &&
+              !sigil.orchestrator.Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) &&
+              toolsByName.get(ti.toolName.value).exists(_.destructive)
+          val successfulMutations = windowInvokes.filter(isMutation)
+          val targets = successfulMutations.flatMap { ti =>
+            toolsByName.get(ti.toolName.value).flatMap(t => ti.input.flatMap(t.mutationTargetOf))
+          }.toSet
+          val verified = windowInvokes.exists(ti =>
+            ti.outcome == sigil.event.ToolOutcome.Success &&
+              toolsByName.get(ti.toolName.value).exists(_.verification))
           ProgressContext(
-            userTask        = task,
-            toolHistory     = shown.map(renderInvokeHistoryLine),
-            latestDirective = latestDirective,
-            earlierCalls    = arcInvokes.size - shown.size,
-            windowMutations = mutations
+            userTask              = task,
+            toolHistory           = shown.map(renderInvokeHistoryLine),
+            latestDirective       = latestDirective,
+            earlierCalls          = arcInvokes.size - shown.size,
+            windowMutations       = successfulMutations.size,
+            windowMutationTargets = targets,
+            windowVerified        = verified
           )
         }
       }

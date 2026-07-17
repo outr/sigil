@@ -31,6 +31,7 @@ final class EditAtRangeTool(context: FileSystemContext)
   val inputRW  = summon[RW[EditAtRangeInput]]
   val outputRW = summon[RW[EditAtRangeOutput]]
   val name = ToolName("edit_at_range")
+  override def mutationTarget(input: EditAtRangeInput): Option[String] = Some(input.path)
   val description =
     """Replace a range of text in a file with new content. The range is specified by
       |(startLine, startChar) and (endLine, endChar) — both 0-indexed, both half-open

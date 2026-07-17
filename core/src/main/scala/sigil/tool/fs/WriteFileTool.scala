@@ -28,6 +28,7 @@ final class WriteFileTool(context: FileSystemContext)
   val inputRW  = summon[RW[WriteFileInput]]
   val outputRW = summon[RW[WriteFileOutput]]
   val name = ToolName("write_file")
+  override def mutationTarget(input: WriteFileInput): Option[String] = Some(input.path)
   val description =
     """Write content (UTF-8) to a file. Creates parent directories. Overwrites existing content.
       |
