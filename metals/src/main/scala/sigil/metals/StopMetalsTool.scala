@@ -25,6 +25,14 @@ final class StopMetalsTool extends Tool {
   val name = ToolName("stop_metals")
   val description =
     """Stop the Metals (Scala LSP) MCP server for this conversation's workspace.
+      |
+      |DESTRUCTIVE to in-flight semantic services: all diagnostics, navigation, and any
+      |validation depending on the running server stop immediately, and the next start pays the
+      |full build re-import (often minutes of indexing before semantic answers return). Never
+      |part of a normal workflow — do NOT call this to "refresh", "restart", or "prepare"
+      |anything; a running server is already the prepared state. Appropriate ONLY when the user
+      |explicitly asks to stop Metals or to free its resources.
+      |
       |Tears down the subprocess and removes its McpServerConfig.
       |No-op if Metals isn't running for the workspace.""".stripMargin
   override val examples = List(ToolExample("stop metals", StopMetalsInput()))
