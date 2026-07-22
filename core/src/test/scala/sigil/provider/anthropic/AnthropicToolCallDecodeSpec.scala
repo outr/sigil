@@ -74,6 +74,41 @@ class AnthropicToolCallDecodeSpec extends AnyWordSpec with Matchers {
       inputs shouldBe Vector(NoResponseInput(Some("all done")))
     }
 
+    "emit Usage AFTER the tool-call flush and BEFORE Done — never before the completes" in {
+      // The wire puts usage on `message_delta`, but the accumulator
+      // flushes at `message_stop`. Emitting Usage where the wire put it
+      // reached the orchestrator before any ToolCallComplete: for a
+      // pure-tool-call iteration there was no settled invoke to fold
+      // the usage onto and it was silently dropped — every tool-loop
+      // iteration on this provider billed as zero and the
+      // conversation's cost surface starved. The provider must
+      // normalize to deltas → completes → Usage → Done, the ordering
+      // every other backend produces.
+      val events = decode(List(
+        toolUseStart,
+        blockStop,
+        """data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"input_tokens":10683,"output_tokens":31}}""",
+        messageStop
+      ))
+      val kinds = events.map {
+        case _: ProviderEvent.ToolCallComplete => "complete"
+        case _: ProviderEvent.Usage            => "usage"
+        case _: ProviderEvent.Done             => "done"
+        case _                                 => "other"
+      }
+      val completeIdx = kinds.indexOf("complete")
+      val usageIdx    = kinds.indexOf("usage")
+      val doneIdx     = kinds.indexOf("done")
+      withClue(s"event order: ${kinds.mkString(" -> ")}: ") {
+        completeIdx should be >= 0
+        usageIdx should be > completeIdx
+        doneIdx should be > usageIdx
+      }
+      val usage = events.collectFirst { case ProviderEvent.Usage(u) => u }.get
+      usage.promptTokens shouldBe 10683
+      usage.completionTokens shouldBe 31
+    }
+
     "decode a tool_use whose args stream as an explicit empty object" in {
       // The shape OpenAI sends for a no-args call (`"{}"`); must decode
       // identically to the no-input_json_delta case above.

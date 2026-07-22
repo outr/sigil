@@ -568,8 +568,17 @@ case class AnthropicProvider(apiKey: String,
       case "message_delta" =>
         val delta = json.get("delta").getOrElse(Obj.empty)
         val stopReason = delta.get("stop_reason").map(_.asString)
-        val usage = json.get("usage").map(parseUsage)
-        val usageEv = usage.toVector.map(ProviderEvent.Usage(_))
+        // Usage is STASHED, not emitted: the tool-call accumulator
+        // flushes at `message_stop`, so a Usage emitted here reaches
+        // the orchestrator BEFORE any ToolCallComplete. For a
+        // pure-tool-call iteration (no streamed text) the orchestrator
+        // then has no settled invoke to fold the usage onto and drops
+        // it — every provider must deliver deltas → completes → Usage
+        // → Done (the ordering GoogleProvider documents and the
+        // chat-completions wire produces naturally).
+        json.get("usage").map(parseUsage).foreach { u =>
+          state.pendingUsage = Some(state.pendingUsage.fold(u)(_ + u))
+        }
         stopReason match {
           case Some(s) =>
             val mapped = s match {
@@ -582,14 +591,16 @@ case class AnthropicProvider(apiKey: String,
                 StopReason.Complete
             }
             state.pendingDone = Some(mapped)
-            usageEv
-          case None => usageEv
+            Vector.empty
+          case None => Vector.empty
         }
 
       case "message_stop" =>
         val completes = state.acc.complete()
+        val usageEv = state.pendingUsage.toVector.map(ProviderEvent.Usage(_))
+        state.pendingUsage = None
         val done = state.pendingDone.getOrElse(if (state.sawFunctionCall) StopReason.ToolCall else StopReason.Complete)
-        completes :+ ProviderEvent.Done(done)
+        (completes ++ usageEv) :+ ProviderEvent.Done(done)
 
       case "ping" | "message_start" =>
         Vector.empty
@@ -646,6 +657,7 @@ case class AnthropicProvider(apiKey: String,
   final private[anthropic] class StreamState(val acc: ToolCallAccumulator) {
     var indexToCallId: Map[Int, CallId] = Map.empty
     var pendingDone: Option[StopReason] = None
+    var pendingUsage: Option[TokenUsage] = None
     var sawFunctionCall: Boolean = false
 
     def flushDone(): Vector[ProviderEvent] = pendingDone match {
