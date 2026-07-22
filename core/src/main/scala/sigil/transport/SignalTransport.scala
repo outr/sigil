@@ -53,7 +53,13 @@ final class SignalTransport(sigil: Sigil) {
   def attach(viewer: ParticipantId,
              sink: SignalSink,
              resume: ResumeRequest = ResumeRequest.None,
-             conversations: ConversationFilter = None): Task[SinkHandle] = Task {
+             conversations: ConversationFilter = None,
+             // When the connection carries UI-registered interaction
+             // tools (sigil.signal.RegisterClientTools), pass the same
+             // client-generated session id here: detach then drops the
+             // session's registrations automatically, so a closed tab
+             // can't leave dead tools in any conversation's roster.
+             clientToolSessionId: Option[String] = None): Task[SinkHandle] = Task {
     val cancelled = new AtomicBoolean(false)
     val boundary = new AtomicLong(Long.MinValue)
     // The live-delivery scope is mutable: `subscribe` / `unsubscribe` on
@@ -105,7 +111,12 @@ final class SignalTransport(sigil: Sigil) {
 
     new SinkHandle {
       override def detach: Task[Unit] =
-        Task { cancelled.set(true) }.flatMap(_ => sink.close)
+        Task { cancelled.set(true) }
+          .flatMap(_ => clientToolSessionId match {
+            case Some(sessionId) => sigil.clientTools.deregisterSession(sessionId)
+            case None            => Task.unit
+          })
+          .flatMap(_ => sink.close)
 
       override def subscribe(conversationId: Id[Conversation]): Task[Unit] = Task {
         filterRef.updateAndGet(cur => cur match {

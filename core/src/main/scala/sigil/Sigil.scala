@@ -619,6 +619,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def findTools: sigil.tool.ToolFinder = defaultFindTools
 
+  /** Conversation-aware exact-name tool resolution: the conversation's
+    * live client-registered tools first (registration rejects
+    * server-tool collisions, so this shadows nothing), then the app's
+    * [[findTools]] catalog. The roster-build path resolves through
+    * here so a discovered client tool actually reaches the wire
+    * roster; framework paths without a conversation in hand
+    * (workflow steps, curator internals) keep using
+    * `findTools.byName` — client tools are conversation-scoped and
+    * genuinely don't exist there. */
+  final def resolveToolFor(conversationId: Id[Conversation], name: sigil.tool.ToolName): Task[Option[sigil.tool.Tool]] =
+    clientTools.byName(conversationId, name) match {
+      case some @ Some(_) => Task.pure(some)
+      case None           => findTools.byName(name)
+    }
+
   /** Skill discovery finder. Default queries [[sigil.db.SigilDB.skills]]
     * via [[sigil.skill.DbSkillFinder]] (BM25 over `searchText`,
     * mode-scoped post-filter). Apps override for custom skill catalogs. */
@@ -732,8 +747,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case None         => rapid.Task.pure(Nil)
     }
     for {
-      rawTools         <- findTools(request)
+      foundTools       <- findTools(request)
       overlayPolicies  <- overlayPoliciesTask
+      // UI-registered tools join discovery for their own conversation
+      // only, keyword-filtered like any catalog tool. They are
+      // in-memory, so the union happens here rather than in the
+      // (possibly DB-backed) finder.
+      clientMatches     = request.conversationId
+        .map(clientTools.toolsFor)
+        .getOrElse(Nil)
+        .filter(t => sigil.tool.DiscoveryFilter.score(t, request.keywords) > 0.0 ||
+          t.name.value.equalsIgnoreCase(request.keywords.trim))
+      rawTools          = foundTools ++ clientMatches.filterNot(c => foundTools.exists(_.name == c.name))
       tools             = rawTools
         .filter { t =>
           sigil.tool.DiscoveryFilter.passesPolicy(t, request.mode.tools) ||
@@ -2169,7 +2194,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         effectiveNames = effectiveToolNames(
           agent, context.conversation.currentMode, suggested, overlays.map(_.policy), recentlyUsed
         ).distinct
-        rawTools    <- Task.sequence(effectiveNames.map(n => findTools.byName(n))).map(_.flatten.toVector)
+        rawTools    <- Task.sequence(effectiveNames.map(n => resolveToolFor(context.conversation.id, n))).map(_.flatten.toVector)
         // Sigil #378 — `record_consent` is a no-op unless some tool in
         // scope sets `requiresUserConsent`. It's no longer in the default
         // roster (dropped from `CoreTools.all`); keep it only when a
@@ -3591,6 +3616,24 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           publishTo(fromViewer, sigil.signal.ToolListSnapshot(summaries))
         }
 
+      // -- client-registered interaction tools --
+
+      case sigil.signal.RegisterClientTools(convId, sessionId, tools, replace) =>
+        clientTools.register(convId, sessionId, tools, replace).flatMap { case (accepted, rejected) =>
+          publishTo(fromViewer, sigil.signal.ClientToolsRegistered(convId, sessionId, accepted, rejected))
+        }
+
+      case sigil.signal.UnregisterClientTools(convId, sessionId, names) =>
+        clientTools.deregister(convId, sessionId, names)
+
+      case r: sigil.signal.ClientToolResult =>
+        Task {
+          val delivered = clientTools.completeResult(r.invokeId, r.content, r.isError)
+          if (!delivered) scribe.debug(
+            s"ClientToolResult for ${r.invokeId.value} had no parked call (already answered, timed out, or fire-and-forget) — ignored")
+          ()
+        }
+
       // -- conversation search vocabulary --
       // Symmetric to RequestConversationList for the search axis.
       // Reuses the same `searchConversationEvents` primitive that the
@@ -3832,6 +3875,50 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * completions stay fully synchronous. `0` promotes a detachable
     * tool immediately. Non-detachable tools ignore this entirely. */
   def toolDetachThresholdMs: Long = 60000L
+
+  // -- client-registered interaction tools --
+
+  /** Registry of UI-registered interaction tools (see
+    * [[sigil.tool.client.ClientToolSpec]]): the frontend registers
+    * its screens / panels / actions on conversation load via
+    * [[sigil.signal.RegisterClientTools]], they become discoverable
+    * through `find_capability` and callable like any server tool, and
+    * execution is observed by the UI on its signal stream. In-memory
+    * and connection-scoped by design — a client tool is executable
+    * only while the registering client is attached, so nothing
+    * persists. */
+  final lazy val clientTools: sigil.tool.client.ClientToolRegistry =
+    new sigil.tool.client.ClientToolRegistry(this)
+
+  /** Maximum client tools registrable per conversation (across all
+    * sessions). Registrations past the cap are rejected with a
+    * per-name reason in the [[sigil.signal.ClientToolsRegistered]]
+    * ack. */
+  def clientToolLimit: Int = 32
+
+  /** Cap on a client tool's description length. Client-registered
+    * descriptions are client-controlled text injected into the
+    * agent's prompt — the cap bounds the injection surface (and the
+    * token cost). */
+  def clientToolDescriptionMaxChars: Int = 1024
+
+  /** How long a round-trip client tool call (`expectsResult = true`)
+    * waits for the UI's [[sigil.signal.ClientToolResult]] before
+    * settling a recoverable Failure. UI interactions should answer in
+    * user-interface time; a client that is busy, backgrounded, or
+    * gone must not park the agent's turn indefinitely. */
+  def clientToolResultTimeoutMs: Long = 15000L
+
+  /** Vet a client-tool registration before it lands. `None` rejects
+    * the tool (the reason surfaces in the registration ack); `Some`
+    * admits — possibly rewritten (trimmed description, adjusted
+    * keywords). The default admits everything that passed the
+    * framework's own validation (name shape, description presence,
+    * server-tool collision, [[clientToolLimit]]). Multi-tenant apps
+    * that treat client-registered text as untrusted override this to
+    * enforce their own policy. */
+  def clientToolFilter(spec: sigil.tool.client.ClientToolSpec): Option[sigil.tool.client.ClientToolSpec] =
+    Some(spec)
 
   /** How many times per user turn the orchestrator challenges a
     * naked-text terminal (a plain-prose `end_turn` with no tool call —

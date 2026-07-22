@@ -497,6 +497,13 @@ object TestSigil extends Sigil {
     progressCheckpointIntervalRef.get().getOrElse(super.progressCheckpointInterval)
   def setProgressCheckpointInterval(n: Int): Unit = progressCheckpointIntervalRef.set(Some(n))
 
+  private val clientToolResultTimeoutRef =
+    new java.util.concurrent.atomic.AtomicReference[Option[Long]](None)
+  override def clientToolResultTimeoutMs: Long =
+    clientToolResultTimeoutRef.get().getOrElse(super.clientToolResultTimeoutMs)
+  def setClientToolResultTimeoutMs(ms: Long): Unit = clientToolResultTimeoutRef.set(Some(ms))
+  def resetClientToolResultTimeoutMs(): Unit = clientToolResultTimeoutRef.set(None)
+
   /** Spec access to the protected checkpoint-context builder. */
   def progressContextFor(convId: lightdb.id.Id[sigil.conversation.Conversation],
                          agentId: sigil.participant.ParticipantId): rapid.Task[sigil.conversation.ProgressContext] =
