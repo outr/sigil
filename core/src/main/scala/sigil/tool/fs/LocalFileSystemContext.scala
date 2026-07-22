@@ -204,6 +204,10 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
     FileVersion(FileVersion.hashOf(bytes), mtime)
   }
 
+  override def absolutePathFor(filePath: String): Option[String] =
+    try Some(resolvePath(filePath).toString)
+    catch { case _: Throwable => None }
+
   private def resolvePath(path: String): Path = basePath match {
     case Some(base) =>
       val full = base.resolve(path).toAbsolutePath.normalize()

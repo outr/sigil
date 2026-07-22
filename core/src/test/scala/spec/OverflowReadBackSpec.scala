@@ -107,6 +107,15 @@ class OverflowReadBackSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         withClue(s"summary=$summary\n") {
           summary should include(".sigil/output")
           summary.toLowerCase should include("read_file")
+          // The pointer prints the ABSOLUTE path — a relative path
+          // forces the model to guess the resolution root, and
+          // `.sigil` is hidden from default glob/grep sweeps, so a
+          // wrong guess turns one read into a dead workspace hunt.
+          val pointerPath = summary.split("written to ").last.split("\\.txt").head + ".txt"
+          pointerPath should startWith ("/")
+          // read_file resolves the shown path as-is (sandbox accepts
+          // in-base absolute paths).
+          fs.readFile(pointerPath).sync() shouldBe bigBody
         }
         val relPath = s".sigil/output/${tc.conversation.id.value}/big_discovery-${eventId.value}.txt"
         fs.readFile(relPath).map { fileContent =>

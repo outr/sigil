@@ -200,9 +200,15 @@ trait Tool extends RecordDocument[Tool] {
     context.sigil.fileSystemContextFor(context.conversation.id).flatMap {
       case Some(fs) =>
         val relPath = s".sigil/output/${context.conversation.id.value}/${name.value}-${context.invokeId.value}.txt"
+        // Show the ABSOLUTE path when the context can name one — a
+        // relative pointer forces the model to guess the resolution
+        // root, and `.sigil` is a hidden directory the default
+        // glob/grep excludes, so a wrong guess turns one read into a
+        // dead workspace hunt. The write itself stays context-relative.
+        val shownPath = fs.absolutePathFor(relPath).getOrElse(relPath)
         fs.writeFile(relPath, rendered).map { bytes =>
           head + "\n\n" +
-            s"[${name.value}: full result is $lines lines / $bytes bytes — written to $relPath. " +
+            s"[${name.value}: full result is $lines lines / $bytes bytes — written to $shownPath. " +
             "Use grep or read_file on that path to see the rest.]"
         }.handleError(_ => Task.pure(truncateAndTell))
       case None => Task.pure(truncateAndTell)

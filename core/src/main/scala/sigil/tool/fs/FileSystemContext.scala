@@ -38,6 +38,16 @@ trait FileSystemContext {
     * bytes written. */
   def writeFile(filePath: String, content: String): Task[Long]
 
+  /** The absolute path `filePath` resolves to in this context, when
+    * the context can name one. Used wherever a path is SHOWN to the
+    * agent (externalized-result pointers): a relative path in a
+    * message forces the model to guess the resolution root — the
+    * strong ones guess right, the weak ones hunt the workspace for a
+    * file that a hidden-directory-excluding glob will never surface.
+    * `None` (the default) keeps the relative rendering for contexts
+    * without a meaningful absolute form (remote/virtual backends). */
+  def absolutePathFor(filePath: String): Option[String] = None
+
   /** List paths under `basePath` matching `pattern` (glob syntax).
     * Returns paths relative to `basePath`. */
   def listFiles(basePath: String, pattern: String, maxResults: Int = 1000): Task[List[String]]
