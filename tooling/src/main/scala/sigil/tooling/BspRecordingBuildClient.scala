@@ -84,6 +84,59 @@ class BspRecordingBuildClient extends BuildClient {
 
   private def markActivity(): Unit = lastActivityAt.set(System.currentTimeMillis())
 
+  /** Per-request activity clocks, keyed by the `originId` the session
+    * stamped on the outgoing request. Connection-level activity is the
+    * wrong liveness signal for long requests: build servers broadcast
+    * diagnostics from OTHER clients' builds (an editor's Metals
+    * compiling the same sbt), and our own queued requests ride the
+    * running one's chatter — so a request that will never be answered
+    * hides behind traffic that has nothing to do with it. A request-
+    * scoped clock only advances on activity attributable to THAT
+    * request:
+    *
+    *   - `publishDiagnostics` carrying the request's `originId` — the
+    *     strong signal; servers stamp it per the BSP spec.
+    *   - task start/progress/finish and log messages when this
+    *     request is the connection's ONLY one in flight — unambiguous
+    *     attribution without originId (bsp4j 2.1 task notifications
+    *     don't carry one).
+    *
+    * Diagnostics with a FOREIGN originId never bump anyone's clock —
+    * that's exactly the cross-client chatter the scoping exists to
+    * ignore. */
+  private val requestActivity: ConcurrentHashMap[String, AtomicLong] = new ConcurrentHashMap()
+
+  /** Open a request-scoped activity clock, seeded at now. */
+  def beginRequest(originId: String): Unit = {
+    requestActivity.put(originId, new AtomicLong(System.currentTimeMillis()))
+    ()
+  }
+
+  /** Close (and forget) a request's activity clock. */
+  def endRequest(originId: String): Unit = {
+    requestActivity.remove(originId)
+    ()
+  }
+
+  /** The request's own last-activity clock; `None` once ended /
+    * never begun. */
+  def requestActivityFor(originId: String): Option[Long] =
+    Option(requestActivity.get(originId)).map(_.get())
+
+  private def markRequestActivity(originId: String): Unit =
+    Option(requestActivity.get(originId)).foreach(_.set(System.currentTimeMillis()))
+
+  /** Un-attributed server work (task events, logs): counts for the
+    * in-flight request only when it is unambiguous — exactly one
+    * request open on this connection. */
+  private def markSoleInFlightRequest(): Unit = {
+    val it = requestActivity.values().iterator()
+    if (it.hasNext) {
+      val first = it.next()
+      if (!it.hasNext) first.set(System.currentTimeMillis())
+    }
+  }
+
   /** Snapshot the current diagnostics map. Useful for tools that
     * want to show what the server has flagged after a compile. */
   def diagnosticsSnapshot: Map[String, List[Diagnostic]] =
@@ -123,18 +176,21 @@ class BspRecordingBuildClient extends BuildClient {
 
   override def onBuildLogMessage(params: LogMessageParams): Unit = {
     markActivity()
+    markSoleInFlightRequest()
     logs.offer(params)
     emitStatus(Option(params.getMessage).getOrElse(""))
   }
 
   override def onBuildTaskStart(params: TaskStartParams): Unit = {
     markActivity()
+    markSoleInFlightRequest()
     Option(params.getTaskId).map(_.getId).foreach(id => activeTasks.put(id, params))
     emitStatus(Option(params.getMessage).getOrElse(""))
   }
 
   override def onBuildTaskProgress(params: TaskProgressParams): Unit = {
     markActivity()
+    markSoleInFlightRequest()
     Option(params.getTaskId).map(_.getId).foreach(id => activeTasks.put(id, params))
     val msg = Option(params.getMessage).getOrElse("")
     val total = params.getTotal
@@ -149,6 +205,7 @@ class BspRecordingBuildClient extends BuildClient {
 
   override def onBuildTaskFinish(params: TaskFinishParams): Unit = {
     markActivity()
+    markSoleInFlightRequest()
     Option(params.getTaskId).map(_.getId).foreach(id => activeTasks.remove(id))
     val msg = Option(params.getMessage).getOrElse("")
     val statusName = Option(params.getStatus).map(_.toString).getOrElse("")
@@ -163,6 +220,10 @@ class BspRecordingBuildClient extends BuildClient {
 
   override def onBuildPublishDiagnostics(params: PublishDiagnosticsParams): Unit = {
     markActivity()
+    Option(params.getOriginId).filter(_.nonEmpty) match {
+      case Some(originId) => markRequestActivity(originId)
+      case None           => markSoleInFlightRequest()
+    }
     val uri = params.getTextDocument.getUri
     diagnostics.put(uri, params.getDiagnostics)
   }

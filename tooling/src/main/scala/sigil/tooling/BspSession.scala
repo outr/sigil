@@ -5,7 +5,7 @@ import org.eclipse.lsp4j.jsonrpc.Launcher
 import rapid.Task
 
 import java.io.File
-import java.util.concurrent.{CompletableFuture, Executors}
+import java.util.concurrent.{CompletableFuture, ConcurrentHashMap, Executors}
 import java.util.concurrent.atomic.AtomicLong
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.jdk.CollectionConverters.*
@@ -25,7 +25,7 @@ import scala.jdk.CollectionConverters.*
  * task progress, run-target stdout/stderr) accumulate in
  * [[client]]; tools snapshot them between calls.
  */
-final class BspSession(val config: BspBuildConfig,
+class BspSession(val config: BspBuildConfig,
                        process: Process,
                        server: CombinedBuildServer,
                        val client: BspRecordingBuildClient) {
@@ -56,6 +56,35 @@ final class BspSession(val config: BspBuildConfig,
       operation     = operation,
       silenceWindow = silenceWindow
     )(activitySource = () => client.lastActivityAtMillis)(makeRequest)
+
+  /** Attributable-silence threshold for origin-scoped long requests
+    * (`compile` / `test`). NOT a cap on the request's duration — a
+    * compile streaming its own progress stays alive for as long as it
+    * needs. The window bounds how long a request may show ZERO
+    * activity attributable to itself (its originId's diagnostics, or
+    * un-attributed task events while it is the connection's only
+    * request) before the durable-RPC machinery treats the response as
+    * lost — retries once, then fails with the transport exception. */
+  protected def scopedSilenceWindow: FiniteDuration = 3.minutes
+
+  /** [[issueDurable]] with REQUEST-scoped liveness: the silence clock
+    * follows activity attributable to `originId`, not the whole
+    * connection. Connection-level liveness hides abandoned requests
+    * behind unrelated chatter — cross-client diagnostic broadcasts
+    * (an editor's Metals compiling the same sbt), or our own earlier
+    * request's progress — which is how a compile that would never be
+    * answered sat Pending forever on a visibly busy connection. */
+  protected def issueDurableScoped[T](operation: String,
+                                      originId: String,
+                                      silenceWindow: FiniteDuration)
+                                     (makeRequest: () => CompletableFuture[T]): Task[T] = Task.defer {
+    client.beginRequest(originId)
+    DurableJsonRpc.issueDurable(
+      operation     = operation,
+      silenceWindow = silenceWindow
+    )(activitySource = () => client.requestActivityFor(originId).getOrElse(0L))(makeRequest)
+      .guarantee(Task { client.endRequest(originId); () })
+  }
 
   // ---- target discovery ----
 
@@ -110,17 +139,35 @@ final class BspSession(val config: BspBuildConfig,
 
   // ---- build / test / run ----
 
+  /** In-flight compiles keyed by target set. A second compile of the
+    * same targets JOINS the running one (shared `.singleton` task)
+    * instead of queueing a duplicate server-side build: every caller's
+    * invoke still settles — with the same result — and a blind
+    * re-call can never stack full compiles behind a slow one. */
+  private val inFlightCompiles: ConcurrentHashMap[String, Task[CompileResult]] = new ConcurrentHashMap()
+
   def compile(targets: List[BuildTargetIdentifier]): Task[CompileResult] = Task.defer {
     touch()
-    issueDurable("buildTarget/compile")(() => server.buildTargetCompile(new CompileParams(targets.asJava)))
+    val key = targets.map(_.getUri).sorted.mkString("\n")
+    val fresh: Task[CompileResult] = {
+      val originId = s"sigil-compile-${rapid.Unique()}"
+      val params = new CompileParams(targets.asJava)
+      params.setOriginId(originId)
+      issueDurableScoped("buildTarget/compile", originId, scopedSilenceWindow)(() => server.buildTargetCompile(params))
+        .guarantee(Task { inFlightCompiles.remove(key); () })
+        .singleton
+    }
+    Option(inFlightCompiles.putIfAbsent(key, fresh)).getOrElse(fresh)
   }
 
   def test(targets: List[BuildTargetIdentifier],
            arguments: List[String] = Nil): Task[TestResult] = Task.defer {
     touch()
+    val originId = s"sigil-test-${rapid.Unique()}"
     val params = new TestParams(targets.asJava)
+    params.setOriginId(originId)
     if (arguments.nonEmpty) params.setArguments(arguments.asJava)
-    issueDurable("buildTarget/test")(() => server.buildTargetTest(params))
+    issueDurableScoped("buildTarget/test", originId, scopedSilenceWindow)(() => server.buildTargetTest(params))
   }
 
   def run(target: BuildTargetIdentifier,

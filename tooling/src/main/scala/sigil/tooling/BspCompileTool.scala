@@ -74,9 +74,22 @@ final class BspCompileTool(val manager: BspManager) extends Tool
         // has usually already published the per-file diagnostics on the
         // way down; collect them (plus the real target count) rather
         // than dropping to a contentless ERROR the agent can't act on.
+        val failure = t match {
+          case jre: JsonRpcTransportException =>
+            // Request-scoped liveness exhausted: the build server
+            // produced nothing attributable to THIS compile for the
+            // whole window (twice). Re-calling cannot help — it queues
+            // another build behind whatever is holding the server.
+            s"the build server produced no progress for this compile within ${jre.silenceWindow} " +
+              s"(retried ${jre.attempts}x) — it is wedged, or busy serving another client's build " +
+              "(e.g. an editor's Metals compiling the same project). Do NOT re-call `bsp_compile` now: " +
+              "wait for the running build to finish, check the build server's state, or reload the " +
+              "BSP connection, then compile once."
+          case _ => s"BSP error: ${t.getMessage}"
+        }
         Task(BspCompileTool.buildResult(
           input.projectRoot, "ERROR", targets.size, session.client,
-          requestFailure = Some(s"BSP error: ${t.getMessage}")))
+          requestFailure = Some(failure)))
       }
     }
 }
