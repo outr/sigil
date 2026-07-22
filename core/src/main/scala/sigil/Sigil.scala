@@ -3763,6 +3763,29 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * when `releaseClaim` completes (successfully or via error). */
   private final val stopFlags: ConcurrentHashMap[Id[Event], StopFlag] = new ConcurrentHashMap()
 
+  /** In-process agent-claim registry — the AUTHORITATIVE mutual
+    * exclusion for `tryFire`, keyed by the claim's deterministic lock
+    * id. The persisted [[AgentState]] row remains the durable /
+    * observable projection, but it cannot be the gate: its upsert is
+    * buffered until the events transaction commits (a Lucene fsync,
+    * milliseconds wide), and the store's per-id lock entry is evicted
+    * when uncontended — so two publishes fanning out on independent
+    * fibers could BOTH read no-claim inside that window and run two
+    * concurrent generations (observed live: a voice caller's two
+    * transcript fragments produced the same spoken reply twice). A
+    * `putIfAbsent` on process-local state has no visibility window.
+    * The claim was per-process by design already (multi-replica
+    * deployments route conversations to one instance), so this
+    * narrows no guarantee.
+    *
+    * `lastTriggerCheckAt` is maintained by the loop at each iteration
+    * boundary; the release path rechecks for triggers newer than it
+    * and re-fires, closing the check-then-release gap where a message
+    * arriving between the loop's final trigger check and the claim
+    * release found the claim still held, bailed, and was stranded. */
+  private final class ActiveClaimEntry(@volatile var lastTriggerCheckAt: Long)
+  private final val activeClaims: ConcurrentHashMap[Id[Event], ActiveClaimEntry] = new ConcurrentHashMap()
+
   /** Per-turn event log for the founding-turn topic sweep, keyed by
     * conversation (one live claim per conversation by design). Created
     * when `tryFire` wins a claim — seeded with the claim row itself —
@@ -6435,56 +6458,57 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   private final def tryFire(agent: AgentParticipant, conv: Conversation, greeting: Boolean = false): Task[Unit] = {
     val lockId = agentStateLockId(agent.id, conv._id)
-    val claimedRef = new AtomicReference[Option[AgentState]](None)
-    withDB(_.events.transaction(_.modify(lockId) {
-      case Some(s: AgentState) if s.state == EventState.Active =>
-        Task.pure(Some(s))  // someone else owns it; observe and bail
-      case _ =>
-        val claim = AgentState(
-          agentId = agent.id,
-          participantId = agent.id,
-          conversationId = conv._id,
-          topicId = conv.currentTopicId,
-          // Written via tx.modify, so the canonicalizing inbound
-          // transform never sees this row — stamp the current topic's
-          // index directly.
-          topicIndex = math.max(0, conv.topics.length - 1),
-          activity = AgentActivity.Thinking,
-          state = EventState.Active,
-          timestamp = Timestamp(Nowish()),
-          _id = lockId
-        )
-        claimedRef.set(Some(claim))
-        Task.pure(Some(claim))
+    val claim = AgentState(
+      agentId = agent.id,
+      participantId = agent.id,
+      conversationId = conv._id,
+      topicId = conv.currentTopicId,
+      // Written via tx.modify, so the canonicalizing inbound
+      // transform never sees this row — stamp the current topic's
+      // index directly.
+      topicIndex = math.max(0, conv.topics.length - 1),
+      activity = AgentActivity.Thinking,
+      state = EventState.Active,
+      timestamp = Timestamp(Nowish()),
+      _id = lockId
+    )
+    // The in-memory registry is the gate (see [[activeClaims]]); the
+    // row write below is the durable projection. Losing here is
+    // fine: the holder's loop picks the triggering event up at its
+    // next iteration boundary, or the release-time recheck re-fires.
+    val won = activeClaims.putIfAbsent(lockId, new ActiveClaimEntry(claim.timestamp.value)) == null
+    if (!won) Task.unit
+    else withDB(_.events.transaction(_.modify(lockId) {
+      // Unconditional overwrite: the registry decided ownership. A
+      // row still Active here is a fossil (a crashed process's claim
+      // — the registry died with it); claiming over it IS the
+      // recovery.
+      case _ => Task.pure(Some(claim))
     })).flatMap { _ =>
-      claimedRef.get() match {
-        case Some(claim) =>
-          // We won the claim. Register a StopFlag for this claim so any
-          // Stop events published against this agent can interrupt.
-          stopFlags.put(claim._id, new StopFlag)
-          // Open the turn's event log for the founding-turn topic
-          // sweep, seeded with the claim row (written via tx.modify,
-          // so the publish hook never sees it).
-          val turnLog = new TurnEventLog
-          turnLog.record(claim)
-          activeTurnEvents.put(conv._id, turnLog)
-          // Reconcile the persisted agent against the app's current definition
-          // (default identity) so a new tool added to a discovery-suppressed
-          // roster reaches this existing conversation. Keep the original on a
-          // mismatched id or a non-agent result — the seat is by id.
-          currentParticipant(agent).map {
-            case fresh: AgentParticipant if fresh.id == agent.id => fresh
-            case _                                               => agent
-          }.flatMap { effectiveAgent =>
-            // Broadcast manually (modify already persisted), then fire the
-            // agent on its own fiber.
-            Task {
-              hub.emit(claim)
-              runAgent(effectiveAgent, conv, claim, greeting = greeting).startUnit()
-              ()
-            }
-          }
-        case None => Task.unit
+      // We won the claim. Register a StopFlag for this claim so any
+      // Stop events published against this agent can interrupt.
+      stopFlags.put(claim._id, new StopFlag)
+      // Open the turn's event log for the founding-turn topic
+      // sweep, seeded with the claim row (written via tx.modify,
+      // so the publish hook never sees it).
+      val turnLog = new TurnEventLog
+      turnLog.record(claim)
+      activeTurnEvents.put(conv._id, turnLog)
+      // Reconcile the persisted agent against the app's current definition
+      // (default identity) so a new tool added to a discovery-suppressed
+      // roster reaches this existing conversation. Keep the original on a
+      // mismatched id or a non-agent result — the seat is by id.
+      currentParticipant(agent).map {
+        case fresh: AgentParticipant if fresh.id == agent.id => fresh
+        case _                                               => agent
+      }.flatMap { effectiveAgent =>
+        // Broadcast manually (modify already persisted), then fire the
+        // agent on its own fiber.
+        Task {
+          hub.emit(claim)
+          runAgent(effectiveAgent, conv, claim, greeting = greeting).startUnit()
+          ()
+        }
       }
     }
   }
@@ -6967,13 +6991,45 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // preserved by projections being per-conversation. Replaces the
       // bug #169 per-turn clear that drove the change_mode-loop
       // failure mode (Sage wire log 2026-05-28 10:33:53 → 10:34:04).
-      fallback.flatMap(_ => releaseClaim(claimed))
+      //
+      // Post-release trigger recheck: a message landing between the
+      // loop's final trigger check and the claim release found the
+      // claim held, bailed at the gate, and would otherwise be
+      // STRANDED until the next unrelated trigger. Capture the last
+      // boundary the loop's checks covered (before cleanup drops the
+      // registry entry), release, then re-fire if an EXTERNAL trigger
+      // (someone else's message — the strand shape) arrived after it.
+      // Deliberately not `newTriggersExist`: that also counts the
+      // turn's own Tool-role tail, which lands after the final
+      // iteration's boundary on every tool-calling turn and would
+      // re-fire a spurious LLM iteration per turn. Skipped when the
+      // conversation is stop-latched — the user's Stop means stopped.
+      // Best-effort: a recheck failure never breaks the release.
+      val lastCheckedAt = Option(activeClaims.get(claimed._id))
+        .map(_.lastTriggerCheckAt)
+        .getOrElse(claimed.timestamp.value)
+      fallback.flatMap(_ => releaseClaim(claimed)).flatMap { _ =>
+        if (stopLatches.containsKey(convId)) Task.unit
+        else withDB(_.conversations.transaction(_.get(convId))).flatMap {
+          case Some(conv) =>
+            externalTriggersExist(agent, conv, sinceTimestamp = Timestamp(lastCheckedAt)).flatMap {
+              case true  => tryFire(agent, conv)
+              case false => Task.unit
+            }
+          case None => Task.unit
+        }.handleError(t => Task(scribe.warn(
+          s"post-release trigger recheck failed for ${agent.id.value}/${convId.value}: ${t.getMessage}")))
+      }
     }
     // Snapshot the start of THIS iteration. The next iteration uses this as
     // its own `sinceTimestamp`, so events emitted during this iteration
     // (including self-emitted non-terminal tool results the agent acted on)
-    // don't re-appear as triggers next time.
+    // don't re-appear as triggers next time. Mirrored onto the claim
+    // registry so the release path knows the newest boundary the loop's
+    // trigger checks covered — its recheck only fires for events newer
+    // than this.
     val thisIterationStart = Timestamp(Nowish())
+    Option(activeClaims.get(claimed._id)).foreach(_.lastTriggerCheckAt = thisIterationStart.value)
     // The cap-hit, no-tool-call, and stall-intervention branches each
     // recover by running ONE more iteration with `forceResponseSynthesis`
     // pinning `tool_choice` to the respond family. The recursive call is
@@ -8828,6 +8884,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val cleanup = Task {
       stopFlags.remove(claimed._id)
       checkpointStates.remove(claimed._id)
+      activeClaims.remove(claimed._id)
       ()
     }
     // Founding-turn topic re-stamp runs before the Idle delta so
