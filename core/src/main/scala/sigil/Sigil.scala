@@ -1360,6 +1360,56 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       scribe.info(s"requestEscalation conv=${conversationId.value} from=$currentEffective to=$nextEffective bumped=$bumped reason=$reason")
       (nextEffective, bumped)
     }
+  }.flatMap { result =>
+    // Escalation-headroom check: bumping the tier with the turn
+    // already ≥ half its soft budget means the expensive iterations
+    // are about to run into a near-exhausted budget — flag the claim
+    // so the NEXT boundary fires the soft check-in immediately (the
+    // user gets asked BEFORE the pricey tier grinds, not after).
+    val (_, bumped) = result
+    if (!bumped) Task.pure(result)
+    else withDB(_.conversations.transaction(_.get(conversationId))).map {
+      case Some(conv) =>
+        effectiveBudgetsFor(conv).turnSoft.foreach { soft =>
+          conv.participants.collect { case a: AgentParticipant => a }.foreach { a =>
+            Option(activeClaims.get(agentStateLockId(a.id, conversationId))).foreach { entry =>
+              if (entry.turnCost * 2 >= soft && !entry.turnSoftFired.get()) {
+                entry.budgetCheckinRequested.set(true)
+              }
+            }
+          }
+        }
+        result
+      case None => result
+    }.handleError(_ => Task.pure(result))
+  }
+
+  /** Step the current user turn's escalation count back DOWN one
+    * level — what [[sigil.tool.core.RequestDeescalationTool]] calls
+    * when the agent judges the remaining work mechanical enough for a
+    * cheaper tier. Returns `(newTier, lowered)`; `lowered = false`
+    * when there was no escalation to unwind (the counter is already
+    * at the classifier's base tier — de-escalating BELOW the
+    * classified tier is the pin's job, not this counter's). Across
+    * turns no unwinding is needed: the counter resets to zero at
+    * every new user message. */
+  def requestDeescalation(conversationId: Id[Conversation], reason: String): Task[(Complexity, Boolean)] = Task {
+    val state = perTurnEscalations.get(conversationId)
+    if (state == null) (Complexity.Medium, false)
+    else {
+      val (msgId, count) = state
+      val classifierCx = Option(classifierMemo.get(msgId)).map(_._2).getOrElse(Complexity.Medium)
+      val currentEffective = (1 to count).foldLeft(classifierCx)((acc, _) => Complexity.bumpUp(acc))
+      if (count <= 0) (currentEffective, false)
+      else {
+        val nextEffective = (1 to (count - 1)).foldLeft(classifierCx)((acc, _) => Complexity.bumpUp(acc))
+        perTurnEscalations.put(conversationId, (msgId, count - 1))
+        perTurnEscalationReason.put(conversationId,
+          (msgId, s"$reason (tier $currentEffective→$nextEffective, de-escalation)"))
+        scribe.info(s"requestDeescalation conv=${conversationId.value} from=$currentEffective to=$nextEffective reason=$reason")
+        (nextEffective, true)
+      }
+    }
   }
 
   /** Internal hook for the cap-hit forced-synthesis path. Bumps the
@@ -3783,7 +3833,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * and re-fires, closing the check-then-release gap where a message
     * arriving between the loop's final trigger check and the claim
     * release found the claim still held, bailed, and was stranded. */
-  private final class ActiveClaimEntry(@volatile var lastTriggerCheckAt: Long)
+  private final class ActiveClaimEntry(@volatile var lastTriggerCheckAt: Long,
+                                       val conversationCostAtClaim: BigDecimal) {
+    private val turnCostRef = new AtomicReference[BigDecimal](BigDecimal(0))
+    def addTurnCost(delta: BigDecimal): Unit = { turnCostRef.updateAndGet(_ + delta); () }
+    def turnCost: BigDecimal = turnCostRef.get()
+    /** One-shot latches for the soft check-in, per scope. */
+    val turnSoftFired = new java.util.concurrent.atomic.AtomicBoolean(false)
+    val conversationSoftFired = new java.util.concurrent.atomic.AtomicBoolean(false)
+    /** Escalation-headroom early fire: set by [[requestEscalation]]
+      * when the tier bumps with the turn already ≥ half its soft
+      * budget — the next boundary runs the check-in BEFORE the
+      * expensive tier grinds, not after. */
+    val budgetCheckinRequested = new java.util.concurrent.atomic.AtomicBoolean(false)
+  }
   private final val activeClaims: ConcurrentHashMap[Id[Event], ActiveClaimEntry] = new ConcurrentHashMap()
 
   /** Per-turn event log for the founding-turn topic sweep, keyed by
@@ -3959,6 +4022,55 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * completions); forced-synthesis and context-pressured turns
     * commit immediately as before. Default `2`. */
   def nakedTextChallengeLimit: Int = 2
+
+  // -- spend budgets --
+
+  /** Soft per-turn spend budget (USD). When a turn's accumulated
+    * provider cost crosses it, the loop injects a one-shot check-in
+    * directive at the next iteration boundary: summarize where you
+    * are and ask the user — via `respond_options` — whether to
+    * continue, and at what scope. The turn yields at a summary
+    * instead of running the meter while the user is away; the
+    * continuation is a fresh turn (fresh budget, fresh complexity
+    * classification — the check-in is also the de-escalation point).
+    * `None` (default) disables. Per-conversation override via
+    * [[sigil.conversation.ConversationBudget]] / the `set_budget`
+    * tool. Cost is a first-class failure dimension: every other
+    * guard judges progress, and a correctly-progressing turn can
+    * still be wrong purely on the bill. */
+  def turnCostSoftBudget: Option[BigDecimal] = None
+
+  /** Hard per-turn spend ceiling (USD). Crossing it forces terminal
+    * synthesis — the agent wraps up honestly with a spend-and-state
+    * report and the turn ends. A ceiling crossed means the soft
+    * check-in was ignored or long-ago approved; the wrap-up is the
+    * backstop, not the conversation. `None` (default) disables. */
+  def turnCostHardCeiling: Option[BigDecimal] = None
+
+  /** Soft whole-conversation spend budget (USD) — same check-in
+    * semantics as [[turnCostSoftBudget]], fired when
+    * [[sigil.conversation.Conversation.cost]] crosses the threshold
+    * during a turn. `None` (default) disables. */
+  def conversationCostSoftBudget: Option[BigDecimal] = None
+
+  /** Hard whole-conversation spend ceiling (USD). Crossing it
+    * mid-turn forces terminal synthesis; a conversation already past
+    * it refuses to START new turns (a user-visible message points at
+    * `set_budget`) until the budget is raised. `None` (default)
+    * disables. */
+  def conversationCostHardCeiling: Option[BigDecimal] = None
+
+  /** Effective budgets for `conv` — the conversation's override
+    * field-wise, falling back to the app hooks. */
+  final def effectiveBudgetsFor(conv: Conversation): sigil.conversation.ConversationBudget = {
+    val o = conv.budget.getOrElse(sigil.conversation.ConversationBudget())
+    sigil.conversation.ConversationBudget(
+      turnSoft         = o.turnSoft.orElse(turnCostSoftBudget),
+      turnHard         = o.turnHard.orElse(turnCostHardCeiling),
+      conversationSoft = o.conversationSoft.orElse(conversationCostSoftBudget),
+      conversationHard = o.conversationHard.orElse(conversationCostHardCeiling)
+    )
+  }
 
   /** Live detachable-tool executions, keyed by invoke id (which
     * doubles as the task handle). Registered at DISPATCH — so a Stop
@@ -5320,6 +5432,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     chargeOpt match {
       case None => Task.unit
       case Some((resolvedModelId, delta)) =>
+        // Mirror the charge onto the live turn's spend accumulator so
+        // the budget gate reads per-turn cost without a store query.
+        // Cost-bearing events carry the acting agent's participantId,
+        // which keys the claim registry.
+        participantId match {
+          case agentId: sigil.participant.AgentParticipantId =>
+            Option(activeClaims.get(agentStateLockId(agentId, conversationId))).foreach(_.addTurnCost(delta))
+          case _ => ()
+        }
         withDB(_.conversations.transaction(_.modify(conversationId) {
           case None => Task.pure(None)
           case Some(conv) =>
@@ -6472,11 +6593,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       timestamp = Timestamp(Nowish()),
       _id = lockId
     )
+    // A conversation past its hard spend ceiling refuses to START
+    // new turns — no LLM iteration runs on an exhausted budget. One
+    // user-visible notice per exhaustion (cleared when `set_budget`
+    // raises the ceiling) points the user at the fix.
+    val convHardExhausted = effectiveBudgetsFor(conv).conversationHard.exists(conv.cost >= _)
+    if (convHardExhausted) notifyBudgetExhausted(agent, conv)
+    else {
     // The in-memory registry is the gate (see [[activeClaims]]); the
     // row write below is the durable projection. Losing here is
     // fine: the holder's loop picks the triggering event up at its
     // next iteration boundary, or the release-time recheck re-fires.
-    val won = activeClaims.putIfAbsent(lockId, new ActiveClaimEntry(claim.timestamp.value)) == null
+    val won = activeClaims.putIfAbsent(lockId,
+      new ActiveClaimEntry(claim.timestamp.value, conversationCostAtClaim = conv.cost)) == null
     if (!won) Task.unit
     else withDB(_.events.transaction(_.modify(lockId) {
       // Unconditional overwrite: the registry decided ownership. A
@@ -6511,7 +6640,37 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         }
       }
     }
+    }
   }
+
+  /** One user-visible notice per conversation-hard-ceiling
+    * exhaustion. The latch clears when `set_budget` raises the
+    * budget, so repeated triggers while exhausted don't spam and a
+    * raised budget re-arms cleanly. */
+  private final val budgetExhaustedNotified: ConcurrentHashMap[Id[Conversation], java.lang.Boolean] =
+    new ConcurrentHashMap()
+
+  private[sigil] final def clearBudgetExhaustedNotice(conversationId: Id[Conversation]): Unit = {
+    budgetExhaustedNotified.remove(conversationId)
+    ()
+  }
+
+  private final def notifyBudgetExhausted(agent: AgentParticipant, conv: Conversation): Task[Unit] =
+    if (budgetExhaustedNotified.putIfAbsent(conv._id, java.lang.Boolean.TRUE) != null) Task.unit
+    else {
+      val ceiling = effectiveBudgetsFor(conv).conversationHard.map(c => f"$$${c}%.2f").getOrElse("?")
+      publish(Message(
+        participantId  = agent.id,
+        conversationId = conv._id,
+        topicId        = conv.currentTopicId,
+        content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(
+          f"This conversation has reached its spend ceiling ($ceiling; $$${conv.cost}%.2f spent) — the agent will " +
+            "not run further turns here. Raise the budget (the `set_budget` capability, e.g. \"set this " +
+            "conversation's budget to $10\") or start a new conversation.")),
+        state          = EventState.Complete,
+        disposition    = sigil.event.MessageDisposition.Failure(recoverable = true)
+      )).unit
+    }
 
   /**
    * Fire a one-shot greeting turn for `agent` in `conv`. Runs the agent's
@@ -7480,7 +7639,33 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                         // nudges-and-continues.
                         terminal = true
                       )))
-                checkpointTask.flatMap {
+                // Spend-budget gate — evaluated at EVERY boundary (a
+                // dollar-a-minute turn must not wait for a checkpoint
+                // interval). The hard ceiling preempts everything: one
+                // forced wrap-up iteration reporting spend and state.
+                // The soft check-in is a one-shot cooperative nudge on
+                // the same Tool-role channel as stall directives; the
+                // agent summarizes and asks the user via
+                // `respond_options`, and the continuation is a fresh
+                // turn (fresh budget, fresh classification).
+                evaluateBudgetGate(conv, claimed).flatMap {
+                  case Some(directive) if directive.hard =>
+                    publishBudgetDirective(agent, conv, "_budget_ceiling", directive.text)
+                      .map(_ => recurseForced(ForcedSynthesisReason.BudgetCeiling))
+                  case Some(directive) =>
+                    publishBudgetDirective(agent, conv, "_budget_checkin", directive.text)
+                      .map(_ =>
+                        maybeIntraTurnCompact(agent, convId, claimed)
+                          .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
+                            userVisibleSeen = userVisibleSeen,
+                            turnExtractorFired = turnExtractorFired,
+                            failurePublished = failurePublished,
+                            discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+                            toolResultCacheRef = toolResultCacheRef,
+                            healedThisTurn = healedThisTurn,
+                            healCorrelationId = healCorrelationId,
+                            overflowCompactions = overflowCompactions)))
+                  case None => checkpointTask.flatMap {
                   case Some(intervention) =>
                     // Bug #133 / #332 / #353 — a checkpoint intervention
                     // (stall streak OR "needs user input") ALWAYS routes the
@@ -7582,6 +7767,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                           healCorrelationId = healCorrelationId,
                           overflowCompactions = overflowCompactions))
                     )
+                }
                 }
               }
             case true if !forceResponseSynthesis =>
@@ -7839,6 +8025,77 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * misattributing to "hit maxAgentIterations". Reason carries the
     * trigger condition (`CapHit` / `NoToolCall` / `StallIntervention`);
     * `iteration` is the actual loop counter at throw time. */
+  /** A budget-gate verdict: `hard = true` forces terminal synthesis;
+    * `hard = false` is the cooperative check-in. `text` is the
+    * Tool-role directive the agent reads. */
+  private final case class BudgetDirective(hard: Boolean, text: String)
+
+  /** Evaluate the spend budgets at an iteration boundary. Hard
+    * ceilings (turn, then conversation) win; soft crossings fire
+    * once per claim per scope; the escalation-headroom flag forces
+    * the soft check-in early. `None` = under budget (or budgets
+    * unset) — zero behavior change. */
+  private final def evaluateBudgetGate(conv: Conversation, claimed: AgentState): Task[Option[BudgetDirective]] = Task {
+    Option(activeClaims.get(claimed._id)).flatMap { entry =>
+      val budgets  = effectiveBudgetsFor(conv)
+      val turnCost = entry.turnCost
+      val convCost = entry.conversationCostAtClaim + turnCost
+      def fmt(v: BigDecimal): String = f"$$${v}%.2f"
+      val spendLine =
+        s"This turn has spent ${fmt(turnCost)}; the conversation total is ${fmt(convCost)}."
+      def checkinText(scope: String, limit: BigDecimal): String =
+        s"[spend check-in — internal, not a user message] $spendLine That crosses the $scope soft budget " +
+          s"(${fmt(limit)}). Summarize where you are and what remains, then ask the user via `respond_options` " +
+          "whether to continue and at what scope — do not keep working until they answer. If the remaining " +
+          "work is mechanical, call `request_deescalation` before continuing so it runs on a cheaper tier."
+      val turnHard = budgets.turnHard.filter(turnCost >= _).map(limit => BudgetDirective(hard = true,
+        s"[spend ceiling — internal, not a user message] $spendLine That crosses the hard per-turn ceiling " +
+          s"(${fmt(limit)}). Call `respond` NOW with an honest report: what you accomplished, what remains, " +
+          "and what was spent. Do not start further work."))
+      val convHard = budgets.conversationHard.filter(convCost >= _).map(limit => BudgetDirective(hard = true,
+        s"[spend ceiling — internal, not a user message] $spendLine That crosses the hard conversation ceiling " +
+          s"(${fmt(limit)}). Call `respond` NOW with an honest report: what you accomplished, what remains, " +
+          "and what was spent. Do not start further work."))
+      def softFor(limit: BigDecimal, scope: String, latch: java.util.concurrent.atomic.AtomicBoolean,
+                  crossed: Boolean): Option[BudgetDirective] =
+        if (crossed && latch.compareAndSet(false, true)) Some(BudgetDirective(hard = false, checkinText(scope, limit)))
+        else None
+      val headroom = entry.budgetCheckinRequested.compareAndSet(true, false)
+      val turnSoft = budgets.turnSoft.flatMap(limit =>
+        softFor(limit, "per-turn", entry.turnSoftFired, crossed = turnCost >= limit || (headroom && turnCost > 0)))
+      val convSoft = budgets.conversationSoft.flatMap(limit =>
+        // Conversation-soft fires on the CROSSING (this turn pushed the
+        // total over), not on every turn that starts already above it —
+        // the user's continuing messages after a check-in are the
+        // approval.
+        softFor(limit, "conversation", entry.conversationSoftFired,
+          crossed = entry.conversationCostAtClaim < limit && convCost >= limit))
+      turnHard.orElse(convHard).orElse(turnSoft).orElse(convSoft)
+    }
+  }
+
+  /** Publish a budget directive on the stall-nudge channel: a
+    * synthetic internal invoke + a Tool-role, Agents-visibility
+    * Message the agent reads next iteration. */
+  private final def publishBudgetDirective(agent: AgentParticipant,
+                                           conv: Conversation,
+                                           invokeName: String,
+                                           text: String): Task[Unit] = {
+    val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
+      .invoke(invokeName, agent.id, conv._id, conv.currentTopicId)
+    val directive = Message(
+      participantId  = agent.id,
+      conversationId = conv._id,
+      topicId        = conv.currentTopicId,
+      content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(text)),
+      state          = EventState.Complete,
+      role           = MessageRole.Tool,
+      visibility     = MessageVisibility.Agents,
+      origin         = Some(syntheticInvoke._id)
+    )
+    publish(syntheticInvoke).flatMap(_ => publish(directive)).unit
+  }
+
   private final def buildRunawayException(agent: AgentParticipant,
                                           conv: Conversation,
                                           iteration: Int,
@@ -7864,6 +8121,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case ForcedSynthesisReason.StallIntervention =>
         s"stalled at iteration $iteration of cap $maxIter (progress-checkpoint intervention) and " +
           s"the forced-synthesis recovery turn also failed to call `respond`. Check LLM behavior."
+      case ForcedSynthesisReason.BudgetCeiling =>
+        s"crossed its hard spend ceiling at iteration $iteration and the forced wrap-up turn also " +
+          s"failed to call `respond`. Check LLM behavior; the spend gate held either way."
     }
     new AgentRunawayException(s"Agent ${agent.id.value} $cause $convPart", reason)
   }

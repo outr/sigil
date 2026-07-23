@@ -182,7 +182,10 @@ object TestSigil extends Sigil {
       DetachableSweepTool,
       FastDetachableTool,
       MutatingSpecTool,
-      VerifyingSpecTool
+      VerifyingSpecTool,
+      sigil.tool.core.RequestEscalationTool,
+      sigil.tool.core.RequestDeescalationTool,
+      sigil.tool.core.SetBudgetTool
     ): @annotation.nowarn("cat=deprecation"))
 
   // ---- registration lists ----

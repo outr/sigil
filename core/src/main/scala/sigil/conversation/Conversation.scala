@@ -124,6 +124,12 @@ case class Conversation(topics: List[TopicEntry],
                           * extractor, summarization) keep their own settings.
                           * Cleared via the `unpin_effort` tool. */
                         pinnedEffort: Option[sigil.provider.Effort] = None,
+                        /** Per-conversation spend-budget override (USD) — each
+                          * set field wins over the matching app-level hook; unset
+                          * fields inherit it. Set conversationally via the
+                          * `set_budget` tool or by the app. See
+                          * [[ConversationBudget]] for the soft / hard semantics. */
+                        budget: Option[ConversationBudget] = None,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
                         _id: Id[Conversation] = Conversation.id())

@@ -132,6 +132,8 @@ object CoreTools {
       summon[RW[sigil.tool.context.ReloadContentInput]],
       summon[RW[sigil.tool.core.CancelFrameworkWorkflowInput]],
       summon[RW[RequestEscalationInput]],
+      summon[RW[RequestDeescalationInput]],
+      summon[RW[SetBudgetInput]],
       summon[RW[sigil.tool.model.RelayMessageInput]],
       // Opt-in git write tools (`git_commit` / `git_push`) are NOT in
       // the default roster — apps register them explicitly, mirroring

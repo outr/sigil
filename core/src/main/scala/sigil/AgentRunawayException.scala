@@ -36,4 +36,7 @@ enum ForcedSynthesisReason {
   case NoToolCall
   /** Progress-checkpoint intervention. */
   case StallIntervention
+  /** The turn (or conversation) crossed its hard spend ceiling —
+    * the forced turn wraps up with a spend-and-state report. */
+  case BudgetCeiling
 }

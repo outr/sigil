@@ -92,6 +92,7 @@ object ToolOutput extends PolyType[ToolOutput]()(using scala.reflect.ClassTag(cl
     // core/
     summon[RW[sigil.tool.core.FindCapabilityOutput]],
     summon[RW[sigil.tool.core.RequestEscalationOutput]],
+    summon[RW[sigil.tool.core.RequestDeescalationOutput]],
     summon[RW[sigil.tool.core.CancelFrameworkWorkflowOutput]],
 
     // util/
