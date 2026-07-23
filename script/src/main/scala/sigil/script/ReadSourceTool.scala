@@ -12,23 +12,20 @@ import java.util.jar.JarFile
 import scala.util.boundary
 import scala.util.boundary.break
 
-/**
- * Read a symbol's source code from a `-sources.jar` on the executor's
- * classpath. Bug #59 — the deepest level of script-authoring
- * introspection: useful when signature alone (from
- * [[ClassSignaturesTool]]) doesn't make the semantics clear.
- *
- * sbt typically downloads `-sources.jar` artifacts alongside the
- * regular jars for IDE support; this tool exploits that. When no
- * `-sources.jar` ships the symbol's source, returns
- * `(source not available)` and the agent falls back on
- * [[ClassSignaturesTool]].
- *
- * The resolution is whole-file — given `spice.http.client.HttpClient`,
- * we return the contents of `spice/http/client/HttpClient.scala`
- * (or `.java`). Methods inside the file aren't separately extractable
- * without a parser; the agent reads the whole class.
- */
+/** Read a symbol's source code from a `-sources.jar` on the executor's
+   * classpath.
+   *
+   * sbt typically downloads `-sources.jar` artifacts alongside the
+   * regular jars for IDE support; this tool exploits that. When no
+   * `-sources.jar` ships the symbol's source, returns
+   * `(source not available)` and the agent falls back on
+   * [[ClassSignaturesTool]].
+   *
+   * The resolution is whole-file — given `spice.http.client.HttpClient`,
+   * we return the contents of `spice/http/client/HttpClient.scala`
+   * (or `.java`). Methods inside the file aren't separately extractable
+   * without a parser; the agent reads the whole class.
+   */
 case object ReadSourceTool extends Tool {
   type Input  = ReadSourceInput
   type Output = TextToolOutput

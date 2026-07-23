@@ -96,17 +96,6 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
           case None => Task.pure(Nil)
           case Some(result) =>
             val kept = result.memories.filter(_.content.nonEmpty)
-            // Sigil bug #195 — the extractor's tags carry an
-            // optional `mode:NAME` side-channel that scopes the
-            // memory to specific operating modes. Names that don't
-            // match a registered Mode are dropped (with a WARN);
-            // matched names become `Id[Mode]` entries in
-            // `modeAffinity` and the prefix is stripped out of the
-            // keywords. Going through the tags channel (rather than
-            // adding a new field to ExtractedMemory) preserves the
-            // smaller-model extractor's `key` emission — see
-            // bugs/195-extractor-auto-mode-affinity.md for the
-            // earlier discussion.
             val knownModes: Set[String] = sigil.availableModes.map(_.name).toSet
             val memories = kept.map { m =>
               val (modeTagsRaw, otherTags) = m.tags.partition(_.startsWith("mode:"))

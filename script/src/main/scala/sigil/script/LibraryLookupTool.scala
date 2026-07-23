@@ -10,24 +10,6 @@ import java.net.URLClassLoader
 import java.util.jar.JarFile
 import java.util.zip.ZipException
 
-/**
- * Fuzzy-resolve an unqualified symbol (`HttpClient`, `JsonParser`,
- * `Task.map`) to one or more fully-qualified candidates on the
- * executor's classpath. Bug #59 — first step of the script-authoring
- * lookup chain: `library_lookup → class_signatures → write code`.
- *
- * Implementation: walks the URLs of every `URLClassLoader` ancestor
- * of the context classloader, lists `.class` entries from each jar,
- * matches the simple class name against the requested symbol (case-
- * insensitive), and returns the FQN candidates. For method-style
- * lookups (`Task.map`), the receiver before the dot is fuzzy-matched
- * and the surviving candidates' methods are filtered to those whose
- * name matches the part after the dot.
- *
- * Returns at most 25 candidates — high-cardinality matches (e.g. a
- * lone "C" against a 5k-jar classpath) get truncated rather than
- * flooding the agent's context.
- */
 case object LibraryLookupTool extends Tool {
   type Input  = LibraryLookupInput
   type Output = TextToolOutput

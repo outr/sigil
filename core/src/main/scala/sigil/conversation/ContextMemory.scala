@@ -72,18 +72,18 @@ case class ContextMemory(fact: String,
                          location: Option[Place] = None,
                          extraContext: Map[ContextKey, String] = Map.empty,
                          /** Per-[[Mode]] retrieval gate. When non-empty, the
-                           * memory only surfaces during turns whose
-                           * [[Conversation.currentMode]] id is in this set.
-                           * Empty (the default) = the memory is universal —
-                           * surfaces regardless of current mode.
-                           *
-                           * Scoping critical directives to the mode they
-                           * apply to avoids loading them into every turn of
-                           * conversations that swap modes — a "always create
-                           * failing tests before fixing" directive captured
-                           * during Coding mode is wasted prompt budget when
-                           * the conversation switches back to Conversation
-                           * mode. Sigil bug #195. */
+     75|                            * memory only surfaces during turns whose
+     76|                            * [[Conversation.currentMode]] id is in this set.
+     77|                            * Empty (the default) = the memory is universal —
+     78|                            * surfaces regardless of current mode.
+     79|                            *
+     80|                            * Scoping critical directives to the mode they
+     81|                            * apply to avoids loading them into every turn of
+     82|                            * conversations that swap modes — a "always create
+     83|                            * failing tests before fixing" directive captured
+     84|                            * during Coding mode is wasted prompt budget when
+     85|                            * the conversation switches back to Conversation
+     86|                            * mode. */
                          modeAffinity: Set[Id[Mode]] = Set.empty,
                          created: Timestamp = Timestamp(),
                          modified: Timestamp = Timestamp(),

@@ -9,24 +9,6 @@ import sigil.participant.ParticipantId
 import sigil.signal.EventState
 import sigil.tool.discovery.CapabilityMatch
 
-/**
- * Result of a `find_capability` discovery call. Bug #66 — carries the
- * unified view of every matching capability category (Tool, Mode,
- * Skill) ranked by relevance so the agent has a single typed surface
- * to read on its next iteration.
- *
- * Always `MessageRole.Tool` — find_capability's whole purpose is to
- * feed discovery results back to the agent's next iteration. Born
- * `Active` so subscribers can react (e.g. UI preview as matches
- * land); the framework then broadcasts a `StateDelta` transitioning
- * to `Complete`.
- *
- * Mode-typed matches carry their `change_mode("…")` entry hint in
- * the [[sigil.tool.discovery.CapabilityStatus.RequiresSetup]] field —
- * the agent has both the discovery (this mode exists, matches your
- * keywords) AND the actionable next call (change_mode to enter)
- * without further indirection.
- */
 case class CapabilityResults(matches: List[CapabilityMatch],
                              participantId: ParticipantId,
                              conversationId: Id[Conversation],

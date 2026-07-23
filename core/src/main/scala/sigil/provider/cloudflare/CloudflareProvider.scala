@@ -17,26 +17,13 @@ import scala.concurrent.duration.*
  * Cloudflare's own infrastructure (not a third-party reseller). Model
  * id passed on the [[ProviderCall]] selects which.
  *
- * **Why this provider exists alongside [[sigil.provider.digitalocean.DigitalOceanProvider]]
- * and [[sigil.provider.deepinfra.DeepInfraProvider]]:** Cloudflare's
- * surface natively honors the canonical OpenAI fields — `reasoning_effort`,
- * `tool_choice: required`, `response_format` for structured outputs.
- * DO needs the Moonshot-specific `/think` / `/no_think` system-prompt
- * directive (sigil bug #155); DeepInfra accepts `strict: true` but
- * silently ignores it (bug #173) and documents `tool_choice ∈ {auto,
- * none}` only (no `required`). The native Cloudflare field surface
- * means the wire goes through [[OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField]]
- * and the standard `tool_choice` path — no provider-specific quirk
- * handlers.
+*
  *
  * Cloudflare's Kimi deployments (K2.5, K2.6) ship with substantially
  * larger context windows than DO's — K2.6 documents 262K. Reasoning
  * chains have more headroom before hitting `max_tokens`, mitigating
- * (but not eliminating) the `empty_budget_burn` degeneration mode
- * observed on DO's Kimi-K2.5 (sigil bug #161). The defensive
- * `emptyBudgetBurnThrows = true` is still set — the model is still
- * Kimi, and a [[ProviderStrategy]] fallback chain works the same way
- * if it ever fires.
+ * chains have more headroom before hitting `max_tokens`, mitigating
+  * (but not eliminating) the `empty_budget_burn` degeneration mode. The defensive
  */
 case class CloudflareProvider(apiToken: String,
                               accountId: String,
@@ -60,9 +47,8 @@ case class CloudflareProvider(apiToken: String,
     strictModeCapable = true,
     // Native canonical `reasoning_effort` — the framework translates
     // ReasoningMode (Auto/On/Off) + optional Effort into the wire field.
-    // Cloudflare hosts Kimi on the upstream-supported stack, so we
-    // don't expect DeepInfra's bug #165 tool-call regression on `Off`
-    // here — but live coverage will verify.
+    // Native canonical `reasoning_effort` — the framework translates
+     // ReasoningMode (Auto/On/Off) + optional Effort into the wire field.
     reasoningPolicy   = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
     // Kimi-K2.6 can pause minutes between reasoning and the answer; give
     // streaming requests a longer idle budget than the 120s base.

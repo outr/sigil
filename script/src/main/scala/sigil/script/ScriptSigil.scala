@@ -107,17 +107,17 @@ trait ScriptSigil extends Sigil {
   override protected def eventRegistrations: List[RW[? <: Event]] =
     summon[RW[ScriptResult]] :: super.eventRegistrations
 
-  /**
-   * Auto-register [[JsonInput]]'s RW so [[ToolInvoke]] events for
-   * runtime-created [[ScriptTool]] calls (whose `inputRW` is
-   * `RW[JsonInput]`) round-trip through fabric's polymorphic
-   * `RW[ToolInput]` discriminator. Without this, the first
-   * script-tool invocation crashes the agent loop at persistence
-   * with `Type not found [JsonInput]` — the in-flight `ToolInvoke`
-   * lands on the wire but the persistence step throws before any
-   * settling delta can be emitted, so client chips render
-   * "(input pending)" forever and the agent loop dies. Bug #53.
-   */
+   /**
+     * Auto-register [[JsonInput]]'s RW so [[ToolInvoke]] events for
+     * runtime-created [[ScriptTool]] calls (whose `inputRW` is
+     * `RW[JsonInput]`) round-trip through fabric's polymorphic
+     * `RW[ToolInput]` discriminator. Without this, the first
+     * script-tool invocation crashes the agent loop at persistence
+     * with `Type not found [JsonInput]` — the in-flight `ToolInvoke`
+     * lands on the wire but the persistence step throws before any
+     * settling delta can be emitted, so client chips render
+     * "(input pending)" forever and the agent loop dies.
+     */
   override def toolInputRegistrations: List[RW[? <: sigil.tool.ToolInput]] =
     summon[RW[JsonInput]] :: super.toolInputRegistrations
 

@@ -5,17 +5,11 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.tooling.types.*
 
-/**
- * Bug #9 phase 6 — verify Sigil-flavored typed shapes for LSP / BSP
- * tool emissions round-trip through fabric RW. Apps consuming the
- * wire shape pattern-match against these case classes; if the RW
- * derivation breaks, every consumer breaks silently.
- */
 class ToolingTypedShapesSpec extends AnyWordSpec with Matchers {
 
   private def roundTrip[T](value: T)(using rw: RW[T]): T = rw.write(rw.read(value))
 
-  "Bug #9 phase 6 typed shapes" should {
+   "typed shapes" should {
     "round-trip LspPosition" in {
       val v = LspPosition(line = 12, column = 7)
       roundTrip(v) shouldBe v

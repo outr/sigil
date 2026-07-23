@@ -11,12 +11,7 @@ import sigil.event.Event
  * at a deleted origin, a memory-summary covering events that no
  * longer exist, …
  *
- * Heals produce one or more `CorruptionEvidence` rows during their
- * `detect` pass, then operate on those in `apply`. The audit event
- * stream (`ConversationCorruptionDetected` / `ConversationHealed`)
- * carries the evidence list verbatim so log aggregators / operators
- * can root-cause the underlying framework bug from the durable log
- * alone without rerunning the failing turn.
+* Heals produce one or more `CorruptionEvidence` rows during their
  *
  * Open trait — apps with their own corruption shapes add subtypes
  * and register them through fabric polymorphic RW. The framework

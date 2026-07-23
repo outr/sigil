@@ -17,7 +17,7 @@ case class DeclineWorkflowInput(runId: String,
  * Decline a workflow run paused on an [[strider.step.Approval]]
  * step. Sugar over [[ResumeWorkflowTool]] with the canonical
  * `"decline"` payload (or `"decline: <reason>"` when reason is
- * provided). Bug #51.
+    * provided).
  *
  * The workflow's declined-branch path runs after this resolves —
  * each approval step's authoring decides what that path does

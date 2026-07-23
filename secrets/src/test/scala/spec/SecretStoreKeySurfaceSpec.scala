@@ -6,25 +6,6 @@ import sigil.secrets.DatabaseSecretStore
 
 import java.nio.file.{Files, NoSuchFileException, Path}
 
-/**
- * Regression for bug #41 — pins the new key-source contract:
- *
- *   1. [[DatabaseSecretStore.fromKeyFile]] requires the file to
- *      exist; it does NOT silently auto-generate. Apps that want a
- *      generated key persisted to disk make the decision explicitly
- *      via [[DatabaseSecretStore.generateKeyFile]].
- *   2. [[DatabaseSecretStore.generateKeyFile]] refuses to overwrite
- *      an existing file — overwriting would invalidate every secret
- *      already encrypted under the old material.
- *   3. [[sigil.secrets.SecretsSigil.secretStoreKey]] is abstract —
- *      a fixture that doesn't override it must not compile. We can
- *      assert this via a `compileErrors` check in a typeclass-style
- *      compile-time test, but a simpler runtime proxy is "any
- *      concrete instance MUST have provided one" — covered by the
- *      [[TestSecretsSigil]] running its full test suite without
- *      crashing during init. That's already exercised by
- *      [[SecretStoreSpec]]; this spec adds the file-side guarantees.
- */
 class SecretStoreKeySurfaceSpec extends AnyWordSpec with Matchers {
 
   "DatabaseSecretStore.fromKeyFile" should {

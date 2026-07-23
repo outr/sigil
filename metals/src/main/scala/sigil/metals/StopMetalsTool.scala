@@ -56,9 +56,6 @@ final class StopMetalsTool extends Tool {
             ))
           case Some(mm) =>
             mm.stop(workspace).flatMap { stopped =>
-              // Bug #97 — symmetric remove of the conversation
-              // overlay installed by `start_metals`. No-op when
-              // nothing was installed.
               sigil.removeConversationToolOverlay(
                 context.conversation.id,
                 MetalsBoostedToolNames.OverlaySource

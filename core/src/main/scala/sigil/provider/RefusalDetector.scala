@@ -3,21 +3,19 @@ package sigil.provider
 import scala.util.matching.Regex
 
 /**
- * Recognises refusal language in an agent's `respond.content`. Used
- * by the orchestrator (sigil bug #126) to enforce that a refusal is
- * only valid AFTER the agent has consulted `find_capability` — the
- * system prompt instructs this, but smaller / less-instruction-
- * following models drift to confident refusals without checking the
- * catalog. When the detector fires AND no `find_capability` was
- * called since the last user message, the orchestrator suppresses
- * the respond emission and substitutes a Tool-role `Failure`
- * diagnostic the agent reads on its next iteration.
+ * Recognises refusal language in an agent's `respond.content`. Used by the
+ * orchestrator to enforce that a refusal is only valid AFTER the agent has
+ * consulted `find_capability` — the system prompt instructs this, but smaller
+ * / less-instruction-following models drift to confident refusals without
+ * checking the catalog. When the detector fires AND no `find_capability` was
+ * called since the last user message, the orchestrator suppresses the respond
+ * emission and substitutes a Tool-role `Failure` diagnostic the agent reads
+ * on its next iteration.
  *
- * Apps wire a custom detector via [[sigil.Sigil.refusalDetector]] —
- * e.g. a moderation app where refusals are legitimate provides
- * `RefusalDetector.Never` so the framework never challenges; an app
- * with a broader phrasing vocabulary plugs in a richer regex set or
- * a classifier-backed implementation.
+ * Apps wire a custom detector via [[sigil.Sigil.refusalDetector]] — e.g. a
+ * moderation app where refusals are legitimate provides `RefusalDetector.Never`
+ * so the framework never challenges; an app with a broader phrasing vocabulary
+ * plugs in a richer regex set or a classifier-backed implementation.
  */
 trait RefusalDetector {
 
@@ -32,11 +30,6 @@ trait RefusalDetector {
 
 object RefusalDetector {
 
-  /** Default pattern-matcher tuned against the bug #126 wire-log
-    * scenario (Qwen3.6-35B refusing "switch to gpt-5.5" with
-    * `I can't switch to GPT-5.5…`). Conservative enough that
-    * shipped apps haven't observed false positives on productive
-    * respond emissions in the bug's reference corpus. */
   case object Default extends RefusalDetector {
     private val patterns: List[Regex] = List(
       raw"^\s*(?i)i\s+(can'?t|cannot|am\s+(not\s+able|unable))\b".r,

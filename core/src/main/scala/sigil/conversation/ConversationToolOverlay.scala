@@ -15,11 +15,6 @@ import sigil.provider.ToolPolicy
  * round-trip. Generalises to any "I just enabled a capability"
  * tool — webcam, browser session, secrets vault, slack, etc.
  *
- * Sigil bug #97. Multiple overlays merge: the framework folds
- * each one through [[sigil.Sigil.effectiveToolNames]] in
- * `installedAtMs` order so an `Active(a)` + `Active(b)` overlay
- * pair contributes both sets of names.
- *
  * `source` is a free-form discriminator the installer chooses
  * ("start_metals", "skill:web-research", "user-pin:rules-engine")
  * so [[sigil.Sigil.removeConversationToolOverlay]] can drop a

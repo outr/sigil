@@ -1,11 +1,5 @@
 package sigil.tool
 
-/**
- * Bug #131 — annotation mix-ins by tool family. Centralises the
- * (readOnly, destructive, idempotent, openWorld) tuple per
- * category so adding a new tool of a given shape doesn't require
- * remembering four overrides.
- */
 
 /** Read-only filesystem / repository inspection tools — `grep`,
   * `glob`, `read_file`, `git_status`, `git_log`, etc. The call has

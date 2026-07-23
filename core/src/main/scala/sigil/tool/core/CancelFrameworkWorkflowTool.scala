@@ -26,7 +26,7 @@ enum CancelFrameworkWorkflowOutput extends ToolOutput derives RW {
 
 /**
  * Cancel an in-flight framework workflow (pre-flight, compress,
- * frame-load, …) by id. Bug #51.
+ * by id.
  *
  * Cooperative — the workflow body has to reach a checkpoint
  * (between Steps, before issuing a long-running call) before the

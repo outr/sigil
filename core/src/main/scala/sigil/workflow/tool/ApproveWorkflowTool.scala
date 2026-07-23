@@ -18,7 +18,7 @@ case class ApproveWorkflowInput(runId: String,
  * step. Sugar over [[ResumeWorkflowTool]] with the canonical
  * `"approve"` payload (or, when `comment` is provided, an
  * `"approve: <comment>"` string the workflow's branching expression
- * can match on for distinct approval reasons). Bug #51.
+*
  *
  * Distinct from `cancel_framework_workflow` — that's for in-flight
  * framework operations (pre-flight, compress, …). This is for

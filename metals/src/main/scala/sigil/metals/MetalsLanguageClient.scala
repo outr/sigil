@@ -14,8 +14,8 @@ import scala.jdk.CollectionConverters.*
  * `LanguageClient` Sigil installs against the Metals subprocess. Two
  * jobs:
  *
- *  1. **Auto-respond to `window/showMessageRequest`** so Metals doesn't
- *     sit forever waiting for a human (sigil bug #70). Real Metals
+*  1. **Auto-respond to `window/showMessageRequest`** so Metals doesn't
+ *     sit forever waiting for a human. Real Metals
  *     fires this when it detects a build tool — "New sbt workspace
  *     detected, would you like to import the build?" with actions
  *     `[Import build, Not now, Don't show again]`. Without a response,
@@ -26,14 +26,9 @@ import scala.jdk.CollectionConverters.*
  *
  *  2. **Route `window/logMessage` + `window/showMessage` into the
  *     `onLogLine` callback** so Metals' streaming progress reaches
- *     the chat chip via [[sigil.event.ToolLog]] events (sigil bug
- *     #69). The callback is supplied per-spawn by [[MetalsManager]]
+ *     the chat chip via [[sigil.event.ToolLog]] events. The callback is supplied per-spawn by [[MetalsManager]]
  *     and updated on idempotent re-attaches.
  *
- * Other LSP requests/notifications are no-ops — Sigil isn't running
- * a real editor; we don't render diagnostics, code lenses, etc. Apps
- * that want them subclass [[MetalsLanguageClient]] and override the
- * relevant methods.
  */
 final class MetalsLanguageClient(label: String,
                                   onLogLine: AtomicReference[Option[String => Task[Unit]]],
@@ -175,13 +170,6 @@ final class MetalsLanguageClient(label: String,
     onLogLine.get().foreach(cb => cb(line).handleError(_ => Task.unit).startUnit())
   }
 
-  /** Metals' progress-pulse notification (sigil bug #98). Routes the
-    * `text` field through `onStatus` so the in-flight tool's chip
-    * (typically `start_metals`) can surface what Metals is actually
-    * doing — "indexing scala/java sources", "compiling 47 files",
-    * etc. Without this handler lsp4j's GenericEndpoint logs an
-    * "Unsupported notification method: metals/status" warning and
-    * the progress pulse is dropped. */
   @JsonNotification("metals/status")
   def metalsStatus(params: Object): Unit = {
     val text = params match {

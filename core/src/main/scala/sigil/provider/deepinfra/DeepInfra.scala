@@ -25,8 +25,7 @@ import spice.net.*
  * The catalog is loaded from DeepInfra's public `/models/list` endpoint —
  * no auth required for listing. See [[refreshModels]] and [[loadModels]].
  * Pricing, context length, and tag-derived modality flow into the cached
- * [[Model]] so the framework's cost pipeline (`ConversationCostUpdated`,
- * `cumulativeCost`) attributes spend correctly. Sigil bug #162.
+ * `cumulativeCost`) attributes spend correctly.
  */
 object DeepInfra {
   val Provider: String = "deepinfra"

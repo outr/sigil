@@ -28,13 +28,7 @@ final class JtokkitTokenizer(encoding: Encoding) extends Tokenizer {
 
 object JtokkitTokenizer {
   /** Whether jtokkit is on the classpath. Probed once at startup; the result
-    * is captured in `available` and consulted by [[OpenAIChatGpt]] /
-    * [[OpenAIO200k]] so a missing dep degrades to [[HeuristicTokenizer]]
-    * instead of throwing `NoClassDefFoundError` at the first agent turn.
-    * Bug #76 — `sigil-core`'s declared `jtokkit` dependency doesn't always
-    * resolve transitively into a downstream consumer's classpath; the
-    * sigil-all umbrella explicitly redeclares it, but this fallback
-    * protects future packaging regressions in the same shape. */
+    * is cached for the life of the JVM. */
   val available: Boolean = {
     try {
       Class.forName("com.knuddels.jtokkit.Encodings")
@@ -57,7 +51,7 @@ object JtokkitTokenizer {
           s"HeuristicTokenizer (~3.5-chars-per-token approximation). Token-budget estimates " +
           s"will be coarser. Add `\"com.knuddels\" % \"jtokkit\" % \"<version>\"` to your " +
           s"dependencies (or depend on `sigil-all`, which re-declares it explicitly) to restore " +
-          s"accurate counts. See bugs/76."
+          s"accurate counts."
       )
     }
   }
@@ -66,12 +60,12 @@ object JtokkitTokenizer {
     if (available) Encodings.newDefaultEncodingRegistry() else null
 
   /** Decision helper extracted so both `OpenAIChatGpt` / `OpenAIO200k`
-   * lazy vals AND test code can verify the fallback path
-   * deterministically. Production callers always pass `available`
-   * for `probe`; the spec for bug #76 passes `false` to verify the
-   * heuristic path is wired correctly without needing to actually
-   * remove jtokkit from the classpath. Public for test access; not
-   * intended as a stable API. */
+    * lazy vals AND test code can verify the fallback path
+    * deterministically. Production callers always pass `available`
+    * for `probe`; the spec passes `false` to verify the
+    * heuristic path is wired correctly without needing to actually
+    * remove jtokkit from the classpath. Public for test access; not
+    * intended as a stable API. */
   def selectTokenizer(probe: Boolean,
                       encodingFactory: () => Tokenizer,
                       slotName: String): Tokenizer =

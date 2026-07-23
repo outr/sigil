@@ -7,7 +7,7 @@ import fabric.rw.*
  * represents. Used by `find_capability` to surface heterogeneous
  * matches (a Tool the agent can call directly, a Mode the agent must
  * `change_mode` into, a Skill that overlays the system prompt) under
- * a single result type. Bug #66.
+    * a single result type.
  *
  * Mirrors the Scalagentic shape the framework's predecessor used.
  * The enum is open at the conceptual layer (apps can grow new

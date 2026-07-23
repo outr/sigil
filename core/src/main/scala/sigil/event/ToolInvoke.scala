@@ -28,7 +28,6 @@ import sigil.tool.{ToolInput, ToolName, ToolOutput}
  * `MessageDelta`; the chip would render the same content again. Client UIs
  * filter on `internal == true` to suppress the redundant chip. The
  * framework's own logic (silent-turn detector, persistence) treats these
- * the same as any other tool call. Bug #56.
  */
 case class ToolInvoke(toolName: ToolName,
                       participantId: ParticipantId,
@@ -55,14 +54,14 @@ case class ToolInvoke(toolName: ToolName,
                       role: MessageRole = MessageRole.Standard,
                       internal: Boolean = false,
                       /** Wire-level `call_id` from the provider's response
-                        * (OpenAI's `call_<hash>`, etc.) when the model itself
-                        * emitted the call. Captured by the provider's
-                        * SSE parser and persisted here so subsequent turns can
-                        * render the function_call_output with the original
-                        * id — required for OpenAI's `previous_response_id`
-                        * chain to find a match (sigil bug #167 r5). `None`
-                        * for synthetic / framework-emitted invokes (no
-                        * upstream call_id to roundtrip). */
+                         * (OpenAI's `call_<hash>`, etc.) when the model itself
+                         * emitted the call. Captured by the provider's
+                         * SSE parser and persisted here so subsequent turns can
+                         * render the function_call_output with the original
+                         * id — required for OpenAI's `previous_response_id`
+                         * chain to find a match. `None`
+                         * for synthetic / framework-emitted invokes (no
+                         * upstream call_id to roundtrip). */
                       callId: Option[String] = None,
                       /** Per-call token cost. Folded by [[sigil.signal.ToolDelta]]
                         * when the provider emits its trailing
@@ -87,7 +86,7 @@ case class ToolInvoke(toolName: ToolName,
                         * always carries the most recent summary. Default
                         * empty — tools that don't opt in leave it as-is and
                         * the UI falls back to the tool name alone. Sigil
-                        * bug #191. */
+                        */
                       summary: String = "",
                       /** Model that produced this tool call. Stamped by the
                         * orchestrator from the active `ProviderRequest`. Pairs

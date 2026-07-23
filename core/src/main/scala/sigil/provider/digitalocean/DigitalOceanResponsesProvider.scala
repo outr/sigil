@@ -18,18 +18,6 @@ import spice.net.*
  * features (response-id chaining, `reasoning.summary`, web/file/code
  * built-in tools where DO surfaces them) against DO-hosted models.
  *
- * **Required for kimi family (sigil bug #161).** DO's kimi-k2.5 /
- * kimi-k2.6 deployment on `/v1/chat/completions` catastrophically
- * degenerates on non-trivial prompts (multiple tools + history) —
- * either emitting `" The!!!!"` token loops on `reasoning_content`
- * until cap, or null-padded content tokens. No parameter
- * (`reasoning_effort`, `chat_template_kwargs: {thinking: false}`,
- * `/no_think` directive, temperature / penalty knobs) rescues it.
- * The SAME models on `/v1/responses` work cleanly — 10/10 success
- * on real Sage payloads with `tool_choice: "required"`, zero
- * `reasoning_tokens`, ~50–170 output_tokens per call. Apps wiring
- * kimi candidates into a `ProviderStrategy` MUST use this factory,
- * not [[DigitalOceanProvider.create]].
  */
 object DigitalOceanResponsesProvider {
   def create(sigil: Sigil,

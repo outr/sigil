@@ -9,37 +9,6 @@ import sigil.participant.AgentParticipantId
 import sigil.signal.{EventState, Signal}
 import sigil.tool.model.ResponseContent
 
-/**
- * Pre-persist transform that frames a user's reply when it
- * matches the option values from the agent's most-recent
- * `respond_options` Message. Sigil bug #72.
- *
- * Without framing, a respond_options selection arrives at the
- * next agent iteration as a bare token (`"start_metals"`).
- * Small / local models routinely misinterpret as "user told me
- * their preference" rather than "user asked me to take that
- * action" and reply with `no_response` — the user-visible
- * symptom is the chat going silent.
- *
- * The fix rewrites the user message's [[ResponseContent.Text]]
- * to:
- *
- * {{{
- *   I'd like to:
- *   - <option label> (value: <option value>)
- *     <option description, when present>
- *   (Selected from: '<original prompt>')
- * }}}
- *
- * Multi-select ("a, b, c") expands to one bullet per match.
- * Non-matching free-form replies (the user typed something
- * outside the option set) pass through unchanged so an agent
- * with built-in NL handling still sees the user's actual words.
- *
- * Idempotent: if the message already carries the framed
- * format, the transform is a no-op (a re-publish through
- * `inboundTransforms` doesn't double-frame).
- */
 object RespondOptionsSelectionFramingTransform extends InboundTransform {
 
   override def apply(signal: Signal, self: Sigil): Task[Signal] = signal match {

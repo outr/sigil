@@ -19,20 +19,6 @@ import sigil.tooling.{
   LspSelectionRangeTool, LspSignatureHelpTool, LspTypeDefinitionTool, LspWorkspaceSymbolsTool
 }
 
-/**
- * Regression spec for sigil bug #227 — every LSP / BSP tool example
- * value used to carry fabricated placeholder paths (`/abs/path/Foo.scala`,
- * `/abs/path/myproject`) which agents copied verbatim into real tool
- * calls. Layer-1 fix: drop the placeholder examples entirely; the
- * universal navigation tools `reload_content` / `query_tool_output` get
- * no examples either (otherwise rendered schema-type names like
- * `"string"` leak as values).
- *
- * For every LSP / BSP tool plus the two pagination tools, render each
- * example's input via the tool's `inputRW` and assert no string leaf
- * contains the placeholder fingerprints or the JSON-schema type-name
- * sentinels.
- */
 class LspBspToolExampleSpec extends AnyWordSpec with Matchers {
 
   /** Tools whose examples must not leak placeholders. Built from
@@ -116,7 +102,7 @@ class LspBspToolExampleSpec extends AnyWordSpec with Matchers {
     tool.inputRW.asInstanceOf[RW[ToolInput]].read(input)
 
   "LSP / BSP / pagination tool examples" should {
-    "contain no placeholder paths or filenames from bug #227" in {
+   "contain no placeholder paths or filenames" in {
       val violations: List[String] = auditedTools.flatMap { tool =>
         tool.examples.flatMap { example =>
           val json     = renderInput(tool, example.input)

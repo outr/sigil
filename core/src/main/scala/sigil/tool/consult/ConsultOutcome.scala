@@ -3,18 +3,18 @@ package sigil.tool.consult
 import sigil.provider.{StopReason, TokenUsage}
 
 /**
- * Richer outcome shape for [[ConsultTool.invokeRich]]. Distinguishes
- * the four terminal states that the legacy `Option[I]` API collapsed
- * into "Some payload" vs. "None" — silent absorption of
- * `finish_reason: length`-truncated streams as `None` lost the
- * diagnostic signal exactly when it was most useful (sigil bug #197).
- *
- * Callers that care about which terminal state actually occurred —
- * routing classifiers, app-supplied work-type inference, anything
- * whose default flow on `None` is "shrug and use the fallback" — can
- * now pattern-match and surface a `FrameworkWorkflowNotice` on
- * `Truncated` / `Failed` instead of returning silently.
- */
+   * Richer outcome shape for [[ConsultTool.invokeRich]]. Distinguishes
+   * the four terminal states that the legacy `Option[I]` API collapsed
+   * into "Some payload" vs. "None" — silent absorption of
+   * `finish_reason: length`-truncated streams as `None` lost the
+   * diagnostic signal exactly when it was most useful.
+   *
+   * Callers that care about which terminal state actually occurred —
+   * routing classifiers, app-supplied work-type inference, anything
+   * whose default flow on `None` is "shrug and use the fallback" — can
+   * now pattern-match and surface a `FrameworkWorkflowNotice` on
+   * `Truncated` / `Failed` instead of returning silently.
+   */
 sealed trait ConsultOutcome[+I]
 
 object ConsultOutcome {

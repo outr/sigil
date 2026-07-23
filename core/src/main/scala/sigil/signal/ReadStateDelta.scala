@@ -10,7 +10,7 @@ import sigil.participant.ParticipantId
 /**
  * Transient update to a [[sigil.event.ReadState]] event. Carries
  * the new `lastReadAt` cursor; the underlying event row is
- * mutated in place. Bug #62.
+ * the new `lastReadAt` cursor; the underlying event row is
  *
  * High-frequency by design — every scroll-to-bottom (or
  * equivalent client signal) emits one. The Delta path doesn't
@@ -18,7 +18,7 @@ import sigil.participant.ParticipantId
  * cost is one Signal broadcast per advance + one indexed write
  * to a single row.
  *
- * **`participantId`** is carried on the delta itself (bug #66)
+    * **`participantId`** is carried on the delta itself
  * so consumers can route the cursor advance per-participant
  * without re-resolving the parent `ReadState`. Matches the
  * pattern other event/delta pairs use (e.g. `Message` /

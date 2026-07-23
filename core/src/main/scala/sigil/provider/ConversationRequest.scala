@@ -58,15 +58,6 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                  * reply on this turn. Set by the iteration-cap
                                  * soft-stop path. */
                                forceResponseSynthesis: Boolean = false,
-                               /** Sigil bug #226 — snapshot of the per-agent-loop
-                                 * `find_capability` cache surfaced into the
-                                 * system prompt's "Capabilities you've already
-                                 * discovered" section. Lifetime is bounded by
-                                 * the agent loop on the caller side
-                                 * ([[sigil.TurnContext.discoveredCapabilities]]);
-                                 * the renderer just reads what the loop has
-                                 * accumulated so far. Empty on a fresh user
-                                 * turn. */
                                discoveredCapabilities: Map[String, DiscoveredCapability] = Map.empty,
                                /** Sigil bug #281 follow-up — the LIVE atomic
                                  * reference behind [[discoveredCapabilities]],

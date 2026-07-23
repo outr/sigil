@@ -13,14 +13,7 @@ import java.nio.file.{Files, OpenOption, Path, StandardOpenOption}
  * nothing; apps opt in by wiring [[FileChunkLogger]] (or a custom
  * impl) via [[sigil.Sigil.chunkLogger]].
  *
- * Sigil bug #194 — `JsonLinesInterceptor` logs the aggregated
- * response after the stream completes. For SSE responses that hang
- * mid-stream (upstream timeout, slow inference, network stall) the
- * "response" line lands minutes after the request fired with no
- * inter-chunk timing visible. This hook surfaces the per-chunk
- * arrival data needed to diagnose stalls — "where did the stream
- * stall?", "did inter-chunk gap cross upstream's idle-timeout
- * threshold?", "is provider X consistently slow?".
+ * This hook surfaces per-chunk arrival data needed to diagnose stalls.
  */
 trait ChunkLogger {
 

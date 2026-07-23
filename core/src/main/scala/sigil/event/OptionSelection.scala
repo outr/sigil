@@ -6,12 +6,12 @@ import lightdb.id.Id
 /**
  * Structured discriminator on a [[Message]] indicating the message
  * originated as a `respond_options` selection — the user clicked
- * one or more option chips, not typed free text. Sigil bug #73.
+ * one or more option chips, not typed free text.
  *
  * Two consumers, one shape:
  *
  *   - **Agent (LLM)** — reads the surrounding `Message.content` for
- *     the framed action request (Sigil bug #72 — text shape that
+ *     the framed action request (text shape that
  *     small models triage cleanly).
  *   - **Chat view** — checks for `optionSelection`. When set,
  *     renders a structured selection chip (different visual shape

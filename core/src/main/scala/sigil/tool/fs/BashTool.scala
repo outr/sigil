@@ -38,7 +38,6 @@ final class BashTool(context: FileSystemContext) extends Tool with sigil.tool.De
     "cli", "process", "spawn", "subprocess"
   )
 
-  // Bug #86 — generic primitive: ranks below domain-specific tools.
   override def preferIfNoBetter: Boolean = true
 
   override def executeResult(input: BashInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

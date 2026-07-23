@@ -54,13 +54,12 @@ case object ChangeModeTool extends Tool {
       |on the next turn.""".stripMargin
 
   // Curated keyword surface for discovery ranking. Tight on what
-  // `change_mode` actually does — switch the agent's operating
-  // posture / toolset — without leaking into adjacent intents like
-  // `pin_complexity` (tier / level / complexity / cost), which are
-  // separate tools with their own keyword sets. Without these, the
-  // BM25 ranker would score `change_mode` purely on its description
-  // prose and accidentally match tier-shaped queries (sigil bug
-  // #158).
+   // `change_mode` actually does — switch the agent's operating
+   // posture / toolset — without leaking into adjacent intents like
+   // `pin_complexity` (tier / level / complexity / cost), which are
+   // separate tools with their own keyword sets. Without these, the
+   // BM25 ranker would score `change_mode` purely on its description
+   // prose and accidentally match tier-shaped queries.
   override val keywords: Set[String] = Set(
     "mode", "modes", "switch", "change", "transition",
     "operating", "posture", "kit", "toolset", "tools"

@@ -4,9 +4,9 @@ import fabric.rw.*
 import spice.net.URL
 
 /**
- * Standard [[ToolOutput]] for tools whose result is a rendered image —
- * a preview, a screenshot, a generated diagram, an OCR'd page, etc.
- * Sigil bug #280.
+  * Standard [[ToolOutput]] for tools whose result is a rendered image —
+  * a preview, a screenshot, a generated diagram, an OCR'd page, etc.
+  *
  *
  * Before this type shipped, tools producing visual output had no way
  * to deliver the image into the agent's visual context. The workaround

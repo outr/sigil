@@ -27,10 +27,7 @@ import sigil.tool.ToolName
  *     when the invoke's typed output is a paginated result
  *   - `extraContext` — app-driven (populated via curator or tool behavior)
  *
- * Persisted as its own [[RecordDocument]] (id derived from
- * `(participantId, conversationId)`) — bug #26 lifted projections out
- * of the now-deleted `ConversationView` so the rolling-window cache
- * has a single concern.
+*
  *
  * Re-derivable from the event log: every settled `Sigil.publish` updates
  * this projection alongside the event itself, but a full rebuild is

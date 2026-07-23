@@ -9,7 +9,6 @@ import fabric.rw.*
  *
  * Lives on the `Message` itself rather than as a content-block
  * variant because it's a Message-level property: the orchestrator's
- * refusal-challenge intercept, the bug-#6 failure-surface path, and
  * downstream "show me failed turns" queries all walk Messages and
  * key off this directly. Content is the *reason*; disposition is the
  * *verdict*.

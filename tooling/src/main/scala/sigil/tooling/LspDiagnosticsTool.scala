@@ -12,23 +12,17 @@ case class LspDiagnosticsInput(languageId: String,
                                waitMs: Long = 1500L) extends ToolInput derives RW
 
 /**
- * Returns the language server's current diagnostics for a file —
- * type errors, lint warnings, unused imports, etc. The agent's
- * primary "did my edit compile" feedback loop. Opens the file with
- * the server (idempotent), waits a short window for the server to
- * publish diagnostics, then snapshots them.
- *
- * `waitMs` is caller-controlled because different servers settle at
- * different speeds — Metals on cold cache can take 1–2s; rust-analyzer
- * is sub-second after warm-up. Tools that already opened the file
- * earlier in the turn pass `0` to read the latest snapshot directly.
- *
- * Bug #9 phase 6: emits a typed [[LspDiagnosticsResult]] JSON shape
- * — `{filePath, diagnostics: [{filePath, range:{start, end},
- * severity, message, code, source}, ...]}` — so agents can iterate
- * the typed list and pattern-match on severity instead of regex-
- * parsing rendered strings.
- */
+     15|  * Returns the language server's current diagnostics for a file —
+     16|  * type errors, lint warnings, unused imports, etc. The agent's
+     17|  * primary "did my edit compile" feedback loop. Opens the file with
+     18|  * the server (idempotent), waits a short window for the server to
+     19|  * publish diagnostics, then snapshots them.
+     20|  *
+     21|  * `waitMs` is caller-controlled because different servers settle at
+     22|  * different speeds — Metals on cold cache can take 1–2s; rust-analyzer
+     23|  * is sub-second after warm-up. Tools that already opened the file
+     24|  * earlier in the turn pass `0` to read the latest snapshot directly.
+     25|  */
 final class LspDiagnosticsTool(val manager: LspManager) extends Tool
   with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   type Input  = LspDiagnosticsInput

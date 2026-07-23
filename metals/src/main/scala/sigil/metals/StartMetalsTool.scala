@@ -53,17 +53,11 @@ final class StartMetalsTool extends Tool {
               "start_metals: this Sigil instance doesn't include sigil-metals — mix in MetalsSigil to enable."
             ))
           case Some(mm) =>
-            // Bug #69 — fan Metals' stdout into the chat chip via
-            // `ToolLog` events. The callback runs on the drainer
-            // thread; `context.toolLog` pairs each line to this
-            // tool's ToolInvoke via `currentToolInvokeId`.
+            // Fan Metals' stdout into the chat chip via `ToolLog` events.
+            // The callback runs on the drainer thread; `context.toolLog`
+            // pairs each line to this tool's ToolInvoke via `currentToolInvokeId`.
             val onLogLine: String => Task[Unit] =
               line => context.toolLog(line)
-            // Bug #98 — Metals' `metals/status` notifications
-            // ("indexing scala/java sources", "compiling 47
-            // files") flow into the chip's progressMessage so the
-            // user sees what Metals is doing during the multi-
-            // minute build-import + index window.
             val onStatus: String => Task[Unit] =
               text => context.reportProgress(text)
             // Initial pulse so the chip isn't blank during the
@@ -71,10 +65,6 @@ final class StartMetalsTool extends Tool {
             // `metals/status` notification arrives.
             context.reportProgress(s"Spawning Metals for ${workspace.getFileName}…").flatMap { _ =>
             mm.ensureRunning(workspace, onLogLine = Some(onLogLine), onStatus = Some(onStatus)).flatMap { name =>
-              // Bug #88 — also write LspServerConfig("scala") so
-              // the framework's generic lsp_* tools find Metals as
-              // their backend. No-op for apps without
-              // ToolingCollections in their DB.
               val lspConfigWrite = metalsHost(sigil).map(_.writeLspServerConfigForMetals(workspace))
                 .getOrElse(Task.unit)
                 .handleError { t =>

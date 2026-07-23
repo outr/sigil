@@ -27,10 +27,7 @@ import sigil.signal.EventState
  *     `Pinned` / `Repinned` / `Unpinned` distinctly without diffing
  *     `previousTier` / `newTier` to figure out which path ran.
  *
- * `ControlPlaneEvent` — matches `ModeChange` / `RouteResolved`. Doesn't
- * enter agent ContextFrames; the agent reads pinned-complexity state via
- * the conversation snapshot. The event is for UI consumers + wire-log
- * forensics. Sigil bug #177.
+* `ControlPlaneEvent` — matches `ModeChange` / `RouteResolved`. Doesn't
  */
 case class ComplexityChange(participantId: ParticipantId,
                             conversationId: Id[Conversation],

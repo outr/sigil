@@ -37,26 +37,26 @@ object OpenAI {
   val fixedSamplingPrefixes: Set[String] = Set("gpt-5", "o1", "o3")
 
   /**
-   * OpenAI model families that emit `reasoning` output items in the
-   * Responses API stream and require the corresponding state to be
-   * either replayed (encrypted_content round-trip) or recovered via
-   * `previous_response_id` on subsequent requests. Bug #62.
-   *
-   * `OpenAIProvider` uses this to opt the request into
-   * `reasoning.summary = "auto"` and
-   * `include = ["reasoning.encrypted_content"]` so the response
-   * carries content the framework can persist + replay. Other
-   * models (gpt-4o, gpt-4.1, gpt-3.5) don't emit reasoning items
-   * and some endpoints reject the include keyword as unknown,
-   * so the opt-in is gated.
-   *
-   * Prefix-based detection mirrors [[fixedSamplingPrefixes]] — same
-   * cold-cache rationale: a `Model.family` field would be cleaner
-   * long-term but the registry isn't always populated when the
-   * filter runs (first boot before `OpenRouter.refreshModels`,
-   * offline sessions). `o4` is included pre-emptively per bug #62's
-   * write-up; adding a new family is a one-line change here.
-   */
+     * OpenAI model families that emit `reasoning` output items in the
+     * Responses API stream and require the corresponding state to be
+     * either replayed (encrypted_content round-trip) or recovered via
+     * `previous_response_id` on subsequent requests.
+     *
+     * `OpenAIProvider` uses this to opt the request into
+     * `reasoning.summary = "auto"` and
+     * `include = ["reasoning.encrypted_content"]` so the response
+     * carries content the framework can persist + replay. Other
+     * models (gpt-4o, gpt-4.1, gpt-3.5) don't emit reasoning items
+     * and some endpoints reject the include keyword as unknown,
+     * so the opt-in is gated.
+     *
+     * Prefix-based detection mirrors [[fixedSamplingPrefixes]] — same
+     * cold-cache rationale: a `Model.family` field would be cleaner
+     * long-term but the registry isn't always populated when the
+     * filter runs (first boot before `OpenRouter.refreshModels`,
+     * offline sessions). `o4` is included pre-emptively; adding
+     * a new family is a one-line change here.
+     */
   val reasoningModelPrefixes: Set[String] = Set("gpt-5", "o1", "o3", "o4")
 
   /** Reasoning-effort token sets per OpenAI family, used by

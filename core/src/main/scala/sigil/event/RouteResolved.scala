@@ -50,14 +50,8 @@ case class RouteResolved(participantId: ParticipantId,
                          state: EventState = EventState.Complete,
                          timestamp: Timestamp = Timestamp(Nowish()),
                          role: MessageRole = MessageRole.Standard,
-                         // Sigil bug #166 — `RouteResolved` is forensic/UI
-                         // metadata (model id, work type, complexity tier,
-                         // skip reasons, classifier latency). `ControlPlaneEvent`
-                         // already excludes it from context frames, so
-                         // `Agents`-only visibility was hiding the event from
-                         // the only consumers that can act on it (UIs +
-                         // wire-log forensics). `All` is the right default;
-                         // apps that want stricter rules override `Sigil.canSee`.
+                         // Visibility controls whether the event appears in context frames.
+                          // `All` is the right default so UIs and wire-log forensics can see it.
                          override val visibility: MessageVisibility = MessageVisibility.All,
                          override val origin: Option[Id[Event]] = None,
                          override val source: Option[String] = None,

@@ -12,7 +12,7 @@ import scala.concurrent.duration.FiniteDuration
  * with its own cadence — independent failures, independent intervals.
  *
  * The framework currently ships [[StoredFileExpirationSweep]] for
- * Bug #9's tool-output retention; future expansions (per-Sigil
+ * tool-output retention; future expansions (per-Sigil
  * caches, log rotation, schema-upgrade rechecks) plug in by appending
  * their own [[MaintenanceTask]] to the list.
  *

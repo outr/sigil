@@ -16,10 +16,6 @@ import sigil.event.Event
  * [[RequestConversationHistory]] using `recentEvents.head`'s
  * timestamp as the `beforeMs` cursor.
  *
- * Bug #26 — the legacy `view: ConversationView` field is gone;
- * clients render rolling-window frames directly from each event's
- * [[sigil.event.Event.contextFrame]].
- *
  * Live updates take over from the receipt of this snapshot forward
  * (any subsequent Events / Deltas for this conversation flow through
  * the standard signal stream).

@@ -8,17 +8,6 @@ import sigil.tooling.{LspRecordingClient, WorkspaceEditApplier}
 
 import java.util.concurrent.atomic.AtomicReference
 
-/**
- * Coverage for sigil bug #98 — the framework's LSP4J client routes
- * Metals' `metals/status` extension notification through the
- * registered status callback so the active tool's chip can show
- * progress ("indexing scala/java sources", "compiling 47 files")
- * instead of looking frozen.
- *
- * Pre-#98 lsp4j's GenericEndpoint logged "Unsupported notification
- * method: metals/status" and dropped the message because no
- * @JsonNotification handler existed.
- */
 class LspRecordingClientStatusSpec extends AnyWordSpec with Matchers {
 
   "LspRecordingClient.metalsStatus (#98)" should {

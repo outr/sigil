@@ -10,7 +10,7 @@ import sigil.tool.model.ResponseContent
 /**
  * Framework sentinel for tool dispatch — substituted by the orchestrator when a
  * model emits a `tool_use` block whose name doesn't resolve to any registered
- * tool. Sigil bug #271.
+* tool.
  *
  * `UnknownTool` is NOT registered into the static roster, NEVER discoverable
  * via `find_capability`, and never advertised to the model. It exists only as

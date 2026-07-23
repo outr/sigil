@@ -5,30 +5,9 @@ import sigil.provider.{CodingWork, Mode, ToolPolicy, WorkType}
 import sigil.tool.ToolName
 
 /**
- * Mode the agent enters when it intends to author a runtime script
- * tool. Bug #59 — making script-authoring a first-class mode rather
- * than a side-effect of any conversation gives the agent three things
- * it didn't have before:
- *
- *   1. A skill (cookbook + best-practices) that teaches the executor's
- *      library surface and idioms — so the agent doesn't have to
- *      guess at Spice / Fabric / Rapid APIs the way it does from
- *      vanilla [[sigil.provider.ConversationMode]].
- *   2. A scoped tool roster ([[ToolPolicy.Active]]) that adds the
- *      script-authoring family — `library_lookup`, `class_signatures`,
- *      `read_source`, `create_script_tool`, `update_script_tool`,
- *      `delete_script_tool`, `list_script_tools` — only while the
- *      agent is in this mode. Outside this mode, those tools aren't
- *      even discoverable; the conversation surface stays uncluttered.
- *   3. Mode discipline that emerges naturally: the agent that wants
- *      to create a tool must first `change_mode("script-authoring")`,
- *      which surfaces the skill that tells it to look up unfamiliar
- *      APIs before writing code. The "1 lookup beats 3 broken
- *      compiles" loop closes by construction.
- *
- * Apps stir this in by mixing [[ScriptSigil]] (which auto-registers
- * the mode and the introspection tools).
- */
+  * Mode the agent enters when it intends to author a runtime script
+  * tool.
+  */
 case object ScriptAuthoringMode extends Mode {
   override val name: String = "script-authoring"
 
@@ -166,15 +145,6 @@ case object ScriptAuthoringMode extends Mode {
     * is preserved by `ToolPolicy.Active`'s semantics — these tools
     * supplement, don't replace.
     *
-    * Bug #60 — names are written as [[ToolName]] literals rather than
-    * referencing the tool objects' `.name` field. The tool objects
-    * carry `modes = Set(ScriptAuthoringMode.id)` in their super-
-    * constructor, so referencing them here would create a circular
-    * static-init dependency: whichever side loads first re-enters the
-    * other's still-running `<clinit>` and reads `MODULE$ == null`,
-    * throwing `ExceptionInInitializerError`. Literals break the
-    * cycle — this side no longer touches the tool objects, so the
-    * tools load lazily on first use against an already-initialised
     * `ScriptAuthoringMode`. */
   override val tools: ToolPolicy = ToolPolicy.Active(List(
     ToolName("library_lookup"),

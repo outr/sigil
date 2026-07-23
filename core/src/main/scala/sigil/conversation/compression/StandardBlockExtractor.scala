@@ -30,9 +30,7 @@ import sigil.information.{Information, InformationSummary}
  * Knobs:
  *   - [[minChars]]: size threshold in characters (default 2000 ≈ 500
  *     tokens). Text frames shorter than this are left alone.
- *   - [[extractText]]: kill switch for the only remaining extraction
- *     kind. Pre-bug-#201 there was also an `extractToolResult` knob;
- *     that contract violation has been removed.
+    * kind.
  *   - [[placeholder]]: renders the in-frame reference text from the
  *     newly-minted Information id and catalog summary.
  *   - [[summaryOf]]: produces the catalog's 1-2 line teaser. Default
@@ -73,12 +71,7 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
             val (f, s, i) = buildExtraction(t.content, replacement => t.copy(content = replacement))
             (f, Some(s), Some(i))
           // Tool-result frames are NOT eligible for extraction (sigil
-          // bug #201). What `executeResult` emits is what the agent
-          // sees on its next iteration — the framework must not
-          // silently substitute a placeholder for tool output. Tools
-          // whose output exceeds a single-shot consumable size
-          // declare `paginate = true` and accept pagination inputs;
-          // tools that don't paginate must self-limit.
+          // Tool-result frames are NOT eligible for extraction.
           case other =>
             (other, None, None)
         }

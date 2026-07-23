@@ -98,7 +98,7 @@ object OpenAIChatCompletions {
       * the wire flag that engages grammar-constrained decoding. When
       * true, [[renderTools]] dispatches per-tool: tools whose schema
       * is strict-compatible (no `DefType.Json` anywhere in the tree —
-      * bug #64) ship with `strict: true` and [[StrictSchema.forOpenAIStrict]]
+      * applied to their parameters. Tools that can't be strict (Json
       * applied to their parameters. Tools that can't be strict (Json
       * fields are incompatible with strict mode's closed-object
       * requirement) fall through to [[nonStrictSchemaTransform]] and
@@ -170,13 +170,13 @@ object OpenAIChatCompletions {
       * turns. */
     toolCallIdNormalizer: String => String = identity,
 
-    /** When `true`, an inline `data: {"error": {...}}` event in the SSE
+   /** When `true`, an inline `data: {"error": {...}}` event in the SSE
       * stream raises [[ProviderStreamException]] instead of being
       * silently ignored. Surfaces backend-side mid-stream failures
       * (HTTP 200 + JSON error envelope) as user-visible failures via
       * the agent loop's failure-surface path.
       *
-      * Sigil bug #193 — default flipped from `false` to `true`. Every
+      * Every
       * OpenAI-compat upstream gateway observed in practice (OpenRouter,
       * DeepInfra, DigitalOcean, llama.cpp) emits these chunks on
       * provider-side timeouts / 502s; silently dropping them masked
@@ -195,7 +195,7 @@ object OpenAIChatCompletions {
       * agent can't recover from this (there's nothing to react to),
       * so the framework raises so [[ProviderStrategy.errorClassifier]]
       * can fall through to the next candidate. Reasoning-only output
-      * still counts as no useful output. Sigil bug #161. */
+      * still counts as no useful output. */
     emptyBudgetBurnThrows: Boolean = false,
 
     /** When `false`, the per-function `"strict": true` flag is OMITTED
@@ -213,7 +213,7 @@ object OpenAIChatCompletions {
       * reshape the schema?"); this is provider-side ("should we
       * send the flag?"). For honest providers both stay `true`.
       *
-      * Sigil bug #173. */
+      */
     honorsStrict: Boolean = true,
 
     /** Shape Sigil uses to express forced-call semantics on the
@@ -231,7 +231,7 @@ object OpenAIChatCompletions {
       * `tool_choice: "required"` natively, response_format is the
       * documented substitute.
       *
-      * Sigil bug #173. */
+      */
     forcedCallShape: ForcedCallShape = ForcedCallShape.ToolChoice,
 
     /** Per-provider extra top-level wire fields appended to every
@@ -299,12 +299,12 @@ object OpenAIChatCompletions {
     starvationRelief: Option[sigil.provider.StreamStarvationRelief] = None
   )
 
-  /** How Sigil expresses forced-call semantics on a chat-completions
+ /** How Sigil expresses forced-call semantics on a chat-completions
     * wire. Default uses the OpenAI-canonical `tool_choice` field;
     * `ResponseFormatJsonSchema` substitutes a `response_format`
     * json_schema constraint over a synthesized meta-schema (and
     * stream-side parses the assistant content as a synthetic tool
-    * call). Sigil bug #173. */
+    * call). */
   enum ForcedCallShape {
     case ToolChoice
     case ResponseFormatJsonSchema
@@ -566,13 +566,6 @@ object OpenAIChatCompletions {
       case (ToolChoice.Auto, _) =>
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("auto"))
 
-      // Sigil bug #173 — forced-call substitution. When the backend
-      // doesn't honor `tool_choice: required` / function-form
-      // (DeepInfra), express forced-call via `response_format:
-      // json_schema` over a synthesized meta-schema. Sigil's structure-
-      // first invariant (every turn with tools must produce a tool
-      // call) is preserved through a documented substitute rather than
-      // an undocumented wire flag the backend silently ignores.
       case (ToolChoice.Required, ForcedCallShape.ResponseFormatJsonSchema) =>
         Vector(
           "tools"           -> arr(toolsArr*),
@@ -646,13 +639,6 @@ object OpenAIChatCompletions {
     obj((baseFields ++ toolFields ++ reasoningFields ++ generationFields ++ extraFields)*)
   }
 
-  /** Sigil bug #173 — build a `response_format: json_schema` body
-    * fragment for `ToolChoice.Specific`. The synthesized schema is
-    * the named tool's input schema (closed-object, strict-shaped),
-    * with `name = tool name`. Model emits a single JSON object
-    * matching the tool's input directly as its assistant content;
-    * stream-side parses that content as a synthetic
-    * `ToolCallStart` + `ToolCallComplete` for the named tool. */
   private def buildSpecificResponseFormat(input: ProviderCall, name: sigil.tool.ToolName): Json = {
     val tool = input.tools.find(_.schema.name == name)
       .getOrElse(throw new IllegalStateException(
@@ -670,14 +656,6 @@ object OpenAIChatCompletions {
     )
   }
 
-  /** Sigil bug #173 — build a `response_format: json_schema` body
-    * fragment for `ToolChoice.Required` (force ANY tool from the
-    * roster). The synthesized meta-schema is:
-    *   `{ tool_name: enum[<all roster names>], arguments: oneOf<…> }`
-    * Model emits one JSON object matching this shape as its assistant
-    * content; stream-side looks up `tool_name`, extracts `arguments`,
-    * and emits synthetic `ToolCallStart` + `ToolCallComplete` events
-    * the orchestrator processes identically to native tool calls. */
   private def buildRequiredMetaResponseFormat(input: ProviderCall): Json = {
     val names = input.tools.map(_.schema.name.value)
     val argSchemas = input.tools.map { t =>
@@ -707,13 +685,7 @@ object OpenAIChatCompletions {
     )
   }
 
-  /** Render the wire `tools` array. Per-tool dispatch on strict-mode
-    * capability: when [[Config.strictModeCapable]] is true AND the
-    * tool's input schema has no `DefType.Json` anywhere (bug #64 —
-    * strict mode is incompatible with any-JSON-value fields), the
-    * tool ships with `strict: true` and a [[StrictSchema.forOpenAIStrict]]-
-    * shaped schema. Otherwise the schema runs through
-    * [[Config.nonStrictSchemaTransform]] and `strict` is omitted. */
+   /** Render the wire `tools` array. Per-tool dispatch on strict-mode */
   def renderTools(input: ProviderCall, sigil: Sigil, config: Config): Vector[Json] =
     input.tools.map { t =>
       val s = t.schema
@@ -876,13 +848,6 @@ object OpenAIChatCompletions {
         if (!c.isNull) {
           val text = c.asString
           if (text.nonEmpty) {
-            // Sigil bug #173 — in response_format mode the content
-            // stream is actually the synthesized tool-call payload,
-            // not user-visible text. Buffer for end-of-stream
-            // synthesis; suppress the TextDelta so the orchestrator
-            // doesn't start a streaming user-visible Message. The
-            // synthetic ToolCallStart/ContentBlockDelta/Complete pair
-            // fired on finish_reason replaces it.
             state.responseFormatMode match {
               case Some(_) =>
                 state.responseFormatBuf.append(text)
@@ -913,7 +878,7 @@ object OpenAIChatCompletions {
           if (text.nonEmpty) {
             events += ProviderEvent.ThinkingDelta(text)
             // Reasoning tokens ARE charged by the provider (see
-            // bug #196's runaway pathology), so they count toward
+           // so they count toward
             // the synthetic estimate too — the ticker should
             // reflect total compute, not just user-visible content.
             state.completionChars += text.length
@@ -940,7 +905,6 @@ object OpenAIChatCompletions {
         // (the role: "assistant" warmup chunk emits it before any
         // content). DO and OpenAI omit the field entirely. Both shapes
         // are wire-spec valid — null-guard so we tolerate both. Sigil
-        // bug #163.
         if (!tcs.isNull) {
           tcs.asVector.foreach { tc =>
             val index   = tc.get("index").map(_.asInt).getOrElse(0)
@@ -988,13 +952,8 @@ object OpenAIChatCompletions {
         // below runs unconditionally.
         if (state.pendingDone.isEmpty) {
           if (sr == StopReason.ToolCall) events ++= state.acc.complete()
-          // Sigil bug #173 — response_format substitution: the model
-          // finished with `stop` (not `tool_calls`) because we asked
-          // for structured content. Synthesize the tool-call events
-          // from the buffered content so the orchestrator processes
-          // it identically to a native tool call.
           else if (sr == StopReason.Complete) {
-            state.responseFormatMode match {
+           state.responseFormatMode match {
               case Some(mode) =>
                 events ++= synthesizeToolCallFromContent(state, mode, config)
               case None => ()
@@ -1089,11 +1048,7 @@ object OpenAIChatCompletions {
     * accumulator. Public so callers with bespoke pre/post handling
     * (llama.cpp's pre-flight, etc.) can share it.
     *
-    * `responseFormatMode` carries the bug #173 forced-call substitution
-    * shape (when active). `None` means standard tool_calls flow. The
     * stream-side handler suppresses TextDelta emission in that mode
-    * (avoid creating a streaming Message UI for what is actually a
-    * tool call) and buffers the content for end-of-stream synthesis
     * into ToolCallStart/Complete events. */
   final class StreamState(val acc: ToolCallAccumulator,
                           val responseFormatMode: Option[ResponseFormatMode] = None,
@@ -1333,11 +1288,6 @@ object OpenAIChatCompletions {
     }
   }
 
-  /** Sigil bug #173 — at end-of-stream in response_format mode, parse
-    * the buffered content and emit synthetic ToolCallStart +
-    * appendArgs + complete events. The accumulator's downstream
-    * processing (typed input materialisation, malformed-args
-    * detection, etc.) runs identically to a native tool call. */
   private def synthesizeToolCallFromContent(state: StreamState,
                                             mode: ResponseFormatMode,
                                             config: Config): Vector[ProviderEvent] = {

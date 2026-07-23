@@ -56,21 +56,6 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
  */
 object SessionBridge {
 
-  /** Sigil bug #282 — spice's `DurableSocketServer.onSession` fires on
-    * BOTH fresh connects AND resume re-attachments (`onSession @=
-    * existing` in the resume handler). Without a guard here, every
-    * resume re-registers another `protocol.onEvent` listener on the
-    * SAME protocol instance, so N reconnects make every subsequent
-    * inbound Message publish N times — each browser sees every event
-    * duplicated, EventLogger writes duplicate rows, the agent fires
-    * N times for one user turn.
-    *
-    * We track which protocol instances have already been wired (by
-    * object identity — same protocol survives resume; a brand-new
-    * protocol is a genuinely fresh session that needs wiring).
-    * Identity-keyed because clientId can repeat across the
-    * spice-session-reap → fresh-protocol path, and equals-based
-    * tracking would mistakenly skip the new wiring. */
   private val wiredProtocols: java.util.Set[AnyRef] = java.util.Collections.synchronizedSet(
     java.util.Collections.newSetFromMap(new java.util.IdentityHashMap[AnyRef, java.lang.Boolean]())
   )
@@ -106,11 +91,7 @@ object SessionBridge {
               .handleError(t => Task {
                 scribe.warn(s"SessionBridge: handleNotice failed for $v: ${t.getMessage}", t)
               })
-          // Sigil #409 — split the old collapsed `case _` so the REASON a payload
-          // didn't dispatch is visible: a Signal that isn't a Notice vs. a genuine
-          // decode failure (the latter logs the exception, which distinguishes a
-          // registry/init-order miss from a real decode bug or an unknown type).
-          case scala.util.Success(other) =>
+         case scala.util.Success(other) =>
             Task(scribe.warn(
               s"SessionBridge: ephemeral payload deserialized to a non-Notice ${other.getClass.getName}: $json"))
           case scala.util.Failure(err) =>
@@ -153,11 +134,10 @@ object SessionBridge {
     val handleRef     = new AtomicReference[SinkHandle](null)
     val ephemeralFn   = onEphemeral.getOrElse(noticeOrWarnLive(sigil, () => viewerRef.get()))
 
-    // Sigil bug #282 — guard inbound listener registration against
-    // resume re-attachment. `protocol.eq` is the identity key — same
-    // protocol survives resume (spice re-binds the new WS listener
-    // onto the existing DurableSocket); a brand-new protocol is a
-    // genuinely fresh session that needs wiring.
+    // Guard inbound listener registration against resume re-attachment.
+     // `protocol.eq` is the identity key — same protocol survives resume
+     // (spice re-binds the new WS listener onto the existing DurableSocket);
+     // a brand-new protocol is a genuinely fresh session that needs wiring.
     val protocolKey: AnyRef = session.protocol
     val firstAttachForThisProtocol: Boolean = wiredProtocols.add(protocolKey)
 

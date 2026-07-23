@@ -17,37 +17,6 @@ import scala.concurrent.duration.*
  * Backend-exact tokenizer for llama.cpp. Calls the running server's
  * `POST /tokenize` endpoint with a JSON body `{"content": <text>}` and
  * counts the returned tokens.
- *
- * Bug #45 — `LlamaCppProvider` previously inherited the framework's
- * default [[HeuristicTokenizer]] (3.5 chars/token), which under-counts
- * JSON / tool-call / chat-template content by ~7-15%. The undercount
- * accumulated past pre-flight's gate so the wire-rendered request
- * exceeded `n_ctx` and the server rejected with 400. Calling the
- * backend's tokenizer eliminates the gap — every count is the exact
- * number of tokens the model will see.
- *
- * `/tokenize` failures (server unreachable, endpoint disabled on
- * older builds, transient errors) fall through to the
- * [[HeuristicTokenizer]] so a degraded backend doesn't crash the
- * pre-flight pass — the heuristic stays the safety net it's always
- * been.
- *
- * Bug #54 hardening:
- *   - **HTTP timeout** — hard cap (`requestTimeout`, default 5s) on
- *     each `/tokenize` round-trip so the call cannot block a fiber
- *     thread indefinitely if the backend stalls.
- *   - **In-memory cache** — text → token-count, bounded LRU. Per-turn
- *     curator + profiler iterations re-tokenize the same stable
- *     sections (instructions, mode block, framing prefix, repeated
- *     frames) many times in succession; caching collapses the
- *     repetition to one HTTP call per unique text. Cap at
- *     `cacheSize` (default 4096) entries.
- *   - **Circuit breaker** — after `breakerThreshold` consecutive
- *     failures (default 3) the tokenizer short-circuits to the
- *     fallback heuristic for `breakerCooldown` (default 30s),
- *     preventing one stalled backend from compounding into a
- *     wall-of-`.sync()` calls each waiting `requestTimeout`. Resets
- *     on the first successful round-trip after the cooldown.
  */
 final case class LlamaCppTokenizer(baseUrl: URL,
                                    fallback: Tokenizer = HeuristicTokenizer,
@@ -111,23 +80,11 @@ final case class LlamaCppTokenizer(baseUrl: URL,
     val req = HttpRequest(
       method = HttpMethod.Post,
       url = baseUrl.withPath("/tokenize"),
-      // Bug #56 — `Connection: close` hint asks the backend to drop
-      // the TCP connection after this response. Doesn't dictate
-      // spice's pool behaviour, but for backends that respect it
-      // (llama.cpp, most HTTP/1.1 servers) the next pool acquire
-      // gets a TCP RST on a stale slot rather than a 60s read-
-      // timeout wait.
       content = Some(StringContent(fabric.io.JsonFormatter.Compact(body), ContentType.`application/json`))
     ).withHeader("Connection", "close")
     HttpClient.modify(_ => req)
       .interceptor(interceptor)
       .timeout(requestTimeout)
-      // Bug #56 — single fast retry on transient stale-pool failure;
-      // skipping retries entirely loses to legit transient blips,
-      // but the default `RetryManager.simple(retries = 2, delay =
-      // 1.second)` adds 2 seconds of delay-only time per advisory
-      // call worst case. One retry with 100ms gap recovers from a
-      // stale-pool hit while keeping the pre-flight bound tight.
       .retryManager(RetryManager.simple(retries = 1, delay = 100.millis, warnRetries = false))
       .call[Json].map { json =>
         json.get("tokens").map(_.asVector.size).getOrElse(fallback.count(text))

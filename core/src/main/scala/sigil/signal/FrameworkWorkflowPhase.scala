@@ -3,7 +3,7 @@ package sigil.signal
 import fabric.rw.*
 
 /**
- * Lifecycle phase for a [[FrameworkWorkflowNotice]]. Bug #50.
+* Lifecycle phase for a [[FrameworkWorkflowNotice]].
  *
  * Phases mirror the application-workflow lifecycle (Started →
  * Step → Completed | Failed) so client UIs can render the same

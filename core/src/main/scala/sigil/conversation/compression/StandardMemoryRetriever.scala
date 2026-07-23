@@ -108,7 +108,7 @@ case class StandardMemoryRetriever(limit: Int = 5,
   /** Apply the per-memory mode-affinity gate. A memory with empty
     * `modeAffinity` is universal — surfaces regardless of mode. A
     * non-empty set means the memory only surfaces when `currentMode`
-    * is in it. Sigil bug #195. */
+    * is in it. */
   private def matchesCurrentMode(memory: ContextMemory, currentMode: Option[Id[Mode]]): Boolean =
     memory.modeAffinity.isEmpty || currentMode.exists(memory.modeAffinity.contains)
 

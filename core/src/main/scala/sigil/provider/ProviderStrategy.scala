@@ -59,20 +59,11 @@ trait ProviderStrategy {
     * the value set at construction. */
   def inferWorkType: Option[ProviderStrategy.InferWorkType] = None
 
-  /** Bug #128 — per-message [[Complexity]] inference. Mirror of
+  /** Per-message [[Complexity]] inference. Mirror of
     * [[inferWorkType]]; `None` means the framework defaults to
     * [[defaultComplexity]] for every turn. */
   def inferComplexity: Option[ProviderStrategy.InferComplexity] = None
 
-  /** Bug #154 — complexity tier used when no per-message
-    * classification runs (empty user text on greet / synthetic
-    * turns, classifier-disabled, classifier failure). Apps
-    * biased toward cost-first routing (local model handles every
-    * greet) override with [[Complexity.Low]]; apps that want
-    * frontier-by-default for empty-text greets override with
-    * [[Complexity.VeryHigh]]. The framework's previous
-    * hardcoded `Complexity.Medium` becomes the trait's default
-    * — existing apps see no behavioural change. */
   def defaultComplexity: Complexity = Complexity.Medium
 
   /** True when at least one [[WorkType]] chain differs from another
@@ -100,22 +91,13 @@ trait ProviderStrategy {
     * resolved chain has candidates with differing
     * `supportedComplexity` sets. */
   final def shouldClassifyComplexity(workType: WorkType): Boolean =
-    inferComplexity.isDefined && complexityMatters(workType)
+   inferComplexity.isDefined && complexityMatters(workType)
 }
 
 object ProviderStrategy {
 
-  /** Bug #128 — classifier callback for per-message [[WorkType]]
-    * inference. Receives the user's latest message text plus the
-    * full TurnContext (chain, conversation, modelId fallbacks);
-    * returns the classified WorkType. Apps wire a `ConsultTool.invoke`
-    * against a cheap local model with a structured-output schema. */
   type InferWorkType = (String, TurnContext) => Task[WorkType]
 
-  /** Bug #128 — classifier callback for per-message [[Complexity]]
-    * inference. Mirror of [[InferWorkType]]; same call shape, returns
-    * the tier. Apps typically combine both signals into one classifier
-    * round-trip to save tokens. */
   type InferComplexity = (String, TurnContext) => Task[Complexity]
 
   /** Pin a single model across every work type. No fallback,
@@ -125,20 +107,11 @@ object ProviderStrategy {
              settings: GenerationSettings = GenerationSettings()): ProviderStrategy =
     new SingleModelStrategy(modelId, settings)
 
-  /** Per-work-type chains with a default fallback. `routes` keys
+ /** Per-work-type chains with a default fallback. `routes` keys
     * by `WorkType.value`; missing keys fall through to `default`.
     * Cooldown tracking lives on the returned instance — apps reusing
     * the same strategy across many calls get failure-aware routing
-    * without extra wiring.
-    *
-    * Bug #128 — opt-in per-message routing: pass `inferWorkType` /
-    * `inferComplexity` callbacks to enable classifier-driven
-    * candidate selection. The strategy precomputes
-    * [[ProviderStrategy.workTypeMatters]] /
-    * [[ProviderStrategy.complexityMatters]] from the routes table so
-    * classifier round-trips happen only when their outcome can
-    * actually shape the resolved candidate. Default `None` for both
-    * preserves today's behavior (mode.workType + Complexity.Medium). */
+    * without extra wiring. */
   def routed(default: List[ModelCandidate],
              routes: Map[WorkType, List[ModelCandidate]] = Map.empty,
              errorClassifier: ErrorClassifier = ErrorClassifier.Default,
@@ -166,9 +139,6 @@ private final class RoutedStrategy(default: List[ModelCandidate],
 
   private val cooldowns: ConcurrentHashMap[Id[Model], Instant] = new ConcurrentHashMap[Id[Model], Instant]()
 
-  /** Bug #128 — precomputed: true when at least one chain differs
-    * from another (or from default). When every chain is identical,
-    * classifying workType can't change the candidate list. */
   override val workTypeMatters: Boolean = {
     val allChains: Set[List[ModelCandidate]] = routes.values.toSet + default
     allChains.size > 1

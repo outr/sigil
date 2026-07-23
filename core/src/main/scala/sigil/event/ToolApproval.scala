@@ -11,7 +11,7 @@ import sigil.tool.ToolName
 
 /**
  * Records a consent decision for a [[sigil.tool.Tool]] whose
- * `requiresUserConsent` flag is set. Sigil bug #83.
+ * `requiresUserConsent` flag is set.
  *
  * Tools that mutate user state, run expensive imports, or
  * contact external services declare `requiresUserConsent = true`;

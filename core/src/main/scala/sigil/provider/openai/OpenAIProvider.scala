@@ -118,7 +118,7 @@ case class OpenAIProvider(apiKey: String,
     // covered by `previous_response_id` on the next turn. Framework-
     // emitted ToolResult PMs are temporally interleaved inside the
     // response's range; the next turn's renderInput role-filters the
-    // post-cutoff tail to extract them. Sigil bug #167 r3.
+     // post-cutoff tail to extract them.
     state.sentMessageCount = input.messages.size
     Stream.force(
       for {
@@ -270,15 +270,6 @@ case class OpenAIProvider(apiKey: String,
     }
     val gen = input.generationSettings
     val isReasoningModel = OpenAI.reasoningModelPrefixes.exists(modelName.startsWith)
-    // Bug #62 — for reasoning-family models (gpt-5.x, o1, o3, o4),
-    // ask OpenAI to populate the reasoning items it returns:
-    //   - `reasoning.summary = "auto"` so the response carries a
-    //     human-readable summary (which the framework persists +
-    //     replays via [[ProviderMessage.Reasoning]] on subsequent
-    //     turns).
-    //   - `include = ["reasoning.encrypted_content"]` (added below)
-    //     so o1/o3-style opaque CoT blobs come back populated and
-    //     can be round-tripped verbatim.
     // Without these, the API returns `{id, type: "reasoning", summary: []}`
     // with no `encrypted_content`. Replaying a hollow item gives the
     // model no state to resume from and the next response is empty.
@@ -395,15 +386,7 @@ case class OpenAIProvider(apiKey: String,
           "output" -> str(content)
         ))
 
-      case ProviderMessage.Reasoning(providerItemId, summary, encryptedContent) =>
-        // Bug #61 — replay reasoning items captured from prior turns
-        // back into the Responses API's `input` array. The API expects
-        // each item in its original position relative to the
-        // function_call(s) it generated; the framework's frame
-        // ordering (chronological by event timestamp) preserves that.
-        // For gpt-5 / 5.x, `summary` carries the textual summary; for
-        // o1 / o3, `encryptedContent` is the opaque CoT blob the API
-        // requires verbatim.
+     case ProviderMessage.Reasoning(providerItemId, summary, encryptedContent) =>
         val summaryArr = arr(summary.map(t => obj(
           "type" -> str("summary_text"),
           "text" -> str(t)
@@ -423,17 +406,6 @@ case class OpenAIProvider(apiKey: String,
   private def renderTools(input: ProviderCall): Vector[Json] = {
     val functionTools = input.tools.map { t =>
       val s = t.schema
-      // Bug #64 — opt out of strict mode per-tool when the input
-      // schema contains a `DefType.Json` anywhere in its tree. Strict
-      // mode demands every "object"-typed branch declare its own
-      // closed `properties` + `additionalProperties: false`, which is
-      // mutually exclusive with "any JSON value" (`type` union
-      // including `"object"` per #63). The non-strict path renders
-      // the schema unchanged — `Json` fields ship as the typed
-      // permissive union from #63, accepted by the validator.
-      // Strict-mode-incompatible tools lose grammar-constrained
-      // decoding; `ToolInputValidator` still re-checks args
-      // post-decode for safety.
       val canBeStrict = !DefinitionToSchema.containsJson(s.input)
       val baseSchema = DefinitionToSchema(s.input)
       val parameters =
@@ -497,19 +469,13 @@ case class OpenAIProvider(apiKey: String,
       case "response.output_text.delta" =>
         val callId = state.activeItemCallId.getOrElse(CallId("responses-text"))
         val rawDelta = json.get("delta").map(_.asString).getOrElse("")
-        // Bug #50 — strip OpenAI Responses' inline citation markers
-        // (`【cite_turn0view0】` etc., U+3010 / U+3011 lenticular
-        // brackets). The actual URL/title pairs ride on
-        // `response.output_text.annotation.added` events; the
-        // markers themselves are placeholders the client is
-        // expected to swap. Without stripping, downstream UIs
-        // render literal `【cite_…】` strings (boxes in most fonts).
+       // Strip inline citation markers (e.g., 【cite_turn0view0】)
         val delta = OpenAIProvider.CitationMarker.replaceAllIn(rawDelta, "")
         if (delta.isEmpty) Vector.empty
         else Vector(ProviderEvent.ContentBlockDelta(callId, delta))
 
       case "response.output_text.annotation.added" =>
-        // Bug #50 — buffer URL citations so we can emit them as a
+       // buffer URL citations so we can emit them as a
         // trailing markdown footer at `response.completed`. The
         // annotation is the structured counterpart to the
         // `【cite_…】` marker we just stripped from the text.
@@ -529,11 +495,10 @@ case class OpenAIProvider(apiKey: String,
 
       case "response.reasoning_summary_text.delta" | "response.reasoning.delta" =>
         val delta = json.get("delta").map(_.asString).getOrElse("")
-        // Bug #61 — accumulate the summary fragments per active
-        // reasoning item so the final ReasoningItem we emit at
-        // `output_item.done` carries the full text. Also surface the
-        // delta as a `ThinkingDelta` for UIs that visualize CoT
-        // streams in real time.
+       // accumulate the summary fragments per active reasoning item so
+        // the final ReasoningItem we emit at `output_item.done` carries
+        // the full text. Also surface the delta as a `ThinkingDelta` for
+        // UIs that visualize CoT streams in real time.
         if (delta.nonEmpty) state.activeItemCallId.foreach { cid =>
           val buf = state.reasoningSummaryBuffers.getOrElseUpdate(cid.value, new StringBuilder)
           buf.append(delta)
@@ -579,9 +544,7 @@ case class OpenAIProvider(apiKey: String,
           case "web_search_call" =>
             Vector(ProviderEvent.ServerToolComplete(callId, BuiltInTool.WebSearch))
           case "reasoning" =>
-            // Bug #61 — emit the settled ReasoningItem with the
-            // accumulated summary text + encrypted_content (if any).
-            // Final summary entries on `item.summary` win over the
+           // Final summary entries on `item.summary` win over the
             // delta-accumulated buffer when both exist (the wire's
             // settled view is authoritative).
             val pid = item.get("id").map(_.asString)
@@ -617,11 +580,11 @@ case class OpenAIProvider(apiKey: String,
         val usage = json.get("response").flatMap(_.get("usage")).map(parseUsage)
         val completes = state.acc.complete()
         val usageEv = usage.toVector.map(ProviderEvent.Usage(_))
-        // Bug #50 — flush buffered web-search citations as a markdown
-        // footer appended to the active text block. Renders as a real
-        // "Sources" list in any markdown-capable consumer; passes
-        // through as readable plaintext otherwise. Deduplicated by
-        // URL so the same source cited multiple times appears once.
+       // Flush buffered web-search citations as a markdown footer appended to the
+        // active text block. Renders as a real "Sources" list in any
+        // markdown-capable consumer; passes through as readable plaintext
+        // otherwise. Deduplicated by URL so the same source cited multiple
+        // times appears once.
         val citationFooter: Vector[ProviderEvent] =
           if (state.pendingCitations.isEmpty) Vector.empty
           else {
@@ -650,7 +613,7 @@ case class OpenAIProvider(apiKey: String,
         // `previous_response_id`). Framework-emitted tool-result
         // messages that sit BETWEEN server output items get rescued
         // by the role filter even when their position is within the
-        // dropped range. Sigil bug #167 r3.
+        // dropped range.
         val nextDropCount = state.sentMessageCount
         // A response that ends with a TERMINAL user-visible tool call
         // (`respond` / `respond_options` / `no_response`) is unchainable.
@@ -660,7 +623,7 @@ case class OpenAIProvider(apiKey: String,
         // via `previous_response_id` onto it 400s ("No tool output found for
         // function call ..."). A NON-terminal tool call (`find_capability`,
         // `change_mode`, …) is fine: its output ships in the next request's
-        // `input` (with the round-tripped call_id, bug #167 r5), pairing the
+       // `input` (with the round-tripped call_id), pairing the
         // call — so the chain stays valid. Pure-text / server-tool-only
         // responses chain too. Clear the chain only for the terminal case.
         val endsWithTerminalCall =
@@ -748,13 +711,7 @@ case class OpenAIProvider(apiKey: String,
         Vector(ProviderEvent.ServerToolStart(callId, BuiltInTool.CodeInterpreter, None))
 
       case "reasoning" =>
-        // Bug #61 — capture the wire-level reasoning item id so
-        // `response.reasoning_summary_text.delta` can accumulate
-        // against it and `output_item.done` can emit the settled
-        // ReasoningItem. The id (`rs_…`) and any inline summary or
-        // encrypted_content are stashed on the StreamState; we don't
-        // emit a ProviderEvent here — the settled record arrives at
-        // `output_item.done`.
+        // Capture the wire-level reasoning item id so `response.reasoning_summary_text.delta` can
         val pid = item.get("id").map(_.asString).getOrElse(callId.value)
         val initialSummary = item.get("summary").toList.flatMap { s =>
           s.asArr.value.toList.flatMap(_.get("text").map(_.asString))
@@ -797,7 +754,7 @@ case class OpenAIProvider(apiKey: String,
       * `ResponseStateCaptured` so the framework can persist it for the
       * next turn's `previous_response_id`. */
     var responseId: String = ""
-    /** Full rendered message count for this call (pre-trim) — set by
+   /** Full rendered message count for this call (pre-trim) — set by
       * `call` before the stream starts. Recorded as the NEXT turn's
       * `priorMessageCount`. The next turn drops that many PMs from
       * the head and role-filters the tail to keep only User +
@@ -805,13 +762,13 @@ case class OpenAIProvider(apiKey: String,
       * covered by `previous_response_id` server-side. Framework-
       * emitted ToolResult PMs that sit BETWEEN OpenAI's output
       * items in the dropped range are recovered by the role filter.
-      * Sigil bug #167 r3. */
+      */
     var sentMessageCount: Int = 0
     /** Annotations gathered from `response.output_text.annotation.added`
       * events (web-search citations). Emitted at `response.completed`
       * as a trailing markdown footer so the URLs reach the user
       * instead of being dropped along with the inline `【cite_…】`
-      * markers. Bug #50. */
+      * markers. */
     val pendingCitations: scala.collection.mutable.ArrayBuffer[(String, String)] =
       scala.collection.mutable.ArrayBuffer.empty
 
@@ -841,8 +798,7 @@ object OpenAIProvider {
     *     concatenated directly to surrounding prose. Same `turn<N>(view|search|navlist|news)<M>`
     *     repeating block, prefixed with `cite`. We drop both
     *     forms; the structured URL/title pair rides on
-    *     `response.output_text.annotation.added` and is rendered
-    *     as a Sources footer at `response.completed`. Bug #50 / #51. */
+    *     as a Sources footer at `response.completed`. */
   private val CitationMarker: scala.util.matching.Regex =
     """(?:【\s*cite[^a-zA-Z0-9]*(?:turn\d+(?:view|search|navlist|news)\d+[^a-zA-Z0-9]*)+】|cite(?:turn\d+(?:view|search|navlist|news)\d+)+)""".r
 

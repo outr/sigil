@@ -9,28 +9,6 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-/**
- * Coverage for the durable JSON-RPC wrapper introduced by bug #119.
- *
- * The contract: when a BSP/LSP request's response is lost on the
- * wire (the underlying `CompletableFuture` never resolves), the
- * framework treats it as a *transport* problem — not a tool
- * failure — and recovers via an idempotent retry. The wrapper
- * cancels the original future after the silence window expires,
- * re-issues the same request, and surfaces the recovered result to
- * the caller. Two consecutive silence expirations raise
- * [[JsonRpcTransportException]].
- *
- * Critical pre-fix behaviour to assert WOULD have been observed
- * (i.e. the failing-test contract from the bug): if the wrapper
- * weren't installed, calling `Task.fromCompletionStage(neverDoneFuture)`
- * — equivalent to today's `BspSession.fromFuture` — would hang
- * indefinitely. The two-attempts-then-recovery scenario below
- * proves the wrapper's recovery behaviour; the
- * `transport-error-after-silence` test proves the framework
- * raises a typed transport exception rather than letting the
- * caller hang.
- */
 class DurableJsonRpcSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   // Very small silence window so the tests run fast.

@@ -9,7 +9,7 @@ import sigil.participant.ParticipantId
 import sigil.signal.EventState
 
 /**
- * Per-`(conversation, participant)` read cursor. Bug #62.
+* Per-`(conversation, participant)` read cursor.
  *
  * The participant's last-read position in a conversation,
  * expressed as a server-stamped `Timestamp` — "I've consumed

@@ -13,7 +13,7 @@ import sigil.tool.model.ResponseContent
  * reflector trusting the agent alone produces false positives —
  * agents cheerfully self-report "yes I made progress" while
  * looping identical tool calls that return identical empty
- * payloads (sigil bug #124's wire-log scenario).
+ * payloads.
  *
  * Three complementary heuristics, fired in narrowest-first order:
  *
@@ -44,10 +44,6 @@ import sigil.tool.model.ResponseContent
  */
 object StallDetector {
 
-  /** Detection thresholds. Tuned empirically against the live
-    * wire-log scenarios that motivated bug #124. Apps with
-    * different agent loop shapes override via the
-    * `Sigil.stallDetector*` knobs. */
   val DefaultIdenticalThreshold: Int = 3
   val DefaultEmptyThreshold: Int     = 4
   val DefaultLowInfoThreshold: Int   = 3

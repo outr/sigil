@@ -8,26 +8,6 @@ import sigil.tooling.{LspRecordingClient, LspServerConfig, LspSession, Permissiv
 
 import java.util.concurrent.atomic.AtomicReference
 
-/**
- * Coverage for sigil bug #100 — `lsp_pull_diagnostics` must check
- * the server's advertised `diagnosticProvider` capability before
- * issuing the LSP 3.17 `textDocument/diagnostic` request. Pre-fix
- * the tool called the pull method unconditionally; servers that
- * implement only legacy `publishDiagnostics` push (Metals 1.6.7
- * and many others) returned `MethodNotFound` and the tool failed.
- *
- * Three locked invariants:
- *   1. `LspSession.serverCapabilities` carries whatever the
- *      `initialize` response advertised.
- *   2. The session's push-diagnostics cache populates from
- *      `publishDiagnostics` notifications and is readable via
- *      `diagnosticsFor(uri)` — this is the fallback path the
- *      tool reads when the server doesn't advertise pull.
- *   3. The capability gate logic in [[sigil.tooling.LspPullDiagnosticsTool]]
- *      `Option(serverCapabilities.getDiagnosticProvider).isDefined`
- *      reflects the server's actual support: false for a push-only
- *      server, true once the server advertises support.
- */
 class LspPullDiagnosticsCapabilitySpec extends AnyWordSpec with Matchers {
 
   /** Construct an [[LspSession]] without spinning up a real LSP4J

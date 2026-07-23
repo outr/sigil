@@ -22,12 +22,12 @@ import scala.concurrent.duration.*
  * out per-tool — strict mode and any-JSON aren't compatible.
  * `reasoning_effort` is not used here; Kimi reasoning is steered via
  * the `/think` / `/no_think` system-prompt directive instead (see
- * [[applyKimiReasoningDirective]] and sigil bug #155). DO
+ * [[applyKimiReasoningDirective]]. DO
  * chat-completions supports vision via OpenAI's content-array shape
  * for VLMs (kimi K2.5/K2.6, Nemotron Nano 12B v2 VL).
  *
  * For kimi-* hosted models, [[ReasoningMode]] is translated into the
- * `/think` / `/no_think` system-prompt directive (sigil bug #155).
+ * Non-kimi models ignore the directive (it's just text).
  * Non-kimi models ignore the directive (it's just text).
  */
 case class DigitalOceanProvider(apiKey: String,
@@ -42,18 +42,11 @@ case class DigitalOceanProvider(apiKey: String,
   override protected def sigil: Sigil = sigilRef
 
   private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
-    providerNamespace = DigitalOcean.Provider,
-    providerName = "DigitalOcean",
-    strictModeCapable = true,
-    multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
-    // Sigil bug #161 — DO's kimi-k2.5 deployment intermittently emits
-    // either degenerate `" The!!!!"` reasoning_content or null-padded
-    // content tokens until `max_tokens` cap, with no usable content or
-    // tool calls. The framework cannot recover from this in-conversation,
-    // so we raise [[ProviderStreamException]] at the wire boundary and
-    // let [[ProviderStrategy.errorClassifier]] (default classifier maps
-    // this to `Fallthrough`) route to the next candidate.
-    emptyBudgetBurnThrows = true,
+     providerNamespace = DigitalOcean.Provider,
+     providerName = "DigitalOcean",
+     strictModeCapable = true,
+     multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
+     emptyBudgetBurnThrows = true,
     preprocess = { call =>
       val modelName = DigitalOcean.stripProviderPrefix(call.modelId.value)
       val systemContent = applyKimiReasoningDirective(call.system, modelName, call.generationSettings.reasoningMode)
@@ -70,13 +63,13 @@ case class DigitalOceanProvider(apiKey: String,
   override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
     OpenAIChatCompletions.buildHttpRequest(input, sigilRef, baseUrl, bearerAuth, wireConfig)
 
-  /** Inject kimi's `/think` / `/no_think` system-prompt directive
-    * when [[ReasoningMode]] forces a non-default mode. kimi-k2.5
-    * defaults to thinking-on for non-trivial system prompts; kimi-
-    * k2.6 is thinking-by-default unconditionally. Apps wanting the
-    * fast non-thinking path on either model set
-    * `GenerationSettings(reasoningMode = ReasoningMode.Off)` and
-    * the provider stamps `/no_think` here. Sigil bug #155. */
+ /** Inject kimi's `/think` / `/no_think` system-prompt directive
+     * when [[ReasoningMode]] forces a non-default mode. kimi-k2.5
+     * defaults to thinking-on for non-trivial system prompts; kimi-
+     * k2.6 is thinking-by-default unconditionally. Apps wanting the
+     * fast non-thinking path on either model set
+     * `GenerationSettings(reasoningMode = ReasoningMode.Off)` and
+     * the provider stamps `/no_think` here. */
   private def applyKimiReasoningDirective(systemPrompt: String,
                                           modelName: String,
                                           mode: ReasoningMode): String = {

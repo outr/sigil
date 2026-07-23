@@ -36,7 +36,7 @@ final class BspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections })
             // discovered config so subsequent calls skip the scan,
             // then spawn. On miss: surface a "no config and no
             // discovery file" error pointing at the registration
-            // path AND the `sbt bspConfig` generation step. Sigil bug #20.
+            // path AND the `sbt bspConfig` generation step.
             BspDiscovery.scan(projectRoot) match {
               case Some(discovered) =>
                 sigil.withDB(_.bspBuilds.transaction(_.upsert(discovered)))

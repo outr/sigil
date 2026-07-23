@@ -73,7 +73,7 @@ trait WorkflowSigil extends Sigil {
     * that handle without threading it through Strider's engine. */
   WorkflowHost.set(this)
 
-  /** Register the framework-shipped workflow triggers + step inputs.
+ /** Register the framework-shipped workflow triggers + step inputs.
     * Runs inside [[Sigil.polymorphicRegistrations]] (via the
     * [[Sigil.mixinPolymorphicRegistrations]] hook) AFTER the framework
     * leaf polytypes (WorkType, Mode, SpaceId, ...) are registered —

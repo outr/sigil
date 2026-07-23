@@ -25,7 +25,7 @@ object WorkflowBuilderSkill {
       |  - kind = "SubWorkflow" — invokes another persisted workflow. `workflowId` is the target template id; `variables` (optional) overrides its inputs.
       |  - kind = "Trigger" — waits for an external event; set the optional `trigger` object (see TRIGGERS).
       |
-      |WORKFLOW-FIRST: when the work shape is known — find X, then act on each — author the WHOLE workflow up front. Make discovery the FIRST stage: a Job step that runs a discovery tool (grep / glob / lsp) capturing into `output`, then a Loop whose `over` is that variable. The engine finds the particulars at run time; never enumerate the items yourself in this conversation. Example: Job{id:"find", tool:"grep", arguments:{"pattern":"bug #","path":"/src"}, output:"hits"} ; Loop{id:"each", over:"hits", itemVariable:"f", bodyStepIds:["fix"]} ; Job{id:"fix", tool:"edit_file", arguments:{"path":"{{f}}"}}.
+    28|       |WORKFLOW-FIRST: when the work shape is known — find X, then act on each — author the WHOLE workflow up front. Make discovery the FIRST stage: a Job step that runs a discovery tool (grep / glob / lsp) capturing into `output`, then a Loop whose `over` is that variable. The engine finds the particulars at run time; never enumerate the items yourself in this conversation. Example: Job{id:"find", tool:"grep", arguments:{"pattern":SEARCH_PATTERN,"path":"/src"}, output:"hits"} ; Loop{id:"each", over:"hits", itemVariable:"f", bodyStepIds:["fix"]} ; Job{id:"fix", tool:"edit_file", arguments:{"path":"{{f}}"}}.
       |
       |VARIABLE SUBSTITUTION
       |

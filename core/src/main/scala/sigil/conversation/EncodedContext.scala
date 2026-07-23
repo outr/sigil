@@ -40,8 +40,7 @@ import sigil.participant.ParticipantId
  * the surviving caches save real work on the next turn against their
  * (agent, conversation, model) tuple.
  *
- * Bug #26 — replaces the legacy `ConversationView.frames` projection
- * + per-turn re-encoding work with cache-and-rebuild.
+* 
  */
 case class EncodedContext(agentId: ParticipantId,
                           conversationId: Id[Conversation],

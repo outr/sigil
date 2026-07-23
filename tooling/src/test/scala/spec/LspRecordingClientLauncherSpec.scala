@@ -11,24 +11,6 @@ import sigil.tooling.{LspRecordingClient, WorkspaceEditApplier}
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 
-/**
- * Coverage for sigil bug #93 — `LspRecordingClient` extends lsp4j's
- * `LanguageClient` (a Java interface with default methods). Without
- * explicit Scala overrides for every default method, lsp4j's
- * `AnnotationUtil.findRpcMethods` reflection scan double-counts
- * synthetic forwarders + inherited defaults and throws
- * `Duplicate RPC method workspace/configuration` at launcher
- * construction time.
- *
- * Pre-#93 the generic `lsp_*` family was rarely exercised so the
- * latent issue went unnoticed. After bug #88 wired Metals into the
- * generic LSP path via `LspServerConfig("scala", ...)`, every
- * `lsp_*` call hit the duplicate-method error and the language
- * server never connected.
- *
- * This spec asserts the launcher constructs cleanly — same shape
- * `LspSession.spawn` uses internally.
- */
 class LspRecordingClientLauncherSpec extends AnyWordSpec with Matchers {
   SpaceId.register(RW.static[SpaceId](GlobalSpace))
 

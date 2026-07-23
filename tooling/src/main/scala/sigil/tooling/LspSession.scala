@@ -32,14 +32,11 @@ final class LspSession(val config: LspServerConfig,
                        server: LanguageServer,
                        client: LspRecordingClient,
                        /** The server's capabilities snapshot from `initialize`'s
-                         * response. Tools consult this BEFORE issuing optional
-                         * LSP requests (`textDocument/diagnostic` / pull
-                         * diagnostics, code lens, inlay hints, etc.) so they
-                         * fall back to alternative protocols when the server
-                         * doesn't advertise support. Sigil bug #100 — pre-fix
-                         * `LspPullDiagnosticsTool` called the pull method
-                         * unconditionally and Metals (which only supports the
-                         * legacy push flow) returned `MethodNotFound`. */
+                          * response. Tools consult this BEFORE issuing optional
+                          * LSP requests (`textDocument/diagnostic` / pull
+                          * diagnostics, code lens, inlay hints, etc.) so they
+                          * fall back to alternative protocols when the server
+                          * doesn't advertise support. */
                        val serverCapabilities: ServerCapabilities) {
 
   private val lastUseAt: AtomicLong = new AtomicLong(System.currentTimeMillis())
@@ -57,7 +54,7 @@ final class LspSession(val config: LspServerConfig,
   /** Install (or clear with `None`) a per-call status callback. The
     * client routes server-extension status notifications (Metals'
     * `metals/status` etc.) into this callback so the active tool's
-    * chip can surface live progress. Sigil bug #98 — typically wired
+    * chip can surface live progress. Typically wired
     * by [[LspToolSupport.withSessionTyped]] around the tool body. */
   def setStatusCallback(cb: Option[String => Unit]): Unit =
     client.setStatusCallback(cb)
@@ -76,11 +73,10 @@ final class LspSession(val config: LspServerConfig,
     scala.concurrent.duration.DurationInt(60).seconds
 
   /** Wrap an LSP request in [[DurableJsonRpc.issueDurable]] so a
-    * lost JSON-RPC response is recovered via idempotent retry
-    * rather than stranding the calling Task forever (bug
-    * [[JsonRpcTransportException]] notes). LSP queries Sigil
-    * performs are idempotent — the retry re-asks for the cached
-    * result. */
+     * lost JSON-RPC response is recovered via idempotent retry
+     * rather than stranding the calling Task forever. LSP queries Sigil
+     * performs are idempotent — the retry re-asks for the cached
+     * result. */
   protected def issueDurable[T](operation: String,
                                 silenceWindow: scala.concurrent.duration.FiniteDuration = defaultSilenceWindow)
                                (makeRequest: () => CompletableFuture[T]): Task[T] =

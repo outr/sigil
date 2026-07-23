@@ -6,23 +6,6 @@ import sigil.tool.ToolContext
 import sigil.provider.Complexity
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolResult}
 
-/**
- * Bug #128 — agent-callable escalation. Bumps the cached complexity
- * tier one step up (Low → Medium → High) for subsequent iterations
- * of the current user turn, so the agent re-runs against a more
- * capable model when it realises the task is harder than the
- * classifier's initial assessment.
- *
- * Opt-in: NOT in `CoreTools.all` by default. Apps that wire a
- * routing strategy with `inferComplexity` register
- * [[RequestEscalationTool]] explicitly via their `staticTools`. Apps
- * that don't route by complexity don't see the tool in the catalog.
- *
- * The current iteration's response (this tool call) still runs on
- * the original model — the bump takes effect on the NEXT iteration.
- * Once `High`, further escalation calls are no-ops (the bump_up
- * arithmetic clamps).
- */
 final case class RequestEscalationInput(@description("Why escalation is needed — e.g. 'task spans 4 files; current model keeps producing inconsistent edits'. Stored on the conversation for transparency; rendered on the next checkpoint.")
                                         reason: String)
   extends ToolInput derives RW

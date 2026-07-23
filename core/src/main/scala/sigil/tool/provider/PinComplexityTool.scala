@@ -22,7 +22,6 @@ case class PinComplexityInput(tier: String) extends ToolInput derives RW
  *
  * Cleared via [[UnpinComplexityTool]]. Not auto-registered; apps
  * add this to `staticTools` when they want the surface exposed.
- * Bug #152.
  */
 case object PinComplexityTool extends Tool {
   type Input  = PinComplexityInput
@@ -75,10 +74,6 @@ case object PinComplexityTool extends Tool {
           hint = Some("Use the closest match by capability — `medium` is the per-turn default for most chains.")
         ))
       case Some(tier) =>
-        // Sigil bug #177 — capture the prior pinned tier so the emitted
-        // ComplexityChange carries the correct previous→new transition
-        // and `Reason.Pinned` vs `Reason.Repinned` is distinguishable
-        // without consumers diffing `previousTier` / `newTier`.
         ctx.sigil.withDB(_.conversations.transaction { tx =>
           tx.get(ctx.conversation.id).flatMap {
             case None       => Task.pure(None)

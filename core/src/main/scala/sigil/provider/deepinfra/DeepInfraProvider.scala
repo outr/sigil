@@ -16,17 +16,7 @@ import scala.concurrent.duration.*
  * Llama, Qwen, and other open-weight models on vLLM / SGLang
  * upstream. Function calling and streaming SSE both supported.
  *
- * **Why this provider exists alongside [[sigil.provider.digitalocean.DigitalOceanProvider]]:**
- * sigil bug #161 documents that DO's kimi-k2.5 / kimi-k2.6
- * deployment catastrophically degenerates on non-trivial agent
- * prompts (`" The!!!!"` reasoning loops or null-padded content),
- * burning the entire `max_tokens` budget per failed call with no
- * recovery. DeepInfra is the documented alternative — cheaper on
- * k2.6 (~20% on input, ~12% on output), $0.07/1M cached input
- * (vs DO's no-cache-tier), and runs the upstream-supported
- * inference stack so the deployment shouldn't exhibit DO's
- * degeneration. Apps wiring kimi candidates into a
- * [[ProviderStrategy]] route them here.
+*
  *
  * Schemas pass through [[StrictSchema.stripUnsupportedKeys]] —
  * conservative dialect-friendly shape; no `strict: true` since
@@ -44,7 +34,7 @@ import scala.concurrent.duration.*
  * 100%. Apps wanting bounded reasoning latency on kimi should set
  * `GenerationSettings(reasoningMode = ReasoningMode.On, effort =
  * Some(Effort.Low))` instead of `Off` — caps reasoning at ~120
- * tokens (~1-2s) while preserving tool compliance. Sigil bug #165.
+    * tokens (~1-2s) while preserving tool compliance.
  */
 case class DeepInfraProvider(apiKey: String,
                              sigilRef: Sigil,

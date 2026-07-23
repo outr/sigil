@@ -41,10 +41,6 @@ import scala.concurrent.duration.{DurationLong, FiniteDuration}
  */
 object DurableJsonRpc {
 
-  /** Issue `makeRequest` with silence-window detection + idempotent
-    * retry on response loss. `activitySource` is the
-    * [[#lastActivityAtMillis]] accessor on the session's recording
-    * client. */
   def issueDurable[T](operation: String,
                       silenceWindow: FiniteDuration = 60.seconds,
                       maxAttempts: Int = 2,

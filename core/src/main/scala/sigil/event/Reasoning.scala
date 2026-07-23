@@ -10,14 +10,7 @@ import sigil.signal.EventState
 
 /**
  * Provider-internal reasoning state captured during a streaming LLM
- * response. Bug #61 — required by OpenAI's Responses API for the
- * gpt-5 / gpt-5.x / o1 / o3 family: each turn that exercises a
- * reasoning model emits one or more `reasoning` output items
- * (id `rs_…`, plus a summary and optionally an encrypted CoT blob)
- * which the API expects to find verbatim in the next request's
- * `input` array, in their original positions relative to function
- * calls. Omit them and the next response is a silent empty stream
- * (or a 400 with "Reasoning items must be included…").
+* response.
  *
  * **Lifecycle.** Persisted to `SigilDB.events` like every other
  * Event so it survives restarts and reconnects. The originating

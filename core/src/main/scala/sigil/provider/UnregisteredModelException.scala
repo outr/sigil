@@ -47,6 +47,6 @@ object UnregisteredModelException {
     s"Model `${modelId.value}` is not in the ModelRegistry. " +
       s"Registered: $knownPreview. " +
       "Populate via OpenRouter.refreshModels, the per-provider registerKnownModels helper " +
-      "(Anthropic / OpenAI / Google), or sigil.cache.merge for custom catalogs. See sigil bug #277."
+      "or sigil.cache.merge for custom catalogs."
   }
 }

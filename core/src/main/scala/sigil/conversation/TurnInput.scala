@@ -10,11 +10,6 @@ import sigil.participant.ParticipantId
  * produces per turn and hands to the provider. Transient; never
  * persisted.
  *
- * Bug #26 — replaces the prior `ConversationView` projection on this
- * struct. The curator now materializes frames + per-participant
- * projections per turn (from `db.events` and `db.participantProjections`)
- * and packs them onto this DTO directly.
- *
  * Contains:
  *   - `conversationId` — scope for downstream resolvers (provider,
  *     compressor, settled effects)

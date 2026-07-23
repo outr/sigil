@@ -7,32 +7,6 @@ import sigil.event.ToolApproval
 import sigil.tool.{RefusalPayload, TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 import sigil.tool.model.RecordConsentInput
 
-/**
- * Records the user's consent decision for a `requiresUserConsent`
- * tool. Sigil bug #83 — the framework's tool-dispatch gate
- * verifies an approval exists before running the gated tool;
- * the agent calls this tool to register the user's verdict.
- *
- * Typical flow:
- *
- *   1. User asks the agent for setup. Agent emits
- *      `respond_options(prompt: "Pick what to set up:",
- *      options: [Metals, Claude state, Both, Neither])`.
- *   2. User picks "Metals" only.
- *   3. Agent records the user's decision:
- *      `record_consent("start_metals", approved=true,
- *      reason="user picked Metals from setup options")` and
- *      `record_consent("load_claude_state", approved=false,
- *      reason="user explicitly did not select Claude state")`.
- *   4. Agent calls `start_metals` — framework finds the
- *      approval, executes. Agent (or a future iteration's
- *      agent) trying `load_claude_state` is refused with the
- *      decline reason.
- *
- * One record covers the entire conversation. `approved=false`
- * is sticky — flip the decision by recording a fresh
- * `approved=true`.
- */
 case object RecordConsentTool extends Tool {
   type Input  = RecordConsentInput
   type Output = TextToolOutput

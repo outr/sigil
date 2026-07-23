@@ -146,8 +146,7 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       // and friends) — without it, the default `effort = medium` lets the
       // model spend minutes in reasoning between SSE token emissions, which
       // looks indistinguishable from a hung stream from the framework's
-      // vantage. Bug #77 — OpenAI's reasoning tokens don't count against
-      // `maxOutputTokens`, so capping output won't bound total wall time.
+     // `Low` keeps the classification quick enough for a deterministic
       // `Low` keeps the classification quick enough for a deterministic
       // 5-minute outer test deadline. LlamaCpp / Anthropic ignore the
       // field, so this is safe across the providerSelection branches.

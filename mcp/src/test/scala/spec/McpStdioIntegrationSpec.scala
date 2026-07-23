@@ -18,14 +18,13 @@ class McpStdioIntegrationSpec extends AnyWordSpec with Matchers {
 
   private val javaBin: String = sys.props.get("java.home").map(h => s"$h/bin/java").getOrElse("java")
 
-  /** Build the child JVM's classpath from the test runner's
+ /** Build the child JVM's classpath from the test runner's
     * URLClassLoader chain rather than `sys.props("java.class.path")`.
     * Under sbt 2 the system property only carries sbt's worker
     * plumbing; the real test classpath (scalatest, sigil-mcp under
     * test, fabric, rapid, etc.) lives in a `URLClassLoader` the
     * worker constructs manually. Walking the loader chain recovers
-    * the full classpath in both sbt 1 and sbt 2 environments —
-    * same root cause as bug #57's `ScalaScriptExecutor` fix. */
+    * the full classpath in both sbt 1 and sbt 2 environments. */
   private val classpath: String = {
     val urls = collection.mutable.LinkedHashSet.empty[String]
     var current: ClassLoader = Thread.currentThread().getContextClassLoader

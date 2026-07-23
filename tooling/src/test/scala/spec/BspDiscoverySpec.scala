@@ -6,10 +6,6 @@ import sigil.tooling.BspDiscovery
 
 import java.nio.file.{Files, Path}
 
-/** Sigil bug #20 — BspManager.session falls back to scanning
-  * .bsp JSON files under the project root when no config is
-  * persisted. The set_workspace → start_metals → bsp_compile flow
-  * works without an out-of-band registration step. */
 class BspDiscoverySpec extends AnyWordSpec with Matchers {
 
   private def withTempProject[T](setup: Path => Unit)(test: Path => T): T = {

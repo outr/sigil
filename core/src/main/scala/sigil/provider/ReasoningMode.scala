@@ -11,8 +11,6 @@ import fabric.rw.*
  * system-prompt directive, Anthropic's `thinking` block, OpenAI's
  * `reasoning.effort`, Google's `thinking_config`, etc.
  *
- * Apps that don't care leave the default `Auto`; providers fall
- * through to whatever the model's deployment ships with.
  *
  * Bug #155.
  */

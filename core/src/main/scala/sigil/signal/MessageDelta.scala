@@ -44,10 +44,6 @@ case class MessageDelta(target: Id[Event],
                         contentReplacement: Option[Vector[ResponseContent]] = None,
                         usage: Option[TokenUsage] = None,
                         state: Option[EventState] = None,
-                        /** Sigil bug #171 — set on the terminal delta when the
-                          * Message settles into a non-Success disposition (e.g.
-                          * orphan-Message recovery on tool-call parse failure).
-                          * `None` leaves the prior disposition unchanged. */
                         disposition: Option[sigil.event.MessageDisposition] = None,
                         /** Sigil #392 — set on the settle delta that commits a
                           * naked-text terminal answer: a turn that ended with

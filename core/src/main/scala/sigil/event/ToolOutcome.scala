@@ -16,7 +16,7 @@ import fabric.rw.*
  * Tools authoring against the framework set this directly when they
  * emit a [[ToolResults]] event; the framework's own dispatchers
  * default to `Success` on clean returns and `Failure` when the
- * tool's `execute` raised (Bug #50 / Bug #69 paths).
+ * tool's `execute` raised.
  */
 enum ToolOutcome derives RW {
 

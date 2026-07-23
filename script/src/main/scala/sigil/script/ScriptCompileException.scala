@@ -10,7 +10,6 @@ package sigil.script
  * for `ScalaScriptExecutor` that's the Scala 3 REPL's
  * `ConsoleReporter`-formatted error output (`-- [E<num>] ...`),
  * including line/column markers and the offending source — so the
- * agent's next turn has the same diagnostic the developer would see
- * at the console. Bug #55.
+     * at the console.
  */
 class ScriptCompileException(message: String) extends RuntimeException(message)

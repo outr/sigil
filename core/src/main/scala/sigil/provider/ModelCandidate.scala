@@ -38,7 +38,7 @@ object ModelCandidate {
     * output is capped at 4096 via [[OutputTokenCap.Below]] (generous
     * for normal replies, hard wall against reasoning runaway). Apps
     * wiring a local llama.cpp candidate can pass this instead of
-    * discovering the failure mode in production (sigil bug #199).
+    * discovering the failure mode in production.
     *
     * {{{
     *   val llamaC = ModelCandidate(

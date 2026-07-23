@@ -103,20 +103,6 @@ trait MetalsSigil extends Sigil with McpSigil {
    */
   final lazy val metalsManager: MetalsManager = new MetalsManager(this)
 
-  /**
-   * Sigil bug #88 — when Metals starts for a workspace, also write a
-   * `LspServerConfig("scala", ...)` so the framework's generic
-   * `lsp_*` family (lsp_diagnostics, lsp_definitions, …) finds
-   * Metals as their backend. Without this, agents that go through
-   * generic LSP tools instead of Metals' MCP-bridged tools hit
-   * "No LspServerConfig persisted for language 'scala'" and the
-   * call fails.
-   *
-   * Runtime no-op when the app's `DB` doesn't mix in
-   * [[sigil.tooling.ToolingCollections]] — apps that use Metals
-   * via MCP only (no generic LSP surface) pay nothing. Apps that
-   * mix ToolingSigil get the auto-write for free.
-   */
   def writeLspServerConfigForMetals(workspace: java.nio.file.Path): rapid.Task[Unit] = {
     val config = sigil.tooling.LspServerConfig(
       languageId    = "scala",

@@ -351,7 +351,7 @@ trait Tool extends RecordDocument[Tool] {
     * conversationId)` in `db.events`. The agent records consent via
     * [[sigil.tool.core.RecordConsentTool]] after observing the
     * user's reply — typically through a `respond_options` round-
-    * trip the agent designs to fit the conversation. Sigil bug #83.
+    * trip the agent designs to fit the conversation.
     *
     * First-call-per-conversation semantics: a single approved
     * record covers subsequent calls in the same conversation.
@@ -364,11 +364,11 @@ trait Tool extends RecordDocument[Tool] {
     * API calls). Default `false` preserves the no-gate fast path. */
   def requiresUserConsent: Boolean = false
 
-  /** Optional toolchain identifier — when the conversation has the
+ /** Optional toolchain identifier — when the conversation has the
     * named toolchain active (per [[sigil.Sigil.activeToolchains]]),
     * `find_capability`'s ranker boosts this tool's score by
     * [[sigil.Sigil.toolchainBoost]]. Empty (the default) means no
-    * contextual boost. Sigil bug #85.
+    * contextual boost.
     *
     * Examples: `Some("lsp")` for LSP-backed tools (lsp_definitions,
     * lsp_diagnostics, …), `Some("bsp")` for build-server tools
@@ -387,17 +387,7 @@ trait Tool extends RecordDocument[Tool] {
     * tool's score so it sits below domain-specific tools when both
     * match the query. Generic primitives (`grep`, `glob`, `bash`,
     * `read_file`, `execute_script`) opt in — the agent should pick
-    * them only when nothing more specific applies. Sigil bug #86.
-    *
-    * Stays findable: the penalty is small enough that a
-    * generic-only match still ranks higher than no match. When no
-    * domain-specific tool is in the result set (e.g. the project
-    * has no LSP backend running), generic tools are still the
-    * top result.
-    *
-    * Default `false` preserves rank for tools whose primary purpose
-    * is what they do — `respond`, `change_mode`, `start_metals`,
-    * etc. — those don't need the penalty. */
+   * them only when nothing more specific applies. */
   def preferIfNoBetter: Boolean = false
 
   /** **MCP-style annotation.** True when calling this tool has no
@@ -609,10 +599,8 @@ object Tool extends PolyType[Tool]()(using scala.reflect.ClassTag(classOf[Tool])
    * `keywords` is repeated 5× in the indexed string so BM25's term-
    * frequency signal weights a tool author's curated intent surface
    * above incidental description prose. Without the boost, a long
-   * description with accidentally-matching tokens can outscore a
-   * tool whose keywords match the query exactly — see sigil bug
-   * #158 for the concrete failure case (`change_mode` outranking
-   * `pin_complexity` on a tier-pinning query).
+   612|    * description with accidentally-matching tokens can outscore a
+    613|    * tool whose keywords match the query exactly.
    *
    * Apps can rebuild the searchable surface per tool by overriding any
    * of the source fields; the index recomputes on `tools.upsert`.
@@ -625,12 +613,9 @@ object Tool extends PolyType[Tool]()(using scala.reflect.ClassTag(classOf[Tool])
       s"${t.name.value} ${t.description} $keywordBlock"
     })
 
-  /** Multiplier applied to a tool's `keywords` block within the
+ /** Multiplier applied to a tool's `keywords` block within the
     * indexed [[searchText]]. Repeating the curated tokens N times
     * raises BM25's term-frequency contribution from `keywords` so the
-    * ranker honors intent surface over description prose. 5× is the
-    * default — high enough to flip cases like sigil bug #158, low
-    * enough that a tool with no keywords still surfaces from a
-    * description match. */
+    * ranker honors intent surface over description prose. */
   val KeywordSearchBoost: Int = 5
 }

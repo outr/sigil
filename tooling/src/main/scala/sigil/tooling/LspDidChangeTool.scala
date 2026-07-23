@@ -44,15 +44,7 @@ final class LspDidChangeTool(val manager: LspManager) extends Tool
 
   override def executeResult(input: LspDidChangeInput,
                              context: ToolContext): Task[ToolResult[LspDidChangeResult]] = {
-    // Bug #131 — Sage's wire log showed the agent calling lsp_did_change
-    // with 17-character `text` values ("AdminUsersService") trying to
-    // QUERY the file. Each call silently overwrote the LSP's in-memory
-    // copy with that 17-char string, corrupting the file's state for
-    // every subsequent diagnostic / completion call. The tool's name
-    // ("did change") didn't make it obvious that this was destructive
-    // input-write semantics.
-    //
-    // Refuse obvious misuse: any `text` below the threshold can't
+   // Refuse obvious misuse: any `text` below the threshold can't
     // plausibly be a full document; return a structured Failure with
     // a hint pointing at read_file via find_capability.
     if (input.text.length < LspDidChangeTool.MinPlausibleDocumentLength) {
@@ -85,9 +77,7 @@ final class LspDidChangeTool(val manager: LspManager) extends Tool
 object LspDidChangeTool {
   /** Minimum `text` payload length before lsp_did_change accepts it as a
     * plausible full-document update. Below this, the tool refuses with
-    * a Failure pointing at read_file — the bug #131 wire-log scenario
-    * (agent passing 17-char query strings as `text`) trips here. Apps
-    * with legitimately tiny source files (single-line scripts) can
-    * override the tool to lower the bar. */
+    * a Failure pointing at read_file. Apps with legitimately tiny source
+    * files (single-line scripts) can override the tool to lower the bar. */
   val MinPlausibleDocumentLength: Int = 30
 }

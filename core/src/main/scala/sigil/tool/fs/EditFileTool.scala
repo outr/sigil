@@ -53,8 +53,8 @@ final class EditFileTool(context: FileSystemContext)
     ToolExample("Rename a symbol", EditFileInput(path = "src/main.rs", oldString = "old_name", newString = "new_name", replaceAll = true)),
     ToolExample(
       "One of multiple edits in a sweep — no expectedHash (it would go stale after the prior edit)",
-      EditFileInput(path = "src/main.scala", oldString = "// bug #123", newString = "")
-    ),
+     EditFileInput(path = "src/main.scala", oldString = "// TODO: remove this workaround", newString = "")
+   ),
     ToolExample(
       "Guard against a concurrent external writer — pass expectedHash only for a multi-writer race",
       EditFileInput(path = "config.toml", oldString = "x = 1", newString = "x = 2", expectedHash = Some("abc123..."))

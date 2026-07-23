@@ -2,9 +2,8 @@ package sigil.tool.fs
 
 import fabric.rw.*
 import rapid.Task
-import sigil.tool.ToolContext
 import sigil.tool.model.GlobInput
-import sigil.tool.{PlaceholderInputDetector, TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.*
 
 /**
  * List files under `basePath` matching a glob pattern. Returns the
@@ -14,28 +13,36 @@ import sigil.tool.{PlaceholderInputDetector, TextToolOutput, Tool, ToolExample, 
  * grep the paths it returned.
  */
 final class GlobTool(context: FileSystemContext) extends Tool with sigil.tool.ReadOnlyExternalTool {
-  type Input  = GlobInput
+  type Input = GlobInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[GlobInput]]
+  override val examples: List[ToolExample] = List(
+    ToolExample("Scala sources under src", GlobInput(basePath = "src", pattern = "**/*.scala")),
+    ToolExample("Top-level docs", GlobInput(basePath = ".", pattern = "*.md"))
+  )
+  override val keywords: Set[String] = Set(
+    "glob",
+    "find",
+    "list",
+    "files",
+    "pattern",
+    "directory",
+    "tree",
+    "match",
+    "wildcard",
+    "path",
+    "discover",
+    "ls",
+    "look",
+    "browse",
+    "enumerate"
+  )
+  val inputRW = summon[RW[GlobInput]]
   val outputRW = summon[RW[TextToolOutput]]
-
   val name = ToolName("glob")
   val description =
     "List files under a directory matching a glob pattern (e.g. '**/*.scala'). Returns the matching " +
       "paths, one per line, bounded by `maxResults`."
 
-  override val examples: List[ToolExample] = List(
-    ToolExample("Scala sources under src", GlobInput(basePath = "src", pattern = "**/*.scala")),
-    ToolExample("Top-level docs", GlobInput(basePath = ".", pattern = "*.md"))
-  )
-
-  override val keywords: Set[String] = Set(
-    "glob", "find", "list", "files", "pattern",
-    "directory", "tree", "match", "wildcard", "path", "discover",
-    "ls", "look", "browse", "enumerate"
-  )
-
-  // Bug #86 — generic primitive: ranks below domain-specific tools.
   override def preferIfNoBetter: Boolean = true
 
   override def executeResult(input: GlobInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

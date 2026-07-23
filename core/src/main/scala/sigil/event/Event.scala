@@ -30,27 +30,6 @@ trait Event extends Signal with Document[Event] {
     * wire-delivery scope. */
   final override def conversationScope: Option[Id[Conversation]] = Some(conversationId)
   def topicId: Id[Topic]
-  /**
-   * Server-canonical 0-based index of this event's `topicId` in the
-   * conversation's topic stack at emission time. Bug #80 — exposes a
-   * stable ordinal handle so clients can paint per-topic
-   * visualisations (colour strips, dividers, "topic N" badges)
-   * without hashing `topicId.value` (collision-prone) or walking the
-   * full TopicChange history (work duplication).
-   *
-   * Populated by [[sigil.pipeline.TopicIndexCanonicalizingTransform]]
-   * at `Sigil.publish` time from
-   * `conversation.topics.indexWhere(_.id == topicId)`. Inbound events
-   * that arrive with a stale or made-up index get overwritten, and an
-   * event whose `topicId` isn't on the stack at all (client
-   * placeholder, truncated topic) is re-homed onto the current topic
-   * — the server is the single source of truth for both fields.
-   *
-   * Default `0` covers the bootstrap topic and synthetic events
-   * constructed in tests. The canonicalizer overwrites whatever the
-   * caller passed when it knows the conversation's actual topic
-   * stack.
-   */
   def topicIndex: Int
   def timestamp: Timestamp
   def state: EventState
@@ -123,13 +102,7 @@ trait Event extends Signal with Document[Event] {
    * stamp it for events emitted in response to a trigger; user-driven
    * paths (slash commands, workflows) set it at the dispatch site.
    *
-   * Bug #69 — Tool-role events MUST carry an `origin` pointing to
-   * their originating [[ToolInvoke]]. [[sigil.conversation.FrameBuilder]]
-   * uses this to pair the event with its call_id directly, replacing
-   * the older "most-recent unresolved" scan. Multiple Tool events
-   * from one `executeResult` therefore all pair to the same call;
-   * `Provider.renderFrames` merges them into a single wire-level
-   * `function_call_output`.
+   *
    *
    * `None` is allowed only for genuinely root events (the user's
    * first message, a scheduled job kicked off cold, etc.). A
@@ -180,7 +153,7 @@ trait Event extends Signal with Document[Event] {
    * Source of truth for prompt construction — the curator queries
    * `db.events` (with `contextFrame.isDefined` filter) to materialize
    * a conversation's prompt history rather than maintaining a separate
-   * frames Vector projection. Bug #26.
+   * frames Vector projection.
    */
   def contextFrame: Option[ContextFrame] = None
 

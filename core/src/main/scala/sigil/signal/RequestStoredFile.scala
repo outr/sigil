@@ -10,8 +10,5 @@ import sigil.storage.StoredFile
  * [[StoredFileContent]] carrying the base64-encoded payload (or
  * drops the request if the caller's chain isn't authorized for the
  * file's space).
- *
- * UIs typically issue this when the user clicks a file chip or
- * opens an inline editor on a `StoredFileReference`.
  */
 case class RequestStoredFile(fileId: Id[StoredFile]) extends Notice derives RW

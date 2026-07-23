@@ -27,7 +27,7 @@ trait ContextOptimizer {
     * empty so callers that don't pass a set behave like a pure
     * "consecutive cleanup" pass with no pair-stripping.
     *
-    * `currentTurnSource` (bug #73) — when set, marks the participant
+    * `currentTurnSource` — when set, marks the participant
     * whose most-recent Text frame begins the *current* agent turn.
     * Implementations MUST NOT elide tool-pair frames that occurred
     * AFTER that boundary, regardless of `resultTtl`. The agent's

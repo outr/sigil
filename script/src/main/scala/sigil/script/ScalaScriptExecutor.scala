@@ -31,16 +31,6 @@ import java.net.URLClassLoader
  * its answer in markdown" parsing.
  */
 class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends ScriptExecutor {
-  // Bug #55 — the Scala 3 REPL `ScriptEngine` writes compile
-  // diagnostics to its `out` PrintStream (defaults to
-  // `Console.out`) and returns `null` on failure. Capturing the
-  // output stream lets us drain diagnostics after each eval and
-  // raise a `ScriptCompileException` instead of silently producing
-  // empty results.
-  //
-  // `Console.withOut(capturedPS) { ScriptEngine() }` locks the
-  // driver's `out` to our capture for its lifetime — subsequent
-  // engine.eval() calls run their `withRedirectedOutput` redirect
   // System.out / System.err to this stream, so all REPL output
   // (errors, warnings, defs) lands here.
   private[script] val captured: ByteArrayOutputStream = new ByteArrayOutputStream()
@@ -49,7 +39,7 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
   private[script] lazy val engine: ScriptEngine = {
     // Resolve the compiler's classpath in priority order:
     //   1. `classpathOverride` — caller knows best.
-    //   2. URL introspection of the context classloader (bug #58) —
+    //   2. URL introspection of the context classloader —
     //      handles sbt 2 test workers, IDE runners, Bazel binaries,
     //      and any other launcher whose effective classpath lives
     //      in a `URLClassLoader` rather than `java.class.path`.
@@ -72,7 +62,7 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
     // reference at construction, so an eval-time redirect is too late. Bind
     // ALL of Console.out + System.out + System.err to `capturedPS` for the
     // duration of construction so every later eval's diagnostics land in
-    // `captured`, whichever stream the active REPL version targets. Bug #55.
+    // `captured`, whichever stream the active REPL version targets.
     def buildEngine(): ScriptEngine = {
       val priorOut = System.out
       val priorErr = System.err
@@ -115,12 +105,6 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
     "fabric.rw.*",
     "spice.http.client.HttpClient",
     "spice.http.{HttpRequest, HttpResponse}",
-    // Bug #70 — wildcard `spice.net.*` brings the `url"…"` /
-    // `path"…"` / `port"…"` / `ip"…"` / `email"…"` literal
-    // interpolators into scope, plus the `URL` case class itself.
-    // The cookbook uses `url"…"` to lift literal Strings into typed
-    // URLs (the `HttpClient.url(_: URL)` signature requires a typed
-    // URL, not a String — this is the cookbook's #1 footgun pre-fix).
     "spice.net.*",
     "rapid.Task",
     "scala.jdk.CollectionConverters.*",
@@ -203,17 +187,16 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
     engine.synchronized {
       bindAll(bindings)
       val cleaned = stripCodeFences(code)
-      // Reset captured output before the eval so any error markers we
-      // see afterwards are from this call only. Bug #55.
+     // Reset captured output before the eval so any error markers we
       captured.reset()
-      // Sigil bug #208 — wrap the user code in a generated `def` whose
-      // body is the user's full source, then call it. Scala's
-      // function-body rules make the body's value EXACTLY the value
-      // of its trailing expression, so a script like
-      // `println(summary); summary` returns `summary` instead of
-      // the println's `Unit` (the prior REPL behaviour anchored on
-      // the last *statement* with a recordable value and silently
-      // surfaced `()` for side-effecting trailing lines).
+      // Wrap the user code in a generated `def` whose body is the
+        // user's full source, then call it. Scala's function-body rules
+        // make the body's value EXACTLY the value of its trailing
+        // expression, so a script like `println(summary); summary`
+        // returns `summary` instead of the println's `Unit` (the prior
+        // REPL behaviour anchored on the last *statement* with a
+        // recordable value and silently surfaced `()` for side-effecting
+        // trailing lines).
       //
       // Plain `{ … }` wrapping wasn't enough — the dotty REPL's
       // `ScriptEngine.eval` parses the block contents as a
@@ -258,14 +241,14 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
     }
   }
 
-  /** True if the captured REPL output contains a Scala 3 error
+ /** True if the captured REPL output contains a Scala 3 error
     * diagnostic. Scala 3's `ConsoleReporter` formats errors as
     * `-- [E<num>] <Category>: -----...` (with optional category like
     * "Type Error", "Syntax Error"). Falls back to a looser check for
     * `error:` lines so we catch any reporter format we don't
     * specifically recognize. Warnings are intentionally NOT
     * triggers — successful-but-noisy compiles still return their
-    * value. Bug #55. */
+    * value. */
   private def containsErrorDiagnostic(out: String): Boolean = {
     if (out.isEmpty) false
     else {

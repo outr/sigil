@@ -10,11 +10,11 @@ import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 case class UnpinComplexityInput() extends ToolInput derives RW
 
 /**
- * Clear the conversation's pinned complexity tier — routing
- * reverts to [[sigil.provider.RoutedStrategy.inferComplexity]]'s
- * per-message classification. Companion to [[PinComplexityTool]].
- * Not auto-registered. Bug #152.
- */
+  * Clear the conversation's pinned complexity tier — routing
+  * reverts to [[sigil.provider.RoutedStrategy.inferComplexity]]'s
+  * per-message classification. Companion to [[PinComplexityTool]].
+  * Not auto-registered.
+  */
 case object UnpinComplexityTool extends Tool {
   type Input  = UnpinComplexityInput
   type Output = TextToolOutput
@@ -29,9 +29,6 @@ case object UnpinComplexityTool extends Tool {
 
   override def executeResult(input: UnpinComplexityInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
-    // Sigil bug #177 — emit ComplexityChange alongside the
-    // confirmation so UI consumers can reduce the unpin event
-    // without polling Conversation.pinnedComplexity.
     ctx.sigil.withDB(_.conversations.transaction { tx =>
       tx.get(ctx.conversation.id).flatMap {
         case None       => Task.pure(None)

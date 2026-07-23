@@ -41,20 +41,11 @@ object LlamaCpp {
     derives RW
 
   /**
-   * Convert a llama.cpp entry into a sigil [[sigil.db.Model]].
-   *
-   * The sigil id is `llamacpp/<model-name>` where model-name is derived from
-   * the llama.cpp id (basename, `.gguf` extension stripped, lowercased).
-   *
-   * Bug #42 — `runtimeContextOverride` carries the `n_ctx` value
-   * actually allocated by the running server (read from `/props`).
-   * Prefer it when present; fall back to the model's `n_ctx_train`
-   * (training-time max) only when `/props` wasn't reachable. The
-   * runtime value is the hard limit any provider request is checked
-   * against; using `n_ctx_train` as a stand-in produces budget
-   * decisions that are fictional whenever the operator allocated
-   * fewer slots / a smaller window than training.
-   */
+    * Convert a llama.cpp entry into a sigil [[sigil.db.Model]].
+    *
+    * The sigil id is `llamacpp/<model-name>` where model-name is derived from
+    * the llama.cpp id (basename, `.gguf` extension stripped, lowercased).
+    */
   def toModel(entry: Entry, runtimeContextOverride: Option[Long] = None): Model = {
     val name = modelNameFromId(entry.id)
     val id = Id[Model](s"$Provider/${name.toLowerCase}")
@@ -133,9 +124,8 @@ object LlamaCpp {
       }
     }
 
-  /** Subset of `/props` Sigil cares about: runtime context budget +
-    * concurrent-slot count. Bug #42 reads the context length;
-    * bug #49 adds `totalSlots` to drive `Provider.maxConcurrent`. */
+ /** Subset of `/props` Sigil cares about: runtime context budget +
+    * concurrent-slot count. */
   case class RuntimeProps(nCtx: Long, totalSlots: Long) {
     /** Per-slot context budget — the hard limit any single request
       * can occupy. llama-server's `/props` already reports
@@ -153,9 +143,6 @@ object LlamaCpp {
     * endpoint is unreachable or the fields are missing — callers
     * fall back to safe defaults. */
   def fetchProps(baseUrl: URL): Task[Option[RuntimeProps]] =
-    // Bug #54 — hard timeout so an unreachable backend can't block
-    // provider construction indefinitely. Falls through to `None` →
-    // `total_slots = 1` default, which is the safe assumption.
     HttpClient.url(baseUrl.withPath("/props")).timeout(scala.concurrent.duration.FiniteDuration(5, "seconds")).call[Json].map { json =>
       val nCtx = json.get("default_generation_settings")
         .flatMap(_.get("n_ctx"))

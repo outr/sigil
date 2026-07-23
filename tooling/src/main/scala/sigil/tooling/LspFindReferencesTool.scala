@@ -52,10 +52,6 @@ final class LspFindReferencesTool(val manager: LspManager) extends Tool
   )
 
 
-  // Bug #230 — usage lists are the canonical input to
-  // `dispatch_workers` (one item per reference site → per-callsite
-  // LLM-or-script pipeline). Surface the next tool so the agent
-  // sees the natural follow-up.
   override def suggestedNextTools: List[ToolName] = List(ToolName("dispatch_workers"))
 
   override def executeOutput(input: LspFindReferencesInput, context: ToolContext): Task[LspFindReferencesOutput] =

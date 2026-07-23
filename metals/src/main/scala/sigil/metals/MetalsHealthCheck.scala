@@ -2,25 +2,6 @@ package sigil.metals
 
 import java.nio.file.{Files, Path}
 
-/**
- * Self-healing helpers for Metals' on-disk state. Sigil bug #99 —
- * a Metals process killed mid-import leaves the embedded H2 db
- * (`<workspace>/.metals/metals.mv.db`) at status `Started`. Every
- * subsequent Metals startup reads that, sees Started, logs
- * `skipping build import with status 'Started'`, and sits idle.
- * No `.bloop/` ever appears; every LSP/BSP tool that depends on
- * indexing hangs.
- *
- * The recovery today is manual: kill all Metals java processes
- * targeting the workspace, wipe `metals.mv.db`, restart. Not a
- * workflow we can ask users to discover.
- *
- * This helper runs at every Metals spawn entry point. When no
- * Sigil-managed peer is alive for the workspace, the H2 db is
- * presumed stale (whoever wrote `Started` is dead) and gets
- * removed so the new Metals starts with a fresh `Pending`
- * status and runs a clean import.
- */
 object MetalsHealthCheck {
 
   /** Reconcile a possibly-stale Metals H2 db before spawning a

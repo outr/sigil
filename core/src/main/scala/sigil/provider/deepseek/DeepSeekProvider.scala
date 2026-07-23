@@ -15,9 +15,6 @@ import scala.concurrent.duration.*
  * schemas (grammar-constrained args) and `reasoning_effort` forwarding
  * are wired; `reasoning_content` deltas come back as `ThinkingDelta`s.
  *
- * Note: live testing requires a funded DeepSeek account — the API
- * returns HTTP 402 "Insufficient Balance" for unfunded keys, which
- * looks like a provider bug but isn't. See `DeepSeekRequestCoverageSpec`
  * for deterministic wire coverage that doesn't require balance.
  */
 case class DeepSeekProvider(apiKey: String,

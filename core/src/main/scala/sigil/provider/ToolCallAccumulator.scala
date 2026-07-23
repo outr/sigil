@@ -181,13 +181,7 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
               val sentArgs = Some(s"$rawSnippet$truncated")
               Vector(ProviderEvent.Error(RefusalPayload.enrichRule(tool, rule, sentArgs)))
 
-            case Right(rawJson) =>
-              // Sigil bug #171 — detect "model emitted a JSON array when
-              // the schema requires an object" before invoking decode.
-              // Throw `ProviderStreamException` so the next attempt routes
-              // through `ProviderStrategy.errorClassifier`, symmetric with
-              // `emptyBudgetBurnThrows` for DigitalOcean's degenerate
-              // output mode (bug #161).
+           case Right(rawJson) =>
               val schemaWantsObj = tool.inputRW.definition.defType match {
                 case _: fabric.define.DefType.Obj => true
                 case _                             => false
@@ -258,14 +252,10 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
           Vector(ProviderEvent.ToolCallComplete(s.callId, sigil.tool.JsonInput(rawJson)))
       }
     }
-    // Sigil audit H8 — any pending headers still partial at stream
-    // close (one field never arrived) get a diagnostic error so we
-    // surface the bug to the agent + scribe rather than silently
-    // dropping. Should be vanishingly rare in practice; a real
-    // compat-backend bug would manifest this way.
+   // Sigil audit H8 — any pending headers still partial at stream
     val orphanPending: Vector[ProviderEvent] = pendingHeaders.values.toVector.map { p =>
       ProviderEvent.Error(
-        s"Tool-call header arrived incomplete at stream close: " +
+       s"Tool-call header arrived incomplete at stream close: " +
           s"callId=${p.callId.map(_.value).getOrElse("<missing>")} " +
           s"toolName=${p.toolName.getOrElse("<missing>")}. " +
           s"Compat-backend bug (provider split id and name across chunks but didn't ship both before close)."
@@ -371,21 +361,6 @@ object ToolCallAccumulator {
     if (changed) Some(sb.toString) else None
   }
 
-  /** Compact human-readable summary of a fabric [[Definition]] —
-    * field names + types — for use in tool-arg error diagnostics
-    * (bug #72). Optional and required fields are listed separately
-    * so the agent can quickly cross-check its emitted JSON against
-    * the expected shape. Falls back to a minimal description for
-    * non-object root definitions.
-    *
-    * Examples:
-    *   `{ required: [name: string, count: integer], optional: [description: string] }`
-    *   `(any JSON value)` — for `DefType.Json` roots
-    *   `<string>` — for primitive-typed roots
-    *
-    * Intentionally lossy — the agent already has the full schema in
-    * the tool definition that came down on the wire. The summary's
-    * job is to remind, not duplicate. */
   private[provider] def summarizeSchema(definition: fabric.define.Definition): String = {
     import fabric.define.DefType
     definition.defType match {

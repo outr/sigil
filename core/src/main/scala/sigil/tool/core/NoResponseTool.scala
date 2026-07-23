@@ -8,19 +8,6 @@ import sigil.signal.EventState
 import sigil.tool.{TextToolOutput, ToolName, ToolResult}
 import sigil.tool.model.{NoResponseInput, ResponseContent}
 
-/**
- * Lets the agent end its turn without producing any user-visible content.
- *
- * In a multi-participant chat-based model, an agent may be activated on events
- * that aren't directed at it. Rather than forcing a response, the agent calls
- * `no_response` to signal "nothing from me this turn."
- *
- * Bug #79 — when small/mid models pick `no_response` and cram a refusal /
- * apology into `reason` (e.g. *"I don't have the ability to switch models…"*),
- * the framework auto-promotes to a `respond` Message rather than swallowing
- * the user-directed prose. The agent's intent stays delivered; the user
- * doesn't get silence after the model produced a deliverable message.
- */
 case object NoResponseTool extends RespondFamilyTool {
   type Input  = NoResponseInput
   type Output = TextToolOutput

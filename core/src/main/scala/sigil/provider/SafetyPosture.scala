@@ -6,14 +6,6 @@ import fabric.rw.*
  * The agent's safety posture — drives whether the orchestrator's
  * `requiresUserConsent` gate fires or is bypassed.
  *
- * Sigil bug #160 — autonomous-mode apps (single-user-local agents
- * the user has implicitly authorized by running them) used to be
- * forced to call `record_consent` themselves to clear the gate,
- * fabricating a "user reason" the user never spoke. The posture
- * exposes the intent structurally so the gate can bypass cleanly
- * without each `requiresUserConsent` tool burning an extra LLM
- * iteration on self-approval theater.
- *
  * Pair this with [[Instructions.safety]] — `Confirming` posture
  * with `Instructions.ConfirmingSafety` keeps the confirm-before-
  * destructive UX; `Autonomous` posture with

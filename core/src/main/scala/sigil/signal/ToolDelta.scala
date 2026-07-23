@@ -7,29 +7,27 @@ import sigil.event.Event
 import sigil.provider.TokenUsage
 
 /**
- * A transient update to an active [[sigil.event.ToolInvoke]]. Carries the
- * parsed `input` at completion time (when the LLM has finished streaming args
- * and a concrete `ToolInput` is available) and/or a state transition.
- *
- * `error` carries a human-readable diagnostic when the call settled because of
- * a failure rather than a successful arg-parse — typically a post-decode
- * validator rejection (`@pattern` / length / type mismatch) or a provider-side
- * error mid-call. Client UIs that render `inputJson` should prefer `error`
- * when it's present so failed calls show "(invalid args: …)" rather than
- * the "(input pending)" placeholder reserved for genuinely-mid-flight calls.
- * Bug #51 — without this, validator-rejected chips were
- * indistinguishable from in-flight calls.
- */
+   * A transient update to an active [[sigil.event.ToolInvoke]]. Carries the
+   * parsed `input` at completion time (when the LLM has finished streaming args
+   * and a concrete `ToolInput` is available) and/or a state transition.
+   *
+   * `error` carries a human-readable diagnostic when the call settled because of
+   * a failure rather than a successful arg-parse — typically a post-decode
+   * validator rejection (`@pattern` / length / type mismatch) or a provider-side
+   * error mid-call. Client UIs that render `inputJson` should prefer `error`
+   * when it's present so failed calls show "(invalid args: …)" rather than
+   * the "(input pending)" placeholder reserved for genuinely-mid-flight calls.
+   */
 case class ToolDelta(target: Id[Event],
                      conversationId: Id[Conversation],
                      input: Option[sigil.tool.ToolInput] = None,
                      state: Option[EventState] = None,
                      error: Option[String] = None,
                      /** Mirror of [[sigil.event.ToolInvoke.internal]] — set
-                       * by the orchestrator to match the target invoke's
-                       * own flag, so client UIs that filter the chip
-                       * lifecycle have a stable signal across both events.
-                       * Bug #56. */
+                        * by the orchestrator to match the target invoke's
+                        * own flag, so client UIs that filter the chip
+                        * lifecycle have a stable signal across both events.
+                        */
                      internal: Boolean = false,
                      /** Trailing-usage attribution. The provider's
                        * [[sigil.provider.ProviderEvent.Usage]] event lands on
@@ -40,11 +38,9 @@ case class ToolDelta(target: Id[Event],
                        * combined with `ToolInvoke.modelId`. */
                      usage: Option[TokenUsage] = None,
                      /** Live tool-author-driven summary update. Set via
-                       * [[sigil.TurnContext.setSummary]] from inside a
-                       * tool's execute path; folded onto
-                       * [[sigil.event.ToolInvoke.summary]]. Sigil bug
-                       * #191 — wire-event channel that drives the inline
-                       * tool-chip tagline UI consumers render. */
+                        * [[sigil.TurnContext.setSummary]] from inside a
+                        * tool's execute path; folded onto
+                        * [[sigil.event.ToolInvoke.summary]]. */
                      summary: Option[String] = None,
                      /** Sigil #265 — typed result payload folded onto
                        * [[sigil.event.ToolInvoke.output]]. `Some(...)`

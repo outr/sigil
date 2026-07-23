@@ -32,7 +32,7 @@ final case class GenerationSettings(temperature: Option[Double] = None,
                                       * models. Providers translate to their own
                                       * protocol; non-reasoning models ignore.
                                       * Default `Auto` preserves model / deployment
-                                      * defaults. Bug #155. */
+                                      * defaults. */
                                     reasoningMode: ReasoningMode = ReasoningMode.Auto,
                                     /** Per-call HTTP-transport override. `None`
                                       * (default) uses the provider's own default
@@ -81,17 +81,13 @@ final case class GenerationSettings(temperature: Option[Double] = None,
 
 object GenerationSettings {
 
-  /** Defaults tuned for [[sigil.tool.consult.ConsultTool]]-style
-    * narrow-output decisions — a single tool call carrying a small
-    * structured payload (work-type classifier, complexity tier,
-    * memory extractor, topic-shift judge, etc.).
-    *
-    * Bounded `outputTokenCap` prevents reasoning-mode models from
-    * running away on internal `reasoning_content` and emitting
-    * `finish_reason: length` with no tool_call (sigil bug #196).
-    * `reasoningMode = Off` keeps thinking-channel tokens from
-    * competing with the structured emission. Callers that genuinely
-    * need long-form free-text generation override per call. */
+ /** Defaults tuned for [[sigil.tool.consult.ConsultTool]]-style
+    88|     *
+    89|     * Bounded `outputTokenCap` prevents reasoning-mode models from
+    90|     * running away on internal `reasoning_content`.
+    91|     * `reasoningMode = Off` keeps thinking-channel tokens from
+    92|     * competing with the structured emission. Callers that genuinely
+    93|     * need long-form free-text generation override per call. */
   val classifierDefault: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(1500),
     reasoningMode  = ReasoningMode.Off

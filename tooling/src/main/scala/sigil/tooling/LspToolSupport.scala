@@ -16,13 +16,6 @@ import java.nio.file.{Files, Paths}
  * indexed, run a single RPC, format the response. This trait
  * collapses that into [[withSessionTyped]] and [[withOpenDocumentTyped]]
  * so the per-tool body is just "call session.X, format the result."
- *
- * Sigil bug #85 — sets `toolchain = Some("lsp")` on every mixed-in
- * tool so [[sigil.Sigil.findCapabilities]]'s ranker can boost their
- * score when the conversation has an LSP runtime active (Metals
- * running, ts-server attached, …). Apps register `"lsp"` in their
- * [[sigil.Sigil.activeToolchains]] response when an LSP session is
- * live for the conversation's workspace.
  */
 trait LspToolSupport extends sigil.tool.Tool {
   protected def manager: LspManager
@@ -78,10 +71,6 @@ trait LspToolSupport extends sigil.tool.Tool {
         val root = manager.resolveRoot(filePath, config.rootMarkers)
         val uri = new File(filePath).toURI.toString
         manager.session(languageId, root).flatMap { session =>
-          // Bug #98 — register a status callback so server-extension
-          // progress (Metals' `metals/status`, etc.) surfaces in the
-          // tool's chip via `ctx.reportProgress`. Cleared on body
-          // exit so other concurrent calls don't see stale text.
           session.setStatusCallback(Some(text =>
             context.reportProgress(text).handleError(_ => Task.unit).startUnit()
           ))

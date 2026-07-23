@@ -17,9 +17,7 @@ import sigil.conversation.Conversation
  * pattern: the inbound `Request*` Notice is the verb (client asks for
  * the action); the outbound non-`Request*` Notice
  * ([[ConversationCleared]]) is the broadcast confirmation. Splitting
- * the two directions across two types avoids the direction-dependent
- * overloading that drove this bug — pre-fix, the client pushed an
- * outbound-shaped [[ConversationCleared]] which the framework had no
- * handler for, so the action silently no-op'd.
+ * the two directions across two types avoids direction-dependent
+ * overloading.
  */
 case class RequestConversationClear(conversationId: Id[Conversation]) extends ConversationNotice derives RW

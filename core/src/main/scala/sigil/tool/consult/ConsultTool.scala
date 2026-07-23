@@ -116,7 +116,7 @@ case object ConsultTool extends Tool {
     }
 
   /**
-   * Richer-shape variant of [[invoke]] (sigil bug #197). Returns a
+   * Richer-shape variant of [[invoke]]. Returns a
    * [[ConsultOutcome]] that distinguishes:
    *
    *   - [[ConsultOutcome.Parsed]]    — model emitted the expected tool_call.

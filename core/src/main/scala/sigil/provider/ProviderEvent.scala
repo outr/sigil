@@ -62,14 +62,6 @@ enum ProviderEvent derives RW {
     * back to the full-transcript shape. */
   case ResponseStateCaptured(responseId: Option[String], messageCount: Int)
 
-  /** Provider-internal reasoning state (bug #61 — OpenAI Responses
-    * API `reasoning` output items). The orchestrator translates this
-    * into a persisted [[sigil.event.Reasoning]] event so subsequent
-    * turns can replay it onto the wire. `providerItemId` is the wire-
-    * level id (e.g. `rs_…`); `summary` may be empty when the
-    * provider omits text summaries (o1 / o3 typically do);
-    * `encryptedContent` is the opaque CoT blob the provider expects
-    * back verbatim. */
   case ReasoningItem(providerItemId: String,
                      summary: List[String],
                      encryptedContent: Option[String])

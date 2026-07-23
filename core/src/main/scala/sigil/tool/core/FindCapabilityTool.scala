@@ -8,14 +8,14 @@ import sigil.tool.ToolContext
 import sigil.tool.{DiscoveryRequest, Tool, ToolExample, ToolName, ToolResult}
 
 /**
- * Discovery tool. The agent calls `find_capability` when it needs to
- * check what capabilities exist to satisfy the current request.
- * Resolves a [[FindCapabilityOutput]] carrying matches across every
- * category the framework surfaces (tools, modes, skills) so the LLM
- * has both the discovery (what exists) and the actionable next call
- * (`change_mode("…")` for a Mode, the tool name for a Tool) on its
- * next turn. Bug #66.
- */
+   * Discovery tool. The agent calls `find_capability` when it needs to
+   * check what capabilities exist to satisfy the current request.
+   * Resolves a [[FindCapabilityOutput]] carrying matches across every
+   * category the framework surfaces (tools, modes, skills) so the LLM
+   * has both the discovery (what exists) and the actionable next call
+   * (`change_mode("…")` for a Mode, the tool name for a Tool) on its
+   * next turn.
+   */
 case object FindCapabilityTool extends Tool {
   type Input  = FindCapabilityInput
   type Output = FindCapabilityOutput

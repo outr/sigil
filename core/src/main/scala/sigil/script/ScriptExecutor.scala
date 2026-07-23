@@ -64,19 +64,19 @@ trait ScriptExecutor {
    * statements for the ambient surface. Implementations should choose
    * a compact, unambiguous prelude — wide auto-imports increase the
    * risk of identifier collisions when the model picks variable
-   * names. Default empty (no auto-imports). Bug #54.
+   * names. Default empty (no auto-imports).
    */
   def preludeImports: List[String] = Nil
 
   /**
-   * Human-readable surface advertised to the LLM in tool descriptions
-   * (`CreateScriptToolTool`, `ExecuteScriptTool`). Without this, the
-   * LLM falls back to its training-data prior — which for Scala is
-   * heavily Scala 2 (`scala.util.parsing.json.JSON`,
-   * `scala.io.Source.fromURL`, …) — and emits code that doesn't
-   * compile against the host classpath. Default `None` (the tools
-   * advertise no executor surface). Bug #54.
-   */
+    * Human-readable surface advertised to the LLM in tool descriptions
+    * (`CreateScriptToolTool`, `ExecuteScriptTool`). Without this, the
+    * LLM falls back to its training-data prior — which for Scala is
+    * heavily Scala 2 (`scala.util.parsing.json.JSON`,
+    * `scala.io.Source.fromURL`, …) — and emits code that doesn't
+    * compile against the host classpath. Default `None` (the tools
+    * advertise no executor surface).
+    */
   def advertisedSurface: Option[String] = None
 }
 

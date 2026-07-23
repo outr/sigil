@@ -46,15 +46,7 @@ class ExecuteScriptTool(executor: ScriptExecutor,
   val outputRW = summon[RW[ScriptToolOutput]]
 
   override val keywords = Set(
-    // Bug #82 — without these, keyword-rank pointed agents at the
-    // persistent CRUD variants (`create_script_tool`,
-    // `update_script_tool`) when "execute"/"evaluate"/"run script"
-    // queries should have surfaced this ad-hoc tool first. The
-    // ad-hoc / one-off / inspect terms disambiguate against
-    // create_script_tool (which is for persistent registration).
     "execute", "run", "evaluate", "eval", "script",
-    "scala", "compute", "ad-hoc", "adhoc", "inspect",
-    "one-off", "calculate"
   )
   override val examples = List(
     ToolExample(
@@ -72,15 +64,11 @@ class ExecuteScriptTool(executor: ScriptExecutor,
       "Apply edits and report what was changed (edit pass)",
       ScriptInput(
         code = "// edit code …",
-        summary = "edit: remove all matched bug refs and report counts"
+        summary = "edit: remove all matched references and report counts"
       )
     )
   )
 
-  /** Append the executor's advertised surface (Bug #54) so the LLM
-    * knows which library identifiers are pre-imported. Without this
-    * the model writes Scala-2 idioms that don't exist in the Scala 3
-    * REPL classpath. */
   override def descriptionFor(mode: _root_.sigil.provider.Mode,
                               sigilInstance: _root_.sigil.Sigil): String =
     executor.advertisedSurface match {
@@ -88,8 +76,6 @@ class ExecuteScriptTool(executor: ScriptExecutor,
       case None          => description
     }
 
-  // Bug #86 — generic primitive: ranks below domain-specific
-  // tools when both match a query.
   override def preferIfNoBetter: Boolean = true
 
   override def executeResult(input: ScriptInput,
@@ -131,7 +117,7 @@ object ExecuteScriptTool {
   /** Format a throwable as a short stack-trace string suitable for a
     * `ScriptResult.error` field. Trims to the first 8 lines so the
     * model has the framing + the script-relevant frames without the
-    * ~80-line JVM stack. Bug #67. */
+    * ~80-line JVM stack. */
   private[script] def formatThrowable(t: Throwable): String = {
     val sw = new java.io.StringWriter
     t.printStackTrace(new java.io.PrintWriter(sw))

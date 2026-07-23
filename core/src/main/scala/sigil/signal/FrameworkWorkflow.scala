@@ -6,7 +6,7 @@ import sigil.conversation.Conversation
 
 /**
  * Lifecycle pulse for a framework-internal long-running operation
- * (pre-flight, context compression, frame load, …). Bug #50.
+* (pre-flight, context compression, frame load, …).
  *
  * Distinct from the persistent `WorkflowRunStarted` /
  * `WorkflowStepCompleted` / `WorkflowRunCompleted` Events emitted

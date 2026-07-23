@@ -48,10 +48,7 @@ object StreamWireInterceptor {
     * `chunkLogger` (default [[ChunkLogger.NoOp]]) gets a per-line
     * pulse with arrival timing — used by [[FileChunkLogger]] for
     * post-hoc forensics on streaming responses that stall mid-flight
-    * (sigil bug #194). Non-SSE-data lines (`""` separators, comments,
-    * etc.) are skipped — only `data:`-prefixed lines count toward
-    * the chunk index. Stream termination emits a final summary call
-    * with the longest inter-chunk gap. */
+    */
   def attach[T](lines: Stream[String],
                 interceptor: Interceptor,
                 request: HttpRequest,

@@ -45,14 +45,13 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
   val progressTokens: ConcurrentHashMap[String, java.lang.Boolean] = new ConcurrentHashMap()
   private val serverRef: AtomicReference[LanguageServer] = new AtomicReference()
 
-  /** Per-call status callback. The active LSP tool (via
+ /** Per-call status callback. The active LSP tool (via
     * [[LspToolSupport.withSessionTyped]]) registers a Some(handler)
     * that publishes [[sigil.event.ToolProgress]] for the chip;
     * cleared back to None on exit. Routes Metals' `metals/status`
     * notification (and analogous server-extension status pulses) so
     * indexing / build-import progress flows into the agent's UI
-    * instead of being dropped by lsp4j's GenericEndpoint. Sigil bug
-    * #98. */
+    * instead of being dropped by lsp4j's GenericEndpoint. */
   private val statusCallback: AtomicReference[Option[String => Unit]] =
     new AtomicReference(None)
 
@@ -119,15 +118,8 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
   override def logMessage(params: MessageParams): Unit =
     routeStatus(Option(params).flatMap(p => Option(p.getMessage)).getOrElse(""))
 
-  // Explicit overrides for every default method declared on
-  // [[LanguageClient]]. Sigil bug #93 — without these, lsp4j's
-  // `AnnotationUtil.findRpcMethods` reflection scan throws
-  // "Duplicate RPC method workspace/configuration" (and the
-  // analogous error for the other defaults) when our Scala 3
-  // subclass is registered as a local service. The Scala compiler
-  // emits synthetic forwarders alongside the inherited defaults
-  // and the scan double-counts. Same fix as
-  // [[sigil.metals.MetalsLanguageClient]].
+ // Explicit overrides for every default method declared on
+  // [[LanguageClient]].
   override def configuration(params: ConfigurationParams): CompletableFuture[java.util.List[Object]] =
     CompletableFuture.completedFuture(java.util.Collections.emptyList[Object]())
 

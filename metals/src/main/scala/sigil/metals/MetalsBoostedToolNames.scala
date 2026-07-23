@@ -3,23 +3,23 @@ package sigil.metals
 import sigil.tool.ToolName
 
 /**
- * Tool names pinned to a conversation when [[StartMetalsTool]]
- * succeeds (sigil bug #97). The conversation's
- * [[sigil.conversation.ConversationToolOverlay]] receives an
- * `Active(MetalsBoostedToolNames.all)` policy so subsequent turns
- * can call any of these directly without a `find_capability`
- * round-trip.
- *
- * Covers the three families that become available once Metals is
- * running for a workspace:
- *
- *   - **lsp_*** — generic LSP tools backed by the `LspServerConfig("scala", ...)`
- *     written by [[MetalsSigil.writeLspServerConfigForMetals]] (#88).
- *   - **bsp_*** — generic BSP tools that drive sbt / Bloop via the
- *     persisted [[sigil.tooling.BspBuildConfig]].
- *   - **metals_*** — the lifecycle / status surface (start, stop,
- *     metals_status) so the agent can introspect the subprocess.
- */
+  * Tool names pinned to a conversation when [[StartMetalsTool]]
+  * succeeds. The conversation's
+  * [[sigil.conversation.ConversationToolOverlay]] receives an
+  * `Active(MetalsBoostedToolNames.all)` policy so subsequent turns
+  * can call any of these directly without a `find_capability`
+  * round-trip.
+  *
+  * Covers the three families that become available once Metals is
+  * running for a workspace:
+  *
+  *   - **lsp_*** — generic LSP tools backed by the `LspServerConfig("scala", ...)`
+  *     written by [[MetalsSigil.writeLspServerConfigForMetals]].
+  *   - **bsp_*** — generic BSP tools that drive sbt / Bloop via the
+  *     persisted [[sigil.tooling.BspBuildConfig]].
+  *   - **metals_*** — the lifecycle / status surface (start, stop,
+  *     metals_status) so the agent can introspect the subprocess.
+  */
 object MetalsBoostedToolNames {
   val lsp: List[ToolName] = List(
     "lsp_diagnostics", "lsp_pull_diagnostics",

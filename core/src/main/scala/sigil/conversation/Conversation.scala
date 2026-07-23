@@ -103,14 +103,14 @@ case class Conversation(topics: List[TopicEntry],
                           * assignment. Cleared via the `unpin_model` tool. */
                         pinnedModelId: Option[lightdb.id.Id[sigil.db.Model]] = None,
                         /** Conversation-level pinned complexity tier — when set,
-                          * every per-turn classification skips
-                          * [[sigil.provider.RoutedStrategy.inferComplexity]] and
-                          * uses this tier instead. Lets the user lock the
-                          * routing chain to a specific tier without naming a
-                          * model (cost ceiling, classifier override, diagnostic
-                          * forcing). Cleared via the `unpin_complexity` tool.
-                          * Pin wins over inference; inference wins over the
-                          * strategy's `Complexity.Medium` default. Bug #152. */
+                           * every per-turn classification skips
+                           * [[sigil.provider.RoutedStrategy.inferComplexity]] and
+                           * uses this tier instead. Lets the user lock the
+                           * routing chain to a specific tier without naming a
+                           * model (cost ceiling, classifier override, diagnostic
+                           * forcing). Cleared via the `unpin_complexity` tool.
+                           * Pin wins over inference; inference wins over the
+                           * strategy's `Complexity.Medium` default. */
                         pinnedComplexity: Option[sigil.provider.Complexity] = None,
                         /** Conversation-level pinned reasoning effort — when set,
                           * the main agent turn's resolved [[sigil.provider.GenerationSettings]]

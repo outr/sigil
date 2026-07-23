@@ -137,7 +137,7 @@ object FrameBuilder {
         (if (ti.summary.nonEmpty) ti.summary else raceMarker, Nil)
     }
 
-  /**
+ /**
    * Compute the render-ready [[ContextFrame]] for a single Event.
    * `None` for in-flight events and event types that don't produce
    * a frame (`AgentState`, `Stop`, `ControlPlaneEvent`s).
@@ -145,10 +145,7 @@ object FrameBuilder {
    * Pure per-event projection — no dependency on any ordering or
    * surrounding events. The framework calls this at settle time to
    * inline the frame onto the durable event row via
-   * [[Event.withContextFrame]]. Bug #26 — the curator queries
-   * `db.events` for `contextFrame.isDefined` to materialize a
-   * conversation's prompt history rather than walking a separate
-   * frames Vector projection.
+   * [[Event.withContextFrame]].
    */
   def computeFrame(event: Event): Option[ContextFrame] = {
     if (event.state != EventState.Complete) return None
@@ -161,11 +158,6 @@ object FrameBuilder {
       // frame to `ToolCallState.Complete(content, images)` instead, so
       // the projection carries the full tool transaction as one frame.
       //
-      // Bug #64 holdover: malformed historical events without `origin`
-      // get a synthetic Agents-only Text frame so a broken historical
-      // row doesn't brick the conversation. The write-side validator
-      // rejects fresh emissions without `origin`, so this fallback
-      // exists purely for legacy data.
       event.origin match {
         case Some(_) =>
           return None
@@ -293,16 +285,8 @@ object FrameBuilder {
           sourceEventId = ex._id,
           visibility    = ex.visibility
         ))
-      // Bug #61 — Reaction is UI signal, not curator-visible
-      // context. Reactions persist as durable events but never
-      // render into the prompt; agents that care query the event
-      // log explicitly.
       case _: sigil.event.Reaction                       => None
-      // Bug #62 — same rationale: read receipts are UI signal,
-      // not prompt context. The ReadState row is per-(conv,
-      // participant) state for delivery indicators, never seen
-      // by the curator.
-      case _: sigil.event.ReadState                      => None
+     case _: sigil.event.ReadState                      => None
       case _: sigil.event.ControlPlaneEvent              => None
 
       case other =>
@@ -317,10 +301,8 @@ object FrameBuilder {
    * Append frames for a newly-Complete event to an existing frame vector.
    * The return value is the updated vector.
    *
-   * Legacy convenience wrapper around [[computeFrame]] — kept while the
-   * old `ConversationView.frames` projection is being phased out (bug
-   * #26). New code should query `Event.contextFrame` directly.
-   */
+   * Legacy convenience wrapper around [[computeFrame]]. New code should query `Event.contextFrame` directly.
+    */
   def appendFor(existing: Vector[ContextFrame], event: Event): Vector[ContextFrame] = {
     if (event.state != EventState.Complete) return existing
 
@@ -338,13 +320,6 @@ object FrameBuilder {
       // record. Extract the text directly so models see a clean tool
       // result instead of doubly-wrapped JSON.
       val (content, images) = toolResultPayload(event)
-      // Bug #69 — pair via the explicit `origin` parent pointer the
-      // orchestrator stamps onto every tool-emitted event. Multiple
-      // Tool events from one `executeResult` therefore all carry the
-      // same origin and all pair to the same call_id; no orphan-
-      // frame fall-through, no ambiguity from "most-recent
-      // unresolved" scanning, no temporal heuristics that break under
-      // out-of-order delivery or replay.
       //
       // A `MessageRole.Tool` event with `origin = None` is a
       // programmer error — the framework throws rather than rendering
@@ -426,7 +401,6 @@ object FrameBuilder {
           visibility = mc.visibility
         )
 
-      // Bug #74 — TopicChange skips frame-emission; see `computeFrame`.
       case _: TopicChange => existing
 
       case r: Reasoning =>
@@ -435,7 +409,6 @@ object FrameBuilder {
         // OpenAIProvider can replay them in the next request's input
         // array. Visibility carries through from the event; other
         // viewers (other agents, human user UIs) filter the frame
-        // out via `Sigil.canSee` / `visibilityAllows`. Bug #61.
         existing :+ ContextFrame.Reasoning(
           providerItemId = r.providerItemId,
           summary = r.summary,
@@ -472,11 +445,6 @@ object FrameBuilder {
   def build(events: Iterable[Event]): Vector[ContextFrame] =
     events.foldLeft(Vector.empty[ContextFrame])((acc, e) => appendFor(acc, e))
 
-  // Bug #26 — the per-event projection updates (recentTools,
-  // suggestedTools) moved to `Sigil.applyParticipantProjectionFor`,
-  // which writes directly to the `db.participantProjections`
-  // collection. Frame-derivation itself is per-event via
-  // [[computeFrame]].
 
   private def renderMessageText(m: Message): String = renderContentText(m.content)
 
@@ -530,8 +498,4 @@ object FrameBuilder {
     case other => other
   }
 
-  // `pairedCallId` was retired in bug #69 — Tool-role pairing now
-  // uses the explicit `Event.origin` parent pointer the orchestrator
-  // stamps at publish time. The scan-based heuristic is no longer
-  // load-bearing.
 }

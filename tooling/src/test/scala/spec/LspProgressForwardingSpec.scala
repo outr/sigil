@@ -8,19 +8,6 @@ import sigil.tooling.{LspRecordingClient, WorkspaceEditApplier}
 
 import java.util.concurrent.atomic.AtomicReference
 
-/**
- * Coverage for the LSP-side notification forwarding from bug #118.
- *
- *   - `$/progress` (`WorkDoneProgressBegin` / `Report` / `End`):
- *     surfaces title / message / percentage through the status
- *     callback.
- *   - `window/logMessage`: routes message text through the callback.
- *   - `window/showMessage`: routes message text through the callback.
- *
- * Pre-fix `notifyProgress` only tracked the token lifecycle and
- * `logMessage` / `showMessage` were no-ops — long Metals operations
- * surfaced nothing in the chip beyond a silent pulse dot.
- */
 class LspProgressForwardingSpec extends AnyWordSpec with Matchers {
 
   private val applier: WorkspaceEditApplier = (_: WorkspaceEdit) => true

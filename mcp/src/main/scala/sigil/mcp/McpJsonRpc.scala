@@ -45,10 +45,6 @@ final class McpJsonRpc(input: BufferedReader,
     if (closed.get()) Task.unit else dispatcher.notify(method, params)
   }
 
-  /** Start the reader thread. Must be called once before any incoming-message dispatch.
-    * Uses a plain daemon Thread (not a rapid fiber) — blocking line-reads on a
-    * subprocess pipe interact poorly with the rapid scheduler's virtual-thread
-    * accounting in some scenarios; an explicit thread sidesteps the issue. */
   def start(): Task[Unit] = Task {
     val t = new Thread(() => readerLoop(), s"sigil-mcp-reader")
     t.setDaemon(true)

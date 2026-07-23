@@ -9,11 +9,11 @@ import java.lang.reflect.{Constructor, Field, Method, Modifier}
 
 /**
  * Introspect a class on the executor's classpath and return its
- * constructors, public methods, and public fields. Bug #59 — the
- * agent uses this in `script-authoring` mode after
- * [[LibraryLookupTool]] resolves a symbol to one or more FQNs and
- * the agent needs the full signature surface to call into the
- * library correctly.
+    * constructors, public methods, and public fields. The
+     * agent uses this in `script-authoring` mode after
+     * [[LibraryLookupTool]] resolves a symbol to one or more FQNs and
+     * the agent needs the full signature surface to call into the
+     * library correctly.
  *
  * Pure Java reflection — no `-sources.jar` required. Returns Scala-
  * style formatted signatures. Doesn't yet pull `@deprecated` or

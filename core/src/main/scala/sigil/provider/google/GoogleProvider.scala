@@ -370,10 +370,8 @@ case class GoogleProvider(apiKey: String,
           )))
         ))
 
-      case _: ProviderMessage.Reasoning =>
+     case _: ProviderMessage.Reasoning =>
         // Provider-specific reasoning state from another provider's turn
-        // (bug #61 — currently OpenAI-only). Gemini has no analogous slot;
-        // drop silently.
         Vector.empty
     }
 
@@ -414,11 +412,9 @@ case class GoogleProvider(apiKey: String,
     * JSON object with `candidates`, optional `usageMetadata`, and
     * optional `finishReason` on a candidate. */
   private def parseChunk(json: Json, state: StreamState): Vector[ProviderEvent] = {
-    // Bug #8 — Gemini occasionally embeds an `error` object in an
-    // otherwise 200-OK stream (e.g. quota / safety pipeline failures
-    // that don't fit `finishReason`). Throw a ProviderStreamException
-    // so the agent loop's handler (Bug #6) renders a user-visible
-    // Failure Message rather than dropping the chunk silently.
+   // Handle error objects embedded in 200-OK streams (e.g. quota / safety pipeline failures
+    // that don't fit `finishReason`). Throw a ProviderStreamException so the agent loop's handler
+    // renders a user-visible Failure Message rather than dropping the chunk silently.
     json.get("error").foreach { err =>
       if (!err.isNull) {
         val code = err.get("code").map(_.asInt).getOrElse(0)

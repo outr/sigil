@@ -167,15 +167,14 @@ object CoreTools {
 
   val coreToolNames: List[sigil.tool.ToolName] = all.map(_.schema.name).toList
 
-  /** Names of the atomic content tools — those whose output IS the
+ /** Names of the atomic content tools — those whose output IS the
     * agent's user-facing content rather than a tool result feeding
     * back to the model. Their `executeResult` emits a `Standard`-role
     * `Message` via `ctx.emit` (alongside the standard settling
     * [[sigil.signal.ToolDelta]]); the framework's frame renderer
     * pairs each such call with a synthetic empty output to satisfy
     * providers (notably OpenAI Responses) that strictly require every
-    * `function_call` to have a matching `function_call_output`
-    * (sigil bug #19). */
+    * `function_call` to have a matching `function_call_output`. */
   val atomicContentToolNames: Set[sigil.tool.ToolName] = Set(
     RespondTool.schema.name,
     RespondOptionsTool.schema.name,

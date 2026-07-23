@@ -55,15 +55,6 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
     withOpenDocumentOrThrow[LspDiagnosticsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>
-      // Sigil bug #100 — the verdict API gates the pull request on the
-      // server's advertised capability (LSP 3.17 forbids calling
-      // `textDocument/diagnostic` otherwise; push-only servers like
-      // Metals answer `MethodNotFound`). A verdict is a genuine answer
-      // for the file's CURRENT text — `fresh = true`, empty list means
-      // clean. No verdict (capability missing, request failure,
-      // unchanged-kind report) falls back to the push-cache snapshot,
-      // which never waited for a publish and MUST NOT claim freshness:
-      // an empty stale snapshot is "unknown", not "clean".
       session.pullDiagnosticsVerdict(uri).map {
         case Some(items) =>
           LspDiagnosticsResult(

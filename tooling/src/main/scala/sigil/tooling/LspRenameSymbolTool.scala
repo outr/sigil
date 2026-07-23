@@ -27,7 +27,7 @@ import scala.jdk.CollectionConverters.*
  * the same underlying `lsp_rename` path; this wrapper just removes
  * the lookup dance.
  *
- * Sigil bug #212.
+*
  */
 final class LspRenameSymbolTool(val manager: LspManager) extends Tool
   with sigil.tool.DestructiveExternalTool with LspToolSupport {

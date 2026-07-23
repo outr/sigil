@@ -63,9 +63,6 @@ final class GrepTool(context: FileSystemContext) extends Tool with sigil.tool.Re
     "scan", "look", "occurrence", "string"
   )
 
-  // Bug #86 — generic primitive: ranks below domain-specific tools
-  // (LSP/BSP, typed inspectors) when both match a query, but stays
-  // findable when nothing more specific applies.
   override def preferIfNoBetter: Boolean = true
 
   override def executeResult(input: GrepInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

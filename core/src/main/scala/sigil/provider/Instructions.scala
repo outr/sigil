@@ -158,7 +158,7 @@ object Instructions {
       |
       |1. The user asked you to DO something — wait, fetch, save, look up, send, run, edit, search, write code, anything action-shaped. Even ONE word of action means action.
       |   → Discover the capability that fits the task, then use it. The discovery tool in your roster explains how to search; each capability it surfaces carries its own usage in its own description.
-      |   → Self-referential requests ("switch models", "what can you do", anything you're tempted to treat as out-of-scope) are STILL actions. Don't refuse based on assumed limits — the catalog usually has what's needed. A refusal not preceded by a discovery search is a bug.
+     |   → Self-referential requests ("switch models", "what can you do", anything you're tempted to treat as out-of-scope) are STILL actions. Don't refuse based on assumed limits — the catalog usually has what's needed.
       |   → **Ambiguity is NOT a reason to skip discovery.** If you're tempted to ask the user to clarify before acting, search first with your best-guess terms — a matching capability often resolves the ambiguity on the spot. Fall through to a clarifying question only after discovery surfaces nothing relevant, and say what you searched for.
       |
       |2. The user is chatting / asking a knowledge question / following up and no action is needed.
@@ -221,7 +221,7 @@ object Instructions {
                      personality = personality, guidelines = guidelines,
                      toolsTrailer = toolsTrailer, posture = posture)
 
-  /**
+ /**
    * Convenience factory for autonomous-action posture — the agent acts
    * directly on user instructions without asking for confirmation. Use
    * this for benchmarks (AgentDojo, etc.) and "agent has been granted
@@ -231,8 +231,7 @@ object Instructions {
    * AND the structural [[SafetyPosture.Autonomous]] — the latter
    * bypasses the orchestrator's `requiresUserConsent` gate so the
    * agent doesn't have to call `record_consent` on itself to clear
-   * gates the user has already implicitly authorized (sigil bug
-   * #160).
+   * gates the user has already implicitly authorized.
    */
   def autonomous(personality: String = DefaultPersonality,
                  guidelines: List[String] = Nil): Instructions =

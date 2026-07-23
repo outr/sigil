@@ -57,9 +57,7 @@ class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
 
     // The framework's dispatch / rename family must surface via
-    // ToolingSigil's staticTools so `find_capability` can advertise
-    // them. The generic dispatch_workers primitive (bug #230)
-    // replaced the prior three-tool refactor session.
+     // ToolingSigil's staticTools so `find_capability` can advertise
     "register dispatch_workers and lsp_rename_symbol in staticTools" in {
       val s = freshSigil()
       for {

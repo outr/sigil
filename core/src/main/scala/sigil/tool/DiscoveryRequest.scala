@@ -19,7 +19,7 @@ import sigil.provider.Mode
  *
  * `conversationId` lets [[sigil.Sigil.findCapabilities]] consult
  * [[sigil.Sigil.activeToolchains]] for the per-conversation
- * toolchain-boost path (sigil bug #85).
+ * toolchain-boost path.
  */
 case class DiscoveryRequest(keywords: String,
                             chain: List[ParticipantId],

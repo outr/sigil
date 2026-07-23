@@ -19,10 +19,6 @@ import sigil.participant.ParticipantId
  *      summary id to `TurnInput.summaries`, and replace the trimmed
  *      frames inline.
  *
- * Bug #26 — the curator no longer takes a `ConversationView`; it
- * builds its own per-turn snapshot from `db.events` (frames via
- * [[sigil.event.Event.contextFrame]]) and `db.participantProjections`.
- *
  * Hook into [[sigil.Sigil.curate]] by returning a wired
  * [[StandardContextCurator]] (or a custom impl).
  */
