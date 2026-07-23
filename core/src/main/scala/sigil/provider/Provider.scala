@@ -109,6 +109,22 @@ trait Provider extends Service with ModelResolver {
   override def resolve(modelId: Id[Model]): Option[ProviderModel] =
     sigil.cache.find(modelId).map(ProviderModel(this, _))
 
+  /** The provider's CURRENT per-request context budget for `modelId`,
+    * in tokens. Default answers from the model registry
+    * (`contextLength`), which is right for hosted providers whose
+    * window is a fixed property of the model. Providers whose capacity
+    * is operator-tunable at runtime (e.g. a llama.cpp server whose
+    * `--ctx-size` / `--parallel` can change between requests) override
+    * with a live query against the backend.
+    *
+    * Consumers sizing whole-input / whole-output calls (fit tests like
+    * `inputTokens * 2 + overhead <= budget`) should query this per
+    * call rather than caching a constant, so an operator resizing the
+    * backend moves the threshold with no code change. `None` when the
+    * model isn't registered and no live source answers. */
+  def liveContextBudget(modelId: Id[Model]): Task[Option[Long]] =
+    Task(sigil.cache.findTolerant(modelId).map(_.contextLength))
+
   /** Tokenizer used by the framework's budget-validation pass to
     * estimate request size before sending. Default is the
     * char-count [[sigil.tokenize.HeuristicTokenizer]]; concrete

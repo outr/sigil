@@ -3,6 +3,7 @@ package sigil.provider.llamacpp
 import fabric.*
 import fabric.io.JsonFormatter
 import fabric.rw.valueRW
+import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.db.Model
@@ -46,6 +47,18 @@ case class LlamaCppProvider(url: URL,
     LlamaCpp.fetchProps(url).map(_.map(_.totalSlots.toInt).getOrElse(1))
       .handleError(_ => Task.pure(1))
       .sync()
+
+  /** Live per-slot context budget from the running server's `/props`
+    * (`default_generation_settings.n_ctx`). Queried per invocation —
+    * an operator restarting llama-server with a different `--ctx-size`
+    * or `--parallel` moves the budget immediately, unlike the
+    * construction-time snapshot [[maxConcurrent]] takes. Falls back to
+    * the registry default when `/props` is unreachable or malformed. */
+  override def liveContextBudget(modelId: Id[Model]): Task[Option[Long]] =
+    LlamaCpp.fetchProps(url).flatMap {
+      case Some(props) => Task.pure(Some(props.perSlotContext))
+      case None => super.liveContextBudget(modelId)
+    }.handleError(_ => super.liveContextBudget(modelId))
 
   /** llama.cpp queues excess requests server-side while holding their
     * connections open — a batch tool fanning out hundreds of calls
