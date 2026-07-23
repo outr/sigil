@@ -12,7 +12,7 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
+import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, TurnPlan, UpsertMemoryResult}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
@@ -4189,11 +4189,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * [[consecutiveNoProgressLimit]] — and the churn chain: the prior
     * window's mutation targets plus how many consecutive windows have
     * re-mutated only already-seen targets without any verification
-    * call. Populated on first checkpoint; cleared on `releaseClaim`. */
+    * call. Populated on first checkpoint; cleared on `releaseClaim`.
+    *
+    * When the planner tier is enabled ([[plannerModelId]]) the state
+    * additionally carries the turn's plan artifact, the iteration of
+    * the most recent planner review, and the anomaly latch that
+    * mechanical signals (stall heuristics, churn chain, budget
+    * check-in) set to arm the next boundary's planner consult. */
   private final case class CheckpointState(@volatile var lastStatus: Option[String],
                                             @volatile var noProgressStreak: Int,
                                             @volatile var lastMutationTargets: Set[String] = Set.empty,
-                                            @volatile var repeatUnverifiedWindows: Int = 0)
+                                            @volatile var repeatUnverifiedWindows: Int = 0,
+                                            @volatile var plan: Option[TurnPlan] = None,
+                                            @volatile var lastPlannerIteration: Int = 0,
+                                            @volatile var plannerAnomalyPending: Boolean = false)
   private final val checkpointStates: ConcurrentHashMap[Id[Event], CheckpointState] = new ConcurrentHashMap()
 
   /** On a [[Stop]] event, set the matching flag(s): one specific agent if
@@ -6797,6 +6806,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private[sigil] def terminalOnPersistentNoProgress(noProgressStreak: Int): Boolean =
     hardNoProgressLimit > 0 && noProgressStreak >= hardNoProgressLimit
 
+  /** Oversight tier for the progress checkpoint. When set, the
+    * checkpoint's LLM step consults THIS model as a planner holding an
+    * explicit [[TurnPlan]] instead of asking the executor's tier to
+    * assess itself — the executor losing the plot is invisible from
+    * inside its own loop, and a self-assessment that latches "task
+    * completed" can stall-kill a healthy repair turn. The planner call
+    * is resolved directly to this id (no work-type routing — the point
+    * is an explicit stronger tier). `None` (default) disables the
+    * planner entirely; checkpoint behavior is unchanged. */
+  protected def plannerModelId: Option[Id[Model]] = None
+
+  /** Iterations between routine planner reviews when [[plannerModelId]]
+    * is set. The planner consult is sparse by design: it fires on
+    * anomaly signals (stall heuristics, same-target churn, budget
+    * check-in), on the first checkpoint of a turn (to create the plan),
+    * and otherwise only every this-many iterations. 0 disables the
+    * periodic tick — anomaly- and first-plan-driven only. */
+  protected def plannerCadence: Int = 24
+
   /** Sigil #413 — how many context-overflow recoveries a single turn may
     * spend before the overflow surfaces as a clean terminal failure. Each
     * recovery re-runs the failed iteration with an emergency refit to
@@ -7662,10 +7690,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 // turn (fresh budget, fresh classification).
                 evaluateBudgetGate(conv, claimed).flatMap {
                   case Some(directive) if directive.hard =>
-                    publishBudgetDirective(agent, conv, "_budget_ceiling", directive.text)
+                    publishInternalDirective(agent, conv, "_budget_ceiling", directive.text)
                       .map(_ => recurseForced(ForcedSynthesisReason.BudgetCeiling))
                   case Some(directive) =>
-                    publishBudgetDirective(agent, conv, "_budget_checkin", directive.text)
+                    publishInternalDirective(agent, conv, "_budget_checkin", directive.text)
                       .map(_ =>
                         maybeIntraTurnCompact(agent, convId, claimed)
                           .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
@@ -8082,17 +8110,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // approval.
         softFor(limit, "conversation", entry.conversationSoftFired,
           crossed = entry.conversationCostAtClaim < limit && convCost >= limit))
-      turnHard.orElse(convHard).orElse(turnSoft).orElse(convSoft)
+      val directive = turnHard.orElse(convHard).orElse(turnSoft).orElse(convSoft)
+      // With the planner tier enabled, a soft check-in is also an
+      // anomaly signal: arm the next checkpoint boundary's planner
+      // consult so the spend spike gets a strategy review. The budget
+      // directive itself is unchanged.
+      if (plannerModelId.isDefined && directive.exists(!_.hard)) {
+        checkpointStates.computeIfAbsent(claimed._id,
+          _ => CheckpointState(lastStatus = None, noProgressStreak = 0)).plannerAnomalyPending = true
+      }
+      directive
     }
   }
 
-  /** Publish a budget directive on the stall-nudge channel: a
-    * synthetic internal invoke + a Tool-role, Agents-visibility
-    * Message the agent reads next iteration. */
-  private final def publishBudgetDirective(agent: AgentParticipant,
-                                           conv: Conversation,
-                                           invokeName: String,
-                                           text: String): Task[Unit] = {
+  /** Publish an internal framework directive on the stall-nudge
+    * channel: a synthetic internal invoke + a Tool-role,
+    * Agents-visibility Message the agent reads next iteration. Used by
+    * the budget gate (`_budget_ceiling` / `_budget_checkin`) and the
+    * planner checkpoint (`_plan` / `_planner_correction`). */
+  private final def publishInternalDirective(agent: AgentParticipant,
+                                             conv: Conversation,
+                                             invokeName: String,
+                                             text: String): Task[Unit] = {
     val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
       .invoke(invokeName, agent.id, conv._id, conv.currentTopicId)
     val directive = Message(
@@ -8298,6 +8337,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                           claimed: AgentState,
                                           iteration: Int): Task[Option[CheckpointIntervention]] = Task.defer {
     if (progressCheckpointInterval <= 0) Task.pure(None)
+    else if (plannerModelId.isDefined) runPlannerCheckpoint(agent, convId, claimed, iteration, plannerModelId.get)
     else {
       val state = checkpointStates.computeIfAbsent(claimed._id,
         _ => CheckpointState(lastStatus = None, noProgressStreak = 0))
@@ -8522,6 +8562,253 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
       }
     }
+  }
+
+  /** Planner-tier progress checkpoint ([[plannerModelId]]). Replaces
+    * the executor's self-assessment with a higher-tier verdict against
+    * an explicit [[TurnPlan]]. The mechanical signals (StallDetector,
+    * same-target churn chain) arm the planner via the anomaly latch
+    * instead of driving the self-report streak machinery, and the
+    * planner LLM call itself fires sparsely: on a pending anomaly,
+    * when no plan exists yet (the first review creates it), or on the
+    * [[plannerCadence]] tick. All other boundaries are free. */
+  private final def runPlannerCheckpoint(agent: AgentParticipant,
+                                         convId: Id[Conversation],
+                                         claimed: AgentState,
+                                         iteration: Int,
+                                         plannerModel: Id[Model]): Task[Option[CheckpointIntervention]] = {
+    val state = checkpointStates.computeIfAbsent(claimed._id,
+      _ => CheckpointState(lastStatus = None, noProgressStreak = 0))
+    evaluateStall(convId, agent.id).flatMap { rawStall =>
+      loadProgressContext(convId, agent.id).flatMap { ctx =>
+        // Fold this window into the same-target churn chain — the same
+        // fold the reflector path applies in processCheckpointReport.
+        val targets = ctx.windowMutationTargets
+        val churnWindow = targets.nonEmpty && !ctx.windowVerified && targets.subsetOf(state.lastMutationTargets)
+        state.repeatUnverifiedWindows = if (churnWindow) state.repeatUnverifiedWindows + 1 else 0
+        state.lastMutationTargets = targets
+        val churnReason =
+          if (state.repeatUnverifiedWindows >= 2)
+            Some(s"The same target(s) (${targets.toList.sorted.take(3).mkString(", ")}) have been re-mutated across " +
+              s"${state.repeatUnverifiedWindows + 1} checkpoint windows without any compile/test/diagnostics call.")
+          else None
+        val stallReason =
+          if (rawStall.detected)
+            rawStall.reason.orElse(Some("Repeating the same kind of call without gaining new information."))
+          else None
+        val anomalyReason = stallReason.orElse(churnReason)
+        anomalyReason.foreach(_ => state.plannerAnomalyPending = true)
+        val cadenceDue = plannerCadence > 0 && iteration - state.lastPlannerIteration >= plannerCadence
+        if (!state.plannerAnomalyPending && state.plan.isDefined && !cadenceDue) Task.pure(None)
+        else withDB(_.conversations.transaction(_.get(convId))).flatMap {
+          case None => Task.pure(None)
+          case Some(conv) =>
+            val turnCost = Option(activeClaims.get(claimed._id)).map(_.turnCost)
+            val promptAnomaly = anomalyReason.orElse {
+              if (state.plannerAnomalyPending)
+                Some("An anomaly signal (stall heuristic, churn chain, or budget check-in) fired since the last planner review.")
+              else None
+            }
+            sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.PlannerVerdictInput](
+              sigil = this,
+              modelId = plannerModel,
+              chain = List(agent.id),
+              systemPrompt = plannerSystemPrompt,
+              userPrompt = renderPlannerPrompt(ctx, state.plan, iteration, turnCost, promptAnomaly),
+              tool = sigil.tool.consult.PlannerVerdictTool,
+              generationSettings = sigil.tool.consult.PlannerVerdictTool.consultSettings
+            ).flatMap {
+              case Some(verdict) => applyPlannerVerdict(agent, conv, state, iteration, verdict)
+              case None =>
+                // No verdict from the planner — fall back to the
+                // objective signals rather than failing open: a stall /
+                // churn hit still persists a no-progress checkpoint and
+                // produces the cooperative intervention.
+                anomalyReason match {
+                  case Some(reason) =>
+                    val checkpoint = sigil.event.ProgressCheckpoint(
+                      participantId        = agent.id,
+                      conversationId       = convId,
+                      topicId              = conv.currentTopicId,
+                      iterationCount       = iteration,
+                      prevCheckpointStatus = state.lastStatus,
+                      currentStatus        = reason,
+                      meaningfulProgress   = false,
+                      remainingSteps       = state.plan.map(_.doneCriteria).getOrElse(""),
+                      stuckOn              = Some(reason),
+                      shouldAskUser        = false
+                    )
+                    publish(checkpoint).map { _ =>
+                      state.lastStatus = Some(reason)
+                      state.noProgressStreak = state.noProgressStreak + 1
+                      Some(CheckpointIntervention(
+                        message = Message(
+                          participantId  = agent.id,
+                          conversationId = convId,
+                          topicId        = conv.currentTopicId,
+                          content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(
+                            checkpointDirective(reason, Some(reason)))),
+                          state          = EventState.Complete,
+                          role           = MessageRole.Standard
+                        ),
+                        askingUser = false,
+                        terminal   = terminalOnPersistentNoProgress(state.noProgressStreak)
+                      ))
+                    }
+                  case None => Task.pure(None)
+                }
+            }.handleError { e =>
+              Task(scribe.warn(s"runPlannerCheckpoint failed for ${agent.id.value}/${convId.value} iter=$iteration: ${e.getMessage}"))
+                .map(_ => None)
+            }
+        }
+      }
+    }
+  }
+
+  /** Route a planner verdict: maintain the plan artifact (created on
+    * the first review, revised on replan), publish the `_plan` and
+    * `_planner_correction` directives, and persist the checkpoint.
+    * Always non-terminal — a plan-holding model saying on_track must
+    * never be stall-killed, and a deviating correction gives the
+    * executor at least one iteration to act on it. */
+  private final def applyPlannerVerdict(agent: AgentParticipant,
+                                        conv: Conversation,
+                                        state: CheckpointState,
+                                        iteration: Int,
+                                        verdict: sigil.tool.consult.PlannerVerdictInput): Task[Option[CheckpointIntervention]] = {
+    state.lastPlannerIteration = iteration
+    state.plannerAnomalyPending = false
+    val returnedPhase = Some(verdict.currentPhase.trim).filter(_.nonEmpty)
+    val returnedPlan =
+      if (verdict.objective.trim.nonEmpty && verdict.doneCriteria.trim.nonEmpty)
+        Some(TurnPlan(
+          objective    = verdict.objective.trim,
+          constraints  = verdict.constraints.map(_.trim).filter(_.nonEmpty),
+          doneCriteria = verdict.doneCriteria.trim,
+          currentPhase = returnedPhase))
+      else None
+    val replan = verdict.verdict == "replan"
+    val publishPlanTask = returnedPlan match {
+      case Some(plan) if replan || state.plan.isEmpty =>
+        state.plan = Some(plan)
+        publishInternalDirective(agent, conv, "_plan", renderPlanDirective(plan))
+      case _ =>
+        state.plan = state.plan.map(p => p.copy(currentPhase = returnedPhase.orElse(p.currentPhase)))
+        Task.unit
+    }
+    val deviating = verdict.verdict == "deviating"
+    val correction = Some(verdict.correction.trim).filter(_.nonEmpty)
+      .getOrElse("Re-read the plan and realign your next actions with its objective and done criteria.")
+    val correctionTask =
+      if (deviating)
+        publishInternalDirective(agent, conv, "_planner_correction",
+          "[planner correction — internal, not a user message; do NOT reply to or acknowledge this in chat]\n" +
+            correction + " Adjust your approach now and continue the task. Do not apologize for or narrate " +
+            "this correction to the user; just do the work.")
+      else Task.unit
+    val status =
+      if (deviating) s"Planner: deviating — $correction"
+      else if (replan) s"Planner: replanned — ${returnedPhase.getOrElse("plan revised")}"
+      else s"Planner: on track — ${returnedPhase.getOrElse("progressing")}"
+    val checkpoint = sigil.event.ProgressCheckpoint(
+      participantId        = agent.id,
+      conversationId       = conv._id,
+      topicId              = conv.currentTopicId,
+      iterationCount       = iteration,
+      prevCheckpointStatus = state.lastStatus,
+      currentStatus        = status,
+      meaningfulProgress   = !deviating,
+      remainingSteps       = state.plan.map(_.doneCriteria).getOrElse(""),
+      stuckOn              = if (deviating) Some(correction) else None,
+      shouldAskUser        = false
+    )
+    publishPlanTask
+      .flatMap(_ => correctionTask)
+      .flatMap(_ => publish(checkpoint))
+      .map { _ =>
+        state.lastStatus = Some(status)
+        state.noProgressStreak = if (deviating) state.noProgressStreak + 1 else 0
+        None
+      }
+  }
+
+  private val plannerSystemPrompt: String =
+    """You are the planning tier overseeing an executor agent's work on a user task. You hold
+      |the plan; the executor does the steps. Judge STRATEGY, not steps: is the window's work
+      |converging on the plan's done criteria? Is the executor undoing or redoing its own
+      |work? Is effort being spent outside the objective? Do not judge whether individual
+      |tool calls succeeded — judge whether the trajectory still leads to the objective.
+      |
+      |Verdicts:
+      |  - on_track — the work is converging on the done criteria. Echo the current plan
+      |    fields, refreshing currentPhase to where the work stands now. correction stays empty.
+      |  - deviating — the executor has lost the plot: undoing its own work, grinding on
+      |    something outside the objective, or repeating work that cannot converge. Write a
+      |    concrete correction directive telling it what to do differently. Echo the plan.
+      |  - replan — the plan itself no longer fits what the task needs. Return the REVISED
+      |    objective / constraints / doneCriteria / currentPhase. correction stays empty.
+      |
+      |On the first review there is no plan yet: derive one from the user's request and the
+      |work so far — objective (what the task delivers), constraints (hard boundaries the
+      |executor must not cross), doneCriteria (how anyone can tell the work is finished) —
+      |and return it with your verdict.""".stripMargin
+
+  /** Render the `_plan` directive the executor reads: the plan
+    * artifact as an internal Tool-role message. */
+  private def renderPlanDirective(plan: TurnPlan): String = {
+    val constraints =
+      if (plan.constraints.isEmpty) ""
+      else plan.constraints.map(c => s"  - $c").mkString("\nConstraints:\n", "\n", "")
+    val phase = plan.currentPhase.map(p => s"\nCurrent phase: $p").getOrElse("")
+    "[plan — internal, not a user message; do NOT reply to or acknowledge this in chat]\n" +
+      s"Objective: ${plan.objective}$constraints\nDone when: ${plan.doneCriteria}$phase"
+  }
+
+  /** Stitch the planner consult's user prompt: the user task, the held
+    * plan, the window's activity, turn spend, and the anomaly reason
+    * when one armed this review. Window-scoped and line-bounded via
+    * [[loadProgressContext]], so the prompt stays bounded regardless
+    * of conversation length. */
+  private def renderPlannerPrompt(ctx: ProgressContext,
+                                  plan: Option[TurnPlan],
+                                  iteration: Int,
+                                  turnCost: Option[BigDecimal],
+                                  anomaly: Option[String]): String = {
+    val taskBlock = ctx.userTask match {
+      case Some(t) =>
+        val directiveLine = ctx.latestDirective match {
+          case Some(d) => s"The user has since said \"$d\" to continue this objective.\n\n"
+          case None    => "\n"
+        }
+        s"The user's request:\n\"$t\"\n\n" + directiveLine
+      case None => "The user's request: (no recent substantive user message found)\n\n"
+    }
+    val planBlock = plan match {
+      case Some(p) =>
+        val constraints = if (p.constraints.isEmpty) "(none)" else p.constraints.mkString("; ")
+        s"The plan you hold:\n  Objective: ${p.objective}\n  Constraints: $constraints\n" +
+          s"  Done when: ${p.doneCriteria}\n  Current phase: ${p.currentPhase.getOrElse("(not set)")}\n\n"
+      case None => "The plan you hold: (none yet — this is your first review; derive one and return it)\n\n"
+    }
+    val earlierLine =
+      if (ctx.earlierCalls > 0)
+        s"(${ctx.earlierCalls} earlier calls preceded this window — judge the trajectory on the window below.)\n"
+      else ""
+    val historyBlock = ctx.toolHistory match {
+      case Nil => s"${earlierLine}The executor's work since the last checkpoint: (no tool calls this window)\n\n"
+      case list =>
+        val numbered = list.zipWithIndex.map { case (line, i) => s"  ${i + 1}. $line" }.mkString("\n")
+        s"${earlierLine}The executor's work since the last checkpoint:\n$numbered\n\n"
+    }
+    val spendLine = turnCost.filter(_ > 0).map(c => f"This turn has spent $$${c}%.2f so far.\n\n").getOrElse("")
+    val anomalyLine = anomaly.map(a => s"An anomaly signal fired: $a\n\n").getOrElse("")
+    val ask =
+      s"The executor is at iteration $iteration. Deliver your verdict: on_track when this trajectory is " +
+        "converging on the done criteria, deviating (with a concrete correction) when it is not, replan when " +
+        "the plan itself no longer fits. Populate the plan fields — fully on first review or replan, echoed " +
+        "with a refreshed currentPhase otherwise."
+    taskBlock + planBlock + historyBlock + spendLine + anomalyLine + ask
   }
 
   /** Load the context the reflection prompt needs: the user's most

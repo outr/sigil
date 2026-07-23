@@ -500,6 +500,23 @@ object TestSigil extends Sigil {
     progressCheckpointIntervalRef.get().getOrElse(super.progressCheckpointInterval)
   def setProgressCheckpointInterval(n: Int): Unit = progressCheckpointIntervalRef.set(Some(n))
 
+  /** Per-test planner-tier override — specs exercising the planner
+    * checkpoint set the oversight model id here; `None` (the framework
+    * default) keeps the executor self-reflection path. */
+  private val plannerModelIdRef =
+    new java.util.concurrent.atomic.AtomicReference[Option[Id[Model]]](None)
+  override def plannerModelId: Option[Id[Model]] = plannerModelIdRef.get()
+  def setPlannerModelId(modelId: Id[Model]): Unit = plannerModelIdRef.set(Some(modelId))
+  def resetPlannerModelId(): Unit = plannerModelIdRef.set(None)
+
+  /** Per-test planner-cadence override — specs asserting call
+    * sparseness tighten the periodic tick below the framework default. */
+  private val plannerCadenceRef =
+    new java.util.concurrent.atomic.AtomicReference[Option[Int]](None)
+  override def plannerCadence: Int = plannerCadenceRef.get().getOrElse(super.plannerCadence)
+  def setPlannerCadence(n: Int): Unit = plannerCadenceRef.set(Some(n))
+  def resetPlannerCadence(): Unit = plannerCadenceRef.set(None)
+
   private val clientToolResultTimeoutRef =
     new java.util.concurrent.atomic.AtomicReference[Option[Long]](None)
   override def clientToolResultTimeoutMs: Long =
