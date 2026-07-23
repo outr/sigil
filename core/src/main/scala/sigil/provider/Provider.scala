@@ -1478,6 +1478,30 @@ trait Provider extends Service with ModelResolver {
       resolved.criticalMemories.foreach(m => sb.append(s"- ${memoryRenderText(m)}\n"))
     }
 
+    if (turn.information.nonEmpty) {
+      sb.append("\n== Referenced content (look up by id) ==\n")
+      turn.information.foreach(i =>
+        sb.append(s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n"))
+    }
+
+    // ---- volatile tail (per-turn, excluded from the cacheable prefix) ----
+    //
+    // Everything below churns turn-to-turn, so it must ride BEHIND the
+    // request's cacheable prefix (tools, system prompt, message history) —
+    // full-history-replay providers append it as a trailing message via
+    // [[ProviderCall.messagesWithVolatileTail]]; OpenAI Responses folds it
+    // into its per-request `instructions`. Accumulate into its own builder
+    // so [[RenderedSystem]] carries the two segments separately.
+    val stable = sb.toString
+    sb.setLength(0)
+
+    // Summaries ride the VOLATILE tail, not the cacheable prefix: the
+    // rolling intra-turn compaction stream updates them mid-turn, and
+    // a summary rendered ahead of the message history invalidated the
+    // whole prompt cache on every update (measured: cache creation was
+    // 88% of a $54 turn — the entire prefix re-cached per iteration
+    // while only this section changed). In the tail, an update
+    // invalidates nothing ahead of it.
     if (resolved.summaries.nonEmpty) {
       sb.append("\n== Earlier in this conversation (summarized) ==\n")
       resolved.summaries.foreach { s =>
@@ -1496,23 +1520,6 @@ trait Provider extends Service with ModelResolver {
       sb.append("\nWhen an entry shows `reload_content(\"<id>\")`, call it to reload the full content " +
         "it elided (an event id → that event; a summary id → the events it covers).\n")
     }
-
-    if (turn.information.nonEmpty) {
-      sb.append("\n== Referenced content (look up by id) ==\n")
-      turn.information.foreach(i =>
-        sb.append(s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n"))
-    }
-
-    // ---- volatile tail (per-turn, excluded from the cacheable prefix) ----
-    //
-    // Everything below churns turn-to-turn, so it must ride BEHIND the
-    // request's cacheable prefix (tools, system prompt, message history) —
-    // full-history-replay providers append it as a trailing message via
-    // [[ProviderCall.messagesWithVolatileTail]]; OpenAI Responses folds it
-    // into its per-request `instructions`. Accumulate into its own builder
-    // so [[RenderedSystem]] carries the two segments separately.
-    val stable = sb.toString
-    sb.setLength(0)
 
     if (resolved.memories.nonEmpty) {
       sb.append("\n== Memories ==\n")
@@ -1674,8 +1681,24 @@ trait Provider extends Service with ModelResolver {
     * directives` / `Memories` sections. Prefers `summary` when set so
     * apps that author tight directives keep per-turn cost down; the
     * full `fact` is always recoverable via the `lookup` tool. */
+  /** Prompt rendering for a memory: the summary when set (the
+    * compressed per-turn form), the full fact otherwise. When the
+    * summary elides a materially longer fact AND the memory has a
+    * referenceable key, the line carries its drill-down handle --
+    * `[full: lookup("<key>")]` -- mirroring the summaries section's
+    * inline `reload_content("<id>")` convention. Without the handle
+    * the agent's only route from a summary hinting at more detail was
+    * a semantic re-search and hoping the right record ranked first. */
   private def memoryRenderText(m: ContextMemory): String =
-    if (m.summary.trim.nonEmpty) m.summary else m.fact
+    if (m.summary.trim.isEmpty) m.fact
+    else {
+      val handle = m.key match {
+        case Some(key) if m.fact.trim.length > m.summary.trim.length * 2 && m.fact.trim.length > 200 =>
+          s" [full: lookup(\"" + key + "\")]"
+        case _ => ""
+      }
+      m.summary + handle
+    }
 
   /** Render a conversation's [[ContextFrame]]s into format-neutral
     * [[ProviderMessage]]s. Mapping rules:

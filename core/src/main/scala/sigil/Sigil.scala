@@ -4060,6 +4060,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * disables. */
   def conversationCostHardCeiling: Option[BigDecimal] = None
 
+  /** Token budget for the prompt's Summaries section — the same
+    * governance contract Frames has (budget + elision), applied to
+    * persisted [[sigil.conversation.ContextSummary]] records. The
+    * curator keeps the newest summaries within this budget (always at
+    * least one); older ones drop from the prompt while their content
+    * stays durable and reachable via search / `reload_content`.
+    * Without a bound, one long turn's rolling compaction stream grew
+    * the section 1.7K → 22K tokens (40% of late context) and, because
+    * it rendered ahead of the message history, re-cached the whole
+    * prompt at creation rates every iteration. */
+  def summariesTokenBudget: Int = 4096
+
   /** Effective budgets for `conv` — the conversation's override
     * field-wise, falling back to the app hooks. */
   final def effectiveBudgetsFor(conv: Conversation): sigil.conversation.ConversationBudget = {

@@ -301,7 +301,44 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                               reservedOutputTokens = reservedOutputTokens
                             ).handleError(_ => Task.pure(callerModelId))
       summary           <- summarize(sigil, summarizationModel, chain, transcript, conversationId, coversEventIds)
+      // A rolling summary is ONE evolving artifact, not an append log.
+      // Each intra-turn compaction covers a superset of the previous
+      // one's events, so the fresh summary SUPERSEDES every earlier
+      // summary whose coverage it subsumes — without this, a long turn
+      // accumulated a near-duplicate restatement per compaction, and
+      // because summaries rendered into the prompt each iteration the
+      // growth both bloated context and re-cached the prompt at
+      // creation rates (measured: ~$45 of a $54 turn was cache
+      // creation). Best-effort — a cleanup failure never loses the
+      // fresh summary.
+      _                 <- summary match {
+                             case Some(fresh) => supersedeSubsumed(sigil, conversationId, fresh)
+                               .handleError(t => Task(scribe.warn(
+                                 s"MemoryContextCompressor: supersede cleanup failed for ${conversationId.value}: ${t.getMessage}")))
+                             case None => Task.unit
+                           }
     } yield summary
+  }
+
+  /** Delete every summary of `conversationId` (other than `fresh`)
+    * whose event coverage is a non-empty subset of `fresh`'s — the
+    * fresh summary already tells that part of the story. Scoped to
+    * the rolling [[compressCovering]] stream; hierarchical
+    * compression persists its levels deliberately and never routes
+    * through here. */
+  private def supersedeSubsumed(sigil: Sigil,
+                                conversationId: Id[Conversation],
+                                fresh: ContextSummary): Task[Unit] = {
+    val cover = fresh.coversEventIds.toSet
+    if (cover.isEmpty) Task.unit
+    else sigil.summariesFor(conversationId).flatMap { all =>
+      val subsumed = all.filter(s =>
+        s._id != fresh._id && s.coversEventIds.nonEmpty && s.coversEventIds.forall(cover.contains))
+      if (subsumed.isEmpty) Task.unit
+      else sigil.withDB(_.summaries.transaction { tx =>
+        Task.sequence(subsumed.map(s => tx.delete(s._id))).unit
+      })
+    }
   }
 
   private def loadContext(sigil: Sigil, conversationId: Id[Conversation]) =

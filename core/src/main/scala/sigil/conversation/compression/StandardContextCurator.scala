@@ -152,9 +152,26 @@ case class StandardContextCurator(sigil: Sigil,
         // summary text on every subsequent turn.
         allSummaries  <- if (loadPersistedSummaries) sigil.summariesFor(conversationId)
                          else Task.pure(List.empty[ContextSummary])
-        // Build the elision set across every summary's coversEventIds.
-        // Empty (the common case) means no per-event filtering kicks
-        // in and frames flow through as before.
+        // Summaries carry Frames-style content (a growing history) and
+        // must live under Frames-style governance. Two stages:
+        //
+        //   1. Subsumption filter — a summary whose coverage is a
+        //      subset of another's is a stale restatement (the rolling
+        //      compaction stream now supersedes at write, but this
+        //      retro-cleans append logs already in consumers' stores
+        //      and guards any other writer).
+        //   2. Token budget — newest-first cumulative `tokenEstimate`
+        //      up to [[sigil.Sigil.summariesTokenBudget]]; older
+        //      summaries beyond it drop from the prompt. The section
+        //      PLATEAUS instead of growing unbounded (measured live:
+        //      1.7K → 22K tokens across one turn, 40% of late context).
+        selectedSummaries = StandardContextCurator.selectSummaries(allSummaries, sigil.summariesTokenBudget)
+        // Build the elision set across EVERY summary's coversEventIds —
+        // including budget-dropped and subsumed ones: their covered
+        // frames must not resurface as raw history (that would regrow
+        // the frame section); the content stays durable and reachable
+        // via search / reload_content. Empty (the common case) means no
+        // per-event filtering kicks in and frames flow through as before.
         elidedEvents: Set[Id[_root_.sigil.event.Event]] =
           allSummaries.iterator.flatMap(_.coversEventIds).toSet
         rawFrames     <- sigil.framesFor(conversationId)
@@ -208,7 +225,7 @@ case class StandardContextCurator(sigil: Sigil,
         // Older history is represented this way without re-occupying
         // the raw-frame stream every turn.
         persistedSummaries =
-          if (loadPersistedSummaries) allSummaries.map(_._id).toVector
+          if (loadPersistedSummaries) selectedSummaries.map(_._id).toVector
           else Vector.empty
         projections   <- loadProjections(conversationId, chain)
         tentative     = injectParaphraseObservation(
@@ -830,6 +847,37 @@ case class StandardContextCurator(sigil: Sigil,
 }
 
 object StandardContextCurator {
+
+  /** Frames-style governance for the Summaries section: drop
+    * subsumed restatements, then budget newest-first by
+    * `tokenEstimate`. Returns the kept summaries oldest-first (their
+    * render order). */
+  def selectSummaries(all: List[_root_.sigil.conversation.ContextSummary],
+                      tokenBudget: Int): List[_root_.sigil.conversation.ContextSummary] = {
+    val nonSubsumed = all.filterNot { s =>
+      s.coversEventIds.nonEmpty && all.exists { other =>
+        other._id != s._id &&
+          other.coversEventIds.size >= s.coversEventIds.size &&
+          s.coversEventIds.forall(other.coversEventIds.toSet.contains) &&
+          // Equal coverage: keep the newer record, drop the older.
+          (other.coversEventIds.size > s.coversEventIds.size || other.created.value > s.created.value)
+      }
+    }
+    val newestFirst = nonSubsumed.sortBy(-_.created.value)
+    val kept = scala.collection.mutable.ListBuffer.empty[_root_.sigil.conversation.ContextSummary]
+    var spent = 0L
+    newestFirst.foreach { s =>
+      val cost = math.max(1, s.tokenEstimate).toLong
+      // Always keep at least the newest summary, even if it alone
+      // exceeds the budget — an empty section would orphan the
+      // elided frames entirely.
+      if (kept.isEmpty || spent + cost <= tokenBudget) {
+        kept += s
+        spent += cost
+      }
+    }
+    kept.toList.sortBy(_.created.value)
+  }
 
   /** Sigil #416 — [[sigil.conversation.TurnInput.extraContext]] key
     * stamped by `budgetResolve` when stage 2c had to elide frame
