@@ -12,4 +12,5 @@ case class GitCommitEntry(sha: String,
                           author: String,
                           date: String,
                           subject: String,
-                          body: Option[String] = None) derives RW
+                          body: Option[String] = None)
+  derives RW

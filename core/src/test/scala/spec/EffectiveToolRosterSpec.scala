@@ -39,11 +39,11 @@ class EffectiveToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   case class ReadFileOutput(content: String) extends sigil.tool.ToolOutput derives RW
 
   private object ReadFileTool extends Tool {
-    type Input  = ReadFileInput
+    type Input = ReadFileInput
     type Output = ReadFileOutput
-    val inputRW  = summon[RW[ReadFileInput]]
+    val inputRW = summon[RW[ReadFileInput]]
     val outputRW = summon[RW[ReadFileOutput]]
-    val name        = ToolName("read_file")
+    val name = ToolName("read_file")
     val description = "Read a file by path."
     override def executeResult(input: ReadFileInput, context: ToolContext): Task[ToolResult[ReadFileOutput]] =
       Task.pure(ToolResult.Success(ReadFileOutput(s"contents of ${input.path}")))
@@ -51,10 +51,12 @@ class EffectiveToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider that emits a typed `read_file` call with a `JsonInput`
-    * payload — simulates the accumulator's `case None =>` path (sigil
-    * #271) when the model invokes a tool the wire-sent roster doesn't
-    * include but the framework otherwise knows about. */
+  /**
+   * Provider that emits a typed `read_file` call with a `JsonInput`
+   * payload — simulates the accumulator's `case None =>` path (sigil
+   * #271) when the model invokes a tool the wire-sent roster doesn't
+   * include but the framework otherwise knows about.
+   */
   private class OutOfRosterProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -75,27 +77,27 @@ class EffectiveToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     val convId = Conversation.id(s"effective-roster-force")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId         = convId,
-      model                = TestSigil.testModel(modelId),
-      instructions           = Instructions(),
-      turnInput              = TurnInput(conversationId = convId),
-      currentMode            = ConversationMode,
-      currentTopic           = TestTopicEntry,
-      previousTopics         = Nil,
-      generationSettings     = GenerationSettings(maxOutputTokens = Some(50)),
-      chain                  = List(TestUser, TestAgent),
-      tools                  = Vector(ReadFileTool),
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
+      generationSettings = GenerationSettings(maxOutputTokens = Some(50)),
+      chain = List(TestUser, TestAgent),
+      tools = Vector(ReadFileTool),
       forceResponseSynthesis = forceSynth
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, new OutOfRosterProvider, request, conv).toList
     } yield signals
   }
 
   "Effective tool roster (sigil #274)" should {
 
-    "dispatch to UnknownTool when forced-synthesis strips the wire roster" in {
+    "dispatch to UnknownTool when forced-synthesis strips the wire roster" in
       // With forced-synthesis, the wire roster is the respond family
       // only. `read_file` is out-of-scope; the orchestrator's
       // `toolsByName` (sourced from `request.effectiveTools`) doesn't
@@ -107,12 +109,11 @@ class EffectiveToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         }
         toolMessages should have size 1
         val msg = toolMessages.head
-        msg.disposition shouldBe a [MessageDisposition.Failure]
-        msg.failureReason.getOrElse("") should include ("Unknown tool")
-        msg.failureReason.getOrElse("") should include ("read_file")
+        msg.disposition shouldBe a[MessageDisposition.Failure]
+        msg.failureReason.getOrElse("") should include("Unknown tool")
+        msg.failureReason.getOrElse("") should include("read_file")
         msg.origin shouldBe defined
       }
-    }
   }
 
   "tear down" should {

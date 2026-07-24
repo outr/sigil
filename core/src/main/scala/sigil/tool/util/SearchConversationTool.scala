@@ -23,9 +23,9 @@ import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
  * Emits a typed [[SearchConversationOutput]].
  */
 case object SearchConversationTool extends Tool with sigil.tool.ReadOnlyInternalTool {
-  type Input  = SearchConversationInput
+  type Input = SearchConversationInput
   type Output = SearchConversationOutput
-  val inputRW  = summon[RW[SearchConversationInput]]
+  val inputRW = summon[RW[SearchConversationInput]]
   val outputRW = summon[RW[SearchConversationOutput]]
   val name = ToolName("search_conversation")
   val description =
@@ -98,16 +98,18 @@ case object SearchConversationTool extends Tool with sigil.tool.ReadOnlyInternal
         eventsTask.map { events =>
           ToolResult.Success(SearchConversationOutput(
             query = input.query,
-            hits  = events.map(toHit),
+            hits = events.map(toHit),
             count = events.size
           ))
         }
     }
   }
 
-  /** Chronological-walk page over the target conversation's events.
-    * Returns `limit` events starting at offset `page * limit`, in
-    * timestamp-ascending order, optionally filtered by topic. */
+  /**
+   * Chronological-walk page over the target conversation's events.
+   * Returns `limit` events starting at offset `page * limit`, in
+   * timestamp-ascending order, optionally filtered by topic.
+   */
   private def walk(context: ToolContext,
                    targetConvId: lightdb.id.Id[sigil.conversation.Conversation],
                    topicId: Option[lightdb.id.Id[sigil.conversation.Topic]],
@@ -127,15 +129,15 @@ case object SearchConversationTool extends Tool with sigil.tool.ReadOnlyInternal
       case m: Message =>
         m.content.collect { case ResponseContent.Text(t) => t }.mkString(" ").take(280)
       case tc: TopicChange => s"[topic change] ${tc.newLabel}"
-      case other           => other.getClass.getSimpleName
+      case other => other.getClass.getSimpleName
     }
     SearchConversationHit(
-      eventId       = e._id.value,
-      timestamp     = e.timestamp.value,
+      eventId = e._id.value,
+      timestamp = e.timestamp.value,
       participantId = e.participantId.value,
-      topicId       = e.topicId.value,
-      eventType     = e.getClass.getSimpleName,
-      snippet       = snippet
+      topicId = e.topicId.value,
+      eventType = e.getClass.getSimpleName,
+      snippet = snippet
     )
   }
 }

@@ -42,13 +42,18 @@ class ForcedToolChoiceMemoSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   private def rejection(message: String): ProviderStreamException =
     new ProviderStreamException(
-      providerKey = "anthropic", code = 0, typ = "invalid_request_error",
-      message_ = message, status = Some(400)
+      providerKey = "anthropic",
+      code = 0,
+      typ = "invalid_request_error",
+      message_ = message,
+      status = Some(400)
     )
 
-  /** Fake provider that records every call's (modelId, toolChoice). It 400s
-    * on ANY forced choice and emits a clean `respond` on `Auto`. */
-  private final class ForcedChoiceRejecter extends Provider {
+  /**
+   * Fake provider that records every call's (modelId, toolChoice). It 400s
+   * on ANY forced choice and emits a clean `respond` on `Auto`.
+   */
+  final private class ForcedChoiceRejecter extends Provider {
     val calls: java.util.concurrent.ConcurrentLinkedQueue[(String, ToolChoice)] =
       new java.util.concurrent.ConcurrentLinkedQueue[(String, ToolChoice)]()
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -66,7 +71,8 @@ class ForcedToolChoiceMemoSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val cid = CallId(s"respond-${calls.size()}")
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(cid,
+          ProviderEvent.ToolCallComplete(
+            cid,
             RespondInput(topicLabel = "T", topicSummary = "s", content = "ok", endsTurn = true)),
           ProviderEvent.Done(StopReason.Complete)
         ))
@@ -76,20 +82,20 @@ class ForcedToolChoiceMemoSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings())
 
   private def turn(convId: Id[Conversation], text: String): Task[Unit] =
     for {
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text(text)),
-             state          = EventState.Complete))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text(text)),
+        state = EventState.Complete))
       _ <- TestSigil.awaitSettled(convId)
     } yield ()
 
@@ -112,19 +118,19 @@ class ForcedToolChoiceMemoSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val provider = new ForcedChoiceRejecter
       TestSigil.setProvider(Task.pure(provider))
       val convId = Conversation.id(s"memo-${rapid.Unique()}")
-      val conv   = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
+      val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
 
       // The model must NOT be pre-memoed for this to be a real test.
       Provider.rejectsForcedToolChoice(modelId) shouldBe false
 
       for {
-        _        <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _        <- turn(convId, "First request.")
-        boundary  = provider.calls.size()
-        _        <- turn(convId, "Second request.")
-        evs      <- eventsFor(convId)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- turn(convId, "First request.")
+        boundary = provider.calls.size()
+        _ <- turn(convId, "Second request.")
+        evs <- eventsFor(convId)
       } yield {
-        val all   = provider.calls.asScala.toList
+        val all = provider.calls.asScala.toList
         val turn1 = all.take(boundary).collect { case (m, tc) if m == modelId.value => tc }
         val turn2 = all.drop(boundary).collect { case (m, tc) if m == modelId.value => tc }
 
@@ -141,8 +147,8 @@ class ForcedToolChoiceMemoSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         turn2.foreach(_.isForced shouldBe false)
 
         // Both turns produced a real reply; no Failure bubbles.
-        evs.collect { case m: Message if m.participantId == TestAgent && m.isSuccess && m.role == MessageRole.Standard => m
-          } should not be empty
+        evs.collect { case m: Message if m.participantId == TestAgent && m.isSuccess && m.role == MessageRole.Standard => m } should not be
+          empty
         evs.collect { case m: Message if m.isFailure => m } shouldBe empty
       }
     }

@@ -23,4 +23,5 @@ import sigil.conversation.Conversation
  */
 case class ConversationCostUpdated(conversationId: Id[Conversation],
                                    cost: BigDecimal,
-                                   delta: BigDecimal) extends ConversationNotice derives RW
+                                   delta: BigDecimal)
+  extends ConversationNotice derives RW

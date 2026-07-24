@@ -9,4 +9,5 @@ import sigil.tool.ToolInput
  * (SIGTERM, grace, then SIGKILL).
  */
 case class ProcessSignalInput(handle: String,
-                              signal: ProcessSignal = ProcessSignal.Terminate) extends ToolInput derives RW
+                              signal: ProcessSignal = ProcessSignal.Terminate)
+  extends ToolInput derives RW

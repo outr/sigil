@@ -17,8 +17,10 @@ object RequestProfileReport {
 
   case class SectionStat(section: ProfileSection, avg: Int, p95: Int, max: Int, sharePct: Double)
 
-  /** Emit a markdown report. Header carries the scenario title; the body
-    * has overall + per-section + per-frame-kind tables. */
+  /**
+   * Emit a markdown report. Header carries the scenario title; the body
+   * has overall + per-section + per-frame-kind tables.
+   */
   def render(title: String, profiles: Seq[RequestProfile]): String = {
     if (profiles.isEmpty) return s"# $title\n\nNo profiles captured.\n"
 
@@ -88,18 +90,19 @@ object RequestProfileReport {
     sb.toString
   }
 
-  /** Write the report to a markdown file under `benchmark/profiles/`. */
+  /**
+   * Write the report to a markdown file under `benchmark/profiles/`.
+   */
   def writeTo(path: java.nio.file.Path, title: String, profiles: Seq[RequestProfile]): Unit = {
     val content = render(title, profiles)
     java.nio.file.Files.createDirectories(path.getParent)
     java.nio.file.Files.writeString(path, content, java.nio.charset.StandardCharsets.UTF_8)
   }
 
-  private def percentile(sortedAsc: Seq[Int], p: Double): Int = {
+  private def percentile(sortedAsc: Seq[Int], p: Double): Int =
     if (sortedAsc.isEmpty) 0
     else {
       val idx = math.min((p * sortedAsc.size).toInt, sortedAsc.size - 1)
       sortedAsc(idx)
     }
-  }
 }

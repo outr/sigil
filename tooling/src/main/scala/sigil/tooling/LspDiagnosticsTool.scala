@@ -9,25 +9,26 @@ import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 case class LspDiagnosticsInput(languageId: String,
                                filePath: String,
-                               waitMs: Long = 1500L) extends ToolInput derives RW
+                               waitMs: Long = 1500L)
+  extends ToolInput derives RW
 
 /**
-     15|  * Returns the language server's current diagnostics for a file —
-     16|  * type errors, lint warnings, unused imports, etc. The agent's
-     17|  * primary "did my edit compile" feedback loop. Opens the file with
-     18|  * the server (idempotent), waits a short window for the server to
-     19|  * publish diagnostics, then snapshots them.
-     20|  *
-     21|  * `waitMs` is caller-controlled because different servers settle at
-     22|  * different speeds — Metals on cold cache can take 1–2s; rust-analyzer
-     23|  * is sub-second after warm-up. Tools that already opened the file
-     24|  * earlier in the turn pass `0` to read the latest snapshot directly.
-     25|  */
-final class LspDiagnosticsTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
-  type Input  = LspDiagnosticsInput
+ *     15|  * Returns the language server's current diagnostics for a file —
+ *     16|  * type errors, lint warnings, unused imports, etc. The agent's
+ *     17|  * primary "did my edit compile" feedback loop. Opens the file with
+ *     18|  * the server (idempotent), waits a short window for the server to
+ *     19|  * publish diagnostics, then snapshots them.
+ *     20|  *
+ *     21|  * `waitMs` is caller-controlled because different servers settle at
+ *     22|  * different speeds — Metals on cold cache can take 1–2s; rust-analyzer
+ *     23|  * is sub-second after warm-up. Tools that already opened the file
+ *     24|  * earlier in the turn pass `0` to read the latest snapshot directly.
+ *     25|
+ */
+final class LspDiagnosticsTool(val manager: LspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input = LspDiagnosticsInput
   type Output = LspDiagnosticsResult
-  val inputRW  = summon[RW[LspDiagnosticsInput]]
+  val inputRW = summon[RW[LspDiagnosticsInput]]
   val outputRW = summon[RW[LspDiagnosticsResult]]
   val name = ToolName("lsp_diagnostics")
   override def verification: Boolean = true
@@ -45,16 +46,33 @@ final class LspDiagnosticsTool(val manager: LspManager) extends Tool
       |NOT answer for the current text within the wait — treat the file's diagnostic state as
       |unknown; an empty stale snapshot is NOT "no issues".""".stripMargin
   override val keywords = Set(
-    "lsp", "language", "diagnostics", "errors", "warnings", "problems",
-    "lint", "compile-check", "analyze", "examine", "inspect", "review",
-    "evaluate", "what's broken", "issues", "semantic",
-    "scala", "type", "fix", "code"
+    "lsp",
+    "language",
+    "diagnostics",
+    "errors",
+    "warnings",
+    "problems",
+    "lint",
+    "compile-check",
+    "analyze",
+    "examine",
+    "inspect",
+    "review",
+    "evaluate",
+    "what's broken",
+    "issues",
+    "semantic",
+    "scala",
+    "type",
+    "fix",
+    "code"
   )
-
 
   override def executeOutput(input: LspDiagnosticsInput, context: ToolContext): Task[LspDiagnosticsResult] =
     withSessionOrThrow[LspDiagnosticsResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri, _) =>
       // Capture the publish generation BEFORE the open so the wait
       // below detects the publish for THIS text — not a stale answer
@@ -68,9 +86,9 @@ final class LspDiagnosticsTool(val manager: LspManager) extends Tool
           else Task.pure(false) // snapshot-only read: freshness unknown
         freshness.map { fresh =>
           LspDiagnosticsResult(
-            filePath    = input.filePath,
+            filePath = input.filePath,
             diagnostics = session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _)),
-            fresh       = fresh
+            fresh = fresh
           )
         }
       }

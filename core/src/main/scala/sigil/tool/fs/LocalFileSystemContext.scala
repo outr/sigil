@@ -34,18 +34,18 @@ import scala.jdk.CollectionConverters.*
  */
 class LocalFileSystemContext(basePath: Option[Path] = None,
                              regexStepBudget: Long = LocalFileSystemContext.DefaultRegexStepBudget)
-    extends FileSystemContext {
+  extends FileSystemContext {
   import LocalFileSystemContext.OutputTruncationBytes
 
   override def executeCommand(command: String,
                               workingDir: Option[String],
                               timeoutMs: Long): Task[CommandResult] = Task {
     val dir = workingDir.map(d => resolvePath(d).toFile).orElse(basePath.map(_.toFile)).orNull
-    val pb  = new ProcessBuilder("bash", "-c", command)
+    val pb = new ProcessBuilder("bash", "-c", command)
     if (dir != null) pb.directory(dir)
     pb.redirectErrorStream(false)
 
-    val process       = pb.start()
+    val process = pb.start()
     val stdoutBuilder = new StringBuilder
     val stderrBuilder = new StringBuilder
 
@@ -84,16 +84,16 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
   }
 
   override def listFiles(basePath: String, pattern: String, maxResults: Int): Task[List[String]] = Task {
-    val base    = resolvePath(basePath)
+    val base = resolvePath(basePath)
     val matcher = FileSystems.getDefault.getPathMatcher(s"glob:$pattern")
     val results = scala.collection.mutable.ListBuffer.empty[String]
-    val stream  = Files.walk(base)
-    try {
+    val stream = Files.walk(base)
+    try
       stream.iterator().asScala
         .filter(p => matcher.matches(base.relativize(p)) || matcher.matches(p.getFileName))
         .take(maxResults)
         .foreach(p => results += base.relativize(p).toString)
-    } finally stream.close()
+    finally stream.close()
     results.toList
   }
 
@@ -103,40 +103,40 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
                            maxMatches: Int,
                            contextLines: Int,
                            includeIgnored: Boolean): Task[List[GrepMatch]] = Task {
-    val base        = resolvePath(basePath)
-    val regex       = Pattern.compile(pattern)
+    val base = resolvePath(basePath)
+    val regex = Pattern.compile(pattern)
     val globMatcher = glob.map(g => FileSystems.getDefault.getPathMatcher(s"glob:$g"))
-    val results     = scala.collection.mutable.ListBuffer.empty[GrepMatch]
+    val results = scala.collection.mutable.ListBuffer.empty[GrepMatch]
     // #340 — when not including ignored paths, honor the workspace
     // .gitignore's directory patterns on top of the built-in baseline.
-    val giSegments  = if (includeIgnored) Set.empty[String] else gitignoreExcludedSegments(base)
-    val stream      = Files.walk(base)
-    try {
+    val giSegments = if (includeIgnored) Set.empty[String] else gitignoreExcludedSegments(base)
+    val stream = Files.walk(base)
+    try
       stream.iterator().asScala
         .filter(p => includeIgnored || !isInExcludedDir(base, p, giSegments))
         .filter(Files.isRegularFile(_))
         .filter(p => globMatcher.forall(m => m.matches(p.getFileName) || m.matches(base.relativize(p))))
         .takeWhile(_ => results.size < maxMatches)
         .foreach { path =>
-          try {
+          try
             if (!isBinary(path)) {
               val lines = readLinesLenient(path)
               lines.zipWithIndex.foreach { case (line, idx) =>
                 val bounded = new StepBoundedCharSequence(line, regexStepBudget, pattern)
                 if (regex.matcher(bounded).find() && results.size < maxMatches) {
                   val before = lines.slice(Math.max(0, idx - contextLines), idx)
-                  val after  = lines.slice(idx + 1, Math.min(lines.size, idx + 1 + contextLines))
+                  val after = lines.slice(idx + 1, Math.min(lines.size, idx + 1 + contextLines))
                   results += GrepMatch(
-                    filePath      = base.relativize(path).toString,
-                    lineNumber    = idx + 1,
-                    content       = line,
+                    filePath = base.relativize(path).toString,
+                    lineNumber = idx + 1,
+                    content = line,
                     contextBefore = before,
-                    contextAfter  = after
+                    contextAfter = after
                   )
                 }
               }
             }
-          } catch {
+          catch {
             // A blown regex budget is a whole-search abort, not a
             // per-file skip — rethrow so it surfaces as a recoverable
             // tool failure (#318) instead of silently dropping the file.
@@ -145,7 +145,7 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
               scribe.warn(s"grep: skipping ${base.relativize(path)} — ${t.getClass.getSimpleName}: ${t.getMessage}")
           }
         }
-    } finally stream.close()
+    finally stream.close()
     results.toList
   }
 
@@ -167,7 +167,7 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
     val key = target.toString
     val lock = locks.computeIfAbsent(key, _ => new ReentrantLock())
     lock.lock()
-    try {
+    try
       if (!Files.exists(target)) WriteResult.NotFound
       else {
         val currentBytes = Files.readAllBytes(target)
@@ -181,17 +181,21 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
           WriteResult.Written(versionOf(target, data))
         }
       }
-    } finally lock.unlock()
+    finally lock.unlock()
   }
 
-  /** Per-canonical-path locks for safe-edit. Process-local — see
-    * [[sigil.storage.LocalFileStorageProvider]] for the same pattern
-    * applied to opaque storage paths. */
+  /**
+   * Per-canonical-path locks for safe-edit. Process-local — see
+   * [[sigil.storage.LocalFileStorageProvider]] for the same pattern
+   * applied to opaque storage paths.
+   */
   private val locks: ConcurrentHashMap[String, ReentrantLock] = new ConcurrentHashMap()
 
-  /** Diagnostic — number of distinct paths currently holding a lock
-    * record. Used by tests asserting per-path lock independence;
-    * ops dashboards can also surface it as a memory-cost signal. */
+  /**
+   * Diagnostic — number of distinct paths currently holding a lock
+   * record. Used by tests asserting per-path lock independence;
+   * ops dashboards can also surface it as a memory-cost signal.
+   */
   def lockCount: Int = locks.size()
 
   protected def versionOf(target: Path, bytes: Array[Byte]): FileVersion = {
@@ -228,7 +232,7 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
     } finally reader.close()
   }
 
-  private def isBinary(path: Path): Boolean = {
+  private def isBinary(path: Path): Boolean =
     try {
       val in = Files.newInputStream(path)
       try {
@@ -236,39 +240,44 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
         bytes.exists(_ == 0)
       } finally in.close()
     } catch {
-      case _: Throwable => true  // unreadable → treat as non-text; skip
+      case _: Throwable => true // unreadable → treat as non-text; skip
     }
-  }
 
-  /** Skip directories that almost always contain binary cache
-    * artifacts (compiled bytecode, build-server indexes, package
-    * manager state, version-control metadata). The canonical segment
-    * list lives on [[GrepTool.DefaultExcludedSegments]]; this method
-    * defers to it so the walk doesn't even open generated content.
-    * Callers pass [[searchFiles]]'s `includeIgnored = true` (set
-    * via [[sigil.tool.model.GrepInput.includeIgnored]] at the tool
-    * layer) to bypass this filter and walk every reachable file. */
-  /** True when `path` sits under a noise directory — the built-in
-    * [[GrepTool.DefaultExcludedSegments]] baseline OR a directory the
-    * workspace's own `.gitignore` lists (`extraExcluded`, #340). A
-    * relativize failure (path outside `base`) fails *closed* — excluded —
-    * so an un-relativizable path never leaks into results. */
+  /**
+   * Skip directories that almost always contain binary cache
+   * artifacts (compiled bytecode, build-server indexes, package
+   * manager state, version-control metadata). The canonical segment
+   * list lives on [[GrepTool.DefaultExcludedSegments]]; this method
+   * defers to it so the walk doesn't even open generated content.
+   * Callers pass [[searchFiles]]'s `includeIgnored = true` (set
+   * via [[sigil.tool.model.GrepInput.includeIgnored]] at the tool
+   * layer) to bypass this filter and walk every reachable file.
+   */
+  /**
+   * True when `path` sits under a noise directory — the built-in
+   * [[GrepTool.DefaultExcludedSegments]] baseline OR a directory the
+   * workspace's own `.gitignore` lists (`extraExcluded`, #340). A
+   * relativize failure (path outside `base`) fails *closed* — excluded —
+   * so an un-relativizable path never leaks into results.
+   */
   private def isInExcludedDir(base: Path, path: Path, extraExcluded: Set[String]): Boolean =
     scala.util.Try(base.relativize(path)).toOption match {
-      case None      => true
+      case None => true
       case Some(rel) =>
         GrepTool.isExcluded(rel) ||
-          (extraExcluded.nonEmpty && rel.iterator().asScala.exists(seg => extraExcluded.contains(seg.toString)))
+        (extraExcluded.nonEmpty && rel.iterator().asScala.exists(seg => extraExcluded.contains(seg.toString)))
     }
 
-  /** Directory-name patterns from the workspace `.gitignore` (#340) — so
-    * `includeIgnored = false` honors project-specific ignored dirs
-    * (`target/`, `dist/`, a custom `generated/`, …) beyond the built-in
-    * baseline. Scope is deliberately simple: bare directory tokens
-    * (`target`, `target/`, `/target`); lines with globs, embedded
-    * slashes, or `!` negations are skipped (full gitignore glob/anchor
-    * semantics are out of scope — the baseline + simple dir names cover
-    * the build-output flooding this addresses). */
+  /**
+   * Directory-name patterns from the workspace `.gitignore` (#340) — so
+   * `includeIgnored = false` honors project-specific ignored dirs
+   * (`target/`, `dist/`, a custom `generated/`, …) beyond the built-in
+   * baseline. Scope is deliberately simple: bare directory tokens
+   * (`target`, `target/`, `/target`); lines with globs, embedded
+   * slashes, or `!` negations are skipped (full gitignore glob/anchor
+   * semantics are out of scope — the baseline + simple dir names cover
+   * the build-output flooding this addresses).
+   */
   private def gitignoreExcludedSegments(base: Path): Set[String] = {
     val gi = base.resolve(".gitignore")
     if (!Files.exists(gi)) Set.empty
@@ -284,12 +293,14 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
     }.getOrElse(Set.empty)
   }
 
-  /** Read a file's lines via a UTF-8 decoder configured to REPLACE
-    * malformed sequences with U+FFFD instead of throwing. Survives
-    * Windows-1252 / iso-8859-1 / mixed-encoding text files at the
-    * cost of an occasional `?` character in the result — acceptable
-    * for grep, where the caller is matching a regex, not handing the
-    * bytes back unchanged. */
+  /**
+   * Read a file's lines via a UTF-8 decoder configured to REPLACE
+   * malformed sequences with U+FFFD instead of throwing. Survives
+   * Windows-1252 / iso-8859-1 / mixed-encoding text files at the
+   * cost of an occasional `?` character in the result — acceptable
+   * for grep, where the caller is matching a regex, not handing the
+   * bytes back unchanged.
+   */
   private def readLinesLenient(path: Path): List[String] = {
     val decoder = StandardCharsets.UTF_8.newDecoder()
       .onMalformedInput(java.nio.charset.CodingErrorAction.REPLACE)
@@ -309,15 +320,20 @@ class LocalFileSystemContext(basePath: Option[Path] = None,
 }
 
 object LocalFileSystemContext {
-  /** Maximum bytes captured per stream (stdout / stderr) for shell
-    * commands. Protects against runaway output blowing memory. */
+
+  /**
+   * Maximum bytes captured per stream (stdout / stderr) for shell
+   * commands. Protects against runaway output blowing memory.
+   */
   val OutputTruncationBytes: Int = 100 * 1024
 
-  /** Per-line `Matcher.find()` step budget for [[searchFiles]] (#318).
-    * Counts `charAt` reads against one line; a catastrophic-backtracking
-    * pattern blows it and aborts the search with a
-    * [[RegexBudgetExceededException]]. Sized so a legitimate regex over a
-    * line of any realistic length never trips it — the field hang burned
-    * 548 CPU-seconds, i.e. billions of steps, against a single line. */
+  /**
+   * Per-line `Matcher.find()` step budget for [[searchFiles]] (#318).
+   * Counts `charAt` reads against one line; a catastrophic-backtracking
+   * pattern blows it and aborts the search with a
+   * [[RegexBudgetExceededException]]. Sized so a legitimate regex over a
+   * line of any realistic length never trips it — the field hang burned
+   * 548 CPU-seconds, i.e. billions of steps, against a single line.
+   */
   val DefaultRegexStepBudget: Long = 50_000_000L
 }

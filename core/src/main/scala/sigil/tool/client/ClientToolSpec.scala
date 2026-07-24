@@ -35,4 +35,5 @@ case class ClientToolSpec(name: String,
                           inputSchema: Json = obj(),
                           expectsResult: Boolean = false,
                           readOnly: Boolean = false,
-                          destructive: Boolean = false) derives RW
+                          destructive: Boolean = false)
+  derives RW

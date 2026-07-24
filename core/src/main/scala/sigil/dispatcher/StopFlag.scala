@@ -19,16 +19,20 @@ final class StopFlag {
   val force: AtomicBoolean = new AtomicBoolean(false)
   val graceful: AtomicBoolean = new AtomicBoolean(false)
 
-  /** Cooperative cancellation seam for IN-FLIGHT TOOL executions.
-    * Cancelled by `applyStop` on ANY stop (graceful included — a user's
-    * Stop shouldn't wait out a multi-minute sweep) and threaded to tool
-    * bodies via [[sigil.tool.ToolContext.checkpoint]]. Long-running
-    * tools call the checkpoint at natural boundaries (per file, per
-    * batch item) and exit early with a visible cancellation failure;
-    * tools that ignore it finish naturally and the stop path settles
-    * their invoke. */
+  /**
+   * Cooperative cancellation seam for IN-FLIGHT TOOL executions.
+   * Cancelled by `applyStop` on ANY stop (graceful included — a user's
+   * Stop shouldn't wait out a multi-minute sweep) and threaded to tool
+   * bodies via [[sigil.tool.ToolContext.checkpoint]]. Long-running
+   * tools call the checkpoint at natural boundaries (per file, per
+   * batch item) and exit early with a visible cancellation failure;
+   * tools that ignore it finish naturally and the stop path settles
+   * their invoke.
+   */
   val cancellation: sigil.CancellationToken = new sigil.CancellationToken("agent-turn")
 
-  /** True when either flag is set — short-circuit for "should the loop exit?" */
+  /**
+   * True when either flag is set — short-circuit for "should the loop exit?"
+   */
   def requested: Boolean = force.get() || graceful.get()
 }

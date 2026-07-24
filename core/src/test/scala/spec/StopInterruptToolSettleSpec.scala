@@ -47,18 +47,22 @@ class StopInterruptToolSettleSpec extends AsyncWordSpec with AsyncTaskSpec with 
   case class SlowInput() extends ToolInput derives RW
   ToolInput.register(RW.static(SlowInput()))
 
-  /** Force flag the live loop's `takeWhile` consults. The tool flips it
-    * during execution to model a Stop arriving mid-tool. */
+  /**
+   * Force flag the live loop's `takeWhile` consults. The tool flips it
+   * during execution to model a Stop arriving mid-tool.
+   */
   private val forceFlag = new java.util.concurrent.atomic.AtomicBoolean(false)
 
-  /** Atomic tool that, like `browser_screenshot`, succeeds with image
-    * bytes. The Stop is injected by the consumer the instant the invoke
-    * is emitted (see `runWithForceStop`), so the live `takeWhile(!force)`
-    * drops this tool's settle element. */
+  /**
+   * Atomic tool that, like `browser_screenshot`, succeeds with image
+   * bytes. The Stop is injected by the consumer the instant the invoke
+   * is emitted (see `runWithForceStop`), so the live `takeWhile(!force)`
+   * drops this tool's settle element.
+   */
   private case object SlowScreenshotTool extends Tool {
-    type Input  = SlowInput
+    type Input = SlowInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[SlowInput]]
+    val inputRW = summon[RW[SlowInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name = ToolName("slow_screenshot")
     val description = "Atomic screenshot tool; a Stop arrives just after its invoke is emitted."
@@ -69,16 +73,16 @@ class StopInterruptToolSettleSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def buildRequest(convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = CoreTools.all.toVector :+ SlowScreenshotTool
+      chain = List(TestUser, TestAgent),
+      tools = CoreTools.all.toVector :+ SlowScreenshotTool
     )
 
   private def seedConversation(convId: Id[Conversation]): Task[Conversation] = {
@@ -86,7 +90,7 @@ class StopInterruptToolSettleSpec extends AsyncWordSpec with AsyncTaskSpec with 
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map(_ => conv)
   }
 
-  private final class SingleToolCallProvider(toolName: String, input: ToolInput) extends Provider {
+  final private class SingleToolCallProvider(toolName: String, input: ToolInput) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -99,32 +103,34 @@ class StopInterruptToolSettleSpec extends AsyncWordSpec with AsyncTaskSpec with 
     ))
   }
 
-  /** Consume the orchestrator stream the way the live `runAgentLoop`
-    * does on a force Stop: `takeWhile(_ => !force.get())`, then run the
-    * loop's post-drain stop-exit reconcile (`settleDanglingToolInvokes`)
-    * exactly as `runAgentLoop` does when the stop flag is set. */
+  /**
+   * Consume the orchestrator stream the way the live `runAgentLoop`
+   * does on a force Stop: `takeWhile(_ => !force.get())`, then run the
+   * loop's post-drain stop-exit reconcile (`settleDanglingToolInvokes`)
+   * exactly as `runAgentLoop` does when the stop flag is set.
+   */
   private def runWithForceStop(convId: Id[Conversation],
                                conv: Conversation,
                                request: ConversationRequest): Task[List[Event]] =
     for {
-      _   <- Orchestrator.process(TestSigil, new SingleToolCallProvider(SlowScreenshotTool.name.value, SlowInput()), request, conv)
-               .takeWhile(_ => !forceFlag.get())
-               .evalTap { s =>
-                 // Publish the element, then — the instant the invoke
-                 // lands — flip the force flag, exactly as a user hitting
-                 // Stop right after the tool starts would. `takeWhile`
-                 // then drops the tool's settle element on the next pull.
-                 TestSigil.publish(s).handleError(_ => Task.unit).map { _ =>
-                   s match {
-                     case t: ToolInvoke if t.toolName == SlowScreenshotTool.name => forceFlag.set(true)
-                     case _                                                      => ()
-                   }
-                 }
-               }
-               .drain
-               .handleError(_ => Task.unit)
+      _ <- Orchestrator.process(TestSigil, new SingleToolCallProvider(SlowScreenshotTool.name.value, SlowInput()), request, conv)
+        .takeWhile(_ => !forceFlag.get())
+        .evalTap { s =>
+          // Publish the element, then — the instant the invoke
+          // lands — flip the force flag, exactly as a user hitting
+          // Stop right after the tool starts would. `takeWhile`
+          // then drops the tool's settle element on the next pull.
+          TestSigil.publish(s).handleError(_ => Task.unit).map { _ =>
+            s match {
+              case t: ToolInvoke if t.toolName == SlowScreenshotTool.name => forceFlag.set(true)
+              case _ => ()
+            }
+          }
+        }
+        .drain
+        .handleError(_ => Task.unit)
       // The loop's stop-exit: settle any invoke the force-cut left dangling.
-      _   <- TestSigil.settleDanglingToolInvokes(convId, TestAgent)
+      _ <- TestSigil.settleDanglingToolInvokes(convId, TestAgent)
       evs <- TestSigil.withDB(_.events.transaction(_.list))
     } yield evs.filter(_.conversationId == convId)
 
@@ -133,7 +139,7 @@ class StopInterruptToolSettleSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val convId = Conversation.id(s"stop-interrupt-${rapid.Unique()}")
       for {
         conv <- seedConversation(convId)
-        evs  <- runWithForceStop(convId, conv, buildRequest(convId))
+        evs <- runWithForceStop(convId, conv, buildRequest(convId))
       } yield {
         val invokes = evs.collect { case t: ToolInvoke if t.toolName == SlowScreenshotTool.name => t }
         withClue(s"expected the slow_screenshot ToolInvoke to be persisted; events: ${evs.map(_.getClass.getSimpleName)}\n") {
@@ -143,7 +149,7 @@ class StopInterruptToolSettleSpec extends AsyncWordSpec with AsyncTaskSpec with 
           val settled = invoke.outcome != ToolOutcome.Pending && invoke.state == EventState.Complete
           val pairedMessage = evs.exists {
             case m: Message if m.role == MessageRole.Tool && m.origin.contains(invoke._id) => true
-            case _                                                                         => false
+            case _ => false
           }
           withClue(s"ToolInvoke ${invoke._id.value} dangled: state=${invoke.state}, outcome=${invoke.outcome}, pairedMessage=$pairedMessage — a Stop-interrupted tool must not stay Active+Pending forever\n") {
             (settled || pairedMessage) shouldBe true

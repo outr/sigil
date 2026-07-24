@@ -16,8 +16,11 @@ import sigil.tool.model.EditAtRangeInput
 class EditAtRangeRequiredNewTextSpec extends AnyWordSpec with Matchers {
 
   private def base: Json = obj(
-    "path" -> str("src/A.scala"), "startLine" -> num(1), "startChar" -> num(0),
-    "endLine" -> num(2), "endChar" -> num(0)
+    "path" -> str("src/A.scala"),
+    "startLine" -> num(1),
+    "startChar" -> num(0),
+    "endLine" -> num(2),
+    "endChar" -> num(0)
   )
 
   "EditAtRangeInput decode" should {
@@ -25,7 +28,7 @@ class EditAtRangeRequiredNewTextSpec extends AnyWordSpec with Matchers {
     "reject args missing newText — never silently delete" in {
       val result = scala.util.Try(base.as[EditAtRangeInput])
       result.isFailure shouldBe true
-      result.failed.get.getMessage should include ("newText")
+      result.failed.get.getMessage should include("newText")
     }
 
     "accept an explicit empty newText as the delete form" in {

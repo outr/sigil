@@ -9,7 +9,8 @@ import sigil.tooling.types.{LspLocation, LspLocationsResult}
 case class LspTypeDefinitionInput(languageId: String,
                                   filePath: String,
                                   line: Int,
-                                  character: Int) extends ToolInput derives RW
+                                  character: Int)
+  extends ToolInput derives RW
 
 /**
  * Locate the *type* of a symbol — the class/trait/struct it
@@ -20,11 +21,10 @@ case class LspTypeDefinitionInput(languageId: String,
  * Useful when the agent needs to read the type's source to understand
  * a method's return shape. Emits `LspLocationsResult`.
  */
-final class LspTypeDefinitionTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
-  type Input  = LspTypeDefinitionInput
+final class LspTypeDefinitionTool(val manager: LspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input = LspTypeDefinitionInput
   type Output = LspLocationsResult
-  val inputRW  = summon[RW[LspTypeDefinitionInput]]
+  val inputRW = summon[RW[LspTypeDefinitionInput]]
   val outputRW = summon[RW[LspLocationsResult]]
 
   val name = ToolName("lsp_type_definition")
@@ -37,10 +37,11 @@ final class LspTypeDefinitionTool(val manager: LspManager) extends Tool
       |Returns `[{uri, filePath, range}]`.""".stripMargin
   override val keywords = Set("lsp", "type definition", "type", "where defined", "type declaration", "examine", "inspect")
 
-
   override def executeOutput(input: LspTypeDefinitionInput, context: ToolContext): Task[LspLocationsResult] =
     withOpenDocumentOrThrow[LspLocationsResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.typeDefinition(uri, input.line, input.character)
         .map(locs => LspLocationsResult(locs.map(LspLocation.fromLsp4j)))

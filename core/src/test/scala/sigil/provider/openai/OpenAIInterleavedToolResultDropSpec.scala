@@ -40,7 +40,7 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
 
     "ship the function_call paired with its function_call_output and omit previous_response_id" in {
       val convId = Conversation.id(s"respond-pair-${rapid.Unique()}")
-      val topic  = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
+      val topic = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
       val priorId = "resp_prior_respond"
       val priorCount = 1
       val respondCallId = "call_resp_abc"
@@ -54,7 +54,8 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
         ),
         ContextFrame.ToolCall(
           toolName = ToolName("respond"),
-          argsJson = """{"content":"hi back","topicLabel":"Greeting","topicSummary":"Hi","disposition":"Success","endsTurn":true,"keywords":[]}""",
+          argsJson =
+            """{"content":"hi back","topicLabel":"Greeting","topicSummary":"Hi","disposition":"Success","endsTurn":true,"keywords":[]}""",
           callId = Id[Event](respondCallId),
           participantId = TestAgent,
           sourceEventId = Id[Event]("invoke-respond-1"),
@@ -77,29 +78,31 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
 
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-               _id = convId, topics = List(topic), participants = Nil
-             ))))
+          _id = convId,
+          topics = List(topic),
+          participants = Nil
+        ))))
         // Prev-id IS cached, but the turn carries tool outputs — the
         // renderer must take the full-render path regardless.
         _ <- TestSigil.updateProjection(convId, TestAgent)(_.copy(
-               latestProviderResponseId           = Some(priorId),
-               latestProviderResponseMessageCount = Some(priorCount)
-             ))
+          latestProviderResponseId = Some(priorId),
+          latestProviderResponseMessageCount = Some(priorCount)
+        ))
         body <- {
           val req = ConversationRequest(
-            conversationId     = convId,
-            model            = TestSigil.testModel(modelId),
-            instructions       = Instructions(),
-            turnInput          = TurnInput(conversationId = convId, frames = frames),
-            currentMode        = ConversationMode,
-            currentTopic       = topic,
+            conversationId = convId,
+            model = TestSigil.testModel(modelId),
+            instructions = Instructions(),
+            turnInput = TurnInput(conversationId = convId, frames = frames),
+            currentMode = ConversationMode,
+            currentTopic = topic,
             generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-            tools              = CoreTools.all,
-            chain              = List(TestUser, TestAgent)
+            tools = CoreTools.all,
+            chain = List(TestUser, TestAgent)
           )
           provider.requestConverter(req).map(_.content match {
             case Some(c: spice.http.content.StringContent) => c.value
-            case _                                         => ""
+            case _ => ""
           })
         }
       } yield {
@@ -120,7 +123,7 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
 
     "ship the function_call + function_call_output pair and the full transcript" in {
       val convId = Conversation.id(s"interleaved-${rapid.Unique()}")
-      val topic  = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
+      val topic = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
       val priorId = "resp_prior_widge"
       val priorCount = 3
 
@@ -158,27 +161,29 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
 
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-               _id = convId, topics = List(topic), participants = Nil
-             ))))
+          _id = convId,
+          topics = List(topic),
+          participants = Nil
+        ))))
         _ <- TestSigil.updateProjection(convId, TestAgent)(_.copy(
-               latestProviderResponseId           = Some(priorId),
-               latestProviderResponseMessageCount = Some(priorCount)
-             ))
+          latestProviderResponseId = Some(priorId),
+          latestProviderResponseMessageCount = Some(priorCount)
+        ))
         body <- {
           val req = ConversationRequest(
-            conversationId     = convId,
-            model            = TestSigil.testModel(modelId),
-            instructions       = Instructions(),
-            turnInput          = TurnInput(conversationId = convId, frames = frames),
-            currentMode        = ConversationMode,
-            currentTopic       = topic,
+            conversationId = convId,
+            model = TestSigil.testModel(modelId),
+            instructions = Instructions(),
+            turnInput = TurnInput(conversationId = convId, frames = frames),
+            currentMode = ConversationMode,
+            currentTopic = topic,
             generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-            tools              = CoreTools.all,
-            chain              = List(TestUser, TestAgent)
+            tools = CoreTools.all,
+            chain = List(TestUser, TestAgent)
           )
           provider.requestConverter(req).map(_.content match {
             case Some(c: spice.http.content.StringContent) => c.value
-            case _                                         => ""
+            case _ => ""
           })
         }
       } yield {

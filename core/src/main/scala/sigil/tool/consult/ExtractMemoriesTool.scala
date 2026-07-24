@@ -21,10 +21,10 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * one-shot facts that don't represent a durable identity slot.
  */
 case object ExtractMemoriesTool extends Tool with FrameworkConsult {
-  type Input  = ExtractMemoriesInput
+  type Input = ExtractMemoriesInput
   type Output = TextToolOutput
   val inputRW: RW[ExtractMemoriesInput] = summon[RW[ExtractMemoriesInput]]
-  val outputRW: RW[TextToolOutput]      = summon[RW[TextToolOutput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("extract_memories")
   val description: String =
@@ -60,27 +60,32 @@ case object ExtractMemoriesTool extends Tool with FrameworkConsult {
       |  - intermediate reasoning, small-talk, acknowledgements
       |  - content that belongs in a summary (narrative / ongoing context).""".stripMargin
 
-
-  /** Fact extraction is condensing work — routes through the cheap
-    * summarization tier. */
+  /**
+   * Fact extraction is condensing work — routes through the cheap
+   * summarization tier.
+   */
   override def consultWorkType: WorkType = SummarizationWork
 
-  /** Output is a list of structured facts. The cap must accommodate
-    * rich excerpts (KB-scale pastes, agent replies enumerating many
-    * facts) — the model buffers the full structured `tool_use` input
-    * on the wire before any `partial_json` delta streams, so a tight
-    * cap cuts the buffered payload mid-emission and produces an empty
-    * tool_use with zero recorded memories. 8192 covers the worst-case
-    * shape while staying well under any current frontier model's
-    * 64K output ceiling. Per-call site tuning lives on the caller
-    * (e.g. [[sigil.conversation.compression.extract.StandardMemoryExtractor.maxExtractionTokens]]). */
+  /**
+   * Output is a list of structured facts. The cap must accommodate
+   * rich excerpts (KB-scale pastes, agent replies enumerating many
+   * facts) — the model buffers the full structured `tool_use` input
+   * on the wire before any `partial_json` delta streams, so a tight
+   * cap cuts the buffered payload mid-emission and produces an empty
+   * tool_use with zero recorded memories. 8192 covers the worst-case
+   * shape while staying well under any current frontier model's
+   * 64K output ceiling. Per-call site tuning lives on the caller
+   * (e.g. [[sigil.conversation.compression.extract.StandardMemoryExtractor.maxExtractionTokens]]).
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(8192),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   override def executeResult(input: ExtractMemoriesInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

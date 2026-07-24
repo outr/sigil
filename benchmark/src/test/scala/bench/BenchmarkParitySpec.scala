@@ -19,10 +19,12 @@ import sigil.vector.InMemoryVectorIndex
  */
 class BenchmarkParitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Deterministic token-hash embedder — same shape as
-    * `TestHashEmbeddingProvider` in the main test sources, but we
-    * don't have access to that from this subproject. Token overlap
-    * yields high similarity, no overlap yields low similarity. */
+  /**
+   * Deterministic token-hash embedder — same shape as
+   * `TestHashEmbeddingProvider` in the main test sources, but we
+   * don't have access to that from this subproject. Token overlap
+   * yields high similarity, no overlap yields low similarity.
+   */
   private object StubEmbedder extends EmbeddingProvider {
     override def dimensions: Int = 64
     override def embed(text: String): Task[Vector[Double]] = Task {
@@ -44,7 +46,7 @@ class BenchmarkParitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     BenchmarkHarness(
       embeddingProvider = StubEmbedder,
       vectorIndex = index,
-      reset = () => Task { index.clear() }
+      reset = () => Task(index.clear())
     )
   }
 
@@ -87,9 +89,7 @@ class BenchmarkParitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         _ <- h.embedAndIndex("b", "second document about python poetry build tool", Map.empty)
         plain <- h.searchByQuery("poetry build tool", limit = 5)
         enhanced <- h.searchByQueryEnhanced("poetry build tool", Retrieval.vanilla, limit = 5)
-      } yield {
-        plain.map(_.id) shouldBe enhanced.map(_.id)
-      }
+      } yield plain.map(_.id) shouldBe enhanced.map(_.id)
     }
   }
 
@@ -107,9 +107,7 @@ class BenchmarkParitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           Retrieval.withHybrid(semanticWeight = 0.3),
           limit = 2
         )
-      } yield {
-        out.head.id shouldBe "keywordHit"
-      }
+      } yield out.head.id shouldBe "keywordHit"
     }
   }
 
@@ -124,16 +122,17 @@ class BenchmarkParitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       for {
         _ <- h.resetCollection()
         _ <- h.embedAndIndex("close", "alpha signal", Map(sigil.vector.TemporalBoost.TimestampKey -> now.toString))
-        _ <- h.embedAndIndex("far", "alpha signal", Map(sigil.vector.TemporalBoost.TimestampKey -> (now - 30L * sigil.vector.TemporalBoost.HalfLife.OneDay).toString))
+        _ <- h.embedAndIndex(
+          "far",
+          "alpha signal",
+          Map(sigil.vector.TemporalBoost.TimestampKey -> (now - 30L * sigil.vector.TemporalBoost.HalfLife.OneDay).toString))
         out <- h.searchByQueryEnhanced(
           "alpha signal",
           Retrieval.withTemporal(boost),
           limit = 2,
           referenceTimeMs = Some(now)
         )
-      } yield {
-        out.head.id shouldBe "close"
-      }
+      } yield out.head.id shouldBe "close"
     }
   }
 
@@ -153,11 +152,14 @@ class BenchmarkParitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
             val text = msg("text").asString
             val messageId = s"conv-$convIdx-msg-$msgIdx"
             convToIdx(messageId) = convIdx
-            h.embedAndIndex(messageId, text, Map(
-              "kind" -> "locomo-message",
-              "conversationId" -> s"conv-$convIdx",
-              "messageId" -> messageId
-            ))
+            h.embedAndIndex(
+              messageId,
+              text,
+              Map(
+                "kind" -> "locomo-message",
+                "conversationId" -> s"conv-$convIdx",
+                "messageId" -> messageId
+              ))
           }
         })
       } yield ()

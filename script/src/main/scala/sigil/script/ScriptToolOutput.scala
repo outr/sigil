@@ -15,4 +15,5 @@ import sigil.tool.ToolOutput
  */
 case class ScriptToolOutput(output: Option[String] = None,
                             error: Option[String] = None,
-                            durationMs: Long = 0L) extends ToolOutput derives RW
+                            durationMs: Long = 0L)
+  extends ToolOutput derives RW

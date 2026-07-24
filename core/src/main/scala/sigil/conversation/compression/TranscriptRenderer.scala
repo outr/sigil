@@ -48,7 +48,7 @@ object TranscriptRenderer {
         sb.append("[system] ").append(content.trim).append("\n")
 
       case _: ContextFrame.Reasoning =>
-     // Provider-internal reasoning state; skip.
+      // Provider-internal reasoning state; skip.
     }
     sb.toString
   }

@@ -12,18 +12,17 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * [[GitShowOutput]] carrying the commit metadata plus its diff as
  * structured hunks (the same shape as `git_diff format = "hunks"`).
  */
-final class GitShowTool(context: FileSystemContext)
-  extends Tool with sigil.tool.ReadOnlyExternalTool {
-  type Input  = GitShowInput
+final class GitShowTool(context: FileSystemContext) extends Tool with sigil.tool.ReadOnlyExternalTool {
+  type Input = GitShowInput
   type Output = GitShowOutput
-  val inputRW  = summon[RW[GitShowInput]]
+  val inputRW = summon[RW[GitShowInput]]
   val outputRW = summon[RW[GitShowOutput]]
   val name = ToolName("git_show")
   val description =
     """Show a single commit's metadata + diff. `sha` accepts any git revision spec (`HEAD`, `HEAD~1`,
       |a short sha, a tag). Returns the commit (sha, author, date, subject, body) plus structured hunks.""".stripMargin
   override val examples = List(
-    ToolExample("Show HEAD",          GitShowInput(sha = "HEAD")),
+    ToolExample("Show HEAD", GitShowInput(sha = "HEAD")),
     ToolExample("Show a specific sha", GitShowInput(sha = "abc1234"))
   )
   override val keywords = Set("git", "show", "commit", "inspect")
@@ -43,15 +42,15 @@ final class GitShowTool(context: FileSystemContext)
 
   private def parseShow(stdout: String): GitShowOutput = stdout.split("\u001e", -1).toList match {
     case head :: tail =>
-      val parts    = head.split("\u0000", -1).padTo(5, "")
+      val parts = head.split("\u0000", -1).padTo(5, "")
       val diffPart = tail.headOption.getOrElse("")
       GitShowOutput.Found(
-        sha     = parts(0),
-        author  = parts(1),
-        date    = parts(2),
+        sha = parts(0),
+        author = parts(1),
+        date = parts(2),
         subject = parts(3),
-        body    = parts(4),
-        hunks   = GitOps.parseDiff(diffPart)
+        body = parts(4),
+        hunks = GitOps.parseDiff(diffPart)
       )
     case Nil =>
       GitShowOutput.Found(sha = "", author = "", date = "", subject = "", body = "", hunks = Nil)

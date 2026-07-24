@@ -10,30 +10,31 @@ import sigil.participant.ParticipantId
 import sigil.provider.{Complexity, WorkType}
 import sigil.signal.EventState
 
-/** Per-turn routing-decision event. Exposes the framework's
-  * candidate-selection inputs and outcome so wire-log forensics can
-  * answer "why did this turn go to model X?".
-  *
-  *   - `inferredWorkType` / `inferredComplexity` — `Some` when a
-  *     classifier actually ran, `None` when the framework defaulted
-  *     to `mode.workType` / `Complexity.Medium` because the
-  *     strategy's skip gates trivialised the decision.
-  *   - `candidateChain` — the ordered list of model ids the routing
-  *     strategy returned for the resolved `WorkType`.
-  *   - `chosenModelId` — the candidate that won.
-  *   - `skipReasons` — for each candidate the strategy ranked below
-  *     `chosenModelId` (or above it but skipped for capability /
-  *     cooldown reasons), the reason for the skip.
-  *   - `classifierLatencyMs` — wall-clock cost of the classifier
-  *     consult, when one ran.
-  *   - `escalationCount` — how many `request_escalation` bumps have
-  *     been applied to this user turn.
-  *   - `escalationReason` — when an escalation bumped the tier this
-  *     turn, a human-readable note of what triggered it and the
-  *     from→to tier (e.g. "duplicate-call cap on `grep` (tier
-  *     High→VeryHigh, escalation #1)"). `None` when no escalation
-  *     applied — so a frontier engagement is never silent (sigil #371).
-  */
+/**
+ * Per-turn routing-decision event. Exposes the framework's
+ * candidate-selection inputs and outcome so wire-log forensics can
+ * answer "why did this turn go to model X?".
+ *
+ *   - `inferredWorkType` / `inferredComplexity` — `Some` when a
+ *     classifier actually ran, `None` when the framework defaulted
+ *     to `mode.workType` / `Complexity.Medium` because the
+ *     strategy's skip gates trivialised the decision.
+ *   - `candidateChain` — the ordered list of model ids the routing
+ *     strategy returned for the resolved `WorkType`.
+ *   - `chosenModelId` — the candidate that won.
+ *   - `skipReasons` — for each candidate the strategy ranked below
+ *     `chosenModelId` (or above it but skipped for capability /
+ *     cooldown reasons), the reason for the skip.
+ *   - `classifierLatencyMs` — wall-clock cost of the classifier
+ *     consult, when one ran.
+ *   - `escalationCount` — how many `request_escalation` bumps have
+ *     been applied to this user turn.
+ *   - `escalationReason` — when an escalation bumped the tier this
+ *     turn, a human-readable note of what triggered it and the
+ *     from→to tier (e.g. "duplicate-call cap on `grep` (tier
+ *     High→VeryHigh, escalation #1)"). `None` when no escalation
+ *     applied — so a frontier engagement is never silent (sigil #371).
+ */
 case class RouteResolved(participantId: ParticipantId,
                          conversationId: Id[Conversation],
                          topicId: Id[Topic],
@@ -51,7 +52,7 @@ case class RouteResolved(participantId: ParticipantId,
                          timestamp: Timestamp = Timestamp(Nowish()),
                          role: MessageRole = MessageRole.Standard,
                          // Visibility controls whether the event appears in context frames.
-                          // `All` is the right default so UIs and wire-log forensics can see it.
+                         // `All` is the right default so UIs and wire-log forensics can see it.
                          override val visibility: MessageVisibility = MessageVisibility.All,
                          override val origin: Option[Id[Event]] = None,
                          override val source: Option[String] = None,

@@ -7,9 +7,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.TurnContext
-import sigil.conversation.{
-  Conversation, ParticipantProjection, RecentToolInvocation, TurnInput
-}
+import sigil.conversation.{Conversation, ParticipantProjection, RecentToolInvocation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Message, MessageDisposition, MessageRole}
 import sigil.orchestrator.Orchestrator
@@ -43,21 +41,25 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   // ---- shared test fixtures ----
 
-  /** Synthetic ToolInput with two fields so semantically-identical
-    * calls with reordered fields exercise the canonical-hash path. */
+  /**
+   * Synthetic ToolInput with two fields so semantically-identical
+   * calls with reordered fields exercise the canonical-hash path.
+   */
   case class SearchInput(pattern: String, glob: String) extends ToolInput derives RW
 
-  /** Tracks every successful execute() so the Layer-3 cap test can
-    * assert "the third call did NOT run." */
+  /**
+   * Tracks every successful execute() so the Layer-3 cap test can
+   * assert "the third call did NOT run."
+   */
   private val searchInvocations = new java.util.concurrent.atomic.AtomicInteger(0)
 
   case object SearchTool extends sigil.tool.Tool {
-    type Input  = SearchInput
+    type Input = SearchInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[SearchInput]]
+    val inputRW = summon[RW[SearchInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("recent_search_tool")
+    val name = ToolName("recent_search_tool")
     val description = "Synthetic search tool used by RecentToolInvocationsSpec."
 
     override def executeOutput(input: SearchInput, ctx: ToolContext): Task[TextToolOutput] = Task {
@@ -68,8 +70,10 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   ToolInput.register(summon[RW[SearchInput]])
 
-  /** Input with a long leading field, so the distinguishing trailing field
-    * lands past the preview budget unless the preview is wide enough. */
+  /**
+   * Input with a long leading field, so the distinguishing trailing field
+   * lands past the preview budget unless the preview is wide enough.
+   */
   case class LongFirstInput(path: String, pattern: String) extends ToolInput derives RW
   ToolInput.register(summon[RW[LongFirstInput]])
 
@@ -93,10 +97,10 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val now = Timestamp()
       val twentyFive = (1 to 25).toList.map { i =>
         RecentToolInvocation(
-          toolName    = ToolName(s"tool_$i"),
-          argsHash    = s"hash_$i",
+          toolName = ToolName(s"tool_$i"),
+          argsHash = s"hash_$i",
           argsPreview = s"{\"n\":$i}",
-          invokedAt   = Timestamp(now.value + i)
+          invokedAt = Timestamp(now.value + i)
         )
       }
       // Simulate the framework's projection-update path -- prepend
@@ -117,36 +121,40 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   // ---- Layer 2: prompt-rendering ----
 
-  /** Build a `ConversationRequest` that drives `renderSystem`. Pinned
-    * to the chain so the agent's projection is the one that contributes
-    * to the rolling-window section. */
+  /**
+   * Build a `ConversationRequest` that drives `renderSystem`. Pinned
+   * to the chain so the agent's projection is the one that contributes
+   * to the rolling-window section.
+   */
   private def requestWith(projection: ParticipantProjection,
                           convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
-      conversationId         = convId,
-      model                = TestSigil.testModel(Model.id("test", "recent-tools-model")),
-      instructions           = Instructions(),
-      turnInput              = TurnInput(
-        conversationId         = convId,
+      conversationId = convId,
+      model = TestSigil.testModel(Model.id("test", "recent-tools-model")),
+      instructions = Instructions(),
+      turnInput = TurnInput(
+        conversationId = convId,
         participantProjections = Map(TestAgent -> projection)
       ),
-      currentMode            = ConversationMode,
-      currentTopic           = TestTopicEntry,
-      previousTopics         = Nil,
-      generationSettings     = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools                  = CoreTools.all,
-      chain                  = List(TestUser, TestAgent)
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
+      generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
+      tools = CoreTools.all,
+      chain = List(TestUser, TestAgent)
     )
 
-  /** Render the system prompt the provider would emit. Uses
-    * LlamaCppProvider because the live llama.cpp host is the default
-    * everywhere; the renderSystem path is shared across providers, so
-    * provider choice is irrelevant for prompt-content assertions. */
+  /**
+   * Render the system prompt the provider would emit. Uses
+   * LlamaCppProvider because the live llama.cpp host is the default
+   * everywhere; the renderSystem path is shared across providers, so
+   * provider choice is irrelevant for prompt-content assertions.
+   */
   private def renderSystem(req: ConversationRequest): Task[String] = {
     val provider = LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)
     provider.requestConverter(req).map(_.content match {
       case Some(c: spice.http.content.StringContent) => c.value
-      case _                                          => ""
+      case _ => ""
     })
   }
 
@@ -182,8 +190,11 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val now = System.currentTimeMillis()
       def inv(pattern: String, ageMs: Long): RecentToolInvocation = {
         val a = SearchInput(pattern = pattern, glob = "**/*.scala")
-        RecentToolInvocation(SearchTool.name, ToolInputCanonicalizer.argsHash(a),
-          ToolInputCanonicalizer.argsPreview(a), Timestamp(now - ageMs))
+        RecentToolInvocation(
+          SearchTool.name,
+          ToolInputCanonicalizer.argsHash(a),
+          ToolInputCanonicalizer.argsPreview(a),
+          Timestamp(now - ageMs))
       }
       // Two DISTINCT (tool, args) groups, each repeated twice.
       val invocations = List(inv("AAA", 50_000), inv("AAA", 5_000), inv("BBB", 40_000), inv("BBB", 4_000))
@@ -191,7 +202,7 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       renderSystem(requestWith(proj, convId)).map { body =>
         val explanations = body.split("Identical inputs yield identical results").length - 1
         withClue(s"explanation appeared $explanations times in the prompt: ") {
-          explanations shouldBe 1   // a single header, not one paragraph per group
+          explanations shouldBe 1 // a single header, not one paragraph per group
         }
         body should include("AAA")
         body should include("BBB")
@@ -266,7 +277,11 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
           Timestamp(now - 1_000L * i)
         )
       }
-      val firstTarget = RecentToolInvocation(SearchTool.name, targetHash, targetPreview, Timestamp(now - 1_000L * (TestSigil.recentToolInvocationsLimit + 1)))
+      val firstTarget = RecentToolInvocation(
+        SearchTool.name,
+        targetHash,
+        targetPreview,
+        Timestamp(now - 1_000L * (TestSigil.recentToolInvocationsLimit + 1)))
       // HEAD-first order: secondTarget, then distinctNoise (most-
       // recent first), then firstTarget (oldest). Cap at limit; the
       // firstTarget falls off.
@@ -284,9 +299,11 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   // ---- Layer 3: orchestrator hard cap ----
 
-  /** Provider that emits a single function-call to `recent_search_tool`
-    * with a fixed payload, then closes the stream. The orchestrator's
-    * atomic-dispatch path runs the tool synchronously. */
+  /**
+   * Provider that emits a single function-call to `recent_search_tool`
+   * with a fixed payload, then closes the stream. The orchestrator's
+   * atomic-dispatch path runs the tool synchronously.
+   */
   private class SingleSearchCallProvider(callIdValue: String, payload: SearchInput) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -303,9 +320,11 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     }
   }
 
-  /** Run the orchestrator against a single tool-call provider with a
-    * pre-seeded projection carrying `priorIdenticalCount` matching
-    * entries. */
+  /**
+   * Run the orchestrator against a single tool-call provider with a
+   * pre-seeded projection carrying `priorIdenticalCount` matching
+   * entries.
+   */
   private def runWithPriorCount(payload: SearchInput,
                                 priorIdenticalCount: Int,
                                 suffix: String): Task[List[Signal]] = {
@@ -319,28 +338,28 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     }
     val proj = ParticipantProjection.empty(TestAgent, convId).copy(recentToolInvocations = priorEntries)
     val request = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(Model.id("test", "cap-model")),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(
-        conversationId         = convId,
+      conversationId = convId,
+      model = TestSigil.testModel(Model.id("test", "cap-model")),
+      instructions = Instructions(),
+      turnInput = TurnInput(
+        conversationId = convId,
         participantProjections = Map(TestAgent -> proj)
       ),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector(SearchTool, RespondTool, NoResponseTool)
+      chain = List(TestUser, TestAgent),
+      tools = Vector(SearchTool, RespondTool, NoResponseTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(
-                   TestSigil,
-                   new SingleSearchCallProvider(s"cap-call-$suffix", payload),
-                   request,
-                   conv
-                 ).toList
+        TestSigil,
+        new SingleSearchCallProvider(s"cap-call-$suffix", payload),
+        request,
+        conv
+      ).toList
     } yield signals
   }
 
@@ -366,12 +385,12 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         toolMessages should not be empty
         val failure = toolMessages.find(_.disposition match {
           case _: MessageDisposition.Failure => true
-          case _                              => false
+          case _ => false
         }).getOrElse(fail("expected a Failure-disposition Tool-role Message"))
         val text = failure.content.collect { case ResponseContent.Text(t) => t }.mkString
         text should include("Refused to dispatch")
         text should include(SearchTool.name.value)
-        text should include("3")  // call #3 / 2 prior times
+        text should include("3") // call #3 / 2 prior times
         text should include("different approach")
       }
     }
@@ -394,22 +413,20 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       // would-be-trip the refusal on the next dispatch — mirrors the
       // bug scenario: the agent called a tool twice in a prior turn
       // (hitting an external blocker that's since been fixed).
-      val convId  = Conversation.id(s"cross-turn-${rapid.Unique()}")
-      val args    = SearchInput(pattern = "TODO|FIXME", glob = "**/*.scala")
-      val hash    = ToolInputCanonicalizer.argsHash(args)
+      val convId = Conversation.id(s"cross-turn-${rapid.Unique()}")
+      val args = SearchInput(pattern = "TODO|FIXME", glob = "**/*.scala")
+      val hash = ToolInputCanonicalizer.argsHash(args)
       val preview = ToolInputCanonicalizer.argsPreview(args)
-      val now     = Timestamp()
+      val now = Timestamp()
       val priorEntries = (1 to 2).toList.map { i =>
         RecentToolInvocation(SearchTool.name, hash, preview, Timestamp(now.value - 1_000L * i))
       }
       val seeded = ParticipantProjection.empty(TestAgent, convId).copy(recentToolInvocations = priorEntries)
       for {
-        _    <- TestSigil.withDB(_.participantProjections.transaction(_.upsert(seeded)))
-        _    <- TestSigil.clearDedupeForTurn(convId, TestAgent)
+        _ <- TestSigil.withDB(_.participantProjections.transaction(_.upsert(seeded)))
+        _ <- TestSigil.clearDedupeForTurn(convId, TestAgent)
         proj <- TestSigil.projectionFor(TestAgent, convId)
-      } yield {
-        proj.recentToolInvocations shouldBe empty
-      }
+      } yield proj.recentToolInvocations shouldBe empty
     }
 
     "after clear, the orchestrator allows a dispatch that would have been refused before" in {
@@ -419,45 +436,43 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       // `runAgent` does at every new turn boundary. The tool must
       // actually run — `searchInvocations` ticks to 1.
       searchInvocations.set(0)
-      val args    = SearchInput(pattern = "TODO|FIXME", glob = "**/*.scala")
-      val hash    = ToolInputCanonicalizer.argsHash(args)
+      val args = SearchInput(pattern = "TODO|FIXME", glob = "**/*.scala")
+      val hash = ToolInputCanonicalizer.argsHash(args)
       val preview = ToolInputCanonicalizer.argsPreview(args)
-      val convId  = Conversation.id(s"cross-turn-allow-${rapid.Unique()}")
-      val conv    = Conversation(topics = TestTopicStack, _id = convId)
-      val now     = Timestamp()
+      val convId = Conversation.id(s"cross-turn-allow-${rapid.Unique()}")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
+      val now = Timestamp()
       val priorEntries = (1 to 2).toList.map { i =>
         RecentToolInvocation(SearchTool.name, hash, preview, Timestamp(now.value - 1_000L * i))
       }
       val seeded = ParticipantProjection.empty(TestAgent, convId).copy(recentToolInvocations = priorEntries)
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _       <- TestSigil.withDB(_.participantProjections.transaction(_.upsert(seeded)))
-        _       <- TestSigil.clearDedupeForTurn(convId, TestAgent)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.participantProjections.transaction(_.upsert(seeded)))
+        _ <- TestSigil.clearDedupeForTurn(convId, TestAgent)
         cleared <- TestSigil.projectionFor(TestAgent, convId)
-        request  = ConversationRequest(
-                     conversationId     = convId,
-                     model            = TestSigil.testModel(Model.id("test", "cross-turn-model")),
-                     instructions       = Instructions(),
-                     turnInput          = TurnInput(
-                       conversationId         = convId,
-                       participantProjections = Map(TestAgent -> cleared)
-                     ),
-                     currentMode        = ConversationMode,
-                     currentTopic       = TestTopicEntry,
-                     previousTopics     = Nil,
-                     generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-                     chain              = List(TestUser, TestAgent),
-                     tools              = Vector(SearchTool, RespondTool, NoResponseTool)
-                   )
-        _       <- Orchestrator.process(
-                     TestSigil,
-                     new SingleSearchCallProvider("cross-turn-allow-call", args),
-                     request,
-                     conv
-                   ).toList
-      } yield {
-        searchInvocations.get() shouldBe 1
-      }
+        request = ConversationRequest(
+          conversationId = convId,
+          model = TestSigil.testModel(Model.id("test", "cross-turn-model")),
+          instructions = Instructions(),
+          turnInput = TurnInput(
+            conversationId = convId,
+            participantProjections = Map(TestAgent -> cleared)
+          ),
+          currentMode = ConversationMode,
+          currentTopic = TestTopicEntry,
+          previousTopics = Nil,
+          generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
+          chain = List(TestUser, TestAgent),
+          tools = Vector(SearchTool, RespondTool, NoResponseTool)
+        )
+        _ <- Orchestrator.process(
+          TestSigil,
+          new SingleSearchCallProvider("cross-turn-allow-call", args),
+          request,
+          conv
+        ).toList
+      } yield searchInvocations.get() shouldBe 1
     }
   }
 }

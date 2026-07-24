@@ -43,9 +43,11 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private val modelId: Id[Model] = Model.id("test", "detached-tool-model")
   TestSigil.testModel(modelId)
 
-  /** Intra-turn compaction issues its own LLM call at respond
-    * boundaries — this spec counts scripted-provider round-trips
-    * exactly, so compaction is disabled for the suite. */
+  /**
+   * Intra-turn compaction issues its own LLM call at respond
+   * boundaries — this spec counts scripted-provider round-trips
+   * exactly, so compaction is disabled for the suite.
+   */
   private object NoCompaction extends sigil.conversation.compression.IntraTurnCompactor {
     override def shouldCompact(turnEvents: Vector[sigil.event.Event], estimatedTokens: Long, threshold: Long): Boolean = false
     override def selectFoldable(turnEvents: Vector[sigil.event.Event],
@@ -53,9 +55,11 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
   TestSigil.intraTurnCompactorOverride.set(Some(NoCompaction))
 
-  /** The per-turn memory extractor also issues its own provider call
-    * after each turn — same call-count pollution; disabled per turn
-    * start (reset() restores the default, so this is re-applied). */
+  /**
+   * The per-turn memory extractor also issues its own provider call
+   * after each turn — same call-count pollution; disabled per turn
+   * start (reset() restores the default, so this is re-applied).
+   */
   private object NoExtraction extends sigil.conversation.compression.extract.MemoryExtractor {
     override def extract(sigil: _root_.sigil.Sigil,
                          conversationId: Id[Conversation],
@@ -66,8 +70,10 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       Task.pure(Nil)
   }
 
-  /** Per-call scripted provider. `calls` counts provider round-trips —
-    * a continuation turn shows up as an extra call. */
+  /**
+   * Per-call scripted provider. `calls` counts provider round-trips —
+   * a continuation turn shows up as an extra call.
+   */
   private class ScriptedProvider(script: Int => Stream[ProviderEvent]) extends Provider {
     val calls = new atomic.AtomicInteger(0)
     val inputs = new ConcurrentLinkedQueue[ProviderCall]()
@@ -83,9 +89,11 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
   }
 
-  /** Calls the given fixture tool once, then answers every later call
-    * with a terminal respond. */
-  private final class ToolThenRespondProvider(toolName: String) extends Provider {
+  /**
+   * Calls the given fixture tool once, then answers every later call
+   * with a terminal respond.
+   */
+  final private class ToolThenRespondProvider(toolName: String) extends Provider {
     val calls = new atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -104,12 +112,14 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         val cid = CallId(s"respond-${rapid.Unique()}")
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(cid, RespondInput(
-            topicLabel   = TestTopicEntry.label,
-            topicSummary = TestTopicEntry.summary,
-            content      = "Acknowledged.",
-            endsTurn     = true
-          )),
+          ProviderEvent.ToolCallComplete(
+            cid,
+            RespondInput(
+              topicLabel = TestTopicEntry.label,
+              topicSummary = TestTopicEntry.summary,
+              content = "Acknowledged.",
+              endsTurn = true
+            )),
           ProviderEvent.Done(StopReason.Complete)
         ))
       }
@@ -117,10 +127,10 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def makeAgent(toolName: ToolName): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = toolName :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = toolName :: CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -132,16 +142,16 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     val provider = new ToolThenRespondProvider(tool.name.value)
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"detached-${rapid.Unique()}")
-    val conv   = Conversation(topics = TestTopicStack, participants = List(makeAgent(tool.name)), _id = convId)
+    val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent(tool.name)), _id = convId)
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Run the sweep.")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Run the sweep.")),
+        state = EventState.Complete
+      ))
     } yield (convId, provider)
   }
 
@@ -158,7 +168,7 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def startRecorder(): (ConcurrentLinkedQueue[Signal], atomic.AtomicBoolean) = {
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
@@ -198,8 +208,11 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           recorded.iterator().asScala.toList.foreach { sig =>
             val extra = sig match {
               case ti: ToolInvoke => s" tool=${ti.toolName.value} outcome=${ti.outcome} detached=${ti.detached} state=${ti.state}"
-              case td: sigil.signal.ToolDelta => s" target=${td.target.value.take(8)} state=${td.state} outcome=${td.outcome} detached=${td.detached}"
-              case m: Message => s" role=${m.role} from=${m.participantId.value} text=${m.content.collect { case ResponseContent.Text(t) => t }.mkString.take(60)}"
+              case td: sigil.signal.ToolDelta =>
+                s" target=${td.target.value.take(8)} state=${td.state} outcome=${td.outcome} detached=${td.detached}"
+              case m: Message => s" role=${m.role} from=${m.participantId.value} text=${m.content.collect { case ResponseContent.Text(t) =>
+                    t
+                  }.mkString.take(60)}"
               case _ => ""
             }
             println(s"  ${sig.getClass.getSimpleName}$extra")
@@ -218,13 +231,13 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         withClue(s"detachedRow=$detachedRow: ") {
           detachedRow.map(_.detached) shouldBe Some(true)
           detachedRow.map(_.outcome) shouldBe Some(ToolOutcome.Pending)
-          detachedRow.map(_.summary).getOrElse("") should include ("running in the background as task")
+          detachedRow.map(_.summary).getOrElse("") should include("running in the background as task")
         }
         // The tool had NOT finished when the turn ended.
         tool.stepsRun.get() should be >= 2
         turnEndedCalls should be >= 2
         // Panel carried the detached task while it ran.
-        panel.map(_.workflowSourceId) should contain ("detached-tool")
+        panel.map(_.workflowSourceId) should contain("detached-tool")
         // Progress pulse arrived on the original invoke id after detach.
         val invokeId = detachedRow.get._id
         recorded.iterator().asScala.collect {
@@ -237,7 +250,7 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           settledRow.flatMap(_.contextFrame).collect {
             case tc: ContextFrame.ToolCall => tc.state
           } match {
-            case Some(ToolCallState.Complete(content, _)) => content should include ("completed 6 steps")
+            case Some(ToolCallState.Complete(content, _)) => content should include("completed 6 steps")
             case other => fail(s"expected settled Complete frame, got $other")
           }
         }
@@ -263,12 +276,12 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _ <- waitFor(System.currentTimeMillis() + 10000L)(Task.pure(provider.calls.get() >= 2))
         _ <- TestSigil.awaitSettled(convId)
         _ <- TestSigil.publish(Stop(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               force          = false,
-               reason         = Some("stopped by user")
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          force = false,
+          reason = Some("stopped by user")
+        ))
         _ <- Task(tool.proceedLatch.countDown())
         // The checkpoint observes cancellation → Failure settle.
         _ <- waitFor(System.currentTimeMillis() + 10000L)(
@@ -287,8 +300,8 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         // No continuation trigger was published.
         events.collect {
           case m: Message
-            if m.role == MessageRole.Tool && m.origin.contains(settled.get._id)
-              && m.content.collect { case ResponseContent.Text(t) => t }.mkString.contains("completed") => m
+              if m.role == MessageRole.Tool && m.origin.contains(settled.get._id)
+                && m.content.collect { case ResponseContent.Text(t) => t }.mkString.contains("completed") => m
         } shouldBe empty
         // And no continuation turn ran.
         provider.calls.get() shouldBe 2
@@ -355,7 +368,7 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       // is parked on its tool — the continuation must wait for turn 2's
       // own respond before being consumed.
       val sweep = DetachableSweepTool
-      val slow  = SlowCooperativeTool
+      val slow = SlowCooperativeTool
       TestSigil.reset()
       TestSigil.setMemoryExtractor(NoExtraction)
       sweep.reset()
@@ -380,12 +393,14 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           val cid = CallId(s"respond-${rapid.Unique()}")
           Stream.emits(List[ProviderEvent](
             ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(cid, RespondInput(
-              topicLabel   = TestTopicEntry.label,
-              topicSummary = TestTopicEntry.summary,
-              content      = "Done for now.",
-              endsTurn     = true
-            )),
+            ProviderEvent.ToolCallComplete(
+              cid,
+              RespondInput(
+                topicLabel = TestTopicEntry.label,
+                topicSummary = TestTopicEntry.summary,
+                content = "Done for now.",
+                endsTurn = true
+              )),
             ProviderEvent.Done(StopReason.Complete)
           ))
       })
@@ -394,19 +409,19 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       // The agent needs BOTH fixture tools in its roster — turn 1 runs
       // the sweep, turn 2 the slow cooperative tool.
       val agent = DefaultAgentParticipant(
-        id                 = TestAgent,
-        modelId            = modelId,
-        toolNames          = sweep.name :: slow.name :: CoreTools.coreToolNames,
-        instructions       = Instructions(),
+        id = TestAgent,
+        modelId = modelId,
+        toolNames = sweep.name :: slow.name :: CoreTools.coreToolNames,
+        instructions = Instructions(),
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
       )
       val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       def userMsg(text: String) = TestSigil.publish(Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        content        = Vector(ResponseContent.Text(text)),
-        state          = EventState.Complete
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text(text)),
+        state = EventState.Complete
       ))
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
@@ -442,7 +457,7 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         val closing = provider.inputs.iterator().asScala.toList.lift(3)
           .getOrElse(fail("no fourth provider call recorded"))
         val renderedHistory = closing.messages.map(_.toString).mkString("\n")
-        renderedHistory should include ("completed 6 steps")
+        renderedHistory should include("completed 6 steps")
       }
     }
   }

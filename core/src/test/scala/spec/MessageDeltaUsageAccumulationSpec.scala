@@ -44,7 +44,7 @@ class MessageDeltaUsageAccumulationSpec extends AnyWordSpec with Matchers {
       var m = msg()
       m = applyUsage(m, TokenUsage(999, 999, 999, isEstimated = true)) // estimate → ignored
       m.usage shouldBe TokenUsage.zero
-      m = applyUsage(m, TokenUsage(100, 10, 110))                      // authoritative → accumulates
+      m = applyUsage(m, TokenUsage(100, 10, 110)) // authoritative → accumulates
       m.usage.promptTokens shouldBe 100
     }
   }

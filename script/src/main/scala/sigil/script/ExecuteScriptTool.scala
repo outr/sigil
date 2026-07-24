@@ -40,13 +40,17 @@ class ExecuteScriptTool(executor: ScriptExecutor,
                         override val name: ToolName = ToolName("execute_script"),
                         override val description: String = ExecuteScriptTool.DefaultDescription)
   extends Tool {
-  type Input  = ScriptInput
+  type Input = ScriptInput
   type Output = ScriptToolOutput
-  val inputRW  = summon[RW[ScriptInput]]
+  val inputRW = summon[RW[ScriptInput]]
   val outputRW = summon[RW[ScriptToolOutput]]
 
   override val keywords = Set(
-    "execute", "run", "evaluate", "eval", "script",
+    "execute",
+    "run",
+    "evaluate",
+    "eval",
+    "script",
   )
   override val examples = List(
     ToolExample(
@@ -72,8 +76,8 @@ class ExecuteScriptTool(executor: ScriptExecutor,
   override def descriptionFor(mode: _root_.sigil.provider.Mode,
                               sigilInstance: _root_.sigil.Sigil): String =
     executor.advertisedSurface match {
-      case Some(surface) => s"${description}\n\n$surface"
-      case None          => description
+      case Some(surface) => s"$description\n\n$surface"
+      case None => description
     }
 
   override def preferIfNoBetter: Boolean = true
@@ -91,7 +95,7 @@ class ExecuteScriptTool(executor: ScriptExecutor,
       executor.execute(input.code, bindings(context))
         .map { output =>
           ToolResult.Success(ScriptToolOutput(
-            output     = Some(output),
+            output = Some(output),
             durationMs = System.currentTimeMillis() - started
           ))
         }
@@ -109,15 +113,18 @@ class ExecuteScriptTool(executor: ScriptExecutor,
     // agent has enough to fix the script.
     ToolResult.failure(
       message = ExecuteScriptTool.formatThrowable(t),
-      hint    = Some("fix the script and re-run")
+      hint = Some("fix the script and re-run")
     )
 }
 
 object ExecuteScriptTool {
-  /** Format a throwable as a short stack-trace string suitable for a
-    * `ScriptResult.error` field. Trims to the first 8 lines so the
-    * model has the framing + the script-relevant frames without the
-    * ~80-line JVM stack. */
+
+  /**
+   * Format a throwable as a short stack-trace string suitable for a
+   * `ScriptResult.error` field. Trims to the first 8 lines so the
+   * model has the framing + the script-relevant frames without the
+   * ~80-line JVM stack.
+   */
   private[script] def formatThrowable(t: Throwable): String = {
     val sw = new java.io.StringWriter
     t.printStackTrace(new java.io.PrintWriter(sw))

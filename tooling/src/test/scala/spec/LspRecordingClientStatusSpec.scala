@@ -14,7 +14,7 @@ class LspRecordingClientStatusSpec extends AnyWordSpec with Matchers {
 
     "route the `text` field through the registered status callback" in {
       val applier: WorkspaceEditApplier = (_: WorkspaceEdit) => true
-      val client  = new LspRecordingClient(applier)
+      val client = new LspRecordingClient(applier)
       val captured = new AtomicReference[Option[String]](None)
       client.setStatusCallback(Some(text => captured.set(Some(text))))
 
@@ -28,7 +28,7 @@ class LspRecordingClientStatusSpec extends AnyWordSpec with Matchers {
 
     "ignore notifications with empty/missing text" in {
       val applier: WorkspaceEditApplier = (_: WorkspaceEdit) => true
-      val client  = new LspRecordingClient(applier)
+      val client = new LspRecordingClient(applier)
       val captured = new AtomicReference[Option[String]](None)
       client.setStatusCallback(Some(text => captured.set(Some(text))))
 
@@ -45,7 +45,7 @@ class LspRecordingClientStatusSpec extends AnyWordSpec with Matchers {
 
     "no-op when no callback is registered (callback was never set)" in {
       val applier: WorkspaceEditApplier = (_: WorkspaceEdit) => true
-      val client  = new LspRecordingClient(applier)
+      val client = new LspRecordingClient(applier)
       // No setStatusCallback call.
       val params = new JsonObject
       params.addProperty("text", "indexing")
@@ -54,7 +54,7 @@ class LspRecordingClientStatusSpec extends AnyWordSpec with Matchers {
 
     "no-op after the callback is cleared (None)" in {
       val applier: WorkspaceEditApplier = (_: WorkspaceEdit) => true
-      val client  = new LspRecordingClient(applier)
+      val client = new LspRecordingClient(applier)
       val captured = new AtomicReference[Option[String]](None)
       client.setStatusCallback(Some(text => captured.set(Some(text))))
       client.setStatusCallback(None)

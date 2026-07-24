@@ -57,16 +57,16 @@ class BspCompileErrorCauseSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   private def turnContext(sigil: _root_.sigil.Sigil): TurnContext = {
     val convId = Conversation.id(s"bsp-cause-${rapid.Unique()}")
     val topic = TopicEntry(
-      id      = _root_.sigil.conversation.Topic.id(s"topic-${rapid.Unique()}"),
-      label   = "spec",
+      id = _root_.sigil.conversation.Topic.id(s"topic-${rapid.Unique()}"),
+      label = "spec",
       summary = "spec"
     )
     TurnContext(
-      sigil        = sigil,
-      chain        = List(TestCallerId("caller-1")),
+      sigil = sigil,
+      chain = List(TestCallerId("caller-1")),
       conversation = Conversation(topics = List(topic), _id = convId),
-      turnInput    = TurnInput(conversationId = convId),
-      model        = TestSigil.defaultTestModel
+      turnInput = TurnInput(conversationId = convId),
+      model = TestSigil.defaultTestModel
     )
   }
 
@@ -78,14 +78,15 @@ class BspCompileErrorCauseSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   "bsp_compile on a request-level failure" should {
 
     "carry the reason in `cause` instead of a bare contentless ERROR" in {
-      val sigil  = freshSigil()
+      val sigil = freshSigil()
       sigil.instance.flatMap { _ =>
         val manager = new BspManager(sigil.asInstanceOf[_root_.sigil.Sigil { type DB <: SigilDB & ToolingCollections }])
-        val tool    = new BspCompileTool(manager)
-        val ctx     = turnContext(sigil)
-        val root    = emptyProjectRoot()
+        val tool = new BspCompileTool(manager)
+        val ctx = turnContext(sigil)
+        val root = emptyProjectRoot()
         tool.invoke(BspCompileInput(projectRoot = root), ToolContext(ctx, Event.id(), tool.name)).attempt.map { result =>
-          try Files.delete(java.nio.file.Path.of(root)) catch { case _: Throwable => () }
+          try Files.delete(java.nio.file.Path.of(root))
+          catch { case _: Throwable => () }
           result.isSuccess shouldBe true
           val res = result.get
           res.status shouldBe "ERROR"
@@ -147,7 +148,11 @@ class BspCompileErrorCauseSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val client = new BspRecordingBuildClient
       publish(client, "file:///proj/src/Bad1.scala", diag(3, "']' expected but '}' found"))
       publish(client, "file:///proj/src/Bad2.scala", diag(7, "unclosed comment"))
-      val res = BspCompileTool.buildResult("/proj", "ERROR", 2, client,
+      val res = BspCompileTool.buildResult(
+        "/proj",
+        "ERROR",
+        2,
+        client,
         requestFailure = Some("BSP error: (core / Compile / compileIncremental) Compilation failed"))
       res.status shouldBe "ERROR"
       res.targetCount shouldBe 2
@@ -158,7 +163,11 @@ class BspCompileErrorCauseSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "point at the build tool when the failed request published nothing" in Task {
       val client = new BspRecordingBuildClient
-      val res = BspCompileTool.buildResult("/proj", "ERROR", 2, client,
+      val res = BspCompileTool.buildResult(
+        "/proj",
+        "ERROR",
+        2,
+        client,
         requestFailure = Some("BSP error: Compilation failed"))
       res.diagnostics shouldBe empty
       res.cause should not be empty

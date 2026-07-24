@@ -19,9 +19,9 @@ import sigil.tool.model.RespondCardsInput
  * each card with its own native grouping.
  */
 case object RespondCardsTool extends RespondFamilyTool {
-  type Input  = RespondCardsInput
+  type Input = RespondCardsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RespondCardsInput]]
+  val inputRW = summon[RW[RespondCardsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("respond_cards")

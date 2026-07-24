@@ -32,8 +32,10 @@ class ForcedSynthesisToolChoiceSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Records the `ProviderCall` that reaches the wire and emits a
-    * trivial terminal so `apply` completes. */
+  /**
+   * Records the `ProviderCall` that reaches the wire and emits a
+   * trivial terminal so `apply` completes.
+   */
   private class CapturingProvider extends Provider {
     @volatile var captured: Option[ProviderCall] = None
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -50,19 +52,19 @@ class ForcedSynthesisToolChoiceSpec extends AsyncWordSpec with AsyncTaskSpec wit
   private def translatedCall(forceSynth: Boolean): Task[ProviderCall] = {
     val convId = Conversation.id("forced-synth-toolchoice")
     val request = ConversationRequest(
-      conversationId         = convId,
-      model                  = TestSigil.testModel(modelId),
-      instructions           = Instructions(),
-      turnInput              = TurnInput(conversationId = convId),
-      currentMode            = ConversationMode,
-      currentTopic           = TestTopicEntry,
-      previousTopics         = Nil,
-      generationSettings     = GenerationSettings(maxOutputTokens = Some(50)),
-      chain                  = List(TestUser, TestAgent),
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
+      generationSettings = GenerationSettings(maxOutputTokens = Some(50)),
+      chain = List(TestUser, TestAgent),
       // Respond family survives the forced-synthesis roster filter;
       // a built-in server tool that must NOT survive it.
-      tools                  = Vector(RespondTool, RespondOptionsTool, NoResponseTool),
-      builtInTools           = Set(BuiltInTool.WebSearch),
+      tools = Vector(RespondTool, RespondOptionsTool, NoResponseTool),
+      builtInTools = Set(BuiltInTool.WebSearch),
       forceResponseSynthesis = forceSynth
     )
     val provider = new CapturingProvider
@@ -72,19 +74,17 @@ class ForcedSynthesisToolChoiceSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
   "Forced-synthesis tool_choice (sigil #375)" should {
 
-    "pin tool_choice to Specific(respond) and drop built-in tools on the recovery turn" in {
+    "pin tool_choice to Specific(respond) and drop built-in tools on the recovery turn" in
       translatedCall(forceSynth = true).map { pc =>
         pc.toolChoice shouldBe ToolChoice.Specific(RespondTool.schema.name)
         pc.builtInTools shouldBe empty
       }
-    }
 
-    "leave tool_choice Required and keep built-in tools on a normal turn" in {
+    "leave tool_choice Required and keep built-in tools on a normal turn" in
       translatedCall(forceSynth = false).map { pc =>
         pc.toolChoice shouldBe ToolChoice.Required
         pc.builtInTools should contain(BuiltInTool.WebSearch)
       }
-    }
   }
 
   "tear down" should {

@@ -30,8 +30,8 @@ object MemoryHeavyBench {
       // Retrieved memories grow each turn — simulating an active retriever.
       val retrieved = (1 to (n * 5).min(50)).iterator.map { i =>
         ProfilerHarness.memory(
-          key = s"fact.${n}.${i}",
-          fact = s"Fact ${n}.${i}: the user prefers terse responses on Slack but verbose responses in email; " +
+          key = s"fact.$n.$i",
+          fact = s"Fact $n.$i: the user prefers terse responses on Slack but verbose responses in email; " +
             "they work in EST and rarely respond after 6pm; their main project is the ingestion pipeline."
         )
       }.toVector

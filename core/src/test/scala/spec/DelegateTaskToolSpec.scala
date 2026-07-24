@@ -34,13 +34,13 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   private def turnContext(): TurnContext = {
     val conv = Conversation(
       topics = List(TopicEntry(TestTopicId, "test", "test")),
-      _id    = convId
+      _id = convId
     )
     TurnContext(
-      sigil            = TestSigil,
-      chain            = List(TestUser),
-      conversation     = conv,
-      turnInput        = TurnInput(ConversationView(conversationId = convId)),
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
       model = TestSigil.defaultTestModel
     )
   }
@@ -55,20 +55,22 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   private def turnContextFor(cid: Id[Conversation]): TurnContext = {
     val conv = Conversation(topics = List(TopicEntry(TestTopicId, "test", "test")), _id = cid)
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser),
+      sigil = TestSigil,
+      chain = List(TestUser),
       conversation = conv,
-      turnInput    = TurnInput(ConversationView(conversationId = cid)),
-      model        = TestSigil.defaultTestModel
+      turnInput = TurnInput(ConversationView(conversationId = cid)),
+      model = TestSigil.defaultTestModel
     )
   }
 
-  /** Persist root (depth 0) → worker (depth 1) → sub-worker (depth 2). */
+  /**
+   * Persist root (depth 0) → worker (depth 1) → sub-worker (depth 2).
+   */
   private def persistChain(): Task[(Id[Conversation], Id[Conversation], Id[Conversation])] = {
     val topic = List(TopicEntry(TestTopicId, "t", "t"))
-    val root  = Conversation.id(s"d348-root-${rapid.Unique()}")
-    val wkr   = Conversation.id(s"d348-worker-${rapid.Unique()}")
-    val sub   = Conversation.id(s"d348-sub-${rapid.Unique()}")
+    val root = Conversation.id(s"d348-root-${rapid.Unique()}")
+    val wkr = Conversation.id(s"d348-worker-${rapid.Unique()}")
+    val sub = Conversation.id(s"d348-sub-${rapid.Unique()}")
     val up = (c: Conversation) => TestSigil.withDB(_.conversations.transaction(_.upsert(c)))
     for {
       _ <- up(Conversation(topics = topic, _id = root))
@@ -83,9 +85,11 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         d.summary.getOrElse(d.outcome.collect { case ToolOutcome.Failure(r, _) => r }.getOrElse(""))
     }.getOrElse("")
 
-  /** Any agent the spawned worker fires settles immediately — keeps the
-    * worker's first turn quiet so the spec asserts only on the created
-    * worker conversation, not on a real model round-trip. */
+  /**
+   * Any agent the spawned worker fires settles immediately — keeps the
+   * worker's first turn quiet so the spec asserts only on the created
+   * worker conversation, not on a real model round-trip.
+   */
   private object SilentProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -97,28 +101,32 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
   TestSigil.setProvider(Task.pure(SilentProvider))
 
-  /** A turn anchored as the agent supervisor `TestAgent` in a conversation
-    * whose mode is `mode` — the shape `delegate_task` needs to spawn a
-    * worker (the caller must be an agent participant of the conversation). */
+  /**
+   * A turn anchored as the agent supervisor `TestAgent` in a conversation
+   * whose mode is `mode` — the shape `delegate_task` needs to spawn a
+   * worker (the caller must be an agent participant of the conversation).
+   */
   private def supervisorContext(mode: sigil.provider.Mode): TurnContext = {
     val cid = Conversation.id(s"delegate-mode-${rapid.Unique()}")
     val conv = Conversation(
-      topics       = List(TopicEntry(TestTopicId, "test", "test")),
-      participants  = List(DefaultAgentParticipant(id = TestAgent, modelId = TestSigil.defaultTestModel._id)),
-      currentMode  = mode,
-      _id          = cid
+      topics = List(TopicEntry(TestTopicId, "test", "test")),
+      participants = List(DefaultAgentParticipant(id = TestAgent, modelId = TestSigil.defaultTestModel._id)),
+      currentMode = mode,
+      _id = cid
     )
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestAgent),
+      sigil = TestSigil,
+      chain = List(TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(ConversationView(conversationId = cid)),
-      model        = TestSigil.defaultTestModel
+      turnInput = TurnInput(ConversationView(conversationId = cid)),
+      model = TestSigil.defaultTestModel
     )
   }
 
-  /** Spawn a worker via `delegate_task` and return the created worker
-    * conversation's resolved `currentMode` name. */
+  /**
+   * Spawn a worker via `delegate_task` and return the created worker
+   * conversation's resolved `currentMode` name.
+   */
   private def workerModeName(input: DelegateTaskInput, ctx: TurnContext): Task[String] =
     DelegateTaskTool.execute(input, ctx, Event.id()).toList.flatMap { signals =>
       val out = signals.collectFirst {
@@ -130,8 +138,8 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
 
   private def modeInput: DelegateTaskInput = DelegateTaskInput(
-    role    = "impl",
-    brief   = "Implement the parser",
+    role = "impl",
+    brief = "Implement the parser",
     modelId = Some(TestSigil.defaultTestModel._id.value)
   )
 
@@ -158,7 +166,7 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
 
     // Sigil #348 — structural depth cap.
-    "compute delegation depth by walking parentConversationId" in {
+    "compute delegation depth by walking parentConversationId" in
       persistChain().flatMap { case (root, worker, sub) =>
         for {
           d0 <- TestSigil.delegationDepth(root)
@@ -170,7 +178,6 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           d2 shouldBe 2
         }
       }
-    }
 
     "refuse a delegation that would exceed maxDelegationDepth (worker re-delegation runaway guard)" in {
       // From the depth-2 sub-worker, spawning another worker would be
@@ -187,25 +194,22 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
 
     // #355 — worker mode inheritance + override.
-    "spawn the worker in the spawning conversation's mode by default (inherit)" in {
+    "spawn the worker in the spawning conversation's mode by default (inherit)" in
       // Supervisor is in TestCodingMode (name "coding"); no `mode` on the input.
       workerModeName(modeInput, supervisorContext(TestCodingMode)).map { m =>
         m shouldBe "coding"
       }
-    }
 
-    "spawn the worker in an explicitly-specified mode (override)" in {
+    "spawn the worker in an explicitly-specified mode (override)" in
       // Supervisor in "coding" delegates a leg that should run in "skilled".
       workerModeName(modeInput.copy(mode = Some("skilled")), supervisorContext(TestCodingMode)).map { m =>
         m shouldBe "skilled"
       }
-    }
 
-    "fall back to the inherited mode when the specified mode name is unknown" in {
+    "fall back to the inherited mode when the specified mode name is unknown" in
       workerModeName(modeInput.copy(mode = Some("no-such-mode")), supervisorContext(TestCodingMode)).map { m =>
         m shouldBe "coding"
       }
-    }
   }
 
   "tear down" should {

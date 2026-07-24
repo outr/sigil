@@ -32,10 +32,11 @@ import java.util.Base64
  */
 final class McpTool(manager: McpManager,
                     serverConfig: McpServerConfig,
-                    definition: McpToolDefinition) extends Tool {
-  type Input  = JsonInput
+                    definition: McpToolDefinition)
+  extends Tool {
+  type Input = JsonInput
   type Output = ToolOutput
-  val inputRW  = summon[RW[JsonInput]]
+  val inputRW = summon[RW[JsonInput]]
   val outputRW = summon[RW[ToolOutput]]
 
   override val name: ToolName = ToolName(serverConfig.prefix.getOrElse("") + definition.name)
@@ -81,11 +82,14 @@ final class McpTool(manager: McpManager,
   private def buildOutput(result: Json, context: ToolContext): Task[ToolOutput] = {
     val blocks = result.get("content").map(_.asVector.toList).getOrElse(Nil)
     val images = blocks.flatMap(imageRef)
-    val text   = blocks.flatMap(blockToText).mkString("\n")
+    val text = blocks.flatMap(blockToText).mkString("\n")
     images match {
       case Nil => Task.pure(TextToolOutput(text))
       case (data, mime) :: _ =>
-        context.sigil.storeBytes(GlobalSpace, Base64.getDecoder.decode(data), mime,
+        context.sigil.storeBytes(
+          GlobalSpace,
+          Base64.getDecoder.decode(data),
+          mime,
           metadata = Map("kind" -> "mcp-tool-result", "server" -> serverConfig.name, "tool" -> definition.name))
           .map { stored =>
             val note =
@@ -94,8 +98,8 @@ final class McpTool(manager: McpManager,
                 if (text.isEmpty) extra else s"$text\n$extra"
               } else text
             ImageToolOutput(
-              url  = context.sigil.storageUrl(stored),
-              alt  = s"MCP image result from ${name.value}",
+              url = context.sigil.storageUrl(stored),
+              alt = s"MCP image result from ${name.value}",
               text = Option(note).filter(_.nonEmpty)
             )
           }
@@ -109,11 +113,13 @@ final class McpTool(manager: McpManager,
     if (imageRef(block).isDefined) None
     else block.get("type").map(_.asString).getOrElse("") match {
       case "text" => block.get("text").map(_.asString)
-      case _      => Some(fabric.io.JsonFormatter.Compact(block))
+      case _ => Some(fabric.io.JsonFormatter.Compact(block))
     }
 
-  /** `(base64Data, mimeType)` for an `image` content block or an
-    * embedded `resource` block whose `mimeType` is `image/…`. */
+  /**
+   * `(base64Data, mimeType)` for an `image` content block or an
+   * embedded `resource` block whose `mimeType` is `image/…`.
+   */
   private def imageRef(block: Json): Option[(String, String)] = {
     val t = block.get("type").map(_.asString).getOrElse("")
     if (t == "image") {

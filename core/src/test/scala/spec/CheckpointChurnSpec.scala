@@ -56,13 +56,15 @@ class CheckpointChurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   private val modelId: Id[Model] = Model.id("test", "churn")
   TestSigil.testModel(modelId)
 
-  /** Main-loop turns mutate the SAME target (distinct steps, so the
-    * identical-call detector stays out of the way); when `verifyToo`
-    * is set every other turn issues a verification call instead. The
-    * reflector ALWAYS claims progress — the churn verdict must come
-    * from the objective chain, not the reflector. The ceiling
-    * forced-synthesis call gets a respond. */
-  private final class SameTargetProvider(verifyToo: Boolean) extends Provider {
+  /**
+   * Main-loop turns mutate the SAME target (distinct steps, so the
+   * identical-call detector stays out of the way); when `verifyToo`
+   * is set every other turn issues a verification call instead. The
+   * reflector ALWAYS claims progress — the churn verdict must come
+   * from the objective chain, not the reflector. The ceiling
+   * forced-synthesis call gets a respond.
+   */
+  final private class SameTargetProvider(verifyToo: Boolean) extends Provider {
     val mainCalls = new atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -75,22 +77,29 @@ class CheckpointChurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         if (input.tools.exists(_.name.value == "report_progress")) {
           List(
             ProviderEvent.ToolCallStart(callId, "report_progress"),
-            ProviderEvent.ToolCallComplete(callId, _root_.sigil.tool.consult.ProgressReflectionInput(
-              currentStatus      = s"Successfully applied edits, continuing (${rapid.Unique()}).",
-              meaningfulProgress = true,
-              remainingSteps     = "keep going",
-              stuckOn            = None,
-              shouldAskUser      = false
-            )),
+            ProviderEvent.ToolCallComplete(
+              callId,
+              _root_.sigil.tool.consult.ProgressReflectionInput(
+                currentStatus = s"Successfully applied edits, continuing (${rapid.Unique()}).",
+                meaningfulProgress = true,
+                remainingSteps = "keep going",
+                stuckOn = None,
+                shouldAskUser = false
+              )
+            ),
             ProviderEvent.Done(StopReason.Complete)
           )
         } else input.toolChoice match {
           case ToolChoice.Specific(name) if name == RespondTool.schema.name =>
             List(
               ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-              ProviderEvent.ToolCallComplete(callId, RespondInput(
-                topicLabel = "Ceiling", topicSummary = "cap synthesis",
-                content = "Synthesised at the iteration ceiling.", endsTurn = true)),
+              ProviderEvent.ToolCallComplete(
+                callId,
+                RespondInput(
+                  topicLabel = "Ceiling",
+                  topicSummary = "cap synthesis",
+                  content = "Synthesised at the iteration ceiling.",
+                  endsTurn = true)),
               ProviderEvent.Done(StopReason.Complete)
             )
           case _ =>
@@ -104,9 +113,11 @@ class CheckpointChurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
             else
               List(
                 ProviderEvent.ToolCallStart(callId, MutatingSpecTool.name.value),
-                ProviderEvent.ToolCallComplete(callId, MutatingSpecInput(
-                  step = s"attempt-$n-${rapid.Unique()}",
-                  target = Some("src/StandardBlockExtractor.scala"))),
+                ProviderEvent.ToolCallComplete(
+                  callId,
+                  MutatingSpecInput(
+                    step = s"attempt-$n-${rapid.Unique()}",
+                    target = Some("src/StandardBlockExtractor.scala"))),
                 ProviderEvent.Done(StopReason.ToolCall)
               )
         }
@@ -116,10 +127,10 @@ class CheckpointChurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = (CoreTools.coreToolNames :+ MutatingSpecTool.name) :+ VerifyingSpecTool.name,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = (CoreTools.coreToolNames :+ MutatingSpecTool.name) :+ VerifyingSpecTool.name,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -135,17 +146,17 @@ class CheckpointChurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   private def runTurn(provider: SameTargetProvider, suffix: String): Task[List[sigil.event.Event]] = {
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"churn-$suffix-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Repair the broken extractor file.")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Repair the broken extractor file.")),
+        state = EventState.Complete
+      ))
       _ <- waitUntil(30.seconds) {
         TestSigil.withDB(_.eventsTransaction(convId)(_.list)).map(_.exists {
           case m: Message =>
@@ -162,14 +173,14 @@ class CheckpointChurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   "the same-target churn guard" should {
 
-    "fire an objective churn stall when the same target is re-mutated across windows with no verification" in {
+    "fire an objective churn stall when the same target is re-mutated across windows with no verification" in
       runTurn(new SameTargetProvider(verifyToo = false), suffix = "unverified").map { events =>
         val checkpoints = events.collect { case c: ProgressCheckpoint => c }.sortBy(_.iterationCount)
         val stallDirectives = events.collect {
           case m: Message if m.role == sigil.event.MessageRole.Tool && m.content.exists {
-            case t: ResponseContent.Text => t.text.contains("without any compile/test/diagnostics")
-            case _ => false
-          } => m
+                case t: ResponseContent.Text => t.text.contains("without any compile/test/diagnostics")
+                case _ => false
+              } => m
         }
         withClue(s"checkpoints=${checkpoints.map(c => s"${c.iterationCount}:${c.meaningfulProgress}")} " +
           s"stallDirectives=${stallDirectives.size}: ") {
@@ -180,19 +191,18 @@ class CheckpointChurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           // The directive names the target so the agent knows WHAT to verify.
           stallDirectives.head.content.collectFirst {
             case t: ResponseContent.Text => t.text
-          }.get should include ("src/StandardBlockExtractor.scala")
+          }.get should include("src/StandardBlockExtractor.scala")
         }
       }
-    }
 
-    "hold the veto when a verification call separates the rounds" in {
+    "hold the veto when a verification call separates the rounds" in
       runTurn(new SameTargetProvider(verifyToo = true), suffix = "verified").map { events =>
         val checkpoints = events.collect { case c: ProgressCheckpoint => c }
         val churnDirectives = events.collect {
           case m: Message if m.content.exists {
-            case t: ResponseContent.Text => t.text.contains("without any compile/test/diagnostics")
-            case _ => false
-          } => m
+                case t: ResponseContent.Text => t.text.contains("without any compile/test/diagnostics")
+                case _ => false
+              } => m
         }
         withClue(s"checkpoints=${checkpoints.map(c => s"${c.iterationCount}:${c.meaningfulProgress}")}: ") {
           churnDirectives shouldBe empty
@@ -200,7 +210,6 @@ class CheckpointChurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           checkpoints.count(_.meaningfulProgress) shouldBe checkpoints.size
         }
       }
-    }
   }
 
   "tear down" should {

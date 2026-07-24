@@ -22,20 +22,26 @@ case class FileVersion(hash: String, modified: Timestamp) derives RW
 
 object FileVersion {
 
-  /** Compute the canonical SHA-256 hash for a byte payload. Used by
-    * filesystem-backed providers; backends with native version
-    * stamps (S3 ETag) construct [[FileVersion]] from the backend's
-    * own value. */
+  /**
+   * Compute the canonical SHA-256 hash for a byte payload. Used by
+   * filesystem-backed providers; backends with native version
+   * stamps (S3 ETag) construct [[FileVersion]] from the backend's
+   * own value.
+   */
   def hashOf(bytes: Array[Byte]): String = {
     val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
     digest.map(b => f"$b%02x").mkString
   }
 
-  /** Convenience for hashing a UTF-8 string. */
+  /**
+   * Convenience for hashing a UTF-8 string.
+   */
   def hashOf(text: String): String = hashOf(text.getBytes(StandardCharsets.UTF_8))
 
-  /** Compute a fresh [[FileVersion]] over the given bytes, stamped
-    * with the current wall clock. */
+  /**
+   * Compute a fresh [[FileVersion]] over the given bytes, stamped
+   * with the current wall clock.
+   */
   def of(bytes: Array[Byte]): FileVersion =
     FileVersion(hashOf(bytes), Timestamp())
 }

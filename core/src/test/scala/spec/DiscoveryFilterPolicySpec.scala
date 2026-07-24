@@ -12,9 +12,9 @@ import sigil.tool.{DiscoveryFilter, TextToolOutput, Tool, ToolInput, ToolName, T
 case class DiscoveryFilterPolicyStubInput(text: String = "") extends ToolInput derives RW
 
 final class DiscoveryFilterPolicyStubTool(n: String) extends Tool {
-  type Input  = DiscoveryFilterPolicyStubInput
+  type Input = DiscoveryFilterPolicyStubInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[DiscoveryFilterPolicyStubInput]]
+  val inputRW = summon[RW[DiscoveryFilterPolicyStubInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName(n)
   val description = s"Stub $n"

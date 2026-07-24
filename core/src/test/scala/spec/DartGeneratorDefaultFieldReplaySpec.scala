@@ -31,7 +31,7 @@ class DartGeneratorDefaultFieldReplaySpec extends AnyWordSpec with Matchers {
     spice.openapi.generator.dart.DurableSocketDartGenerator(
       spice.openapi.generator.dart.DurableSocketDartConfig(
         serviceName = "Test",
-        wireType    = ToolInvokeWire
+        wireType = ToolInvokeWire
       )
     ).generate()
 
@@ -75,7 +75,7 @@ class DartGeneratorDefaultFieldReplaySpec extends AnyWordSpec with Matchers {
       val files = spice.openapi.generator.dart.DurableSocketDartGenerator(
         spice.openapi.generator.dart.DurableSocketDartConfig(
           serviceName = "Test",
-          wireType    = "EventState" -> summon[RW[EventState]].definition
+          wireType = "EventState" -> summon[RW[EventState]].definition
         )
       ).generate()
       val source = files.find(_.fileName == "event_state.dart").map(_.source).getOrElse("")

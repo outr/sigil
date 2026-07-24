@@ -16,4 +16,5 @@ import sigil.tool.ToolInput
  */
 case class ScriptInput(code: String,
                        summary: String,
-                       language: Option[String] = None) extends ToolInput derives RW
+                       language: Option[String] = None)
+  extends ToolInput derives RW

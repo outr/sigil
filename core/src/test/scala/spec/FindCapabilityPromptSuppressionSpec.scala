@@ -33,30 +33,34 @@ class FindCapabilityPromptSuppressionSpec extends AsyncWordSpec with AsyncTaskSp
   private val modelId: Id[Model] = Model.id("test", "model")
   private val convId = Conversation.id("fc-prompt-suppression")
 
-  /** A roster WITHOUT find_capability mimics what ToolPolicy.ActiveOnly leaves. */
+  /**
+   * A roster WITHOUT find_capability mimics what ToolPolicy.ActiveOnly leaves.
+   */
   private val rosterNoDiscovery: Vector[sigil.tool.Tool] =
     CoreTools.all.filterNot(_.schema.name == FindCapabilityTool.schema.name)
 
   private def dupProjection: ParticipantProjection = {
     val inv = RecentToolInvocation(
-      toolName = ToolName("browser_navigate"), argsHash = "h1",
-      argsPreview = "{\"url\":\"x\"}", invokedAt = Timestamp())
+      toolName = ToolName("browser_navigate"),
+      argsHash = "h1",
+      argsPreview = "{\"url\":\"x\"}",
+      invokedAt = Timestamp())
     ParticipantProjection.empty(TestAgent, convId).copy(recentToolInvocations = List(inv, inv))
   }
 
   private def buildRequest(discoveryOn: Boolean, isGreeting: Boolean, withDuplicates: Boolean): ConversationRequest = {
     val proj = if (withDuplicates) Map(TestAgent -> dupProjection) else Map.empty[sigil.participant.ParticipantId, ParticipantProjection]
     ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId).copy(participantProjections = proj),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId).copy(participantProjections = proj),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = if (discoveryOn) CoreTools.all else rosterNoDiscovery,
-      chain              = List(TestUser, TestAgent),
-      isGreeting         = isGreeting
+      tools = if (discoveryOn) CoreTools.all else rosterNoDiscovery,
+      chain = List(TestUser, TestAgent),
+      isGreeting = isGreeting
     )
   }
 
@@ -64,45 +68,41 @@ class FindCapabilityPromptSuppressionSpec extends AsyncWordSpec with AsyncTaskSp
     val provider = LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)
     provider.requestConverter(request).map(_.content match {
       case Some(c: spice.http.content.StringContent) => c.value
-      case _                                          => ""
+      case _ => ""
     })
   }
 
   "System-prompt prose with discovery suppressed (sigil #397)" should {
 
-    "drop find_capability from the greeting block (keeping the no_response guidance)" in {
+    "drop find_capability from the greeting block (keeping the no_response guidance)" in
       renderPrompt(buildRequest(discoveryOn = false, isGreeting = true, withDuplicates = false)).map { body =>
         body should include("Greeting turn")
         body should include("Do NOT call `no_response`")
         body should not include "find_capability"
       }
-    }
 
-    "still name find_capability in the greeting block when discovery IS available" in {
+    "still name find_capability in the greeting block when discovery IS available" in
       renderPrompt(buildRequest(discoveryOn = true, isGreeting = true, withDuplicates = false)).map { body =>
         body should include("Greeting turn")
         body should include("find_capability")
       }
-    }
 
-    "drop find_capability from the repeated-tool-calls block" in {
+    "drop find_capability from the repeated-tool-calls block" in
       renderPrompt(buildRequest(discoveryOn = false, isGreeting = false, withDuplicates = true)).map { body =>
         body should include("Repeated tool calls")
         body should not include "find_capability"
       }
-    }
 
-    "still name find_capability in the repeated-tool-calls block when discovery IS available" in {
+    "still name find_capability in the repeated-tool-calls block when discovery IS available" in
       renderPrompt(buildRequest(discoveryOn = true, isGreeting = false, withDuplicates = true)).map { body =>
         body should include("Repeated tool calls")
         body should include("find_capability")
       }
-    }
   }
 
   // --- Orchestrator refusal-challenge gating ---
 
-  private final class RefuseProvider extends Provider {
+  final private class RefuseProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -112,23 +112,30 @@ class FindCapabilityPromptSuppressionSpec extends AsyncWordSpec with AsyncTaskSp
       val callId = CallId(s"call-${rapid.Unique()}")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId,
-          RespondInput(topicLabel = "Refusal", topicSummary = "no discovery",
-            content = "I can't switch to GPT-5.5 — that's beyond what I do.", endsTurn = true)),
+        ProviderEvent.ToolCallComplete(
+          callId,
+          RespondInput(
+            topicLabel = "Refusal",
+            topicSummary = "no discovery",
+            content = "I can't switch to GPT-5.5 — that's beyond what I do.",
+            endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
   }
 
-  /** Discovery-off agent: ActiveOnly(respond) strips find_capability (#388). */
+  /**
+   * Discovery-off agent: ActiveOnly(respond) strips find_capability (#388).
+   */
   private def discoveryOffAgent: AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = List(RespondTool.name),
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = List(RespondTool.name),
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = ToolPolicy.ActiveOnly(List(RespondTool.name)))
+      tools = ToolPolicy.ActiveOnly(List(RespondTool.name))
+    )
 
   "Orchestrator refusal-challenge with discovery suppressed (sigil #397)" should {
     "NOT challenge a refusal when find_capability isn't in the roster (an informed refusal is the only option)" in {
@@ -136,14 +143,16 @@ class FindCapabilityPromptSuppressionSpec extends AsyncWordSpec with AsyncTaskSp
       val cId = Conversation.id(s"fc-refuse-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, participants = List(discoveryOffAgent), _id = cId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = cId,
-                 topicId        = TestTopicEntry.id,
-                 content        = Vector(ResponseContent.Text("switch to gpt-5.5")),
-                 state          = EventState.Complete))
-        _   <- TestSigil.awaitSettled(cId)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = cId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("switch to gpt-5.5")),
+          state =
+            EventState.Complete
+        ))
+        _ <- TestSigil.awaitSettled(cId)
         evs <- TestSigil.withDB(_.events.transaction(_.list)).map(_.filter(_.conversationId == cId))
       } yield {
         // No challenge — the corrective would tell the agent to call a

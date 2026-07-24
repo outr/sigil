@@ -7,12 +7,14 @@ import sigil.tool.ToolContext
 import sigil.browser.{ScrollAmount, ScrollDirection, WebBrowserMode}
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
-/** Scroll the page. `direction` chooses up / down; `amount` chooses a
-  * one-viewport page move or an absolute top / bottom jump. */
+/**
+ * Scroll the page. `direction` chooses up / down; `amount` chooses a
+ * one-viewport page move or an absolute top / bottom jump.
+ */
 final class BrowserScrollTool extends Tool {
-  type Input  = BrowserScrollInput
+  type Input = BrowserScrollInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[BrowserScrollInput]]
+  val inputRW = summon[RW[BrowserScrollInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("browser_scroll")
@@ -30,15 +32,15 @@ final class BrowserScrollTool extends Tool {
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
-      _          <- controller.run(_.eval(scrollScript(input.direction, input.amount)).unit)
+      _ <- controller.run(_.eval(scrollScript(input.direction, input.amount)).unit)
     } yield ToolResult.Success(BrowserToolBase.toolResult(
       obj("scrolled" -> str(s"${input.direction}/${input.amount}"))
     ))
 
   private def scrollScript(direction: ScrollDirection, amount: ScrollAmount): String = (direction, amount) match {
-    case (_, ScrollAmount.Top)        => "window.scrollTo(0, 0);"
-    case (_, ScrollAmount.Bottom)     => "window.scrollTo(0, document.body.scrollHeight);"
-    case (ScrollDirection.Up, _)      => "window.scrollBy(0, -window.innerHeight);"
-    case (ScrollDirection.Down, _)    => "window.scrollBy(0, window.innerHeight);"
+    case (_, ScrollAmount.Top) => "window.scrollTo(0, 0);"
+    case (_, ScrollAmount.Bottom) => "window.scrollTo(0, document.body.scrollHeight);"
+    case (ScrollDirection.Up, _) => "window.scrollBy(0, -window.innerHeight);"
+    case (ScrollDirection.Down, _) => "window.scrollBy(0, window.innerHeight);"
   }
 }

@@ -56,7 +56,7 @@ class ProviderErrorSanitizeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val out = TestSigil.sanitizeProviderError("openai", vendorError)
       out should not include "openai.com"
       out should not include "help.openai"
-      out should include ("retry your request") // actionable content survives
+      out should include("retry your request") // actionable content survives
     }
 
     "leave a vendorless error untouched" in Task {
@@ -85,18 +85,18 @@ class ProviderErrorSanitizeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val convId = Conversation.id(s"proverr-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = ConversationRequest(
-        conversationId     = convId,
-        model              = TestSigil.testModel(modelId),
-        instructions       = Instructions(),
-        turnInput          = TurnInput(conversationId = convId),
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
+        conversationId = convId,
+        model = TestSigil.testModel(modelId),
+        instructions = Instructions(),
+        turnInput = TurnInput(conversationId = convId),
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-        tools              = Vector(RespondTool),
-        chain              = List(TestUser, TestAgent)
+        tools = Vector(RespondTool),
+        chain = List(TestUser, TestAgent)
       )
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, new ErrorProvider, request, conv).toList
       } yield {
         val toolTexts = signals.collect { case m: Message if m.role == MessageRole.Tool => m }

@@ -27,7 +27,9 @@ class RespondDispositionWireDecodeSpec extends AnyWordSpec with Matchers {
 
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Drive args through the provider accumulator; return the terminal event. */
+  /**
+   * Drive args through the provider accumulator; return the terminal event.
+   */
   private def accumulate(args: String): ProviderEvent = {
     val acc = new ToolCallAccumulator(Vector(RespondTool), providerKey = "test")
     acc.start(0, CallId("call-0"), RespondTool.schema.name.value)

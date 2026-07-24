@@ -51,7 +51,7 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   TestSigil.testModel(Model.id("test", "only-veryhigh"))
   TestSigil.testModel(Model.id("test", "fits-medium"))
 
-  private final class RespondOnce extends Provider {
+  final private class RespondOnce extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -72,10 +72,10 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = agentModelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = agentModelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -86,11 +86,11 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       // so #315 down-only degradation finds nothing at or below Medium and
       // the framework falls back to agent.modelId (the genuine bottom-out
       // the #175 notice exists for).
-      val onlyHigh     = Model.id("test", "only-high")
+      val onlyHigh = Model.id("test", "only-high")
       val onlyVeryHigh = Model.id("test", "only-veryhigh")
       val strategy = ProviderStrategy.routed(
         default = List(
-          ModelCandidate(onlyHigh,     supportedComplexity = Set(Complexity.High)),
+          ModelCandidate(onlyHigh, supportedComplexity = Set(Complexity.High)),
           ModelCandidate(onlyVeryHigh, supportedComplexity = Set(Complexity.VeryHigh))
         ),
         inferComplexity = Some((_, _) => Task.pure(Complexity.Medium))
@@ -99,18 +99,18 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       TestSigil.setProvider(Task.pure(new RespondOnce))
 
       val convId = Conversation.id(s"routing-fallback-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = TestTopicEntry.id,
-                 content        = Vector(ResponseContent.Text("Do the thing")),
-                 state          = EventState.Complete
-               ))
-        _   <- Task.sleep(2.seconds)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Do the thing")),
+          state = EventState.Complete
+        ))
+        _ <- Task.sleep(2.seconds)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val rrs = evs.collect { case rr: RouteResolved if rr.conversationId == convId => rr }
@@ -120,16 +120,16 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
         val noticeMessages = evs.collect {
           case m: Message
-            if m.conversationId == convId
-              && m.source.contains("routing-fallback") => m
+              if m.conversationId == convId
+                && m.source.contains("routing-fallback") => m
         }
         noticeMessages should have size 1
         val rendered = noticeMessages.head.content.collect { case ResponseContent.Text(t) => t }.mkString
-        rendered should include ("Medium")
-        rendered should include (agentModelId.value)
-        rendered should include ("don't loop")
-        rendered should include (onlyHigh.value)
-        rendered should include (onlyVeryHigh.value)
+        rendered should include("Medium")
+        rendered should include(agentModelId.value)
+        rendered should include("don't loop")
+        rendered should include(onlyHigh.value)
+        rendered should include(onlyVeryHigh.value)
       }
     }
 
@@ -145,24 +145,24 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       TestSigil.setProvider(Task.pure(new RespondOnce))
 
       val convId = Conversation.id(s"routing-fallback-fits-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = TestTopicEntry.id,
-                 content        = Vector(ResponseContent.Text("Do the thing")),
-                 state          = EventState.Complete
-               ))
-        _   <- Task.sleep(2.seconds)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Do the thing")),
+          state = EventState.Complete
+        ))
+        _ <- Task.sleep(2.seconds)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val noticeMessages = evs.collect {
           case m: Message
-            if m.conversationId == convId
-              && m.source.contains("routing-fallback") => m
+              if m.conversationId == convId
+                && m.source.contains("routing-fallback") => m
         }
         noticeMessages shouldBe empty
       }

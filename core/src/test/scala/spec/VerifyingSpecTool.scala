@@ -13,9 +13,9 @@ final case class VerifyingSpecInput(scope: String) extends ToolInput derives RW
  * churn chain.
  */
 case object VerifyingSpecTool extends Tool with ReadOnlyExternalTool {
-  type Input  = VerifyingSpecInput
+  type Input = VerifyingSpecInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[VerifyingSpecInput]]
+  val inputRW = summon[RW[VerifyingSpecInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("verify_spec_state")
   val description = "Test-only verification tool; checks the named scope."

@@ -31,8 +31,9 @@ import sigil.tool.{JsonInput, JsonSchemaToDefinition, TextToolOutput, Tool, Tool
  */
 final class ClientTool(val spec: ClientToolSpec,
                        conversationId: lightdb.id.Id[sigil.conversation.Conversation],
-                       registry: ClientToolRegistry) extends Tool {
-  type Input  = JsonInput
+                       registry: ClientToolRegistry)
+  extends Tool {
+  type Input = JsonInput
   type Output = TextToolOutput
   val inputRW: RW[JsonInput] = summon[RW[JsonInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]

@@ -43,9 +43,11 @@ class RespondDecodeFailureRoutingSpec extends AsyncWordSpec with AsyncTaskSpec w
     "Failed to parse args for tool respond: RWException: ResponseDisposition has no case with name: " +
       "ResponseDisposition.InProgress. Expected shape: { ... }."
 
-  /** Provider scripting a `respond` tool call whose args fail to decode —
-    * llama.cpp's grammar-constrained tool-call-only shape (no streamed
-    * content), the actual Sage case. */
+  /**
+   * Provider scripting a `respond` tool call whose args fail to decode —
+   * llama.cpp's grammar-constrained tool-call-only shape (no streamed
+   * content), the actual Sage case.
+   */
   private class RespondDecodeFailureProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -60,9 +62,11 @@ class RespondDecodeFailureRoutingSpec extends AsyncWordSpec with AsyncTaskSpec w
       ))
   }
 
-  /** Same failure, but the respond content pre-streams as `ContentBlockDelta`
-    * (a Message is born) — the frontier-provider shape. The streamed
-    * placeholder must NOT settle into a user-facing dead-end. */
+  /**
+   * Same failure, but the respond content pre-streams as `ContentBlockDelta`
+   * (a Message is born) — the frontier-provider shape. The streamed
+   * placeholder must NOT settle into a user-facing dead-end.
+   */
   private class StreamedRespondDecodeFailureProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -82,39 +86,45 @@ class RespondDecodeFailureRoutingSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   private def requestFor(convId: Id[Conversation], turnInput: TurnInput): ConversationRequest =
     ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = turnInput,
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = turnInput,
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = CoreTools.all
+      chain = List(TestUser, TestAgent),
+      tools = CoreTools.all
     )
 
-  /** The agent's retry trigger: a Tool-role Message carrying a recoverable
-    * Failure, scoped to agents. */
+  /**
+   * The agent's retry trigger: a Tool-role Message carrying a recoverable
+   * Failure, scoped to agents.
+   */
   private def agentFailureTriggers(signals: List[Signal]): List[Message] =
     signals.collect {
-      case m: Message if m.role == MessageRole.Tool && (m.disposition match {
-        case sigil.event.MessageDisposition.Failure(true, _) => true
-        case _                                               => false
-      }) => m
+      case m: Message
+          if m.role == MessageRole.Tool &&
+            (m.disposition match {
+              case sigil.event.MessageDisposition.Failure(true, _) => true
+              case _ => false
+            }) => m
     }
 
   "Orchestrator respond decode-failure routing (sigil #359)" should {
 
     "route a respond arg-decode failure to the agent as a recoverable Tool failure" in {
       val convId = Conversation.id("respond-decode-fail-route")
-      val conv   = Conversation(topics = TestTopicStack, _id = convId)
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
       val task = for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(
-                     TestSigil, new RespondDecodeFailureProvider,
-                     requestFor(convId, TurnInput(conversationId = convId)), conv
-                   ).toList
+          TestSigil,
+          new RespondDecodeFailureProvider,
+          requestFor(convId, TurnInput(conversationId = convId)),
+          conv
+        ).toList
       } yield signals
       task.map { signals =>
         withClue(s"signals:\n${signals.map(s => "  " + s.getClass.getSimpleName + ": " + s.toString.take(160)).mkString("\n")}\n") {
@@ -122,35 +132,37 @@ class RespondDecodeFailureRoutingSpec extends AsyncWordSpec with AsyncTaskSpec w
           triggers should not be empty
           triggers.head.visibility shouldBe MessageVisibility.Agents
           signals.collect {
-            case d: ToolDelta if (d.outcome match {
-              case Some(ToolOutcome.Failure(_, recoverable)) => recoverable
-              case _                                         => false
-            }) => d
+            case d: ToolDelta if d.outcome match {
+                  case Some(ToolOutcome.Failure(_, recoverable)) => recoverable
+                  case _ => false
+                } => d
           } should not be empty
         }
       }
     }
 
     "persist the failure as an agent-visible frame that renders into the next-iteration prompt" in {
-      val convId  = Conversation.id("respond-decode-fail-publish")
-      val conv    = Conversation(topics = TestTopicStack, _id = convId)
+      val convId = Conversation.id("respond-decode-fail-publish")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
       val userMsg = Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = TestTopicId,
-        content        = Vector(ResponseContent.Text("Connect my project")),
-        state          = EventState.Complete
+        topicId = TestTopicId,
+        content = Vector(ResponseContent.Text("Connect my project")),
+        state = EventState.Complete
       )
       val provider = sigil.provider.anthropic.AnthropicProvider(apiKey = "sk-ant-test", sigilRef = TestSigil)
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _       <- TestSigil.publish(userMsg)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(userMsg)
         signals <- Orchestrator.process(
-                     TestSigil, new RespondDecodeFailureProvider,
-                     requestFor(convId, TurnInput(conversationId = convId)), conv
-                   ).toList
-        _       <- signals.foldLeft(Task.unit)((acc, s) => acc.flatMap(_ => TestSigil.publish(s)))
-        events  <- TestSigil.withDB(_.conversationEvents(convId))
+          TestSigil,
+          new RespondDecodeFailureProvider,
+          requestFor(convId, TurnInput(conversationId = convId)),
+          conv
+        ).toList
+        _ <- signals.foldLeft(Task.unit)((acc, s) => acc.flatMap(_ => TestSigil.publish(s)))
+        events <- TestSigil.withDB(_.conversationEvents(convId))
         // The next iteration's actual prompt: curate + render through a
         // provider, exactly as buildContext → the wire does.
         turnInput <- TestSigil.curate(convId, modelId, List(TestUser, TestAgent))
@@ -165,7 +177,7 @@ class RespondDecodeFailureRoutingSpec extends AsyncWordSpec with AsyncTaskSpec w
         val httpReq = provider.requestConverter(requestFor(convId, turnInput)).sync()
         val wire = httpReq.content match {
           case Some(c: spice.http.content.StringContent) => c.value
-          case _                                          => ""
+          case _ => ""
         }
         withClue(s"wire prompt:\n${wire.take(4000)}\n") {
           wire.toLowerCase should include("provider error")
@@ -175,13 +187,15 @@ class RespondDecodeFailureRoutingSpec extends AsyncWordSpec with AsyncTaskSpec w
 
     "not dead-end the user with a streamed respond placeholder on decode failure" in {
       val convId = Conversation.id("respond-decode-fail-streamed")
-      val conv   = Conversation(topics = TestTopicStack, _id = convId)
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
       val task = for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(
-                     TestSigil, new StreamedRespondDecodeFailureProvider,
-                     requestFor(convId, TurnInput(conversationId = convId)), conv
-                   ).toList
+          TestSigil,
+          new StreamedRespondDecodeFailureProvider,
+          requestFor(convId, TurnInput(conversationId = convId)),
+          conv
+        ).toList
       } yield signals
       task.map { signals =>
         withClue(s"signals:\n${signals.map(s => "  " + s.getClass.getSimpleName + ": " + s.toString.take(160)).mkString("\n")}\n") {
@@ -190,16 +204,17 @@ class RespondDecodeFailureRoutingSpec extends AsyncWordSpec with AsyncTaskSpec w
           // No user-facing "failed to produce a valid reply" dead-end.
           signals.collect {
             case d: sigil.signal.MessageDelta
-              if d.contentReplacement.exists(_.exists(_.toString.contains("failed to produce a valid reply"))) => d
+                if d.contentReplacement.exists(_.exists(_.toString.contains("failed to produce a valid reply"))) => d
           } shouldBe empty
           // The streamed placeholder DOES still settle (typing stops) —
           // Complete + recoverable Failure + empty content (collapsed).
           val placeholderSettle = signals.collect {
             case d: sigil.signal.MessageDelta
-              if d.state.contains(EventState.Complete) && (d.disposition match {
-                case Some(sigil.event.MessageDisposition.Failure(true, _)) => true
-                case _                                                      => false
-              }) => d
+                if d.state.contains(EventState.Complete) &&
+                  (d.disposition match {
+                    case Some(sigil.event.MessageDisposition.Failure(true, _)) => true
+                    case _ => false
+                  }) => d
           }
           placeholderSettle should not be empty
           placeholderSettle.head.contentReplacement shouldBe Some(Vector.empty)

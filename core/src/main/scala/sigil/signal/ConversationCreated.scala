@@ -16,4 +16,5 @@ import sigil.participant.ParticipantId
  * [[SwitchConversation]] when the user opens it.
  */
 case class ConversationCreated(conversationId: Id[Conversation],
-                               createdBy: ParticipantId) extends ConversationNotice derives RW
+                               createdBy: ParticipantId)
+  extends ConversationNotice derives RW

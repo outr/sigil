@@ -45,9 +45,11 @@ object ViewerState extends RecordDocumentModel[ViewerState] with JsonConversion[
 
   override def id(value: String = Unique()): Id[ViewerState] = Id(value)
 
-  /** Stable id derived from `(participantId, scope)` — one record per
-    * viewer-scope pair. The framework's upsert path uses this id so
-    * subsequent updates overwrite in place. */
+  /**
+   * Stable id derived from `(participantId, scope)` — one record per
+   * viewer-scope pair. The framework's upsert path uses this id so
+   * subsequent updates overwrite in place.
+   */
   def idFor(participantId: ParticipantId, scope: String): Id[ViewerState] =
-    Id(s"${participantId.value}::${scope}")
+    Id(s"${participantId.value}::$scope")
 }

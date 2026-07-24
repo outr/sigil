@@ -23,9 +23,9 @@ import scala.concurrent.duration.*
  * doesn't blow the agent's context window.
  */
 case object HttpRequestTool extends Tool {
-  type Input  = HttpRequestInput
+  type Input = HttpRequestInput
   type Output = HttpRequestOutput
-  val inputRW  = summon[RW[HttpRequestInput]]
+  val inputRW = summon[RW[HttpRequestInput]]
   val outputRW = summon[RW[HttpRequestOutput]]
   val name = ToolName("http_request")
   val description =
@@ -48,10 +48,10 @@ case object HttpRequestTool extends Tool {
     ToolExample(
       "POST a JSON body",
       HttpRequestInput(
-        url     = "https://api.example.com/v1/items",
-        method  = HttpRequestMethod.Post,
+        url = "https://api.example.com/v1/items",
+        method = HttpRequestMethod.Post,
         headers = Map("Authorization" -> "Bearer ..."),
-        body    = Some("""{"name":"thing"}""")
+        body = Some("""{"name":"thing"}""")
       )
     )
   )
@@ -86,23 +86,23 @@ case object HttpRequestTool extends Tool {
       response.content match {
         case None =>
           Task.pure(HttpRequestOutput(
-            status        = response.status.code,
-            statusText    = response.status.message,
-            headers       = responseHeaders,
-            body          = "",
+            status = response.status.code,
+            statusText = response.status.message,
+            headers = responseHeaders,
+            body = "",
             bodyTruncated = false,
-            contentType   = contentTypeHdr
+            contentType = contentTypeHdr
           ))
         case Some(content) =>
           content.asString.map { raw =>
             val truncated = raw.length > input.maxResponseBytes
             HttpRequestOutput(
-              status        = response.status.code,
-              statusText    = response.status.message,
-              headers       = responseHeaders,
-              body          = if (truncated) raw.take(input.maxResponseBytes) else raw,
+              status = response.status.code,
+              statusText = response.status.message,
+              headers = responseHeaders,
+              body = if (truncated) raw.take(input.maxResponseBytes) else raw,
               bodyTruncated = truncated,
-              contentType   = contentTypeHdr
+              contentType = contentTypeHdr
             )
           }
       }
@@ -112,14 +112,16 @@ case object HttpRequestTool extends Tool {
   private def parseContentType(raw: String): Option[ContentType] =
     scala.util.Try(ContentType.parse(raw)).toOption
 
-  /** Map the typed [[HttpRequestMethod]] onto spice's `HttpMethod`. */
+  /**
+   * Map the typed [[HttpRequestMethod]] onto spice's `HttpMethod`.
+   */
   private def methodFor(method: HttpRequestMethod): HttpMethod = method match {
-    case HttpRequestMethod.Get     => HttpMethod.Get
-    case HttpRequestMethod.Post    => HttpMethod.Post
-    case HttpRequestMethod.Put     => HttpMethod.Put
-    case HttpRequestMethod.Patch   => HttpMethod.Patch
-    case HttpRequestMethod.Delete  => HttpMethod.Delete
-    case HttpRequestMethod.Head    => HttpMethod.Head
+    case HttpRequestMethod.Get => HttpMethod.Get
+    case HttpRequestMethod.Post => HttpMethod.Post
+    case HttpRequestMethod.Put => HttpMethod.Put
+    case HttpRequestMethod.Patch => HttpMethod.Patch
+    case HttpRequestMethod.Delete => HttpMethod.Delete
+    case HttpRequestMethod.Head => HttpMethod.Head
     case HttpRequestMethod.Options => HttpMethod.Options
   }
 }

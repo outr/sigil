@@ -31,30 +31,38 @@ import java.util.concurrent.ConcurrentHashMap
 final class MemoryRetrievalCache {
   private val cache = new ConcurrentHashMap[Id[Conversation], MemoryRetrievalResult]()
 
-  /** Return the cached result for `conversationId`, computing and
-    * caching it on miss. The compute thunk runs at most once per
-    * (conversationId, cache-lifetime). */
+  /**
+   * Return the cached result for `conversationId`, computing and
+   * caching it on miss. The compute thunk runs at most once per
+   * (conversationId, cache-lifetime).
+   */
   def getOrCompute(conversationId: Id[Conversation],
                    compute: => Task[MemoryRetrievalResult]): Task[MemoryRetrievalResult] =
     Option(cache.get(conversationId)) match {
       case Some(hit) => Task.pure(hit)
-      case None      => compute.flatMap { result =>
-        Task { cache.put(conversationId, result); result }
-      }
+      case None => compute.flatMap { result =>
+          Task { cache.put(conversationId, result); result }
+        }
     }
 
-  /** Drop the cached entry for `conversationId`. Next `getOrCompute`
-    * recomputes. Idempotent — invalidating an empty entry is a no-op. */
+  /**
+   * Drop the cached entry for `conversationId`. Next `getOrCompute`
+   * recomputes. Idempotent — invalidating an empty entry is a no-op.
+   */
   def invalidate(conversationId: Id[Conversation]): Unit = {
     cache.remove(conversationId)
     ()
   }
 
-  /** Drop every entry. Used by [[sigil.Sigil.shutdown]]. */
+  /**
+   * Drop every entry. Used by [[sigil.Sigil.shutdown]].
+   */
   def clear(): Unit = cache.clear()
 
-  /** Peek at the cache without modifying it. Public test seam — apps
-    * shouldn't need this for normal flows. */
+  /**
+   * Peek at the cache without modifying it. Public test seam — apps
+   * shouldn't need this for normal flows.
+   */
   def peek(conversationId: Id[Conversation]): Option[MemoryRetrievalResult] =
     Option(cache.get(conversationId))
 }

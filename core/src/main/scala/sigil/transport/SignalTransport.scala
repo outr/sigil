@@ -97,12 +97,13 @@ final class SignalTransport(sigil: Sigil) {
     // double-delivery of anything replay already pushed.
     val forwarded: Stream[Signal] = live.filter { s =>
       val inScope = filterRef.get() match {
-        case None     => true
+        case None => true
         case Some(cs) => s.conversationScope.forall(cs.contains) || s.additionalDeliveryScopes.exists(cs.contains)
       }
-      inScope && (s match {
+      inScope &&
+      (s match {
         case e: Event => e.timestamp.value > boundary.get()
-        case _        => true
+        case _ => true
       })
     }.evalTap(s => sink.push(s))
 
@@ -111,26 +112,29 @@ final class SignalTransport(sigil: Sigil) {
 
     new SinkHandle {
       override def detach: Task[Unit] =
-        Task { cancelled.set(true) }
-          .flatMap(_ => clientToolSessionId match {
-            case Some(sessionId) => sigil.clientTools.deregisterSession(sessionId)
-            case None            => Task.unit
-          })
+        Task(cancelled.set(true))
+          .flatMap(_ =>
+            clientToolSessionId match {
+              case Some(sessionId) => sigil.clientTools.deregisterSession(sessionId)
+              case None => Task.unit
+            })
           .flatMap(_ => sink.close)
 
       override def subscribe(conversationId: Id[Conversation]): Task[Unit] = Task {
-        filterRef.updateAndGet(cur => cur match {
-          case Some(cs) => Some(cs + conversationId)
-          case None     => None // already unscoped — every conversation already delivered
-        })
+        filterRef.updateAndGet(cur =>
+          cur match {
+            case Some(cs) => Some(cs + conversationId)
+            case None => None // already unscoped — every conversation already delivered
+          })
         ()
       }
 
       override def unsubscribe(conversationId: Id[Conversation]): Task[Unit] = Task {
-        filterRef.updateAndGet(cur => cur match {
-          case Some(cs) => Some(cs - conversationId)
-          case None     => None
-        })
+        filterRef.updateAndGet(cur =>
+          cur match {
+            case Some(cs) => Some(cs - conversationId)
+            case None => None
+          })
         ()
       }
     }
@@ -149,7 +153,7 @@ final class SignalTransport(sigil: Sigil) {
              resume: ResumeRequest,
              conversations: ConversationFilter = None): Stream[Signal] = resume match {
     case ResumeRequest.None => Stream.empty
-    case _                  => Stream.force(loadReplay(viewer, resume, conversations))
+    case _ => Stream.force(loadReplay(viewer, resume, conversations))
   }
 
   /**
@@ -164,8 +168,8 @@ final class SignalTransport(sigil: Sigil) {
     import lightdb.filter.*
     convFilter match {
       case Some(cs) if cs.isEmpty => Some(_ => Filter.In(Event.conversationId.name, Seq.empty[String]))
-      case Some(cs)               => Some(_ => Event.conversationId.in(cs.toSeq.map(_.value)))
-      case None                   => None
+      case Some(cs) => Some(_ => Event.conversationId.in(cs.toSeq.map(_.value)))
+      case None => None
     }
   }
 
@@ -179,10 +183,12 @@ final class SignalTransport(sigil: Sigil) {
   private def singleConversation(convFilter: ConversationFilter): Option[Id[Conversation]] =
     convFilter match {
       case Some(cs) if cs.sizeIs == 1 => Some(cs.head)
-      case _                          => None
+      case _ => None
     }
 
-  /** Apply visibility + viewer transforms to a replay batch. */
+  /**
+   * Apply visibility + viewer transforms to a replay batch.
+   */
   private def viewerScoped(events: List[Event], viewer: ParticipantId): List[Signal] =
     events.filter(e => sigil.canSee(e, viewer)).map(e => sigil.applyViewerTransforms(e, viewer))
 

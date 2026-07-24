@@ -62,21 +62,21 @@ class RetryAfterReasoningSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   }
 
   private def oneShot: OneShotRequest = OneShotRequest(
-    model            = TestSigil.testModel(modelId),
-    systemPrompt       = "test-system",
-    userPrompt         = "test-user",
+    model = TestSigil.testModel(modelId),
+    systemPrompt = "test-system",
+    userPrompt = "test-user",
     generationSettings = GenerationSettings()
   )
 
   private def upstreamSilent(upstream: String): Throwable =
     new ProviderStreamException(
-      providerKey   = "openrouter",
-      code          = 0,
-      typ           = "upstream_silent",
-      message_      = "OpenRouter emitted only keepalive chunks past the threshold — upstream is unresponsive.",
-      status        = None,
+      providerKey = "openrouter",
+      code = 0,
+      typ = "upstream_silent",
+      message_ = "OpenRouter emitted only keepalive chunks past the threshold — upstream is unresponsive.",
+      status = None,
       errorMetadata = Some(ProviderErrorMetadata(
-        errorType        = Some("upstream_silent"),
+        errorType = Some("upstream_silent"),
         upstreamProvider = Some(upstream)
       ))
     )
@@ -114,22 +114,20 @@ class RetryAfterReasoningSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
     "retry when the first attempt fails after only ThinkingDelta" in {
       val provider = new StubProvider(attempt =>
-        if (attempt == 1) reasoningThenSilent("Chutes") else successStream
-      )
+        if (attempt == 1) reasoningThenSilent("Chutes") else successStream)
       provider(oneShot).toList.map { events =>
         provider.attemptCount.get() shouldBe 2
-        events.collect { case t: ProviderEvent.TextDelta => t.text } should contain ("the answer is 42")
+        events.collect { case t: ProviderEvent.TextDelta => t.text } should contain("the answer is 42")
         events.collect { case d: ProviderEvent.Done => d } should not be empty
       }
     }
 
     "retry when the first attempt fails after only ReasoningItem" in {
       val provider = new StubProvider(attempt =>
-        if (attempt == 1) reasoningItemThenSilent("Chutes") else successStream
-      )
+        if (attempt == 1) reasoningItemThenSilent("Chutes") else successStream)
       provider(oneShot).toList.map { events =>
         provider.attemptCount.get() shouldBe 2
-        events.collect { case t: ProviderEvent.TextDelta => t.text } should contain ("the answer is 42")
+        events.collect { case t: ProviderEvent.TextDelta => t.text } should contain("the answer is 42")
       }
     }
 
@@ -138,7 +136,7 @@ class RetryAfterReasoningSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       provider(oneShot).toList.attempt.map { result =>
         provider.attemptCount.get() shouldBe 1
         result.isFailure shouldBe true
-        result.failed.get shouldBe a [ProviderStreamException]
+        result.failed.get shouldBe a[ProviderStreamException]
       }
     }
 
@@ -147,14 +145,13 @@ class RetryAfterReasoningSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       provider(oneShot).toList.attempt.map { result =>
         provider.attemptCount.get() shouldBe 1
         result.isFailure shouldBe true
-        result.failed.get shouldBe a [ProviderStreamException]
+        result.failed.get shouldBe a[ProviderStreamException]
       }
     }
 
     "still thread the failed upstream into the retry's RetryContext after reasoning" in {
       val provider = new StubProvider(attempt =>
-        if (attempt == 1) reasoningThenSilent("Chutes") else successStream
-      )
+        if (attempt == 1) reasoningThenSilent("Chutes") else successStream)
       provider(oneShot).toList.map { _ =>
         val calls = provider.observedCalls.get()
         calls should have size 2

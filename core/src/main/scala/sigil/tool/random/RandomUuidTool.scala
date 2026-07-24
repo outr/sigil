@@ -16,9 +16,9 @@ import sigil.tool.model.{RandomUuidInput, RandomUuidOutput}
  * where guessability matters.
  */
 case object RandomUuidTool extends Tool {
-  type Input  = RandomUuidInput
+  type Input = RandomUuidInput
   type Output = RandomUuidOutput
-  val inputRW  = summon[RW[RandomUuidInput]]
+  val inputRW = summon[RW[RandomUuidInput]]
   val outputRW = summon[RW[RandomUuidOutput]]
 
   val name = ToolName("random_uuid")

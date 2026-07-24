@@ -20,12 +20,11 @@ object DefaultHighSignalFilter extends HighSignalFilter {
     raw"\b\d{3,}\b".r
   )
 
-  override def isHighSignal(userMessage: String): Boolean = {
+  override def isHighSignal(userMessage: String): Boolean =
     if (userMessage == null) false
     else if (userMessage.length < 50) false
     else {
       val lower = userMessage.toLowerCase
       patterns.exists(_.findFirstIn(lower).isDefined)
     }
-  }
 }

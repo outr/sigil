@@ -109,7 +109,7 @@ class ImageQualitySpec extends AnyWordSpec with Matchers {
       // The edge cap must pull it the rest of the way down.
       val budget = ImageQuality.High.maxPixels
       val (w, h) = dimsOf(ImageDownscale.resize(pngBytes(300, 9000), budget))
-      withClue(s"resized to ${w}x${h}: ") {
+      withClue(s"resized to ${w}x$h: ") {
         h should be <= ImageDownscale.MaxEdge
         w should be <= ImageDownscale.MaxEdge
         // Still honors the area budget.

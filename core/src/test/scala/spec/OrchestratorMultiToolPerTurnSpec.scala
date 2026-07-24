@@ -36,12 +36,14 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Atomic tool whose resolution errors — the framework maps the
-    * thrown error to a recoverable Tool-role Failure Message. */
+  /**
+   * Atomic tool whose resolution errors — the framework maps the
+   * thrown error to a recoverable Tool-role Failure Message.
+   */
   private object ThrowingTool extends Tool {
-    type Input  = NoResponseInput
+    type Input = NoResponseInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[NoResponseInput]]
+    val inputRW = summon[RW[NoResponseInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name: ToolName = ToolName("throw_atomic")
     val description: String = "Always throws on execute."
@@ -51,9 +53,11 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
       Task.error(new RuntimeException("synthetic atomic-tool failure"))
   }
 
-  /** Provider that emits two tool calls back-to-back (no respond
-    * text between them) then Done. The second tool's name is
-    * `ThrowingTool`, which fails synchronously. */
+  /**
+   * Provider that emits two tool calls back-to-back (no respond
+   * text between them) then Done. The second tool's name is
+   * `ThrowingTool`, which fails synchronously.
+   */
   private class TwoCallProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -78,27 +82,27 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val viewConvId = convId
     val request = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = viewConvId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = viewConvId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
+      chain = List(TestUser, TestAgent),
       // Both tools must be in the request roster — the orchestrator
       // looks them up by name on `ToolCallComplete`.
-      tools              = Vector(NoResponseTool, ThrowingTool)
+      tools = Vector(NoResponseTool, ThrowingTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator (bug #49)" should {
-    "surface ToolDelta for both tool calls in a turn even when the second tool throws" in {
+    "surface ToolDelta for both tool calls in a turn even when the second tool throws" in
       runWith(new TwoCallProvider, suffix = "throw").map { signals =>
         // Two ToolInvoke events, one per tool call.
         val invokes = signals.collect { case t: ToolInvoke => t }
@@ -125,12 +129,11 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
         val throwingDelta = deltas.find(d => d.target == throwingInvokeId && d.outcome.isDefined).get
         throwingDelta.outcome.get match {
           case sigil.event.ToolOutcome.Failure(reason, recoverable) =>
-            reason should include ("synthetic atomic-tool failure")
+            reason should include("synthetic atomic-tool failure")
             recoverable shouldBe true
           case other => fail(s"expected Failure outcome on throwing tool's delta, got $other")
         }
       }
-    }
   }
 
   "tear down" should {

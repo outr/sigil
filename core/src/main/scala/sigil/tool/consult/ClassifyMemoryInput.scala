@@ -31,4 +31,5 @@ import sigil.tool.ToolInput
 case class ClassifyMemoryInput(keywords: List[String],
                                permanence: Permanence,
                                space: String,
-                               ambiguityReason: Option[String] = None) extends ToolInput derives RW
+                               ambiguityReason: Option[String] = None)
+  extends ToolInput derives RW

@@ -12,7 +12,8 @@ case class LspRenameInput(languageId: String,
                           filePath: String,
                           line: Int,
                           character: Int,
-                          newName: String) extends ToolInput derives RW
+                          newName: String)
+  extends ToolInput derives RW
 
 /**
  * Rename a symbol across the entire workspace. The server returns a
@@ -25,11 +26,10 @@ case class LspRenameInput(languageId: String,
  * different class, etc.). For the agent, this is the safe path to
  * symbol-level refactors.
  */
-final class LspRenameTool(val manager: LspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with LspToolSupport {
-  type Input  = LspRenameInput
+final class LspRenameTool(val manager: LspManager) extends Tool with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  type Input = LspRenameInput
   type Output = LspRenameResult
-  val inputRW  = summon[RW[LspRenameInput]]
+  val inputRW = summon[RW[LspRenameInput]]
   val outputRW = summon[RW[LspRenameResult]]
 
   val name = ToolName("lsp_rename")
@@ -41,24 +41,35 @@ final class LspRenameTool(val manager: LspManager) extends Tool
       |`newName` is the replacement identifier.
       |Returns `Applied(newName, filesChanged)` / `PartialFailure(newName, filesChanged)` / `NoEdits`.""".stripMargin
   override val keywords = Set(
-    "lsp", "rename", "refactor", "refactoring", "rename symbol", "rename across project",
-    "identifier", "symbol", "change name", "modify name", "replace name", "update name"
+    "lsp",
+    "rename",
+    "refactor",
+    "refactoring",
+    "rename symbol",
+    "rename across project",
+    "identifier",
+    "symbol",
+    "change name",
+    "modify name",
+    "replace name",
+    "update name"
   )
-
 
   override def executeOutput(input: LspRenameInput, context: ToolContext): Task[LspRenameResult] =
     withOpenDocumentOrThrow[LspRenameResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.rename(uri, input.line, input.character, input.newName).flatMap {
-        case None       => Task.pure(LspRenameResult.NoEdits)
+        case None => Task.pure(LspRenameResult.NoEdits)
         case Some(edit) =>
           val ok = PermissiveWorkspaceEditApplier.apply(edit)
           val urisChanged = (
             Option(edit.getChanges).map(_.keySet().asScala.toList).getOrElse(Nil) ++
-            Option(edit.getDocumentChanges).map(_.asScala.toList.flatMap { e =>
-              if (e.isLeft) List(e.getLeft.getTextDocument.getUri) else Nil
-            }).getOrElse(Nil)
+              Option(edit.getDocumentChanges).map(_.asScala.toList.flatMap { e =>
+                if (e.isLeft) List(e.getLeft.getTextDocument.getUri) else Nil
+              }).getOrElse(Nil)
           ).distinct
           val notifyTask = manager.notifyFilesChanged(
             urisChanged.map { u =>
@@ -67,7 +78,7 @@ final class LspRenameTool(val manager: LspManager) extends Tool
           )
           notifyTask.map { _ =>
             if (ok) LspRenameResult.Applied(input.newName, urisChanged.size)
-            else    LspRenameResult.PartialFailure(input.newName, urisChanged.size)
+            else LspRenameResult.PartialFailure(input.newName, urisChanged.size)
           }
       }
     }

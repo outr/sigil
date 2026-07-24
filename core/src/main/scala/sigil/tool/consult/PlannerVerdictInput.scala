@@ -24,4 +24,5 @@ case class PlannerVerdictInput(verdict: String,
                                objective: String,
                                constraints: List[String],
                                doneCriteria: String,
-                               currentPhase: String) extends ToolInput derives RW
+                               currentPhase: String)
+  extends ToolInput derives RW

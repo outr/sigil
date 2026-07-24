@@ -13,12 +13,13 @@ import sigil.tool.ToolResult
 trait DapToolSupport {
   protected def manager: DapManager
 
-  /** Run `body` against the named session, resolving its typed
-    * result. If no session with that id is active, resolve a
-    * [[ToolResult.Failure]] pointing the agent at `dap_launch`. A
-    * thrown error from `body` becomes a recoverable failure. */
-  protected def withSession[O](sessionId: String, context: ToolContext)
-                              (body: DapSession => Task[ToolResult[O]]): Task[ToolResult[O]] =
+  /**
+   * Run `body` against the named session, resolving its typed
+   * result. If no session with that id is active, resolve a
+   * [[ToolResult.Failure]] pointing the agent at `dap_launch`. A
+   * thrown error from `body` becomes a recoverable failure.
+   */
+  protected def withSession[O](sessionId: String, context: ToolContext)(body: DapSession => Task[ToolResult[O]]): Task[ToolResult[O]] =
     manager.get(sessionId) match {
       case None =>
         Task.pure(ToolResult.failure(

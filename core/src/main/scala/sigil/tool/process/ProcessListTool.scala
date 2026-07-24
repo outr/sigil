@@ -12,9 +12,9 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * every entry.
  */
 final class ProcessListTool(registry: ProcessRegistry) extends Tool {
-  type Input  = ProcessListInput
+  type Input = ProcessListInput
   type Output = ProcessListOutput
-  val inputRW  = summon[RW[ProcessListInput]]
+  val inputRW = summon[RW[ProcessListInput]]
   val outputRW = summon[RW[ProcessListOutput]]
 
   val name = ToolName("process_list")
@@ -24,13 +24,13 @@ final class ProcessListTool(registry: ProcessRegistry) extends Tool {
       |handle includes its id, pid, start time, and command.""".stripMargin
   override val examples = List(
     ToolExample("Processes spawned by this conversation", ProcessListInput()),
-    ToolExample("Every registered process",                ProcessListInput(scope = ProcessListScope.All))
+    ToolExample("Every registered process", ProcessListInput(scope = ProcessListScope.All))
   )
   override val keywords = Set("process", "list", "running", "background")
 
   override def executeOutput(input: ProcessListInput, ctx: ToolContext): Task[ProcessListOutput] =
     registry.list(filterByConversation = input.scope match {
-      case ProcessListScope.All     => None
+      case ProcessListScope.All => None
       case ProcessListScope.Current => Some(ctx.conversation.id)
     }).map { handles =>
       ProcessListOutput(handles.map { h =>

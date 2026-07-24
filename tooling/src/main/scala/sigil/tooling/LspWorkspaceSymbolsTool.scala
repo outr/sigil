@@ -9,18 +9,18 @@ import sigil.tooling.types.{LspPosition, LspWorkspaceSymbol}
 case class LspWorkspaceSymbolsInput(languageId: String,
                                     projectRoot: String,
                                     query: String,
-                                    maxResults: Int = 100) extends ToolInput derives RW
+                                    maxResults: Int = 100)
+  extends ToolInput derives RW
 
 /**
  * Search for symbols by name across the workspace. Returns the matching
  * symbol hits — `kind name (container) — uri` — as plain text straight
  * into the agent's context, bounded by `maxResults`.
  */
-final class LspWorkspaceSymbolsTool(val manager: LspManager)
-    extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
-  type Input  = LspWorkspaceSymbolsInput
+final class LspWorkspaceSymbolsTool(val manager: LspManager) extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input = LspWorkspaceSymbolsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[LspWorkspaceSymbolsInput]]
+  val inputRW = summon[RW[LspWorkspaceSymbolsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("lsp_workspace_symbols")
@@ -35,23 +35,47 @@ final class LspWorkspaceSymbolsTool(val manager: LspManager)
       |Returns one line per hit: `kind name (container) — uri`.""".stripMargin
 
   override val keywords: Set[String] = Set(
-    "lsp", "workspace", "symbols", "symbol", "find symbol", "search",
-    "class", "method", "function", "definition", "signature", "structure",
-    "examine", "inspect", "analyze", "explore", "browse", "lookup",
-    "code", "codebase", "semantic", "index", "catalog",
-    "scala", "language", "navigate", "project"
+    "lsp",
+    "workspace",
+    "symbols",
+    "symbol",
+    "find symbol",
+    "search",
+    "class",
+    "method",
+    "function",
+    "definition",
+    "signature",
+    "structure",
+    "examine",
+    "inspect",
+    "analyze",
+    "explore",
+    "browse",
+    "lookup",
+    "code",
+    "codebase",
+    "semantic",
+    "index",
+    "catalog",
+    "scala",
+    "language",
+    "navigate",
+    "project"
   )
 
   override def executeResult(input: LspWorkspaceSymbolsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSessionTyped[ToolResult[TextToolOutput]](
-      input.languageId, input.projectRoot, context,
+      input.languageId,
+      input.projectRoot,
+      context,
       onError = msg => ToolResult.failure(msg)
     ) { (session, _, _) =>
       session.workspaceSymbols(input.query).map { hits =>
         val lines = hits.take(input.maxResults).map { h =>
-          val kind      = Option(h.kind).map(_.toString.toLowerCase).getOrElse("unknown")
+          val kind = Option(h.kind).map(_.toString.toLowerCase).getOrElse("unknown")
           val container = Option(h.containerName).filter(_.nonEmpty).map(c => s" ($c)").getOrElse("")
-          val pos       = h.range.map(_.getStart).map(s => s":${s.getLine + 1}").getOrElse("")
+          val pos = h.range.map(_.getStart).map(s => s":${s.getLine + 1}").getOrElse("")
           s"$kind ${h.name}$container — ${h.uri}$pos"
         }
         ToolResult.Success(TextToolOutput(if (lines.isEmpty) "(no symbols)" else lines.mkString("\n")))

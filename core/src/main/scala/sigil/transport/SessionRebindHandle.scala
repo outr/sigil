@@ -23,23 +23,30 @@ import sigil.participant.ParticipantId
  * identity actually changed.
  */
 trait SessionRebindHandle {
-  /** The participant id this session is currently bound to. */
+
+  /**
+   * The participant id this session is currently bound to.
+   */
   def currentViewer: ParticipantId
 
-  /** Re-subscribe this session under `newViewer`. Detaches the prior
-    * `signalsFor` stream, then attaches a fresh one for the new
-    * viewer. `resume` controls whether the new subscription replays
-    * history under the new viewer's `canSee` / viewer-transforms
-    * (typical default: [[ResumeRequest.None]] — the client already
-    * has the prior history, no need to re-deliver).
-    *
-    * No-op when `newViewer == currentViewer`. */
+  /**
+   * Re-subscribe this session under `newViewer`. Detaches the prior
+   * `signalsFor` stream, then attaches a fresh one for the new
+   * viewer. `resume` controls whether the new subscription replays
+   * history under the new viewer's `canSee` / viewer-transforms
+   * (typical default: [[ResumeRequest.None]] — the client already
+   * has the prior history, no need to re-deliver).
+   *
+   * No-op when `newViewer == currentViewer`.
+   */
   def rebindViewer(newViewer: ParticipantId,
                    resume: ResumeRequest = ResumeRequest.None): Task[Unit]
 
-  /** Detach the session entirely. Closes the underlying
-    * [[SignalTransport]] subscription and the sink. The session's
-    * WebSocket / SSE transport stays open — apps wanting a full
-    * teardown close the protocol separately. */
+  /**
+   * Detach the session entirely. Closes the underlying
+   * [[SignalTransport]] subscription and the sink. The session's
+   * WebSocket / SSE transport stays open — apps wanting a full
+   * teardown close the protocol separately.
+   */
   def detach: Task[Unit]
 }

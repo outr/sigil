@@ -35,7 +35,7 @@ class MemoryRetrievalCacheSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
       for {
         first <- cache.getOrCompute(convId, compute)
-        _      = callCount.get() shouldBe 1
+        _ = callCount.get() shouldBe 1
         second <- cache.getOrCompute(convId, compute)
       } yield {
         callCount.get() shouldBe 1 // compute did NOT run again
@@ -55,8 +55,8 @@ class MemoryRetrievalCacheSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
       for {
         first <- cache.getOrCompute(convId, compute(1))
-        _      = first.memories.map(_.value) shouldBe Vector("v1-a", "v1-b")
-        _      = cache.invalidate(convId)
+        _ = first.memories.map(_.value) shouldBe Vector("v1-a", "v1-b")
+        _ = cache.invalidate(convId)
         second <- cache.getOrCompute(convId, compute(2))
       } yield {
         callCount.get() shouldBe 2 // compute ran twice

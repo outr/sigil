@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicReference
 
 final case class GetScheduledTransactionsInput() extends ToolInput derives RW
 
-/** `get_scheduled_transactions` — return the scheduled-transaction list. */
+/**
+ * `get_scheduled_transactions` — return the scheduled-transaction list.
+ */
 final class GetScheduledTransactionsTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = GetScheduledTransactionsInput
   type Output = TextToolOutput
@@ -21,7 +23,6 @@ final class GetScheduledTransactionsTool(state: AtomicReference[BankingEnvironme
 
   val name: ToolName = ToolName("get_scheduled_transactions")
   val description: String = "Get the list of scheduled transactions."
-
 
   override def executeResult(input: GetScheduledTransactionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val transactions = state.get.bankAccount.scheduledTransactions

@@ -9,7 +9,8 @@ import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolR
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
 case class RegisterTriggerInput(workflowId: String,
-                                trigger: WorkflowTrigger) extends ToolInput derives RW
+                                trigger: WorkflowTrigger)
+  extends ToolInput derives RW
 
 /**
  * Append a [[WorkflowTrigger]] to a persisted template's
@@ -21,9 +22,9 @@ case class RegisterTriggerInput(workflowId: String,
  * baseline four.
  */
 final class RegisterTriggerTool extends Tool with WorkflowToolSupport {
-  type Input  = RegisterTriggerInput
+  type Input = RegisterTriggerInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RegisterTriggerInput]]
+  val inputRW = summon[RW[RegisterTriggerInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("register_trigger")
   val description =

@@ -17,21 +17,25 @@ import java.util.concurrent.CountDownLatch
  * before checking what the wire client received.
  */
 case object EagerActiveLatchTool extends Tool {
-  type Input  = EagerActiveLatchInput
+  type Input = EagerActiveLatchInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[EagerActiveLatchInput]]
+  val inputRW = summon[RW[EagerActiveLatchInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("eager_active_latch")
   val description = "Test-only tool that blocks until the spec releases its latch."
   override val keywords: Set[String] = Set("latch", "test", "blocking")
 
-  /** Released by the spec to let a blocked execution finish. Reassigned
-    * per scenario via [[reset]]. */
+  /**
+   * Released by the spec to let a blocked execution finish. Reassigned
+   * per scenario via [[reset]].
+   */
   @volatile var releaseLatch: CountDownLatch = new CountDownLatch(1)
 
-  /** Counted down by the tool body the instant execution begins, so the
-    * spec knows the dispatch reached the tool (and is now blocked). */
+  /**
+   * Counted down by the tool body the instant execution begins, so the
+   * spec knows the dispatch reached the tool (and is now blocked).
+   */
   @volatile var startedLatch: CountDownLatch = new CountDownLatch(1)
 
   def reset(): Unit = {

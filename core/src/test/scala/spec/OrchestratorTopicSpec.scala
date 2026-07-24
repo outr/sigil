@@ -8,11 +8,14 @@ import sigil.conversation.{ContextFrame, ConversationView, Conversation, Topic, 
 import sigil.db.Model
 import sigil.event.{Event, Message, TopicChange, TopicChangeKind}
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{CallId, ConversationRequest, GenerationSettings, Instructions, ConversationMode, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
+import sigil.provider.{
+  CallId, ConversationRequest, GenerationSettings, Instructions, ConversationMode, Provider, ProviderCall, ProviderEvent, ProviderType,
+  StopReason
+}
 import sigil.signal.Signal
 import sigil.tool.core.RespondTool
 import sigil.tool.consult.TopicClassifierInput
-import sigil.tool.model.{RespondInput}
+import sigil.tool.model.RespondInput
 import spice.http.HttpRequest
 
 /**
@@ -63,7 +66,8 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           ))
         case None =>
           Stream.emits(List(ProviderEvent.Done(StopReason.Complete)))
-      } else {
+      }
+      else {
         val callId = CallId("stub-call")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
@@ -76,10 +80,12 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     }
   }
 
-  /** Upsert a conversation + seeded Topic stack, then run
-    * `Orchestrator.process` with a StubProvider emitting a `respond` carrying
-    * `respondInput`. If `classifierKind` is supplied, the stubbed consult
-    * call returns that kind to drive the classifier path. */
+  /**
+   * Upsert a conversation + seeded Topic stack, then run
+   * `Orchestrator.process` with a StubProvider emitting a `respond` carrying
+   * `respondInput`. If `classifierKind` is supplied, the stubbed consult
+   * call returns that kind to drive the classifier path.
+   */
   private def runScenario(currentLabel: String,
                           currentSummary: String,
                           priors: List[TopicEntry],
@@ -105,11 +111,13 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       // A user message in context keeps these scenarios on the
       // classifier path — a proposal with NO user input in context
       // is the bootstrap-era rename (BootstrapTopicShiftSpec).
-      turnInput = TurnInput(conversationId = viewConvId, frames = Vector(ContextFrame.Text(
-        content = "scripted user prompt",
-        participantId = TestUser,
-        sourceEventId = Event.id()
-      ))),
+      turnInput = TurnInput(
+        conversationId = viewConvId,
+        frames = Vector(ContextFrame.Text(
+          content = "scripted user prompt",
+          participantId = TestUser,
+          sourceEventId = Event.id()
+        ))),
       currentMode = ConversationMode,
       currentTopic = currentEntry,
       previousTopics = priors,
@@ -132,8 +140,13 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         topicSummary = "Same thread.",
         endsTurn = true
       )
-      runScenario("Existing Thread", "Current thread summary", Nil, input, classifierKind = None,
-                  suffix = "same-label").map { case (signals, _, _) =>
+      runScenario(
+        "Existing Thread",
+        "Current thread summary",
+        Nil,
+        input,
+        classifierKind = None,
+        suffix = "same-label").map { case (signals, _, _) =>
         signals.collect { case tc: TopicChange => tc } shouldBe empty
       }
     }
@@ -147,8 +160,13 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         topicSummary = "Returning to the GIL topic.",
         endsTurn = true
       )
-      runScenario("Cooking", "Culinary discussion.", List(priorEntry), input, classifierKind = None,
-                  suffix = "exact-return").map { case (signals, current, _) =>
+      runScenario(
+        "Cooking",
+        "Culinary discussion.",
+        List(priorEntry),
+        input,
+        classifierKind = None,
+        suffix = "exact-return").map { case (signals, current, _) =>
         val topicChanges = signals.collect { case tc: TopicChange => tc }
         topicChanges should have size 1
         val tc = topicChanges.head
@@ -169,8 +187,13 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         topicSummary = "Effect of GIL on I/O-bound Python code.",
         endsTurn = true
       )
-      runScenario("Python GIL", "Python's Global Interpreter Lock.", Nil, input,
-                  classifierKind = Some("NoChange"), suffix = "cls-nochange").map { case (signals, _, _) =>
+      runScenario(
+        "Python GIL",
+        "Python's Global Interpreter Lock.",
+        Nil,
+        input,
+        classifierKind = Some("NoChange"),
+        suffix = "cls-nochange").map { case (signals, _, _) =>
         signals.collect { case tc: TopicChange => tc } shouldBe empty
       }
     }
@@ -182,8 +205,13 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         topicSummary = "Python's Global Interpreter Lock and threading.",
         endsTurn = true
       )
-      runScenario("Python Programming", "General Python.", Nil, input,
-                  classifierKind = Some("Refine"), suffix = "cls-refine").flatMap {
+      runScenario(
+        "Python Programming",
+        "General Python.",
+        Nil,
+        input,
+        classifierKind = Some("Refine"),
+        suffix = "cls-refine").flatMap {
         case (signals, current, _) =>
           val topicChanges = signals.collect { case tc: TopicChange => tc }
           topicChanges should have size 1
@@ -206,8 +234,13 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         topicSummary = "TypeScript's generic type parameterization.",
         endsTurn = true
       )
-      runScenario("Roman Empire", "Roman history.", Nil, input,
-                  classifierKind = Some("New"), suffix = "cls-new").flatMap {
+      runScenario(
+        "Roman Empire",
+        "Roman history.",
+        Nil,
+        input,
+        classifierKind = Some("New"),
+        suffix = "cls-new").flatMap {
         case (signals, current, convId) =>
           val topicChanges = signals.collect { case tc: TopicChange => tc }
           topicChanges should have size 1
@@ -234,8 +267,13 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         topicSummary = "GIL implications for NumPy.",
         endsTurn = true
       )
-      runScenario("Cooking", "Culinary topic.", List(priorEntry), input,
-                  classifierKind = Some("Python GIL"), suffix = "cls-return").map {
+      runScenario(
+        "Cooking",
+        "Culinary topic.",
+        List(priorEntry),
+        input,
+        classifierKind = Some("Python GIL"),
+        suffix = "cls-return").map {
         case (signals, current, _) =>
           val topicChanges = signals.collect { case tc: TopicChange => tc }
           topicChanges should have size 1
@@ -254,8 +292,13 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         topicSummary = "Something.",
         endsTurn = true
       )
-      runScenario("Current", "Current summary.", Nil, input,
-                  classifierKind = None, suffix = "cls-fail").map { case (signals, _, _) =>
+      runScenario(
+        "Current",
+        "Current summary.",
+        Nil,
+        input,
+        classifierKind = None,
+        suffix = "cls-fail").map { case (signals, _, _) =>
         signals.collect { case tc: TopicChange => tc } shouldBe empty
       }
     }
@@ -269,8 +312,13 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         topicSummary = "A new subject.",
         endsTurn = true
       )
-      runScenario("Original", "Original summary.", Nil, input,
-                  classifierKind = Some("New"), suffix = "msg-topicid").map {
+      runScenario(
+        "Original",
+        "Original summary.",
+        Nil,
+        input,
+        classifierKind = Some("New"),
+        suffix = "msg-topicid").map {
         case (signals, current, _) =>
           val messages = signals.collect { case m: Message => m }
           messages should have size 1

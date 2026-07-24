@@ -7,7 +7,8 @@ import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolR
 
 case class DapSessionStatusInput(sessionId: String,
                                  waitForStopMs: Long = 0L,
-                                 drainOutput: Boolean = true) extends ToolInput derives RW
+                                 drainOutput: Boolean = true)
+  extends ToolInput derives RW
 
 /**
  * Snapshot the current state of a debug session — running vs.

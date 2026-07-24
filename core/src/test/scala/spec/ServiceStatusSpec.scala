@@ -46,7 +46,9 @@ class ServiceStatusSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     override def hasStreamingLog: Boolean = true
   }
 
-  /** Collect signals matching the predicate emitted while `body` runs. */
+  /**
+   * Collect signals matching the predicate emitted while `body` runs.
+   */
   private def captureSignals[A](predicate: Signal => Boolean)(body: Task[A]): Task[(A, List[Signal])] = {
     val collected = new ConcurrentLinkedQueue[Signal]()
     val streamFiber = TestSigil.signals.evalMap { s =>
@@ -62,14 +64,14 @@ class ServiceStatusSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
 
   "Sigil.publishServiceStatus" should {
-    "broadcast Starting → Up → Down through the signal hub in order" in {
+    "broadcast Starting → Up → Down through the signal hub in order" in
       captureSignals(_.isInstanceOf[ServiceStatusSignal]) {
         for {
           _ <- TestSigil.publishServiceStatus(ServiceStatusSignal(noopServiceId, ServiceState.Starting))
           _ <- TestSigil.publishServiceStatus(ServiceStatusSignal(noopServiceId, ServiceState.Up))
           _ <- TestSigil.publishServiceStatus(
-                 ServiceStatusSignal(noopServiceId, ServiceState.Down(intentional = true, reason = Some("test stop")))
-               )
+            ServiceStatusSignal(noopServiceId, ServiceState.Down(intentional = true, reason = Some("test stop")))
+          )
         } yield ()
       }.map { case (_, signals) =>
         val statuses = signals.collect { case s: ServiceStatusSignal if s.serviceId == noopServiceId => s.state }
@@ -79,7 +81,6 @@ class ServiceStatusSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           ServiceState.Down(intentional = true, reason = Some("test stop"))
         )
       }
-    }
 
     "update the latest-status cache so fresh subscribers see the most recent state" in {
       for {
@@ -106,16 +107,16 @@ class ServiceStatusSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         override def close: rapid.Task[Unit] = rapid.Task.unit
       }
       for {
-        _      <- TestSigil.publishServiceStatus(statusEmitted)
-        _      <- Task.sleep(scala.concurrent.duration.FiniteDuration(20, "millis"))
+        _ <- TestSigil.publishServiceStatus(statusEmitted)
+        _ <- Task.sleep(scala.concurrent.duration.FiniteDuration(20, "millis"))
         handle <- TestSigil.signalTransport.attach(
-                    viewer = TestUser,
-                    sink = sink,
-                    resume = sigil.transport.ResumeRequest.None
-                  )
-        _      <- Task.sleep(scala.concurrent.duration.FiniteDuration(100, "millis"))
-        _      <- handle.detach
-      } yield {
+          viewer = TestUser,
+          sink = sink,
+          resume = sigil.transport.ResumeRequest.None
+        )
+        _ <- Task.sleep(scala.concurrent.duration.FiniteDuration(100, "millis"))
+        _ <- handle.detach
+      } yield
         // The framework caches the latest published status per service
         // id. Although no service was registered in `TestSigil.services`
         // (so the replay stream would be empty), the cache still holds
@@ -123,12 +124,11 @@ class ServiceStatusSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         // it on demand for callers who want the framework-level snapshot
         // independently of the transport replay path.
         TestSigil.latestServiceStatus(noopServiceId) shouldBe Some(statusEmitted)
-      }
     }
   }
 
   "Sigil.publishServiceLog" should {
-    "broadcast log lines through the Notice channel without persisting them" in {
+    "broadcast log lines through the Notice channel without persisting them" in
       captureSignals(_.isInstanceOf[ServiceLogSignal]) {
         Task.sequence(
           (1 to 5).toList.map { n =>
@@ -153,7 +153,6 @@ class ServiceStatusSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           succeed
         }
       }
-    }
   }
 
   "Sigil with no services" should {

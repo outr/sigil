@@ -69,14 +69,14 @@ trait ScriptExecutor {
   def preludeImports: List[String] = Nil
 
   /**
-    * Human-readable surface advertised to the LLM in tool descriptions
-    * (`CreateScriptToolTool`, `ExecuteScriptTool`). Without this, the
-    * LLM falls back to its training-data prior — which for Scala is
-    * heavily Scala 2 (`scala.util.parsing.json.JSON`,
-    * `scala.io.Source.fromURL`, …) — and emits code that doesn't
-    * compile against the host classpath. Default `None` (the tools
-    * advertise no executor surface).
-    */
+   * Human-readable surface advertised to the LLM in tool descriptions
+   * (`CreateScriptToolTool`, `ExecuteScriptTool`). Without this, the
+   * LLM falls back to its training-data prior — which for Scala is
+   * heavily Scala 2 (`scala.util.parsing.json.JSON`,
+   * `scala.io.Source.fromURL`, …) — and emits code that doesn't
+   * compile against the host classpath. Default `None` (the tools
+   * advertise no executor surface).
+   */
   def advertisedSurface: Option[String] = None
 }
 

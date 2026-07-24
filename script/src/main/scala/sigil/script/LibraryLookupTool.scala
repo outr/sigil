@@ -11,9 +11,9 @@ import java.util.jar.JarFile
 import java.util.zip.ZipException
 
 case object LibraryLookupTool extends Tool {
-  type Input  = LibraryLookupInput
+  type Input = LibraryLookupInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[LibraryLookupInput]]
+  val inputRW = summon[RW[LibraryLookupInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("library_lookup")
@@ -42,9 +42,9 @@ case object LibraryLookupTool extends Tool {
 
   private def render(symbol: String): String = {
     val (classPart, methodPart) = symbol.split('.').toList match {
-      case Nil          => ("", None)
+      case Nil => ("", None)
       case single :: Nil => (single, None)
-      case many          =>
+      case many =>
         // Heuristic: if the last segment starts lower-case, treat it as
         // a method (e.g. `Task.map`); otherwise it's a nested class
         // path and we match the whole thing as the receiver.
@@ -66,7 +66,7 @@ case object LibraryLookupTool extends Tool {
         sb.append(s"\n- $fqn")
         methodPart match {
           case Some(m) => appendMatchingMethods(sb, fqn, m)
-          case None    => ()
+          case None => ()
         }
       }
       if (truncated) sb.append(s"\n\n(${classes.size - MaxCandidates} additional matches truncated; refine the symbol)")
@@ -74,14 +74,17 @@ case object LibraryLookupTool extends Tool {
     }
   }
 
-  /** Append matching method signatures under a candidate. Silent on
-    * load failure — a hit on the class name is still useful even if
-    * we couldn't reflect on it. */
+  /**
+   * Append matching method signatures under a candidate. Silent on
+   * load failure — a hit on the class name is still useful even if
+   * we couldn't reflect on it.
+   */
   private def appendMatchingMethods(sb: StringBuilder, fqn: String, methodName: String): Unit = {
     val cls = try Class.forName(fqn)
-    catch { case _: Throwable =>
-      try Class.forName(fqn + "$")
-      catch { case _: Throwable => return }
+    catch {
+      case _: Throwable =>
+        try Class.forName(fqn + "$")
+        catch { case _: Throwable => return }
     }
     val matching = cls.getDeclaredMethods.toList
       .filter(m => java.lang.reflect.Modifier.isPublic(m.getModifiers))
@@ -102,19 +105,23 @@ case object LibraryLookupTool extends Tool {
     if (t.isArray) s"Array[${simpleName(t.getComponentType)}]" else short
   }
 
-  /** Case-insensitive match of the simple class name (last `.`-segment,
-    * `$`-stripped) against the symbol. Trailing `$` on the FQN means a
-    * Scala module — match the bare name. */
+  /**
+   * Case-insensitive match of the simple class name (last `.`-segment,
+   * `$`-stripped) against the symbol. Trailing `$` on the FQN means a
+   * Scala module — match the bare name.
+   */
   private def matches(fqn: String, symbol: String): Boolean = {
     val simple = fqn.substring(fqn.lastIndexOf('.') + 1).stripSuffix("$")
     simple.equalsIgnoreCase(symbol)
   }
 
-  /** Walk the context classloader chain and gather every `.class`
-    * entry's FQN. Each invocation scans fresh — script-authoring is
-    * an interactive flow, not a hot path. Falls back to
-    * `java.class.path` when the loader chain has no URLClassLoader
-    * ancestors (sbt 1 worker JVMs, fat-jar launches, jlink images). */
+  /**
+   * Walk the context classloader chain and gather every `.class`
+   * entry's FQN. Each invocation scans fresh — script-authoring is
+   * an interactive flow, not a hot path. Falls back to
+   * `java.class.path` when the loader chain has no URLClassLoader
+   * ancestors (sbt 1 worker JVMs, fat-jar launches, jlink images).
+   */
   private def scanClasspath(): List[String] = {
     val loader = Thread.currentThread().getContextClassLoader
     val out = collection.mutable.LinkedHashSet.empty[String]
@@ -143,10 +150,9 @@ case object LibraryLookupTool extends Tool {
     out.toList
   }
 
-  private def gatherEntry(file: File, out: collection.mutable.LinkedHashSet[String]): Unit = {
+  private def gatherEntry(file: File, out: collection.mutable.LinkedHashSet[String]): Unit =
     if (file.isFile && file.getName.endsWith(".jar")) gatherJar(file, out)
     else if (file.isDirectory) gatherDir(file, file, out)
-  }
 
   private def gatherJar(file: File, out: collection.mutable.LinkedHashSet[String]): Unit = {
     var jar: JarFile = null
@@ -162,8 +168,10 @@ case object LibraryLookupTool extends Tool {
       }
     } catch {
       case _: ZipException => ()
-      case _: Throwable    => ()
-    } finally if (jar != null) try jar.close() catch { case _: Throwable => () }
+      case _: Throwable => ()
+    } finally
+      if (jar != null) try jar.close()
+      catch { case _: Throwable => () }
   }
 
   private def gatherDir(root: File, current: File, out: collection.mutable.LinkedHashSet[String]): Unit = {

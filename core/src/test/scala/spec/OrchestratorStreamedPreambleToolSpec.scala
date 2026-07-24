@@ -35,8 +35,10 @@ class OrchestratorStreamedPreambleToolSpec extends AsyncWordSpec with AsyncTaskS
 
   private val modelId: Id[Model] = Model.id("test", "model-354")
 
-  /** Provider that streams preamble TEXT (creating an active Message) and THEN
-    * calls a non-respond tool — the exact shape that dropped the tool body. */
+  /**
+   * Provider that streams preamble TEXT (creating an active Message) and THEN
+   * calls a non-respond tool — the exact shape that dropped the tool body.
+   */
   private class PreambleThenToolProvider extends Provider {
     override def `type`: ProviderType = ProviderType.Anthropic
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -58,27 +60,27 @@ class OrchestratorStreamedPreambleToolSpec extends AsyncWordSpec with AsyncTaskS
 
   private def run(): Task[List[Signal]] = {
     val convId = Conversation.id(s"streamed-preamble-${rapid.Unique()}")
-    val conv   = Conversation(topics = TestTopicStack, _id = convId)
+    val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector(StreamProbeTool)
+      chain = List(TestUser, TestAgent),
+      tools = Vector(StreamProbeTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, new PreambleThenToolProvider, request, conv).toList
     } yield signals
   }
 
   "A non-respond tool call after streamed preamble text" should {
-    "actually EXECUTE the tool, not settle it empty (#354)" in {
+    "actually EXECUTE the tool, not settle it empty (#354)" in
       run().map { signals =>
         val probeOutputs = signals.collect {
           case d: ToolDelta => d.output.collect { case t: TextToolOutput => t.text }
@@ -95,7 +97,6 @@ class OrchestratorStreamedPreambleToolSpec extends AsyncWordSpec with AsyncTaskS
         // The preamble produced a real ToolInvoke for the probe.
         signals.collect { case ti: ToolInvoke if ti.toolName == StreamProbeTool.name => ti } should not be empty
       }
-    }
   }
 
   "tear down" should {
@@ -106,9 +107,9 @@ class OrchestratorStreamedPreambleToolSpec extends AsyncWordSpec with AsyncTaskS
 final case class StreamProbeInput() extends ToolInput derives RW
 case object StreamProbeTool extends Tool {
   val Marker = "PROBE_EXECUTED_354"
-  type Input  = StreamProbeInput
+  type Input = StreamProbeInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[StreamProbeInput]]
+  val inputRW = summon[RW[StreamProbeInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("stream_probe")
   val description = "Test probe — returns a distinctive marker proving it executed."

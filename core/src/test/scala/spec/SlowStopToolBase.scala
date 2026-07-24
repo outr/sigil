@@ -12,16 +12,24 @@ import java.util.concurrent.atomic.AtomicInteger
  * Stop at a deterministic point, then resumes when the spec releases it.
  */
 trait SlowStopToolBase extends Tool {
-  type Input  = SlowStopInput
+  type Input = SlowStopInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[SlowStopInput]]
+  val inputRW = summon[RW[SlowStopInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  /** Steps actually executed — the spec's "did the work stop?" probe. */
+  /**
+   * Steps actually executed — the spec's "did the work stop?" probe.
+   */
   val stepsRun: AtomicInteger = new AtomicInteger(0)
-  /** Counted down by the tool after step 2 — the spec's cue to Stop. */
+
+  /**
+   * Counted down by the tool after step 2 — the spec's cue to Stop.
+   */
   @volatile var midwayLatch: CountDownLatch = new CountDownLatch(1)
-  /** Released by the spec once its Stop has been published. */
+
+  /**
+   * Released by the spec once its Stop has been published.
+   */
   @volatile var proceedLatch: CountDownLatch = new CountDownLatch(1)
 
   def reset(): Unit = {

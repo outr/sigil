@@ -11,11 +11,10 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * Brave, etc. — provider type is the app's choice). Emits a typed
  * [[WebSearchOutput]] carrying the ranked hit list.
  */
-final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10)
-  extends Tool with sigil.tool.NetworkReadOnlyTool {
-  type Input  = WebSearchInput
+final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10) extends Tool with sigil.tool.NetworkReadOnlyTool {
+  type Input = WebSearchInput
   type Output = WebSearchOutput
-  val inputRW  = summon[RW[WebSearchInput]]
+  val inputRW = summon[RW[WebSearchInput]]
   val outputRW = summon[RW[WebSearchOutput]]
   val name = ToolName("web_search")
   val description =
@@ -31,10 +30,10 @@ final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10)
     provider.search(input.query, input.maxResults.getOrElse(defaultMaxResults)).map { results =>
       val items = results.toList.map { r =>
         WebSearchResult(
-          title      = r.title,
-          url        = r.url,
-          snippet    = r.snippet,
-          score      = r.score,
+          title = r.title,
+          url = r.url,
+          snippet = r.snippet,
+          score = r.score,
           rawContent = r.rawContent
         )
       }

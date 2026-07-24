@@ -27,18 +27,18 @@ import sigil.event.Event
 class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  private val convId   = Conversation.id("proxy-conv")
-  private val topicId  = TestTopicId
+  private val convId = Conversation.id("proxy-conv")
+  private val topicId = TestTopicId
 
   case class FakeToolInput(value: Int) extends ToolInput derives RW
 
   private case object FakeWrappedTool extends Tool {
-    type Input  = FakeToolInput
+    type Input = FakeToolInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[FakeToolInput]]
+    val inputRW = summon[RW[FakeToolInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("fake_tool")
+    val name = ToolName("fake_tool")
     val description = "Fake tool for proxy tests"
     override val examples: List[ToolExample] = List(
       ToolExample("doubles its input", FakeToolInput(value = 5))
@@ -51,7 +51,7 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   "ProxyTool" should {
     "preserve the wrapped tool's name, description, and schema" in rapid.Task {
       val transport = new RecordingTransport
-      val proxy     = new ProxyTool(FakeWrappedTool, transport)
+      val proxy = new ProxyTool(FakeWrappedTool, transport)
       proxy.name shouldBe FakeWrappedTool.name
       proxy.description shouldBe FakeWrappedTool.description
       proxy.schema.input shouldBe FakeWrappedTool.schema.input
@@ -61,8 +61,8 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "route execute through the transport with the input rendered to Json" in {
       val transport = new RecordingTransport
-      val proxy     = new ProxyTool(FakeWrappedTool, transport)
-      val ctx       = makeContext()
+      val proxy = new ProxyTool(FakeWrappedTool, transport)
+      val ctx = makeContext()
       // The transport's remote side returns a typed result as Json —
       // here a TextToolOutput-shaped payload.
       transport.respondWith(ToolResult.Success(obj("text" -> str("remote-ok"))))
@@ -83,8 +83,8 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "pass the original ToolName through to the transport" in {
       val transport = new RecordingTransport
-      val proxy     = new ProxyTool(FakeWrappedTool, transport)
-      val ctx       = makeContext()
+      val proxy = new ProxyTool(FakeWrappedTool, transport)
+      val ctx = makeContext()
       transport.respondWith(ToolResult.Success(obj("text" -> str("ok"))))
 
       proxy.execute(FakeToolInput(value = 1), ctx, Event.id()).toList.map { _ =>
@@ -110,7 +110,9 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  /** Test transport — records each dispatch call, replays a configured result. */
+  /**
+   * Test transport — records each dispatch call, replays a configured result.
+   */
   private class RecordingTransport extends ToolProxyTransport {
     private val response = new AtomicReference[ToolResult[Json]](ToolResult.Success(obj()))
     val lastCall: AtomicReference[(ToolName, Json, ToolContext)] =

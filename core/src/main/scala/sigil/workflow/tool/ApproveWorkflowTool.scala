@@ -11,14 +11,14 @@ import strider.step.Step
 
 case class ApproveWorkflowInput(runId: String,
                                 stepId: String,
-                                comment: Option[String] = None) extends ToolInput derives RW
+                                comment: Option[String] = None)
+  extends ToolInput derives RW
 
 /**
  * Approve a workflow run paused on an [[strider.step.Approval]]
  * step. Sugar over [[ResumeWorkflowTool]] with the canonical
  * `"approve"` payload (or, when `comment` is provided, an
  * `"approve: <comment>"` string the workflow's branching expression
-*
  *
  * Distinct from `cancel_framework_workflow` — that's for in-flight
  * framework operations (pre-flight, compress, …). This is for
@@ -30,9 +30,9 @@ case class ApproveWorkflowInput(runId: String,
  * tool's reply text.
  */
 final class ApproveWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = ApproveWorkflowInput
+  type Input = ApproveWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ApproveWorkflowInput]]
+  val inputRW = summon[RW[ApproveWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("approve_workflow")
   val description =
@@ -42,9 +42,11 @@ final class ApproveWorkflowTool extends Tool with WorkflowToolSupport {
       |from the workflow's lifecycle Events). `comment` is optional free-form text —
       |passed through as the resume payload so the workflow's branching can match on it.""".stripMargin
   override val examples = List(
-    ToolExample("Approve a pending review",
+    ToolExample(
+      "Approve a pending review",
       ApproveWorkflowInput(runId = "run-abc", stepId = "review")),
-    ToolExample("Approve with a reason note",
+    ToolExample(
+      "Approve with a reason note",
       ApproveWorkflowInput(runId = "run-abc", stepId = "review", comment = Some("looks correct after manual check")))
   )
   override val keywords = Set("workflow", "approve", "ok", "yes", "continue")

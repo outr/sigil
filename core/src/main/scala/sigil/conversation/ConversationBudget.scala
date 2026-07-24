@@ -26,4 +26,5 @@ import fabric.rw.*
 case class ConversationBudget(turnSoft: Option[BigDecimal] = None,
                               turnHard: Option[BigDecimal] = None,
                               conversationSoft: Option[BigDecimal] = None,
-                              conversationHard: Option[BigDecimal] = None) derives RW
+                              conversationHard: Option[BigDecimal] = None)
+  derives RW

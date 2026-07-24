@@ -17,9 +17,9 @@ case class StopMetalsInput() extends ToolInput derives RW
  * `metals_status` first to see what's live.
  */
 final class StopMetalsTool extends Tool {
-  type Input  = StopMetalsInput
+  type Input = StopMetalsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[StopMetalsInput]]
+  val inputRW = summon[RW[StopMetalsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("stop_metals")
@@ -37,8 +37,16 @@ final class StopMetalsTool extends Tool {
       |No-op if Metals isn't running for the workspace.""".stripMargin
   override val examples = List(ToolExample("stop metals", StopMetalsInput()))
   override val keywords = Set(
-    "metals", "stop", "scala", "lsp", "shutdown",
-    "kill", "terminate", "disable", "teardown", "tooling"
+    "metals",
+    "stop",
+    "scala",
+    "lsp",
+    "shutdown",
+    "kill",
+    "terminate",
+    "disable",
+    "teardown",
+    "tooling"
   )
 
   import MetalsToolSupport.*

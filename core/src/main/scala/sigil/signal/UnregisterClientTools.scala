@@ -15,4 +15,5 @@ import sigil.conversation.Conversation
  */
 case class UnregisterClientTools(conversationId: Id[Conversation],
                                  sessionId: String,
-                                 names: Option[Set[String]] = None) extends ConversationNotice derives RW
+                                 names: Option[Set[String]] = None)
+  extends ConversationNotice derives RW

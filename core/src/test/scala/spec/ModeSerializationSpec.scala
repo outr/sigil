@@ -76,17 +76,21 @@ class ModeSerializationSpec extends AnyWordSpec with Matchers {
   }
 }
 
-/** Test-only mode used by [[ModeSerializationSpec]]. Registered via
-  * [[TestSigil.modes]]. */
+/**
+ * Test-only mode used by [[ModeSerializationSpec]]. Registered via
+ * [[TestSigil.modes]].
+ */
 case object TestModeAlpha extends Mode {
   override val name: String = "alpha"
   override val description: String = "Test mode for serialization coverage."
 }
 
-/** Conflict-duplicate of [[TestModeAlpha]] — same `name`, different
-  * Scala class. Registered ad-hoc inside the duplicate-name test to
-  * exercise the last-write-wins behaviour without polluting the
-  * default [[TestSigil.modes]] roster. */
+/**
+ * Conflict-duplicate of [[TestModeAlpha]] — same `name`, different
+ * Scala class. Registered ad-hoc inside the duplicate-name test to
+ * exercise the last-write-wins behaviour without polluting the
+ * default [[TestSigil.modes]] roster.
+ */
 case object TestModeAlphaDuplicate extends Mode {
   override val name: String = "alpha"
   override val description: String = "Conflicting duplicate of TestModeAlpha."

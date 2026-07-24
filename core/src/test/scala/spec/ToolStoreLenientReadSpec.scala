@@ -31,7 +31,7 @@ class ToolStoreLenientReadSpec extends AnyWordSpec with Matchers {
   "Sigil.decodeToolsLeniently (sigil #380)" should {
 
     "skip a tool row whose poly type is no longer registered, keeping the valid ones" in {
-      val valid  = toolRW.read(RespondTool)
+      val valid = toolRW.read(RespondTool)
       val orphan = obj("type" -> str("RemovedNoLongerRegisteredTool"), "name" -> obj("value" -> str("removed")))
       val decoded = Sigil.decodeToolsLeniently(List(valid, orphan))
       decoded.map(_.schema.name.value) should contain("respond")

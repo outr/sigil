@@ -31,20 +31,23 @@ import fabric.rw.PolyType
  */
 trait ConversationStatus {
 
-  /** Stable, app-defined category discriminator (e.g. `"open"`,
-    * `"resolved"`). Indexed on [[Conversation.statusKey]] for server-side
-    * filtering; the framework treats it as an opaque token. */
+  /**
+   * Stable, app-defined category discriminator (e.g. `"open"`,
+   * `"resolved"`). Indexed on [[Conversation.statusKey]] for server-side
+   * filtering; the framework treats it as an opaque token.
+   */
   def key: String
 }
 
-object ConversationStatus
-    extends PolyType[ConversationStatus]()(using scala.reflect.ClassTag(classOf[ConversationStatus])) {
+object ConversationStatus extends PolyType[ConversationStatus]()(using scala.reflect.ClassTag(classOf[ConversationStatus])) {
 
-  /** Framework default — every conversation starts here; apps transition
-    * away from it. The framework assigns it no behavior, only the "no app
-    * status assigned yet" state. Auto-registered (like
-    * [[sigil.GlobalSpace]]); apps don't list it in
-    * `Sigil.conversationStatusRegistrations`. */
+  /**
+   * Framework default — every conversation starts here; apps transition
+   * away from it. The framework assigns it no behavior, only the "no app
+   * status assigned yet" state. Auto-registered (like
+   * [[sigil.GlobalSpace]]); apps don't list it in
+   * `Sigil.conversationStatusRegistrations`.
+   */
   case object Open extends ConversationStatus {
     val key: String = "open"
   }

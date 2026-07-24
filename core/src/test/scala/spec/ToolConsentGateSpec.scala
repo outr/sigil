@@ -39,17 +39,19 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   case class GatedInput(payload: String) extends ToolInput derives RW
 
-  /** Tracks every successful execute() invocation so the spec
-    * can assert "the tool didn't run when refused." */
+  /**
+   * Tracks every successful execute() invocation so the spec
+   * can assert "the tool didn't run when refused."
+   */
   private val invocations = new java.util.concurrent.atomic.AtomicInteger(0)
 
   case object GatedTool extends sigil.tool.Tool {
-    type Input  = GatedInput
+    type Input = GatedInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[GatedInput]]
+    val inputRW = summon[RW[GatedInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("gated_demo_tool")
+    val name = ToolName("gated_demo_tool")
     val description = "A consent-gated demo tool used by the spec."
     override def requiresUserConsent: Boolean = true
 
@@ -63,12 +65,12 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   case class FreeInput(payload: String) extends ToolInput derives RW
 
   case object FreeTool extends sigil.tool.Tool {
-    type Input  = FreeInput
+    type Input = FreeInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[FreeInput]]
+    val inputRW = summon[RW[FreeInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("free_demo_tool")
+    val name = ToolName("free_demo_tool")
     val description = "A no-consent demo tool — should always dispatch."
 
     override def executeOutput(input: FreeInput, ctx: ToolContext): Task[TextToolOutput] =
@@ -87,9 +89,9 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   private def newConv(suffix: String): Task[Conversation] = {
     val convId = Conversation.id(s"consent-$suffix-${rapid.Unique()}")
-    val topic  = TopicEntry(
-      id      = sigil.conversation.Topic.id(s"topic-$convId"),
-      label   = "test",
+    val topic = TopicEntry(
+      id = sigil.conversation.Topic.id(s"topic-$convId"),
+      label = "test",
       summary = "test"
     )
     val conv = Conversation(_id = convId, topics = List(topic))
@@ -98,16 +100,18 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   private def turnContextFor(conv: Conversation): TurnContext =
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser, TestAgent),
+      sigil = TestSigil,
+      chain = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv._id),
+      turnInput = TurnInput(conversationId = conv._id),
       model = TestSigil.defaultTestModel
     )
 
-  /** Drive `tool.execute(input, ctx, Event.id())` through the orchestrator's
-    * consent + precondition gates — same path the agent loop
-    * uses for atomic dispatches. Returns the resulting signals. */
+  /**
+   * Drive `tool.execute(input, ctx, Event.id())` through the orchestrator's
+   * consent + precondition gates — same path the agent loop
+   * uses for atomic dispatches. Returns the resulting signals.
+   */
   private def dispatch(tool: sigil.tool.Tool, input: ToolInput, ctx: TurnContext): Task[List[Signal]] = {
     val invokeId = sigil.event.Event.id()
     Orchestrator.dispatchAtomic(tool, input, ctx, invokeId).toList
@@ -126,9 +130,10 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         val refusal = signals.collectFirst {
           case m: Message if m.role == MessageRole.Tool => m
         }.getOrElse(fail("expected Tool-role refusal Message"))
-        val text = (refusal.failureReason.toVector ++ refusal.content.collect {
-          case ResponseContent.Text(t) => t
-        }).mkString("\n")
+        val text =
+          (refusal.failureReason.toVector ++ refusal.content.collect {
+            case ResponseContent.Text(t) => t
+          }).mkString("\n")
         text should include("requires user consent")
         text should include("record_consent")
       }
@@ -143,9 +148,13 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         // orchestrator stamps `origin` on the Tool-role
         // confirmation Message (#84). Direct `execute` bypasses
         // origin-stamping and trips the framework's #64 invariant.
-        recordSignals <- dispatch(RecordConsentTool,
-                          RecordConsentInput(toolName = GatedTool.name.value, approved = true,
-                            reason = Some("user said yes")), ctx)
+        recordSignals <- dispatch(
+          RecordConsentTool,
+          RecordConsentInput(
+            toolName = GatedTool.name.value,
+            approved = true,
+            reason = Some("user said yes")),
+          ctx)
         _ <- Task.sequence(recordSignals.collect { case ev: Event => TestSigil.publish(ev) })
         // Now dispatch the gated tool.
         signals <- dispatch(GatedTool, GatedInput("hello"), ctx)
@@ -166,9 +175,13 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       for {
         conv <- newConv("declined")
         ctx = turnContextFor(conv)
-        recordSignals <- dispatch(RecordConsentTool,
-                          RecordConsentInput(toolName = GatedTool.name.value, approved = false,
-                            reason = Some("user explicitly declined import")), ctx)
+        recordSignals <- dispatch(
+          RecordConsentTool,
+          RecordConsentInput(
+            toolName = GatedTool.name.value,
+            approved = false,
+            reason = Some("user explicitly declined import")),
+          ctx)
         _ <- Task.sequence(recordSignals.collect { case ev: Event => TestSigil.publish(ev) })
         signals <- dispatch(GatedTool, GatedInput("nope"), ctx)
       } yield {
@@ -176,9 +189,10 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         val refusal = signals.collectFirst {
           case m: Message if m.role == MessageRole.Tool => m
         }.getOrElse(fail("expected refusal"))
-        val text = (refusal.failureReason.toVector ++ refusal.content.collect {
-          case ResponseContent.Text(t) => t
-        }).mkString("\n")
+        val text =
+          (refusal.failureReason.toVector ++ refusal.content.collect {
+            case ResponseContent.Text(t) => t
+          }).mkString("\n")
         text should include("previously declined")
         text should include("user explicitly declined import")
       }

@@ -19,4 +19,5 @@ import sigil.tool.ToolName
  */
 case class DiscoveredCapability(matches: List[ToolName],
                                 firstSeen: Timestamp,
-                                lastSeen: Timestamp) derives RW
+                                lastSeen: Timestamp)
+  derives RW

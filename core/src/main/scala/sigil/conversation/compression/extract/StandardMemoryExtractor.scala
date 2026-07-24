@@ -37,20 +37,22 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                                    defaultStatus: MemoryStatus = MemoryStatus.Approved,
                                    defaultType: MemoryType = MemoryType.Fact,
                                    systemPrompt: String = StandardMemoryExtractor.DefaultSystemPrompt,
-                                   /** Hard cap on the `extract_memories` consult's
-                                     * generation. Sized so a rich user paste
-                                     * (multi-KB structured artefact, an
-                                     * assistant response listing 20+ facts)
-                                     * can flush the full tool_use input
-                                     * before the model hits the ceiling. The
-                                     * prior 1500-token default truncated the
-                                     * structured emission mid-buffer on large
-                                     * inputs and produced a tool_use with
-                                     * empty input — zero memories recorded,
-                                     * silently. 8192 covers the worst-case
-                                     * shape while staying well under the
-                                     * 64K output ceiling of every current
-                                     * frontier model. */
+                                   /**
+                                    * Hard cap on the `extract_memories` consult's
+                                    * generation. Sized so a rich user paste
+                                    * (multi-KB structured artefact, an
+                                    * assistant response listing 20+ facts)
+                                    * can flush the full tool_use input
+                                    * before the model hits the ceiling. The
+                                    * prior 1500-token default truncated the
+                                    * structured emission mid-buffer on large
+                                    * inputs and produced a tool_use with
+                                    * empty input — zero memories recorded,
+                                    * silently. 8192 covers the worst-case
+                                    * shape while staying well under the
+                                    * 64K output ceiling of every current
+                                    * frontier model.
+                                    */
                                    maxExtractionTokens: Int = StandardMemoryExtractor.DefaultMaxExtractionTokens)
   extends MemoryExtractor {
 
@@ -59,10 +61,10 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                        modelId: Id[Model],
                        chain: List[ParticipantId],
                        userMessage: String,
-                       agentResponse: String): Task[List[ContextMemory]] = {
+                       agentResponse: String): Task[List[ContextMemory]] =
     if (!filter.isHighSignal(userMessage)) Task.pure(Nil)
     else spaceIdFor(conversationId).flatMap {
-      case None        => Task.pure(Nil)
+      case None => Task.pure(Nil)
       case Some(space) =>
         val userPrompt =
           s"""Extract durable memories from the following exchange. Output via the
@@ -109,17 +111,17 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                   }
                 }.toSet
               ContextMemory(
-                fact           = m.content,
-                label          = m.label,
-                summary        = m.content,
-                source         = MemorySource.Compression,
-                spaceId        = space,
-                key            = m.key,
-                keywords       = otherTags.toVector,
-                memoryType     = defaultType,
-                status         = defaultStatus,
+                fact = m.content,
+                label = m.label,
+                summary = m.content,
+                source = MemorySource.Compression,
+                spaceId = space,
+                key = m.key,
+                keywords = otherTags.toVector,
+                memoryType = defaultType,
+                status = defaultStatus,
                 conversationId = Some(conversationId),
-                modeAffinity   = resolvedModes
+                modeAffinity = resolvedModes
               )
             }
             sigil.persistMemoriesFor(memories, chain, conversationId)
@@ -128,15 +130,17 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
             .map(_ => Nil)
         }
     }
-  }
 }
 
 object StandardMemoryExtractor {
-  /** Default ceiling on the `extract_memories` consult's output. Sized
-    * so a rich excerpt (KB-scale paste, enumerative agent reply) can
-    * flush its full structured `tool_use` payload. The 1500-token
-    * prior default truncated the wire-buffered tool input on large
-    * inputs, producing an empty `tool_use` and zero recorded memories. */
+
+  /**
+   * Default ceiling on the `extract_memories` consult's output. Sized
+   * so a rich excerpt (KB-scale paste, enumerative agent reply) can
+   * flush its full structured `tool_use` payload. The 1500-token
+   * prior default truncated the wire-buffered tool input on large
+   * inputs, producing an empty `tool_use` and zero recorded memories.
+   */
   val DefaultMaxExtractionTokens: Int = 8192
 
   /**

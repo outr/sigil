@@ -10,15 +10,15 @@ import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 case class UnpinComplexityInput() extends ToolInput derives RW
 
 /**
-  * Clear the conversation's pinned complexity tier — routing
-  * reverts to [[sigil.provider.RoutedStrategy.inferComplexity]]'s
-  * per-message classification. Companion to [[PinComplexityTool]].
-  * Not auto-registered.
-  */
+ * Clear the conversation's pinned complexity tier — routing
+ * reverts to [[sigil.provider.RoutedStrategy.inferComplexity]]'s
+ * per-message classification. Companion to [[PinComplexityTool]].
+ * Not auto-registered.
+ */
 case object UnpinComplexityTool extends Tool {
-  type Input  = UnpinComplexityInput
+  type Input = UnpinComplexityInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[UnpinComplexityInput]]
+  val inputRW = summon[RW[UnpinComplexityInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("unpin_complexity")
   val description =
@@ -31,7 +31,7 @@ case object UnpinComplexityTool extends Tool {
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.withDB(_.conversations.transaction { tx =>
       tx.get(ctx.conversation.id).flatMap {
-        case None       => Task.pure(None)
+        case None => Task.pure(None)
         case Some(conv) =>
           val previous = conv.pinnedComplexity
           tx.upsert(conv.copy(pinnedComplexity = None, modified = Timestamp()))
@@ -45,13 +45,14 @@ case object UnpinComplexityTool extends Tool {
         // No-op for the unpinned-already case: still emit so consumers
         // see the user intent (UI can render an "already cleared" pulse).
         ctx.emit(ComplexityChange(
-          participantId  = ctx.caller,
+          participantId = ctx.caller,
           conversationId = ctx.conversation.id,
-          topicId        = ctx.conversation.currentTopicId,
-          previousTier   = previous,
-          newTier        = None,
-          reason         = ComplexityChange.Reason.Unpinned
-        )).map(_ => ToolResult.Success(TextToolOutput(
-          "Cleared the conversation's pinned complexity tier. Routing reverts to per-message classification.")))
+          topicId = ctx.conversation.currentTopicId,
+          previousTier = previous,
+          newTier = None,
+          reason = ComplexityChange.Reason.Unpinned
+        )).map(_ =>
+          ToolResult.Success(TextToolOutput(
+            "Cleared the conversation's pinned complexity tier. Routing reverts to per-message classification.")))
     }
 }

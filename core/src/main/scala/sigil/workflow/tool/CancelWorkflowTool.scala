@@ -18,9 +18,9 @@ case class CancelWorkflowInput(runId: String) extends ToolInput derives RW
  * underlying `cancel` API.
  */
 final class CancelWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = CancelWorkflowInput
+  type Input = CancelWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[CancelWorkflowInput]]
+  val inputRW = summon[RW[CancelWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("cancel_workflow")
   val description =

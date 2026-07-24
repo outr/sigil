@@ -31,61 +31,73 @@ final class LspSession(val config: LspServerConfig,
                        process: Process,
                        server: LanguageServer,
                        client: LspRecordingClient,
-                       /** The server's capabilities snapshot from `initialize`'s
-                          * response. Tools consult this BEFORE issuing optional
-                          * LSP requests (`textDocument/diagnostic` / pull
-                          * diagnostics, code lens, inlay hints, etc.) so they
-                          * fall back to alternative protocols when the server
-                          * doesn't advertise support. */
+                       /**
+                        * The server's capabilities snapshot from `initialize`'s
+                        * response. Tools consult this BEFORE issuing optional
+                        * LSP requests (`textDocument/diagnostic` / pull
+                        * diagnostics, code lens, inlay hints, etc.) so they
+                        * fall back to alternative protocols when the server
+                        * doesn't advertise support.
+                        */
                        val serverCapabilities: ServerCapabilities) {
 
   private val lastUseAt: AtomicLong = new AtomicLong(System.currentTimeMillis())
   private val versions: ConcurrentHashMap[String, AtomicLong] = new ConcurrentHashMap()
 
-  /** The most recent code-action set returned to a tool, keyed by URI.
-    * `lsp_apply_code_action` looks up by index here so agents can pick
-    * an action without serializing the action object across the tool
-    * boundary. Replaced wholesale on each `codeAction` call. */
+  /**
+   * The most recent code-action set returned to a tool, keyed by URI.
+   * `lsp_apply_code_action` looks up by index here so agents can pick
+   * an action without serializing the action object across the tool
+   * boundary. Replaced wholesale on each `codeAction` call.
+   */
   private val lastCodeActions: ConcurrentHashMap[String, List[LspEither[Command, CodeAction]]] = new ConcurrentHashMap()
 
   def cachedCodeActions(uri: String): List[LspEither[Command, CodeAction]] =
     Option(lastCodeActions.get(uri)).getOrElse(Nil)
 
-  /** Install (or clear with `None`) a per-call status callback. The
-    * client routes server-extension status notifications (Metals'
-    * `metals/status` etc.) into this callback so the active tool's
-    * chip can surface live progress. Typically wired
-    * by [[LspToolSupport.withSessionTyped]] around the tool body. */
+  /**
+   * Install (or clear with `None`) a per-call status callback. The
+   * client routes server-extension status notifications (Metals'
+   * `metals/status` etc.) into this callback so the active tool's
+   * chip can surface live progress. Typically wired
+   * by [[LspToolSupport.withSessionTyped]] around the tool body.
+   */
   def setStatusCallback(cb: Option[String => Unit]): Unit =
     client.setStatusCallback(cb)
 
   def touch(): Unit = lastUseAt.set(System.currentTimeMillis())
   def idleSince: Long = lastUseAt.get()
 
-  /** Default silence window for LSP requests. LSP queries are
-    * typically fast (sub-second for completion, definition, hover,
-    * etc.); the 60-second default covers slow cases like workspace
-    * symbols on a cold index. Long operations are protected from
-    * tripping the detector by the recording client's
-    * `lastActivityAtMillis` — any incoming progress notification
-    * or log message resets the clock. */
+  /**
+   * Default silence window for LSP requests. LSP queries are
+   * typically fast (sub-second for completion, definition, hover,
+   * etc.); the 60-second default covers slow cases like workspace
+   * symbols on a cold index. Long operations are protected from
+   * tripping the detector by the recording client's
+   * `lastActivityAtMillis` — any incoming progress notification
+   * or log message resets the clock.
+   */
   protected def defaultSilenceWindow: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(60).seconds
 
-  /** Wrap an LSP request in [[DurableJsonRpc.issueDurable]] so a
-     * lost JSON-RPC response is recovered via idempotent retry
-     * rather than stranding the calling Task forever. LSP queries Sigil
-     * performs are idempotent — the retry re-asks for the cached
-     * result. */
+  /**
+   * Wrap an LSP request in [[DurableJsonRpc.issueDurable]] so a
+   * lost JSON-RPC response is recovered via idempotent retry
+   * rather than stranding the calling Task forever. LSP queries Sigil
+   * performs are idempotent — the retry re-asks for the cached
+   * result.
+   */
   protected def issueDurable[T](operation: String,
-                                silenceWindow: scala.concurrent.duration.FiniteDuration = defaultSilenceWindow)
-                               (makeRequest: () => CompletableFuture[T]): Task[T] =
+                                silenceWindow: scala.concurrent.duration.FiniteDuration =
+                                  defaultSilenceWindow)(makeRequest: () => CompletableFuture[T]): Task[T] =
     DurableJsonRpc.issueDurable(
-      operation     = operation,
+      operation = operation,
       silenceWindow = silenceWindow
     )(activitySource = () => client.lastActivityAtMillis)(makeRequest)
 
-  /** Get the next document version for a URI; first access seeds at 1. */
+  /**
+   * Get the next document version for a URI; first access seeds at 1.
+   */
   private def nextVersion(uri: String): Int =
     versions.computeIfAbsent(uri, _ => new AtomicLong(0L)).incrementAndGet().toInt
 
@@ -97,24 +109,30 @@ final class LspSession(val config: LspServerConfig,
   def allDiagnostics: Map[String, List[Diagnostic]] =
     client.diagnostics.asScala.view.mapValues(_.asScala.toList).toMap
 
-  /** Freshness marker for [[diagnosticsFor]]: the number of
-    * `publishDiagnostics` notifications the server has sent for `uri`.
-    * `0` means the server has NEVER answered for this URI — an empty
-    * [[diagnosticsFor]] result is then "no answer yet", not "clean".
-    * Capture before a `didOpen` / `didChangeFull` and pass to
-    * [[waitForDiagnostics(uri:String,sinceGeneration:Long,timeoutMs:Long,pollMs:Long)*]]
-    * to wait for the publish that reflects the new text. */
+  /**
+   * Freshness marker for [[diagnosticsFor]]: the number of
+   * `publishDiagnostics` notifications the server has sent for `uri`.
+   * `0` means the server has NEVER answered for this URI — an empty
+   * [[diagnosticsFor]] result is then "no answer yet", not "clean".
+   * Capture before a `didOpen` / `didChangeFull` and pass to
+   * [[waitForDiagnostics(uri:String,sinceGeneration:Long,timeoutMs:Long,pollMs:Long)*]]
+   * to wait for the publish that reflects the new text.
+   */
   def publishGeneration(uri: String): Long = client.diagnosticsGeneration(uri)
 
-  /** WorkDoneProgress tokens still in-flight. Agents wait on this
-    * before issuing index-dependent queries — `Sage` picks up "Metals
-    * is indexing your build" by checking this set. */
+  /**
+   * WorkDoneProgress tokens still in-flight. Agents wait on this
+   * before issuing index-dependent queries — `Sage` picks up "Metals
+   * is indexing your build" by checking this set.
+   */
   def inFlightProgress: Set[String] = client.progressTokens.keySet().asScala.toSet
 
-  /** Block until no progress tokens remain or until the deadline.
-    * Implemented as polling — the lsp4j `WorkDoneProgress` end
-    * notification doesn't expose a future per token, and most servers
-    * settle within a few hundred ms anyway. */
+  /**
+   * Block until no progress tokens remain or until the deadline.
+   * Implemented as polling — the lsp4j `WorkDoneProgress` end
+   * notification doesn't expose a future per token, and most servers
+   * settle within a few hundred ms anyway.
+   */
   def waitForIdle(timeoutMs: Long, pollMs: Long = 100L): Task[Unit] = {
     val deadline = System.currentTimeMillis() + timeoutMs
     def loop: Task[Unit] = Task.defer {
@@ -124,42 +142,46 @@ final class LspSession(val config: LspServerConfig,
     loop
   }
 
-  /** Blind settle window — sleeps `windowMs` and hopes the server has
-    * published by then. CANNOT distinguish "clean" from "no answer
-    * yet" from "stale": prefer the freshness-aware overload below,
-    * which waits for an actual publish newer than a captured
-    * [[publishGeneration]]. Kept for callers that genuinely just want
-    * a fixed settle pause. */
+  /**
+   * Blind settle window — sleeps `windowMs` and hopes the server has
+   * published by then. CANNOT distinguish "clean" from "no answer
+   * yet" from "stale": prefer the freshness-aware overload below,
+   * which waits for an actual publish newer than a captured
+   * [[publishGeneration]]. Kept for callers that genuinely just want
+   * a fixed settle pause.
+   */
   def waitForDiagnostics(windowMs: Long): Task[Unit] =
     Task.sleep(scala.concurrent.duration.FiniteDuration(windowMs, "millis"))
 
-  /** Wait until the server publishes diagnostics for `uri` NEWER than
-    * `sinceGeneration` (capture it via [[publishGeneration]] BEFORE the
-    * `didOpen` / `didChangeFull` that triggers recompilation), or until
-    * `timeoutMs` elapses.
-    *
-    * Returns `true` when a fresh publish landed — [[diagnosticsFor]]
-    * now reflects (at least) the text that triggered it; `false` on
-    * timeout — the server has NOT answered for the new text, and the
-    * caller must treat the file's diagnostic state as UNKNOWN rather
-    * than clean (the silent-false-pass failure mode: validating a
-    * 316-file sweep against a still-indexing server "passed" files
-    * that carried dozens of compile errors).
-    *
-    * **Prefer [[pullDiagnosticsVerdict]] when
-    * [[supportsPullDiagnostics]] is true.** The push model has a
-    * structural blind spot this wait cannot fix: a server that finds
-    * nothing wrong with an opened overlay generally does not publish
-    * an empty list (publishes CLEAR old diagnostics; they don't ack
-    * cleanliness), so "fresh publish or timeout" degrades to
-    * "timeout" for precisely the files that are fine — a per-file
-    * validator burns its full timeout on every clean file and still
-    * gets no verdict. Pull diagnostics is a request the server must
-    * answer, empty result included. This generation-based wait is the
-    * fallback for servers without the pull capability.
-    *
-    * Poll-based like [[waitForIdle]] — lsp4j's push handler exposes no
-    * per-publish future. */
+  /**
+   * Wait until the server publishes diagnostics for `uri` NEWER than
+   * `sinceGeneration` (capture it via [[publishGeneration]] BEFORE the
+   * `didOpen` / `didChangeFull` that triggers recompilation), or until
+   * `timeoutMs` elapses.
+   *
+   * Returns `true` when a fresh publish landed — [[diagnosticsFor]]
+   * now reflects (at least) the text that triggered it; `false` on
+   * timeout — the server has NOT answered for the new text, and the
+   * caller must treat the file's diagnostic state as UNKNOWN rather
+   * than clean (the silent-false-pass failure mode: validating a
+   * 316-file sweep against a still-indexing server "passed" files
+   * that carried dozens of compile errors).
+   *
+   * **Prefer [[pullDiagnosticsVerdict]] when
+   * [[supportsPullDiagnostics]] is true.** The push model has a
+   * structural blind spot this wait cannot fix: a server that finds
+   * nothing wrong with an opened overlay generally does not publish
+   * an empty list (publishes CLEAR old diagnostics; they don't ack
+   * cleanliness), so "fresh publish or timeout" degrades to
+   * "timeout" for precisely the files that are fine — a per-file
+   * validator burns its full timeout on every clean file and still
+   * gets no verdict. Pull diagnostics is a request the server must
+   * answer, empty result included. This generation-based wait is the
+   * fallback for servers without the pull capability.
+   *
+   * Poll-based like [[waitForIdle]] — lsp4j's push handler exposes no
+   * per-publish future.
+   */
   def waitForDiagnostics(uri: String, sinceGeneration: Long, timeoutMs: Long, pollMs: Long = 50L): Task[Boolean] = {
     val deadline = System.currentTimeMillis() + timeoutMs
     def loop: Task[Boolean] = Task.defer {
@@ -172,8 +194,10 @@ final class LspSession(val config: LspServerConfig,
 
   // ---- document lifecycle ----
 
-  /** Open a document with the server. Idempotent in practice — most
-    * servers tolerate a re-open as a `didChange`-equivalent. */
+  /**
+   * Open a document with the server. Idempotent in practice — most
+   * servers tolerate a re-open as a `didChange`-equivalent.
+   */
   def didOpen(uri: String, languageId: String, text: String): Task[Unit] = Task {
     touch()
     val v = nextVersion(uri)
@@ -181,10 +205,12 @@ final class LspSession(val config: LspServerConfig,
     server.getTextDocumentService.didOpen(new DidOpenTextDocumentParams(item))
   }
 
-  /** Notify the server that a document's full text has changed.
-    * The simple "send full content each time" path; works with
-    * every server's default `textDocumentSync.change = Full` and
-    * is the safest contract for an agent that just rewrote a file. */
+  /**
+   * Notify the server that a document's full text has changed.
+   * The simple "send full content each time" path; works with
+   * every server's default `textDocumentSync.change = Full` and
+   * is the safest contract for an agent that just rewrote a file.
+   */
   def didChangeFull(uri: String, text: String): Task[Unit] = Task {
     touch()
     val v = nextVersion(uri)
@@ -208,9 +234,11 @@ final class LspSession(val config: LspServerConfig,
     server.getTextDocumentService.didClose(new DidCloseTextDocumentParams(id))
   }
 
-  /** Forwarded to the server as `workspace/didChangeWatchedFiles`.
-    * Apps wire this from their `EditFileTool` (etc.) so the server's
-    * index stays current after framework-side writes. */
+  /**
+   * Forwarded to the server as `workspace/didChangeWatchedFiles`.
+   * Apps wire this from their `EditFileTool` (etc.) so the server's
+   * index stays current after framework-side writes.
+   */
   def didChangeWatchedFiles(events: List[FileEvent]): Task[Unit] = Task {
     touch()
     server.getWorkspaceService.didChangeWatchedFiles(new DidChangeWatchedFilesParams(events.asJava))
@@ -372,31 +400,35 @@ final class LspSession(val config: LspServerConfig,
     issueDurable("textDocument/diagnostic")(() => server.getTextDocumentService.diagnostic(params)).map(Option(_))
   }
 
-  /** Whether the server advertised LSP 3.17 pull diagnostics
-    * (`serverCapabilities.diagnosticProvider`) during `initialize`.
-    * The spec forbids calling `textDocument/diagnostic` otherwise —
-    * push-only servers answer `MethodNotFound`. */
+  /**
+   * Whether the server advertised LSP 3.17 pull diagnostics
+   * (`serverCapabilities.diagnosticProvider`) during `initialize`.
+   * The spec forbids calling `textDocument/diagnostic` otherwise —
+   * push-only servers answer `MethodNotFound`.
+   */
   def supportsPullDiagnostics: Boolean =
     Option(serverCapabilities.getDiagnosticProvider).isDefined
 
-  /** Diagnostic VERDICT for `uri` via pull diagnostics — the shape a
-    * per-file validator needs:
-    *
-    *   - `Some(list)` — the server answered with a full report;
-    *     an empty list is a genuine "this file is clean" verdict.
-    *     Pull is a request the server must answer, so — unlike the
-    *     push model, where a clean overlay open typically produces
-    *     NO publish at all — cleanliness gets an explicit ack.
-    *   - `None` — no verdict: the server doesn't advertise the pull
-    *     capability, the request failed or timed out, or it answered
-    *     with an `unchanged`-kind report (only possible against a
-    *     `previousResultId`, which this call never sends — treated
-    *     as no-verdict rather than guessed at). Callers fall back to
-    *     the push path: [[publishGeneration]] +
-    *     [[waitForDiagnostics(uri:String,sinceGeneration:Long,timeoutMs:Long,pollMs:Long)*]].
-    *
-    * Never conflates "clean" with "unanswered" — the exact
-    * distinction the push model cannot express. */
+  /**
+   * Diagnostic VERDICT for `uri` via pull diagnostics — the shape a
+   * per-file validator needs:
+   *
+   *   - `Some(list)` — the server answered with a full report;
+   *     an empty list is a genuine "this file is clean" verdict.
+   *     Pull is a request the server must answer, so — unlike the
+   *     push model, where a clean overlay open typically produces
+   *     NO publish at all — cleanliness gets an explicit ack.
+   *   - `None` — no verdict: the server doesn't advertise the pull
+   *     capability, the request failed or timed out, or it answered
+   *     with an `unchanged`-kind report (only possible against a
+   *     `previousResultId`, which this call never sends — treated
+   *     as no-verdict rather than guessed at). Callers fall back to
+   *     the push path: [[publishGeneration]] +
+   *     [[waitForDiagnostics(uri:String,sinceGeneration:Long,timeoutMs:Long,pollMs:Long)*]].
+   *
+   * Never conflates "clean" with "unanswered" — the exact
+   * distinction the push model cannot express.
+   */
   def pullDiagnosticsVerdict(uri: String): Task[Option[List[Diagnostic]]] =
     if (!supportsPullDiagnostics) Task.pure(None)
     else pullDiagnostics(uri).map {
@@ -432,9 +464,12 @@ final class LspSession(val config: LspServerConfig,
   // ---- shutdown ----
 
   def shutdown(): Task[Unit] = Task {
-    try { server.shutdown().get(2, java.util.concurrent.TimeUnit.SECONDS); () } catch { case _: Throwable => () }
-    try { server.exit() } catch { case _: Throwable => () }
-    try { process.destroy() } catch { case _: Throwable => () }
+    try { server.shutdown().get(2, java.util.concurrent.TimeUnit.SECONDS); () }
+    catch { case _: Throwable => () }
+    try server.exit()
+    catch { case _: Throwable => () }
+    try process.destroy()
+    catch { case _: Throwable => () }
     if (process.isAlive) {
       process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
       if (process.isAlive) process.destroyForcibly()
@@ -488,9 +523,11 @@ object LspSession {
     }
   }
 
-  /** Capability declarations for every feature this module exposes
-    * as a tool. Servers gate behaviors on these — Metals only sends
-    * inlay hints when the client says it supports them, etc. */
+  /**
+   * Capability declarations for every feature this module exposes
+   * as a tool. Servers gate behaviors on these — Metals only sends
+   * inlay hints when the client says it supports them, etc.
+   */
   private def buildClientCapabilities(): ClientCapabilities = {
     val caps = new ClientCapabilities()
 
@@ -541,7 +578,7 @@ object LspSession {
       if (error != null) {
         val unwrapped = error match {
           case ce: java.util.concurrent.CompletionException if ce.getCause != null => ce.getCause
-          case other                                                               => other
+          case other => other
         }
         completable.failure(unwrapped)
       } else completable.success(value)
@@ -549,9 +586,11 @@ object LspSession {
     completable
   }
 
-  /** Coalesce `Either<List[Location], List[LocationLink]>` into a flat
-    * `List[Location]`. LSP-3.14 servers can return either shape; the
-    * agent only cares about the URI + range, so we collapse early. */
+  /**
+   * Coalesce `Either<List[Location], List[LocationLink]>` into a flat
+   * `List[Location]`. LSP-3.14 servers can return either shape; the
+   * agent only cares about the URI + range, so we collapse early.
+   */
   def flattenLocations(either: LspEither[java.util.List[? <: Location], java.util.List[? <: LocationLink]]): List[Location] =
     if (either == null) Nil
     else if (either.isLeft) either.getLeft.asScala.toList.map(identity[Location])

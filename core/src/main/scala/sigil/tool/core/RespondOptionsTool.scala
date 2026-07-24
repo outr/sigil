@@ -19,9 +19,9 @@ import sigil.tool.model.{RespondOptionsInput, ResponseContent, SelectOption}
  * normal Message channel.
  */
 case object RespondOptionsTool extends RespondFamilyTool {
-  type Input  = RespondOptionsInput
+  type Input = RespondOptionsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RespondOptionsInput]]
+  val inputRW = summon[RW[RespondOptionsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("respond_options")
@@ -50,16 +50,16 @@ case object RespondOptionsTool extends RespondFamilyTool {
     ToolExample(
       "single-select — forced choice between mutually-exclusive options",
       RespondOptionsInput(
-        prompt        = "Should I commit this change?",
-        options       = List(SelectOption("Yes", "yes"), SelectOption("No", "no")),
+        prompt = "Should I commit this change?",
+        options = List(SelectOption("Yes", "yes"), SelectOption("No", "no")),
         allowMultiple = false
       )
     ),
     ToolExample(
       "multi-select — independent choices the user can pick in any combination",
       RespondOptionsInput(
-        prompt        = "Which integrations should I enable?",
-        options       = List(
+        prompt = "Which integrations should I enable?",
+        options = List(
           SelectOption("Slack", "slack"),
           SelectOption("Email", "email"),
           SelectOption("Discord", "discord")

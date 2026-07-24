@@ -15,9 +15,9 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * other commands whose output IS the value.
  */
 final class ProcessSpawnTool(registry: ProcessRegistry) extends Tool {
-  type Input  = ProcessSpawnInput
+  type Input = ProcessSpawnInput
   type Output = ProcessSpawnOutput
-  val inputRW  = summon[RW[ProcessSpawnInput]]
+  val inputRW = summon[RW[ProcessSpawnInput]]
   val outputRW = summon[RW[ProcessSpawnOutput]]
 
   val name = ToolName("process_spawn")
@@ -28,19 +28,19 @@ final class ProcessSpawnTool(registry: ProcessRegistry) extends Tool {
       |conversation workspace; `env` extra env vars; `stdin` is piped to the child once
       |(the child sees EOF).""".stripMargin
   override val examples = List(
-    ToolExample("Start tsc --watch",   ProcessSpawnInput(command = "tsc --watch --noEmit")),
-    ToolExample("Start a dev server",   ProcessSpawnInput(command = "npm run dev")),
-    ToolExample("Tail a log",           ProcessSpawnInput(command = "tail -F app.log"))
+    ToolExample("Start tsc --watch", ProcessSpawnInput(command = "tsc --watch --noEmit")),
+    ToolExample("Start a dev server", ProcessSpawnInput(command = "npm run dev")),
+    ToolExample("Tail a log", ProcessSpawnInput(command = "tail -F app.log"))
   )
   override val keywords = Set("process", "spawn", "background", "watch", "tail", "stream", "subprocess")
 
   override def executeOutput(input: ProcessSpawnInput, ctx: ToolContext): Task[ProcessSpawnOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       registry.spawn(
-        command        = input.command,
-        workingDir     = dir,
-        env            = input.env.getOrElse(Map.empty),
-        stdin          = input.stdin,
+        command = input.command,
+        workingDir = dir,
+        env = input.env.getOrElse(Map.empty),
+        stdin = input.stdin,
         conversationId = ctx.conversation.id
       ).map { handle =>
         ProcessSpawnOutput(handle = handle.id, pid = handle.pid, startedAt = handle.startedAt)

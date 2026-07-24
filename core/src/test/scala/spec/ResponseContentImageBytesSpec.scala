@@ -27,7 +27,7 @@ class ResponseContentImageBytesSpec extends AsyncWordSpec with AsyncTaskSpec wit
   "ResponseContent.ImageBytes (sigil #296)" should {
 
     "constructable with mediaType + base64 + optional alt" in Task {
-      val withAlt    = ResponseContent.ImageBytes("image/png", tinyPng, Some("tiny test png"))
+      val withAlt = ResponseContent.ImageBytes("image/png", tinyPng, Some("tiny test png"))
       val withoutAlt = ResponseContent.ImageBytes("image/jpeg", tinyPng)
       withAlt match {
         case ResponseContent.ImageBytes(mt, b64, alt) =>
@@ -54,8 +54,8 @@ class ResponseContentImageBytesSpec extends AsyncWordSpec with AsyncTaskSpec wit
     "HtmlRenderer emits an inline `<img src=\"data:...;base64,...\">`" in Task {
       val block = ResponseContent.ImageBytes("image/png", tinyPng, Some("alpha"))
       val rendered = HtmlRenderer.renderBlock(block)
-      rendered should include (s"src=\"data:image/png;base64,$tinyPng\"")
-      rendered should include ("alt=\"alpha\"")
+      rendered should include(s"src=\"data:image/png;base64,$tinyPng\"")
+      rendered should include("alt=\"alpha\"")
     }
 
     "PlainTextRenderer falls back to alt text or media-type marker" in Task {
@@ -79,11 +79,13 @@ class ResponseContentImageBytesSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
   "Provider.toMessageContent (sigil #296)" should {
 
-    /** Reflective bridge — `toMessageContent` is private. Tests it
-      * through a synthetic Provider via reflection to confirm the
-      * wire-layer translation lands on the correct
-      * MessageContent.ImageBytes variant (NOT MessageContent.Image
-      * with a mangled URL). */
+    /**
+     * Reflective bridge — `toMessageContent` is private. Tests it
+     * through a synthetic Provider via reflection to confirm the
+     * wire-layer translation lands on the correct
+     * MessageContent.ImageBytes variant (NOT MessageContent.Image
+     * with a mangled URL).
+     */
     "translate ResponseContent.ImageBytes → MessageContent.ImageBytes verbatim" in Task {
       val block = ResponseContent.ImageBytes("image/png", tinyPng, Some("alpha"))
       val m = classOf[sigil.provider.Provider]
@@ -99,7 +101,7 @@ class ResponseContentImageBytesSpec extends AsyncWordSpec with AsyncTaskSpec wit
       }
       val result = m.invoke(provider, Vector(block)).asInstanceOf[Vector[MessageContent]]
       result should have size 1
-      result.head shouldBe a [MessageContent.ImageBytes]
+      result.head shouldBe a[MessageContent.ImageBytes]
       val ib = result.head.asInstanceOf[MessageContent.ImageBytes]
       ib.mediaType shouldBe "image/png"
       ib.base64 shouldBe tinyPng

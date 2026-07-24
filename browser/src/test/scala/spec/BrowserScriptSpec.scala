@@ -39,12 +39,12 @@ class BrowserScriptSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         cookieJarId = Some(CookieJar.id("test-jar"))
       )
       for {
-        _      <- TestBrowserSigil.createTool(script)
+        _ <- TestBrowserSigil.createTool(script)
         loaded <- TestBrowserSigil.withDB(_.tools.transaction(_.get(script._id)))
       } yield {
         loaded.isDefined shouldBe true
         val tool = loaded.get
-        tool shouldBe a [BrowserScript]
+        tool shouldBe a[BrowserScript]
         val bs = tool.asInstanceOf[BrowserScript]
         bs.name.value shouldBe "scrape_news"
         bs.steps should have size 3
@@ -58,26 +58,26 @@ class BrowserScriptSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
     }
 
-    "expose itself in eventSubtypeNames as a tool record (round-trips through SigilDB.tools)" in {
+    "expose itself in eventSubtypeNames as a tool record (round-trips through SigilDB.tools)" in
       Task {
-        TestBrowserSigil.allEventRWs should not be empty  // sanity: registry populated
+        TestBrowserSigil.allEventRWs should not be empty // sanity: registry populated
       }
-    }
   }
 
   "BrowserScript.Resolver" should {
 
-    "substitute ${arg} placeholders from the JSON args" in {
+    "substitute ${arg} placeholders from the JSON args" in
       Task {
         val args = fabric.obj("indexUrl" -> fabric.str("https://example.com/news"))
         val resolved = BrowserScript.Resolver.resolve(
-          "${indexUrl}/topic/foo", args, Map.empty
+          "${indexUrl}/topic/foo",
+          args,
+          Map.empty
         )
         resolved shouldBe "https://example.com/news/topic/foo"
       }
-    }
 
-    "substitute ${outputs.<name>} placeholders from earlier extract steps" in {
+    "substitute ${outputs.<name>} placeholders from earlier extract steps" in
       Task {
         val resolved = BrowserScript.Resolver.resolve(
           "Found: ${outputs.summary}",
@@ -86,26 +86,27 @@ class BrowserScriptSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         )
         resolved shouldBe "Found: Three articles"
       }
-    }
 
-    "leave unmatched placeholders as the empty string" in {
+    "leave unmatched placeholders as the empty string" in
       Task {
         val resolved = BrowserScript.Resolver.resolve(
-          "Missing: ${nope}", Obj.empty, Map.empty
+          "Missing: ${nope}",
+          Obj.empty,
+          Map.empty
         )
         resolved shouldBe "Missing: "
       }
-    }
 
-    "support dotted paths into nested args" in {
+    "support dotted paths into nested args" in
       Task {
         val args = fabric.obj("user" -> fabric.obj("name" -> fabric.str("alice")))
         val resolved = BrowserScript.Resolver.resolve(
-          "Hi ${user.name}", args, Map.empty
+          "Hi ${user.name}",
+          args,
+          Map.empty
         )
         resolved shouldBe "Hi alice"
       }
-    }
   }
 
   "tear down" should {

@@ -18,9 +18,9 @@ class AnthropicBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
   TestSigil.initFor(getClass.getSimpleName)
 
   private def req(text: String, maxTokens: Int = 1024): OneShotRequest = OneShotRequest(
-    model              = TestSigil.testModel(sigil.db.Model.id("anthropic", "claude-haiku-4-5")),
-    systemPrompt       = "You are a classifier.",
-    userPrompt         = text,
+    model = TestSigil.testModel(sigil.db.Model.id("anthropic", "claude-haiku-4-5")),
+    systemPrompt = "You are a classifier.",
+    userPrompt = text,
     generationSettings = sigil.provider.GenerationSettings(
       outputTokenCap = sigil.provider.OutputTokenCap.Below(maxTokens)
     )
@@ -46,9 +46,9 @@ class AnthropicBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
     "default max_tokens when the request doesn't specify one" in rapid.Task {
       val r = OneShotRequest(
-        model        = TestSigil.testModel(sigil.db.Model.id("anthropic", "claude-haiku-4-5")),
+        model = TestSigil.testModel(sigil.db.Model.id("anthropic", "claude-haiku-4-5")),
         systemPrompt = "test",
-        userPrompt   = "hi"
+        userPrompt = "hi"
         // no generationSettings → ModelMax outputTokenCap
       )
       val json = AnthropicBatch.renderRequestEntry(r)
@@ -57,10 +57,10 @@ class AnthropicBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
     "render ImageBytes content as base64 image source" in rapid.Task {
       val r = OneShotRequest(
-        model        = TestSigil.testModel(sigil.db.Model.id("anthropic", "claude-opus-4-7")),
+        model = TestSigil.testModel(sigil.db.Model.id("anthropic", "claude-opus-4-7")),
         systemPrompt = "Describe.",
-        userPrompt   = "",
-        userContent  = Vector(
+        userPrompt = "",
+        userContent = Vector(
           ResponseContent.Text("What's in this image?"),
           ResponseContent.ImageBytes("image/png", "iVBORw0KGgo")
         )
@@ -78,9 +78,9 @@ class AnthropicBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
     "omit `system` when the systemPrompt is empty" in rapid.Task {
       val r = OneShotRequest(
-        model        = TestSigil.testModel(sigil.db.Model.id("anthropic", "claude-haiku-4-5")),
+        model = TestSigil.testModel(sigil.db.Model.id("anthropic", "claude-haiku-4-5")),
         systemPrompt = "",
-        userPrompt   = "no system"
+        userPrompt = "no system"
       )
       val json = AnthropicBatch.renderRequestEntry(r)
       json("params").get("system") shouldBe None
@@ -91,7 +91,8 @@ class AnthropicBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
     "decode a succeeded result with content + usage" in rapid.Task {
       val customId = "ab-success-001"
-      val line = """{"custom_id":"""" + customId + """","result":{"type":"succeeded","message":{"content":[{"type":"text","text":"foo bar"}],"usage":{"input_tokens":12,"output_tokens":3}}}}"""
+      val line = """{"custom_id":"""" + customId +
+        """","result":{"type":"succeeded","message":{"content":[{"type":"text","text":"foo bar"}],"usage":{"input_tokens":12,"output_tokens":3}}}}"""
       val parsed = AnthropicBatch.parseResultLine(line)
       parsed shouldBe defined
       val r = parsed.get
@@ -105,7 +106,8 @@ class AnthropicBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
     "decode an errored result" in rapid.Task {
       val customId = "ab-error-002"
-      val line = """{"custom_id":"""" + customId + """","result":{"type":"errored","error":{"type":"invalid_request_error","message":"prompt too long"}}}"""
+      val line = """{"custom_id":"""" + customId +
+        """","result":{"type":"errored","error":{"type":"invalid_request_error","message":"prompt too long"}}}"""
       val parsed = AnthropicBatch.parseResultLine(line)
       parsed shouldBe defined
       val r = parsed.get
@@ -131,7 +133,7 @@ class AnthropicBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
   "AnthropicProvider.batchSupported" should {
     "be true (native batch override is wired)" in rapid.Task {
       val provider = sigil.provider.anthropic.AnthropicProvider(
-        apiKey   = "test-key",
+        apiKey = "test-key",
         sigilRef = TestSigil
       )
       provider.batchSupported shouldBe true

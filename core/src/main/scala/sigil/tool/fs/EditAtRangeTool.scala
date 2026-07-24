@@ -24,11 +24,10 @@ import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolRe
  * `expectedHash` enables safe-edit: the commit fires only if no
  * other writer has modified the file since the hash was issued.
  */
-final class EditAtRangeTool(context: FileSystemContext)
-  extends Tool with sigil.tool.DestructiveExternalTool {
-  type Input  = EditAtRangeInput
+final class EditAtRangeTool(context: FileSystemContext) extends Tool with sigil.tool.DestructiveExternalTool {
+  type Input = EditAtRangeInput
   type Output = EditAtRangeOutput
-  val inputRW  = summon[RW[EditAtRangeInput]]
+  val inputRW = summon[RW[EditAtRangeInput]]
   val outputRW = summon[RW[EditAtRangeOutput]]
   val name = ToolName("edit_at_range")
   override def mutationTarget(input: EditAtRangeInput): Option[String] = Some(input.path)
@@ -55,17 +54,32 @@ final class EditAtRangeTool(context: FileSystemContext)
   override val examples = List(
     ToolExample(
       "Replace a single line",
-      EditAtRangeInput(path = "src/main.scala", startLine = 4, startChar = 0, endLine = 5, endChar = 0,
+      EditAtRangeInput(
+        path = "src/main.scala",
+        startLine = 4,
+        startChar = 0,
+        endLine = 5,
+        endChar = 0,
         newText = "  val x = 42\n")
     ),
     ToolExample(
       "Insert at a specific column",
-      EditAtRangeInput(path = "config.toml", startLine = 0, startChar = 0, endLine = 0, endChar = 0,
+      EditAtRangeInput(
+        path = "config.toml",
+        startLine = 0,
+        startChar = 0,
+        endLine = 0,
+        endChar = 0,
         newText = "# header\n")
     ),
     ToolExample(
       "Delete a multi-line block",
-      EditAtRangeInput(path = "src/util.scala", startLine = 10, startChar = 0, endLine = 14, endChar = 0,
+      EditAtRangeInput(
+        path = "src/util.scala",
+        startLine = 10,
+        startChar = 0,
+        endLine = 14,
+        endChar = 0,
         newText = "")
     )
   )
@@ -75,11 +89,10 @@ final class EditAtRangeTool(context: FileSystemContext)
   override val keywords =
     Set("file", "edit", "range", "position", "line", "column", "replace")
 
-
   override def executeResult(input: EditAtRangeInput, ctx: ToolContext): Task[ToolResult[EditAtRangeOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
-      case None        => runEdit(input, ctx)
+      case None => runEdit(input, ctx)
     }
 
   private def renderInputArgs(input: EditAtRangeInput): Option[String] =
@@ -109,8 +122,7 @@ final class EditAtRangeTool(context: FileSystemContext)
             ExpectedHash.normalize(input.expectedHash) match {
               case None =>
                 context.writeFile(resolved, next).map(_ =>
-                  ToolResult.success(EditAtRangeOutput.Success(hash = None, lineDelta = lineDelta, byteDelta = byteDelta))
-                )
+                  ToolResult.success(EditAtRangeOutput.Success(hash = None, lineDelta = lineDelta, byteDelta = byteDelta)))
               case Some(hash) =>
                 val expected = FileVersion(hash, Timestamp())
                 context.writeIfMatch(resolved, next, expected).map {
@@ -145,14 +157,18 @@ final class EditAtRangeTool(context: FileSystemContext)
 
 object EditAtRangeTool {
 
-  /** Apply a half-open `[start, end)` range edit to `content`,
-    * returning the new content or a human-readable failure reason.
-    * Pure; no IO. */
+  /**
+   * Apply a half-open `[start, end)` range edit to `content`,
+   * returning the new content or a human-readable failure reason.
+   * Pure; no IO.
+   */
   def applyRange(content: String, input: EditAtRangeInput): Either[String, String] = {
     if (input.startLine < 0 || input.startChar < 0 || input.endLine < 0 || input.endChar < 0)
       return Left("negative line / character index")
-    if (input.endLine < input.startLine ||
-        (input.endLine == input.startLine && input.endChar < input.startChar))
+    if (
+      input.endLine < input.startLine ||
+      (input.endLine == input.startLine && input.endChar < input.startChar)
+    )
       return Left(s"end position (${input.endLine}:${input.endChar}) precedes start (${input.startLine}:${input.startChar})")
 
     val lines = content.split("\n", -1)

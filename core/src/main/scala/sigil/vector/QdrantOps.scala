@@ -18,17 +18,21 @@ import spice.net.{ContentType, URL}
  */
 object QdrantOps {
 
-  /** Verify the server is reachable. Returns `false` on any error
-    * rather than propagating — callers typically fall back to an
-    * in-memory index when Qdrant is unavailable in dev environments. */
+  /**
+   * Verify the server is reachable. Returns `false` on any error
+   * rather than propagating — callers typically fall back to an
+   * in-memory index when Qdrant is unavailable in dev environments.
+   */
   def healthCheck(baseUrl: URL): Task[Boolean] =
     HttpClient.url(baseUrl.withPath("/healthz")).get.send()
       .map(_.status.code == 200)
       .handleError(_ => Task.pure(false))
 
-  /** Ensure a collection exists with the given vector dimensionality
-    * and cosine distance. Idempotent — creating an existing collection
-    * is a no-op. */
+  /**
+   * Ensure a collection exists with the given vector dimensionality
+   * and cosine distance. Idempotent — creating an existing collection
+   * is a no-op.
+   */
   def ensureCollection(baseUrl: URL, name: String, dimensions: Int): Task[Unit] =
     HttpClient.url(baseUrl.withPath(s"/collections/$name")).get.send().flatMap { response =>
       if (response.status.code == 200) Task.unit
@@ -45,9 +49,11 @@ object QdrantOps {
     putJson(baseUrl.withPath(s"/collections/$name"), body).unit
   }
 
-  /** Upsert a batch of points. The wait flag is set so subsequent
-    * searches see the writes immediately — matches the latency
-    * contract callers expect from the [[VectorIndex]] trait. */
+  /**
+   * Upsert a batch of points. The wait flag is set so subsequent
+   * searches see the writes immediately — matches the latency
+   * contract callers expect from the [[VectorIndex]] trait.
+   */
   def upsert(baseUrl: URL, collection: String, points: List[VectorPoint]): Task[Unit] = {
     val pointsJson = points.map { p =>
       val payloadObj = Obj(p.payload.toList.map { case (k, v) => k -> str(v) }*)
@@ -77,13 +83,13 @@ object QdrantOps {
       json("result").asVector.map { r =>
         val id = r("id") match {
           case Str(s, _) => s
-          case other     => other.toString.stripPrefix("\"").stripSuffix("\"")
+          case other => other.toString.stripPrefix("\"").stripSuffix("\"")
         }
         val payload = r.get("payload").map(_.asObj).getOrElse(Obj.empty)
         val metadata = payload.value.toList.flatMap { case (k, v) =>
           v match {
             case Str(s, _) => Some(k -> s)
-            case _         => None
+            case _ => None
           }
         }.toMap
         VectorSearchResult(id, r("score").asDouble, metadata)
@@ -101,14 +107,18 @@ object QdrantOps {
       obj("points" -> arr(ids.map(str)*))
     ).unit
 
-  /** Generate a Qdrant-compatible UUID point id. Qdrant accepts either
-    * unsigned int or UUID — Sigil standardizes on UUID because the
-    * upstream ids (memory ids, summary ids, event ids) are already
-    * opaque strings, not integers. */
+  /**
+   * Generate a Qdrant-compatible UUID point id. Qdrant accepts either
+   * unsigned int or UUID — Sigil standardizes on UUID because the
+   * upstream ids (memory ids, summary ids, event ids) are already
+   * opaque strings, not integers.
+   */
   def generateId(): String = Unique.uuid.sync()
 
-  /** Translate a flat `Map[String, String]` filter into Qdrant's
-    * `must + match` shape. */
+  /**
+   * Translate a flat `Map[String, String]` filter into Qdrant's
+   * `must + match` shape.
+   */
   private def filterExpr(filter: Map[String, String]): Json = {
     val conditions = filter.toList.map { case (k, v) =>
       obj("key" -> str(k), "match" -> obj("value" -> str(v)))
@@ -130,7 +140,7 @@ object QdrantOps {
       .flatMap { response =>
         response.content match {
           case Some(c) => c.asString.map(JsonParser(_))
-          case None    => Task.pure(Obj.empty)
+          case None => Task.pure(Obj.empty)
         }
       }
 }

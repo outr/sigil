@@ -7,7 +7,9 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{ContextFrame, Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.Message
-import sigil.provider.{ConversationRequest, Effort, GenerationSettings, Instructions, Mode, ConversationMode, Provider, ProviderEvent, StopReason}
+import sigil.provider.{
+  ConversationRequest, Effort, GenerationSettings, Instructions, Mode, ConversationMode, Provider, ProviderEvent, StopReason
+}
 import sigil.tool.core.{ChangeModeTool, CoreTools, FindCapabilityInput, RespondTool}
 import sigil.tool.{Tool, ToolInput}
 import sigil.tool.model.{ChangeModeInput, RespondInput, RespondOptionsInput, ResponseContent}
@@ -16,7 +18,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   // 5-min cap accommodates worst-case live-LLM latency under 4-way
   // fork contention; the framework's default 1-min routinely killed
   // healthy in-flight calls.
-  override implicit protected val testTimeout: scala.concurrent.duration.FiniteDuration =
+  implicit override protected val testTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(5).minutes
 
   TestSigil.initFor(getClass.getSimpleName)
@@ -38,10 +40,11 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   protected def supportsThinking: Boolean = true
 
-  protected def request(message: String,
-                        currentMode: Mode = ConversationMode,
-                        generationSettings: GenerationSettings =
-                          GenerationSettings(maxOutputTokens = Some(1500), temperature = Some(0.0))): Task[List[ProviderEvent]] = provider.flatMap { p =>
+  protected def request(
+    message: String,
+    currentMode: Mode = ConversationMode,
+    generationSettings: GenerationSettings =
+      GenerationSettings(maxOutputTokens = Some(1500), temperature = Some(0.0))): Task[List[ProviderEvent]] = provider.flatMap { p =>
     val conversationId = Conversation.id("test-conversation")
     val userMessage = Message(
       participantId = TestUser,
@@ -141,7 +144,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           "(?i)^\\s*(searching|scanning|looking|checking|starting|working on|let me (?:search|check|start|look|scan|compile)|i'?ll (?:now|start|begin|search|scan|compile)|i will (?:now|start|begin|search|scan|compile))".r
         val announcedTerminals = events.collect {
           case ProviderEvent.ToolCallComplete(_, i: RespondInput)
-            if i.endsTurn && announceHead.findFirstIn(i.content).isDefined => i.content.take(120)
+              if i.endsTurn && announceHead.findFirstIn(i.content).isDefined => i.content.take(120)
         }
         withClue(s"announce-shaped respond(s) ended the turn: $announcedTerminals: ") {
           announcedTerminals shouldBe empty
@@ -171,7 +174,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         val responseFamily = Set(RespondTool.schema.name.value, "respond_options")
         request("What is 2+2? Respond with just the number.", generationSettings = gen).map { events =>
           val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
-          responseFamily should contain (start.map(_.toolName).getOrElse(""))
+          responseFamily should contain(start.map(_.toolName).getOrElse(""))
           events.last shouldBe a[ProviderEvent.Done]
           events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
         }

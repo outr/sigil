@@ -6,7 +6,10 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
-import sigil.provider.{CallId, GenerationSettings, MessageContent, OutputTokenCap, Provider, ProviderCall, ProviderEvent, ProviderMessage, ProviderType, StopReason}
+import sigil.provider.{
+  CallId, GenerationSettings, MessageContent, OutputTokenCap, Provider, ProviderCall, ProviderEvent, ProviderMessage, ProviderType,
+  StopReason
+}
 import sigil.tool.consult.{ConsultTool, SummarizationInput, SummarizationTool}
 
 import java.util.concurrent.atomic.AtomicReference
@@ -50,8 +53,10 @@ class ConsultLargeShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     _id = modelId
   ))).sync()
 
-  /** Captures every ProviderCall and answers `summarize_conversation`
-    * with a canned large [[SummarizationInput]]. */
+  /**
+   * Captures every ProviderCall and answers `summarize_conversation`
+   * with a canned large [[SummarizationInput]].
+   */
   private class CapturingStubProvider(summary: String) extends Provider {
     val seenCalls = new AtomicReference[Vector[ProviderCall]](Vector.empty)
 

@@ -39,7 +39,8 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
   // the same field to a new Some(_) and asserts the merged record.
   case class DeltaTestState(activeTab: Option[String] = None,
                             panelOpen: Option[Boolean] = None,
-                            theme: Option[String] = None) extends ViewerStatePayload derives RW
+                            theme: Option[String] = None)
+    extends ViewerStatePayload derives RW
 
   ViewerStatePayload.register(summon[RW[DeltaTestState]])
 
@@ -62,8 +63,10 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private def collectSnapshots(q: ConcurrentLinkedQueue[Signal], scope: String): List[ViewerStateSnapshot] =
     q.iterator().asScala.toList.collect { case s: ViewerStateSnapshot if s.scope == scope => s }
 
-  /** Poll until `get` satisfies `done` (or the timeout elapses).
-    * Replaces fixed sleeps for async Notice propagation. */
+  /**
+   * Poll until `get` satisfies `done` (or the timeout elapses).
+   * Replaces fixed sleeps for async Notice propagation.
+   */
   private def await[A](timeout: FiniteDuration = 5.seconds)(get: => List[A])(done: List[A] => Boolean): Task[List[A]] = {
     def loop(remainingMs: Long): Task[List[A]] = {
       val cur = get
@@ -92,7 +95,7 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
     "deep-merge the patch into the persisted payload (untouched fields preserved)" in {
       val (recorded, stop) = subscribe(TestUser)
       val initial = DeltaTestState(activeTab = Some("chat"), panelOpen = Some(true), theme = Some("light"))
-      val patch   = DeltaTestState(theme = Some("dark"))  // only theme changes
+      val patch = DeltaTestState(theme = Some("dark")) // only theme changes
       for {
         _ <- TestSigil.handleNotice(UpdateViewerState("delta-merge", initial), TestUser)
         _ <- await()(collectSnapshots(recorded, "delta-merge"))(_.nonEmpty)
@@ -136,7 +139,7 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
         // so we assert only on the snapshots the push generates.
         _ <- await()(collectSnapshots(recorded, "push-scope-1"))(_.nonEmpty)
         _ <- await()(collectSnapshots(recorded, "push-scope-2"))(_.nonEmpty)
-        _  = recorded.clear()
+        _ = recorded.clear()
         _ <- TestSigil.publishViewerStatesTo(TestUser)
         pushed <- await() {
           recorded.iterator().asScala.toList.collect {

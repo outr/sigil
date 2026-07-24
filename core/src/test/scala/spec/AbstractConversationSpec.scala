@@ -33,7 +33,7 @@ trait AbstractConversationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   // the rapid-test default per-test timeout is 1 minute, which the
   // multi-turn case can edge past. 3 minutes is generous for any
   // realistic provider.
-  override implicit protected val testTimeout: FiniteDuration = 3.minutes
+  implicit override protected val testTimeout: FiniteDuration = 3.minutes
 
   TestSigil.initFor(getClass.getSimpleName)
   TestSigil.setProvider(provider)
@@ -41,23 +41,29 @@ trait AbstractConversationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   protected def provider: Task[Provider]
   protected def modelId: Id[Model]
 
-  /** Tools the agent advertises. Defaults to `CoreTools.coreToolNames`
-    * plus the opt-in `change_mode` tool (the mode-switch test relies
-    * on it being callable). Apps can override to add app-specific
-    * tools to the roster. */
+  /**
+   * Tools the agent advertises. Defaults to `CoreTools.coreToolNames`
+   * plus the opt-in `change_mode` tool (the mode-switch test relies
+   * on it being callable). Apps can override to add app-specific
+   * tools to the roster.
+   */
   protected def toolNames: List[ToolName] =
     CoreTools.coreToolNames :+ sigil.tool.core.ChangeModeTool.schema.name
 
-  /** Generation settings for the agent. 4000 max tokens leaves room for
-    * the respond tool's `topicLabel` + `topicSummary` + content without
-    * truncation; temperature 0.0 for reproducibility. */
+  /**
+   * Generation settings for the agent. 4000 max tokens leaves room for
+   * the respond tool's `topicLabel` + `topicSummary` + content without
+   * truncation; temperature 0.0 for reproducibility.
+   */
   protected def generationSettings: GenerationSettings =
     GenerationSettings(maxOutputTokens = Some(4000), temperature = Some(0.0))
 
-  /** Tool-discovery policy. Default keeps the respond family in the immediate
-    * roster (`Standard`); local / quantised models override to
-    * [[ToolPolicy.PureDiscovery]] so every reply path goes through
-    * `find_capability` and the model can't lock onto `respond`. */
+  /**
+   * Tool-discovery policy. Default keeps the respond family in the immediate
+   * roster (`Standard`); local / quantised models override to
+   * [[ToolPolicy.PureDiscovery]] so every reply path goes through
+   * `find_capability` and the model can't lock onto `respond`.
+   */
   protected def toolPolicy: ToolPolicy = ToolPolicy.Standard
 
   protected def makeAgent(): AgentParticipant =
@@ -74,11 +80,12 @@ trait AbstractConversationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     ConversationHarness(
       sigil = TestSigil,
       viewer = TestUser,
-      conversationFactory = convId => Conversation(
-        topics = List(TestTopicEntry),
-        _id = convId,
-        participants = List(makeAgent())
-      )
+      conversationFactory = convId =>
+        Conversation(
+          topics = List(TestTopicEntry),
+          _id = convId,
+          participants = List(makeAgent())
+        )
     )
 
   protected def withClient(suffix: String)(f: ConversationSession => Task[Assertion]): Task[Assertion] =
@@ -97,15 +104,14 @@ trait AbstractConversationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   // --- Default scenarios ---
 
   s"${getClass.getSimpleName} (DurableSocket end-to-end)" should {
-    "round-trip a single user message and receive a non-empty agent reply" in {
+    "round-trip a single user message and receive a non-empty agent reply" in
       withClient("single-turn") { s =>
         s.send("Reply with the single word 'hi'.").map { reply =>
           ConversationSession.textOf(reply) should not be empty
           succeed
         }
       }
-    }
-    "carry context across multiple turns in the same conversation" in {
+    "carry context across multiple turns in the same conversation" in
       withClient("multi-turn") { s =>
         for {
           _ <- s.send("My favorite color is blue. Acknowledge in one short sentence.")
@@ -115,8 +121,7 @@ trait AbstractConversationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           succeed
         }
       }
-    }
-    "switch to the coding mode over the wire when the user asks to start a coding session" in {
+    "switch to the coding mode over the wire when the user asks to start a coding session" in
       // Bug #203 — single-action "write me a function" no longer
       // triggers change_mode (correctly; CodingMode's "Don't enter
       // for" clause names exactly that pattern). Reframe as a
@@ -126,14 +131,13 @@ trait AbstractConversationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         for {
           _ <- s.send(
             "I'm starting a coding session on a Scala project — let's iterate together over " +
-            "several turns: first design, then write, then test. Switch to coding mode and " +
-            "we'll begin."
+              "several turns: first design, then write, then test. Switch to coding mode and " +
+              "we'll begin."
           )
           conv <- s.conversation
         } yield conv.currentMode.name should be(TestCodingMode.name)
       }
-    }
-    "replay missed events from SigilDB.events when a client resumes after disconnect" in {
+    "replay missed events from SigilDB.events when a client resumes after disconnect" in
       withClient("resume") { s =>
         for {
           firstReply <- s.send("Reply with the single word 'one'.")
@@ -158,6 +162,5 @@ trait AbstractConversationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           succeed
         }
       }
-    }
   }
 }

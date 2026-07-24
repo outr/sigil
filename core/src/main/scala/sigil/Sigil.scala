@@ -12,7 +12,11 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, TurnPlan, UpsertMemoryResult}
+import sigil.conversation.{
+  ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource,
+  MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput,
+  TurnPlan, UpsertMemoryResult
+}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
@@ -25,17 +29,27 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.{GenerationSettings, TokenUsage}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
+import sigil.event.{
+  AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange,
+  TopicChangeKind
+}
 import sigil.role.Role
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
-import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform}
+import sigil.pipeline.{
+  ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect,
+  MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub,
+  TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform
+}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.service.Service
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
+import sigil.signal.{
+  AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal,
+  ToolDelta, TopicDelta
+}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
@@ -159,19 +173,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   protected def workTypeRegistrations: List[sigil.provider.WorkType] = Nil
 
-  /** Mixin hook for polytype registrations that need the framework's leaf
-    * polytypes (Mode, WorkType, SpaceId, ...) populated before the mixin
-    * subtypes' RW Definitions are eagerly evaluated. Runs inside
-    * [[polymorphicRegistrations]] after the framework leaves and before
-    * the aggregates (Participant, Tool, Signal). Default `Task.unit`. */
+  /**
+   * Mixin hook for polytype registrations that need the framework's leaf
+   * polytypes (Mode, WorkType, SpaceId, ...) populated before the mixin
+   * subtypes' RW Definitions are eagerly evaluated. Runs inside
+   * [[polymorphicRegistrations]] after the framework leaves and before
+   * the aggregates (Participant, Tool, Signal). Default `Task.unit`.
+   */
   protected def mixinPolymorphicRegistrations: rapid.Task[Unit] =
     rapid.Task(sigil.information.Information.register(summon[RW[sigil.information.StoredInformation]]))
 
-  /** Aggregate of framework-shipped + app-registered [[WorkType]] subtypes —
-    * symmetric with [[modes]] / [[spaceIds]]. The codegen pipeline iterates
-    * this list to populate the Dart `WorkType` polytype's subtype dispatch
-    * + singleton fields. Apps add their own subtypes via
-    * [[workTypeRegistrations]]; the framework's own ride for free. */
+  /**
+   * Aggregate of framework-shipped + app-registered [[WorkType]] subtypes —
+   * symmetric with [[modes]] / [[spaceIds]]. The codegen pipeline iterates
+   * this list to populate the Dart `WorkType` polytype's subtype dispatch
+   * + singleton fields. Apps add their own subtypes via
+   * [[workTypeRegistrations]]; the framework's own ride for free.
+   */
   protected def workTypes: List[sigil.provider.WorkType] = (List[sigil.provider.WorkType](
     sigil.provider.ConversationWork,
     sigil.provider.CodingWork,
@@ -181,13 +199,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     sigil.provider.SummarizationWork
   ) ++ workTypeRegistrations).distinct
 
-  /** Every Event RW the framework knows about — `CoreSignals.events ++ eventRegistrations`. */
+  /**
+   * Every Event RW the framework knows about — `CoreSignals.events ++ eventRegistrations`.
+   */
   final def allEventRWs: List[RW[? <: Event]] = CoreSignals.events ++ eventRegistrations
 
-  /** Every Delta RW the framework knows about — `CoreSignals.deltas ++ deltaRegistrations`. */
+  /**
+   * Every Delta RW the framework knows about — `CoreSignals.deltas ++ deltaRegistrations`.
+   */
   final def allDeltaRWs: List[RW[? <: Delta]] = CoreSignals.deltas ++ deltaRegistrations
 
-  /** Every Notice RW the framework knows about — `CoreSignals.notices ++ noticeRegistrations`. */
+  /**
+   * Every Notice RW the framework knows about — `CoreSignals.notices ++ noticeRegistrations`.
+   */
   final def allNoticeRWs: List[RW[? <: Notice]] = CoreSignals.notices ++ noticeRegistrations
 
   /**
@@ -203,11 +227,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   final def eventSubtypeNames: Set[String] =
     allEventRWs.flatMap(_.definition.className).map(simpleClassName).toSet
 
-  /** Simple-class-name set of every registered Delta subtype. */
+  /**
+   * Simple-class-name set of every registered Delta subtype.
+   */
   final def deltaSubtypeNames: Set[String] =
     allDeltaRWs.flatMap(_.definition.className).map(simpleClassName).toSet
 
-  /** Simple-class-name set of every registered Notice subtype. */
+  /**
+   * Simple-class-name set of every registered Notice subtype.
+   */
   final def noticeSubtypeNames: Set[String] =
     allNoticeRWs.flatMap(_.definition.className).map(simpleClassName).toSet
 
@@ -367,9 +395,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def pinnedShareLimit: Double = 0.25
 
-  /** Backwards-compatible alias for [[pinnedShareLimit]]. New code
-    * uses `pinnedShareLimit`; this remains so existing callers
-    * compile. */
+  /**
+   * Backwards-compatible alias for [[pinnedShareLimit]]. New code
+   * uses `pinnedShareLimit`; this remains so existing callers
+   * compile.
+   */
   final def coreContextShareLimit: Double = pinnedShareLimit
 
   /**
@@ -432,7 +462,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * sub-task-closed signals (terminal tools that mark a unit of
    * work done) supply a custom [[StandardIntraTurnCompactor]] with
    * `terminalTools` populated, or implement [[IntraTurnCompactor]]
-   * directly. */
+   * directly.
+   */
   def intraTurnCompactor: _root_.sigil.conversation.compression.IntraTurnCompactor =
     _root_.sigil.conversation.compression.StandardIntraTurnCompactor(
       invariants = compactionInvariants
@@ -451,23 +482,26 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    *
    * Apps override to add app-specific protections (e.g. "never fold
    * the most-recent `respond_card` while the thread render is live")
-   * or to drop a default for a custom shedder shape. */
+   * or to drop a default for a custom shedder shape.
+   */
   def compactionInvariants: List[_root_.sigil.conversation.compression.CompactionInvariant] =
     _root_.sigil.conversation.compression.CompactionInvariant.standard
 
-  /** Sigil #285 — compressor invoked by the framework when the
-    * [[intraTurnCompactor]] decides to fold this iteration's eligible
-    * events. Default is a fresh [[MemoryContextCompressor]] with the
-    * standard prompts and extract-disabled (the mid-loop call skips
-    * memory extraction to keep the iteration boundary fast — apps
-    * that want extraction at this boundary supply a compressor with
-    * `extractFacts = true` or wire their own
-    * [[sigil.conversation.compression.IntraTurnCompactor]] that
-    * pre-runs extraction.
-    *
-    * Distinct from any compressor wired into the standard curator
-    * — the curator's compressor runs at user-turn boundaries; this
-    * one runs at iteration boundaries within a single user turn. */
+  /**
+   * Sigil #285 — compressor invoked by the framework when the
+   * [[intraTurnCompactor]] decides to fold this iteration's eligible
+   * events. Default is a fresh [[MemoryContextCompressor]] with the
+   * standard prompts and extract-disabled (the mid-loop call skips
+   * memory extraction to keep the iteration boundary fast — apps
+   * that want extraction at this boundary supply a compressor with
+   * `extractFacts = true` or wire their own
+   * [[sigil.conversation.compression.IntraTurnCompactor]] that
+   * pre-runs extraction.
+   *
+   * Distinct from any compressor wired into the standard curator
+   * — the curator's compressor runs at user-turn boundaries; this
+   * one runs at iteration boundaries within a single user turn.
+   */
   def intraTurnCompressor: _root_.sigil.conversation.compression.MemoryContextCompressor =
     _root_.sigil.conversation.compression.MemoryContextCompressor(extractFacts = false)
 
@@ -499,23 +533,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def narrowRosterByRecentUse: Boolean = false
 
-  /** Sigil #285 — per-iteration cost threshold above which the
-    * intra-turn compactor considers folding worthwhile. Default =
-    * `0.6 × min(contextLength, inputTokensPerMinute × safetyMargin)`,
-    * leaving 40% headroom for the un-shed sections (system prompt,
-    * tool roster, the kept-recent events).
-    *
-    * Models with no `inputTokensPerMinute` configured fall through
-    * to `0.6 × contextLength`. Models with no registry record at
-    * all return `Long.MaxValue` (no threshold — only natural-boundary
-    * triggers will fire). Apps override for stricter / looser
-    * folding cadence. */
+  /**
+   * Sigil #285 — per-iteration cost threshold above which the
+   * intra-turn compactor considers folding worthwhile. Default =
+   * `0.6 × min(contextLength, inputTokensPerMinute × safetyMargin)`,
+   * leaving 40% headroom for the un-shed sections (system prompt,
+   * tool roster, the kept-recent events).
+   *
+   * Models with no `inputTokensPerMinute` configured fall through
+   * to `0.6 × contextLength`. Models with no registry record at
+   * all return `Long.MaxValue` (no threshold — only natural-boundary
+   * triggers will fire). Apps override for stricter / looser
+   * folding cadence.
+   */
   def compressionTriggerTokens(modelId: Id[Model]): Long = {
     val model = cache.find(modelId)
     val ctxBound = model.map(_.contextLength).getOrElse(Long.MaxValue)
     val rateBound = model.flatMap(_.inputTokensPerMinute) match {
       case Some(ipm) => (ipm * rateLimitSafetyMargin).toLong
-      case None      => Long.MaxValue
+      case None => Long.MaxValue
     }
     val effective = math.min(ctxBound, rateBound)
     if (effective == Long.MaxValue) Long.MaxValue
@@ -619,24 +655,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def findTools: sigil.tool.ToolFinder = defaultFindTools
 
-  /** Conversation-aware exact-name tool resolution: the conversation's
-    * live client-registered tools first (registration rejects
-    * server-tool collisions, so this shadows nothing), then the app's
-    * [[findTools]] catalog. The roster-build path resolves through
-    * here so a discovered client tool actually reaches the wire
-    * roster; framework paths without a conversation in hand
-    * (workflow steps, curator internals) keep using
-    * `findTools.byName` — client tools are conversation-scoped and
-    * genuinely don't exist there. */
+  /**
+   * Conversation-aware exact-name tool resolution: the conversation's
+   * live client-registered tools first (registration rejects
+   * server-tool collisions, so this shadows nothing), then the app's
+   * [[findTools]] catalog. The roster-build path resolves through
+   * here so a discovered client tool actually reaches the wire
+   * roster; framework paths without a conversation in hand
+   * (workflow steps, curator internals) keep using
+   * `findTools.byName` — client tools are conversation-scoped and
+   * genuinely don't exist there.
+   */
   final def resolveToolFor(conversationId: Id[Conversation], name: sigil.tool.ToolName): Task[Option[sigil.tool.Tool]] =
     clientTools.byName(conversationId, name) match {
       case some @ Some(_) => Task.pure(some)
-      case None           => findTools.byName(name)
+      case None => findTools.byName(name)
     }
 
-  /** Skill discovery finder. Default queries [[sigil.db.SigilDB.skills]]
-    * via [[sigil.skill.DbSkillFinder]] (BM25 over `searchText`,
-    * mode-scoped post-filter). Apps override for custom skill catalogs. */
+  /**
+   * Skill discovery finder. Default queries [[sigil.db.SigilDB.skills]]
+   * via [[sigil.skill.DbSkillFinder]] (BM25 over `searchText`,
+   * mode-scoped post-filter). Apps override for custom skill catalogs.
+   */
   def findSkills(request: sigil.tool.DiscoveryRequest): rapid.Task[List[sigil.skill.Skill]] =
     sigil.skill.DbSkillFinder(this).apply(request)
 
@@ -657,25 +697,29 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       skills.iterator
         .filter { s =>
           s.enabled &&
-            (s.space == conversation.space || s.space == GlobalSpace) &&
-            (s.modes.isEmpty || s.modes.contains(conversation.currentMode.id))
+          (s.space == conversation.space || s.space == GlobalSpace) &&
+          (s.modes.isEmpty || s.modes.contains(conversation.currentMode.id))
         }
         .map(s => sigil.conversation.ActiveSkillSlot(s.name, s.content))
         .toVector
     }
 
-  /** Maximum number of memory matches surfaced by [[findCapabilitiesMemories]].
-    * Memory catalogs grow large; an aggressive cap keeps `find_capability`
-    * results focused. */
+  /**
+   * Maximum number of memory matches surfaced by [[findCapabilitiesMemories]].
+   * Memory catalogs grow large; an aggressive cap keeps `find_capability`
+   * results focused.
+   */
   def findCapabilitiesMemoriesMaxResults: Int = 10
 
-  /** Memory discovery for `find_capability`. BM25 search over the
-    * [[sigil.conversation.ContextMemory]] `searchText` index, post-
-    * filtered by space affinity (`spaceId == GlobalSpace` OR caller
-    * has access). Returns the top
-    * [[findCapabilitiesMemoriesMaxResults]] hits, each as a
-    * (memory, BM25 score) pair. Apps override for vector / hybrid
-    * scoring or alternate filters. */
+  /**
+   * Memory discovery for `find_capability`. BM25 search over the
+   * [[sigil.conversation.ContextMemory]] `searchText` index, post-
+   * filtered by space affinity (`spaceId == GlobalSpace` OR caller
+   * has access). Returns the top
+   * [[findCapabilitiesMemoriesMaxResults]] hits, each as a
+   * (memory, BM25 score) pair. Apps override for vector / hybrid
+   * scoring or alternate filters.
+   */
   def findCapabilitiesMemories(request: sigil.tool.DiscoveryRequest): rapid.Task[List[(sigil.conversation.ContextMemory, Double)]] = {
     import lightdb.Sort
     import lightdb.filter.*
@@ -735,7 +779,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
     val activeChainsTask: rapid.Task[Set[String]] = request.conversationId match {
       case Some(convId) => activeToolchains(convId)
-      case None         => rapid.Task.pure(Set.empty[String])
+      case None => rapid.Task.pure(Set.empty[String])
     }
     // Bug #97 — fold conversation overlay policies into the discovery
     // policy filter. A tool either has to pass the active mode's
@@ -744,30 +788,31 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // `start_metals`).
     val overlayPoliciesTask: rapid.Task[List[ToolPolicy]] = request.conversationId match {
       case Some(convId) => conversationToolOverlays(convId).map(_.map(_.policy))
-      case None         => rapid.Task.pure(Nil)
+      case None => rapid.Task.pure(Nil)
     }
     for {
-      foundTools       <- findTools(request)
-      overlayPolicies  <- overlayPoliciesTask
+      foundTools <- findTools(request)
+      overlayPolicies <- overlayPoliciesTask
       // UI-registered tools join discovery for their own conversation
       // only, keyword-filtered like any catalog tool. They are
       // in-memory, so the union happens here rather than in the
       // (possibly DB-backed) finder.
-      clientMatches     = request.conversationId
+      clientMatches = request.conversationId
         .map(clientTools.toolsFor)
         .getOrElse(Nil)
-        .filter(t => sigil.tool.DiscoveryFilter.score(t, request.keywords) > 0.0 ||
-          t.name.value.equalsIgnoreCase(request.keywords.trim))
-      rawTools          = foundTools ++ clientMatches.filterNot(c => foundTools.exists(_.name == c.name))
-      tools             = rawTools
+        .filter(t =>
+          sigil.tool.DiscoveryFilter.score(t, request.keywords) > 0.0 ||
+            t.name.value.equalsIgnoreCase(request.keywords.trim))
+      rawTools = foundTools ++ clientMatches.filterNot(c => foundTools.exists(_.name == c.name))
+      tools = rawTools
         .filter { t =>
           sigil.tool.DiscoveryFilter.passesPolicy(t, request.mode.tools) ||
-            overlayPolicies.exists(p => sigil.tool.DiscoveryFilter.passesPolicy(t, p))
+          overlayPolicies.exists(p => sigil.tool.DiscoveryFilter.passesPolicy(t, p))
         }
         .filter(t => !t.requiresAccessibleSpaces || request.callerSpaces.nonEmpty)
       activeChains <- activeChainsTask
-      modes    <- findModes(request)
-      skills   <- findSkills(request)
+      modes <- findModes(request)
+      skills <- findSkills(request)
       memories <- findCapabilitiesMemories(request)
     } yield {
       val toolMatches = tools.map { t =>
@@ -786,12 +831,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // into a penalty that drops them below domain-specific
         // tools. They stay findable when no domain-specific tool
         // matches; they just stop winning ties.
-        val baseScore   = sigil.tool.DiscoveryFilter.score(t, request.keywords)
-        val boost       = if (t.toolchain.exists(activeChains.contains)) toolchainBoost else 0.0
-        val penalty     = if (t.preferIfNoBetter) preferIfNoBetterPenalty else 0.0
+        val baseScore = sigil.tool.DiscoveryFilter.score(t, request.keywords)
+        val boost = if (t.toolchain.exists(activeChains.contains)) toolchainBoost else 0.0
+        val penalty = if (t.preferIfNoBetter) preferIfNoBetterPenalty else 0.0
         // Exact-name match outranks every other signal so a literal
         // tool-name query always returns that tool first.
-        val nameMatch   = if (t.name.value.equalsIgnoreCase(request.keywords.trim)) exactNameBoost else 0.0
+        val nameMatch = if (t.name.value.equalsIgnoreCase(request.keywords.trim)) exactNameBoost else 0.0
         CapabilityMatch(
           name = t.name.value,
           description = t.description,
@@ -860,17 +905,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Relevance floor for [[findCapabilities]] tool matches: a tool below
-    * `discoveryRelevanceFloor × topScore` is dropped (the best tool is always
-    * kept). Keeps `find_capability` results and the prompt's "Suggested tools"
-    * on-task instead of surfacing tools that matched only generic query words.
-    * Apps that want the full ranked roster set this to `0.0`. */
+  /**
+   * Relevance floor for [[findCapabilities]] tool matches: a tool below
+   * `discoveryRelevanceFloor × topScore` is dropped (the best tool is always
+   * kept). Keeps `find_capability` results and the prompt's "Suggested tools"
+   * on-task instead of surfacing tools that matched only generic query words.
+   * Apps that want the full ranked roster set this to `0.0`.
+   */
   def discoveryRelevanceFloor: Double = 0.4
 
-  /** Maximum number of modes [[findModes]] returns. Mode catalogs are
-    * typically small (3-10), so a tight cap prevents `find_capability`
-    * from drowning the agent in suggestions. Apps with broader mode
-    * spaces override. */
+  /**
+   * Maximum number of modes [[findModes]] returns. Mode catalogs are
+   * typically small (3-10), so a tight cap prevents `find_capability`
+   * from drowning the agent in suggestions. Apps with broader mode
+   * spaces override.
+   */
   def findModesMaxResults: Int = 5
 
   /**
@@ -897,8 +946,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         val curatedKeywords = m.keywords.map(_.toLowerCase)
         val haystack = (
           m.name + " " +
-          m.description + " " +
-          m.skill.map(_.content).getOrElse("")
+            m.description + " " +
+            m.skill.map(_.content).getOrElse("")
         ).toLowerCase
         // Score per keyword: take the strongest signal. Curated keyword
         // set match (8) beats exact-word match in haystack (5) beats
@@ -908,7 +957,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         val score = needles.foldLeft(0.0) { (acc, kw) =>
           val curated = if (curatedKeywords.contains(kw)) 8.0 else 0.0
           val exact = if (words.contains(kw)) 5.0 else 0.0
-          val sub   = if (haystack.contains(kw)) 2.0 else 0.0
+          val sub = if (haystack.contains(kw)) 2.0 else 0.0
           acc + math.max(curated, math.max(exact, sub))
         }
         m -> score
@@ -919,103 +968,118 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       .take(findModesMaxResults)
   }
 
-  /** The set of [[SpaceId]]s the caller chain is authorized to see in
-    * the context of `conversationId` — used to filter `find_capability`
-    * results, scope memory retrieval, gate `lookup`, etc. Apps that
-    * need per-conversation space scoping (per-workspace memory pools,
-    * per-tenant isolation in multi-tenant apps, per-topic spaces)
-    * override THIS method and use `conversationId` to select the right
-    * scope.
-    *
-    * Default delegates to the conversation-agnostic
-    * [[accessibleSpaces(chain)]] for backward compatibility — apps
-    * that previously overrode the single-arg method continue to work.
-    *
-    * Bug #77: prior to this signature, the conversation context wasn't
-    * available at access-decision time, so apps either side-stored
-    * "active workspace per chain participant" (brittle — one
-    * participant has many concurrent conversations) or returned every
-    * conceivable space (over-shared across conversations). Both
-    * workarounds are wrong; the framework should let the app decide
-    * based on the actual conversation that's running.
-    */
+  /**
+   * The set of [[SpaceId]]s the caller chain is authorized to see in
+   * the context of `conversationId` — used to filter `find_capability`
+   * results, scope memory retrieval, gate `lookup`, etc. Apps that
+   * need per-conversation space scoping (per-workspace memory pools,
+   * per-tenant isolation in multi-tenant apps, per-topic spaces)
+   * override THIS method and use `conversationId` to select the right
+   * scope.
+   *
+   * Default delegates to the conversation-agnostic
+   * [[accessibleSpaces(chain)]] for backward compatibility — apps
+   * that previously overrode the single-arg method continue to work.
+   *
+   * Bug #77: prior to this signature, the conversation context wasn't
+   * available at access-decision time, so apps either side-stored
+   * "active workspace per chain participant" (brittle — one
+   * participant has many concurrent conversations) or returned every
+   * conceivable space (over-shared across conversations). Both
+   * workarounds are wrong; the framework should let the app decide
+   * based on the actual conversation that's running.
+   */
   def accessibleSpaces(chain: List[ParticipantId],
                        conversationId: Id[Conversation]): Task[Set[SpaceId]] =
     accessibleSpaces(chain)
 
-  /** Conversation-agnostic access set — used by admin paths that
-    * don't run inside a conversation (storedFile lookups, provider-
-    * config reads, viewer-scoped tool listings). Apps without
-    * per-conversation scoping override this single hook and the
-    * two-arg [[accessibleSpaces(chain, conversationId)]] inherits
-    * the same set for every conversation by default. Default empty
-    * (fail-closed). */
+  /**
+   * Conversation-agnostic access set — used by admin paths that
+   * don't run inside a conversation (storedFile lookups, provider-
+   * config reads, viewer-scoped tool listings). Apps without
+   * per-conversation scoping override this single hook and the
+   * two-arg [[accessibleSpaces(chain, conversationId)]] inherits
+   * the same set for every conversation by default. Default empty
+   * (fail-closed).
+   */
   def accessibleSpaces(chain: List[ParticipantId]): Task[Set[SpaceId]] =
     Task.pure(Set.empty)
 
-  /** Toolchains attached to `conversationId` — when a tool's
-    * [[sigil.tool.Tool.toolchain]] matches a name in this set,
-    * [[findCapabilities]]'s ranker adds [[toolchainBoost]] to its
-    * score.
-    *
-    * Apps register active toolchains as conversations attach
-    * runtimes:
-    *   - `MetalsSigil` returns `Set("lsp", "bsp")` when Metals is
-    *     running for the conversation's workspace.
-    *   - Apps wiring TypeScript LSP would return `Set("ts-server")`
-    *     for conversations bound to a JS/TS workspace.
-    *   - Apps not exposing language runtimes leave the default
-    *     `Set.empty` and tools rank purely by keyword score.
-    *
-    * Default empty — no contextual boost without app opt-in. */
+  /**
+   * Toolchains attached to `conversationId` — when a tool's
+   * [[sigil.tool.Tool.toolchain]] matches a name in this set,
+   * [[findCapabilities]]'s ranker adds [[toolchainBoost]] to its
+   * score.
+   *
+   * Apps register active toolchains as conversations attach
+   * runtimes:
+   *   - `MetalsSigil` returns `Set("lsp", "bsp")` when Metals is
+   *     running for the conversation's workspace.
+   *   - Apps wiring TypeScript LSP would return `Set("ts-server")`
+   *     for conversations bound to a JS/TS workspace.
+   *   - Apps not exposing language runtimes leave the default
+   *     `Set.empty` and tools rank purely by keyword score.
+   *
+   * Default empty — no contextual boost without app opt-in.
+   */
   def activeToolchains(conversationId: Id[Conversation]): Task[Set[String]] =
     Task.pure(Set.empty)
 
-  /** Score boost added to a tool's [[findCapabilities]] result when
-    * its [[sigil.tool.Tool.toolchain]] is in
-    * [[activeToolchains]]. Default `10.0` — large enough to lift
-    * LSP/BSP tools above generic verbs (grep, glob, execute_script
-    * cluster around 7-10), small enough that a tool with no
-    * keyword match doesn't displace a strong direct match. Apps
-    * tune by override. */
+  /**
+   * Score boost added to a tool's [[findCapabilities]] result when
+   * its [[sigil.tool.Tool.toolchain]] is in
+   * [[activeToolchains]]. Default `10.0` — large enough to lift
+   * LSP/BSP tools above generic verbs (grep, glob, execute_script
+   * cluster around 7-10), small enough that a tool with no
+   * keyword match doesn't displace a strong direct match. Apps
+   * tune by override.
+   */
   def toolchainBoost: Double = 10.0
 
-  /** Score penalty subtracted from a tool's [[findCapabilities]]
-    * result when [[sigil.tool.Tool.preferIfNoBetter]] is set.
-    * Generic primitives (grep, glob, bash, …) get nudged below
-    * domain-specific tools that ranker score them as ties. Default
-    * `3.0` — large enough to push grep below LSP for "examine code"
-    * queries, small enough that a generic-only match still ranks
-    * positive (no domain match → grep is still the top result). */
+  /**
+   * Score penalty subtracted from a tool's [[findCapabilities]]
+   * result when [[sigil.tool.Tool.preferIfNoBetter]] is set.
+   * Generic primitives (grep, glob, bash, …) get nudged below
+   * domain-specific tools that ranker score them as ties. Default
+   * `3.0` — large enough to push grep below LSP for "examine code"
+   * queries, small enough that a generic-only match still ranks
+   * positive (no domain match → grep is still the top result).
+   */
   def preferIfNoBetterPenalty: Double = 3.0
 
-  /** Score added when a tool's name exactly matches the
-    * (case-insensitive) keywords query. Defaults to 100.0 — large
-    * enough that an exact-name match always outranks any
-    * description-derived ranking, so a query for the literal tool
-    * name reliably returns that tool first. */
+  /**
+   * Score added when a tool's name exactly matches the
+   * (case-insensitive) keywords query. Defaults to 100.0 — large
+   * enough that an exact-name match always outranks any
+   * description-derived ranking, so a query for the literal tool
+   * name reliably returns that tool first.
+   */
   def exactNameBoost: Double = 100.0
 
-  /** Persist a user-created tool. Typical call site: an app's agent
-    * flow that dynamically generates a `ScriptTool(...)` with the
-    * caller's `SpaceId`, then writes it via this helper. Returns the
-    * stored tool. */
+  /**
+   * Persist a user-created tool. Typical call site: an app's agent
+   * flow that dynamically generates a `ScriptTool(...)` with the
+   * caller's `SpaceId`, then writes it via this helper. Returns the
+   * stored tool.
+   */
   def createTool(tool: sigil.tool.Tool): Task[sigil.tool.Tool] =
     withDB(_.tools.transaction(_.upsert(tool)))
 
   // -- conversation tool overlays (#97) --
 
-  /** Per-conversation [[ToolPolicy]] overlays — additive on top of the
-    * mode + role policies already folded into the agent's effective
-    * roster. When `start_metals` succeeds, it installs an
-    * `Active(metals/lsp/bsp tool names)` overlay so subsequent turns
-    * can call those tools directly without a `find_capability`
-    * round-trip. Also applied to `findCapabilities` so the same tools
-    * remain visible to keyword discovery.
-    *
-    * Default reads from `db.conversationToolOverlays`. Apps that
-    * want transient (non-persisted) overlays override this and the
-    * mutation hooks in tandem. */
+  /**
+   * Per-conversation [[ToolPolicy]] overlays — additive on top of the
+   * mode + role policies already folded into the agent's effective
+   * roster. When `start_metals` succeeds, it installs an
+   * `Active(metals/lsp/bsp tool names)` overlay so subsequent turns
+   * can call those tools directly without a `find_capability`
+   * round-trip. Also applied to `findCapabilities` so the same tools
+   * remain visible to keyword discovery.
+   *
+   * Default reads from `db.conversationToolOverlays`. Apps that
+   * want transient (non-persisted) overlays override this and the
+   * mutation hooks in tandem.
+   */
   def conversationToolOverlays(conversationId: Id[Conversation]): Task[List[sigil.conversation.ConversationToolOverlay]] =
     withDB(_.conversationToolOverlays.transaction { tx =>
       tx.query
@@ -1023,35 +1087,41 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         .toList
     }).map(_.toList.sortBy(_.installedAt.value))
 
-  /** Install (or upsert) a conversation-scoped tool overlay. Keyed
-    * by `(conversationId, source)`; calling twice with the same
-    * source replaces the prior policy. */
+  /**
+   * Install (or upsert) a conversation-scoped tool overlay. Keyed
+   * by `(conversationId, source)`; calling twice with the same
+   * source replaces the prior policy.
+   */
   def addConversationToolOverlay(overlay: sigil.conversation.ConversationToolOverlay): Task[sigil.conversation.ConversationToolOverlay] = {
     val withId = overlay.copy(_id = sigil.conversation.ConversationToolOverlay.idFor(overlay.conversationId, overlay.source))
     withDB(_.conversationToolOverlays.transaction(_.upsert(withId)))
   }
 
-  /** Remove the overlay installed for `(conversationId, source)`.
-    * No-op when nothing matches. */
+  /**
+   * Remove the overlay installed for `(conversationId, source)`.
+   * No-op when nothing matches.
+   */
   def removeConversationToolOverlay(conversationId: Id[Conversation], source: String): Task[Unit] =
     withDB(_.conversationToolOverlays.transaction(_.delete(sigil.conversation.ConversationToolOverlay.idFor(conversationId, source)))).unit
 
   // -- storage --
 
-  /** Backend for binary content (screenshots, generated images,
-    * uploaded files). Default: [[sigil.storage.LocalFileStorageProvider]]
-    * rooted under `<sigil.storagePath ?? dbPath/storage>`. Apps
-    * override for S3 / multi-backend by returning their own
-    * [[sigil.storage.StorageProvider]] (typically
-    * [[sigil.storage.S3StorageProvider]]).
-    *
-    * The framework always proxies bytes through its HTTP layer
-    * ([[sigil.storage.http.StorageRouteFilter]]); the backend's
-    * native URL is never exposed to consumers, regardless of which
-    * provider is wired. */
+  /**
+   * Backend for binary content (screenshots, generated images,
+   * uploaded files). Default: [[sigil.storage.LocalFileStorageProvider]]
+   * rooted under `<sigil.storagePath ?? dbPath/storage>`. Apps
+   * override for S3 / multi-backend by returning their own
+   * [[sigil.storage.StorageProvider]] (typically
+   * [[sigil.storage.S3StorageProvider]]).
+   *
+   * The framework always proxies bytes through its HTTP layer
+   * ([[sigil.storage.http.StorageRouteFilter]]); the backend's
+   * native URL is never exposed to consumers, regardless of which
+   * provider is wired.
+   */
   def storageProvider: sigil.storage.StorageProvider = defaultStorageProvider
 
-  private final lazy val defaultStorageProvider: sigil.storage.StorageProvider = {
+  final private lazy val defaultStorageProvider: sigil.storage.StorageProvider = {
     val configured = Profig("sigil.storagePath").asOr[String]("")
     val base =
       if (configured.nonEmpty) java.nio.file.Path.of(configured)
@@ -1059,14 +1129,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     new sigil.storage.LocalFileStorageProvider(base)
   }
 
-  /** Persist bytes under the given [[SpaceId]]. Records a
-    * [[sigil.storage.StoredFile]] in `SigilDB.storedFiles` and writes
-    * the bytes via [[storageProvider]]. Returns the persisted record
-    * — call [[storageUrl]] to get a URL the UI can fetch.
-    *
-    * The provider's `path` is derived as `<space.value>/<id>` so
-    * backends that support hierarchical listing keep tenant
-    * directories separated. */
+  /**
+   * Persist bytes under the given [[SpaceId]]. Records a
+   * [[sigil.storage.StoredFile]] in `SigilDB.storedFiles` and writes
+   * the bytes via [[storageProvider]]. Returns the persisted record
+   * — call [[storageUrl]] to get a URL the UI can fetch.
+   *
+   * The provider's `path` is derived as `<space.value>/<id>` so
+   * backends that support hierarchical listing keep tenant
+   * directories separated.
+   */
   def storeBytes(space: SpaceId,
                  data: Array[Byte],
                  contentType: String,
@@ -1089,11 +1161,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Read bytes by id with authz. Returns `None` if the file doesn't
-    * exist OR the caller's `accessibleSpaces` doesn't include the
-    * file's space. Mirroring `find_capability`'s fail-closed
-    * default — if the app hasn't authorized the chain, lookups
-    * silently miss. */
+  /**
+   * Read bytes by id with authz. Returns `None` if the file doesn't
+   * exist OR the caller's `accessibleSpaces` doesn't include the
+   * file's space. Mirroring `find_capability`'s fail-closed
+   * default — if the app hasn't authorized the chain, lookups
+   * silently miss.
+   */
   def fetchStoredFile(id: Id[sigil.storage.StoredFile],
                       chain: List[ParticipantId]): Task[Option[(sigil.storage.StoredFile, Array[Byte])]] =
     withDB(_.storedFiles.transaction(_.get(id))).flatMap {
@@ -1105,10 +1179,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         }
     }
 
-  /** Eagerly delete: remove the record from `SigilDB.storedFiles` and
-    * the bytes from the backend in the same task. Authz: caller's
-    * `accessibleSpaces` must include the file's space. Apps that
-    * want soft-delete override [[afterDelete]]. */
+  /**
+   * Eagerly delete: remove the record from `SigilDB.storedFiles` and
+   * the bytes from the backend in the same task. Authz: caller's
+   * `accessibleSpaces` must include the file's space. Apps that
+   * want soft-delete override [[afterDelete]].
+   */
   def deleteStoredFile(id: Id[sigil.storage.StoredFile],
                        chain: List[ParticipantId]): Task[Unit] =
     withDB(_.storedFiles.transaction(_.get(id))).flatMap {
@@ -1124,18 +1200,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         }
     }
 
-  /** Hook invoked after a [[StoredFile]] record + its bytes have been
-    * deleted. Default: no-op. Apps override for soft-delete bookkeeping
-    * (move to a tombstone collection) or audit logging. */
+  /**
+   * Hook invoked after a [[StoredFile]] record + its bytes have been
+   * deleted. Default: no-op. Apps override for soft-delete bookkeeping
+   * (move to a tombstone collection) or audit logging.
+   */
   protected def afterDelete(file: sigil.storage.StoredFile): Task[Unit] = Task.unit
 
-  /** The URL a UI fetches a stored file from. Default returns
-    * `sigil://storage/<id>` — the framework's
-    * [[sigil.storage.http.StorageRouteFilter]] resolves that scheme
-    * back through `storageProvider.download`. Apps that want fully
-    * qualified URLs (CDN edge, signed URLs) override this hook. */
+  /**
+   * The URL a UI fetches a stored file from. Default returns
+   * `sigil://storage/<id>` — the framework's
+   * [[sigil.storage.http.StorageRouteFilter]] resolves that scheme
+   * back through `storageProvider.download`. Apps that want fully
+   * qualified URLs (CDN edge, signed URLs) override this hook.
+   */
   def storageUrl(file: sigil.storage.StoredFile): spice.net.URL =
-    spice.net.URL.get(s"sigil://storage/${file._id.value}",
+    spice.net.URL.get(
+      s"sigil://storage/${file._id.value}",
       tldValidation = spice.net.TLDValidation.Off).getOrElse(
       throw new RuntimeException(s"Failed to construct storage URL for ${file._id.value}"))
 
@@ -1153,15 +1234,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def resolveApiKey(secretId: String): Task[Option[String]] = Task.pure(None)
 
-  /** The model id stamped on the most recent agent [[Message]] in
-    * `conversationId`, when one exists. Reads `Message.modelId`
-    * (populated by the orchestrator at settle-time from the resolved
-    * `ConversationRequest.modelId`), so a mid-conversation pin /
-    * strategy swap is reflected here.
-    *
-    * `None` for fresh conversations and for conversations where the
-    * orchestrator hasn't yet stamped any agent Message (e.g. the
-    * agent's only emissions so far are tool results). */
+  /**
+   * The model id stamped on the most recent agent [[Message]] in
+   * `conversationId`, when one exists. Reads `Message.modelId`
+   * (populated by the orchestrator at settle-time from the resolved
+   * `ConversationRequest.modelId`), so a mid-conversation pin /
+   * strategy swap is reflected here.
+   *
+   * `None` for fresh conversations and for conversations where the
+   * orchestrator hasn't yet stamped any agent Message (e.g. the
+   * agent's only emissions so far are tool results).
+   */
   def lastUsedModel(conversationId: Id[Conversation]): Task[Option[Id[Model]]] =
     withDB(_.eventsTransaction(conversationId)(_.list)).map { events =>
       events.iterator
@@ -1206,57 +1289,64 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private val perTurnEscalationReason: java.util.concurrent.ConcurrentHashMap[Id[Conversation], (Id[Event], String)] =
     new java.util.concurrent.ConcurrentHashMap()
 
-  /** The most recent tier-escalation reason recorded for `conversationId`
-    * (trigger + from→to tier, e.g. "duplicate-call cap on `grep` (tier
-    * High→VeryHigh, escalation #1)"), or `None` if no escalation has bumped the
-    * tier. Surfaced on [[sigil.event.RouteResolved.escalationReason]] and
-    * available to UIs that show WHY a frontier model was engaged — a frontier
-    * engagement is never silent (sigil #371). */
+  /**
+   * The most recent tier-escalation reason recorded for `conversationId`
+   * (trigger + from→to tier, e.g. "duplicate-call cap on `grep` (tier
+   * High→VeryHigh, escalation #1)"), or `None` if no escalation has bumped the
+   * tier. Surfaced on [[sigil.event.RouteResolved.escalationReason]] and
+   * available to UIs that show WHY a frontier model was engaged — a frontier
+   * engagement is never silent (sigil #371).
+   */
   def escalationReasonFor(conversationId: Id[Conversation]): Option[String] =
     Option(perTurnEscalationReason.get(conversationId)).map(_._2)
 
-  /** When `true`, the iteration-cap soft-stop auto-escalates
-    * complexity one tier up for the forced-synthesis turn —
-    * giving the recovery attempt the strongest available reasoning
-    * in the chain. Logged via scribe. Default `false` to preserve
-    * cost ceilings for apps that don't want auto-escalation. */
+  /**
+   * When `true`, the iteration-cap soft-stop auto-escalates
+   * complexity one tier up for the forced-synthesis turn —
+   * giving the recovery attempt the strongest available reasoning
+   * in the chain. Logged via scribe. Default `false` to preserve
+   * cost ceilings for apps that don't want auto-escalation.
+   */
   def escalateOnCapHit: Boolean = false
 
-  /** When `true` (default), the orchestrator's duplicate-call cap
-    * ([[maxIdenticalToolCallsInWindow]]) bumps the conversation's
-    * complexity tier one step on each cap trip, so the next iteration
-    * routes to a more capable model that can read the Failure and pick
-    * a different next move. Detection alone isn't enough on small
-    * models — the same model that produced the duplicate keeps producing
-    * it; escalation is what breaks the loop. Apps that pin a single tier
-    * and don't want auto-bump set to `false`; the cap still fires
-    * (Failure Message + refusal) but stays at the current tier. */
+  /**
+   * When `true` (default), the orchestrator's duplicate-call cap
+   * ([[maxIdenticalToolCallsInWindow]]) bumps the conversation's
+   * complexity tier one step on each cap trip, so the next iteration
+   * routes to a more capable model that can read the Failure and pick
+   * a different next move. Detection alone isn't enough on small
+   * models — the same model that produced the duplicate keeps producing
+   * it; escalation is what breaks the loop. Apps that pin a single tier
+   * and don't want auto-bump set to `false`; the cap still fires
+   * (Failure Message + refusal) but stays at the current tier.
+   */
   def escalateOnDuplicateCallCap: Boolean = true
 
-  /** Classify the user's latest message for this conversation,
-    * caching the result for the lifetime of that user turn. Returns
-    * `(WorkType, Complexity)` — the routing key the framework
-    * matches against [[ModelCandidate.supportedComplexity]] when
-    * picking a candidate.
-    *
-    * Skip gates (cheapest-first):
-    *   - Strategy didn't supply [[ProviderStrategy.inferWorkType]] /
-    *     [[ProviderStrategy.inferComplexity]] → use `defaultWorkType`
-    *     / `Complexity.Medium`.
-    *   - Strategy's [[ProviderStrategy.workTypeMatters]] /
-    *     [[ProviderStrategy.complexityMatters]] is false → skip the
-    *     classifier; outcome can't change the candidate.
-    *
-    * On classifier failure (network, unparsable response, etc.) the
-    * routing falls back to defaults rather than blocking the turn.
-    *
-    * Memo is keyed by `userMessageId` — the classifier output is a
-    * function of the user's message text and never changes within
-    * one turn. Pin / unpin / escalation read fresh from the
-    * conversation + per-turn escalation counter, so mid-turn tier
-    * changes surface on the next call without any cache machinery
-    * to coordinate.
-    */
+  /**
+   * Classify the user's latest message for this conversation,
+   * caching the result for the lifetime of that user turn. Returns
+   * `(WorkType, Complexity)` — the routing key the framework
+   * matches against [[ModelCandidate.supportedComplexity]] when
+   * picking a candidate.
+   *
+   * Skip gates (cheapest-first):
+   *   - Strategy didn't supply [[ProviderStrategy.inferWorkType]] /
+   *     [[ProviderStrategy.inferComplexity]] → use `defaultWorkType`
+   *     / `Complexity.Medium`.
+   *   - Strategy's [[ProviderStrategy.workTypeMatters]] /
+   *     [[ProviderStrategy.complexityMatters]] is false → skip the
+   *     classifier; outcome can't change the candidate.
+   *
+   * On classifier failure (network, unparsable response, etc.) the
+   * routing falls back to defaults rather than blocking the turn.
+   *
+   * Memo is keyed by `userMessageId` — the classifier output is a
+   * function of the user's message text and never changes within
+   * one turn. Pin / unpin / escalation read fresh from the
+   * conversation + per-turn escalation counter, so mid-turn tier
+   * changes surface on the next call without any cache machinery
+   * to coordinate.
+   */
   def classifyForRoute(strategy: ProviderStrategy,
                        defaultWorkType: WorkType,
                        conversation: sigil.conversation.Conversation,
@@ -1264,7 +1354,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                        turnContext: sigil.TurnContext): Task[(WorkType, Complexity)] = {
     val userMsg = userMessage
     val userText = userMsg.flatMap(_.content.collect {
-      case ResponseContent.Text(t)     => t
+      case ResponseContent.Text(t) => t
       case ResponseContent.Markdown(t) => t
     }.headOption).getOrElse("")
     val msgId = userMsg.map(_._id).getOrElse(Event.id())
@@ -1272,8 +1362,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // Reset the per-turn escalation counter when the user turn
     // advances. Done eagerly so `requestEscalation` and the
     // RouteResolved escalation read both see the right turn-scope.
-    perTurnEscalations.compute(conversation._id, (_, existing) =>
-      if (existing == null || existing._1 != msgId) (msgId, 0) else existing
+    perTurnEscalations.compute(
+      conversation._id,
+      (_, existing) =>
+        if (existing == null || existing._1 != msgId) (msgId, 0) else existing
     )
 
     // Memo: classifier output for this user message. Pure function
@@ -1282,12 +1374,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val memoed = Option(classifierMemo.get(msgId))
     val classifierTask: Task[(WorkType, Complexity)] = memoed match {
       case Some(v) => Task.pure(v)
-      case None    =>
+      case None =>
         val wtTask: Task[WorkType] =
           if (strategy.shouldClassifyWorkType && userText.nonEmpty)
             strategy.inferWorkType.get.apply(userText, turnContext)
               .handleError { e =>
-                scribe.warn(s"inferWorkType failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to ${defaultWorkType}")
+                scribe.warn(s"inferWorkType failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to $defaultWorkType")
                 Task.pure(defaultWorkType)
               }
           else Task.pure(defaultWorkType)
@@ -1296,7 +1388,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             if (strategy.shouldClassifyComplexity(wt) && userText.nonEmpty)
               strategy.inferComplexity.get.apply(userText, turnContext)
                 .handleError { e =>
-                  scribe.warn(s"inferComplexity failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to ${strategy.defaultComplexity}")
+                  scribe.warn(
+                    s"inferComplexity failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to ${strategy.defaultComplexity}")
                   Task.pure(strategy.defaultComplexity)
                 }
             else Task.pure(strategy.defaultComplexity)
@@ -1324,21 +1417,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Bump the per-turn complexity tier one step up for the current
-    * user turn — what [[sigil.tool.core.RequestEscalationTool]] calls
-    * when the agent realizes mid-turn that the task is harder than
-    * the classifier's initial assessment. Returns `(newTier, bumped)`:
-    *
-    *   - `bumped = true` means the tier actually moved (Low → Medium
-    *     or Medium → High);
-    *   - `bumped = false` means we were already at High (clamp) or
-    *     no classification has been done yet (no message id to
-    *     attach the escalation to).
-    *
-    * The escalation count is held in [[perTurnEscalations]] keyed
-    * by conversation; subsequent calls to [[classifyForRoute]] apply
-    * the count on top of the classifier's raw complexity to produce
-    * the effective tier. */
+  /**
+   * Bump the per-turn complexity tier one step up for the current
+   * user turn — what [[sigil.tool.core.RequestEscalationTool]] calls
+   * when the agent realizes mid-turn that the task is harder than
+   * the classifier's initial assessment. Returns `(newTier, bumped)`:
+   *
+   *   - `bumped = true` means the tier actually moved (Low → Medium
+   *     or Medium → High);
+   *   - `bumped = false` means we were already at High (clamp) or
+   *     no classification has been done yet (no message id to
+   *     attach the escalation to).
+   *
+   * The escalation count is held in [[perTurnEscalations]] keyed
+   * by conversation; subsequent calls to [[classifyForRoute]] apply
+   * the count on top of the classifier's raw complexity to produce
+   * the effective tier.
+   */
   def requestEscalation(conversationId: Id[Conversation], reason: String): Task[(Complexity, Boolean)] = Task {
     val state = perTurnEscalations.get(conversationId)
     if (state == null) (Complexity.Medium, false)
@@ -1354,7 +1449,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       val bumped = nextEffective != currentEffective
       if (bumped) {
         perTurnEscalations.put(conversationId, (msgId, count + 1))
-        perTurnEscalationReason.put(conversationId,
+        perTurnEscalationReason.put(
+          conversationId,
           (msgId, s"$reason (tier $currentEffective→$nextEffective, escalation #${count + 1})"))
       }
       scribe.info(s"requestEscalation conv=${conversationId.value} from=$currentEffective to=$nextEffective bumped=$bumped reason=$reason")
@@ -1384,15 +1480,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }.handleError(_ => Task.pure(result))
   }
 
-  /** Step the current user turn's escalation count back DOWN one
-    * level — what [[sigil.tool.core.RequestDeescalationTool]] calls
-    * when the agent judges the remaining work mechanical enough for a
-    * cheaper tier. Returns `(newTier, lowered)`; `lowered = false`
-    * when there was no escalation to unwind (the counter is already
-    * at the classifier's base tier — de-escalating BELOW the
-    * classified tier is the pin's job, not this counter's). Across
-    * turns no unwinding is needed: the counter resets to zero at
-    * every new user message. */
+  /**
+   * Step the current user turn's escalation count back DOWN one
+   * level — what [[sigil.tool.core.RequestDeescalationTool]] calls
+   * when the agent judges the remaining work mechanical enough for a
+   * cheaper tier. Returns `(newTier, lowered)`; `lowered = false`
+   * when there was no escalation to unwind (the counter is already
+   * at the classifier's base tier — de-escalating BELOW the
+   * classified tier is the pin's job, not this counter's). Across
+   * turns no unwinding is needed: the counter resets to zero at
+   * every new user message.
+   */
   def requestDeescalation(conversationId: Id[Conversation], reason: String): Task[(Complexity, Boolean)] = Task {
     val state = perTurnEscalations.get(conversationId)
     if (state == null) (Complexity.Medium, false)
@@ -1404,7 +1502,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       else {
         val nextEffective = (1 to (count - 1)).foldLeft(classifierCx)((acc, _) => Complexity.bumpUp(acc))
         perTurnEscalations.put(conversationId, (msgId, count - 1))
-        perTurnEscalationReason.put(conversationId,
+        perTurnEscalationReason.put(
+          conversationId,
           (msgId, s"$reason (tier $currentEffective→$nextEffective, de-escalation)"))
         scribe.info(s"requestDeescalation conv=${conversationId.value} from=$currentEffective to=$nextEffective reason=$reason")
         (nextEffective, true)
@@ -1412,22 +1511,26 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Internal hook for the cap-hit forced-synthesis path. Bumps the
-    * cached tier when [[escalateOnCapHit]] is true; no-op otherwise.
-    * The bumped tier flows through the next candidate-resolution
-    * call (the forced-synthesis turn) so the recovery attempt runs
-    * against a more capable model. */
+  /**
+   * Internal hook for the cap-hit forced-synthesis path. Bumps the
+   * cached tier when [[escalateOnCapHit]] is true; no-op otherwise.
+   * The bumped tier flows through the next candidate-resolution
+   * call (the forced-synthesis turn) so the recovery attempt runs
+   * against a more capable model.
+   */
   protected[sigil] def escalateForCapHit(conversationId: Id[Conversation]): Task[Unit] =
     if (!escalateOnCapHit) Task.unit
     else requestEscalation(conversationId, reason = "iteration-cap forced synthesis").map(_ => ())
 
-  /** Emit a [[sigil.event.RouteResolved]] event capturing the
-    * per-turn routing decision. Includes the classifier output (or
-    * `None` when the framework defaulted), the candidate chain
-    * considered, which candidate won, and per-candidate skip
-    * reasons. Best-effort: emission failures are swallowed so a
-    * forensic-channel hiccup never blocks the turn itself. */
-  private final def publishRouteResolved(agentId: ParticipantId,
+  /**
+   * Emit a [[sigil.event.RouteResolved]] event capturing the
+   * per-turn routing decision. Includes the classifier output (or
+   * `None` when the framework defaulted), the candidate chain
+   * considered, which candidate won, and per-candidate skip
+   * reasons. Best-effort: emission failures are swallowed so a
+   * forensic-channel hiccup never blocks the turn itself.
+   */
+  final private def publishRouteResolved(agentId: ParticipantId,
                                          conversation: Conversation,
                                          userMessage: Option[sigil.event.Message],
                                          strategyOpt: Option[ProviderStrategy],
@@ -1439,35 +1542,37 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val classifierFired = strategyOpt.exists(_.shouldClassifyWorkType) ||
       strategyOpt.exists(_.shouldClassifyComplexity(inferredWorkType))
     val event = sigil.event.RouteResolved(
-      participantId       = agentId,
-      conversationId      = conversation._id,
-      topicId             = conversation.currentTopicId,
-      userMessageId       = userMessage.map(_._id),
-      inferredWorkType    = if (strategyOpt.exists(_.shouldClassifyWorkType)) Some(inferredWorkType) else None,
-      inferredComplexity  = if (strategyOpt.exists(_.shouldClassifyComplexity(inferredWorkType))) Some(complexity) else None,
-      candidateChain      = candidateChain,
-      chosenModelId       = chosenModelId,
-      skipReasons         = skipReasons,
+      participantId = agentId,
+      conversationId = conversation._id,
+      topicId = conversation.currentTopicId,
+      userMessageId = userMessage.map(_._id),
+      inferredWorkType = if (strategyOpt.exists(_.shouldClassifyWorkType)) Some(inferredWorkType) else None,
+      inferredComplexity = if (strategyOpt.exists(_.shouldClassifyComplexity(inferredWorkType))) Some(complexity) else None,
+      candidateChain = candidateChain,
+      chosenModelId = chosenModelId,
+      skipReasons = skipReasons,
       classifierLatencyMs = None,
-      escalationCount     = Option(perTurnEscalations.get(conversation._id)).map(_._2).getOrElse(0),
+      escalationCount = Option(perTurnEscalations.get(conversation._id)).map(_._2).getOrElse(0),
       // Surface the escalation reason only when it belongs to THIS turn (its
       // stored userMessageId matches), so a stale prior-turn note never leaks.
-      escalationReason    = Option(perTurnEscalationReason.get(conversation._id))
+      escalationReason = Option(perTurnEscalationReason.get(conversation._id))
         .filter { case (mid, _) => userMessage.map(_._id).contains(mid) }
         .map(_._2)
     )
     publish(event).map(_ => ()).handleError(_ => Task.unit)
   }
 
-  /** Resolve the model id this conversation would dispatch to on the
-    * next turn — the same lookup chain `runAgentTurn` uses, exposed as
-    * a read-only helper for introspection (e.g. [[CurrentModelTool]]).
-    * Order: [[sigil.conversation.Conversation.pinnedModelId]] →
-    * [[sigil.provider.Mode.strategyId]] →
-    * [[resolveProviderStrategy]] for the conversation's space → first
-    * candidate for the conversation's effective work type. Returns
-    * `None` when no resolution layer applies (a deeply un-configured
-    * Sigil where dispatch would itself error). */
+  /**
+   * Resolve the model id this conversation would dispatch to on the
+   * next turn — the same lookup chain `runAgentTurn` uses, exposed as
+   * a read-only helper for introspection (e.g. [[CurrentModelTool]]).
+   * Order: [[sigil.conversation.Conversation.pinnedModelId]] →
+   * [[sigil.provider.Mode.strategyId]] →
+   * [[resolveProviderStrategy]] for the conversation's space → first
+   * candidate for the conversation's effective work type. Returns
+   * `None` when no resolution layer applies (a deeply un-configured
+   * Sigil where dispatch would itself error).
+   */
   def currentModelFor(conversation: sigil.conversation.Conversation): Task[Option[Id[Model]]] = {
     val workType = conversation.currentMode.workType.getOrElse(sigil.provider.ConversationWork)
     conversation.pinnedModelId match {
@@ -1484,10 +1589,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Default record → strategy materializer. Override to swap in a
-    * custom [[sigil.provider.ProviderStrategy]] (round-robin,
-    * cost-aware routing, etc.) using the persisted record as a
-    * config knob. */
+  /**
+   * Default record → strategy materializer. Override to swap in a
+   * custom [[sigil.provider.ProviderStrategy]] (round-robin,
+   * cost-aware routing, etc.) using the persisted record as a
+   * config knob.
+   */
   protected def materializeStrategy(record: sigil.provider.ProviderStrategyRecord): sigil.provider.ProviderStrategy = {
     // routeCandidates is keyed by `WorkType.value` strings; resolve
     // each through the registered WorkType polytype names. Unregistered
@@ -1498,49 +1605,51 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // anonymous WorkType so dispatch can still match if the app's
         // strategy uses values the framework doesn't know about.
         val wt: sigil.provider.WorkType = key.toLowerCase match {
-          case "conversation"   => sigil.provider.ConversationWork
-          case "coding"         => sigil.provider.CodingWork
-          case "analysis"       => sigil.provider.AnalysisWork
+          case "conversation" => sigil.provider.ConversationWork
+          case "coding" => sigil.provider.CodingWork
+          case "analysis" => sigil.provider.AnalysisWork
           case "classification" => sigil.provider.ClassificationWork
-          case "creative"       => sigil.provider.CreativeWork
-          case "summarization"  => sigil.provider.SummarizationWork
-          case other            => new sigil.provider.WorkType { override val value: String = other }
+          case "creative" => sigil.provider.CreativeWork
+          case "summarization" => sigil.provider.SummarizationWork
+          case other => new sigil.provider.WorkType { override val value: String = other }
         }
         Map(wt -> list)
       }
     sigil.provider.ProviderStrategy.routed(record.defaultCandidates, routes)
   }
 
-  /** Pick a model for `workType`, scoped to `chain`. Default impl walks
-    * the chain's accessible spaces, resolves each space's
-    * [[sigil.provider.ProviderStrategy]], and returns the first
-    * available candidate for `workType` whose `Model.contextLength`
-    * can accommodate `estimatedInputTokens + reservedOutputTokens`.
-    * Falls back to `fallback` when no strategy applies or no candidate
-    * fits.
-    *
-    * Bug #26 — used by the framework's compressor to route
-    * summarization through a `SummarizationWork`-tier model rather
-    * than inheriting the calling agent's modelId.
-    *
-    * Bug #41 — `estimatedInputTokens` lets callers skip candidates
-    * whose context window can't physically fit the request, so a
-    * cost-aware chain like `[llama (32K), gpt-5.5, claude]` does the
-    * right thing automatically: small input → llama; oversized input
-    * → fall through to a frontier candidate. `None` (default) keeps
-    * the legacy head-first behavior for callers that have no size
-    * signal. Candidates whose `Model.contextLength` isn't in the
-    * cache are NOT skipped (treated as "size unknown" → keep) so
-    * apps with custom-provider models lacking a registered
-    * contextLength aren't broken.
-    *
-    * `reservedOutputTokens` is the budget reserved for the response
-    * — added to `estimatedInputTokens` when measuring fit. Default
-    * 1024 is enough for typical summary outputs; callers expecting
-    * larger responses pass higher.
-    *
-    * Apps override for custom routing (e.g. cost-aware fallback
-    * ordering, sticky model preferences). */
+  /**
+   * Pick a model for `workType`, scoped to `chain`. Default impl walks
+   * the chain's accessible spaces, resolves each space's
+   * [[sigil.provider.ProviderStrategy]], and returns the first
+   * available candidate for `workType` whose `Model.contextLength`
+   * can accommodate `estimatedInputTokens + reservedOutputTokens`.
+   * Falls back to `fallback` when no strategy applies or no candidate
+   * fits.
+   *
+   * Bug #26 — used by the framework's compressor to route
+   * summarization through a `SummarizationWork`-tier model rather
+   * than inheriting the calling agent's modelId.
+   *
+   * Bug #41 — `estimatedInputTokens` lets callers skip candidates
+   * whose context window can't physically fit the request, so a
+   * cost-aware chain like `[llama (32K), gpt-5.5, claude]` does the
+   * right thing automatically: small input → llama; oversized input
+   * → fall through to a frontier candidate. `None` (default) keeps
+   * the legacy head-first behavior for callers that have no size
+   * signal. Candidates whose `Model.contextLength` isn't in the
+   * cache are NOT skipped (treated as "size unknown" → keep) so
+   * apps with custom-provider models lacking a registered
+   * contextLength aren't broken.
+   *
+   * `reservedOutputTokens` is the budget reserved for the response
+   * — added to `estimatedInputTokens` when measuring fit. Default
+   * 1024 is enough for typical summary outputs; callers expecting
+   * larger responses pass higher.
+   *
+   * Apps override for custom routing (e.g. cost-aware fallback
+   * ordering, sticky model preferences).
+   */
   def routedModelFor(workType: sigil.provider.WorkType,
                      chain: List[ParticipantId],
                      fallback: Id[Model],
@@ -1556,10 +1665,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                      // the spawning agent express "give the worker a
                      // High-tier model" without having to enumerate a
                      // specific modelId.
-                     complexity: Option[sigil.provider.Complexity] = None): Task[Id[Model]] = {
+                     complexity: Option[sigil.provider.Complexity] = None): Task[Id[Model]] =
     routedCandidateFor(workType, chain, estimatedInputTokens, reservedOutputTokens, complexity)
       .map(_.map(_.modelId).getOrElse(fallback))
-  }
 
   /**
    * Like [[routedModelFor]], but returns the resolved [[sigil.provider.ModelCandidate]]
@@ -1588,9 +1696,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // stale registry). Caller still gets a candidate; if it
           // overflows downstream, the compressor's chunk-and-merge
           // fallback in `compressLarge` handles it.
-          case None       => true
-          case Some(0L)   => true
-          case Some(ctx)  => needed <= ctx
+          case None => true
+          case Some(0L) => true
+          case Some(ctx) => needed <= ctx
         }
     }
 
@@ -1618,7 +1726,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             case Some(strategy) =>
               pickFrom(strategy.availableCandidates(workType)) match {
                 case Some(candidate) => Task.pure(Some(candidate))
-                case None            => loop(rest)
+                case None => loop(rest)
               }
           }
       }
@@ -1626,27 +1734,31 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** #357 — whether a conversation's
-    * [[sigil.conversation.Conversation.pinnedModelId]] also governs the
-    * framework's auxiliary LLM calls (topic classifier, memory
-    * extractor, progress checkpoint, curate compression).
-    *
-    * Default `false` (cost-first): a pin governs only the agent's main
-    * turn; auxiliary calls route through [[routedModelFor]] to the
-    * cheapest viable tier for their work type, independent of the pin —
-    * which is usually the right default (classification / extraction /
-    * summarization don't need a frontier model). Apps that want a pin to
-    * mean "every LLM call in this conversation" override to `true`. */
+  /**
+   * #357 — whether a conversation's
+   * [[sigil.conversation.Conversation.pinnedModelId]] also governs the
+   * framework's auxiliary LLM calls (topic classifier, memory
+   * extractor, progress checkpoint, curate compression).
+   *
+   * Default `false` (cost-first): a pin governs only the agent's main
+   * turn; auxiliary calls route through [[routedModelFor]] to the
+   * cheapest viable tier for their work type, independent of the pin —
+   * which is usually the right default (classification / extraction /
+   * summarization don't need a frontier model). Apps that want a pin to
+   * mean "every LLM call in this conversation" override to `true`.
+   */
   def pinCoversAuxiliaryCalls: Boolean = false
 
-  /** #357 — auxiliary-call model resolution. When
-    * [[pinCoversAuxiliaryCalls]] is `false` (default) this is exactly
-    * [[routedModelFor]] — cost-first routing for `workType`, ignoring any
-    * conversation pin. When `true` and the conversation carries a
-    * [[sigil.conversation.Conversation.pinnedModelId]], the pin wins
-    * (honoring the "pin = every LLM call" contract); otherwise it falls
-    * back to `routedModelFor`. The conversation read only happens when
-    * the knob is on, so the default path adds no DB cost. */
+  /**
+   * #357 — auxiliary-call model resolution. When
+   * [[pinCoversAuxiliaryCalls]] is `false` (default) this is exactly
+   * [[routedModelFor]] — cost-first routing for `workType`, ignoring any
+   * conversation pin. When `true` and the conversation carries a
+   * [[sigil.conversation.Conversation.pinnedModelId]], the pin wins
+   * (honoring the "pin = every LLM call" contract); otherwise it falls
+   * back to `routedModelFor`. The conversation read only happens when
+   * the knob is on, so the default path adds no DB cost.
+   */
   def auxModelFor(conversationId: Id[Conversation],
                   workType: sigil.provider.WorkType,
                   chain: List[ParticipantId],
@@ -1662,7 +1774,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         case _ => routedModelFor(workType, chain, fallback, estimatedInputTokens, reservedOutputTokens, complexity)
       }
 
-  private final lazy val defaultFindTools: sigil.tool.ToolFinder = {
+  final private lazy val defaultFindTools: sigil.tool.ToolFinder = {
     val staticInputs = staticTools.map(_.inputRW).distinctBy(_.definition.className)
     val allInputs = (staticInputs ++ toolInputRegistrations).distinctBy(_.definition.className)
     sigil.tool.DbToolFinder(this, allInputs)
@@ -1817,22 +1929,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   protected def modes: List[Mode] = Nil
 
-  /** All modes available in this Sigil, in declaration order with
-    * [[ConversationMode]] first, deduplicated. Public so the provider's
-    * system-prompt rendering can advertise the full mode catalog (the
-    * `change_mode` tool depends on the model knowing what modes exist
-    * to switch to). */
+  /**
+   * All modes available in this Sigil, in declaration order with
+   * [[ConversationMode]] first, deduplicated. Public so the provider's
+   * system-prompt rendering can advertise the full mode catalog (the
+   * `change_mode` tool depends on the model knowing what modes exist
+   * to switch to).
+   */
   final lazy val availableModes: List[Mode] = (ConversationMode :: modes).distinct
 
-  /** All modes available in this Sigil, keyed by stable name. Used by
-    * `change_mode` to resolve a name-based tool argument into a real
-    * instance. */
-  private final lazy val modesByName: Map[String, Mode] =
+  /**
+   * All modes available in this Sigil, keyed by stable name. Used by
+   * `change_mode` to resolve a name-based tool argument into a real
+   * instance.
+   */
+  final private lazy val modesByName: Map[String, Mode] =
     availableModes.map(m => m.name -> m).toMap
 
-  /** Look up a registered [[Mode]] by its stable `name`. Returns `None`
-    * for unknown names (e.g. an LLM produced a typo in its
-    * `change_mode` call). */
+  /**
+   * Look up a registered [[Mode]] by its stable `name`. Returns `None`
+   * for unknown names (e.g. an LLM produced a typo in its
+   * `change_mode` call).
+   */
   final def modeByName(name: String): Option[Mode] = modesByName.get(name)
 
   /**
@@ -1862,17 +1980,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                          mode: Mode,
                          suggested: List[sigil.tool.ToolName],
                          overlays: List[ToolPolicy] = Nil,
-                         /** Sigil #286 — recently-used tool names lifted
-                           * from the participant projection's
-                           * `recentToolInvocations`. The caller in
-                           * [[defaultProcess]] passes the actual set;
-                           * non-conversation callers (e.g. `DelegateTaskTool`'s
-                           * up-front roster build) leave it empty (no
-                           * narrowing). */
+                         /**
+                          * Sigil #286 — recently-used tool names lifted
+                          * from the participant projection's
+                          * `recentToolInvocations`. The caller in
+                          * [[defaultProcess]] passes the actual set;
+                          * non-conversation callers (e.g. `DelegateTaskTool`'s
+                          * up-front roster build) leave it empty (no
+                          * narrowing).
+                          */
                          recentlyUsedTools: Set[sigil.tool.ToolName] = Set.empty): List[sigil.tool.ToolName] = {
-    import sigil.tool.core.{
-      ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool, RespondOptionsTool
-    }
+    import sigil.tool.core.{ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool, RespondOptionsTool}
     import sigil.tool.skill.ActivateSkillTool
     // Reply surface: `respond` (markdown + Field-callout + H2-Card +
     // disposition) for telling; `respond_options` (typed) for asking.
@@ -1886,7 +2004,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // `respond` to ask the user. PureDiscovery without an exit hatch
     // relies on the runaway cap as the safety mechanism.
     val fullEssentials = List(
-      RespondTool, RespondOptionsTool
+      RespondTool,
+      RespondOptionsTool
     ).map(_.schema.name)
     val pureDiscoveryEssentials = List.empty[sigil.tool.ToolName]
 
@@ -1897,19 +2016,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val initial = PolicyState(Nil, includesFindCapability = true, includesBaseline = true, pureDiscovery = false)
 
     def apply(s: PolicyState, p: ToolPolicy): PolicyState = p match {
-      case ToolPolicy.Standard           => s
-      case ToolPolicy.None               => s.copy(includesFindCapability = false, includesBaseline = false)
-      case ToolPolicy.PureDiscovery      => s.copy(pureDiscovery = true)
-      case ToolPolicy.Active(names)      => s.copy(extras = s.extras ++ names)
+      case ToolPolicy.Standard => s
+      case ToolPolicy.None => s.copy(includesFindCapability = false, includesBaseline = false)
+      case ToolPolicy.PureDiscovery => s.copy(pureDiscovery = true)
+      case ToolPolicy.Active(names) => s.copy(extras = s.extras ++ names)
       // Sigil #262 — same as Active but additionally strips
       // `find_capability` from the roster. Sticky-off semantics in the
       // fold: once any contributor flips includesFindCapability false,
       // later policies don't re-enable it (matching the intent of "this
       // host doesn't want discovery indirection at all").
-      case ToolPolicy.ActiveOnly(names)  => s.copy(includesFindCapability = false, extras = s.extras ++ names)
-      case ToolPolicy.Discoverable(_)    => s
-      case ToolPolicy.Exclusive(names)   => s.copy(includesBaseline = false, extras = s.extras ++ names)
-      case ToolPolicy.Scoped(_)          => s
+      case ToolPolicy.ActiveOnly(names) => s.copy(includesFindCapability = false, extras = s.extras ++ names)
+      case ToolPolicy.Discoverable(_) => s
+      case ToolPolicy.Exclusive(names) => s.copy(includesBaseline = false, extras = s.extras ++ names)
+      case ToolPolicy.Scoped(_) => s
     }
 
     // Bug #97 — fold conversation overlays last so they're additive
@@ -1918,9 +2037,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // user-installed overlay can also restrict, mirroring the
     // mode-side semantics.
     val state = overlays.foldLeft(apply(apply(initial, agent.tools), mode.tools))(apply)
-    val essentials     = if (state.pureDiscovery) pureDiscoveryEssentials else fullEssentials
+    val essentials = if (state.pureDiscovery) pureDiscoveryEssentials else fullEssentials
     val findCapability = if (state.includesFindCapability) List(FindCapabilityTool.schema.name) else Nil
-    val baselineFull   = if (state.includesBaseline) agent.toolNames else Nil
+    val baselineFull = if (state.includesBaseline) agent.toolNames else Nil
     // Sigil #286 — narrow the app-declared roster to recently-used
     // tools when the framework's narrowing knob is on AND
     // find_capability is in the effective roster (recovery path: an
@@ -1939,10 +2058,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // declarations; both should narrow uniformly.
     val (baseline, extras) =
       if (narrowRosterByRecentUse && state.includesFindCapability && recentlyUsedTools.nonEmpty)
-        (baselineFull.filter(recentlyUsedTools.contains),
-         state.extras.filter(recentlyUsedTools.contains))
+        (
+          baselineFull.filter(recentlyUsedTools.contains),
+          state.extras.filter(recentlyUsedTools.contains))
       else (baselineFull, state.extras)
-    val merged         = (essentials ++ findCapability ++ baseline ++ extras ++ suggested).distinct
+    val merged = (essentials ++ findCapability ++ baseline ++ extras ++ suggested).distinct
     val afterDiscovery =
       if (state.pureDiscovery) {
         // Strip the entire respond family + no_response so the agent
@@ -1977,16 +2097,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // into change_mode's first slot was driving redundant-call loops when
     // the action tools the agent actually needed had fallen out of scope.
     val priority: Map[sigil.tool.ToolName, Int] = (Map(
-      FindCapabilityTool.schema.name    -> 0,
-      ChangeModeTool.schema.name        -> 1,
-      ActivateSkillTool.schema.name     -> 2,
+      FindCapabilityTool.schema.name -> 0,
+      ChangeModeTool.schema.name -> 1,
+      ActivateSkillTool.schema.name -> 2,
       sigil.tool.core.CancelTool.schema.name -> 100,
       // Within the response tail, `respond_options` precedes `respond` so first-tool
       // bias on small models surfaces the specific "asking" shape before the
       // catch-all "telling" tool.
-      RespondOptionsTool.schema.name    -> 101,
-      RespondTool.schema.name           -> 102,
-      NoResponseTool.schema.name        -> 105
+      RespondOptionsTool.schema.name -> 101,
+      RespondTool.schema.name -> 102,
+      NoResponseTool.schema.name -> 105
     ): @annotation.nowarn("cat=deprecation")).withDefaultValue(50)
     deduped.zipWithIndex.sortBy { case (name, idx) => (priority(name), idx) }.map(_._1)
   }
@@ -2034,18 +2154,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                context: TurnContext,
                                triggers: Stream[Event]): Stream[Signal] = participant match {
     case agent: AgentParticipant => runAgentTurn(agent, context)
-    case _                       => Stream.empty
+    case _ => Stream.empty
   }
 
-  /** The result of per-turn model routing — the strategy chain, the
-    * classifier's `(WorkType, Complexity)` verdict, the candidate chain
-    * for that work type, per-candidate skip reasons, and the chosen
-    * model id (falling back to `agent.modelId` when no candidate
-    * supports the resolved complexity). Shared by `runAgentTurn` (which
-    * also publishes a `RouteResolved` control event and a fallback
-    * notice) and `resolveRoutedModelId` (the curator's budget-gate
-    * pre-resolution). */
-  private final case class RoutingResolution(strategyOpt: Option[ProviderStrategy],
+  /**
+   * The result of per-turn model routing — the strategy chain, the
+   * classifier's `(WorkType, Complexity)` verdict, the candidate chain
+   * for that work type, per-candidate skip reasons, and the chosen
+   * model id (falling back to `agent.modelId` when no candidate
+   * supports the resolved complexity). Shared by `runAgentTurn` (which
+   * also publishes a `RouteResolved` control event and a fallback
+   * notice) and `resolveRoutedModelId` (the curator's budget-gate
+   * pre-resolution).
+   */
+  final private case class RoutingResolution(strategyOpt: Option[ProviderStrategy],
                                              userMsg: Option[sigil.event.Message],
                                              routedWorkType: WorkType,
                                              complexity: Complexity,
@@ -2054,13 +2176,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                              chosen: Option[sigil.provider.ModelCandidate],
                                              modelId: Id[Model])
 
-  /** Resolve per-turn model routing for `agent` in `conv`. Pure of any
-    * side effect — no `RouteResolved` publish, no fallback notice;
-    * callers layer those on. `ctx` is the [[TurnContext]] handed to the
-    * strategy's classifier callbacks: `runAgentTurn` passes the full
-    * turn context, `resolveRoutedModelId` passes a stub (curate hasn't
-    * run yet at that point). */
-  private final def resolveRouting(agent: AgentParticipant,
+  /**
+   * Resolve per-turn model routing for `agent` in `conv`. Pure of any
+   * side effect — no `RouteResolved` publish, no fallback notice;
+   * callers layer those on. `ctx` is the [[TurnContext]] handed to the
+   * strategy's classifier callbacks: `runAgentTurn` passes the full
+   * turn context, `resolveRoutedModelId` passes a stub (curate hasn't
+   * run yet at that point).
+   */
+  final private def resolveRouting(agent: AgentParticipant,
                                    conv: Conversation,
                                    ctx: TurnContext): Task[RoutingResolution] = {
     // Mode-overrides-agent for work-type routing: a mode that
@@ -2099,32 +2223,41 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }.handleError(_ => Task.pure(None))
     for {
       strategyOpt <- strategyTask
-      userMsg     <- latestUserMessage
+      userMsg <- latestUserMessage
       (routedWorkType, complexity) <- strategyOpt match {
         case Some(strategy) => classifyForRoute(strategy, effectiveWorkType, conv, userMsg, ctx)
-        case None           => Task.pure((effectiveWorkType, Complexity.Medium))
+        case None => Task.pure((effectiveWorkType, Complexity.Medium))
       }
       candidateChain = strategyOpt.toList.flatMap(_.availableCandidates(routedWorkType))
-      skipReasons    = candidateChain.iterator.collect {
+      skipReasons = candidateChain.iterator.collect {
         case c if !c.supportedComplexity.contains(complexity) =>
           c.modelId -> s"supportedComplexity does not include $complexity"
       }.toMap
       // #315 — degrade to the nearest available tier at or below the
       // inferred one before falling back to the agent's pinned model.
-      chosen  = Complexity.atOrBelow(complexity).iterator
-                  .flatMap(tier => candidateChain.find(_.supportedComplexity.contains(tier)))
-                  .nextOption()
+      chosen = Complexity.atOrBelow(complexity).iterator
+        .flatMap(tier => candidateChain.find(_.supportedComplexity.contains(tier)))
+        .nextOption()
       modelId = chosen.map(_.modelId).getOrElse(agent.modelId)
-    } yield RoutingResolution(strategyOpt, userMsg, routedWorkType, complexity,
-      candidateChain, skipReasons, chosen, modelId)
+    } yield RoutingResolution(
+      strategyOpt,
+      userMsg,
+      routedWorkType,
+      complexity,
+      candidateChain,
+      skipReasons,
+      chosen,
+      modelId)
   }
 
-  /** Resolved per-turn dispatch inputs. `fallbackIds` is the ordered
-    * cross-candidate fallback chain (#397) — the chosen model first, then the
-    * tiers at or below it (down-only), ending at the agent's pinned model when
-    * the strategy chain covers nothing. `candidateChain` carries each
-    * candidate's per-model [[sigil.provider.GenerationSettings]] overlay. */
-  private final case class ResolvedTurn(tools: Vector[Tool],
+  /**
+   * Resolved per-turn dispatch inputs. `fallbackIds` is the ordered
+   * cross-candidate fallback chain (#397) — the chosen model first, then the
+   * tiers at or below it (down-only), ending at the agent's pinned model when
+   * the strategy chain covers nothing. `candidateChain` carries each
+   * candidate's per-model [[sigil.provider.GenerationSettings]] overlay.
+   */
+  final private case class ResolvedTurn(tools: Vector[Tool],
                                         fallbackIds: List[Id[Model]],
                                         candidateChain: List[sigil.provider.ModelCandidate],
                                         strategyOpt: Option[ProviderStrategy],
@@ -2150,25 +2283,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val resolved: Task[ResolvedTurn] =
       for {
         routing <- resolveRouting(agent, context.conversation, context)
-        strategyOpt    = routing.strategyOpt
-        userMsg        = routing.userMsg
+        strategyOpt = routing.strategyOpt
+        userMsg = routing.userMsg
         routedWorkType = routing.routedWorkType
-        complexity     = routing.complexity
+        complexity = routing.complexity
         candidateChain = routing.candidateChain
-        skipReasons    = routing.skipReasons
-        chosen         = routing.chosen
-        modelId        = routing.modelId
+        skipReasons = routing.skipReasons
+        chosen = routing.chosen
+        modelId = routing.modelId
         _ <- publishRouteResolved(
-               agentId            = agent.id,
-               conversation       = context.conversation,
-               userMessage        = userMsg,
-               strategyOpt        = strategyOpt,
-               inferredWorkType   = routedWorkType,
-               complexity         = complexity,
-               candidateChain     = candidateChain.map(_.modelId),
-               chosenModelId      = modelId,
-               skipReasons        = skipReasons
-             )
+          agentId = agent.id,
+          conversation = context.conversation,
+          userMessage = userMsg,
+          strategyOpt = strategyOpt,
+          inferredWorkType = routedWorkType,
+          complexity = complexity,
+          candidateChain = candidateChain.map(_.modelId),
+          chosenModelId = modelId,
+          skipReasons = skipReasons
+        )
         // when every candidate is skipped (typically because an expected
         // provider is unavailable, e.g. an env-var unset took its
         // candidate out of the chain), `chosen` is None and dispatch
@@ -2195,46 +2328,46 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // latest user message on this conversation — the agent has
         // already seen it.
         _ <- if (chosen.isEmpty && candidateChain.nonEmpty) {
-               val skipBody =
-                 if (skipReasons.isEmpty) "(no skip reasons recorded)"
-                 else skipReasons.map { case (id, why) => s"  - ${id.value}: $why" }.mkString("\n")
-               val alreadyEmittedTask: Task[Boolean] =
-                 withDB(_.eventsTransaction(context.conversation._id)(_.list)).map { evs =>
-                   val userTs = userMsg.map(_.timestamp.value).getOrElse(0L)
-                   evs.exists {
-                     case m: sigil.event.Message =>
-                       m.conversationId == context.conversation._id &&
-                         m.source.contains("routing-fallback") &&
-                         m.timestamp.value >= userTs
-                     case _ => false
-                   }
-                 }.handleError(_ => Task.pure(false))
-               alreadyEmittedTask.flatMap {
-                 case true  => Task.unit
-                 case false =>
-                   publish(Message(
-                     participantId  = agent.id,
-                     conversationId = context.conversation._id,
-                     topicId        = context.conversation.currentTopicId,
-                     role           = MessageRole.Standard,
-                     state          = EventState.Complete,
-                     source         = Some("routing-fallback"),
-                     content        = Vector(sigil.tool.model.ResponseContent.Text(
-                       s"[Routing notice] Classifier resolved complexity = $complexity, but no candidate in the " +
-                       s"strategy chain supports that tier. Falling back to ${modelId.value}. Skip reasons:\n" +
-                       skipBody +
-                       "\n\nThis usually means an expected provider is unavailable (missing env var / network) " +
-                       "or the strategy's chain doesn't cover this tier. Repeated `change_mode` or `pin_complexity` " +
-                       "calls won't change this — the chain itself is the gap. Tell the user; don't loop."
-                     ))
-                   )).map(_ => ())
-               }
-             } else Task.unit
+          val skipBody =
+            if (skipReasons.isEmpty) "(no skip reasons recorded)"
+            else skipReasons.map { case (id, why) => s"  - ${id.value}: $why" }.mkString("\n")
+          val alreadyEmittedTask: Task[Boolean] =
+            withDB(_.eventsTransaction(context.conversation._id)(_.list)).map { evs =>
+              val userTs = userMsg.map(_.timestamp.value).getOrElse(0L)
+              evs.exists {
+                case m: sigil.event.Message =>
+                  m.conversationId == context.conversation._id &&
+                  m.source.contains("routing-fallback") &&
+                  m.timestamp.value >= userTs
+                case _ => false
+              }
+            }.handleError(_ => Task.pure(false))
+          alreadyEmittedTask.flatMap {
+            case true => Task.unit
+            case false =>
+              publish(Message(
+                participantId = agent.id,
+                conversationId = context.conversation._id,
+                topicId = context.conversation.currentTopicId,
+                role = MessageRole.Standard,
+                state = EventState.Complete,
+                source = Some("routing-fallback"),
+                content = Vector(sigil.tool.model.ResponseContent.Text(
+                  s"[Routing notice] Classifier resolved complexity = $complexity, but no candidate in the " +
+                    s"strategy chain supports that tier. Falling back to ${modelId.value}. Skip reasons:\n" +
+                    skipBody +
+                    "\n\nThis usually means an expected provider is unavailable (missing env var / network) " +
+                    "or the strategy's chain doesn't cover this tier. Repeated `change_mode` or `pin_complexity` " +
+                    "calls won't change this — the chain itself is the gap. Tell the user; don't loop."
+                ))
+              )).map(_ => ())
+          }
+        } else Task.unit
         // Bug #97 — fold conversation overlays into the effective
         // tool roster. `start_metals` etc. install Active(names) so
         // the LSP/BSP/metals tools are present in subsequent turns
         // without a `find_capability` round-trip.
-        overlays    <- conversationToolOverlays(context.conversation.id)
+        overlays <- conversationToolOverlays(context.conversation.id)
         // Sigil #286 — pull recently-used tool names from the
         // projection's rolling window. When `narrowRosterByRecentUse`
         // is on, `effectiveToolNames` narrows the baseline roster to
@@ -2242,30 +2375,35 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         recentlyUsed = context.turnInput.projectionFor(agent.id).recentToolInvocations
           .iterator.map(_.toolName).toSet
         effectiveNames = effectiveToolNames(
-          agent, context.conversation.currentMode, suggested, overlays.map(_.policy), recentlyUsed
+          agent,
+          context.conversation.currentMode,
+          suggested,
+          overlays.map(_.policy),
+          recentlyUsed
         ).distinct
-        rawTools    <- Task.sequence(effectiveNames.map(n => resolveToolFor(context.conversation.id, n))).map(_.flatten.toVector)
+        rawTools <- Task.sequence(effectiveNames.map(n => resolveToolFor(context.conversation.id, n))).map(_.flatten.toVector)
         // Sigil #378 — `record_consent` is a no-op unless some tool in
         // scope sets `requiresUserConsent`. It's no longer in the default
         // roster (dropped from `CoreTools.all`); keep it only when a
         // consent-gated tool is actually present, so on apps with no
         // consent-gated tools it's never a dead-end attractor the model
         // loops on.
-        withConsent  = Sigil.reconcileConsentTool(rawTools)
+        withConsent = Sigil.reconcileConsentTool(rawTools)
         // Filter out memory tools when the chain has no accessible
         // spaces — surfacing `save_memory` / `unpin_memory` /
         // `list_memories` to an agent that has nowhere to write
         // would just waste tokens on tool descriptions the agent
         // would fail to use.
-        accessible  <- accessibleSpaces(effectiveChain, context.conversation.id)
-        t            = if (accessible.isEmpty) withConsent.filterNot(_.requiresAccessibleSpaces)
-                        else withConsent
+        accessible <- accessibleSpaces(effectiveChain, context.conversation.id)
+        t = if (accessible.isEmpty) withConsent.filterNot(_.requiresAccessibleSpaces)
+        else withConsent
         // Resolve the agent's roles for this turn. Static agents return
         // their declared `roles` field; DB-backed agents (e.g. apps
         // with persona records) consult persistence here. Empty result
         // is treated as a programmer error.
         rolesResolved <- agent.resolveRoles(context).map { rs =>
-          require(rs.nonEmpty,
+          require(
+            rs.nonEmpty,
             s"AgentParticipant.resolveRoles must return a non-empty list (id=${agent.id.value})")
           rs
         }
@@ -2285,8 +2423,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       } yield ResolvedTurn(t, fallbackIds, candidateChain, strategyOpt, routedWorkType, rolesResolved)
 
     Stream.force(resolved.map { rt =>
-      val tools          = rt.tools
-      val rolesResolved  = rt.roles
+      val tools = rt.tools
+      val rolesResolved = rt.roles
       val candidateChain = rt.candidateChain
       // Per-candidate `GenerationSettings` overlay (the chain entry's, or the
       // agent's base when the id isn't a routed candidate — e.g. the pinned
@@ -2328,7 +2466,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // extractor, summarization) resolve their own settings elsewhere.
         val pinnedSettings = context.conversation.pinnedEffort match {
           case Some(effort) => genSettings.copy(effort = Some(effort), reasoningMode = ReasoningMode.On)
-          case None         => genSettings
+          case None => genSettings
         }
         // forced-synthesis is the framework's last-resort "make the model
         // respond" turn. Tool-call already narrowed to the respond family
@@ -2434,14 +2572,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // chain (pinned model / no strategy) behaves exactly as before.
       val classifier = rt.strategyOpt.map(_.errorClassifier).getOrElse(sigil.provider.ErrorClassifier.Default)
       CandidateFallback.stream(
-        candidates    = rt.fallbackIds,
-        classifier    = classifier,
+        candidates = rt.fallbackIds,
+        classifier = classifier,
         reportFailure = id => rt.strategyOpt.foreach(_.reportFailure(id, rt.routedWorkType)),
         stopRequested = () => stopRequested(context.conversation.id, Some(agent.id))
       )(attempt)
     })
   }
-
 
   /**
    * The [[SpaceId]] into which a
@@ -2504,13 +2641,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         .toList
     })
 
-  /** All pinned memories scoped to the supplied spaces — the
-    * inviolable subset the framework renders every turn. Used by
-    * `list_memories(pinned=true)` and the core-context cap validator.
-    * Pushes the `pinned == true` filter into Lucene; the result is
-    * filtered to the requested spaces in-memory (since `SpaceId` is
-    * polymorphic the equality side uses the indexed `spaceIdValue`
-    * projection downstream of [[findMemories]]). */
+  /**
+   * All pinned memories scoped to the supplied spaces — the
+   * inviolable subset the framework renders every turn. Used by
+   * `list_memories(pinned=true)` and the core-context cap validator.
+   * Pushes the `pinned == true` filter into Lucene; the result is
+   * filtered to the requested spaces in-memory (since `SpaceId` is
+   * polymorphic the equality side uses the indexed `spaceIdValue`
+   * projection downstream of [[findMemories]]).
+   */
   def findCriticalMemories(spaces: Set[SpaceId]): Task[List[ContextMemory]] =
     findMemories(spaces).map(_.filter(_.pinned))
 
@@ -2552,11 +2691,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                        conversationId: Id[Conversation]): Task[Option[Place]] = {
     val user = chain.find {
       case _: sigil.participant.AgentParticipantId => false
-      case _                                       => true
+      case _ => true
     }
     user match {
       case Some(p) => locationFor(p, conversationId)
-      case None    => Task.pure(None)
+      case None => Task.pure(None)
     }
   }
 
@@ -2578,7 +2717,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * `inlineContentThreshold = Long.MaxValue`.
    */
   def inboundTransforms: List[InboundTransform] =
-    List(LocationCaptureTransform, ContentExternalizationTransform, RespondOptionsSelectionFramingTransform, TopicIndexCanonicalizingTransform, WorkerConversationAddressingTransform)
+    List(
+      LocationCaptureTransform,
+      ContentExternalizationTransform,
+      RespondOptionsSelectionFramingTransform,
+      TopicIndexCanonicalizingTransform,
+      WorkerConversationAddressingTransform
+    )
 
   /**
    * Bytes — content blocks larger than this get pushed to the
@@ -2617,7 +2762,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    *
    * The resolver receives the source [[sigil.event.Message]] so
    * apps can derive scope from `participantId` (per-user),
-   * `conversationId` (per-conversation), or message metadata. */
+   * `conversationId` (per-conversation), or message metadata.
+   */
   def externalizationSpace(message: sigil.event.Message): Task[SpaceId] =
     Task.pure(GlobalSpace)
 
@@ -2753,9 +2899,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def contentRenderers: Map[String, ContentRenderer[String]] = Map(
     "markdown" -> MarkdownRenderer,
-    "slack"    -> SlackMrkdwnRenderer,
-    "html"     -> HtmlRenderer,
-    "text"     -> PlainTextRenderer
+    "slack" -> SlackMrkdwnRenderer,
+    "html" -> HtmlRenderer,
+    "text" -> PlainTextRenderer
   )
 
   /**
@@ -2786,7 +2932,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def canSee(signal: Signal, viewer: ParticipantId): Boolean = signal match {
     case e: Event => visibilityAllows(e.visibility, viewer)
-    case _        => true
+    case _ => true
   }
 
   /**
@@ -2798,34 +2944,40 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def visibilityAllows(visibility: MessageVisibility, viewer: ParticipantId): Boolean =
     visibility match {
-      case MessageVisibility.All               => true
-      case MessageVisibility.Agents            => viewer.isInstanceOf[AgentParticipantId]
-      case MessageVisibility.Users             => !viewer.isInstanceOf[AgentParticipantId]
+      case MessageVisibility.All => true
+      case MessageVisibility.Agents => viewer.isInstanceOf[AgentParticipantId]
+      case MessageVisibility.Users => !viewer.isInstanceOf[AgentParticipantId]
       case MessageVisibility.Participants(ids) => ids.contains(viewer)
     }
 
   // -- broadcast stream --
 
-  /** Per-subscriber queue capacity for the [[SignalHub]]. Every
-    * `sigil.signals` / `signalsFor(viewer)` subscriber gets its own
-    * bounded queue of this size; when one fills, the hub sheds the
-    * oldest transient signal (a `Delta` / `Notice`) rather than block
-    * the publisher. The default ([[SignalHub.DefaultCapacity]]) is
-    * sized for always-on reasoning-model streams; apps with even
-    * heavier signal volume — or many slow wire subscribers — raise it. */
+  /**
+   * Per-subscriber queue capacity for the [[SignalHub]]. Every
+   * `sigil.signals` / `signalsFor(viewer)` subscriber gets its own
+   * bounded queue of this size; when one fills, the hub sheds the
+   * oldest transient signal (a `Delta` / `Notice`) rather than block
+   * the publisher. The default ([[SignalHub.DefaultCapacity]]) is
+   * sized for always-on reasoning-model streams; apps with even
+   * heavier signal volume — or many slow wire subscribers — raise it.
+   */
   def signalHubCapacity: Int = SignalHub.DefaultCapacity
 
-  /** Multicast dispatcher populated by [[publish]]. One per Sigil
-    * instance; initialized lazily so initialization order is safe. */
-  private final lazy val hub: SignalHub = new SignalHub(signalHubCapacity)
+  /**
+   * Multicast dispatcher populated by [[publish]]. One per Sigil
+   * instance; initialized lazily so initialization order is safe.
+   */
+  final private lazy val hub: SignalHub = new SignalHub(signalHubCapacity)
 
-  /** #317 — event ids whose live broadcast already happened eagerly
-    * (via [[broadcastEager]]) ahead of the per-iteration batch drain.
-    * [[publish]] consults this set at its hub-emit step and SKIPS the
-    * re-broadcast for a matching event id (removing it), so the event
-    * is broadcast exactly once even though it still flows through the
-    * full publish pipeline for durable persist + projection. */
-  private final val eagerlyBroadcastEventIds: java.util.Set[Id[Event]] =
+  /**
+   * #317 — event ids whose live broadcast already happened eagerly
+   * (via [[broadcastEager]]) ahead of the per-iteration batch drain.
+   * [[publish]] consults this set at its hub-emit step and SKIPS the
+   * re-broadcast for a matching event id (removing it), so the event
+   * is broadcast exactly once even though it still flows through the
+   * full publish pipeline for durable persist + projection.
+   */
+  final private val eagerlyBroadcastEventIds: java.util.Set[Id[Event]] =
     java.util.concurrent.ConcurrentHashMap.newKeySet[Id[Event]]()
 
   /**
@@ -2871,11 +3023,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   final def signals: Stream[Signal] = hub.subscribe
 
-  /** Per-viewer broadcast subscription that ALSO receives signals
-    * emitted via [[publishTo]] targeted at this viewer. Used internally
-    * by [[signalsFor]] and by transports that want full per-viewer
-    * delivery (broadcasts + targeted Notices). */
-  private[sigil] final def signalsViewerScoped(viewer: ParticipantId): Stream[Signal] =
+  /**
+   * Per-viewer broadcast subscription that ALSO receives signals
+   * emitted via [[publishTo]] targeted at this viewer. Used internally
+   * by [[signalsFor]] and by transports that want full per-viewer
+   * delivery (broadcasts + targeted Notices).
+   */
+  final private[sigil] def signalsViewerScoped(viewer: ParticipantId): Stream[Signal] =
     hub.subscribeFor(viewer)
 
   /**
@@ -2930,7 +3084,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def mediaProvider: sigil.media.MediaProvider = sigil.media.NoOpMediaProvider
 
   // -- broadcasting --
-
 
   /**
    * An [[spice.http.client.intercept.Interceptor]] chained into every
@@ -2995,41 +3148,50 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def services: List[Service] = Nil
 
-  /** All services keyed by id. Computed once from [[services]];
-    * read by [[serviceById]] / [[serviceStatusReplay]]. */
-  private final lazy val servicesById: Map[Id[Service], Service] =
+  /**
+   * All services keyed by id. Computed once from [[services]];
+   * read by [[serviceById]] / [[serviceStatusReplay]].
+   */
+  final private lazy val servicesById: Map[Id[Service], Service] =
     services.map(s => s.id -> s).toMap
 
-  /** Look up a registered service by its stable id. Returns `None`
-    * for unknown ids — apps that need fail-loud semantics check the
-    * result themselves. */
+  /**
+   * Look up a registered service by its stable id. Returns `None`
+   * for unknown ids — apps that need fail-loud semantics check the
+   * result themselves.
+   */
   final def serviceById(id: Id[Service]): Option[Service] = servicesById.get(id)
 
-  /** Latest [[ServiceStatusSignal]] observed per service id. Populated
-    * by [[publish]] whenever a `ServiceStatusSignal` flows through and
-    * read by [[serviceStatusReplay]] so a fresh client connecting after
-    * a status transition sees the current state immediately rather
-    * than waiting for the next transition. The map is process-local;
-    * no disk persistence. */
-  private final val serviceStatusCache: AtomicReference[Map[Id[Service], ServiceStatusSignal]] =
+  /**
+   * Latest [[ServiceStatusSignal]] observed per service id. Populated
+   * by [[publish]] whenever a `ServiceStatusSignal` flows through and
+   * read by [[serviceStatusReplay]] so a fresh client connecting after
+   * a status transition sees the current state immediately rather
+   * than waiting for the next transition. The map is process-local;
+   * no disk persistence.
+   */
+  final private val serviceStatusCache: AtomicReference[Map[Id[Service], ServiceStatusSignal]] =
     new AtomicReference(Map.empty)
 
-  /** Synchronous read of the cached latest status for a single service.
-    * Returns the cached signal if any has been published in this
-    * process lifetime, otherwise synthesises one from the service's
-    * [[Service.currentState]] so fresh consumers always see something. */
-  final def latestServiceStatus(id: Id[Service]): Option[ServiceStatusSignal] = {
+  /**
+   * Synchronous read of the cached latest status for a single service.
+   * Returns the cached signal if any has been published in this
+   * process lifetime, otherwise synthesises one from the service's
+   * [[Service.currentState]] so fresh consumers always see something.
+   */
+  final def latestServiceStatus(id: Id[Service]): Option[ServiceStatusSignal] =
     serviceStatusCache.get.get(id).orElse {
       servicesById.get(id).map(s => ServiceStatusSignal(s.id, s.currentState))
     }
-  }
 
-  /** Latest status snapshot for every registered service — the
-    * payload [[sigil.transport.SignalTransport.attach]] sends to a
-    * freshly-connected subscriber so its chips paint with current
-    * state immediately. Services that have published at least once
-    * report their cached signal; services that haven't fall back to
-    * a synthetic signal derived from [[Service.currentState]]. */
+  /**
+   * Latest status snapshot for every registered service — the
+   * payload [[sigil.transport.SignalTransport.attach]] sends to a
+   * freshly-connected subscriber so its chips paint with current
+   * state immediately. Services that have published at least once
+   * report their cached signal; services that haven't fall back to
+   * a synthetic signal derived from [[Service.currentState]].
+   */
   final def serviceStatusReplay: List[ServiceStatusSignal] = {
     val cached = serviceStatusCache.get
     services.map { svc =>
@@ -3037,28 +3199,34 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Publish a [[ServiceStatusSignal]] and update the latest-status
-    * cache. Apps and framework subsystems call this when a service
-    * transitions state. Idempotent — re-publishing the same state
-    * still broadcasts (consumers tracking deltas can dedupe), and
-    * still refreshes the cache so the timestamp behaviour stays
-    * consistent. */
+  /**
+   * Publish a [[ServiceStatusSignal]] and update the latest-status
+   * cache. Apps and framework subsystems call this when a service
+   * transitions state. Idempotent — re-publishing the same state
+   * still broadcasts (consumers tracking deltas can dedupe), and
+   * still refreshes the cache so the timestamp behaviour stays
+   * consistent.
+   */
   final def publishServiceStatus(signal: ServiceStatusSignal): Task[Unit] =
     publish(signal)
 
-  /** Publish a [[ServiceLogSignal]] as a live-only Notice — never
-    * persisted, never cached. Apps and framework subsystems route
-    * service stdout / stderr through this helper so log-tail UIs
-    * receive the line in real time. */
+  /**
+   * Publish a [[ServiceLogSignal]] as a live-only Notice — never
+   * persisted, never cached. Apps and framework subsystems route
+   * service stdout / stderr through this helper so log-tail UIs
+   * receive the line in real time.
+   */
   final def publishServiceLog(signal: ServiceLogSignal): Task[Unit] =
     publish(signal)
 
-  /** Update the latest-status cache when a [[ServiceStatusSignal]]
-    * flows through [[publish]]. Called from the publish pipeline
-    * before the hub emit so a subscribe-then-poll race can't observe
-    * a state where the hub has delivered the new signal but the
-    * cache still reports the old one. */
-  private final def updateServiceStatusCache(signal: Signal): Unit = signal match {
+  /**
+   * Update the latest-status cache when a [[ServiceStatusSignal]]
+   * flows through [[publish]]. Called from the publish pipeline
+   * before the hub emit so a subscribe-then-poll race can't observe
+   * a state where the hub has delivered the new signal but the
+   * cache still reports the old one.
+   */
+  final private def updateServiceStatusCache(signal: Signal): Unit = signal match {
     case s: ServiceStatusSignal =>
       serviceStatusCache.updateAndGet(_ + (s.serviceId -> s))
       ()
@@ -3140,70 +3308,72 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     case _ =>
       validateEventInvariants(signal).flatMap { _ =>
-      applyInboundTransforms(signal).flatMap { resolved =>
-        for {
-          _ <- withDB(_.apply(resolved))
-          // Feed the founding-turn topic sweep's per-claim event log
-          // (no-op when no claim is live for the conversation).
-          _ <- Task {
-                 resolved match {
-                   case e: Event => recordTurnEvent(e)
-                   case _        => ()
-                 }
-               }
-          // A settling ToolDelta reaching the durable pipeline releases
-          // the invoke's in-flight-dispatch registration — the stop
-          // path's out-of-band settle no longer owns it.
-          _ <- Task {
-                 resolved match {
-                   case td: ToolDelta if td.state.contains(EventState.Complete) =>
-                     inflightToolDispatches.remove(td.target)
-                     ()
-                   case _ => ()
-                 }
-               }
-          _ <- attachContextFrameOnSettle(resolved)
-          _ <- updateConversationProjection(resolved)
-          _ <- updateView(resolved)
-          _ <- maybeApplyModeSkill(resolved)
-          _ <- applyStop(resolved)
-          // #317 — skip the re-broadcast when this event was already
-          // broadcast eagerly at tool-start; persist + projection above
-          // still ran, so the event stays durable + projected exactly once.
-          _ <- Task {
-                 val alreadyBroadcast = resolved match {
-                   case e: Event => eagerlyBroadcastEventIds.remove(e._id)
-                   case _        => false
-                 }
-                 if (!alreadyBroadcast) hub.emit(resolved)
-                 ()
-               }
-          _ <- resolved match {
-                 case e: Event => fanOut(e)
-                 case _: sigil.signal.Delta => Task.unit
-                 case _: sigil.signal.Notice => Task.unit  // unreachable here, exhaustive
-               }
-          _ <- applySettledEffects(resolved)
-        } yield ()
-      }
+        applyInboundTransforms(signal).flatMap { resolved =>
+          for {
+            _ <- withDB(_.apply(resolved))
+            // Feed the founding-turn topic sweep's per-claim event log
+            // (no-op when no claim is live for the conversation).
+            _ <- Task {
+              resolved match {
+                case e: Event => recordTurnEvent(e)
+                case _ => ()
+              }
+            }
+            // A settling ToolDelta reaching the durable pipeline releases
+            // the invoke's in-flight-dispatch registration — the stop
+            // path's out-of-band settle no longer owns it.
+            _ <- Task {
+              resolved match {
+                case td: ToolDelta if td.state.contains(EventState.Complete) =>
+                  inflightToolDispatches.remove(td.target)
+                  ()
+                case _ => ()
+              }
+            }
+            _ <- attachContextFrameOnSettle(resolved)
+            _ <- updateConversationProjection(resolved)
+            _ <- updateView(resolved)
+            _ <- maybeApplyModeSkill(resolved)
+            _ <- applyStop(resolved)
+            // #317 — skip the re-broadcast when this event was already
+            // broadcast eagerly at tool-start; persist + projection above
+            // still ran, so the event stays durable + projected exactly once.
+            _ <- Task {
+              val alreadyBroadcast = resolved match {
+                case e: Event => eagerlyBroadcastEventIds.remove(e._id)
+                case _ => false
+              }
+              if (!alreadyBroadcast) hub.emit(resolved)
+              ()
+            }
+            _ <- resolved match {
+              case e: Event => fanOut(e)
+              case _: sigil.signal.Delta => Task.unit
+              case _: sigil.signal.Notice => Task.unit // unreachable here, exhaustive
+            }
+            _ <- applySettledEffects(resolved)
+          } yield ()
+        }
       }
   }
 
-  /** Validate Event invariants before persistence. Bug #64 —
-    * fail-loud at the write boundary so a malformed event never
-    * reaches the DB (and never poisons subsequent reads via
-    * `FrameBuilder`'s recovery path). The Throwable's stack
-    * trace points directly at the caller that bypassed the
-    * invariant — diagnostically useful in a way the read-side
-    * throw never was.
-    *
-    * Currently checks: every `MessageRole.Tool` event must
-    * carry `origin` pointing to its parent ToolInvoke. Apps
-    * with custom Event subtypes can extend the validation by
-    * overriding this hook. */
+  /**
+   * Validate Event invariants before persistence. Bug #64 —
+   * fail-loud at the write boundary so a malformed event never
+   * reaches the DB (and never poisons subsequent reads via
+   * `FrameBuilder`'s recovery path). The Throwable's stack
+   * trace points directly at the caller that bypassed the
+   * invariant — diagnostically useful in a way the read-side
+   * throw never was.
+   *
+   * Currently checks: every `MessageRole.Tool` event must
+   * carry `origin` pointing to its parent ToolInvoke. Apps
+   * with custom Event subtypes can extend the validation by
+   * overriding this hook.
+   */
   protected def validateEventInvariants(signal: Signal): Task[Unit] = signal match {
     case e: sigil.event.Event
-      if e.role == sigil.event.MessageRole.Tool && e.origin.isEmpty =>
+        if e.role == sigil.event.MessageRole.Tool && e.origin.isEmpty =>
       Task.error(new IllegalStateException(
         s"Refusing to publish ${e.getClass.getSimpleName} with role=Tool but no `origin`. " +
           s"Every Tool-role event MUST carry `origin` pointing to its parent ToolInvoke. " +
@@ -3214,19 +3384,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     case _ => Task.unit
   }
 
-  /** When a published [[Signal]] settles an Event to
-    * `EventState.Complete` (atomic Complete event OR Delta whose
-    * application yields a Complete state), compute the event's
-    * [[sigil.conversation.ContextFrame]] via
-    * [[FrameBuilder.computeFrame]] and write it back to `db.events`.
-    * Idempotent — recomputing on an event that already carries a
-    * frame is a no-op (we skip the write if the frame matches).
-    *
-    * Bug #26 — settle-time frame inlining is the source-of-truth path
-    * for prompt construction; the curator queries
-    * `event.contextFrame.isDefined` against `db.events` instead of
-    * walking a separate frames Vector projection. */
-  private final def attachContextFrameOnSettle(signal: Signal): Task[Unit] = {
+  /**
+   * When a published [[Signal]] settles an Event to
+   * `EventState.Complete` (atomic Complete event OR Delta whose
+   * application yields a Complete state), compute the event's
+   * [[sigil.conversation.ContextFrame]] via
+   * [[FrameBuilder.computeFrame]] and write it back to `db.events`.
+   * Idempotent — recomputing on an event that already carries a
+   * frame is a no-op (we skip the write if the frame matches).
+   *
+   * Bug #26 — settle-time frame inlining is the source-of-truth path
+   * for prompt construction; the curator queries
+   * `event.contextFrame.isDefined` against `db.events` instead of
+   * walking a separate frames Vector projection.
+   */
+  final private def attachContextFrameOnSettle(signal: Signal): Task[Unit] = {
     val targetOpt: Option[(Id[Conversation], Id[Event])] = signal match {
       case e: Event if e.state == EventState.Complete =>
         Some(e.conversationId -> e._id)
@@ -3257,9 +3429,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // collapsing the tool transaction into a single
               // stateful invoke removed that constraint.
               val ownWrite: Task[Unit] = frame match {
-                case None                                 => Task.unit
+                case None => Task.unit
                 case Some(f) if event.contextFrame.contains(f) => Task.unit
-                case Some(f)                              => tx.upsert(event.withContextFrame(Some(f))).unit
+                case Some(f) => tx.upsert(event.withContextFrame(Some(f))).unit
               }
               // Sigil #261 — when a ToolResults settles, fold its
               // content into the prior ToolInvoke's inlined ToolCall
@@ -3297,7 +3469,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                             // retry a call the framework deliberately refused.
                             case Some(tc: ContextFrame.ToolCall)
                                 if tc.state == ToolCallState.Active ||
-                                   ti.outcome == sigil.event.ToolOutcome.Pending =>
+                                  ti.outcome == sigil.event.ToolOutcome.Pending =>
                               val (content, images) = FrameBuilder.toolResultPayload(e)
                               val updated = tc.copy(
                                 state = ToolCallState.Complete(content, images),
@@ -3348,8 +3520,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   final def publishHistorical(events: Seq[sigil.event.Event],
                               conversationId: Id[Conversation]): Task[Unit] =
     publishHistoricalSilent(events, conversationId).flatMap(_ =>
-      notifyHistoryImported(conversationId, events.size)
-    )
+      notifyHistoryImported(conversationId, events.size))
 
   /**
    * Persist + project a batch of historical events WITHOUT firing the
@@ -3435,12 +3606,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       ()
     }
 
-  /** Coalesced [[Conversation]] row update for a bulk import: applies
-    * the *last* [[ModeChange]] / [[TopicChange]] in the batch and adds
-    * the summed cost from imported [[Message]]s. Skips per-event
-    * [[sigil.signal.ConversationCostUpdated]] Notices — bulk imports
-    * are silent on the wire by design. */
-  private final def coalescedProjectionFor(conversationId: Id[Conversation],
+  /**
+   * Coalesced [[Conversation]] row update for a bulk import: applies
+   * the *last* [[ModeChange]] / [[TopicChange]] in the batch and adds
+   * the summed cost from imported [[Message]]s. Skips per-event
+   * [[sigil.signal.ConversationCostUpdated]] Notices — bulk imports
+   * are silent on the wire by design.
+   */
+  final private def coalescedProjectionFor(conversationId: Id[Conversation],
                                            events: Seq[sigil.event.Event]): Task[Unit] = {
     val complete = events.filter(_.state == EventState.Complete)
     val latestMode = complete.reverseIterator.collectFirst { case mc: ModeChange => mc }
@@ -3462,7 +3635,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         })).unit
     }
     val applyTopic: Task[Unit] = latestTopic match {
-      case None     => Task.unit
+      case None => Task.unit
       case Some(tc) => applyTopicChangeToStack(tc)
     }
     val applyCost: Task[Unit] =
@@ -3524,8 +3697,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   final def runAsFrameworkWorkflow[A](workflowType: String,
                                       label: String,
-                                      conversationId: Option[Id[Conversation]] = None)
-                                     (task: FrameworkWorkflowControl => Task[A]): Task[A] = {
+                                      conversationId: Option[Id[Conversation]] =
+                                        None)(task: FrameworkWorkflowControl => Task[A]): Task[A] = {
     // Backwards-compat shim. The public signature has not changed —
     // every prior callsite (in this repo and downstream) still calls
     // it the same way. Internally it delegates to [[RunUnit.execute]]
@@ -3548,8 +3721,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // separately for their own callsites; the wrap here only emits
     // the operational `FrameworkWorkflowNotice`.
     val token = new CancellationToken(java.util.UUID.randomUUID().toString)
-    val record = ActiveFrameworkWorkflow(token.workflowId, workflowType, label, conversationId,
-      System.currentTimeMillis(), token)
+    val record = ActiveFrameworkWorkflow(
+      token.workflowId,
+      workflowType,
+      label,
+      conversationId,
+      System.currentTimeMillis(),
+      token)
     val started = record.startedAtMillis
     val stepCb: String => Task[Unit] = { stepLabel =>
       token.checkpoint.flatMap(_ =>
@@ -3558,53 +3736,59 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           workflowType,
           sigil.signal.FrameworkWorkflowPhase.Step(stepLabel, System.currentTimeMillis() - started),
           conversationId
-        ))
-      )
+        )))
     }
     val control = FrameworkWorkflowControl(stepCb, token)
     given sigilGiven: Sigil = this
     Task {
       Sigil.activeFrameworkWorkflows.put(token.workflowId, record)
       ()
-    }.flatMap(_ => RunUnit.execute(new FunctionRunUnit[A](
-      label = label,
-      workflowType = workflowType,
-      conversationId = conversationId,
-      run = task(control),
-      cleanup = Task {
-        Sigil.activeFrameworkWorkflows.remove(token.workflowId)
-        ()
-      },
-      cancellationToken = Some(token)
-    )))
+    }.flatMap(_ =>
+      RunUnit.execute(new FunctionRunUnit[A](
+        label = label,
+        workflowType = workflowType,
+        conversationId = conversationId,
+        run = task(control),
+        cleanup = Task {
+          Sigil.activeFrameworkWorkflows.remove(token.workflowId)
+          ()
+        },
+        cancellationToken = Some(token)
+      )))
   }
 
-  /** Convenience overload: wrap a Task that doesn't need to emit
-    * intermediate `Step` Notices and doesn't poll cancellation
-    * itself (the wrapper still aborts cleanly on cancellation
-    * before the task runs, but won't interrupt mid-execution).
-    * Bug #50 / #51. */
+  /**
+   * Convenience overload: wrap a Task that doesn't need to emit
+   * intermediate `Step` Notices and doesn't poll cancellation
+   * itself (the wrapper still aborts cleanly on cancellation
+   * before the task runs, but won't interrupt mid-execution).
+   * Bug #50 / #51.
+   */
   final def runAsFrameworkWorkflow[A](workflowType: String,
                                       label: String,
                                       conversationId: Option[Id[Conversation]],
                                       task: Task[A]): Task[A] =
     runAsFrameworkWorkflow(workflowType, label, conversationId)(c => c.token.guard(task))
 
-  /** Snapshot list of every framework workflow currently in flight.
-    * Read-only; the records expose ids, type, label, conversation
-    * scope, start timestamp, and cancellation token. Used by
-    * `cancel_framework_workflow` and the activity-list surface.
-    * Bug #51. */
+  /**
+   * Snapshot list of every framework workflow currently in flight.
+   * Read-only; the records expose ids, type, label, conversation
+   * scope, start timestamp, and cancellation token. Used by
+   * `cancel_framework_workflow` and the activity-list surface.
+   * Bug #51.
+   */
   final def activeFrameworkWorkflows: List[ActiveFrameworkWorkflow] = {
     import scala.jdk.CollectionConverters.*
     Sigil.activeFrameworkWorkflows.values().asScala.toList.sortBy(_.startedAtMillis)
   }
 
-  /** Cancel an in-flight framework workflow by id. Idempotent —
-    * cancelling a finished or already-cancelled workflow is a no-
-    * op. Returns whether this call flipped the flag (informational
-    * for the caller — the workflow's body still has to reach a
-    * checkpoint to honour it). Bug #51. */
+  /**
+   * Cancel an in-flight framework workflow by id. Idempotent —
+   * cancelling a finished or already-cancelled workflow is a no-
+   * op. Returns whether this call flipped the flag (informational
+   * for the caller — the workflow's body still has to reach a
+   * checkpoint to honour it). Bug #51.
+   */
   final def cancelFrameworkWorkflow(workflowId: String, reason: String): Boolean =
     Option(Sigil.activeFrameworkWorkflows.get(workflowId))
       .map(_.cancellationToken.cancel(reason))
@@ -3650,8 +3834,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // bound returns every event older than the `beforeMs` cursor,
         // oldest-first; the trailing `limit` of that set is the page
         // closest to the cursor.
-        eventsFor(convId, maxMessages = None, maxTimestamp = Some(lightdb.time.Timestamp(beforeMs)),
-                  viewer = Some(fromViewer)).flatMap { page =>
+        eventsFor(
+          convId,
+          maxMessages = None,
+          maxTimestamp = Some(lightdb.time.Timestamp(beforeMs)),
+          viewer = Some(fromViewer)).flatMap { page =>
           val cap = math.max(0, limit)
           val sorted = page.events
           val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
@@ -3712,10 +3899,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             .filter(m => r.memoryType.forall(_ == m.memoryType))
             .filter(m => r.pinned.forall(_ == m.pinned))
             .filter(m => !r.hasLocation || m.location.isDefined)
-            .filter(m => q.forall(needle =>
-              m.fact.toLowerCase.contains(needle) ||
-                m.label.toLowerCase.contains(needle) ||
-                m.summary.toLowerCase.contains(needle)))
+            .filter(m =>
+              q.forall(needle =>
+                m.fact.toLowerCase.contains(needle) ||
+                  m.label.toLowerCase.contains(needle) ||
+                  m.summary.toLowerCase.contains(needle)))
             .take(math.max(0, r.limit))
             .map(sigil.tool.model.MemoryListEntry.from)
           publishTo(fromViewer, sigil.signal.MemoryListSnapshot(filtered))
@@ -3727,12 +3915,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case r: sigil.signal.RequestModelCatalog =>
         val filtered = cache.all
           .filter(m => r.provider.forall(_.equalsIgnoreCase(m.provider)))
-          .filter(m => r.modality.forall(md =>
-            m.architecture.modality.equalsIgnoreCase(md) ||
-              m.architecture.inputModalities.exists(_.equalsIgnoreCase(md))))
-          .filter(m => r.query.map(_.toLowerCase).filter(_.nonEmpty).forall(needle =>
-            m.name.toLowerCase.contains(needle) ||
-              m._id.value.toLowerCase.contains(needle)))
+          .filter(m =>
+            r.modality.forall(md =>
+              m.architecture.modality.equalsIgnoreCase(md) ||
+                m.architecture.inputModalities.exists(_.equalsIgnoreCase(md))))
+          .filter(m =>
+            r.query.map(_.toLowerCase).filter(_.nonEmpty).forall(needle =>
+              m.name.toLowerCase.contains(needle) ||
+                m._id.value.toLowerCase.contains(needle)))
         publishTo(fromViewer, sigil.signal.ModelCatalogSnapshot(filtered))
 
       // -- conversation lifecycle (sigil #300) --
@@ -3757,17 +3947,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case _ => Task.unit
     }
 
-  /** Resolve the list of [[sigil.signal.ToolSummary]] visible to a
-    * viewer, optionally narrowed to a subset of spaces and/or
-    * [[sigil.tool.ToolKind]] values. Default walks `SigilDB.tools`,
-    * filters by `accessibleSpaces(List(viewer))` (a tool's
-    * `space` must be in the intersection of the viewer's authorized
-    * spaces with the request's `spaces` filter), and applies the
-    * `kinds` filter if supplied.
-    *
-    * Apps with massive tool catalogs override for indexed lookup or
-    * partition-aware paging — the wire shape stays
-    * [[sigil.signal.ToolListSnapshot]] either way. */
+  /**
+   * Resolve the list of [[sigil.signal.ToolSummary]] visible to a
+   * viewer, optionally narrowed to a subset of spaces and/or
+   * [[sigil.tool.ToolKind]] values. Default walks `SigilDB.tools`,
+   * filters by `accessibleSpaces(List(viewer))` (a tool's
+   * `space` must be in the intersection of the viewer's authorized
+   * spaces with the request's `spaces` filter), and applies the
+   * `kinds` filter if supplied.
+   *
+   * Apps with massive tool catalogs override for indexed lookup or
+   * partition-aware paging — the wire shape stays
+   * [[sigil.signal.ToolListSnapshot]] either way.
+   */
   def listTools(viewer: ParticipantId,
                 spaces: Option[Set[SpaceId]] = None,
                 kinds: Option[Set[sigil.tool.ToolKind]] = None): Task[List[sigil.signal.ToolSummary]] =
@@ -3790,77 +3982,92 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     }
 
-  /** Fold the signal through [[inboundTransforms]] in declaration order.
-    * Each transform sees the output of the previous one. */
-  private final def applyInboundTransforms(signal: Signal): Task[Signal] =
+  /**
+   * Fold the signal through [[inboundTransforms]] in declaration order.
+   * Each transform sees the output of the previous one.
+   */
+  final private def applyInboundTransforms(signal: Signal): Task[Signal] =
     inboundTransforms.foldLeft(Task.pure(signal)) { (acc, transform) =>
       acc.flatMap(s => transform.apply(s, this))
     }
 
-  /** Run each [[SettledEffect]] in declaration order, awaiting each
-    * before the next. Effects that want fire-and-forget semantics
-    * spawn their own fiber inside the returned Task. */
-  private final def applySettledEffects(signal: Signal): Task[Unit] =
+  /**
+   * Run each [[SettledEffect]] in declaration order, awaiting each
+   * before the next. Effects that want fire-and-forget semantics
+   * spawn their own fiber inside the returned Task.
+   */
+  final private def applySettledEffects(signal: Signal): Task[Unit] =
     settledEffects.foldLeft(Task.unit) { (acc, effect) =>
       acc.flatMap(_ => effect.apply(signal, this))
     }
 
-
   // -- stop-flag registry --
 
-  /** Active per-claim [[StopFlag]]s, keyed by the `AgentState._id` that
-    * owns the claim. Populated when `tryFire` wins a claim and removed
-    * when `releaseClaim` completes (successfully or via error). */
-  private final val stopFlags: ConcurrentHashMap[Id[Event], StopFlag] = new ConcurrentHashMap()
+  /**
+   * Active per-claim [[StopFlag]]s, keyed by the `AgentState._id` that
+   * owns the claim. Populated when `tryFire` wins a claim and removed
+   * when `releaseClaim` completes (successfully or via error).
+   */
+  final private val stopFlags: ConcurrentHashMap[Id[Event], StopFlag] = new ConcurrentHashMap()
 
-  /** In-process agent-claim registry — the AUTHORITATIVE mutual
-    * exclusion for `tryFire`, keyed by the claim's deterministic lock
-    * id. The persisted [[AgentState]] row remains the durable /
-    * observable projection, but it cannot be the gate: its upsert is
-    * buffered until the events transaction commits (a Lucene fsync,
-    * milliseconds wide), and the store's per-id lock entry is evicted
-    * when uncontended — so two publishes fanning out on independent
-    * fibers could BOTH read no-claim inside that window and run two
-    * concurrent generations (observed live: a voice caller's two
-    * transcript fragments produced the same spoken reply twice). A
-    * `putIfAbsent` on process-local state has no visibility window.
-    * The claim was per-process by design already (multi-replica
-    * deployments route conversations to one instance), so this
-    * narrows no guarantee.
-    *
-    * `lastTriggerCheckAt` is maintained by the loop at each iteration
-    * boundary; the release path rechecks for triggers newer than it
-    * and re-fires, closing the check-then-release gap where a message
-    * arriving between the loop's final trigger check and the claim
-    * release found the claim still held, bailed, and was stranded. */
-  private final class ActiveClaimEntry(@volatile var lastTriggerCheckAt: Long,
+  /**
+   * In-process agent-claim registry — the AUTHORITATIVE mutual
+   * exclusion for `tryFire`, keyed by the claim's deterministic lock
+   * id. The persisted [[AgentState]] row remains the durable /
+   * observable projection, but it cannot be the gate: its upsert is
+   * buffered until the events transaction commits (a Lucene fsync,
+   * milliseconds wide), and the store's per-id lock entry is evicted
+   * when uncontended — so two publishes fanning out on independent
+   * fibers could BOTH read no-claim inside that window and run two
+   * concurrent generations (observed live: a voice caller's two
+   * transcript fragments produced the same spoken reply twice). A
+   * `putIfAbsent` on process-local state has no visibility window.
+   * The claim was per-process by design already (multi-replica
+   * deployments route conversations to one instance), so this
+   * narrows no guarantee.
+   *
+   * `lastTriggerCheckAt` is maintained by the loop at each iteration
+   * boundary; the release path rechecks for triggers newer than it
+   * and re-fires, closing the check-then-release gap where a message
+   * arriving between the loop's final trigger check and the claim
+   * release found the claim still held, bailed, and was stranded.
+   */
+  final private class ActiveClaimEntry(@volatile var lastTriggerCheckAt: Long,
                                        val conversationCostAtClaim: BigDecimal) {
     private val turnCostRef = new AtomicReference[BigDecimal](BigDecimal(0))
     def addTurnCost(delta: BigDecimal): Unit = { turnCostRef.updateAndGet(_ + delta); () }
     def turnCost: BigDecimal = turnCostRef.get()
-    /** One-shot latches for the soft check-in, per scope. */
+
+    /**
+     * One-shot latches for the soft check-in, per scope.
+     */
     val turnSoftFired = new java.util.concurrent.atomic.AtomicBoolean(false)
     val conversationSoftFired = new java.util.concurrent.atomic.AtomicBoolean(false)
-    /** Escalation-headroom early fire: set by [[requestEscalation]]
-      * when the tier bumps with the turn already ≥ half its soft
-      * budget — the next boundary runs the check-in BEFORE the
-      * expensive tier grinds, not after. */
+
+    /**
+     * Escalation-headroom early fire: set by [[requestEscalation]]
+     * when the tier bumps with the turn already ≥ half its soft
+     * budget — the next boundary runs the check-in BEFORE the
+     * expensive tier grinds, not after.
+     */
     val budgetCheckinRequested = new java.util.concurrent.atomic.AtomicBoolean(false)
   }
-  private final val activeClaims: ConcurrentHashMap[Id[Event], ActiveClaimEntry] = new ConcurrentHashMap()
+  final private val activeClaims: ConcurrentHashMap[Id[Event], ActiveClaimEntry] = new ConcurrentHashMap()
 
-  /** Per-turn event log for the founding-turn topic sweep, keyed by
-    * conversation (one live claim per conversation by design). Created
-    * when `tryFire` wins a claim — seeded with the claim row itself —
-    * appended by [[publish]] for every Event while the claim is live,
-    * and consumed + removed by [[releaseClaim]]. Recording ids and
-    * original topic stamps here — rather than querying the store at
-    * turn end — keeps the sweep immune to the split store's
-    * asynchronous index refresh: a turn-end query can miss the turn's
-    * own tail, while deltas against recorded ids hit exact rows. The
-    * founding user message publishes BEFORE the claim exists, so the
-    * sweep resolves it separately from committed history. */
-  private final class TurnEventLog {
+  /**
+   * Per-turn event log for the founding-turn topic sweep, keyed by
+   * conversation (one live claim per conversation by design). Created
+   * when `tryFire` wins a claim — seeded with the claim row itself —
+   * appended by [[publish]] for every Event while the claim is live,
+   * and consumed + removed by [[releaseClaim]]. Recording ids and
+   * original topic stamps here — rather than querying the store at
+   * turn end — keeps the sweep immune to the split store's
+   * asynchronous index refresh: a turn-end query can miss the turn's
+   * own tail, while deltas against recorded ids hit exact rows. The
+   * founding user message publishes BEFORE the claim exists, so the
+   * sweep resolves it separately from committed history.
+   */
+  final private class TurnEventLog {
     val stamps: ConcurrentHashMap[Id[Event], Id[Topic]] = new ConcurrentHashMap()
     val switches: java.util.concurrent.ConcurrentLinkedQueue[TopicChange] =
       new java.util.concurrent.ConcurrentLinkedQueue()
@@ -3873,75 +4080,89 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  private final val activeTurnEvents: ConcurrentHashMap[Id[Conversation], TurnEventLog] = new ConcurrentHashMap()
+  final private val activeTurnEvents: ConcurrentHashMap[Id[Conversation], TurnEventLog] = new ConcurrentHashMap()
 
-  /** Record an Event into the owning conversation's live turn log, if
-    * a claim is currently held. Cheap no-op otherwise. */
-  private final def recordTurnEvent(e: Event): Unit =
+  /**
+   * Record an Event into the owning conversation's live turn log, if
+   * a claim is currently held. Cheap no-op otherwise.
+   */
+  final private def recordTurnEvent(e: Event): Unit =
     Option(activeTurnEvents.get(e.conversationId)).foreach(_.record(e))
 
-  /** Sigil #415 — conversation-level stop latch that OUTLIVES claims.
-    * [[stopFlags]] only interrupts a claim that is live at the moment the
-    * Stop arrives; in an erroring conversation churning through rapid
-    * claim/release cycles (or with re-trigger machinery queued), a Stop
-    * can land in a gap, set nothing, and evaporate — the next claim then
-    * starts with a fresh unset flag and the agent visibly ignores the
-    * user's Stop. The latch records the Stop's timestamp per conversation;
-    * agent fan-out refuses to fire while it is set, and only a
-    * user-authored Message NEWER than the latch clears it (a genuine
-    * "keep going" re-arms naturally; auto-continue / challenge machinery
-    * stays suppressed). In-memory: a restart clears latches, which is the
-    * conservative direction (an agent firing after restart is recoverable;
-    * a permanently-latched conversation is not). */
-  private final val stopLatches: ConcurrentHashMap[Id[Conversation], java.lang.Long] = new ConcurrentHashMap()
+  /**
+   * Sigil #415 — conversation-level stop latch that OUTLIVES claims.
+   * [[stopFlags]] only interrupts a claim that is live at the moment the
+   * Stop arrives; in an erroring conversation churning through rapid
+   * claim/release cycles (or with re-trigger machinery queued), a Stop
+   * can land in a gap, set nothing, and evaporate — the next claim then
+   * starts with a fresh unset flag and the agent visibly ignores the
+   * user's Stop. The latch records the Stop's timestamp per conversation;
+   * agent fan-out refuses to fire while it is set, and only a
+   * user-authored Message NEWER than the latch clears it (a genuine
+   * "keep going" re-arms naturally; auto-continue / challenge machinery
+   * stays suppressed). In-memory: a restart clears latches, which is the
+   * conservative direction (an agent firing after restart is recoverable;
+   * a permanently-latched conversation is not).
+   */
+  final private val stopLatches: ConcurrentHashMap[Id[Conversation], java.lang.Long] = new ConcurrentHashMap()
 
-  /** In-flight atomic tool dispatches, keyed by invoke id. The
-    * orchestrator registers each dispatch just before the tool body
-    * starts executing; the entry is removed when the invoke's settling
-    * [[ToolDelta]] flows through [[publish]]. On the happy path the
-    * invoke's durable persist and its settle both ride the iteration's
-    * stream drain — but a force-Stop CANCELS that drain mid-execution,
-    * losing both, while the Active invoke was already eagerly broadcast
-    * to wire subscribers (clients render a running chip). Entries still
-    * present when the loop's stop path runs [[settleDanglingToolInvokes]]
-    * are persisted + settled out-of-band there so no invoke is left
-    * un-settleable. */
-  private final val inflightToolDispatches: ConcurrentHashMap[Id[Event], ToolInvoke] = new ConcurrentHashMap()
+  /**
+   * In-flight atomic tool dispatches, keyed by invoke id. The
+   * orchestrator registers each dispatch just before the tool body
+   * starts executing; the entry is removed when the invoke's settling
+   * [[ToolDelta]] flows through [[publish]]. On the happy path the
+   * invoke's durable persist and its settle both ride the iteration's
+   * stream drain — but a force-Stop CANCELS that drain mid-execution,
+   * losing both, while the Active invoke was already eagerly broadcast
+   * to wire subscribers (clients render a running chip). Entries still
+   * present when the loop's stop path runs [[settleDanglingToolInvokes]]
+   * are persisted + settled out-of-band there so no invoke is left
+   * un-settleable.
+   */
+  final private val inflightToolDispatches: ConcurrentHashMap[Id[Event], ToolInvoke] = new ConcurrentHashMap()
 
-  /** Record an atomic tool dispatch whose execution is about to start.
-    * Called by the orchestrator; paired with automatic removal when the
-    * invoke's settling delta reaches [[publish]]. */
+  /**
+   * Record an atomic tool dispatch whose execution is about to start.
+   * Called by the orchestrator; paired with automatic removal when the
+   * invoke's settling delta reaches [[publish]].
+   */
   final def registerInflightToolDispatch(invoke: ToolInvoke): Unit = {
     inflightToolDispatches.put(invoke._id, invoke)
     ()
   }
 
-  /** Per-conversation ids of tool invokes whose SETTLED result has been
-    * rendered into a prompt the model consumed — the agent loop marks
-    * each iteration's frames after the response drain completes.
-    * Consulted (via [[sigil.conversation.compression.TurnEventsContext.deliveredToolResults]])
-    * by [[sigil.conversation.compression.CompactionInvariant.UndeliveredToolResults]]:
-    * an active-turn invoke NOT in this set must survive every
-    * compaction / shed / summary cover-set, or the agent never sees the
-    * outcome of its own (possibly long-running) work and re-executes
-    * it. In-memory; cleared when a fresh user Message starts the next
-    * turn. A restart clears delivery state, which over-protects (keeps
-    * more frames) for one turn — the safe direction. */
-  private final val deliveredToolResults: ConcurrentHashMap[Id[Conversation], java.util.Set[Id[Event]]] =
+  /**
+   * Per-conversation ids of tool invokes whose SETTLED result has been
+   * rendered into a prompt the model consumed — the agent loop marks
+   * each iteration's frames after the response drain completes.
+   * Consulted (via [[sigil.conversation.compression.TurnEventsContext.deliveredToolResults]])
+   * by [[sigil.conversation.compression.CompactionInvariant.UndeliveredToolResults]]:
+   * an active-turn invoke NOT in this set must survive every
+   * compaction / shed / summary cover-set, or the agent never sees the
+   * outcome of its own (possibly long-running) work and re-executes
+   * it. In-memory; cleared when a fresh user Message starts the next
+   * turn. A restart clears delivery state, which over-protects (keeps
+   * more frames) for one turn — the safe direction.
+   */
+  final private val deliveredToolResults: ConcurrentHashMap[Id[Conversation], java.util.Set[Id[Event]]] =
     new ConcurrentHashMap()
 
-  /** Mark `ids` as delivered for `conversationId` — their settled
-    * results appeared in a prompt whose response the model produced.
-    * Called by the agent loop after each iteration's drain; public so
-    * apps with custom turn shapes (`Sigil.process` overrides) can keep
-    * the delivery tracking honest for their own prompt builds. */
+  /**
+   * Mark `ids` as delivered for `conversationId` — their settled
+   * results appeared in a prompt whose response the model produced.
+   * Called by the agent loop after each iteration's drain; public so
+   * apps with custom turn shapes (`Sigil.process` overrides) can keep
+   * the delivery tracking honest for their own prompt builds.
+   */
   final def markToolResultsDelivered(conversationId: Id[Conversation], ids: Iterable[Id[Event]]): Unit =
     if (ids.nonEmpty) {
       val set = deliveredToolResults.computeIfAbsent(conversationId, _ => ConcurrentHashMap.newKeySet[Id[Event]]())
       ids.foreach(set.add)
     }
 
-  /** Snapshot of the delivered-result ids for `conversationId`. */
+  /**
+   * Snapshot of the delivered-result ids for `conversationId`.
+   */
   final def deliveredToolResultIds(conversationId: Id[Conversation]): Set[Id[Event]] =
     Option(deliveredToolResults.get(conversationId)) match {
       case Some(set) =>
@@ -3952,154 +4173,182 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   // -- detached tool tasks --
 
-  /** How long a [[sigil.tool.Tool.detachable]] tool may run attached
-    * before the orchestrator promotes it to a DETACHED background
-    * task: the invoke settles with a tracking handle, the turn
-    * finishes normally, the work continues on its own fiber, and the
-    * real result folds onto the original invoke followed by a
-    * Tool-role continuation trigger when it lands. Sub-threshold
-    * completions stay fully synchronous. `0` promotes a detachable
-    * tool immediately. Non-detachable tools ignore this entirely. */
+  /**
+   * How long a [[sigil.tool.Tool.detachable]] tool may run attached
+   * before the orchestrator promotes it to a DETACHED background
+   * task: the invoke settles with a tracking handle, the turn
+   * finishes normally, the work continues on its own fiber, and the
+   * real result folds onto the original invoke followed by a
+   * Tool-role continuation trigger when it lands. Sub-threshold
+   * completions stay fully synchronous. `0` promotes a detachable
+   * tool immediately. Non-detachable tools ignore this entirely.
+   */
   def toolDetachThresholdMs: Long = 60000L
 
   // -- client-registered interaction tools --
 
-  /** Registry of UI-registered interaction tools (see
-    * [[sigil.tool.client.ClientToolSpec]]): the frontend registers
-    * its screens / panels / actions on conversation load via
-    * [[sigil.signal.RegisterClientTools]], they become discoverable
-    * through `find_capability` and callable like any server tool, and
-    * execution is observed by the UI on its signal stream. In-memory
-    * and connection-scoped by design — a client tool is executable
-    * only while the registering client is attached, so nothing
-    * persists. */
+  /**
+   * Registry of UI-registered interaction tools (see
+   * [[sigil.tool.client.ClientToolSpec]]): the frontend registers
+   * its screens / panels / actions on conversation load via
+   * [[sigil.signal.RegisterClientTools]], they become discoverable
+   * through `find_capability` and callable like any server tool, and
+   * execution is observed by the UI on its signal stream. In-memory
+   * and connection-scoped by design — a client tool is executable
+   * only while the registering client is attached, so nothing
+   * persists.
+   */
   final lazy val clientTools: sigil.tool.client.ClientToolRegistry =
     new sigil.tool.client.ClientToolRegistry(this)
 
-  /** Maximum client tools registrable per conversation (across all
-    * sessions). Registrations past the cap are rejected with a
-    * per-name reason in the [[sigil.signal.ClientToolsRegistered]]
-    * ack. */
+  /**
+   * Maximum client tools registrable per conversation (across all
+   * sessions). Registrations past the cap are rejected with a
+   * per-name reason in the [[sigil.signal.ClientToolsRegistered]]
+   * ack.
+   */
   def clientToolLimit: Int = 32
 
-  /** Cap on a client tool's description length. Client-registered
-    * descriptions are client-controlled text injected into the
-    * agent's prompt — the cap bounds the injection surface (and the
-    * token cost). */
+  /**
+   * Cap on a client tool's description length. Client-registered
+   * descriptions are client-controlled text injected into the
+   * agent's prompt — the cap bounds the injection surface (and the
+   * token cost).
+   */
   def clientToolDescriptionMaxChars: Int = 1024
 
-  /** How long a round-trip client tool call (`expectsResult = true`)
-    * waits for the UI's [[sigil.signal.ClientToolResult]] before
-    * settling a recoverable Failure. UI interactions should answer in
-    * user-interface time; a client that is busy, backgrounded, or
-    * gone must not park the agent's turn indefinitely. */
+  /**
+   * How long a round-trip client tool call (`expectsResult = true`)
+   * waits for the UI's [[sigil.signal.ClientToolResult]] before
+   * settling a recoverable Failure. UI interactions should answer in
+   * user-interface time; a client that is busy, backgrounded, or
+   * gone must not park the agent's turn indefinitely.
+   */
   def clientToolResultTimeoutMs: Long = 15000L
 
-  /** Vet a client-tool registration before it lands. `None` rejects
-    * the tool (the reason surfaces in the registration ack); `Some`
-    * admits — possibly rewritten (trimmed description, adjusted
-    * keywords). The default admits everything that passed the
-    * framework's own validation (name shape, description presence,
-    * server-tool collision, [[clientToolLimit]]). Multi-tenant apps
-    * that treat client-registered text as untrusted override this to
-    * enforce their own policy. */
+  /**
+   * Vet a client-tool registration before it lands. `None` rejects
+   * the tool (the reason surfaces in the registration ack); `Some`
+   * admits — possibly rewritten (trimmed description, adjusted
+   * keywords). The default admits everything that passed the
+   * framework's own validation (name shape, description presence,
+   * server-tool collision, [[clientToolLimit]]). Multi-tenant apps
+   * that treat client-registered text as untrusted override this to
+   * enforce their own policy.
+   */
   def clientToolFilter(spec: sigil.tool.client.ClientToolSpec): Option[sigil.tool.client.ClientToolSpec] =
     Some(spec)
 
-  /** How many times per user turn the orchestrator challenges a
-    * naked-text terminal (a plain-prose `end_turn` with no tool call —
-    * it carries no explicit continue-vs-yield decision) before
-    * committing the prose as the terminal reply.
-    *
-    * A single challenge assumes the agent responds by ACTING; an agent
-    * that responds by narrating again ("…Starting now.") would then
-    * yield the turn with zero work done — the announce-then-stall
-    * failure the challenge exists to break, guaranteed by the guard
-    * itself. The second bare narration is stronger evidence of a
-    * stall than the first, so the challenge re-fires with an
-    * escalated directive up to this bound. Any tool call clears the
-    * pattern naturally (the intercept only fires on zero-tool-call
-    * completions); forced-synthesis and context-pressured turns
-    * commit immediately as before. Default `2`. */
+  /**
+   * How many times per user turn the orchestrator challenges a
+   * naked-text terminal (a plain-prose `end_turn` with no tool call —
+   * it carries no explicit continue-vs-yield decision) before
+   * committing the prose as the terminal reply.
+   *
+   * A single challenge assumes the agent responds by ACTING; an agent
+   * that responds by narrating again ("…Starting now.") would then
+   * yield the turn with zero work done — the announce-then-stall
+   * failure the challenge exists to break, guaranteed by the guard
+   * itself. The second bare narration is stronger evidence of a
+   * stall than the first, so the challenge re-fires with an
+   * escalated directive up to this bound. Any tool call clears the
+   * pattern naturally (the intercept only fires on zero-tool-call
+   * completions); forced-synthesis and context-pressured turns
+   * commit immediately as before. Default `2`.
+   */
   def nakedTextChallengeLimit: Int = 2
 
   // -- spend budgets --
 
-  /** Soft per-turn spend budget (USD). When a turn's accumulated
-    * provider cost crosses it, the loop injects a one-shot check-in
-    * directive at the next iteration boundary: summarize where you
-    * are and ask the user — via `respond_options` — whether to
-    * continue, and at what scope. The turn yields at a summary
-    * instead of running the meter while the user is away; the
-    * continuation is a fresh turn (fresh budget, fresh complexity
-    * classification — the check-in is also the de-escalation point).
-    * `None` (default) disables. Per-conversation override via
-    * [[sigil.conversation.ConversationBudget]] / the `set_budget`
-    * tool. Cost is a first-class failure dimension: every other
-    * guard judges progress, and a correctly-progressing turn can
-    * still be wrong purely on the bill. */
+  /**
+   * Soft per-turn spend budget (USD). When a turn's accumulated
+   * provider cost crosses it, the loop injects a one-shot check-in
+   * directive at the next iteration boundary: summarize where you
+   * are and ask the user — via `respond_options` — whether to
+   * continue, and at what scope. The turn yields at a summary
+   * instead of running the meter while the user is away; the
+   * continuation is a fresh turn (fresh budget, fresh complexity
+   * classification — the check-in is also the de-escalation point).
+   * `None` (default) disables. Per-conversation override via
+   * [[sigil.conversation.ConversationBudget]] / the `set_budget`
+   * tool. Cost is a first-class failure dimension: every other
+   * guard judges progress, and a correctly-progressing turn can
+   * still be wrong purely on the bill.
+   */
   def turnCostSoftBudget: Option[BigDecimal] = None
 
-  /** Hard per-turn spend ceiling (USD). Crossing it forces terminal
-    * synthesis — the agent wraps up honestly with a spend-and-state
-    * report and the turn ends. A ceiling crossed means the soft
-    * check-in was ignored or long-ago approved; the wrap-up is the
-    * backstop, not the conversation. `None` (default) disables. */
+  /**
+   * Hard per-turn spend ceiling (USD). Crossing it forces terminal
+   * synthesis — the agent wraps up honestly with a spend-and-state
+   * report and the turn ends. A ceiling crossed means the soft
+   * check-in was ignored or long-ago approved; the wrap-up is the
+   * backstop, not the conversation. `None` (default) disables.
+   */
   def turnCostHardCeiling: Option[BigDecimal] = None
 
-  /** Soft whole-conversation spend budget (USD) — same check-in
-    * semantics as [[turnCostSoftBudget]], fired when
-    * [[sigil.conversation.Conversation.cost]] crosses the threshold
-    * during a turn. `None` (default) disables. */
+  /**
+   * Soft whole-conversation spend budget (USD) — same check-in
+   * semantics as [[turnCostSoftBudget]], fired when
+   * [[sigil.conversation.Conversation.cost]] crosses the threshold
+   * during a turn. `None` (default) disables.
+   */
   def conversationCostSoftBudget: Option[BigDecimal] = None
 
-  /** Hard whole-conversation spend ceiling (USD). Crossing it
-    * mid-turn forces terminal synthesis; a conversation already past
-    * it refuses to START new turns (a user-visible message points at
-    * `set_budget`) until the budget is raised. `None` (default)
-    * disables. */
+  /**
+   * Hard whole-conversation spend ceiling (USD). Crossing it
+   * mid-turn forces terminal synthesis; a conversation already past
+   * it refuses to START new turns (a user-visible message points at
+   * `set_budget`) until the budget is raised. `None` (default)
+   * disables.
+   */
   def conversationCostHardCeiling: Option[BigDecimal] = None
 
-  /** Token budget for the prompt's Summaries section — the same
-    * governance contract Frames has (budget + elision), applied to
-    * persisted [[sigil.conversation.ContextSummary]] records. The
-    * curator keeps the newest summaries within this budget (always at
-    * least one); older ones drop from the prompt while their content
-    * stays durable and reachable via search / `reload_content`.
-    * Without a bound, one long turn's rolling compaction stream grew
-    * the section 1.7K → 22K tokens (40% of late context) and, because
-    * it rendered ahead of the message history, re-cached the whole
-    * prompt at creation rates every iteration. */
+  /**
+   * Token budget for the prompt's Summaries section — the same
+   * governance contract Frames has (budget + elision), applied to
+   * persisted [[sigil.conversation.ContextSummary]] records. The
+   * curator keeps the newest summaries within this budget (always at
+   * least one); older ones drop from the prompt while their content
+   * stays durable and reachable via search / `reload_content`.
+   * Without a bound, one long turn's rolling compaction stream grew
+   * the section 1.7K → 22K tokens (40% of late context) and, because
+   * it rendered ahead of the message history, re-cached the whole
+   * prompt at creation rates every iteration.
+   */
   def summariesTokenBudget: Int = 4096
 
-  /** Effective budgets for `conv` — the conversation's override
-    * field-wise, falling back to the app hooks. */
+  /**
+   * Effective budgets for `conv` — the conversation's override
+   * field-wise, falling back to the app hooks.
+   */
   final def effectiveBudgetsFor(conv: Conversation): sigil.conversation.ConversationBudget = {
     val o = conv.budget.getOrElse(sigil.conversation.ConversationBudget())
     sigil.conversation.ConversationBudget(
-      turnSoft         = o.turnSoft.orElse(turnCostSoftBudget),
-      turnHard         = o.turnHard.orElse(turnCostHardCeiling),
+      turnSoft = o.turnSoft.orElse(turnCostSoftBudget),
+      turnHard = o.turnHard.orElse(turnCostHardCeiling),
       conversationSoft = o.conversationSoft.orElse(conversationCostSoftBudget),
       conversationHard = o.conversationHard.orElse(conversationCostHardCeiling)
     )
   }
 
-  /** Live detachable-tool executions, keyed by invoke id (which
-    * doubles as the task handle). Registered at DISPATCH — so a Stop
-    * reaches the execution's [[CancellationToken]] in the attached
-    * phase too — and promoted in place at detach. In-memory: the
-    * durable marker is the invoke row's `detached` flag, which
-    * [[reconcileLostDetachedTools]] compares against this registry to
-    * settle tasks whose fiber died with the process. */
-  private final val detachedToolTasks: ConcurrentHashMap[Id[Event], sigil.tool.DetachedToolTask] =
+  /**
+   * Live detachable-tool executions, keyed by invoke id (which
+   * doubles as the task handle). Registered at DISPATCH — so a Stop
+   * reaches the execution's [[CancellationToken]] in the attached
+   * phase too — and promoted in place at detach. In-memory: the
+   * durable marker is the invoke row's `detached` flag, which
+   * [[reconcileLostDetachedTools]] compares against this registry to
+   * settle tasks whose fiber died with the process.
+   */
+  final private val detachedToolTasks: ConcurrentHashMap[Id[Event], sigil.tool.DetachedToolTask] =
     new ConcurrentHashMap()
 
-  private[sigil] final def registerDetachableDispatch(task: sigil.tool.DetachedToolTask): Unit = {
+  final private[sigil] def registerDetachableDispatch(task: sigil.tool.DetachedToolTask): Unit = {
     detachedToolTasks.put(task.invokeId, task)
     ()
   }
 
-  private[sigil] final def markToolDetached(invokeId: Id[Event]): Unit = {
+  final private[sigil] def markToolDetached(invokeId: Id[Event]): Unit = {
     detachedToolTasks.computeIfPresent(
       invokeId,
       (_, t) => t.copy(detachedAt = Some(lightdb.time.Timestamp(lightdb.util.Nowish())))
@@ -4107,16 +4356,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     ()
   }
 
-  private[sigil] final def completeDetachedTool(invokeId: Id[Event]): Unit = {
+  final private[sigil] def completeDetachedTool(invokeId: Id[Event]): Unit = {
     detachedToolTasks.remove(invokeId)
     ()
   }
 
-  /** Detached tasks currently running for `conversationId`, projected
-    * for the "what's running?" panel. Attached-phase registrations
-    * (not yet promoted) are excluded — those are ordinary in-turn tool
-    * calls. `WorkflowSigil.activeTasksFor` unions these with workflow
-    * runs so detached sweeps appear beside `delegate_task` workers. */
+  /**
+   * Detached tasks currently running for `conversationId`, projected
+   * for the "what's running?" panel. Attached-phase registrations
+   * (not yet promoted) are excluded — those are ordinary in-turn tool
+   * calls. `WorkflowSigil.activeTasksFor` unions these with workflow
+   * runs so detached sweeps appear beside `delegate_task` workers.
+   */
   final def detachedToolTasksFor(conversationId: Id[Conversation]): List[sigil.conversation.ConversationTask] = {
     import scala.jdk.CollectionConverters.*
     detachedToolTasks.values.asScala.iterator
@@ -4125,96 +4376,106 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       .toList
   }
 
-  /** Settle detached invokes whose background task no longer exists —
-    * the process restarted (or the fiber was lost) between detach and
-    * completion. Runs once per agent claim: without it, a lost task's
-    * invoke reads "running as task X" forever and the continuation the
-    * agent is waiting on never comes. Best-effort. */
-  private[sigil] final def reconcileLostDetachedTools(conversationId: Id[Conversation]): Task[Unit] =
+  /**
+   * Settle detached invokes whose background task no longer exists —
+   * the process restarted (or the fiber was lost) between detach and
+   * completion. Runs once per agent claim: without it, a lost task's
+   * invoke reads "running as task X" forever and the continuation the
+   * agent is waiting on never comes. Best-effort.
+   */
+  final private[sigil] def reconcileLostDetachedTools(conversationId: Id[Conversation]): Task[Unit] =
     withDB(_.eventsTransaction(conversationId)(_.list)).flatMap { events =>
       val lost = events.collect {
         case ti: ToolInvoke
-          if ti.detached
-            && ti.state == EventState.Complete
-            && ti.outcome == sigil.event.ToolOutcome.Pending
-            && !detachedToolTasks.containsKey(ti._id) =>
+            if ti.detached
+              && ti.state == EventState.Complete
+              && ti.outcome == sigil.event.ToolOutcome.Pending
+              && !detachedToolTasks.containsKey(ti._id) =>
           ti
       }
       lost.foldLeft(Task.unit) { (acc, ti) =>
         val reason = s"Detached tool `${ti.toolName.value}` was lost to a process restart before completing. " +
           "Its partial work may be on disk; re-issue the tool if you still need the result."
         val settle = ToolDelta(
-          target         = ti._id,
+          target = ti._id,
           conversationId = conversationId,
-          state          = Some(EventState.Complete),
-          summary        = Some(reason),
-          outcome        = Some(sigil.event.ToolOutcome.Failure(reason, recoverable = true))
+          state = Some(EventState.Complete),
+          summary = Some(reason),
+          outcome = Some(sigil.event.ToolOutcome.Failure(reason, recoverable = true))
         )
         acc.flatMap(_ => publish(settle).handleError(_ => Task.unit))
       }
     }.handleError(_ => Task.unit)
 
-  /** Sigil #415 — whether the user has requested a stop that should halt
-    * further work for `conversationId` (optionally narrowed to one
-    * agent). Consulted by the provider layer's transient-retry loop and
-    * the candidate-fallback combinator BEFORE issuing another wire call:
-    * a Stop that lands mid-retry-backoff must prevent the next attempt,
-    * not race it. True when the conversation is stop-latched OR any
-    * matching live claim's [[StopFlag]] is set. */
-  private[sigil] final def stopRequested(conversationId: Id[Conversation],
+  /**
+   * Sigil #415 — whether the user has requested a stop that should halt
+   * further work for `conversationId` (optionally narrowed to one
+   * agent). Consulted by the provider layer's transient-retry loop and
+   * the candidate-fallback combinator BEFORE issuing another wire call:
+   * a Stop that lands mid-retry-backoff must prevent the next attempt,
+   * not race it. True when the conversation is stop-latched OR any
+   * matching live claim's [[StopFlag]] is set.
+   */
+  final private[sigil] def stopRequested(conversationId: Id[Conversation],
                                          agentId: Option[ParticipantId] = None): Boolean =
     stopLatches.containsKey(conversationId) || {
       import scala.jdk.CollectionConverters.*
       stopFlags.entrySet().iterator().asScala.exists { entry =>
         entry.getKey.value.endsWith(s":${conversationId.value}") &&
-          agentId.forall(id => entry.getKey.value == s"agentlock:${id.value}:${conversationId.value}") &&
-          entry.getValue.requested
+        agentId.forall(id => entry.getKey.value == s"agentlock:${id.value}:${conversationId.value}") &&
+        entry.getValue.requested
       }
     }
 
-  /** In-flight provider HTTP-stream cancel handles, keyed per
-    * (agent, conversation). A [[Provider]] registers its spice
-    * `StreamHandle.cancel` here when an agent turn starts streaming and
-    * deregisters when the stream terminates; [[applyStop]] looks up the
-    * matching handle on a `Stop` and aborts the in-flight call so the
-    * generated-then-discarded output tokens aren't billed. */
+  /**
+   * In-flight provider HTTP-stream cancel handles, keyed per
+   * (agent, conversation). A [[Provider]] registers its spice
+   * `StreamHandle.cancel` here when an agent turn starts streaming and
+   * deregisters when the stream terminates; [[applyStop]] looks up the
+   * matching handle on a `Stop` and aborts the in-flight call so the
+   * generated-then-discarded output tokens aren't billed.
+   */
   final val providerStreams: sigil.provider.ProviderStreamRegistry =
     new sigil.provider.ProviderStreamRegistry
 
-  /** Per-claim progress-checkpoint state. Keyed by the AgentState id
-    * that owns the claim. Carries the prior checkpoint's `currentStatus`
-    * (anchor for the next checkpoint's "did things change?" question),
-    * the count of consecutive `meaningfulProgress = false`
-    * checkpoints — the framework intervenes when the count reaches
-    * [[consecutiveNoProgressLimit]] — and the churn chain: the prior
-    * window's mutation targets plus how many consecutive windows have
-    * re-mutated only already-seen targets without any verification
-    * call. Populated on first checkpoint; cleared on `releaseClaim`.
-    *
-    * When the planner tier is enabled ([[plannerModelId]]) the state
-    * additionally carries the turn's plan artifact, the iteration of
-    * the most recent planner review, and the anomaly latch that
-    * mechanical signals (stall heuristics, churn chain, budget
-    * check-in) set to arm the next boundary's planner consult. */
-  private final case class CheckpointState(@volatile var lastStatus: Option[String],
-                                            @volatile var noProgressStreak: Int,
-                                            @volatile var lastMutationTargets: Set[String] = Set.empty,
-                                            @volatile var repeatUnverifiedWindows: Int = 0,
-                                            @volatile var plan: Option[TurnPlan] = None,
-                                            @volatile var lastPlannerIteration: Int = 0,
-                                            @volatile var plannerAnomalyPending: Boolean = false)
-  private final val checkpointStates: ConcurrentHashMap[Id[Event], CheckpointState] = new ConcurrentHashMap()
+  /**
+   * Per-claim progress-checkpoint state. Keyed by the AgentState id
+   * that owns the claim. Carries the prior checkpoint's `currentStatus`
+   * (anchor for the next checkpoint's "did things change?" question),
+   * the count of consecutive `meaningfulProgress = false`
+   * checkpoints — the framework intervenes when the count reaches
+   * [[consecutiveNoProgressLimit]] — and the churn chain: the prior
+   * window's mutation targets plus how many consecutive windows have
+   * re-mutated only already-seen targets without any verification
+   * call. Populated on first checkpoint; cleared on `releaseClaim`.
+   *
+   * When the planner tier is enabled ([[plannerModelId]]) the state
+   * additionally carries the turn's plan artifact, the iteration of
+   * the most recent planner review, and the anomaly latch that
+   * mechanical signals (stall heuristics, churn chain, budget
+   * check-in) set to arm the next boundary's planner consult.
+   */
+  final private case class CheckpointState(@volatile var lastStatus: Option[String],
+                                           @volatile var noProgressStreak: Int,
+                                           @volatile var lastMutationTargets: Set[String] = Set.empty,
+                                           @volatile var repeatUnverifiedWindows: Int = 0,
+                                           @volatile var plan: Option[TurnPlan] = None,
+                                           @volatile var lastPlannerIteration: Int = 0,
+                                           @volatile var plannerAnomalyPending: Boolean = false)
+  final private val checkpointStates: ConcurrentHashMap[Id[Event], CheckpointState] = new ConcurrentHashMap()
 
-  /** On a [[Stop]] event, set the matching flag(s): one specific agent if
-    * `targetParticipantId` is set, else every agent in the conversation.
-    * Also aborts any in-flight provider HTTP stream for the matching
-    * agent(s) via [[providerStreams]] so the call doesn't drain to
-    * natural completion (which still bills the discarded output
-    * tokens). Also logs the stop (with `reason`, if supplied) so
-    * operators can see where stops originate — otherwise `Stop.reason`
-    * would be metadata that only shows up if someone trawls the event
-    * log. */
-  private final def applyStop(signal: Signal): Task[Unit] = signal match {
+  /**
+   * On a [[Stop]] event, set the matching flag(s): one specific agent if
+   * `targetParticipantId` is set, else every agent in the conversation.
+   * Also aborts any in-flight provider HTTP stream for the matching
+   * agent(s) via [[providerStreams]] so the call doesn't drain to
+   * natural completion (which still bills the discarded output
+   * tokens). Also logs the stop (with `reason`, if supplied) so
+   * operators can see where stops originate — otherwise `Stop.reason`
+   * would be metadata that only shows up if someone trawls the event
+   * log.
+   */
+  final private def applyStop(signal: Signal): Task[Unit] = signal match {
     case s: Stop =>
       val setFlags = Task {
         val target = s.targetParticipantId.map(_.value).getOrElse("*")
@@ -4239,7 +4500,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // on the id suffix for conversation + participant.
           val matchesConv = lockId.value.endsWith(s":${s.conversationId.value}")
           val matchesTarget = s.targetParticipantId match {
-            case None     => true
+            case None => true
             case Some(id) => lockId.value == s"agentlock:${id.value}:${s.conversationId.value}"
           }
           if (matchesConv && matchesTarget) {
@@ -4281,32 +4542,34 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     case _ => Task.unit
   }
 
-  /** Settle any tool invoke left `Active` + `Pending` in `conversationId`
-    * for `caller` — the dangling-on-Stop case.
-    *
-    * A `Stop(force = true)` truncates the agent's signal stream via
-    * `takeWhile(_ => !force)` in `runAgentLoop`. When the cut lands
-    * between a tool's `ToolInvoke` element and its paired settle element
-    * (the window during which a slow atomic tool — a browser screenshot,
-    * an HTTP fetch — is executing), the settle is dropped before it
-    * persists. The orchestrator's in-memory reconcile can't recover it:
-    * its `activeCalls` entry was already cleared when the now-dropped
-    * settle signal was generated. The invoke is then stuck `Active` in
-    * the event store — clients render it "running" forever and the next
-    * turn's wire renderer treats it as a dangling `tool_call`.
-    *
-    * Run after the truncated drain (the loop's stop-exit): read the
-    * durable store and fold a terminal Failure `ToolDelta` onto each
-    * still-pending invoke so it reaches `Complete`. Scoped to `caller`
-    * so a co-resident agent's in-flight calls in the same conversation
-    * are untouched. Idempotent — a clean turn leaves nothing pending. */
+  /**
+   * Settle any tool invoke left `Active` + `Pending` in `conversationId`
+   * for `caller` — the dangling-on-Stop case.
+   *
+   * A `Stop(force = true)` truncates the agent's signal stream via
+   * `takeWhile(_ => !force)` in `runAgentLoop`. When the cut lands
+   * between a tool's `ToolInvoke` element and its paired settle element
+   * (the window during which a slow atomic tool — a browser screenshot,
+   * an HTTP fetch — is executing), the settle is dropped before it
+   * persists. The orchestrator's in-memory reconcile can't recover it:
+   * its `activeCalls` entry was already cleared when the now-dropped
+   * settle signal was generated. The invoke is then stuck `Active` in
+   * the event store — clients render it "running" forever and the next
+   * turn's wire renderer treats it as a dangling `tool_call`.
+   *
+   * Run after the truncated drain (the loop's stop-exit): read the
+   * durable store and fold a terminal Failure `ToolDelta` onto each
+   * still-pending invoke so it reaches `Complete`. Scoped to `caller`
+   * so a co-resident agent's in-flight calls in the same conversation
+   * are untouched. Idempotent — a clean turn leaves nothing pending.
+   */
   def settleDanglingToolInvokes(conversationId: Id[Conversation], caller: ParticipantId): Task[Unit] =
     withDB(_.conversationEvents(conversationId)).flatMap { events =>
       val dangling = events.collect {
         case ti: ToolInvoke
-          if ti.participantId == caller
-            && ti.state == EventState.Active
-            && ti.outcome == sigil.event.ToolOutcome.Pending =>
+            if ti.participantId == caller
+              && ti.state == EventState.Active
+              && ti.outcome == sigil.event.ToolOutcome.Pending =>
           ti
       }
       // Registered in-flight dispatches whose invoke never became
@@ -4328,22 +4591,24 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         (dangling ::: unpersisted).foldLeft(Task.unit) { (acc, ti) =>
           val reason = "Stopped before the tool produced a result."
           val settle = ToolDelta(
-            target         = ti._id,
+            target = ti._id,
             conversationId = conversationId,
-            input          = None,
-            state          = Some(EventState.Complete),
-            summary        = Some(reason),
-            outcome        = Some(sigil.event.ToolOutcome.Failure(reason, recoverable = true))
+            input = None,
+            state = Some(EventState.Complete),
+            summary = Some(reason),
+            outcome = Some(sigil.event.ToolOutcome.Failure(reason, recoverable = true))
           )
           acc.flatMap(_ => publish(settle).handleError(_ => Task.unit))
         }
       }
     }
 
-  /** If this signal settles a [[ModeChange]] to `Complete`, resolve the
-    * Mode-source [[ActiveSkillSlot]] (via [[sigil.provider.Mode.skill]]) and write it into
-    * the acting participant's projection on the view. */
-  private final def maybeApplyModeSkill(signal: Signal): Task[Unit] = signal match {
+  /**
+   * If this signal settles a [[ModeChange]] to `Complete`, resolve the
+   * Mode-source [[ActiveSkillSlot]] (via [[sigil.provider.Mode.skill]]) and write it into
+   * the acting participant's projection on the view.
+   */
+  final private def maybeApplyModeSkill(signal: Signal): Task[Unit] = signal match {
     case mc: ModeChange if mc.state == EventState.Complete => applyModeSkill(mc)
     case d: sigil.signal.Delta =>
       withDB(_.eventsTransaction(d.conversationId)(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
@@ -4353,7 +4618,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     case _ => Task.unit
   }
 
-  private final def applyModeSkill(mc: ModeChange): Task[Unit] =
+  final private def applyModeSkill(mc: ModeChange): Task[Unit] =
     updateProjection(mc.conversationId, mc.participantId) { proj =>
       val newModeId = mc.mode.id
 
@@ -4366,7 +4631,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         case Some(boundMode) if boundMode != newModeId =>
           val archived = proj.activeSkills.get(SkillSource.Discovery) match {
             case Some(slot) => proj.lastDiscoverySkillByMode + (boundMode -> slot)
-            case None       => proj.lastDiscoverySkillByMode
+            case None => proj.lastDiscoverySkillByMode
           }
           (archived, proj.activeSkills - SkillSource.Discovery)
         case _ => (proj.lastDiscoverySkillByMode, proj.activeSkills)
@@ -4385,7 +4650,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // Step 3 — apply the new mode's bundled skill to the Mode slot.
       val withModeSkill = mc.mode.skill match {
         case Some(slot) => restoredSkills + (SkillSource.Mode -> slot)
-        case None       => restoredSkills - SkillSource.Mode
+        case None => restoredSkills - SkillSource.Mode
       }
 
       proj.copy(
@@ -4409,7 +4674,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    *   - Events that start Active and settle later via a Delta —
    *     the Delta branch re-reads the target post-apply.
    */
-  private final def updateView(signal: Signal): Task[Unit] = signal match {
+  final private def updateView(signal: Signal): Task[Unit] = signal match {
     case e: Event if e.state == EventState.Complete =>
       applyParticipantProjectionFor(e)
     case d: sigil.signal.Delta =>
@@ -4420,10 +4685,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     case _ => Task.unit
   }
 
-  /** Apply the participant-side projection updates implied by `event`
-    * to the relevant [[ParticipantProjection]] record. Runs only on
-    * Complete events. */
-  private final def applyParticipantProjectionFor(event: Event): Task[Unit] =
+  /**
+   * Apply the participant-side projection updates implied by `event`
+   * to the relevant [[ParticipantProjection]] record. Runs only on
+   * Complete events.
+   */
+  final private def applyParticipantProjectionFor(event: Event): Task[Unit] =
     event match {
       case ti: ToolInvoke =>
         // Bug #230 — when the tool author declared
@@ -4453,25 +4720,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // identical FAILING calls (a stronger model hits the same failure).
         val failed = ti.outcome match {
           case _: sigil.event.ToolOutcome.Failure => true
-          case _                                  => false
+          case _ => false
         }
         val invocation = ti.input match {
           case Some(in) => sigil.conversation.RecentToolInvocation(
-            toolName    = ti.toolName,
-            argsHash    = sigil.tool.ToolInputCanonicalizer.argsHash(in),
-            argsPreview = sigil.tool.ToolInputCanonicalizer.argsPreview(in),
-            invokedAt   = ti.timestamp,
-            resulted    = resulted,
-            failed      = failed
-          )
+              toolName = ti.toolName,
+              argsHash = sigil.tool.ToolInputCanonicalizer.argsHash(in),
+              argsPreview = sigil.tool.ToolInputCanonicalizer.argsPreview(in),
+              invokedAt = ti.timestamp,
+              resulted = resulted,
+              failed = failed
+            )
           case None => sigil.conversation.RecentToolInvocation(
-            toolName    = ti.toolName,
-            argsHash    = "",
-            argsPreview = "",
-            invokedAt   = ti.timestamp,
-            resulted    = resulted,
-            failed      = failed
-          )
+              toolName = ti.toolName,
+              argsHash = "",
+              argsPreview = "",
+              invokedAt = ti.timestamp,
+              resulted = resulted,
+              failed = failed
+            )
         }
         updateProjection(ti.conversationId, ti.participantId) { proj =>
           val recent = (invocation :: proj.recentToolInvocations).take(recentToolInvocationsLimit)
@@ -4508,40 +4775,44 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   // -- projection helpers --
 
-  /** Fetch the [[ParticipantProjection]] for `(participantId, conversationId)`,
-    * returning an empty seed if one hasn't been materialized yet. Empty
-    * projections are NOT persisted — the projection only lands on disk
-    * once an event drives an update. */
+  /**
+   * Fetch the [[ParticipantProjection]] for `(participantId, conversationId)`,
+   * returning an empty seed if one hasn't been materialized yet. Empty
+   * projections are NOT persisted — the projection only lands on disk
+   * once an event drives an update.
+   */
   def projectionFor(participantId: ParticipantId,
                     conversationId: Id[Conversation]): Task[ParticipantProjection] =
     withDB(_.participantProjections.transaction(_.get(ParticipantProjection.idFor(participantId, conversationId)))).map {
       case Some(p) => p
-      case None    => ParticipantProjection.empty(participantId, conversationId)
+      case None => ParticipantProjection.empty(participantId, conversationId)
     }
 
-  /** Sigil #289 — predicate for cross-conversation reads. The
-    * conversation-query tools (`search_conversation`, `reload_content`,
-    * `query_tool_output`) call this before dispatching a read against
-    * a `conversationId` that differs from the caller's current
-    * conversation. Allowed when:
-    *   - target == current (same conversation; trivially allowed)
-    *   - target == current.parentConversationId (worker reading its
-    *     parent)
-    *   - target.parentConversationId == current.id (parent reading
-    *     one of its workers)
-    *
-    * Anything else returns `Left(reason)` and the tool surfaces a
-    * Failure with the reason text. The predicate is intentionally
-    * narrow — it doesn't traverse the whole tree (no grandparents /
-    * sibling-conversations). Apps that need wider cross-conversation
-    * access override this hook. */
+  /**
+   * Sigil #289 — predicate for cross-conversation reads. The
+   * conversation-query tools (`search_conversation`, `reload_content`,
+   * `query_tool_output`) call this before dispatching a read against
+   * a `conversationId` that differs from the caller's current
+   * conversation. Allowed when:
+   *   - target == current (same conversation; trivially allowed)
+   *   - target == current.parentConversationId (worker reading its
+   *     parent)
+   *   - target.parentConversationId == current.id (parent reading
+   *     one of its workers)
+   *
+   * Anything else returns `Left(reason)` and the tool surfaces a
+   * Failure with the reason text. The predicate is intentionally
+   * narrow — it doesn't traverse the whole tree (no grandparents /
+   * sibling-conversations). Apps that need wider cross-conversation
+   * access override this hook.
+   */
   def canReadConversation(currentConversationId: Id[Conversation],
                           targetConversationId: Id[Conversation]): Task[Either[String, Unit]] =
     if (currentConversationId == targetConversationId) Task.pure(Right(()))
     else withDB(_.conversations.transaction { tx =>
       for {
         current <- tx.get(currentConversationId)
-        target  <- tx.get(targetConversationId)
+        target <- tx.get(targetConversationId)
       } yield (current, target) match {
         case (None, _) =>
           Left(s"current conversation `${currentConversationId.value}` not found")
@@ -4549,7 +4820,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           Left(s"target conversation `${targetConversationId.value}` not found")
         case (Some(c), Some(t)) =>
           val isParentOfTarget = t.parentConversationId.contains(c._id)
-          val isChildOfTarget  = c.parentConversationId.contains(t._id)
+          val isChildOfTarget = c.parentConversationId.contains(t._id)
           if (isParentOfTarget || isChildOfTarget) Right(())
           else Left(
             s"target conversation `${targetConversationId.value}` is not the current " +
@@ -4559,11 +4830,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     })
 
-  /** Most-recent [[sigil.event.ToolApproval]] for `(toolName,
-    * conversationId)`, or `None` when the agent hasn't recorded a
-    * decision yet. The orchestrator reads this before dispatching a
-    * `requiresUserConsent` tool; apps can also call directly to
-    * surface "is this tool approved in this conversation?" UX. */
+  /**
+   * Most-recent [[sigil.event.ToolApproval]] for `(toolName,
+   * conversationId)`, or `None` when the agent hasn't recorded a
+   * decision yet. The orchestrator reads this before dispatching a
+   * `requiresUserConsent` tool; apps can also call directly to
+   * surface "is this tool approved in this conversation?" UX.
+   */
   def latestToolApproval(toolName: sigil.tool.ToolName,
                          conversationId: Id[Conversation]): Task[Option[sigil.event.ToolApproval]] =
     withDB(_.eventsTransaction(conversationId)(_.list)).map { events =>
@@ -4576,13 +4849,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         .lastOption
     }
 
-  /** Materialize the rolling-window frames for a conversation by querying
-    * `db.events` for Complete events with a non-empty
-    * [[Event.contextFrame]], honoring the conversation's `clearedAt`
-    * watermark. Returns frames in chronological (timestamp-ascending)
-    * order.
-    *
-    * Bug #26 — replaces the legacy `viewFor` / `view.frames` lookup. */
+  /**
+   * Materialize the rolling-window frames for a conversation by querying
+   * `db.events` for Complete events with a non-empty
+   * [[Event.contextFrame]], honoring the conversation's `clearedAt`
+   * watermark. Returns frames in chronological (timestamp-ascending)
+   * order.
+   *
+   * Bug #26 — replaces the legacy `viewFor` / `view.frames` lookup.
+   */
   def framesFor(conversationId: Id[Conversation]): Task[Vector[ContextFrame]] =
     withDB(_.conversations.transaction(_.get(conversationId))).flatMap { convOpt =>
       val watermark = convOpt.flatMap(_.clearedAt).map(_.value).getOrElse(0L)
@@ -4673,18 +4948,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 topicId: Option[Id[Topic]] = None,
                 minTimestamp: Option[Timestamp] = None,
                 maxTimestamp: Option[Timestamp] = None,
-                /** When set, the page is scoped to what this viewer may
-                  * see: events failing [[canSee]] are dropped BEFORE
-                  * pagination (so `maxMessages` counts visible messages)
-                  * and [[viewerTransforms]] redact the survivors —
-                  * identical to the live wire's `signalsFor` semantics.
-                  * `None` returns the raw log: framework internals
-                  * (compaction, reconciliation, agent prompt builds)
-                  * must see everything. ANY path that delivers history
-                  * to a client passes the viewer — an Agents-visibility
-                  * checkpoint directive reaching a user UI on a hard
-                  * refresh is an information-scope leak, not a
-                  * cosmetic one. */
+                /**
+                 * When set, the page is scoped to what this viewer may
+                 * see: events failing [[canSee]] are dropped BEFORE
+                 * pagination (so `maxMessages` counts visible messages)
+                 * and [[viewerTransforms]] redact the survivors —
+                 * identical to the live wire's `signalsFor` semantics.
+                 * `None` returns the raw log: framework internals
+                 * (compaction, reconciliation, agent prompt builds)
+                 * must see everything. ANY path that delivers history
+                 * to a client passes the viewer — an Agents-visibility
+                 * checkpoint directive reaching a user UI on a hard
+                 * refresh is an information-scope leak, not a
+                 * cosmetic one.
+                 */
                 viewer: Option[ParticipantId] = None): Task[EventsPage] = {
     import lightdb.filter.*
     val safePage = math.max(0, page)
@@ -4700,9 +4977,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
     def redactFor(e: Event): Event = viewer match {
       case Some(v) => applyViewerTransforms(e, v) match {
-        case ev: Event => ev
-        case _         => e
-      }
+          case ev: Event => ev
+          case _ => e
+        }
       case None => e
     }
 
@@ -4751,7 +5028,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private def withDBScopeSnapshot(conversationId: Id[Conversation]): List[Event] =
     startedInstance.get() match {
       case Some(inst) => inst.db.batchedEventScope(conversationId).map(_.snapshot).getOrElse(Nil)
-      case None       => Nil
+      case None => Nil
     }
 
   /**
@@ -4822,13 +5099,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // directly and is intentionally unaffected by this cap.
       val taskTs: Option[Long] = evs.iterator.collect {
         case m: sigil.event.Message
-          if m.conversationId == conversationId
-          && m.role == sigil.event.MessageRole.Standard
-          && !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] => m.timestamp.value
+            if m.conversationId == conversationId
+              && m.role == sigil.event.MessageRole.Standard
+              && !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] => m.timestamp.value
       }.maxOption
       val capped = taskTs match {
         case Some(t) if at.value >= t => Timestamp(t - 1)
-        case _                        => at
+        case _ => at
       }
       withDB(_.conversations.transaction(_.modify(conversationId) {
         case Some(conv) =>
@@ -4839,53 +5116,59 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       })).unit
     }
 
-  /** Fetch the [[EncodedContext]] cache row for this `(agentId,
-    * conversationId, modelId)` triple, returning a fresh empty row if
-    * none exists. Bug #26 — the curator looks this up per turn,
-    * appends since-cursor frames via the active provider's
-    * [[sigil.provider.Provider.appendFrame]], and persists the result.
-    * Cache misses (no row, or `builtThrough` behind newest event id)
-    * trigger an incremental rebuild.
-    *
-    * The cache shape is opaque to the framework — only the provider
-    * that wrote the bytes understands them. Cross-model mixing is
-    * structurally impossible because `modelId` is part of the cache
-    * key. */
+  /**
+   * Fetch the [[EncodedContext]] cache row for this `(agentId,
+   * conversationId, modelId)` triple, returning a fresh empty row if
+   * none exists. Bug #26 — the curator looks this up per turn,
+   * appends since-cursor frames via the active provider's
+   * [[sigil.provider.Provider.appendFrame]], and persists the result.
+   * Cache misses (no row, or `builtThrough` behind newest event id)
+   * trigger an incremental rebuild.
+   *
+   * The cache shape is opaque to the framework — only the provider
+   * that wrote the bytes understands them. Cross-model mixing is
+   * structurally impossible because `modelId` is part of the cache
+   * key.
+   */
   def encodedContextFor(agentId: ParticipantId,
                         conversationId: Id[Conversation],
                         modelId: Id[Model]): Task[EncodedContext] =
     withDB(_.encodedContexts.transaction(_.get(EncodedContext.idFor(agentId, conversationId, modelId)))).map {
       case Some(c) => c
-      case None    => EncodedContext.empty(agentId, conversationId, modelId)
+      case None => EncodedContext.empty(agentId, conversationId, modelId)
     }
 
-  /** Persist (or upsert) an [[EncodedContext]] cache row. Returns the
-    * stored record (with `modified` and `lastAccessedAt` bumped to
-    * `now()`). Apps that drive their own cache flows call this after
-    * incrementally appending; the framework's curator does so
-    * automatically. */
+  /**
+   * Persist (or upsert) an [[EncodedContext]] cache row. Returns the
+   * stored record (with `modified` and `lastAccessedAt` bumped to
+   * `now()`). Apps that drive their own cache flows call this after
+   * incrementally appending; the framework's curator does so
+   * automatically.
+   */
   def saveEncodedContext(cache: EncodedContext): Task[EncodedContext] = {
     val now = Timestamp(Nowish())
     val updated = cache.copy(modified = now, lastAccessedAt = now)
     withDB(_.encodedContexts.transaction(_.upsert(updated)))
   }
 
-  /** Update a participant's [[ParticipantProjection]] in the projections
-    * collection. Creates a fresh empty projection (with the deterministic
-    * derived id) if none exists. Use from curators, tools, or any app
-    * code that needs to mutate per-participant projection state.
-    *
-    * Sigil #291 — when `broadcast = true` (default), publishes a
-    * [[sigil.signal.ParticipantProjectionUpdated]] Notice after the
-    * write commits so multi-client UIs subscribed to this conversation
-    * see the change without polling. Framework-internal cache writes
-    * that no UI cares about (e.g. cached `previous_response_id`) pass
-    * `broadcast = false`. App writes through the convenience methods
-    * ([[setParticipantContext]], [[activateSkill]], etc.) broadcast
-    * by default — the polling workaround that motivated this signal. */
-  def updateProjection(conversationId: Id[Conversation], participantId: ParticipantId,
-                       broadcast: Boolean = true)
-                      (f: ParticipantProjection => ParticipantProjection): Task[Unit] =
+  /**
+   * Update a participant's [[ParticipantProjection]] in the projections
+   * collection. Creates a fresh empty projection (with the deterministic
+   * derived id) if none exists. Use from curators, tools, or any app
+   * code that needs to mutate per-participant projection state.
+   *
+   * Sigil #291 — when `broadcast = true` (default), publishes a
+   * [[sigil.signal.ParticipantProjectionUpdated]] Notice after the
+   * write commits so multi-client UIs subscribed to this conversation
+   * see the change without polling. Framework-internal cache writes
+   * that no UI cares about (e.g. cached `previous_response_id`) pass
+   * `broadcast = false`. App writes through the convenience methods
+   * ([[setParticipantContext]], [[activateSkill]], etc.) broadcast
+   * by default — the polling workaround that motivated this signal.
+   */
+  def updateProjection(conversationId: Id[Conversation],
+                       participantId: ParticipantId,
+                       broadcast: Boolean = true)(f: ParticipantProjection => ParticipantProjection): Task[Unit] =
     withDB(_.participantProjections.transaction(_.modify(ParticipantProjection.idFor(participantId, conversationId)) {
       case Some(proj) =>
         Task.pure(Some(f(proj).copy(modified = Timestamp(Nowish()))))
@@ -4898,99 +5181,105 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case _ => Task.unit
     }
 
-  /** Convenience: set (or replace) a skill slot for a participant. Discovery
-    * and User sources are driven through here by tools that want to activate
-    * a skill; Mode-source slots are maintained by the framework via
-    * [[sigil.provider.Mode.skill]] on `ModeChange`. */
+  /**
+   * Convenience: set (or replace) a skill slot for a participant. Discovery
+   * and User sources are driven through here by tools that want to activate
+   * a skill; Mode-source slots are maintained by the framework via
+   * [[sigil.provider.Mode.skill]] on `ModeChange`.
+   */
   def activateSkill(conversationId: Id[Conversation],
                     participantId: ParticipantId,
                     source: SkillSource,
                     slot: ActiveSkillSlot): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(activeSkills = proj.activeSkills + (source -> slot))
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(activeSkills = proj.activeSkills + (source -> slot)))
 
-  /** Convenience: clear a skill slot for a participant (if present). */
+  /**
+   * Convenience: clear a skill slot for a participant (if present).
+   */
   def clearSkill(conversationId: Id[Conversation],
                  participantId: ParticipantId,
                  source: SkillSource): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(activeSkills = proj.activeSkills - source)
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(activeSkills = proj.activeSkills - source))
 
-  /** Convenience: set a single key/value on a participant's
-    * `extraContext`. Same key replaces. */
+  /**
+   * Convenience: set a single key/value on a participant's
+   * `extraContext`. Same key replaces.
+   */
   def setParticipantContext(conversationId: Id[Conversation],
                             participantId: ParticipantId,
                             key: ContextKey,
                             value: String): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(extraContext = proj.extraContext + (key -> value))
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(extraContext = proj.extraContext + (key -> value)))
 
-  /** Convenience: remove a key from a participant's `extraContext`. */
+  /**
+   * Convenience: remove a key from a participant's `extraContext`.
+   */
   def clearParticipantContext(conversationId: Id[Conversation],
                               participantId: ParticipantId,
                               key: ContextKey): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(extraContext = proj.extraContext - key)
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(extraContext = proj.extraContext - key))
 
-  /** Cache a provider's per-(agent, conversation) server-side state
-    * handle. OpenAI's Responses API populates this on every settle so
-    * the next turn can pass `previous_response_id` and ship only the
-    * delta input. `messageCount` is the rendered-message count at the
-    * time of capture — the next call trims that many from the head
-    * before sending. */
+  /**
+   * Cache a provider's per-(agent, conversation) server-side state
+   * handle. OpenAI's Responses API populates this on every settle so
+   * the next turn can pass `previous_response_id` and ship only the
+   * delta input. `messageCount` is the rendered-message count at the
+   * time of capture — the next call trims that many from the head
+   * before sending.
+   */
   def setProviderResponseState(conversationId: Id[Conversation],
                                participantId: ParticipantId,
                                responseId: String,
                                messageCount: Int): Task[Unit] =
     // Sigil #291 — framework-internal provider-cache write; no UI
     // surface mirrors this state, so suppress the broadcast.
-    updateProjection(conversationId, participantId, broadcast = false)(
-      proj => proj.copy(
+    updateProjection(conversationId, participantId, broadcast = false)(proj =>
+      proj.copy(
         latestProviderResponseId = Some(responseId),
         latestProviderResponseMessageCount = Some(messageCount)
-      )
-    )
+      ))
 
-  /** Forget the cached provider response state for an (agent, conversation)
-    * pair. Fires when the upstream API rejects `previous_response_id`
-    * (`previous_response_not_found` — the id expired). Next turn falls
-    * back to the full-transcript request shape. */
+  /**
+   * Forget the cached provider response state for an (agent, conversation)
+   * pair. Fires when the upstream API rejects `previous_response_id`
+   * (`previous_response_not_found` — the id expired). Next turn falls
+   * back to the full-transcript request shape.
+   */
   def clearProviderResponseState(conversationId: Id[Conversation],
                                  participantId: ParticipantId): Task[Unit] =
     // Sigil #291 — framework-internal cache invalidation; suppress broadcast.
-    updateProjection(conversationId, participantId, broadcast = false)(
-      proj => proj.copy(
+    updateProjection(conversationId, participantId, broadcast = false)(proj =>
+      proj.copy(
         latestProviderResponseId = None,
         latestProviderResponseMessageCount = None
-      )
-    )
+      ))
 
-  /** Convenience: advance a participant's last-read cursor in
-    * `conversationId` to a specific event's server-stamped
-    * timestamp. The framework looks up the event's authoritative
-    * timestamp — clients never specify a wall-clock time, so
-    * client-clock drift is moot. Bug #62.
-    *
-    * No-op when `readThrough` doesn't resolve (stale id, deleted
-    * event). Idempotent: calling twice with the same id is
-    * cheap. */
+  /**
+   * Convenience: advance a participant's last-read cursor in
+   * `conversationId` to a specific event's server-stamped
+   * timestamp. The framework looks up the event's authoritative
+   * timestamp — clients never specify a wall-clock time, so
+   * client-clock drift is moot. Bug #62.
+   *
+   * No-op when `readThrough` doesn't resolve (stale id, deleted
+   * event). Idempotent: calling twice with the same id is
+   * cheap.
+   */
   def markRead(conversationId: Id[Conversation],
                participantId: ParticipantId,
                readThrough: Id[sigil.event.Event]): Task[Unit] =
     withDB(_.eventsTransaction(conversationId)(_.get(readThrough))).flatMap {
-      case None    => Task.unit
+      case None => Task.unit
       case Some(e) => markRead(conversationId, participantId, e.timestamp)
     }
 
-  /** Direct-timestamp overload for the rare case where a caller
-    * already has a server-authoritative `Timestamp` in hand
-    * (replay tooling, batch catch-up scripts, etc.). Most code
-    * should use the event-id overload above — that's the path
-    * that's safe against client clock drift. Bug #62. */
+  /**
+   * Direct-timestamp overload for the rare case where a caller
+   * already has a server-authoritative `Timestamp` in hand
+   * (replay tooling, batch catch-up scripts, etc.). Most code
+   * should use the event-id overload above — that's the path
+   * that's safe against client clock drift. Bug #62.
+   */
   def markRead(conversationId: Id[Conversation],
                participantId: ParticipantId,
                lastReadAt: lightdb.time.Timestamp): Task[Unit] = {
@@ -4998,49 +5287,53 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     withDB(_.eventsTransaction(conversationId)(_.get(stateId))).flatMap {
       case Some(_) =>
         publish(sigil.signal.ReadStateDelta(
-          target         = stateId,
+          target = stateId,
           conversationId = conversationId,
-          participantId  = participantId,
-          lastReadAt     = lastReadAt
+          participantId = participantId,
+          lastReadAt = lastReadAt
         ))
-      case None    =>
+      case None =>
         // First read for this `(conv, participant)` — insert the
         // ReadState row. Subsequent advances mutate via
         // ReadStateDelta (no new event row).
         withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
-          case None       => Task.unit
+          case None => Task.unit
           case Some(conv) =>
             publish(sigil.event.ReadState(
-              participantId  = participantId,
+              participantId = participantId,
               conversationId = conversationId,
-              topicId        = conv.currentTopicId,
-              lastReadAt     = lastReadAt,
-              _id            = stateId
+              topicId = conv.currentTopicId,
+              lastReadAt = lastReadAt,
+              _id = stateId
             ))
         }
     }
   }
 
-  /** Read the current `lastReadAt` cursor for `(conversationId,
-    * participantId)`. `None` if the participant has never marked
-    * read in this conversation. Bug #62. */
+  /**
+   * Read the current `lastReadAt` cursor for `(conversationId,
+   * participantId)`. `None` if the participant has never marked
+   * read in this conversation. Bug #62.
+   */
   def readStateFor(conversationId: Id[Conversation],
                    participantId: ParticipantId): Task[Option[sigil.event.ReadState]] = {
     val stateId = sigil.event.ReadState.idFor(conversationId, participantId)
     withDB(_.eventsTransaction(conversationId)(_.get(stateId))).map {
       case Some(r: sigil.event.ReadState) => Some(r)
-      case _                              => None
+      case _ => None
     }
   }
 
-  /** Convenience: publish a [[sigil.event.Reaction]] event for the
-    * given message. `removed = false` means "I'm reacting now",
-    * `removed = true` means "I'm taking my reaction back." Last-
-    * write-wins per `(messageId, participantId, emoji)` — consumers
-    * reduce the event tail to find the current state.
-    *
-    * No-ops if the conversation isn't found (caller's `conversationId`
-    * was stale). Bug #61. */
+  /**
+   * Convenience: publish a [[sigil.event.Reaction]] event for the
+   * given message. `removed = false` means "I'm reacting now",
+   * `removed = true` means "I'm taking my reaction back." Last-
+   * write-wins per `(messageId, participantId, emoji)` — consumers
+   * reduce the event tail to find the current state.
+   *
+   * No-ops if the conversation isn't found (caller's `conversationId`
+   * was stale). Bug #61.
+   */
   def react(conversationId: Id[Conversation],
             participantId: ParticipantId,
             messageId: Id[sigil.event.Event],
@@ -5050,19 +5343,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case None => Task.unit
       case Some(conv) =>
         publish(sigil.event.Reaction(
-          participantId  = participantId,
+          participantId = participantId,
           conversationId = conversationId,
-          topicId        = conv.currentTopicId,
-          messageId      = messageId,
-          emoji          = emoji,
-          removed        = removed
+          topicId = conv.currentTopicId,
+          messageId = messageId,
+          emoji = emoji,
+          removed = removed
         ))
     }
 
-  /** Convenience: publish a [[Stop]] event for the conversation. Lets
-    * UI layers (stop button) and programmatic callers issue stops
-    * without reconstructing the event by hand. For LLM-initiated stops
-    * use [[sigil.tool.core.CancelTool]] instead. */
+  /**
+   * Convenience: publish a [[Stop]] event for the conversation. Lets
+   * UI layers (stop button) and programmatic callers issue stops
+   * without reconstructing the event by hand. For LLM-initiated stops
+   * use [[sigil.tool.core.CancelTool]] instead.
+   */
   def stop(conversationId: Id[Conversation],
            requestedBy: ParticipantId,
            targetParticipantId: Option[ParticipantId] = None,
@@ -5081,49 +5376,59 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         ))
     }
 
-  /** Persist a new [[ContextSummary]] and return the stored record. The
-    * caller (curator or app-specific summarizer) owns the generation
-    * policy; this helper just writes.
-    *
-    * When vector search is wired ([[vectorWired]]), the summary's text
-    * is embedded and upserted into [[vectorIndex]] with payload
-    * `kind=summary` so `searchConversationEvents` can surface it. */
+  /**
+   * Persist a new [[ContextSummary]] and return the stored record. The
+   * caller (curator or app-specific summarizer) owns the generation
+   * policy; this helper just writes.
+   *
+   * When vector search is wired ([[vectorWired]]), the summary's text
+   * is embedded and upserted into [[vectorIndex]] with payload
+   * `kind=summary` so `searchConversationEvents` can surface it.
+   */
   def persistSummary(summary: ContextSummary): Task[ContextSummary] =
     withDB(_.summaries.transaction(_.upsert(summary))).flatMap { stored =>
       indexSummary(stored).map(_ => stored)
     }
 
-  /** Per-conversation cache for non-critical memory retrieval results.
-    * Inter-message-stable — populated lazily on first curate-time
-    * read for a conversation, invalidated by
-    * [[sigil.pipeline.MemoryCacheInvalidationEffect]] on (a) a
-    * non-agent message settling and (b) a topic-change `Switch`
-    * settling. See [[sigil.conversation.compression.MemoryRetrievalCache]]
-    * for the caching contract.
-    *
-    * Apps don't typically interact with this directly — the
-    * [[sigil.conversation.compression.StandardMemoryRetriever]] consults
-    * it transparently via [[cachedMemoryRetrieve]]. Public for
-    * observability (specs / app debug tools peek without mutating). */
+  /**
+   * Per-conversation cache for non-critical memory retrieval results.
+   * Inter-message-stable — populated lazily on first curate-time
+   * read for a conversation, invalidated by
+   * [[sigil.pipeline.MemoryCacheInvalidationEffect]] on (a) a
+   * non-agent message settling and (b) a topic-change `Switch`
+   * settling. See [[sigil.conversation.compression.MemoryRetrievalCache]]
+   * for the caching contract.
+   *
+   * Apps don't typically interact with this directly — the
+   * [[sigil.conversation.compression.StandardMemoryRetriever]] consults
+   * it transparently via [[cachedMemoryRetrieve]]. Public for
+   * observability (specs / app debug tools peek without mutating).
+   */
   final val memoryRetrievalCache: sigil.conversation.compression.MemoryRetrievalCache =
     new sigil.conversation.compression.MemoryRetrievalCache
 
-  /** Read or compute a [[sigil.conversation.compression.MemoryRetrievalResult]]
-    * for `conversationId`. The compute thunk runs at most once per
-    * (conversation, cache lifetime). */
-  def cachedMemoryRetrieve(conversationId: Id[Conversation],
-                           compute: => Task[sigil.conversation.compression.MemoryRetrievalResult]
-                          ): Task[sigil.conversation.compression.MemoryRetrievalResult] =
+  /**
+   * Read or compute a [[sigil.conversation.compression.MemoryRetrievalResult]]
+   * for `conversationId`. The compute thunk runs at most once per
+   * (conversation, cache lifetime).
+   */
+  def cachedMemoryRetrieve(
+    conversationId: Id[Conversation],
+    compute: => Task[sigil.conversation.compression.MemoryRetrievalResult]): Task[sigil.conversation.compression.MemoryRetrievalResult] =
     memoryRetrievalCache.getOrCompute(conversationId, compute)
 
-  /** Invalidate the cached retrieval for a conversation — called by
-    * [[sigil.pipeline.MemoryCacheInvalidationEffect]] on appropriate
-    * settled events. Idempotent. */
+  /**
+   * Invalidate the cached retrieval for a conversation — called by
+   * [[sigil.pipeline.MemoryCacheInvalidationEffect]] on appropriate
+   * settled events. Idempotent.
+   */
   def invalidateMemoryRetrievalCache(conversationId: Id[Conversation]): Unit =
     memoryRetrievalCache.invalidate(conversationId)
 
-  /** All versions of a keyed memory in `spaceId`, chronologically
-    * (oldest first by `created`). */
+  /**
+   * All versions of a keyed memory in `spaceId`, chronologically
+   * (oldest first by `created`).
+   */
   def memoryHistory(key: String, spaceId: SpaceId): Task[List[ContextMemory]] =
     if (key.isEmpty) Task.pure(Nil)
     else withDB(_.memories.transaction { tx =>
@@ -5134,7 +5439,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         .map(_.sortBy(_.created.value))
     })
 
-  /** Pending (awaiting approval) memories in the given spaces. */
+  /**
+   * Pending (awaiting approval) memories in the given spaces.
+   */
   def listPendingMemories(spaces: Set[SpaceId]): Task[List[ContextMemory]] =
     if (spaces.isEmpty) Task.pure(Nil)
     else withDB(_.memories.transaction { tx =>
@@ -5144,9 +5451,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         .toList
     })
 
-  /** Transition a memory from `Pending` → `Approved`. Returns the
-    * updated record, or `None` if the id isn't found. No-op if the
-    * memory is already approved. */
+  /**
+   * Transition a memory from `Pending` → `Approved`. Returns the
+   * updated record, or `None` if the id isn't found. No-op if the
+   * memory is already approved.
+   */
   def approveMemory(id: Id[ContextMemory]): Task[Option[ContextMemory]] =
     withDB(_.memories.transaction { tx =>
       tx.get(id).flatMap {
@@ -5158,8 +5467,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     })
 
-  /** Transition a memory to `Rejected` (kept on disk for lineage, but
-    * hidden from retrievers). Use [[forgetMemory]] for hard delete. */
+  /**
+   * Transition a memory to `Rejected` (kept on disk for lineage, but
+   * hidden from retrievers). Use [[forgetMemory]] for hard delete.
+   */
   def rejectMemory(id: Id[ContextMemory]): Task[Option[ContextMemory]] =
     withDB(_.memories.transaction { tx =>
       tx.get(id).flatMap {
@@ -5170,10 +5481,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     })
 
-  /** Hard-delete every version of a keyed memory in `spaceId`. Returns
-    * the number of records removed. Also removes corresponding points
-    * from the vector index so semantic search doesn't return stale
-    * hits. */
+  /**
+   * Hard-delete every version of a keyed memory in `spaceId`. Returns
+   * the number of records removed. Also removes corresponding points
+   * from the vector index so semantic search doesn't return stale
+   * hits.
+   */
   def forgetMemory(key: String, spaceId: SpaceId): Task[Int] =
     if (key.isEmpty) Task.pure(0)
     else memoryHistory(key, spaceId).flatMap { versions =>
@@ -5191,10 +5504,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     }
 
-  /** Bump `accessCount` and `lastAccessedAt` on a memory. Called by
-    * retrieval paths (`semantic_search`, MemoryRetriever) so apps can
-    * implement LRU-based retention without Sigil needing its own
-    * pruner. */
+  /**
+   * Bump `accessCount` and `lastAccessedAt` on a memory. Called by
+   * retrieval paths (`semantic_search`, MemoryRetriever) so apps can
+   * implement LRU-based retention without Sigil needing its own
+   * pruner.
+   */
   def recordMemoryAccess(id: Id[ContextMemory]): Task[Unit] =
     withDB(_.memories.transaction { tx =>
       tx.get(id).flatMap {
@@ -5208,7 +5523,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     })
 
-  /** Load all summaries for a conversation, oldest-first. */
+  /**
+   * Load all summaries for a conversation, oldest-first.
+   */
   def summariesFor(conversationId: Id[Conversation]): Task[List[ContextSummary]] =
     withDB(_.summaries.transaction { tx =>
       import lightdb.filter.*
@@ -5220,7 +5537,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   // -- vector-indexing internals --
 
-  private final def indexSummary(s: ContextSummary): Task[Unit] =
+  final private def indexSummary(s: ContextSummary): Task[Unit] =
     if (!vectorWired || s.text.isEmpty) Task.unit
     else embeddingProvider.embed(s.text).flatMap { vec =>
       vectorIndex.upsert(VectorPoint(
@@ -5287,11 +5604,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     }
 
-  /** Fallback substring search over conversation events when vector
-    * search isn't wired. In-memory scan — fine for the default fallback
-    * path; apps that need relevance ranking or large corpora should
-    * wire a vector index. */
-  private final def searchEventsLucene(conversationId: Id[Conversation],
+  /**
+   * Fallback substring search over conversation events when vector
+   * search isn't wired. In-memory scan — fine for the default fallback
+   * path; apps that need relevance ranking or large corpora should
+   * wire a vector index.
+   */
+  final private def searchEventsLucene(conversationId: Id[Conversation],
                                        query: String,
                                        topicId: Option[Id[Topic]],
                                        limit: Int): Task[List[Event]] =
@@ -5299,62 +5618,68 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       val needle = query.toLowerCase
       all.filter { e =>
         e.conversationId == conversationId &&
-          topicId.forall(e.topicId == _) &&
-          eventSearchText(e).toLowerCase.contains(needle)
+        topicId.forall(e.topicId == _) &&
+        eventSearchText(e).toLowerCase.contains(needle)
       }.take(limit)
     }
 
-  /** Best-effort text representation of an event for Lucene-fallback
-    * substring search. Apps that add custom event subtypes override
-    * this hook to contribute their own searchable text. */
+  /**
+   * Best-effort text representation of an event for Lucene-fallback
+   * substring search. Apps that add custom event subtypes override
+   * this hook to contribute their own searchable text.
+   */
   protected def eventSearchText(event: Event): String = event match {
     case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString("\n")
     case tc: TopicChange => s"${tc.newLabel}"
     case other => other.toString
   }
 
-  /** Adapt a single [[Event]] into the [[sigil.tool.model.SearchConversationHit]]
-    * shape both the agent tool and the [[sigil.signal.ConversationSearchSnapshot]]
-    * notice emit. Apps with custom event subtypes can override to contribute
-    * richer snippets — but matching the existing format keeps UI and tool
-    * results renderable from the same view code. */
+  /**
+   * Adapt a single [[Event]] into the [[sigil.tool.model.SearchConversationHit]]
+   * shape both the agent tool and the [[sigil.signal.ConversationSearchSnapshot]]
+   * notice emit. Apps with custom event subtypes can override to contribute
+   * richer snippets — but matching the existing format keeps UI and tool
+   * results renderable from the same view code.
+   */
   protected def searchHit(e: Event): sigil.tool.model.SearchConversationHit = {
     val snippet = e match {
       case m: Message =>
         m.content.collect { case ResponseContent.Text(t) => t }.mkString(" ").take(280)
       case tc: TopicChange => s"[topic change] ${tc.newLabel}"
-      case other           => other.getClass.getSimpleName
+      case other => other.getClass.getSimpleName
     }
     sigil.tool.model.SearchConversationHit(
-      eventId       = e._id.value,
-      timestamp     = e.timestamp.value,
+      eventId = e._id.value,
+      timestamp = e.timestamp.value,
       participantId = e.participantId.value,
-      topicId       = e.topicId.value,
-      eventType     = e.getClass.getSimpleName,
-      snippet       = snippet
+      topicId = e.topicId.value,
+      eventType = e.getClass.getSimpleName,
+      snippet = snippet
     )
   }
 
-  /** Maintain materialized projections on the [[Conversation]] record:
-    *   - `currentMode` tracks the latest [[ModeChange]]
-    *   - `topics` (the navigation stack) tracks the latest [[TopicChange]]:
-    *     - `Switch` either pushes a new entry (if the topic isn't on the
-    *       stack) or truncates the stack back to that entry (if it is —
-    *       the natural "return to prior topic" flow)
-    *     - `Rename` mutates the active entry's label + summary in place
-    *   - `cost` is incremented when a [[Message]] settles whose
-    *     `modelId` resolves to a known [[Model]] in
-    *     [[sigil.cache.ModelRegistry]] (USD; per-token pricing
-    *     multiplied by [[sigil.provider.TokenUsage]]). Each non-zero
-    *     increment publishes a [[sigil.signal.ConversationCostUpdated]]
-    *     Notice with the new total + per-Message delta.
-    *
-    * Fires only on the SETTLE (an Event already at `Complete`, or a
-    * `Delta` that transitions its target to `Complete`), never on the
-    * initial Active pulse — so these projection fields are written
-    * exactly once per transition even though each change flows through
-    * `publish` twice (event + state delta). */
-  private final def updateConversationProjection(signal: Signal): Task[Unit] = {
+  /**
+   * Maintain materialized projections on the [[Conversation]] record:
+   *   - `currentMode` tracks the latest [[ModeChange]]
+   *   - `topics` (the navigation stack) tracks the latest [[TopicChange]]:
+   *     - `Switch` either pushes a new entry (if the topic isn't on the
+   *       stack) or truncates the stack back to that entry (if it is —
+   *       the natural "return to prior topic" flow)
+   *     - `Rename` mutates the active entry's label + summary in place
+   *   - `cost` is incremented when a [[Message]] settles whose
+   *     `modelId` resolves to a known [[Model]] in
+   *     [[sigil.cache.ModelRegistry]] (USD; per-token pricing
+   *     multiplied by [[sigil.provider.TokenUsage]]). Each non-zero
+   *     increment publishes a [[sigil.signal.ConversationCostUpdated]]
+   *     Notice with the new total + per-Message delta.
+   *
+   * Fires only on the SETTLE (an Event already at `Complete`, or a
+   * `Delta` that transitions its target to `Complete`), never on the
+   * initial Active pulse — so these projection fields are written
+   * exactly once per transition even though each change flows through
+   * `publish` twice (event + state delta).
+   */
+  final private def updateConversationProjection(signal: Signal): Task[Unit] = {
     val settled: Task[Option[Event]] = signal match {
       case e: Event if e.state == EventState.Complete => Task.pure(Some(e))
       case d: sigil.signal.Delta =>
@@ -5368,7 +5693,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           case Some(conv) if conv.currentMode != mc.mode =>
             Task.pure(Some(conv.copy(currentMode = mc.mode, modified = Timestamp(Nowish()))))
           case Some(conv) => Task.pure(Some(conv))
-          case None       => Task.pure(None)
+          case None => Task.pure(None)
         })).unit
       case Some(cc: sigil.event.ComplexityChange) =>
         // The pin/unpin tools mutate `pinnedComplexity` themselves;
@@ -5380,7 +5705,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           case Some(conv) if conv.pinnedComplexity != cc.newTier =>
             Task.pure(Some(conv.copy(pinnedComplexity = cc.newTier, modified = Timestamp(Nowish()))))
           case Some(conv) => Task.pure(Some(conv))
-          case None       => Task.pure(None)
+          case None => Task.pure(None)
         })).unit
       case Some(tc: TopicChange) =>
         applyTopicChangeToStack(tc)
@@ -5396,14 +5721,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Increment [[Conversation.cost]] for a settled cost-bearing event
-    * (either a [[Message]] or a [[ToolInvoke]]) whose `modelId` is
-    * known to the [[sigil.cache.ModelRegistry]].
-    *
-    * Math: per-token pricing × token counts (USD). Cache miss,
-    * `modelId = None`, or zero usage → no-op. On a non-zero delta,
-    * publishes a [[sigil.signal.ConversationCostUpdated]] Notice
-    * carrying the new running total + the per-event delta. */
+  /**
+   * Increment [[Conversation.cost]] for a settled cost-bearing event
+   * (either a [[Message]] or a [[ToolInvoke]]) whose `modelId` is
+   * known to the [[sigil.cache.ModelRegistry]].
+   *
+   * Math: per-token pricing × token counts (USD). Cache miss,
+   * `modelId = None`, or zero usage → no-op. On a non-zero delta,
+   * publishes a [[sigil.signal.ConversationCostUpdated]] Notice
+   * carrying the new running total + the per-event delta.
+   */
   /**
    * Sigil #406 — per-turn cost telemetry seam. Called once per charged turn at
    * the point the framework folds the turn's USD `cost` into
@@ -5422,7 +5749,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def onTurnCost(entry: TurnCost): Task[Unit] = Task.unit
 
-  private final def applyEventCostToConversation(
+  final private def applyEventCostToConversation(
     conversationId: Id[Conversation],
     eventId: Id[Event],
     participantId: ParticipantId,
@@ -5478,13 +5805,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // cost projection.
               onTurnCost(TurnCost(
                 conversationId = updated._id,
-                eventId        = eventId,
-                participantId  = participantId,
-                modelId        = resolvedModelId,
-                mode           = updated.currentMode.name,
-                cost           = delta,
-                usage          = usage,
-                timestamp      = Timestamp(Nowish())
+                eventId = eventId,
+                participantId = participantId,
+                modelId = resolvedModelId,
+                mode = updated.currentMode.name,
+                cost = delta,
+                usage = usage,
+                timestamp = Timestamp(Nowish())
               )).handleError(t => Task(scribe.warn(s"onTurnCost hook failed for ${updated._id.value}: ${t.getMessage}")))
             }
           case None => Task.unit
@@ -5492,18 +5819,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Update Conversation.topics in response to a settled TopicChange.
-    *
-    * For Switch: the change carries the post-transition topicId; we
-    * either push a fresh entry or truncate the stack back to a matching
-    * entry already present.
-    *
-    * For Rename: walk the stack and update label + summary on every
-    * entry whose id matches the renamed topic (typically just the active
-    * one). The Topic record itself is updated separately by the
-    * orchestrator before publishing.
-    */
-  private final def applyTopicChangeToStack(tc: TopicChange): Task[Unit] =
+  /**
+   * Update Conversation.topics in response to a settled TopicChange.
+   *
+   * For Switch: the change carries the post-transition topicId; we
+   * either push a fresh entry or truncate the stack back to a matching
+   * entry already present.
+   *
+   * For Rename: walk the stack and update label + summary on every
+   * entry whose id matches the renamed topic (typically just the active
+   * one). The Topic record itself is updated separately by the
+   * orchestrator before publishing.
+   */
+  final private def applyTopicChangeToStack(tc: TopicChange): Task[Unit] =
     withDB(_.conversations.transaction(_.modify(tc.conversationId) {
       case None => Task.pure(None)
       case Some(conv) =>
@@ -5520,7 +5848,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 conv.topics :+ TopicEntry(
                   id = tc.topicId,
                   label = tc.newLabel,
-                  summary = ""  // populated below from the Topic record
+                  summary = "" // populated below from the Topic record
                 )
               }
             // If we appended a stub, fetch the Topic record to fill summary.
@@ -5528,7 +5856,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               if (existingIdx >= 0) Task.pure(nextStack)
               else withDB(_.topics.transaction(_.get(tc.topicId))).map {
                 case Some(t) => nextStack.init :+ TopicEntry(t._id, t.label, t.summary)
-                case None    => nextStack
+                case None => nextStack
               }
             withSummary.map { stack =>
               if (stack == conv.topics) Some(conv)
@@ -5568,14 +5896,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * If the classifier call fails (provider error, no tool call), falls
    * back to `NoChange` — the safe default that preserves state.
    */
-  /** Topic labels the classifier should NEVER match against as
-    * "<prior label>" — generic catch-alls (agent's own name, app
-    * name, "Greeting", "Initial setup", "Chat", "Help") that
-    * would otherwise pull every subsequent turn back to them via
-    * the prior-match path. Apps that brand the agent override and
-    * include the agent's display name. */
+  /**
+   * Topic labels the classifier should NEVER match against as
+   * "<prior label>" — generic catch-alls (agent's own name, app
+   * name, "Greeting", "Initial setup", "Chat", "Help") that
+   * would otherwise pull every subsequent turn back to them via
+   * the prior-match path. Apps that brand the agent override and
+   * include the agent's display name.
+   */
   def reservedTopicLabels: Set[String] = Set(
-    "greeting", "initial setup", "chat", "help", "assistant", "conversation"
+    "greeting",
+    "initial setup",
+    "chat",
+    "help",
+    "assistant",
+    "conversation"
   )
 
   def classifyTopicShift(modelId: Id[Model],
@@ -5664,7 +5999,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // classification.
     val resolveClassifierModel = conversationId match {
       case Some(cid) => auxModelFor(cid, tool.consultWorkType, chain, modelId)
-      case None      => routedModelFor(tool.consultWorkType, chain, modelId)
+      case None => routedModelFor(tool.consultWorkType, chain, modelId)
     }
     resolveClassifierModel.flatMap { routedModelId =>
       val classifierSettings = {
@@ -5683,31 +6018,31 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       )
     }.flatMap {
       case sigil.tool.consult.ConsultOutcome.Parsed(input) => Task.pure(input.kind match {
-        case "NoChange" => TopicShiftResult.NoChange
-        case "Refine"   => TopicShiftResult.Refine
-        case "New"      => TopicShiftResult.New
-        case other      =>
-          // Bug #92 — defensive validator. If the classifier returns
-          // a reserved label (agent name etc.) it must NOT be a Return
-          // target even when it accidentally matches a persisted prior;
-          // force `New` and log so future drift is observable.
-          if (reservedLowered.contains(other.toLowerCase)) {
-            scribe.warn(s"classifyTopicShift: model returned reserved label '$other' as kind — forcing New")
-            TopicShiftResult.New
-          } else {
-            // Bug #89 — Return must hit a prior that survived the
-            // reserved-label filter. If somehow the classifier
-            // returned a label that was filtered out (or never
-            // existed), fall back to "New" rather than NoChange so
-            // the new topic actually gets recorded.
-            filteredPriors.find(_.label == other)
-              .map(TopicShiftResult.Return(_))
-              .getOrElse {
-                scribe.warn(s"classifyTopicShift: out-of-enum kind '$other' (priors=${filteredPriors.map(_.label).mkString(",")}) — falling back to New")
-                TopicShiftResult.New
-              }
-          }
-      })
+          case "NoChange" => TopicShiftResult.NoChange
+          case "Refine" => TopicShiftResult.Refine
+          case "New" => TopicShiftResult.New
+          case other =>
+            // Bug #92 — defensive validator. If the classifier returns
+            // a reserved label (agent name etc.) it must NOT be a Return
+            // target even when it accidentally matches a persisted prior;
+            // force `New` and log so future drift is observable.
+            if (reservedLowered.contains(other.toLowerCase)) {
+              scribe.warn(s"classifyTopicShift: model returned reserved label '$other' as kind — forcing New")
+              TopicShiftResult.New
+            } else {
+              // Bug #89 — Return must hit a prior that survived the
+              // reserved-label filter. If somehow the classifier
+              // returned a label that was filtered out (or never
+              // existed), fall back to "New" rather than NoChange so
+              // the new topic actually gets recorded.
+              filteredPriors.find(_.label == other)
+                .map(TopicShiftResult.Return(_))
+                .getOrElse {
+                  scribe.warn(s"classifyTopicShift: out-of-enum kind '$other' (priors=${filteredPriors.map(_.label).mkString(",")}) — falling back to New")
+                  TopicShiftResult.New
+                }
+            }
+        })
       // `NoOpinion` is a legitimate "model declined to call the tool";
       // default to NoChange silently. `Truncated` / `Failed` are
       // diagnostic events — surface a Failed FrameworkWorkflowNotice
@@ -5731,19 +6066,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Surface a `ConsultOutcome.Truncated` / `Failed` from a framework-
-    * internal classifier consult as a [[sigil.signal.FrameworkWorkflowNotice]]
-    * with `Failed` phase. Wire subscribers (clients, dashboards) see
-    * the gap; operator logs get a scribe.warn with the same reason. */
-  private final def emitClassifierFailedNotice(workflowType: String,
+  /**
+   * Surface a `ConsultOutcome.Truncated` / `Failed` from a framework-
+   * internal classifier consult as a [[sigil.signal.FrameworkWorkflowNotice]]
+   * with `Failed` phase. Wire subscribers (clients, dashboards) see
+   * the gap; operator logs get a scribe.warn with the same reason.
+   */
+  final private def emitClassifierFailedNotice(workflowType: String,
                                                reason: String,
                                                startedMs: Long): Task[Unit] = {
     scribe.warn(s"$workflowType $reason")
     publish(sigil.signal.FrameworkWorkflowNotice(
-      workflowId    = java.util.UUID.randomUUID().toString,
-      workflowType  = workflowType,
-      phase         = sigil.signal.FrameworkWorkflowPhase.Failed(
-        reason     = reason,
+      workflowId = java.util.UUID.randomUUID().toString,
+      workflowType = workflowType,
+      phase = sigil.signal.FrameworkWorkflowPhase.Failed(
+        reason = reason,
         durationMs = System.currentTimeMillis() - startedMs
       )
     )).handleError(_ => Task.unit)
@@ -5786,7 +6123,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                         previousTopics: List[TopicEntry],
                         modelId: Id[Model],
                         chain: List[ParticipantId],
-                        userMessage: String): Task[List[Event]] = {
+                        userMessage: String): Task[List[Event]] =
     if (proposedLabel.equalsIgnoreCase(currentTopic.label)) Task.pure(Nil)
     else previousTopics.find(_.label.equalsIgnoreCase(proposedLabel)) match {
       case Some(prior) =>
@@ -5801,16 +6138,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // resolveRenameTopic.
         resolveRenameTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
       case None =>
-        classifyTopicShift(modelId, chain, currentTopic, previousTopics, proposedLabel, proposedSummary, userMessage,
-                           conversationId = Some(conversation._id)).flatMap {
-          case TopicShiftResult.NoChange       => Task.pure(Nil)
-          case TopicShiftResult.Refine         => resolveRenameTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
-          case TopicShiftResult.New            => resolveNewTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
-          case TopicShiftResult.Return(prior)  =>
+        classifyTopicShift(
+          modelId,
+          chain,
+          currentTopic,
+          previousTopics,
+          proposedLabel,
+          proposedSummary,
+          userMessage,
+          conversationId = Some(conversation._id)).flatMap {
+          case TopicShiftResult.NoChange => Task.pure(Nil)
+          case TopicShiftResult.Refine => resolveRenameTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
+          case TopicShiftResult.New => resolveNewTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
+          case TopicShiftResult.Return(prior) =>
             Task.pure(List(buildSwitch(caller, conversation._id, currentTopic.id, prior.id, prior.label, prior.summary)))
         }
     }
-  }
 
   private def buildSwitch(caller: ParticipantId,
                           convId: Id[Conversation],
@@ -5819,12 +6162,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                           newLabel: String,
                           newSummary: String): TopicChange =
     TopicChange(
-      kind           = TopicChangeKind.Switch(previousTopicId = previousTopicId),
-      newLabel       = newLabel,
-      newSummary     = newSummary,
-      participantId  = caller,
+      kind = TopicChangeKind.Switch(previousTopicId = previousTopicId),
+      newLabel = newLabel,
+      newSummary = newSummary,
+      participantId = caller,
       conversationId = convId,
-      topicId        = newTopicId
+      topicId = newTopicId
     )
 
   private def resolveNewTopic(proposedLabel: String,
@@ -5834,9 +6177,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                               previousTopicId: Id[Topic]): Task[List[Event]] = {
     val created = Topic(
       conversationId = conversation._id,
-      label          = proposedLabel,
-      summary        = proposedSummary,
-      createdBy      = caller
+      label = proposedLabel,
+      summary = proposedSummary,
+      createdBy = caller
     )
     withDB(_.topics.transaction(_.upsert(created))).map { stored =>
       List(buildSwitch(caller, conversation._id, previousTopicId, stored._id, stored.label, stored.summary))
@@ -5849,39 +6192,41 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                  conversation: Conversation,
                                  currentTopicId: Id[Topic]): Task[List[Event]] =
     withDB(_.topics.transaction(_.get(currentTopicId))).flatMap {
-      case None                                  => Task.pure(Nil)
-      case Some(current) if current.labelLocked  => Task.pure(Nil)
-      case Some(current)                         =>
+      case None => Task.pure(Nil)
+      case Some(current) if current.labelLocked => Task.pure(Nil)
+      case Some(current) =>
         val renamed = current.copy(label = proposedLabel, summary = proposedSummary, modified = Timestamp())
         withDB(_.topics.transaction(_.upsert(renamed))).map { _ =>
           List(TopicChange(
-            kind           = TopicChangeKind.Rename(previousLabel = current.label),
-            newLabel       = proposedLabel,
-            newSummary     = proposedSummary,
-            participantId  = caller,
+            kind = TopicChangeKind.Rename(previousLabel = current.label),
+            newLabel = proposedLabel,
+            newSummary = proposedSummary,
+            participantId = caller,
             conversationId = conversation._id,
-            topicId        = current._id
+            topicId = current._id
           ))
         }
     }
 
-  /** Persist the agent's per-turn keyword push (from `RespondInput.keywords`)
-    * onto the conversation as `currentKeywords`. The non-critical memory
-    * retriever reads this on the next turn — no event is emitted because
-    * the keywords are turn-state, not durable history. Empty input is a
-    * no-op so the agent isn't forced to push a list it doesn't have.
-    *
-    * Called from both [[sigil.tool.core.RespondTool]] and
-    * [[sigil.orchestrator.Orchestrator]]'s streaming-respond branch so
-    * the keyword side effect fires regardless of which respond path
-    * materialised. */
+  /**
+   * Persist the agent's per-turn keyword push (from `RespondInput.keywords`)
+   * onto the conversation as `currentKeywords`. The non-critical memory
+   * retriever reads this on the next turn — no event is emitted because
+   * the keywords are turn-state, not durable history. Empty input is a
+   * no-op so the agent isn't forced to push a list it doesn't have.
+   *
+   * Called from both [[sigil.tool.core.RespondTool]] and
+   * [[sigil.orchestrator.Orchestrator]]'s streaming-respond branch so
+   * the keyword side effect fires regardless of which respond path
+   * materialised.
+   */
   def updateConversationKeywords(conversationId: Id[Conversation],
                                  keywords: List[String]): Task[Unit] = {
     val cleaned = keywords.iterator.map(_.trim).filter(_.nonEmpty).toVector.distinct
     if (cleaned.isEmpty) Task.unit
     else withDB(_.conversations.transaction(_.modify(conversationId) {
       case Some(c) => Task.pure(Some(c.copy(currentKeywords = cleaned, modified = Timestamp())))
-      case None    => Task.pure(None)
+      case None => Task.pure(None)
     })).unit
   }
 
@@ -5923,11 +6268,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _id = conversationId
     )
     for {
-      _      <- withDB(_.topics.transaction(_.upsert(topic)))
+      _ <- withDB(_.topics.transaction(_.upsert(topic)))
       stored <- withDB(_.conversations.transaction(_.upsert(conversation)))
       // Broadcast the lifecycle Notice so live viewers' UI panels can
       // pick up the new conversation without polling.
-      _      <- publish(sigil.signal.ConversationCreated(stored._id, createdBy))
+      _ <- publish(sigil.signal.ConversationCreated(stored._id, createdBy))
       // Fire greetings in-line per agent. fireGreeting is a no-op for agents
       // without greet-eligible behaviors, so the cost for non-greeting setups
       // is just the participants.collect walk.
@@ -5937,10 +6282,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // to greet. A greeting there makes the supervisor run "how can I help?"
       // turns AND poisons the worker's context (the worker mirrors the
       // greeting). Suppress whenever the conversation has a parent.
-      _      <- if (stored.parentConversationId.isDefined) Task.unit
-                else Task.sequence(stored.participants.collect {
-                  case agent: AgentParticipant => fireGreeting(agent, stored)
-                })
+      _ <- if (stored.parentConversationId.isDefined) Task.unit
+      else Task.sequence(stored.participants.collect {
+        case agent: AgentParticipant => fireGreeting(agent, stored)
+      })
     } yield stored
   }
 
@@ -6013,11 +6358,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         val updated = conv.copy(participants = conv.participants :+ participant)
         for {
           stored <- withDB(_.conversations.transaction(_.upsert(updated)))
-          _      <- publish(sigil.signal.ParticipantAdded(conversationId, participant))
-          _      <- participant match {
-                      case agent: AgentParticipant => fireGreeting(agent, stored)
-                      case _                       => Task.unit
-                    }
+          _ <- publish(sigil.signal.ParticipantAdded(conversationId, participant))
+          _ <- participant match {
+            case agent: AgentParticipant => fireGreeting(agent, stored)
+            case _ => Task.unit
+          }
         } yield stored
     }
 
@@ -6043,7 +6388,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         val updated = conv.copy(participants = conv.participants.filterNot(_.id == participantId))
         for {
           stored <- withDB(_.conversations.transaction(_.upsert(updated)))
-          _      <- publish(sigil.signal.ParticipantRemoved(conversationId, participantId))
+          _ <- publish(sigil.signal.ParticipantRemoved(conversationId, participantId))
         } yield stored
     }
 
@@ -6075,7 +6420,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         })
         for {
           stored <- withDB(_.conversations.transaction(_.upsert(updated)))
-          _      <- publish(sigil.signal.ParticipantUpdated(conversationId, participant))
+          _ <- publish(sigil.signal.ParticipantUpdated(conversationId, participant))
         } yield stored
     }
 
@@ -6103,7 +6448,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         val updated = conv.copy(status = status)
         for {
           stored <- withDB(_.conversations.transaction(_.upsert(updated)))
-          _      <- publish(sigil.signal.ConversationStatusChanged(conversationId, status))
+          _ <- publish(sigil.signal.ConversationStatusChanged(conversationId, status))
         } yield stored
     }
 
@@ -6164,14 +6509,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   private def resolvedWorkspaceFor(conversationId: Id[Conversation], depth: Int): Task[Option[java.nio.file.Path]] =
     workspaceFor(conversationId).flatMap {
-      case found @ Some(_)    => Task.pure(found)
+      case found @ Some(_) => Task.pure(found)
       case None if depth <= 0 => Task.pure(None)
       case None =>
         withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
           case Some(conv) =>
             conv.parentConversationId match {
               case Some(parentId) => resolvedWorkspaceFor(parentId, depth - 1)
-              case None           => Task.pure(None)
+              case None => Task.pure(None)
             }
           case None => Task.pure(None)
         }
@@ -6226,7 +6571,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case Some(conv) =>
         conv.parentConversationId match {
           case Some(parentId) => delegationDepth(parentId, depth + 1, fuel - 1)
-          case None           => Task.pure(depth)
+          case None => Task.pure(depth)
         }
       case None => Task.pure(depth)
     }
@@ -6250,8 +6595,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def createStagingConversation(stagingId: Id[Conversation],
                                 stagingFor: Id[Conversation]): Task[Conversation] = {
     val staging = Conversation(
-      _id        = stagingId,
-      topics     = Nil,
+      _id = stagingId,
+      topics = Nil,
       stagingFor = Some(stagingFor)
     )
     withDB(_.conversations.transaction(_.upsert(staging)))
@@ -6290,10 +6635,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     })
     for {
       eventCount <- rewriteEvents
-      _          <- rewriteMemories
-      _          <- rewriteSummaries
-      _          <- withDB(_.conversations.transaction(_.delete(staging)))
-      _          <- notifyHistoryImported(target, eventCount)
+      _ <- rewriteMemories
+      _ <- rewriteSummaries
+      _ <- withDB(_.conversations.transaction(_.delete(staging)))
+      _ <- notifyHistoryImported(target, eventCount)
     } yield eventCount
   }
 
@@ -6313,23 +6658,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def deleteStagingConversation(staging: Id[Conversation]): Task[Unit] =
     for {
       _ <- withDB { db =>
-             db.events.transaction { tx =>
-               val ids = tx.query.filter(_.conversationId === staging.value).stream.map(_._id)
-               ids.evalMap(id => tx.delete(id)).drain
-             }
-           }
+        db.events.transaction { tx =>
+          val ids = tx.query.filter(_.conversationId === staging.value).stream.map(_._id)
+          ids.evalMap(id => tx.delete(id)).drain
+        }
+      }
       _ <- withDB { db =>
-             db.memories.transaction { tx =>
-               val ids = tx.query.filter(_.conversationId === Some(staging)).stream.map(_._id)
-               ids.evalMap(id => tx.delete(id)).drain
-             }
-           }
+        db.memories.transaction { tx =>
+          val ids = tx.query.filter(_.conversationId === Some(staging)).stream.map(_._id)
+          ids.evalMap(id => tx.delete(id)).drain
+        }
+      }
       _ <- withDB { db =>
-             db.summaries.transaction { tx =>
-               val ids = tx.query.filter(_.conversationId === staging).stream.map(_._id)
-               ids.evalMap(id => tx.delete(id)).drain
-             }
-           }
+        db.summaries.transaction { tx =>
+          val ids = tx.query.filter(_.conversationId === staging).stream.map(_._id)
+          ids.evalMap(id => tx.delete(id)).drain
+        }
+      }
       _ <- withDB(_.conversations.transaction(_.delete(staging)))
     } yield ()
 
@@ -6353,34 +6698,34 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _ <- publish(sigil.signal.ConversationDeleted(conversationId))
       _ <- withDB(_.conversations.transaction(_.delete(conversationId)))
       _ <- withDB { db =>
-             db.events.transaction { tx =>
-               tx.query.filter(_.conversationId === conversationId.value).stream
-                 .map(_._id)
-                 .evalMap(id => tx.delete(id))
-                 .drain
-             }
-           }
+        db.events.transaction { tx =>
+          tx.query.filter(_.conversationId === conversationId.value).stream
+            .map(_._id)
+            .evalMap(id => tx.delete(id))
+            .drain
+        }
+      }
       _ <- withDB { db =>
-             db.participantProjections.transaction { tx =>
-               tx.query.filter(_.conversationId === conversationId).toList.flatMap { projections =>
-                 Task.sequence(projections.map(p => tx.delete(p._id))).unit
-               }
-             }
-           }
+        db.participantProjections.transaction { tx =>
+          tx.query.filter(_.conversationId === conversationId).toList.flatMap { projections =>
+            Task.sequence(projections.map(p => tx.delete(p._id))).unit
+          }
+        }
+      }
       _ <- withDB { db =>
-             db.encodedContexts.transaction { tx =>
-               tx.query.filter(_.conversationId === conversationId).toList.flatMap { caches =>
-                 Task.sequence(caches.map(c => tx.delete(c._id))).unit
-               }
-             }
-           }
+        db.encodedContexts.transaction { tx =>
+          tx.query.filter(_.conversationId === conversationId).toList.flatMap { caches =>
+            Task.sequence(caches.map(c => tx.delete(c._id))).unit
+          }
+        }
+      }
       _ <- withDB { db =>
-             db.topics.transaction { tx =>
-               tx.query.filter(_.conversationId === conversationId).toList.flatMap { topics =>
-                 Task.sequence(topics.map(t => tx.delete(t._id))).unit
-               }
-             }
-           }
+        db.topics.transaction { tx =>
+          tx.query.filter(_.conversationId === conversationId).toList.flatMap { topics =>
+            Task.sequence(topics.map(t => tx.delete(t._id))).unit
+          }
+        }
+      }
     } yield ()
 
   /**
@@ -6410,30 +6755,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val now = Timestamp(Nowish())
     withDB(_.conversations.transaction(_.modify(conversationId) {
       case Some(conv) => Task.pure(Some(conv.copy(clearedAt = Some(now), modified = now)))
-      case None       => Task.pure(None)
+      case None => Task.pure(None)
     })).flatMap {
-      case None => Task.unit  // no conversation to clear — silent no-op
+      case None => Task.unit // no conversation to clear — silent no-op
       case Some(_) =>
         for {
           _ <- withDB { db =>
-                 db.participantProjections.transaction { tx =>
-                   tx.query.filter(_.conversationId === conversationId).toList.flatMap { projections =>
-                     Task.sequence(projections.map(p => tx.delete(p._id))).unit
-                   }
-                 }
-               }
+            db.participantProjections.transaction { tx =>
+              tx.query.filter(_.conversationId === conversationId).toList.flatMap { projections =>
+                Task.sequence(projections.map(p => tx.delete(p._id))).unit
+              }
+            }
+          }
           _ <- withDB { db =>
-                 db.encodedContexts.transaction { tx =>
-                   tx.query.filter(_.conversationId === conversationId).toList.flatMap { caches =>
-                     Task.sequence(caches.map(c => tx.delete(c._id))).unit
-                   }
-                 }
-               }
+            db.encodedContexts.transaction { tx =>
+              tx.query.filter(_.conversationId === conversationId).toList.flatMap { caches =>
+                Task.sequence(caches.map(c => tx.delete(c._id))).unit
+              }
+            }
+          }
           _ <- publish(sigil.signal.ConversationCleared(
-                 conversationId = conversationId,
-                 clearedAt      = now,
-                 clearedBy      = clearedBy
-               ))
+            conversationId = conversationId,
+            clearedAt = now,
+            clearedBy = clearedBy
+          ))
         } yield ()
     }
   }
@@ -6488,19 +6833,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     if (!isDirectedWorkerConversation(conv)) TriggerFilter.isTriggerFor(agent, event)
     else event match {
       case m: Message
-        if m.role == MessageRole.Standard && m.participantId != agent.id &&
-          m.addressees.exists(_.contains(agent.id)) => true
+          if m.role == MessageRole.Standard && m.participantId != agent.id &&
+            m.addressees.exists(_.contains(agent.id)) => true
       case _ => false
     }
 
-  private final def fanOut(event: Event): Task[Unit] = {
+  final private def fanOut(event: Event): Task[Unit] = {
     // A fresh user-authored Message is the turn boundary — the prior
     // turn's delivered-result tracking has served its purpose (its
     // protection window ends with the turn) and must not leak across
     // turns as the conversation ages.
     event match {
       case m: Message
-        if !m.participantId.isInstanceOf[AgentParticipantId] && m.role == MessageRole.Standard =>
+          if !m.participantId.isInstanceOf[AgentParticipantId] && m.role == MessageRole.Standard =>
         deliveredToolResults.remove(event.conversationId)
         ()
       case _ => ()
@@ -6515,9 +6860,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case Some(stoppedAt) =>
         event match {
           case m: Message
-            if !m.participantId.isInstanceOf[AgentParticipantId]
-              && m.role == MessageRole.Standard
-              && m.timestamp.value > stoppedAt =>
+              if !m.participantId.isInstanceOf[AgentParticipantId]
+                && m.role == MessageRole.Standard
+                && m.timestamp.value > stoppedAt =>
             stopLatches.remove(event.conversationId)
             fanOutUnlatched(event)
           case _ =>
@@ -6531,9 +6876,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  private final def fanOutUnlatched(event: Event): Task[Unit] =
+  final private def fanOutUnlatched(event: Event): Task[Unit] =
     withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
-      case None       => Task.unit
+      case None => Task.unit
       case Some(conv) =>
         val fire: Task[Unit] = {
           val tasks: List[Task[Unit]] = conv.participants.collect {
@@ -6546,12 +6891,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // ≥2 agents) terminates by the supervisor relaying up and not
         // re-addressing the worker. Backstop a non-terminating
         // supervisor↔worker exchange with a hard turn budget.
-        val agentIds: Set[ParticipantId] = conv.participants.collect { case a: AgentParticipant => (a.id: ParticipantId) }.toSet
+        val agentIds: Set[ParticipantId] = conv.participants.collect { case a: AgentParticipant => a.id: ParticipantId }.toSet
         if (!isDirectedWorkerConversation(conv)) fire
         else withDB(_.eventsTransaction(conv._id)(_.list)).flatMap { evs =>
           val agentMessages = evs.count {
             case m: Message => agentIds.contains(m.participantId)
-            case _          => false
+            case _ => false
           }
           if (agentMessages < workerConversationTurnBudget) fire
           else Task {
@@ -6598,7 +6943,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def currentParticipant(persisted: Participant): Task[Participant] = Task.pure(persisted)
 
-  private final def tryFire(agent: AgentParticipant, conv: Conversation, greeting: Boolean = false): Task[Unit] = {
+  final private def tryFire(agent: AgentParticipant, conv: Conversation, greeting: Boolean = false): Task[Unit] = {
     val lockId = agentStateLockId(agent.id, conv._id)
     val claim = AgentState(
       agentId = agent.id,
@@ -6621,75 +6966,78 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val convHardExhausted = effectiveBudgetsFor(conv).conversationHard.exists(conv.cost >= _)
     if (convHardExhausted) notifyBudgetExhausted(agent, conv)
     else {
-    // The in-memory registry is the gate (see [[activeClaims]]); the
-    // row write below is the durable projection. Losing here is
-    // fine: the holder's loop picks the triggering event up at its
-    // next iteration boundary, or the release-time recheck re-fires.
-    val won = activeClaims.putIfAbsent(lockId,
-      new ActiveClaimEntry(claim.timestamp.value, conversationCostAtClaim = conv.cost)) == null
-    if (!won) Task.unit
-    else withDB(_.events.transaction(_.modify(lockId) {
-      // Unconditional overwrite: the registry decided ownership. A
-      // row still Active here is a fossil (a crashed process's claim
-      // — the registry died with it); claiming over it IS the
-      // recovery.
-      case _ => Task.pure(Some(claim))
-    })).flatMap { _ =>
-      // We won the claim. Register a StopFlag for this claim so any
-      // Stop events published against this agent can interrupt.
-      stopFlags.put(claim._id, new StopFlag)
-      // Open the turn's event log for the founding-turn topic
-      // sweep, seeded with the claim row (written via tx.modify,
-      // so the publish hook never sees it).
-      val turnLog = new TurnEventLog
-      turnLog.record(claim)
-      activeTurnEvents.put(conv._id, turnLog)
-      // Reconcile the persisted agent against the app's current definition
-      // (default identity) so a new tool added to a discovery-suppressed
-      // roster reaches this existing conversation. Keep the original on a
-      // mismatched id or a non-agent result — the seat is by id.
-      currentParticipant(agent).map {
-        case fresh: AgentParticipant if fresh.id == agent.id => fresh
-        case _                                               => agent
-      }.flatMap { effectiveAgent =>
-        // Broadcast manually (modify already persisted), then fire the
-        // agent on its own fiber.
-        Task {
-          hub.emit(claim)
-          runAgent(effectiveAgent, conv, claim, greeting = greeting).startUnit()
-          ()
+      // The in-memory registry is the gate (see [[activeClaims]]); the
+      // row write below is the durable projection. Losing here is
+      // fine: the holder's loop picks the triggering event up at its
+      // next iteration boundary, or the release-time recheck re-fires.
+      val won = activeClaims.putIfAbsent(
+        lockId,
+        new ActiveClaimEntry(claim.timestamp.value, conversationCostAtClaim = conv.cost)) == null
+      if (!won) Task.unit
+      else withDB(_.events.transaction(_.modify(lockId) {
+        // Unconditional overwrite: the registry decided ownership. A
+        // row still Active here is a fossil (a crashed process's claim
+        // — the registry died with it); claiming over it IS the
+        // recovery.
+        case _ => Task.pure(Some(claim))
+      })).flatMap { _ =>
+        // We won the claim. Register a StopFlag for this claim so any
+        // Stop events published against this agent can interrupt.
+        stopFlags.put(claim._id, new StopFlag)
+        // Open the turn's event log for the founding-turn topic
+        // sweep, seeded with the claim row (written via tx.modify,
+        // so the publish hook never sees it).
+        val turnLog = new TurnEventLog
+        turnLog.record(claim)
+        activeTurnEvents.put(conv._id, turnLog)
+        // Reconcile the persisted agent against the app's current definition
+        // (default identity) so a new tool added to a discovery-suppressed
+        // roster reaches this existing conversation. Keep the original on a
+        // mismatched id or a non-agent result — the seat is by id.
+        currentParticipant(agent).map {
+          case fresh: AgentParticipant if fresh.id == agent.id => fresh
+          case _ => agent
+        }.flatMap { effectiveAgent =>
+          // Broadcast manually (modify already persisted), then fire the
+          // agent on its own fiber.
+          Task {
+            hub.emit(claim)
+            runAgent(effectiveAgent, conv, claim, greeting = greeting).startUnit()
+            ()
+          }
         }
       }
     }
-    }
   }
 
-  /** One user-visible notice per conversation-hard-ceiling
-    * exhaustion. The latch clears when `set_budget` raises the
-    * budget, so repeated triggers while exhausted don't spam and a
-    * raised budget re-arms cleanly. */
-  private final val budgetExhaustedNotified: ConcurrentHashMap[Id[Conversation], java.lang.Boolean] =
+  /**
+   * One user-visible notice per conversation-hard-ceiling
+   * exhaustion. The latch clears when `set_budget` raises the
+   * budget, so repeated triggers while exhausted don't spam and a
+   * raised budget re-arms cleanly.
+   */
+  final private val budgetExhaustedNotified: ConcurrentHashMap[Id[Conversation], java.lang.Boolean] =
     new ConcurrentHashMap()
 
-  private[sigil] final def clearBudgetExhaustedNotice(conversationId: Id[Conversation]): Unit = {
+  final private[sigil] def clearBudgetExhaustedNotice(conversationId: Id[Conversation]): Unit = {
     budgetExhaustedNotified.remove(conversationId)
     ()
   }
 
-  private final def notifyBudgetExhausted(agent: AgentParticipant, conv: Conversation): Task[Unit] =
+  final private def notifyBudgetExhausted(agent: AgentParticipant, conv: Conversation): Task[Unit] =
     if (budgetExhaustedNotified.putIfAbsent(conv._id, java.lang.Boolean.TRUE) != null) Task.unit
     else {
-      val ceiling = effectiveBudgetsFor(conv).conversationHard.map(c => f"$$${c}%.2f").getOrElse("?")
+      val ceiling = effectiveBudgetsFor(conv).conversationHard.map(c => f"$$$c%.2f").getOrElse("?")
       publish(Message(
-        participantId  = agent.id,
+        participantId = agent.id,
         conversationId = conv._id,
-        topicId        = conv.currentTopicId,
-        content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(
+        topicId = conv.currentTopicId,
+        content = Vector(_root_.sigil.tool.model.ResponseContent.Text(
           f"This conversation has reached its spend ceiling ($ceiling; $$${conv.cost}%.2f spent) — the agent will " +
             "not run further turns here. Raise the budget (the `set_budget` capability, e.g. \"set this " +
             "conversation's budget to $10\") or start a new conversation.")),
-        state          = EventState.Complete,
-        disposition    = sigil.event.MessageDisposition.Failure(recoverable = true)
+        state = EventState.Complete,
+        disposition = sigil.event.MessageDisposition.Failure(recoverable = true)
       )).unit
     }
 
@@ -6716,246 +7064,288 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    *   - if any, loop without releasing the claim
    *   - if none, transition to Idle/Complete and release
    */
-  /** Hard cap on dispatcher self-loop iterations within a single AgentState
-    * claim. Generous default — the primary stuck-detection mechanism is the
-    * delta-based progress checkpoint (see [[progressCheckpointInterval]] +
-    * [[consecutiveNoProgressLimit]]), which fires well before this ceiling
-    * for any real loop. The cap exists as a runaway-cost safety net for
-    * pathological cases where the checkpoint itself misbehaves; reaching
-    * it raises [[AgentRunawayException]] in the runAgent fiber after
-    * releasing the AgentState claim. Apps tighten or relax per their
-    * cost / latency tolerance. */
+  /**
+   * Hard cap on dispatcher self-loop iterations within a single AgentState
+   * claim. Generous default — the primary stuck-detection mechanism is the
+   * delta-based progress checkpoint (see [[progressCheckpointInterval]] +
+   * [[consecutiveNoProgressLimit]]), which fires well before this ceiling
+   * for any real loop. The cap exists as a runaway-cost safety net for
+   * pathological cases where the checkpoint itself misbehaves; reaching
+   * it raises [[AgentRunawayException]] in the runAgent fiber after
+   * releasing the AgentState claim. Apps tighten or relax per their
+   * cost / latency tolerance.
+   */
   protected def maxAgentIterations: Int = 200
 
-  /** Hard backstop on the number of agent-authored messages in a
-    * *directed worker conversation* (sigil #327 — a sub-conversation
-    * linked to a parent carrying two or more agent participants). The
-    * supervised bridge is meant to terminate by the supervisor relaying
-    * its result to the parent and stopping (see
-    * [[sigil.pipeline.WorkerConversationAddressingTransform]]); this cap
-    * guarantees termination even if a model keeps the worker↔supervisor
-    * exchange going. Once the conversation holds this many agent
-    * messages, `fanOut` stops firing further agent turns in it. Apps
-    * tune per their cost tolerance. */
+  /**
+   * Hard backstop on the number of agent-authored messages in a
+   * *directed worker conversation* (sigil #327 — a sub-conversation
+   * linked to a parent carrying two or more agent participants). The
+   * supervised bridge is meant to terminate by the supervisor relaying
+   * its result to the parent and stopping (see
+   * [[sigil.pipeline.WorkerConversationAddressingTransform]]); this cap
+   * guarantees termination even if a model keeps the worker↔supervisor
+   * exchange going. Once the conversation holds this many agent
+   * messages, `fanOut` stops firing further agent turns in it. Apps
+   * tune per their cost tolerance.
+   */
   protected def workerConversationTurnBudget: Int = 40
 
-  /** True when `conv` is a *directed worker sub-conversation* (sigil
-    * #327): linked to a parent and carrying two or more agent
-    * participants (a delegating supervisor + at least one worker).
-    * Several worker-specific behaviors key off this — addressing-driven
-    * termination's silent rest, the worker turn budget, and skipping the
-    * redundant/misfiring progress reflection (#330). The supervisor is
-    * the worker's progress monitor in this model, so the framework's
-    * automatic reflection (which anchors on a *user* message that a
-    * worker conversation doesn't have) neither helps nor applies.
-    * Public so apps / UIs can ask the same question. */
+  /**
+   * True when `conv` is a *directed worker sub-conversation* (sigil
+   * #327): linked to a parent and carrying two or more agent
+   * participants (a delegating supervisor + at least one worker).
+   * Several worker-specific behaviors key off this — addressing-driven
+   * termination's silent rest, the worker turn budget, and skipping the
+   * redundant/misfiring progress reflection (#330). The supervisor is
+   * the worker's progress monitor in this model, so the framework's
+   * automatic reflection (which anchors on a *user* message that a
+   * worker conversation doesn't have) neither helps nor applies.
+   * Public so apps / UIs can ask the same question.
+   */
   final def isDirectedWorkerConversation(conv: Conversation): Boolean =
     conv.parentConversationId.isDefined &&
       conv.participants.count { case _: AgentParticipant => true; case _ => false } >= 2
 
-  /** Iterations between progress checkpoints. Every Nth iteration the
-    * framework runs an out-of-band reflection turn that compares the
-    * current task state against the prior checkpoint's status and
-    * decides whether to continue / intervene / ask the user. Default
-    * 8 — the checkpoint is a NON-TERMINAL reflection nudge (sigil #379:
-    * it lets the agent continue rather than forcing a respond), so it's
-    * cheap to self-evaluate earlier; the second consecutive no-progress
-    * checkpoint (~16 iterations) carries the prior status so the agent
-    * is forced to evaluate while still allowed to move forward. Set to 0
-    * to disable checkpointing. */
+  /**
+   * Iterations between progress checkpoints. Every Nth iteration the
+   * framework runs an out-of-band reflection turn that compares the
+   * current task state against the prior checkpoint's status and
+   * decides whether to continue / intervene / ask the user. Default
+   * 8 — the checkpoint is a NON-TERMINAL reflection nudge (sigil #379:
+   * it lets the agent continue rather than forcing a respond), so it's
+   * cheap to self-evaluate earlier; the second consecutive no-progress
+   * checkpoint (~16 iterations) carries the prior status so the agent
+   * is forced to evaluate while still allowed to move forward. Set to 0
+   * to disable checkpointing.
+   */
   protected def progressCheckpointInterval: Int = 8
 
-  /** #321 — model for the out-of-band progress reflection. The reflection
-    * can cancel an in-flight workflow (its `shouldAskUser` / stall verdict
-    * becomes an orchestrator intervention), so it must NOT run on the
-    * cheapest routed candidate — a bad "stuck / ask the user" call throws
-    * away an entire in-progress task. Defaults to the agent's own model
-    * (the tier already judged adequate for the work). Apps override to
-    * impose a different floor. */
+  /**
+   * #321 — model for the out-of-band progress reflection. The reflection
+   * can cancel an in-flight workflow (its `shouldAskUser` / stall verdict
+   * becomes an orchestrator intervention), so it must NOT run on the
+   * cheapest routed candidate — a bad "stuck / ask the user" call throws
+   * away an entire in-progress task. Defaults to the agent's own model
+   * (the tier already judged adequate for the work). Apps override to
+   * impose a different floor.
+   */
   def progressReflectionModelFor(agent: AgentParticipant): Id[Model] = agent.modelId
 
-  /** Number of consecutive `meaningfulProgress = false` checkpoints
-    * required before the framework intervenes with a synthetic
-    * respond asking the user for guidance. Default 2. Setting to 1
-    * is aggressive (any single "no progress" report stops the
-    * loop); higher values give the agent more rope. */
+  /**
+   * Number of consecutive `meaningfulProgress = false` checkpoints
+   * required before the framework intervenes with a synthetic
+   * respond asking the user for guidance. Default 2. Setting to 1
+   * is aggressive (any single "no progress" report stops the
+   * loop); higher values give the agent more rope.
+   */
   protected def consecutiveNoProgressLimit: Int = 2
 
-  /** Sigil #385 — number of consecutive `meaningfulProgress = false`
-    * checkpoints after which the framework escalates from a COOPERATIVE
-    * nudge to a TERMINAL forced synthesis. The cooperative checkpoint
-    * (at [[consecutiveNoProgressLimit]]) only asks the agent to change
-    * approach and lets it continue — correct for a brief plateau, but a
-    * model that ignores nudge after nudge (observed live: 6 consecutive
-    * "no progress" checkpoints over ~50 iterations while reading 40
-    * distinct files without acting) needs to be stopped, not nudged
-    * again. When the streak reaches this limit the next intervention is
-    * `terminal` (forces a `respond` synthesis from what's gathered).
-    * Distinct from [[hardStallIdenticalCallLimit]], which only catches
-    * BYTE-IDENTICAL repeats; this catches a VARIED-but-unproductive loop
-    * that evades the identical-call detector. Must be `>
-    * consecutiveNoProgressLimit` so the cooperative nudge fires first.
-    * 0 disables (cooperative nudges only). Default 4. */
+  /**
+   * Sigil #385 — number of consecutive `meaningfulProgress = false`
+   * checkpoints after which the framework escalates from a COOPERATIVE
+   * nudge to a TERMINAL forced synthesis. The cooperative checkpoint
+   * (at [[consecutiveNoProgressLimit]]) only asks the agent to change
+   * approach and lets it continue — correct for a brief plateau, but a
+   * model that ignores nudge after nudge (observed live: 6 consecutive
+   * "no progress" checkpoints over ~50 iterations while reading 40
+   * distinct files without acting) needs to be stopped, not nudged
+   * again. When the streak reaches this limit the next intervention is
+   * `terminal` (forces a `respond` synthesis from what's gathered).
+   * Distinct from [[hardStallIdenticalCallLimit]], which only catches
+   * BYTE-IDENTICAL repeats; this catches a VARIED-but-unproductive loop
+   * that evades the identical-call detector. Must be `>
+   * consecutiveNoProgressLimit` so the cooperative nudge fires first.
+   * 0 disables (cooperative nudges only). Default 4.
+   */
   protected def hardNoProgressLimit: Int = 4
 
-  /** Sigil #385 — whether a no-progress streak has persisted long enough
-    * that the cooperative checkpoint must escalate to a TERMINAL forced
-    * synthesis instead of nudging again. Pure over [[hardNoProgressLimit]];
-    * extracted as a seam so the escalation boundary is deterministically
-    * testable without driving a live reflection loop. */
+  /**
+   * Sigil #385 — whether a no-progress streak has persisted long enough
+   * that the cooperative checkpoint must escalate to a TERMINAL forced
+   * synthesis instead of nudging again. Pure over [[hardNoProgressLimit]];
+   * extracted as a seam so the escalation boundary is deterministically
+   * testable without driving a live reflection loop.
+   */
   private[sigil] def terminalOnPersistentNoProgress(noProgressStreak: Int): Boolean =
     hardNoProgressLimit > 0 && noProgressStreak >= hardNoProgressLimit
 
-  /** Oversight tier for the progress checkpoint. When set, the
-    * checkpoint's LLM step consults THIS model as a planner holding an
-    * explicit [[TurnPlan]] instead of asking the executor's tier to
-    * assess itself — the executor losing the plot is invisible from
-    * inside its own loop, and a self-assessment that latches "task
-    * completed" can stall-kill a healthy repair turn. The planner call
-    * is resolved directly to this id (no work-type routing — the point
-    * is an explicit stronger tier). `None` (default) disables the
-    * planner entirely; checkpoint behavior is unchanged. */
+  /**
+   * Oversight tier for the progress checkpoint. When set, the
+   * checkpoint's LLM step consults THIS model as a planner holding an
+   * explicit [[TurnPlan]] instead of asking the executor's tier to
+   * assess itself — the executor losing the plot is invisible from
+   * inside its own loop, and a self-assessment that latches "task
+   * completed" can stall-kill a healthy repair turn. The planner call
+   * is resolved directly to this id (no work-type routing — the point
+   * is an explicit stronger tier). `None` (default) disables the
+   * planner entirely; checkpoint behavior is unchanged.
+   */
   protected def plannerModelId: Option[Id[Model]] = None
 
-  /** Iterations between routine planner reviews when [[plannerModelId]]
-    * is set. The planner consult is sparse by design: it fires on
-    * anomaly signals (stall heuristics, same-target churn, budget
-    * check-in), on the first checkpoint of a turn (to create the plan),
-    * and otherwise only every this-many iterations. 0 disables the
-    * periodic tick — anomaly- and first-plan-driven only. */
+  /**
+   * Iterations between routine planner reviews when [[plannerModelId]]
+   * is set. The planner consult is sparse by design: it fires on
+   * anomaly signals (stall heuristics, same-target churn, budget
+   * check-in), on the first checkpoint of a turn (to create the plan),
+   * and otherwise only every this-many iterations. 0 disables the
+   * periodic tick — anomaly- and first-plan-driven only.
+   */
   protected def plannerCadence: Int = 24
 
-  /** Sigil #413 — how many context-overflow recoveries a single turn may
-    * spend before the overflow surfaces as a clean terminal failure. Each
-    * recovery re-runs the failed iteration with an emergency refit to
-    * `contextLength × 0.5^attempt` — the halving absorbs any estimator
-    * under-count, so two attempts reach a quarter of the window before
-    * giving up. 0 disables the recovery (overflow fails the turn
-    * immediately, pre-#413 behaviour). */
+  /**
+   * Sigil #413 — how many context-overflow recoveries a single turn may
+   * spend before the overflow surfaces as a clean terminal failure. Each
+   * recovery re-runs the failed iteration with an emergency refit to
+   * `contextLength × 0.5^attempt` — the halving absorbs any estimator
+   * under-count, so two attempts reach a quarter of the window before
+   * giving up. 0 disables the recovery (overflow fails the turn
+   * immediately, pre-#413 behaviour).
+   */
   protected def maxOverflowCompactions: Int = 2
 
-  /** Sigil #416 — per-conversation count of consecutive curates whose
-    * stage-2c frame elision had to fire. Written by
-    * [[sigil.conversation.compression.StandardContextCurator.budgetResolve]];
-    * when the streak reaches [[elisionPressureEscalationStreak]] the
-    * cascade escalates into stage 3's DURABLE shed (summary + clearedAt
-    * advance) so chronically-pressured history shrinks for good instead
-    * of being ephemerally re-elided on every turn forever. In-memory —
-    * a restart resets streaks, which just delays escalation by a few
-    * curates. */
-  private[sigil] final val elisionPressureStreaks: ConcurrentHashMap[Id[Conversation], java.lang.Integer] =
+  /**
+   * Sigil #416 — per-conversation count of consecutive curates whose
+   * stage-2c frame elision had to fire. Written by
+   * [[sigil.conversation.compression.StandardContextCurator.budgetResolve]];
+   * when the streak reaches [[elisionPressureEscalationStreak]] the
+   * cascade escalates into stage 3's DURABLE shed (summary + clearedAt
+   * advance) so chronically-pressured history shrinks for good instead
+   * of being ephemerally re-elided on every turn forever. In-memory —
+   * a restart resets streaks, which just delays escalation by a few
+   * curates.
+   */
+  final private[sigil] val elisionPressureStreaks: ConcurrentHashMap[Id[Conversation], java.lang.Integer] =
     new ConcurrentHashMap()
 
-  /** Sigil #416 — consecutive eliding curates after which the shed
-    * cascade escalates to the durable stage-3 path even when elision
-    * alone would fit. 0 (or negative) disables escalation. */
+  /**
+   * Sigil #416 — consecutive eliding curates after which the shed
+   * cascade escalates to the durable stage-3 path even when elision
+   * alone would fit. 0 (or negative) disables escalation.
+   */
   protected[sigil] def elisionPressureEscalationStreak: Int = 3
 
-  /** Objective identical-call streak (same tool, same args, within one turn)
-    * at which the framework force-ends the turn — MODEL-INDEPENDENTLY — by
-    * triggering the forced-synthesis recovery early. Every cooperative stall
-    * guard ([[maxIdenticalToolCallsInWindow]], the repeated-query intercept,
-    * the progress checkpoint) only NUDGES the model to stop; a model that
-    * ignores them all keeps re-emitting the same call until
-    * [[maxAgentIterations]] and throws [[AgentRunawayException]]. This is the
-    * backstop that detects the pathological repeat and ends the turn in a
-    * handful of iterations instead. Higher than the duplicate-call cap and
-    * the checkpoint stall threshold so the cooperative nudges get their
-    * chance first. 0 disables. */
+  /**
+   * Objective identical-call streak (same tool, same args, within one turn)
+   * at which the framework force-ends the turn — MODEL-INDEPENDENTLY — by
+   * triggering the forced-synthesis recovery early. Every cooperative stall
+   * guard ([[maxIdenticalToolCallsInWindow]], the repeated-query intercept,
+   * the progress checkpoint) only NUDGES the model to stop; a model that
+   * ignores them all keeps re-emitting the same call until
+   * [[maxAgentIterations]] and throws [[AgentRunawayException]]. This is the
+   * backstop that detects the pathological repeat and ends the turn in a
+   * handful of iterations instead. Higher than the duplicate-call cap and
+   * the checkpoint stall threshold so the cooperative nudges get their
+   * chance first. 0 disables.
+   */
   protected def hardStallIdenticalCallLimit: Int = 6
 
-  /** Sigil #257 / #273 — how many times the agent loop retries with the
-    * FULL tool roster when a turn emits ZERO `tool_use` blocks (genuine
-    * empty response) before falling back to the respond-only forced
-    * synthesis and ultimately raising [[AgentRunawayException]]. A
-    * no-tool-call response is usually a transient hiccup — reasoning
-    * models in particular drop the tool call after their reasoning
-    * block — and a plain re-prompt with the roster intact usually
-    * self-corrects.
-    *
-    * This counter is incremented ONLY when the model produced no
-    * `tool_use` at all. Parse failures, unknown tool names, and other
-    * "tool called, just failed" outcomes flow through the orchestrator's
-    * Tool-role Failure pairing and re-trigger the loop normally — they
-    * burn iterations against [[maxAgentIterations]] (which protects
-    * cost) but do NOT advance toward the runaway throw (which protects
-    * signal — "the model is ignoring tool_choice").
-    *
-    * Default 3 (sigil #273 bump from 1). Setting to 0 restores the
-    * pre-#257 behavior of stripping the roster on the first miss — one
-    * hiccup becomes a guaranteed non-answer. Higher values tolerate
-    * flakier models. */
+  /**
+   * Sigil #257 / #273 — how many times the agent loop retries with the
+   * FULL tool roster when a turn emits ZERO `tool_use` blocks (genuine
+   * empty response) before falling back to the respond-only forced
+   * synthesis and ultimately raising [[AgentRunawayException]]. A
+   * no-tool-call response is usually a transient hiccup — reasoning
+   * models in particular drop the tool call after their reasoning
+   * block — and a plain re-prompt with the roster intact usually
+   * self-corrects.
+   *
+   * This counter is incremented ONLY when the model produced no
+   * `tool_use` at all. Parse failures, unknown tool names, and other
+   * "tool called, just failed" outcomes flow through the orchestrator's
+   * Tool-role Failure pairing and re-trigger the loop normally — they
+   * burn iterations against [[maxAgentIterations]] (which protects
+   * cost) but do NOT advance toward the runaway throw (which protects
+   * signal — "the model is ignoring tool_choice").
+   *
+   * Default 3 (sigil #273 bump from 1). Setting to 0 restores the
+   * pre-#257 behavior of stripping the roster on the first miss — one
+   * hiccup becomes a guaranteed non-answer. Higher values tolerate
+   * flakier models.
+   */
   protected def noToolCallRetryLimit: Int = 3
 
-  /** Size of the per-participant `recentToolInvocations` rolling
-    * window. Older entries fall off the tail. Drives the prompt's
-    * "Recently used tools" + "Repeated tool calls" surfaces and the
-    * Layer-3 identical-call cap. Default 20 — covers a single agent
-    * loop comfortably without bloating the per-participant
-    * projection record. */
+  /**
+   * Size of the per-participant `recentToolInvocations` rolling
+   * window. Older entries fall off the tail. Drives the prompt's
+   * "Recently used tools" + "Repeated tool calls" surfaces and the
+   * Layer-3 identical-call cap. Default 20 — covers a single agent
+   * loop comfortably without bloating the per-participant
+   * projection record.
+   */
   def recentToolInvocationsLimit: Int = 20
 
-  /** Hard cap on identical (tool name + canonical args) dispatches in
-    * the [[recentToolInvocationsLimit]] window. When set to a positive
-    * value N, the orchestrator REFUSES to dispatch a tool whose
-    * (toolName, argsHash) already appears in the projection's recent
-    * invocations at least N-1 times — i.e. the Nth identical call is
-    * the one rejected. The refusal emits a Tool-role Failure Message
-    * paired to the originating ToolInvoke describing the count and
-    * suggesting alternatives. Set to `0` or a negative value to
-    * disable the cap entirely (the prompt-level warning remains).
-    * Default 3. */
+  /**
+   * Hard cap on identical (tool name + canonical args) dispatches in
+   * the [[recentToolInvocationsLimit]] window. When set to a positive
+   * value N, the orchestrator REFUSES to dispatch a tool whose
+   * (toolName, argsHash) already appears in the projection's recent
+   * invocations at least N-1 times — i.e. the Nth identical call is
+   * the one rejected. The refusal emits a Tool-role Failure Message
+   * paired to the originating ToolInvoke describing the count and
+   * suggesting alternatives. Set to `0` or a negative value to
+   * disable the cap entirely (the prompt-level warning remains).
+   * Default 3.
+   */
   def maxIdenticalToolCallsInWindow: Int = 3
 
-  /** Sigil #407 — bound on identical re-issues of a tool whose result keeps
-    * RACING past the frame (settled Pending, never delivered — a large/slow
-    * result that overflowed to `.sigil/output/`). Those re-issues are excluded
-    * from [[maxIdenticalToolCallsInWindow]] (#354) because a transient race is
-    * rational to retry; but a PERSISTENT racer would re-issue unboundedly and
-    * never progress. When set to a positive N, after N raced identical
-    * re-issues in the current turn the orchestrator stops inviting re-issue and
-    * refuses the next one with a non-escalating Failure that redirects the
-    * agent to the externalized result (read/grep the overflow file). Set to
-    * `0` / negative to disable. Default 2. Distinct from the duplicate-call cap:
-    * that punishes a spinning agent; this rescues a well-behaved agent from a
-    * tool that can't deliver its result inline. */
+  /**
+   * Sigil #407 — bound on identical re-issues of a tool whose result keeps
+   * RACING past the frame (settled Pending, never delivered — a large/slow
+   * result that overflowed to `.sigil/output/`). Those re-issues are excluded
+   * from [[maxIdenticalToolCallsInWindow]] (#354) because a transient race is
+   * rational to retry; but a PERSISTENT racer would re-issue unboundedly and
+   * never progress. When set to a positive N, after N raced identical
+   * re-issues in the current turn the orchestrator stops inviting re-issue and
+   * refuses the next one with a non-escalating Failure that redirects the
+   * agent to the externalized result (read/grep the overflow file). Set to
+   * `0` / negative to disable. Default 2. Distinct from the duplicate-call cap:
+   * that punishes a spinning agent; this rescues a well-behaved agent from a
+   * tool that can't deliver its result inline.
+   */
   def maxRacedReissues: Int = 2
 
-  /** Cap on the number of non-essential (action) tool calls the framework
-    * dispatches from a SINGLE model response. A model that fires a whole
-    * discovered tool family in one completion (e.g. all 10 `bsp_*` when it
-    * needed one) has the excess refused with a corrective note, while
-    * legitimate parallelism — a handful of distinct calls, such as reading
-    * several files at once — still passes. The respond family, `no_response`,
-    * and `stop` are the turn's delivery and never count toward the cap. `0`
-    * disables. Distinct from [[maxIdenticalToolCallsInWindow]], which caps
-    * REPEATED identical calls across the turn; this caps TOTAL distinct calls
-    * within one response. Default 8. */
+  /**
+   * Cap on the number of non-essential (action) tool calls the framework
+   * dispatches from a SINGLE model response. A model that fires a whole
+   * discovered tool family in one completion (e.g. all 10 `bsp_*` when it
+   * needed one) has the excess refused with a corrective note, while
+   * legitimate parallelism — a handful of distinct calls, such as reading
+   * several files at once — still passes. The respond family, `no_response`,
+   * and `stop` are the turn's delivery and never count toward the cap. `0`
+   * disables. Distinct from [[maxIdenticalToolCallsInWindow]], which caps
+   * REPEATED identical calls across the turn; this caps TOTAL distinct calls
+   * within one response. Default 8.
+   */
   def maxToolCallsPerResponse: Int = 8
 
-  /** Cap on `discoveredCapabilities` entries surfaced in the
-    * agent's prompt — keeps the prompt bounded even within a long
-    * agent loop that issues many distinct `find_capability` queries.
-    * The cap is over the *map* (one entry per distinct query); each
-    * entry's matches list is already bounded by `find_capability`'s
-    * page size. Apps override to tune the prompt budget. */
+  /**
+   * Cap on `discoveredCapabilities` entries surfaced in the
+   * agent's prompt — keeps the prompt bounded even within a long
+   * agent loop that issues many distinct `find_capability` queries.
+   * The cap is over the *map* (one entry per distinct query); each
+   * entry's matches list is already bounded by `find_capability`'s
+   * page size. Apps override to tune the prompt budget.
+   */
   def discoveredCapabilitiesPromptCap: Int = 25
 
-  /** Wipe the agent's [[sigil.conversation.ParticipantProjection.recentToolInvocations]]
-    * rolling window for a conversation. Sigil #304 — the framework no
-    * longer auto-clears this at the start of every `runAgent`; the
-    * orchestrator's duplicate-call cap now scopes its count via
-    * [[sigil.provider.ConversationRequest.turnStartedAt]], so the
-    * window can persist across turns to feed
-    * [[narrowRosterByRecentUse]] without inflating the dedupe count
-    * for legitimate cross-turn retries. Apps that want an explicit
-    * "reset agent state" UX action still call this directly; typical
-    * conversation flow does not need to. */
+  /**
+   * Wipe the agent's [[sigil.conversation.ParticipantProjection.recentToolInvocations]]
+   * rolling window for a conversation. Sigil #304 — the framework no
+   * longer auto-clears this at the start of every `runAgent`; the
+   * orchestrator's duplicate-call cap now scopes its count via
+   * [[sigil.provider.ConversationRequest.turnStartedAt]], so the
+   * window can persist across turns to feed
+   * [[narrowRosterByRecentUse]] without inflating the dedupe count
+   * for legitimate cross-turn retries. Apps that want an explicit
+   * "reset agent state" UX action still call this directly; typical
+   * conversation flow does not need to.
+   */
   def clearDedupeForTurn(convId: Id[Conversation],
                          agentId: ParticipantId): Task[Unit] =
     updateProjection(convId, agentId)(_.copy(recentToolInvocations = Nil))
 
-  private final def runAgent(agent: AgentParticipant,
+  final private def runAgent(agent: AgentParticipant,
                              conv: Conversation,
                              claimed: AgentState,
                              greeting: Boolean = false): Task[Unit] = {
@@ -6986,13 +7376,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     RunUnit.execute(unit)
   }
 
-  /** Inner body of [[runAgent]] — keeps the existing iteration
-    * scaffolding intact. Split out so the top-level operational
-    * [[RunUnit]] wrap can layer over it without disturbing the
-    * lifecycle scaffolding the agent loop relies on
-    * (`userVisibleSeen` / `turnExtractorFired` / `failurePublished`
-    * / `discoveredCapabilitiesRef`). */
-  private final def runAgentLoopForUnit(agent: AgentParticipant,
+  /**
+   * Inner body of [[runAgent]] — keeps the existing iteration
+   * scaffolding intact. Split out so the top-level operational
+   * [[RunUnit]] wrap can layer over it without disturbing the
+   * lifecycle scaffolding the agent loop relies on
+   * (`userVisibleSeen` / `turnExtractorFired` / `failurePublished`
+   * / `discoveredCapabilitiesRef`).
+   */
+  final private def runAgentLoopForUnit(agent: AgentParticipant,
                                         conv: Conversation,
                                         claimed: AgentState,
                                         greeting: Boolean): Task[Unit] =
@@ -7001,57 +7393,59 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // task X" forever and the continuation the agent is waiting on
     // never comes.
     reconcileLostDetachedTools(conv._id).flatMap(_ =>
-    runAgentLoop(
-      agent,
-      conv._id,
-      claimed,
-      iteration = 1,
-      sinceTimestamp = claimed.timestamp,
-      greeting = greeting,
-      // Tracks "did the agent ever produce a user-visible terminal
-      // signal across this loop's iterations?" The synthesized
-      // placeholder Message in the no-more-triggers branch only fires
-      // when this stays false. Bug #46 — without it, an agent that
-      // chains tool calls without ever calling `respond` /
-      // `no_response` / etc. ends the conversation in silence.
-      userVisibleSeen = new java.util.concurrent.atomic.AtomicBoolean(false),
-      // Bug #149 — the per-turn memory extractor must fire exactly
-      // once per user turn (not once per agent-loop iteration). This
-      // flag is threaded through every recursion so a CAS at the
-      // terminate path guarantees a single fire across the whole
-      // loop.
-      turnExtractorFired = new java.util.concurrent.atomic.AtomicBoolean(false),
-      // The post-error `publishFailureMessage` needs fire-once
-      // semantics. Without this gate, an exception raised inside an
-      // inner recursion level propagates up through every parent
-      // level's `.handleError`, each of which publishes its own
-      // Failure Message — surfacing N identical failure bubbles in
-      // the chat for one failure. CAS-gated like `turnExtractorFired`.
-      failurePublished = new java.util.concurrent.atomic.AtomicBoolean(false),
-      // Per-loop `find_capability` cache. Shared across every
-      // iteration of THIS loop so the agent doesn't re-discover
-      // within the same task; a fresh AtomicReference per `runAgent`
-      // call means the next user turn starts with an empty cache,
-      // preventing prompt pollution from prior turns' discoveries.
-      discoveredCapabilitiesRef = new AtomicReference(Map.empty),
-      // Sigil #411 — turn-scoped read-tool result cache, fresh per turn so a
-      // retry's identical READ is served from cache instead of re-executing.
-      toolResultCacheRef = new AtomicReference(Map.empty),
-      // Sigil #313 — one heal per turn. CAS-gated; a healed retry
-      // that ALSO fails is treated as Exhausted, NOT retried again.
-      healedThisTurn = new java.util.concurrent.atomic.AtomicBoolean(false),
-      // Sigil #313 — correlation id shared across the durable triple
-      // (CorruptionDetected → Healed → Exhausted) for THIS turn.
-      healCorrelationId = new AtomicReference(None)
-    ))
+      runAgentLoop(
+        agent,
+        conv._id,
+        claimed,
+        iteration = 1,
+        sinceTimestamp = claimed.timestamp,
+        greeting = greeting,
+        // Tracks "did the agent ever produce a user-visible terminal
+        // signal across this loop's iterations?" The synthesized
+        // placeholder Message in the no-more-triggers branch only fires
+        // when this stays false. Bug #46 — without it, an agent that
+        // chains tool calls without ever calling `respond` /
+        // `no_response` / etc. ends the conversation in silence.
+        userVisibleSeen = new java.util.concurrent.atomic.AtomicBoolean(false),
+        // Bug #149 — the per-turn memory extractor must fire exactly
+        // once per user turn (not once per agent-loop iteration). This
+        // flag is threaded through every recursion so a CAS at the
+        // terminate path guarantees a single fire across the whole
+        // loop.
+        turnExtractorFired = new java.util.concurrent.atomic.AtomicBoolean(false),
+        // The post-error `publishFailureMessage` needs fire-once
+        // semantics. Without this gate, an exception raised inside an
+        // inner recursion level propagates up through every parent
+        // level's `.handleError`, each of which publishes its own
+        // Failure Message — surfacing N identical failure bubbles in
+        // the chat for one failure. CAS-gated like `turnExtractorFired`.
+        failurePublished = new java.util.concurrent.atomic.AtomicBoolean(false),
+        // Per-loop `find_capability` cache. Shared across every
+        // iteration of THIS loop so the agent doesn't re-discover
+        // within the same task; a fresh AtomicReference per `runAgent`
+        // call means the next user turn starts with an empty cache,
+        // preventing prompt pollution from prior turns' discoveries.
+        discoveredCapabilitiesRef = new AtomicReference(Map.empty),
+        // Sigil #411 — turn-scoped read-tool result cache, fresh per turn so a
+        // retry's identical READ is served from cache instead of re-executing.
+        toolResultCacheRef = new AtomicReference(Map.empty),
+        // Sigil #313 — one heal per turn. CAS-gated; a healed retry
+        // that ALSO fails is treated as Exhausted, NOT retried again.
+        healedThisTurn = new java.util.concurrent.atomic.AtomicBoolean(false),
+        // Sigil #313 — correlation id shared across the durable triple
+        // (CorruptionDetected → Healed → Exhausted) for THIS turn.
+        healCorrelationId = new AtomicReference(None)
+      ))
 
-  /** Sigil #392 — completes once `flag.force` is set. Polled (not callback-
-    * driven) because `StopFlag.force` is a plain `AtomicBoolean` flipped by
-    * `applyStop`; a 25 ms tick is imperceptible against a user clicking Stop and
-    * costs nothing while idle. Raced against the iteration drain so a force Stop
-    * interrupts an in-flight tool — the winning waiter cancels the drain fiber.
-    * When the drain finishes first, `Task.race` cancels THIS waiter (interrupts
-    * its sleep), so it never leaks. */
+  /**
+   * Sigil #392 — completes once `flag.force` is set. Polled (not callback-
+   * driven) because `StopFlag.force` is a plain `AtomicBoolean` flipped by
+   * `applyStop`; a 25 ms tick is imperceptible against a user clicking Stop and
+   * costs nothing while idle. Raced against the iteration drain so a force Stop
+   * interrupts an in-flight tool — the winning waiter cancels the drain fiber.
+   * When the drain finishes first, `Task.race` cancels THIS waiter (interrupts
+   * its sleep), so it never leaks.
+   */
   private def awaitForceStop(flag: StopFlag): Task[Unit] = Task.defer {
     if (flag.force.get()) Task.unit
     else Task.sleep(25.millis).flatMap(_ => awaitForceStop(flag))
@@ -7067,97 +7461,116 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * so external triggers that landed between claim-time and iteration-1
    * start are still visible.
    */
-  private final def runAgentLoop(agent: AgentParticipant,
+  final private def runAgentLoop(agent: AgentParticipant,
                                  convId: Id[Conversation],
                                  claimed: AgentState,
                                  iteration: Int,
                                  sinceTimestamp: Timestamp,
                                  greeting: Boolean = false,
                                  userVisibleSeen: java.util.concurrent.atomic.AtomicBoolean,
-                                 /** Bug #149 — single-shot fire-gate for the
-                                   * per-turn memory extractor. Shared across
-                                   * every iteration of the loop so the
-                                   * extractor runs exactly once per user
-                                   * turn at the terminate boundary, not
-                                   * once per iteration. */
+                                 /**
+                                  * Bug #149 — single-shot fire-gate for the
+                                  * per-turn memory extractor. Shared across
+                                  * every iteration of the loop so the
+                                  * extractor runs exactly once per user
+                                  * turn at the terminate boundary, not
+                                  * once per iteration.
+                                  */
                                  turnExtractorFired: java.util.concurrent.atomic.AtomicBoolean,
-                                 /** Sigil bug #200 — single-shot fire-gate for
-                                   * `publishFailureMessage`. Threaded through
-                                   * every recursion so the inner-most handler
-                                   * publishes once and outer-level handlers
-                                   * skip the duplicate publish on re-throw. */
+                                 /**
+                                  * Sigil bug #200 — single-shot fire-gate for
+                                  * `publishFailureMessage`. Threaded through
+                                  * every recursion so the inner-most handler
+                                  * publishes once and outer-level handlers
+                                  * skip the duplicate publish on re-throw.
+                                  */
                                  failurePublished: java.util.concurrent.atomic.AtomicBoolean,
-                                 /** Sigil bug #125 — when `true`, this is the
-                                   * forced-synthesis turn invoked by the
-                                   * cap-hit soft-stop. The loop runs ONE
-                                   * iteration with `tool_choice: respond` and
-                                   * exits regardless of `shouldIterate`. A
-                                   * subsequent cap-hit while this flag is
-                                   * already true falls back to the hard
-                                   * [[AgentRunawayException]] throw — at that
-                                   * point the soft path has genuinely
-                                   * exhausted. */
+                                 /**
+                                  * Sigil bug #125 — when `true`, this is the
+                                  * forced-synthesis turn invoked by the
+                                  * cap-hit soft-stop. The loop runs ONE
+                                  * iteration with `tool_choice: respond` and
+                                  * exits regardless of `shouldIterate`. A
+                                  * subsequent cap-hit while this flag is
+                                  * already true falls back to the hard
+                                  * [[AgentRunawayException]] throw — at that
+                                  * point the soft path has genuinely
+                                  * exhausted.
+                                  */
                                  forceResponseSynthesis: Boolean = false,
-                                 /** Sigil bug #198 — which condition triggered
-                                   * the forced-synthesis turn. Threaded so the
-                                   * [[AgentRunawayException]] message describes
-                                   * the actual cause (cap-hit vs no-tool-call
-                                   * vs stall) instead of misattributing every
-                                   * forced-synthesis failure as cap exhaustion. */
+                                 /**
+                                  * Sigil bug #198 — which condition triggered
+                                  * the forced-synthesis turn. Threaded so the
+                                  * [[AgentRunawayException]] message describes
+                                  * the actual cause (cap-hit vs no-tool-call
+                                  * vs stall) instead of misattributing every
+                                  * forced-synthesis failure as cap exhaustion.
+                                  */
                                  forcedReason: Option[ForcedSynthesisReason] = None,
-                                 /** Sigil #257 — count of consecutive
-                                   * full-roster retries already spent on
-                                   * no-tool-call responses this turn. Any
-                                   * iteration that makes real progress resets
-                                   * it to 0 (the normal continuation simply
-                                   * doesn't pass it); bounded by
-                                   * [[noToolCallRetryLimit]]. */
+                                 /**
+                                  * Sigil #257 — count of consecutive
+                                  * full-roster retries already spent on
+                                  * no-tool-call responses this turn. Any
+                                  * iteration that makes real progress resets
+                                  * it to 0 (the normal continuation simply
+                                  * doesn't pass it); bounded by
+                                  * [[noToolCallRetryLimit]].
+                                  */
                                  noToolCallRetries: Int = 0,
-                                 /** Sigil bug #226 — the per-agent-loop
-                                   * `find_capability` cache. Shared across
-                                   * every iteration of THIS loop so the agent
-                                   * doesn't re-discover within the same task;
-                                   * cleared at loop release by virtue of the
-                                   * reference going out of scope, so a new
-                                   * `runAgent` call starts with a fresh empty
-                                   * map. */
+                                 /**
+                                  * Sigil bug #226 — the per-agent-loop
+                                  * `find_capability` cache. Shared across
+                                  * every iteration of THIS loop so the agent
+                                  * doesn't re-discover within the same task;
+                                  * cleared at loop release by virtue of the
+                                  * reference going out of scope, so a new
+                                  * `runAgent` call starts with a fresh empty
+                                  * map.
+                                  */
                                  discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]],
-                                 /** Sigil #411 — turn-scoped read-tool result cache
-                                   * (canonical key → content). Created once per
-                                   * `runAgent` call and threaded through each iteration
-                                   * so a retry re-issuing an identical READ is served
-                                   * from cache. */
+                                 /**
+                                  * Sigil #411 — turn-scoped read-tool result cache
+                                  * (canonical key → content). Created once per
+                                  * `runAgent` call and threaded through each iteration
+                                  * so a retry re-issuing an identical READ is served
+                                  * from cache.
+                                  */
                                  toolResultCacheRef: AtomicReference[Map[String, Vector[sigil.tool.model.ResponseContent]]],
-                                 /** Sigil #313 — single-shot fire-gate for the
-                                   * reactive self-heal. Threaded through every
-                                   * recursion so a healed retry that ALSO
-                                   * fails does NOT trigger a second heal —
-                                   * `HealingExhausted` publishes and the
-                                   * standard failure path runs. The flag is
-                                   * shared across the whole agent loop (one
-                                   * heal per user turn). */
+                                 /**
+                                  * Sigil #313 — single-shot fire-gate for the
+                                  * reactive self-heal. Threaded through every
+                                  * recursion so a healed retry that ALSO
+                                  * fails does NOT trigger a second heal —
+                                  * `HealingExhausted` publishes and the
+                                  * standard failure path runs. The flag is
+                                  * shared across the whole agent loop (one
+                                  * heal per user turn).
+                                  */
                                  healedThisTurn: java.util.concurrent.atomic.AtomicBoolean,
-                                 /** Sigil #313 — correlation id shared between
-                                   * the durable
-                                   * [[sigil.event.ConversationCorruptionDetected]],
-                                   * [[sigil.event.ConversationHealed]],
-                                   * [[sigil.event.HealingExhausted]] triple
-                                   * for a single turn's heal arc. Threaded so
-                                   * the retry's audit pulse joins the same
-                                   * arc. */
+                                 /**
+                                  * Sigil #313 — correlation id shared between
+                                  * the durable
+                                  * [[sigil.event.ConversationCorruptionDetected]],
+                                  * [[sigil.event.ConversationHealed]],
+                                  * [[sigil.event.HealingExhausted]] triple
+                                  * for a single turn's heal arc. Threaded so
+                                  * the retry's audit pulse joins the same
+                                  * arc.
+                                  */
                                  healCorrelationId: AtomicReference[Option[String]],
-                                 /** Sigil #413 — count of context-overflow
-                                   * recoveries already spent this turn. Each
-                                   * recovery re-runs the iteration with
-                                   * `emergencyContextFactor = 0.5^n` so the
-                                   * turn's input is force-refitted under the
-                                   * wire window; bounded by
-                                   * [[maxOverflowCompactions]], after which
-                                   * the overflow surfaces as a clean terminal
-                                   * failure. Threaded through every recursion
-                                   * so the bound holds across the whole turn. */
-                                 overflowCompactions: Int = 0
-                                   ): Task[Unit] = Task.defer {
+                                 /**
+                                  * Sigil #413 — count of context-overflow
+                                  * recoveries already spent this turn. Each
+                                  * recovery re-runs the iteration with
+                                  * `emergencyContextFactor = 0.5^n` so the
+                                  * turn's input is force-refitted under the
+                                  * wire window; bounded by
+                                  * [[maxOverflowCompactions]], after which
+                                  * the overflow surfaces as a clean terminal
+                                  * failure. Threaded through every recursion
+                                  * so the bound holds across the whole turn.
+                                  */
+                                 overflowCompactions: Int = 0): Task[Unit] = Task.defer {
     // Bug #149 — release the agent's claim AND fire the per-turn
     // memory extractor exactly once. The CAS-guard guarantees a
     // single extraction across every terminal exit path of the
@@ -7212,12 +7625,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         else withDB(_.conversations.transaction(_.get(convId))).flatMap {
           case Some(conv) =>
             externalTriggersExist(agent, conv, sinceTimestamp = Timestamp(lastCheckedAt)).flatMap {
-              case true  => tryFire(agent, conv)
+              case true => tryFire(agent, conv)
               case false => Task.unit
             }
           case None => Task.unit
-        }.handleError(t => Task(scribe.warn(
-          s"post-release trigger recheck failed for ${agent.id.value}/${convId.value}: ${t.getMessage}")))
+        }.handleError(t =>
+          Task(scribe.warn(
+            s"post-release trigger recheck failed for ${agent.id.value}/${convId.value}: ${t.getMessage}")))
       }
     }
     // Snapshot the start of THIS iteration. The next iteration uses this as
@@ -7236,22 +7650,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // the common shape so the three sites can't drift.
     def recurseForced(reason: ForcedSynthesisReason): Task[Unit] =
       runAgentLoop(
-        agent                     = agent,
-        convId                    = convId,
-        claimed                   = claimed,
-        iteration                 = iteration + 1,
-        sinceTimestamp            = thisIterationStart,
-        greeting                  = false,
-        userVisibleSeen           = userVisibleSeen,
-        turnExtractorFired        = turnExtractorFired,
-        failurePublished          = failurePublished,
-        forceResponseSynthesis    = true,
-        forcedReason              = Some(reason),
+        agent = agent,
+        convId = convId,
+        claimed = claimed,
+        iteration = iteration + 1,
+        sinceTimestamp = thisIterationStart,
+        greeting = false,
+        userVisibleSeen = userVisibleSeen,
+        turnExtractorFired = turnExtractorFired,
+        failurePublished = failurePublished,
+        forceResponseSynthesis = true,
+        forcedReason = Some(reason),
         discoveredCapabilitiesRef = discoveredCapabilitiesRef,
         toolResultCacheRef = toolResultCacheRef,
-        healedThisTurn            = healedThisTurn,
-        healCorrelationId         = healCorrelationId,
-        overflowCompactions       = overflowCompactions
+        healedThisTurn = healedThisTurn,
+        healCorrelationId = healCorrelationId,
+        overflowCompactions = overflowCompactions
       )
     // Sigil #257 — recovery for a no-tool-call response: run ONE more
     // iteration with the FULL roster + normal `tool_choice` intact (NOT
@@ -7263,23 +7677,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // only after [[noToolCallRetryLimit]] retries also miss.
     def recurseFullRosterRetry: Task[Unit] =
       runAgentLoop(
-        agent                     = agent,
-        convId                    = convId,
-        claimed                   = claimed,
-        iteration                 = iteration + 1,
-        sinceTimestamp            = thisIterationStart,
-        greeting                  = false,
-        userVisibleSeen           = userVisibleSeen,
-        turnExtractorFired        = turnExtractorFired,
-        failurePublished          = failurePublished,
-        forceResponseSynthesis    = false,
-        forcedReason              = None,
-        noToolCallRetries         = noToolCallRetries + 1,
+        agent = agent,
+        convId = convId,
+        claimed = claimed,
+        iteration = iteration + 1,
+        sinceTimestamp = thisIterationStart,
+        greeting = false,
+        userVisibleSeen = userVisibleSeen,
+        turnExtractorFired = turnExtractorFired,
+        failurePublished = failurePublished,
+        forceResponseSynthesis = false,
+        forcedReason = None,
+        noToolCallRetries = noToolCallRetries + 1,
         discoveredCapabilitiesRef = discoveredCapabilitiesRef,
         toolResultCacheRef = toolResultCacheRef,
-        healedThisTurn            = healedThisTurn,
-        healCorrelationId         = healCorrelationId,
-        overflowCompactions       = overflowCompactions
+        healedThisTurn = healedThisTurn,
+        healCorrelationId = healCorrelationId,
+        overflowCompactions = overflowCompactions
       )
     val stopFlag = Option(stopFlags.get(claimed._id))
     // Bug #74 — flips when a `respond` settles with `endsTurn = false`
@@ -7343,703 +7757,747 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // `AgentStateDelta(Idle, Complete)` is broadcast only once the
     // turn's events are durable — never racing the commit.
     val iterationStep: Task[Task[Unit]] =
-    // A Stop may have landed before this iteration even starts; short-
-    // circuit if so (graceful = "don't start another iteration"; force
-    // = "same, plus the in-flight stream below won't run"). Either way,
-    // release and exit.
-    if (stopFlag.exists(_.requested)) Task(terminate(skipFallback = true))
-    else
-    // Reload the conversation each iteration — materialized projections
-    // (currentMode, modified, etc.) update as Events flow through `publish`,
-    // so the conversation we hand to the agent must reflect the latest state.
-    withDB(_.conversations.transaction(_.get(convId))).flatMap {
-      case None =>
-        // Conversation deleted mid-turn — release the lock and exit cleanly.
-        // Extractor isn't fired here — no conversation = nothing to extract.
-        // Yielded as the continuation so the release runs post-commit.
-        Task(releaseClaim(claimed))
-      case Some(conv) =>
-        // Sigil bug #169 — overlay persists across iterations within the
-        // same user turn. Prerequisite calls (`record_consent`, etc.) and
-        // multi-invocation flows (`create_workflow` → `add_workflow_step` 5×)
-        // keep their discovered tools in scope until the loop terminates
-        // (handled in `terminate()` above) or a new `find_capability` /
-        // suggestion-emitting tool result replaces the list.
-        {
-          scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
-          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, claimedTimestamp = claimed.timestamp, isGreeting = greeting && iteration == 1, discoveredCapabilitiesRef = discoveredCapabilitiesRef, toolResultCacheRef = toolResultCacheRef, healedThisTurn = Some(healedThisTurn)).flatMap {
-            case (rawCtx, triggers) =>
-              // Sigil bug #125 — propagate the cap-hit soft-stop flag
-              // through the TurnContext so runAgentTurn → ConversationRequest →
-              // Provider's tool_choice all reflect it.
-              // Sigil #413 — after a context-overflow recovery, carry the
-              // emergency refit factor so this iteration's input is force-
-              // compacted under the wire window before the request ships.
-              // Thread the claim's tool-cancellation token so in-flight
-              // tool executions can cooperate with Stop via
-              // `ctx.checkpoint`.
-              val ctx0 = if (forceResponseSynthesis) rawCtx.copy(forceResponseSynthesis = true) else rawCtx
-              val ctx1 =
-                if (overflowCompactions > 0)
-                  ctx0.copy(emergencyContextFactor = Some(math.pow(0.5, overflowCompactions)))
-                else ctx0
-              val ctx = stopFlag match {
-                case Some(flag) => ctx1.copy(cancellation = Some(flag.cancellation))
-                case None       => ctx1
-              }
-              scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext done; dispatching agent.process")
-              // Wrap the agent's signal stream with a force-stop check so a
-              // Stop(force=true) mid-iteration terminates the stream promptly.
-              // Greeting mode (only on iteration == 1): dispatch only behaviors
-              // with `greetsOnJoin = true` against an empty trigger stream;
-              // subsequent iterations (driven by the agent's own non-terminal
-              // tool calls) revert to the standard process path.
-              val rawStream =
-                if (greeting && iteration == 1) agent.processGreeting(ctx)
-                else agent.process(ctx, triggers)
-              val interruptible = stopFlag match {
-                case Some(flag) => rawStream.takeWhile(_ => !flag.force.get())
-                case None       => rawStream
-              }
-              // Tap the stream for user-visible terminal signals. A
-              // settled `ToolDelta` whose target ToolInvoke names a
-              // user-visible terminal tool (`respond` / `no_response`
-              // / etc.) flips the loop-wide flag — so the no-more-
-              // triggers branch knows whether to synthesize a
-              // placeholder Message. We watch the ToolInvoke (which
-              // carries `toolName`) and remember matching invoke ids,
-              // then flip the flag on their settle delta.
-              // Map invoke id → tool name so we can distinguish `respond`
-              // from the other user-visible-terminal names when the
-              // settle delta lands (bug #74's `endsTurn` lever applies
-              // to `respond` specifically).
-              val activeUserVisibleInvokes = new java.util.concurrent.ConcurrentHashMap[Id[Event], String]()
-              val drainTask =
-                interruptible
-                .evalTap {
-                  case ti: ToolInvoke if Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) =>
-                    Task {
-                      activeUserVisibleInvokes.put(ti._id, ti.toolName.value)
-                      // Sigil #275 — respond-family invokes count as "model
-                      // emitted a tool_use block". Set the flag here too;
-                      // the terminalToolSettled path takes over for the
-                      // continuation decision but the runaway counter has
-                      // already been told this wasn't an empty response.
-                      if (!ti.internal) iterationHadToolCall.set(true)
-                      ()
-                    }
-                  case ti: ToolInvoke if ti.toolName.value == "_refusal_challenge"
-                                      || ti.toolName.value == Orchestrator.TurnDecisionToolName =>
-                    Task { frameworkRequestedContinue.set(true); () }
-                  case ti: ToolInvoke if !ti.internal =>
-                    // Sigil #275 — record that this iteration's response
-                    // contained at least one real tool_use block. Filters
-                    // out framework-synthesised diagnostic invokes
-                    // (`internal = true`) so the flag tracks the model's
-                    // actual behaviour, not the framework's bookkeeping.
-                    Task { iterationHadToolCall.set(true); () }
-                  // Silent-turn placeholder emitted by the orchestrator
-                  // when Usage arrives with no target. Marked via
-                  // `source = "orchestrator-silent-turn"` so the loop
-                  // recognises it as a user-visible reply without
-                  // matching every agent Standard Message.
-                  case m: sigil.event.Message
-                    if m.source.contains("orchestrator-silent-turn") && m.participantId == agent.id =>
-                    Task { userVisibleSeen.set(true); () }
-                  // Sigil #392 — a naked-text terminal answer (end_turn + text,
-                  // no tool, on the no-forced-tool_choice path) was committed by
-                  // the orchestrator. Treat it as a user-visible reply so the
-                  // no-tool-call branch terminates instead of re-requesting the
-                  // same prose (the Fable/Mythos 5 dupe loop).
-                  case md: sigil.signal.MessageDelta if md.terminalReply =>
-                    Task { userVisibleSeen.set(true); () }
-                  case td: ToolDelta if td.state.contains(EventState.Complete)
-                                     && activeUserVisibleInvokes.containsKey(td.target) =>
-                    Task {
-                      userVisibleSeen.set(true)
-                      // Bug #74 — `respond(endsTurn = false)` keeps the
-                      // turn open. The settled delta carries the parsed
-                      // input; flip the continue flag when it's a
-                      // RespondInput with endsTurn = false. Every other
-                      // user-visible terminal tool (`respond` with
-                      // endsTurn = true, `no_response`, the other
-                      // `respond_*` family) ENDS the turn — flip
-                      // `terminalToolSettled` so the post-drain check
-                      // doesn't mistake the turn's own emitted
-                      // `ToolResults` for a fresh trigger.
-                      //
-                      // Bug #226 — also drop the per-loop
-                      // `find_capability` cache on respond(endsTurn =
-                      // true). Covers the streaming-respond path
-                      // (orchestrator settles the in-flight Message via
-                      // `MessageDelta` and never calls
-                      // `RespondTool.executeResult`); the atomic-respond
-                      // path's clear is idempotent with this one.
-                      val toolName = activeUserVisibleInvokes.get(td.target)
-                      val keepsTurnOpen = toolName == "respond" && (td.input match {
-                        case Some(r: sigil.tool.model.RespondInput) => !r.endsTurn
-                        case _                                      => false
-                      })
-                      if (keepsTurnOpen) agentRequestedContinue.set(true)
-                      else {
-                        terminalToolSettled.set(true)
-                        discoveredCapabilitiesRef.set(Map.empty)
+      // A Stop may have landed before this iteration even starts; short-
+      // circuit if so (graceful = "don't start another iteration"; force
+      // = "same, plus the in-flight stream below won't run"). Either way,
+      // release and exit.
+      if (stopFlag.exists(_.requested)) Task(terminate(skipFallback = true))
+      else
+        // Reload the conversation each iteration — materialized projections
+        // (currentMode, modified, etc.) update as Events flow through `publish`,
+        // so the conversation we hand to the agent must reflect the latest state.
+        withDB(_.conversations.transaction(_.get(convId))).flatMap {
+          case None =>
+            // Conversation deleted mid-turn — release the lock and exit cleanly.
+            // Extractor isn't fired here — no conversation = nothing to extract.
+            // Yielded as the continuation so the release runs post-commit.
+            Task(releaseClaim(claimed))
+          case Some(conv) =>
+            // Sigil bug #169 — overlay persists across iterations within the
+            // same user turn. Prerequisite calls (`record_consent`, etc.) and
+            // multi-invocation flows (`create_workflow` → `add_workflow_step` 5×)
+            // keep their discovered tools in scope until the loop terminates
+            // (handled in `terminate()` above) or a new `find_capability` /
+            // suggestion-emitting tool result replaces the list.
+            {
+              scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
+              buildContext(
+                agent,
+                conv,
+                sinceTimestamp = sinceTimestamp,
+                claimedId = claimed._id,
+                claimedTimestamp = claimed.timestamp,
+                isGreeting = greeting && iteration == 1,
+                discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+                toolResultCacheRef = toolResultCacheRef,
+                healedThisTurn = Some(healedThisTurn)
+              ).flatMap {
+                case (rawCtx, triggers) =>
+                  // Sigil bug #125 — propagate the cap-hit soft-stop flag
+                  // through the TurnContext so runAgentTurn → ConversationRequest →
+                  // Provider's tool_choice all reflect it.
+                  // Sigil #413 — after a context-overflow recovery, carry the
+                  // emergency refit factor so this iteration's input is force-
+                  // compacted under the wire window before the request ships.
+                  // Thread the claim's tool-cancellation token so in-flight
+                  // tool executions can cooperate with Stop via
+                  // `ctx.checkpoint`.
+                  val ctx0 = if (forceResponseSynthesis) rawCtx.copy(forceResponseSynthesis = true) else rawCtx
+                  val ctx1 =
+                    if (overflowCompactions > 0)
+                      ctx0.copy(emergencyContextFactor = Some(math.pow(0.5, overflowCompactions)))
+                    else ctx0
+                  val ctx = stopFlag match {
+                    case Some(flag) => ctx1.copy(cancellation = Some(flag.cancellation))
+                    case None => ctx1
+                  }
+                  scribe.debug(
+                    s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext done; dispatching agent.process")
+                  // Wrap the agent's signal stream with a force-stop check so a
+                  // Stop(force=true) mid-iteration terminates the stream promptly.
+                  // Greeting mode (only on iteration == 1): dispatch only behaviors
+                  // with `greetsOnJoin = true` against an empty trigger stream;
+                  // subsequent iterations (driven by the agent's own non-terminal
+                  // tool calls) revert to the standard process path.
+                  val rawStream =
+                    if (greeting && iteration == 1) agent.processGreeting(ctx)
+                    else agent.process(ctx, triggers)
+                  val interruptible = stopFlag match {
+                    case Some(flag) => rawStream.takeWhile(_ => !flag.force.get())
+                    case None => rawStream
+                  }
+                  // Tap the stream for user-visible terminal signals. A
+                  // settled `ToolDelta` whose target ToolInvoke names a
+                  // user-visible terminal tool (`respond` / `no_response`
+                  // / etc.) flips the loop-wide flag — so the no-more-
+                  // triggers branch knows whether to synthesize a
+                  // placeholder Message. We watch the ToolInvoke (which
+                  // carries `toolName`) and remember matching invoke ids,
+                  // then flip the flag on their settle delta.
+                  // Map invoke id → tool name so we can distinguish `respond`
+                  // from the other user-visible-terminal names when the
+                  // settle delta lands (bug #74's `endsTurn` lever applies
+                  // to `respond` specifically).
+                  val activeUserVisibleInvokes = new java.util.concurrent.ConcurrentHashMap[Id[Event], String]()
+                  val drainTask =
+                    interruptible
+                      .evalTap {
+                        case ti: ToolInvoke if Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) =>
+                          Task {
+                            activeUserVisibleInvokes.put(ti._id, ti.toolName.value)
+                            // Sigil #275 — respond-family invokes count as "model
+                            // emitted a tool_use block". Set the flag here too;
+                            // the terminalToolSettled path takes over for the
+                            // continuation decision but the runaway counter has
+                            // already been told this wasn't an empty response.
+                            if (!ti.internal) iterationHadToolCall.set(true)
+                            ()
+                          }
+                        case ti: ToolInvoke
+                            if ti.toolName.value == "_refusal_challenge"
+                              || ti.toolName.value == Orchestrator.TurnDecisionToolName =>
+                          Task { frameworkRequestedContinue.set(true); () }
+                        case ti: ToolInvoke if !ti.internal =>
+                          // Sigil #275 — record that this iteration's response
+                          // contained at least one real tool_use block. Filters
+                          // out framework-synthesised diagnostic invokes
+                          // (`internal = true`) so the flag tracks the model's
+                          // actual behaviour, not the framework's bookkeeping.
+                          Task { iterationHadToolCall.set(true); () }
+                        // Silent-turn placeholder emitted by the orchestrator
+                        // when Usage arrives with no target. Marked via
+                        // `source = "orchestrator-silent-turn"` so the loop
+                        // recognises it as a user-visible reply without
+                        // matching every agent Standard Message.
+                        case m: sigil.event.Message
+                            if m.source.contains("orchestrator-silent-turn") && m.participantId == agent.id =>
+                          Task { userVisibleSeen.set(true); () }
+                        // Sigil #392 — a naked-text terminal answer (end_turn + text,
+                        // no tool, on the no-forced-tool_choice path) was committed by
+                        // the orchestrator. Treat it as a user-visible reply so the
+                        // no-tool-call branch terminates instead of re-requesting the
+                        // same prose (the Fable/Mythos 5 dupe loop).
+                        case md: sigil.signal.MessageDelta if md.terminalReply =>
+                          Task { userVisibleSeen.set(true); () }
+                        case td: ToolDelta
+                            if td.state.contains(EventState.Complete)
+                              && activeUserVisibleInvokes.containsKey(td.target) =>
+                          Task {
+                            userVisibleSeen.set(true)
+                            // Bug #74 — `respond(endsTurn = false)` keeps the
+                            // turn open. The settled delta carries the parsed
+                            // input; flip the continue flag when it's a
+                            // RespondInput with endsTurn = false. Every other
+                            // user-visible terminal tool (`respond` with
+                            // endsTurn = true, `no_response`, the other
+                            // `respond_*` family) ENDS the turn — flip
+                            // `terminalToolSettled` so the post-drain check
+                            // doesn't mistake the turn's own emitted
+                            // `ToolResults` for a fresh trigger.
+                            //
+                            // Bug #226 — also drop the per-loop
+                            // `find_capability` cache on respond(endsTurn =
+                            // true). Covers the streaming-respond path
+                            // (orchestrator settles the in-flight Message via
+                            // `MessageDelta` and never calls
+                            // `RespondTool.executeResult`); the atomic-respond
+                            // path's clear is idempotent with this one.
+                            val toolName = activeUserVisibleInvokes.get(td.target)
+                            val keepsTurnOpen = toolName == "respond" && (td.input match {
+                              case Some(r: sigil.tool.model.RespondInput) => !r.endsTurn
+                              case _ => false
+                            })
+                            if (keepsTurnOpen) agentRequestedContinue.set(true)
+                            else {
+                              terminalToolSettled.set(true)
+                              discoveredCapabilitiesRef.set(Map.empty)
+                            }
+                            ()
+                          }
+                        case _ => Task.unit
                       }
-                      ()
+                      .evalTap(publish)
+                      .drain
+                  // Sigil #392 — race the drain against the force-stop flag so a
+                  // force Stop interrupts an in-flight tool's blocking call. The
+                  // `takeWhile(!force)` above only fires at element boundaries —
+                  // while a tool is mid-execution no element is in flight, so the
+                  // flag isn't observed until the tool returns (the worst case being
+                  // the tool's own timeout). Racing cancels the drain fiber the
+                  // moment force flips (rapid's `Fiber.cancel` interrupts the carrier
+                  // thread, aborting an interruptible blocking op / parked await),
+                  // and the post-drain `stopFlag.exists(_.requested)` branch settles
+                  // any dangling invoke + terminates cleanly. `race` returns the
+                  // waiter's result and discards the cancelled drain's
+                  // InterruptedException, so no error surfaces.
+                  val drained = stopFlag match {
+                    case Some(flag) => Task.race(drainTask, awaitForceStop(flag)).map(_ => ())
+                    case None => drainTask
+                  }
+                  // The model consumed this iteration's prompt and produced a
+                  // response — every settled tool result the prompt carried has
+                  // now been DELIVERED. Mark them so the compaction machinery
+                  // (intra-turn compactor, curator sheds, summary cover-sets)
+                  // may fold them from later prompts; unmarked settled results
+                  // stay whole via CompactionInvariant.UndeliveredToolResults.
+                  // Skipped on a stop (the response may not have been consumed)
+                  // and on drain error (the flatMap never runs) — both err
+                  // toward protecting, never toward dropping.
+                  drained.flatMap { _ =>
+                    Task {
+                      if (!stopFlag.exists(_.requested)) markToolResultsDelivered(
+                        convId,
+                        ctx.turnInput.frames.collect {
+                          case tc: sigil.conversation.ContextFrame.ToolCall
+                              if tc.state.isInstanceOf[sigil.conversation.ToolCallState.Complete] && !tc.resultPending =>
+                            tc.callId
+                        }
+                      )
                     }
-                  case _ => Task.unit
-                }
-                .evalTap(publish)
-                .drain
-              // Sigil #392 — race the drain against the force-stop flag so a
-              // force Stop interrupts an in-flight tool's blocking call. The
-              // `takeWhile(!force)` above only fires at element boundaries —
-              // while a tool is mid-execution no element is in flight, so the
-              // flag isn't observed until the tool returns (the worst case being
-              // the tool's own timeout). Racing cancels the drain fiber the
-              // moment force flips (rapid's `Fiber.cancel` interrupts the carrier
-              // thread, aborting an interruptible blocking op / parked await),
-              // and the post-drain `stopFlag.exists(_.requested)` branch settles
-              // any dangling invoke + terminates cleanly. `race` returns the
-              // waiter's result and discards the cancelled drain's
-              // InterruptedException, so no error surfaces.
-              val drained = stopFlag match {
-                case Some(flag) => Task.race(drainTask, awaitForceStop(flag)).map(_ => ())
-                case None       => drainTask
+                  }
               }
-              // The model consumed this iteration's prompt and produced a
-              // response — every settled tool result the prompt carried has
-              // now been DELIVERED. Mark them so the compaction machinery
-              // (intra-turn compactor, curator sheds, summary cover-sets)
-              // may fold them from later prompts; unmarked settled results
-              // stay whole via CompactionInvariant.UndeliveredToolResults.
-              // Skipped on a stop (the response may not have been consumed)
-              // and on drain error (the flatMap never runs) — both err
-              // toward protecting, never toward dropping.
-              drained.flatMap { _ =>
-                Task {
-                  if (!stopFlag.exists(_.requested)) markToolResultsDelivered(
-                    convId,
-                    ctx.turnInput.frames.collect {
-                      case tc: sigil.conversation.ContextFrame.ToolCall
-                        if tc.state.isInstanceOf[sigil.conversation.ToolCallState.Complete] && !tc.resultPending =>
-                        tc.callId
-                    }
-                  )
-                }
+            }.flatMap { _ =>
+              scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration drain done")
+              // After the iteration drains, check stop flags before anything
+              // else — a Stop that fired mid-stream means exit now, don't
+              // continue looping even if there are new triggers. A force Stop
+              // may have truncated the stream between a tool's invoke and its
+              // settle (`takeWhile(!force)` above) — settle any invoke left
+              // dangling before releasing the claim so it doesn't render
+              // "running" forever / poison the next turn's wire render.
+              if (stopFlag.exists(_.requested))
+                settleDanglingToolInvokes(convId, agent.id).flatMap(_ => Task(terminate(skipFallback = true)))
+              else if (forceResponseSynthesis) {
+                // Sigil bug #125 — the cap-hit soft-stop ran. With
+                // `tool_choice: respond` the model SHOULD have called
+                // respond on this iteration. If it did
+                // (`userVisibleSeen = true`), release the claim and
+                // exit cleanly. If it didn't (very weak / non-
+                // instruction-following local models), the soft path
+                // has genuinely exhausted — raise the hard throw so the
+                // calling fiber's failure handler sees it.
+                if (userVisibleSeen.get())
+                  Task(terminate())
+                else
+                  // Routed through the handleError below — it owns the
+                  // failure publish + the post-commit terminal release.
+                  Task.error(buildRunawayException(
+                    agent,
+                    conv,
+                    iteration,
+                    maxAgentIterations,
+                    forcedReason))
+              } else {
+                // Bug #74 — `respond(endsTurn = false)` continues the
+                // loop without waiting for an external trigger. The
+                // agent's own progress respond IS the signal to keep
+                // going; the next iteration will see it in history and
+                // proceed with the announced work.
+                val shouldIterate: Task[Boolean] =
+                  if (agentRequestedContinue.get() || frameworkRequestedContinue.get()) Task.pure(true)
+                  else if (terminalToolSettled.get())
+                    // The agent ended the turn with a user-visible terminal
+                    // tool. Continue ONLY for a genuine external trigger (a
+                    // message from someone else that landed mid-turn) — never
+                    // for the turn's own `ToolResults` / reply Message.
+                    externalTriggersExist(agent, conv, sinceTimestamp = thisIterationStart)
+                  else if (iterationHadToolCall.get())
+                    // Sigil #275 — the model dispatched a non-terminal tool
+                    // this iteration (record_consent, list_theme_files, …).
+                    // Its `ToolInvoke` has the default `Standard` role + the
+                    // agent's own participantId, so `TriggerFilter` excludes
+                    // it from `newTriggersExist`. But the tool call IS the
+                    // continuation signal — the next iteration sees the
+                    // tool's result in the conversation context and decides
+                    // what to do. `maxAgentIterations` caps runaway tool-
+                    // calling spirals; this branch keeps the loop alive long
+                    // enough for the cap to bound cost without misclassifying
+                    // a productive turn as "no tool call".
+                    Task.pure(true)
+                  else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart)
+                shouldIterate
+                  // #355 — instrument the post-drain decision so a silent stall
+                  // is diagnosable. The trace "drain done" → "shouldIterate=X" →
+                  // "committed; running continuation" → "iter N+1 enter" pinpoints
+                  // WHERE a hang sits: no `shouldIterate` log = hung in the trigger
+                  // query (the in-batch decision); `shouldIterate` but no
+                  // `running continuation` = hung committing the batch; `running
+                  // continuation` but no next `iter enter` = hung in the
+                  // continuation (recurse / intra-turn compaction).
+                  .flatMap { si =>
+                    scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration " +
+                      s"shouldIterate=$si (iteration<max=${iteration < maxAgentIterations}, " +
+                      s"forceResponseSynthesis=$forceResponseSynthesis)")
+                    Task.pure(si)
+                  }
+                  .flatMap {
+                    case true if iteration < maxAgentIterations =>
+                      // Bug #54 / #349 — un-stick the consumer's state at the
+                      // iteration boundary. Without a pulse, a multi-iteration
+                      // loop pins the consumer at `typing` (or whatever the last
+                      // streaming activity was) for the whole outer loop, so
+                      // clients can't render an accurate Stop button or per-turn
+                      // UX. #54 originally pulsed `Idle → Thinking`, but `Idle`
+                      // also means "turn complete" — overloading it made clients
+                      // reset their per-turn UI (timer, thinking buffer, Stop
+                      // button) on EVERY tool call (#349). Emit only the next
+                      // iteration's real activity (`Thinking`): the
+                      // `Typing → Thinking` delta is itself the visible change #54
+                      // needed, and `Idle` now fires solely at the genuine turn
+                      // end — restoring the invariant `Idle` ⇔ turn complete.
+                      //
+                      // The pulse doesn't change the AgentState event's `state`
+                      // (still Active — claim still held) — it mutates `activity`
+                      // only, so the framework's claim-lock semantics are
+                      // preserved. The next iteration runs in the same outer fiber.
+                      publish(AgentStateDelta(
+                        target = claimed._id,
+                        conversationId = convId,
+                        activity = Some(AgentActivity.Thinking)
+                      )).flatMap { _ =>
+                        // Run the progress checkpoint at the boundary if this
+                        // is a checkpoint iteration. The helper returns
+                        // Some(message) when the agent reports being stuck
+                        // for `consecutiveNoProgressLimit` consecutive
+                        // checkpoints OR when it explicitly asks the user
+                        // for guidance — in either case we publish the
+                        // synthetic respond and end the loop instead of
+                        // recursing.
+                        val nextIteration = iteration + 1
+                        val checkpointTask: Task[Option[CheckpointIntervention]] =
+                          // The checkpoint runs in every conversation, workers
+                          // included (#332, amending #330). It bundles two
+                          // mechanisms: a mechanical stall detector
+                          // (repeated-identical-call / no-progress streak) that is
+                          // universally useful, and an LLM self-assessment that can
+                          // ask the user. #330 was right that the user-facing
+                          // *escalation* misfires in a worker — the supervisor owns
+                          // asking the human — but it suppressed the whole
+                          // checkpoint, disabling stall detection and letting a
+                          // grinding worker flail to the iteration cap. So we run the
+                          // checkpoint everywhere and instead redirect an `askingUser`
+                          // intervention to a supervisor handoff inside a worker (the
+                          // branch below).
+                          if (progressCheckpointInterval > 0 && nextIteration % progressCheckpointInterval == 0)
+                            runProgressCheckpoint(agent, convId, claimed, nextIteration)
+                          else
+                            // Off-interval iterations skip the LLM reflection but still
+                            // run the cheap, model-independent hard-stall check at every
+                            // boundary: a model re-emitting the same call past
+                            // `hardStallIdenticalCallLimit` has ignored every cooperative
+                            // guard, so surface it as an intervention (the handler below
+                            // forces synthesis) instead of letting it grind to
+                            // `maxAgentIterations` and throw.
+                            evaluateHardStall(convId, agent.id).map(_.map(reason =>
+                              CheckpointIntervention(
+                                message = Message(
+                                  participantId = agent.id,
+                                  conversationId = convId,
+                                  topicId = conv.currentTopicId,
+                                  content = Vector(_root_.sigil.tool.model.ResponseContent.Text(
+                                    checkpointDirective(reason, None))),
+                                  state = EventState.Complete,
+                                  role = MessageRole.Standard
+                                ),
+                                askingUser = false,
+                                // Sigil #379 — the HARD stall (an identical-call streak
+                                // past `hardStallIdenticalCallLimit` that ignored every
+                                // cooperative checkpoint nudge) is a genuine runaway:
+                                // force a terminal synthesis early rather than grind to
+                                // `maxAgentIterations`. The cooperative checkpoint path
+                                // (`runProgressCheckpoint`) leaves this false so it just
+                                // nudges-and-continues.
+                                terminal = true
+                              )))
+                        // Spend-budget gate — evaluated at EVERY boundary (a
+                        // dollar-a-minute turn must not wait for a checkpoint
+                        // interval). The hard ceiling preempts everything: one
+                        // forced wrap-up iteration reporting spend and state.
+                        // The soft check-in is a one-shot cooperative nudge on
+                        // the same Tool-role channel as stall directives; the
+                        // agent summarizes and asks the user via
+                        // `respond_options`, and the continuation is a fresh
+                        // turn (fresh budget, fresh classification).
+                        evaluateBudgetGate(conv, claimed).flatMap {
+                          case Some(directive) if directive.hard =>
+                            publishInternalDirective(agent, conv, "_budget_ceiling", directive.text)
+                              .map(_ => recurseForced(ForcedSynthesisReason.BudgetCeiling))
+                          case Some(directive) =>
+                            publishInternalDirective(agent, conv, "_budget_checkin", directive.text)
+                              .map(_ =>
+                                maybeIntraTurnCompact(agent, convId, claimed)
+                                  .flatMap(_ =>
+                                    runAgentLoop(
+                                      agent,
+                                      convId,
+                                      claimed,
+                                      nextIteration,
+                                      thisIterationStart,
+                                      userVisibleSeen = userVisibleSeen,
+                                      turnExtractorFired = turnExtractorFired,
+                                      failurePublished = failurePublished,
+                                      discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+                                      toolResultCacheRef = toolResultCacheRef,
+                                      healedThisTurn = healedThisTurn,
+                                      healCorrelationId = healCorrelationId,
+                                      overflowCompactions =
+                                        overflowCompactions
+                                    )))
+                          case None => checkpointTask.flatMap {
+                              case Some(intervention) =>
+                                // Bug #133 / #332 / #353 — a checkpoint intervention
+                                // (stall streak OR "needs user input") ALWAYS routes the
+                                // directive to the AGENT, never a framework-authored
+                                // user-facing Message in the agent's voice followed by an
+                                // idle dead-end (#353: the old `askingUser` main-conversation
+                                // arm did exactly that — the user saw "I need clarification"
+                                // they couldn't act on, and control never returned to the
+                                // agent). Publish the directive as Tool-role (Agents
+                                // visibility) under a synthetic `_stall_detected` invoke,
+                                // then force ONE more iteration so the agent decides what to
+                                // do — continue, or ask the user ITSELF via `respond` /
+                                // `respond_options`. The directive is tailored per case:
+                                val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
+                                  .invoke("_stall_detected", agent.id, convId, conv.currentTopicId)
+                                val directiveContent =
+                                  if (intervention.askingUser && isDirectedWorkerConversation(conv))
+                                    // Worker: can't ask the human directly — report up to
+                                    // the supervisor, who decides whether to escalate.
+                                    Vector(_root_.sigil.tool.model.ResponseContent.Text(
+                                      "You can't ask the user directly from here — your supervisor owns this task. " +
+                                        "Stop gathering and call `respond` now to report what you've found and what you're blocked on."
+                                    ))
+                                  else if (intervention.askingUser)
+                                    // Main conversation: leave the decision AND the
+                                    // user-facing wording to the agent. The framework no
+                                    // longer impersonates the agent toward the user (#353).
+                                    // Note the false-positive guard: if the agent's recent
+                                    // tool calls actually completed (e.g. externalized image
+                                    // results), it can just continue.
+                                    Vector(_root_.sigil.tool.model.ResponseContent.Text(
+                                      "You appear blocked waiting on input. First check whether your recent tool calls actually " +
+                                        "completed (their results may be large and externalized rather than inline) — if so, just " +
+                                        "continue. If you genuinely need the user, ask them directly NOW via `respond_options` " +
+                                        "(clickable choices, preferred) or `respond`, phrasing the question yourself."
+                                    ))
+                                  else intervention.message.content
+                                val taggedDirective = intervention.message.copy(
+                                  role = MessageRole.Tool,
+                                  visibility = MessageVisibility.Agents,
+                                  origin = Some(syntheticInvoke._id),
+                                  content = directiveContent
+                                )
+                                publish(syntheticInvoke)
+                                  .flatMap(_ => publish(taggedDirective))
+                                  .map(_ =>
+                                    if (intervention.terminal || isDirectedWorkerConversation(conv))
+                                      // Sigil #379 — force a terminal synthesis early when:
+                                      //   - HARD stall: an identical-call streak past
+                                      //     `hardStallIdenticalCallLimit` that ignored every
+                                      //     cooperative nudge — a genuine runaway, don't grind
+                                      //     to the cap; OR
+                                      //   - a directed WORKER: it can't ask the user, so a
+                                      //     stall escalates by reporting to its supervisor
+                                      //     (who decides how to proceed) rather than flailing
+                                      //     silently in a sub-conversation.
+                                      recurseForced(ForcedSynthesisReason.StallIntervention)
+                                    else
+                                      // Sigil #379 — for the main agent a cooperative
+                                      // checkpoint directive is a NON-TERMINAL nudge: publish
+                                      // it, then let the agent continue with its FULL roster
+                                      // so it reflects and either changes approach or asks the
+                                      // user ITSELF via respond_options. Previously this forced
+                                      // a terminal respond (recurseForced), which (post-#375)
+                                      // pinned tool_choice to `respond` — blocking
+                                      // respond_options — and, on an `endsTurn:false` reply,
+                                      // wedged the turn so the stall counters never cleared and
+                                      // every "continue" re-fired the stale stall. Forced
+                                      // synthesis now fires only on a hard stall, in a worker,
+                                      // or at the maxAgentIterations ceiling, so a cooperative
+                                      // main-agent stall no longer guillotines legitimate
+                                      // long-running work.
+                                      maybeIntraTurnCompact(agent, convId, claimed)
+                                        .flatMap(_ =>
+                                          runAgentLoop(
+                                            agent,
+                                            convId,
+                                            claimed,
+                                            nextIteration,
+                                            thisIterationStart,
+                                            userVisibleSeen = userVisibleSeen,
+                                            turnExtractorFired = turnExtractorFired,
+                                            failurePublished = failurePublished,
+                                            discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+                                            toolResultCacheRef = toolResultCacheRef,
+                                            healedThisTurn = healedThisTurn,
+                                            healCorrelationId = healCorrelationId,
+                                            overflowCompactions = overflowCompactions
+                                          )))
+                              case None =>
+                                // Sigil #285 — consult the intra-turn compactor
+                                // before the next iteration. When budget pressure
+                                // or a natural boundary fires, the framework folds
+                                // older this-turn events into a ContextSummary so
+                                // the next iteration's wire prompt is smaller. The
+                                // helper is a no-op when no compaction is needed.
+                                Task.pure(
+                                  maybeIntraTurnCompact(agent, convId, claimed)
+                                    .flatMap(_ =>
+                                      runAgentLoop(
+                                        agent,
+                                        convId,
+                                        claimed,
+                                        nextIteration,
+                                        thisIterationStart,
+                                        userVisibleSeen = userVisibleSeen,
+                                        turnExtractorFired = turnExtractorFired,
+                                        failurePublished = failurePublished,
+                                        discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+                                        toolResultCacheRef = toolResultCacheRef,
+                                        healedThisTurn = healedThisTurn,
+                                        healCorrelationId = healCorrelationId,
+                                        overflowCompactions = overflowCompactions
+                                      ))
+                                )
+                            }
+                        }
+                      }
+                    case true if !forceResponseSynthesis =>
+                      // Sigil bug #125 — cap hit on a normal iteration. Instead of
+                      // throwing AgentRunawayException and discarding whatever
+                      // context the agent has gathered, inject a Tool-role
+                      // "cap reached, respond NOW" diagnostic and run ONE more
+                      // forced-synthesis iteration with `tool_choice: respond`.
+                      // The agent synthesises a reply from the conversation it
+                      // already built up. Only fall through to the hard throw
+                      // if THAT iteration also fails (`case true if
+                      // forceResponseSynthesis` below).
+                      // Synthetic ToolInvoke parent so the Tool-role diagnostic
+                      // satisfies the framework's "every Tool-role event MUST
+                      // carry origin" invariant. Marked `internal = true` so
+                      // client UIs filter it out of the user-facing chip
+                      // stream — this is framework-internal model nudging.
+                      val capInvoke = sigil.orchestrator.SyntheticDiagnostic
+                        .invoke("_cap_reached", agent.id, convId, conv.currentTopicId)
+                      val capDiagnostic = Message(
+                        participantId = agent.id,
+                        conversationId = convId,
+                        topicId = conv.currentTopicId,
+                        content = Vector(_root_.sigil.tool.model.ResponseContent.Text(
+                          s"You've reached the iteration cap ($maxAgentIterations turns) for this user request. " +
+                            "Synthesize a response NOW from what you've gathered so far — call `respond` with " +
+                            "your findings. Do not call any more discovery / read / search tools."
+                        )),
+                        state = EventState.Complete,
+                        role = MessageRole.Tool,
+                        visibility = MessageVisibility.Agents,
+                        origin = Some(capInvoke._id)
+                      )
+                      publish(capInvoke).flatMap(_ => publish(capDiagnostic)).flatMap { _ =>
+                        // Bug #128 composition — when `escalateOnCapHit` is on,
+                        // bump the cached complexity tier one step up before
+                        // the forced-synthesis turn. The recovery attempt then
+                        // resolves to whichever model in the chain supports
+                        // the elevated tier. No-op when the flag is off.
+                        escalateForCapHit(convId).map(_ =>
+                          recurseForced(ForcedSynthesisReason.CapHit))
+                      }
+                    case true =>
+                      // Cap hit on the forced-synthesis iteration too. The model
+                      // failed to call `respond` despite `tool_choice` pinning it
+                      // (very weak / non-instruction-following local models, or
+                      // a buggy provider). Soft path exhausted — surface the hard
+                      // failure so the calling fiber's error boundary logs it.
+                      // Routed through the handleError below for the failure
+                      // publish + post-commit terminal release.
+                      Task.error(buildRunawayException(
+                        agent,
+                        conv,
+                        iteration,
+                        maxAgentIterations,
+                        forcedReason))
+                    case false =>
+                      // No more triggers to chase, no continue requested. If the
+                      // agent already spoke this turn we're done. Otherwise the
+                      // turn ended with no tool call — a transient hiccup most
+                      // of the time (reasoning models drop the tool call after
+                      // their reasoning block).
+                      //
+                      // Sigil #257 — recover in two stages. First, retry up to
+                      // `noToolCallRetryLimit` times with the FULL roster +
+                      // normal `tool_choice` intact: a plain re-prompt usually
+                      // self-corrects. Only once those retries are exhausted do
+                      // we force ONE iteration with the roster restricted to the
+                      // respond family so the model MUST emit a real reply
+                      // (respond / respond_options / … / no_response). If THAT
+                      // forced iteration also fails to call respond, the
+                      // `forceResponseSynthesis` branch raises
+                      // AgentRunawayException — model is broken; surface the
+                      // hard failure instead of papering over it.
+                      if (userVisibleSeen.get()) {
+                        scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration yielding terminate continuation")
+                        Task(terminate())
+                      } else if (forceResponseSynthesis)
+                        // Routed through the handleError below for the failure
+                        // publish + post-commit terminal release.
+                        Task.error(buildRunawayException(
+                          agent,
+                          conv,
+                          iteration,
+                          maxAgentIterations,
+                          forcedReason))
+                      else if (noToolCallRetries < noToolCallRetryLimit) {
+                        // Recover a transient reasoning-model tool-call drop with a
+                        // plain re-prompt — in BOTH user-facing and worker
+                        // conversations. A worker-conv agent that genuinely meant
+                        // to reply (e.g. a supervisor answering the worker) but
+                        // dropped the call must get these retries, or the task
+                        // stalls silently.
+                        scribe.warn(
+                          s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration returned no " +
+                            s"tool call; retrying with the full roster (retry ${noToolCallRetries + 1}/$noToolCallRetryLimit)"
+                        )
+                        Task.pure(recurseFullRosterRetry)
+                      } else if (isDirectedWorkerConversation(conv)) {
+                        // #327 chat-fidelity — once the drop-recovery retries are
+                        // exhausted in a directed worker sub-conversation (linked to
+                        // a parent, two+ agents), a woken agent that still has
+                        // nothing to add simply RESTS, exactly like a user who
+                        // doesn't reply. Replacing forced synthesis with rest is the
+                        // natural termination: the supervisor relays its result up
+                        // to the parent and, with nothing left for the worker,
+                        // settles silently here; the worker (un-addressed) is never
+                        // re-woken. (User-facing conversations force a reply below,
+                        // where the agent owes the user an answer.) skipFallback —
+                        // resting must NOT synthesize the #282 "turn ended without a
+                        // reply" placeholder; rest is the intended outcome.
+                        scribe.debug(
+                          s"runAgentLoop[${agent.id.value}/${convId.value}] no tool call after " +
+                            s"$noToolCallRetries retries in a worker sub-conversation; settling silently (chat-fidelity rest)"
+                        )
+                        Task(terminate(skipFallback = true))
+                      } else
+                        Task.pure(recurseForced(ForcedSynthesisReason.NoToolCall))
+                  }
               }
-          }
-        }.flatMap { _ =>
-          scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration drain done")
-          // After the iteration drains, check stop flags before anything
-          // else — a Stop that fired mid-stream means exit now, don't
-          // continue looping even if there are new triggers. A force Stop
-          // may have truncated the stream between a tool's invoke and its
-          // settle (`takeWhile(!force)` above) — settle any invoke left
-          // dangling before releasing the claim so it doesn't render
-          // "running" forever / poison the next turn's wire render.
-          if (stopFlag.exists(_.requested))
-            settleDanglingToolInvokes(convId, agent.id).flatMap(_ => Task(terminate(skipFallback = true)))
-          else if (forceResponseSynthesis) {
-            // Sigil bug #125 — the cap-hit soft-stop ran. With
-            // `tool_choice: respond` the model SHOULD have called
-            // respond on this iteration. If it did
-            // (`userVisibleSeen = true`), release the claim and
-            // exit cleanly. If it didn't (very weak / non-
-            // instruction-following local models), the soft path
-            // has genuinely exhausted — raise the hard throw so the
-            // calling fiber's failure handler sees it.
-            if (userVisibleSeen.get())
-              Task(terminate())
-            else
-              // Routed through the handleError below — it owns the
-              // failure publish + the post-commit terminal release.
-              Task.error(buildRunawayException(
-                agent, conv, iteration, maxAgentIterations, forcedReason))
-          }
-          else {
-            // Bug #74 — `respond(endsTurn = false)` continues the
-            // loop without waiting for an external trigger. The
-            // agent's own progress respond IS the signal to keep
-            // going; the next iteration will see it in history and
-            // proceed with the announced work.
-            val shouldIterate: Task[Boolean] =
-              if (agentRequestedContinue.get() || frameworkRequestedContinue.get()) Task.pure(true)
-              else if (terminalToolSettled.get())
-                // The agent ended the turn with a user-visible terminal
-                // tool. Continue ONLY for a genuine external trigger (a
-                // message from someone else that landed mid-turn) — never
-                // for the turn's own `ToolResults` / reply Message.
-                externalTriggersExist(agent, conv, sinceTimestamp = thisIterationStart)
-              else if (iterationHadToolCall.get())
-                // Sigil #275 — the model dispatched a non-terminal tool
-                // this iteration (record_consent, list_theme_files, …).
-                // Its `ToolInvoke` has the default `Standard` role + the
-                // agent's own participantId, so `TriggerFilter` excludes
-                // it from `newTriggersExist`. But the tool call IS the
-                // continuation signal — the next iteration sees the
-                // tool's result in the conversation context and decides
-                // what to do. `maxAgentIterations` caps runaway tool-
-                // calling spirals; this branch keeps the loop alive long
-                // enough for the cap to bound cost without misclassifying
-                // a productive turn as "no tool call".
-                Task.pure(true)
-              else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart)
-            shouldIterate
-              // #355 — instrument the post-drain decision so a silent stall
-              // is diagnosable. The trace "drain done" → "shouldIterate=X" →
-              // "committed; running continuation" → "iter N+1 enter" pinpoints
-              // WHERE a hang sits: no `shouldIterate` log = hung in the trigger
-              // query (the in-batch decision); `shouldIterate` but no
-              // `running continuation` = hung committing the batch; `running
-              // continuation` but no next `iter enter` = hung in the
-              // continuation (recurse / intra-turn compaction).
-              .flatMap { si =>
-                scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration " +
-                  s"shouldIterate=$si (iteration<max=${iteration < maxAgentIterations}, " +
-                  s"forceResponseSynthesis=$forceResponseSynthesis)")
-                Task.pure(si)
-              }
-              .flatMap {
-            case true if iteration < maxAgentIterations =>
-              // Bug #54 / #349 — un-stick the consumer's state at the
-              // iteration boundary. Without a pulse, a multi-iteration
-              // loop pins the consumer at `typing` (or whatever the last
-              // streaming activity was) for the whole outer loop, so
-              // clients can't render an accurate Stop button or per-turn
-              // UX. #54 originally pulsed `Idle → Thinking`, but `Idle`
-              // also means "turn complete" — overloading it made clients
-              // reset their per-turn UI (timer, thinking buffer, Stop
-              // button) on EVERY tool call (#349). Emit only the next
-              // iteration's real activity (`Thinking`): the
-              // `Typing → Thinking` delta is itself the visible change #54
-              // needed, and `Idle` now fires solely at the genuine turn
-              // end — restoring the invariant `Idle` ⇔ turn complete.
-              //
-              // The pulse doesn't change the AgentState event's `state`
-              // (still Active — claim still held) — it mutates `activity`
-              // only, so the framework's claim-lock semantics are
-              // preserved. The next iteration runs in the same outer fiber.
-              publish(AgentStateDelta(
-                target = claimed._id,
-                conversationId = convId,
-                activity = Some(AgentActivity.Thinking)
-              )).flatMap { _ =>
-                // Run the progress checkpoint at the boundary if this
-                // is a checkpoint iteration. The helper returns
-                // Some(message) when the agent reports being stuck
-                // for `consecutiveNoProgressLimit` consecutive
-                // checkpoints OR when it explicitly asks the user
-                // for guidance — in either case we publish the
-                // synthetic respond and end the loop instead of
-                // recursing.
-                val nextIteration = iteration + 1
-                val checkpointTask: Task[Option[CheckpointIntervention]] =
-                  // The checkpoint runs in every conversation, workers
-                  // included (#332, amending #330). It bundles two
-                  // mechanisms: a mechanical stall detector
-                  // (repeated-identical-call / no-progress streak) that is
-                  // universally useful, and an LLM self-assessment that can
-                  // ask the user. #330 was right that the user-facing
-                  // *escalation* misfires in a worker — the supervisor owns
-                  // asking the human — but it suppressed the whole
-                  // checkpoint, disabling stall detection and letting a
-                  // grinding worker flail to the iteration cap. So we run the
-                  // checkpoint everywhere and instead redirect an `askingUser`
-                  // intervention to a supervisor handoff inside a worker (the
-                  // branch below).
-                  if (progressCheckpointInterval > 0 && nextIteration % progressCheckpointInterval == 0)
-                    runProgressCheckpoint(agent, convId, claimed, nextIteration)
-                  else
-                    // Off-interval iterations skip the LLM reflection but still
-                    // run the cheap, model-independent hard-stall check at every
-                    // boundary: a model re-emitting the same call past
-                    // `hardStallIdenticalCallLimit` has ignored every cooperative
-                    // guard, so surface it as an intervention (the handler below
-                    // forces synthesis) instead of letting it grind to
-                    // `maxAgentIterations` and throw.
-                    evaluateHardStall(convId, agent.id).map(_.map(reason =>
-                      CheckpointIntervention(
-                        message = Message(
-                          participantId  = agent.id,
-                          conversationId = convId,
-                          topicId        = conv.currentTopicId,
-                          content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(
-                            checkpointDirective(reason, None))),
-                          state          = EventState.Complete,
-                          role           = MessageRole.Standard
-                        ),
-                        askingUser = false,
-                        // Sigil #379 — the HARD stall (an identical-call streak
-                        // past `hardStallIdenticalCallLimit` that ignored every
-                        // cooperative checkpoint nudge) is a genuine runaway:
-                        // force a terminal synthesis early rather than grind to
-                        // `maxAgentIterations`. The cooperative checkpoint path
-                        // (`runProgressCheckpoint`) leaves this false so it just
-                        // nudges-and-continues.
-                        terminal = true
-                      )))
-                // Spend-budget gate — evaluated at EVERY boundary (a
-                // dollar-a-minute turn must not wait for a checkpoint
-                // interval). The hard ceiling preempts everything: one
-                // forced wrap-up iteration reporting spend and state.
-                // The soft check-in is a one-shot cooperative nudge on
-                // the same Tool-role channel as stall directives; the
-                // agent summarizes and asks the user via
-                // `respond_options`, and the continuation is a fresh
-                // turn (fresh budget, fresh classification).
-                evaluateBudgetGate(conv, claimed).flatMap {
-                  case Some(directive) if directive.hard =>
-                    publishInternalDirective(agent, conv, "_budget_ceiling", directive.text)
-                      .map(_ => recurseForced(ForcedSynthesisReason.BudgetCeiling))
-                  case Some(directive) =>
-                    publishInternalDirective(agent, conv, "_budget_checkin", directive.text)
-                      .map(_ =>
-                        maybeIntraTurnCompact(agent, convId, claimed)
-                          .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
-                            userVisibleSeen = userVisibleSeen,
-                            turnExtractorFired = turnExtractorFired,
-                            failurePublished = failurePublished,
-                            discoveredCapabilitiesRef = discoveredCapabilitiesRef,
-                            toolResultCacheRef = toolResultCacheRef,
-                            healedThisTurn = healedThisTurn,
-                            healCorrelationId = healCorrelationId,
-                            overflowCompactions = overflowCompactions)))
-                  case None => checkpointTask.flatMap {
-                  case Some(intervention) =>
-                    // Bug #133 / #332 / #353 — a checkpoint intervention
-                    // (stall streak OR "needs user input") ALWAYS routes the
-                    // directive to the AGENT, never a framework-authored
-                    // user-facing Message in the agent's voice followed by an
-                    // idle dead-end (#353: the old `askingUser` main-conversation
-                    // arm did exactly that — the user saw "I need clarification"
-                    // they couldn't act on, and control never returned to the
-                    // agent). Publish the directive as Tool-role (Agents
-                    // visibility) under a synthetic `_stall_detected` invoke,
-                    // then force ONE more iteration so the agent decides what to
-                    // do — continue, or ask the user ITSELF via `respond` /
-                    // `respond_options`. The directive is tailored per case:
-                    val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
-                      .invoke("_stall_detected", agent.id, convId, conv.currentTopicId)
-                    val directiveContent =
-                      if (intervention.askingUser && isDirectedWorkerConversation(conv))
-                        // Worker: can't ask the human directly — report up to
-                        // the supervisor, who decides whether to escalate.
-                        Vector(_root_.sigil.tool.model.ResponseContent.Text(
-                          "You can't ask the user directly from here — your supervisor owns this task. " +
-                            "Stop gathering and call `respond` now to report what you've found and what you're blocked on."
-                        ))
-                      else if (intervention.askingUser)
-                        // Main conversation: leave the decision AND the
-                        // user-facing wording to the agent. The framework no
-                        // longer impersonates the agent toward the user (#353).
-                        // Note the false-positive guard: if the agent's recent
-                        // tool calls actually completed (e.g. externalized image
-                        // results), it can just continue.
-                        Vector(_root_.sigil.tool.model.ResponseContent.Text(
-                          "You appear blocked waiting on input. First check whether your recent tool calls actually " +
-                            "completed (their results may be large and externalized rather than inline) — if so, just " +
-                            "continue. If you genuinely need the user, ask them directly NOW via `respond_options` " +
-                            "(clickable choices, preferred) or `respond`, phrasing the question yourself."
-                        ))
-                      else intervention.message.content
-                    val taggedDirective = intervention.message.copy(
-                      role       = MessageRole.Tool,
-                      visibility = MessageVisibility.Agents,
-                      origin     = Some(syntheticInvoke._id),
-                      content    = directiveContent
-                    )
-                    publish(syntheticInvoke)
-                      .flatMap(_ => publish(taggedDirective))
-                      .map(_ =>
-                        if (intervention.terminal || isDirectedWorkerConversation(conv))
-                          // Sigil #379 — force a terminal synthesis early when:
-                          //   - HARD stall: an identical-call streak past
-                          //     `hardStallIdenticalCallLimit` that ignored every
-                          //     cooperative nudge — a genuine runaway, don't grind
-                          //     to the cap; OR
-                          //   - a directed WORKER: it can't ask the user, so a
-                          //     stall escalates by reporting to its supervisor
-                          //     (who decides how to proceed) rather than flailing
-                          //     silently in a sub-conversation.
-                          recurseForced(ForcedSynthesisReason.StallIntervention)
-                        else
-                          // Sigil #379 — for the main agent a cooperative
-                          // checkpoint directive is a NON-TERMINAL nudge: publish
-                          // it, then let the agent continue with its FULL roster
-                          // so it reflects and either changes approach or asks the
-                          // user ITSELF via respond_options. Previously this forced
-                          // a terminal respond (recurseForced), which (post-#375)
-                          // pinned tool_choice to `respond` — blocking
-                          // respond_options — and, on an `endsTurn:false` reply,
-                          // wedged the turn so the stall counters never cleared and
-                          // every "continue" re-fired the stale stall. Forced
-                          // synthesis now fires only on a hard stall, in a worker,
-                          // or at the maxAgentIterations ceiling, so a cooperative
-                          // main-agent stall no longer guillotines legitimate
-                          // long-running work.
-                          maybeIntraTurnCompact(agent, convId, claimed)
-                            .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
-                              userVisibleSeen = userVisibleSeen,
-                              turnExtractorFired = turnExtractorFired,
-                              failurePublished = failurePublished,
-                              discoveredCapabilitiesRef = discoveredCapabilitiesRef,
-                              toolResultCacheRef = toolResultCacheRef,
-                              healedThisTurn = healedThisTurn,
-                              healCorrelationId = healCorrelationId,
-                              overflowCompactions = overflowCompactions)))
-                  case None =>
-                    // Sigil #285 — consult the intra-turn compactor
-                    // before the next iteration. When budget pressure
-                    // or a natural boundary fires, the framework folds
-                    // older this-turn events into a ContextSummary so
-                    // the next iteration's wire prompt is smaller. The
-                    // helper is a no-op when no compaction is needed.
-                    Task.pure(
-                      maybeIntraTurnCompact(agent, convId, claimed)
-                        .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
-                          userVisibleSeen = userVisibleSeen,
-                          turnExtractorFired = turnExtractorFired,
-                          failurePublished = failurePublished,
-                          discoveredCapabilitiesRef = discoveredCapabilitiesRef,
-                          toolResultCacheRef = toolResultCacheRef,
-                          healedThisTurn = healedThisTurn,
-                          healCorrelationId = healCorrelationId,
-                          overflowCompactions = overflowCompactions))
-                    )
-                }
-                }
-              }
-            case true if !forceResponseSynthesis =>
-              // Sigil bug #125 — cap hit on a normal iteration. Instead of
-              // throwing AgentRunawayException and discarding whatever
-              // context the agent has gathered, inject a Tool-role
-              // "cap reached, respond NOW" diagnostic and run ONE more
-              // forced-synthesis iteration with `tool_choice: respond`.
-              // The agent synthesises a reply from the conversation it
-              // already built up. Only fall through to the hard throw
-              // if THAT iteration also fails (`case true if
-              // forceResponseSynthesis` below).
-              // Synthetic ToolInvoke parent so the Tool-role diagnostic
-              // satisfies the framework's "every Tool-role event MUST
-              // carry origin" invariant. Marked `internal = true` so
-              // client UIs filter it out of the user-facing chip
-              // stream — this is framework-internal model nudging.
-              val capInvoke = sigil.orchestrator.SyntheticDiagnostic
-                .invoke("_cap_reached", agent.id, convId, conv.currentTopicId)
-              val capDiagnostic = Message(
-                participantId  = agent.id,
-                conversationId = convId,
-                topicId        = conv.currentTopicId,
-                content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(
-                  s"You've reached the iteration cap ($maxAgentIterations turns) for this user request. " +
-                    "Synthesize a response NOW from what you've gathered so far — call `respond` with " +
-                    "your findings. Do not call any more discovery / read / search tools."
-                )),
-                state          = EventState.Complete,
-                role           = MessageRole.Tool,
-                visibility     = MessageVisibility.Agents,
-                origin         = Some(capInvoke._id)
-              )
-              publish(capInvoke).flatMap(_ => publish(capDiagnostic)).flatMap { _ =>
-                // Bug #128 composition — when `escalateOnCapHit` is on,
-                // bump the cached complexity tier one step up before
-                // the forced-synthesis turn. The recovery attempt then
-                // resolves to whichever model in the chain supports
-                // the elevated tier. No-op when the flag is off.
-                escalateForCapHit(convId).map(_ =>
-                  recurseForced(ForcedSynthesisReason.CapHit))
-              }
-            case true =>
-              // Cap hit on the forced-synthesis iteration too. The model
-              // failed to call `respond` despite `tool_choice` pinning it
-              // (very weak / non-instruction-following local models, or
-              // a buggy provider). Soft path exhausted — surface the hard
-              // failure so the calling fiber's error boundary logs it.
-              // Routed through the handleError below for the failure
-              // publish + post-commit terminal release.
-              Task.error(buildRunawayException(
-                agent, conv, iteration, maxAgentIterations, forcedReason))
-            case false =>
-              // No more triggers to chase, no continue requested. If the
-              // agent already spoke this turn we're done. Otherwise the
-              // turn ended with no tool call — a transient hiccup most
-              // of the time (reasoning models drop the tool call after
-              // their reasoning block).
-              //
-              // Sigil #257 — recover in two stages. First, retry up to
-              // `noToolCallRetryLimit` times with the FULL roster +
-              // normal `tool_choice` intact: a plain re-prompt usually
-              // self-corrects. Only once those retries are exhausted do
-              // we force ONE iteration with the roster restricted to the
-              // respond family so the model MUST emit a real reply
-              // (respond / respond_options / … / no_response). If THAT
-              // forced iteration also fails to call respond, the
-              // `forceResponseSynthesis` branch raises
-              // AgentRunawayException — model is broken; surface the
-              // hard failure instead of papering over it.
-              if (userVisibleSeen.get()) {
-                scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration yielding terminate continuation")
-                Task(terminate())
-              }
-              else if (forceResponseSynthesis)
-                // Routed through the handleError below for the failure
-                // publish + post-commit terminal release.
-                Task.error(buildRunawayException(
-                  agent, conv, iteration, maxAgentIterations, forcedReason))
-              else if (noToolCallRetries < noToolCallRetryLimit) {
-                // Recover a transient reasoning-model tool-call drop with a
-                // plain re-prompt — in BOTH user-facing and worker
-                // conversations. A worker-conv agent that genuinely meant
-                // to reply (e.g. a supervisor answering the worker) but
-                // dropped the call must get these retries, or the task
-                // stalls silently.
-                scribe.warn(
-                  s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration returned no " +
-                    s"tool call; retrying with the full roster (retry ${noToolCallRetries + 1}/$noToolCallRetryLimit)"
-                )
-                Task.pure(recurseFullRosterRetry)
-              }
-              else if (isDirectedWorkerConversation(conv)) {
-                // #327 chat-fidelity — once the drop-recovery retries are
-                // exhausted in a directed worker sub-conversation (linked to
-                // a parent, two+ agents), a woken agent that still has
-                // nothing to add simply RESTS, exactly like a user who
-                // doesn't reply. Replacing forced synthesis with rest is the
-                // natural termination: the supervisor relays its result up
-                // to the parent and, with nothing left for the worker,
-                // settles silently here; the worker (un-addressed) is never
-                // re-woken. (User-facing conversations force a reply below,
-                // where the agent owes the user an answer.) skipFallback —
-                // resting must NOT synthesize the #282 "turn ended without a
-                // reply" placeholder; rest is the intended outcome.
-                scribe.debug(
-                  s"runAgentLoop[${agent.id.value}/${convId.value}] no tool call after " +
-                    s"$noToolCallRetries retries in a worker sub-conversation; settling silently (chat-fidelity rest)"
-                )
-                Task(terminate(skipFallback = true))
-              }
-              else
-                Task.pure(recurseForced(ForcedSynthesisReason.NoToolCall))
             }
+        }.handleError { t =>
+          // Sigil #313 — reactive self-heal: BEFORE the standard failure
+          // surface fires, walk `healingStrategies` looking for a match.
+          // First match wins. In `HealingMode.Recover` (production
+          // default), the strategy publishes its corrections, the audit
+          // triple (CorruptionDetected → Healed) lands, and we recurse
+          // the iteration ONCE. In `HealingMode.Strict` (TestSigil
+          // default, dev/CI), the corruption is recorded but the heal
+          // does NOT run and the original error re-throws — so the
+          // developer hits the failure and gets a chance to fix the
+          // underlying cause rather than rely on the patch.
+          val tryHeal: Task[Option[Task[Unit]]] = tryHealAgentLoopError(
+            agent = agent,
+            convId = convId,
+            claimed = claimed,
+            thrown = t,
+            healedThisTurn = healedThisTurn,
+            healCorrelationId = healCorrelationId
+          )
+          tryHeal.flatMap {
+            case Some(retryTask) =>
+              // Heal applied; recurse the iteration. The recurse runs as
+              // the post-commit continuation so the heal's published
+              // events are durable before the retry reads them. Wrap in
+              // Task.pure so it becomes the iterationStep's continuation
+              // rather than executing inline.
+              Task.pure(retryTask)
+            case None if stopFlag.exists(_.requested) || stopLatches.containsKey(convId) =>
+              // Sigil #415 — the user stopped this conversation; whatever
+              // error the stop's stream-cancel (or the wedged state that
+              // prompted the stop) produced is a byproduct of the stop, not
+              // a failure to surface. End quietly: no Failure bubble, no
+              // recovery machinery, no re-raise — just release the claim.
+              // But ALWAYS settle in-flight tool invokes first: a force-Stop
+              // that cancels the drain mid-tool kills exactly the
+              // continuation that would have settled the invoke, and this
+              // exit was the one stop route that skipped the dangling settle
+              // — leaving the invoke Active forever (spinner never stops,
+              // permanently-unsettled row until boot reconciliation).
+              scribe.info(
+                s"runAgent for ${agent.id.value} in ${convId.value} ended by user Stop " +
+                  s"(suppressing ${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")})")
+              Task.pure(
+                settleDanglingToolInvokes(convId, agent.id).handleError(_ => Task.unit)
+                  .flatMap(_ => terminate(skipFallback = true).handleError(_ => Task.unit)))
+            case None
+                if _root_.sigil.provider.Provider.isContextOverflow(t)
+                  && overflowCompactions < maxOverflowCompactions =>
+              // Sigil #413 — the provider hard-rejected the request as over
+              // the model's context window (or the pre-flight gate threw
+              // after exhausting its own shed). The wire is ground truth
+              // that the estimator under-counted, so instead of failing the
+              // turn, re-run the iteration with an emergency refit: the
+              // recursion carries `overflowCompactions + 1`, which sets
+              // `emergencyContextFactor = 0.5^n` on the rebuilt TurnContext
+              // — the full shed cascade runs against HALF the window (then a
+              // quarter), and its stage-3 persistence (summary + clearedAt
+              // advance) keeps the NEXT turn under the wall too. Bounded by
+              // `maxOverflowCompactions`; exhaustion falls through to the
+              // clean terminal failure below on the next propagation.
+              scribe.warn(
+                s"Sigil #413 — context overflow for ${agent.id.value} in ${convId.value} " +
+                  s"(attempt ${overflowCompactions + 1}/$maxOverflowCompactions): re-running iteration " +
+                  s"with emergency refit factor ${math.pow(0.5, overflowCompactions + 1)}")
+              Task.pure(runAgentLoop(
+                agent = agent,
+                convId = convId,
+                claimed = claimed,
+                iteration = iteration + 1,
+                sinceTimestamp = sinceTimestamp,
+                greeting = false,
+                userVisibleSeen = userVisibleSeen,
+                turnExtractorFired = turnExtractorFired,
+                failurePublished = failurePublished,
+                forceResponseSynthesis = forceResponseSynthesis,
+                forcedReason = forcedReason,
+                noToolCallRetries = noToolCallRetries,
+                discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+                toolResultCacheRef = toolResultCacheRef,
+                healedThisTurn = healedThisTurn,
+                healCorrelationId = healCorrelationId,
+                overflowCompactions = overflowCompactions + 1
+              ))
+            case None =>
+              // No heal applied (no match, healing exhausted, or strict
+              // refusal). Fall through to the standard failure path.
+              //
+              // Any unhandled failure mid-turn — surface the failure to the
+              // user so the chat doesn't go silent (Bug #6), then release the
+              // lock so the agent isn't stuck Active forever, then re-raise
+              // so the fiber's error boundary logs it. Each step is
+              // independently best-effort: a downstream failure (DB
+              // unavailable, hub closed, missing topic, etc.) doesn't mask
+              // the original error.
+              //
+              // Sigil bug #200 — `publishFailureMessage` is CAS-gated so an
+              // exception that propagates up through N recursion levels only
+              // surfaces ONE Failure Message in the chat instead of N
+              // identical bubbles. The inner-most handler wins the publish;
+              // outer handlers re-throw silently. `scribe.error` stays per-
+              // level (stack-trace shape differs per recursion depth and is
+              // diagnostically useful in operator logs); `terminate()` stays
+              // per-level (already idempotent). `Task.error(t)` stays
+              // per-level so the failure still propagates to the fiber's
+              // error boundary.
+              scribe.error(s"runAgent failed for ${agent.id.value} in ${convId.value}", t)
+              val publishOnce: Task[Unit] =
+                if (failurePublished.compareAndSet(false, true))
+                  publishFailureMessage(agent, convId, t).handleError(_ => Task.unit)
+                else Task.unit
+              // The Failure Message persists inside the batched transaction;
+              // the terminal release + re-raise run as the post-commit
+              // continuation so the Idle/Complete signal never races the commit.
+              publishOnce.map(_ =>
+                terminate(skipFallback = true).handleError(_ => Task.unit).flatMap(_ => Task.error(t)))
           }
         }
-    }.handleError { t =>
-      // Sigil #313 — reactive self-heal: BEFORE the standard failure
-      // surface fires, walk `healingStrategies` looking for a match.
-      // First match wins. In `HealingMode.Recover` (production
-      // default), the strategy publishes its corrections, the audit
-      // triple (CorruptionDetected → Healed) lands, and we recurse
-      // the iteration ONCE. In `HealingMode.Strict` (TestSigil
-      // default, dev/CI), the corruption is recorded but the heal
-      // does NOT run and the original error re-throws — so the
-      // developer hits the failure and gets a chance to fix the
-      // underlying cause rather than rely on the patch.
-      val tryHeal: Task[Option[Task[Unit]]] = tryHealAgentLoopError(
-        agent             = agent,
-        convId            = convId,
-        claimed           = claimed,
-        thrown            = t,
-        healedThisTurn    = healedThisTurn,
-        healCorrelationId = healCorrelationId
-      )
-      tryHeal.flatMap {
-        case Some(retryTask) =>
-          // Heal applied; recurse the iteration. The recurse runs as
-          // the post-commit continuation so the heal's published
-          // events are durable before the retry reads them. Wrap in
-          // Task.pure so it becomes the iterationStep's continuation
-          // rather than executing inline.
-          Task.pure(retryTask)
-        case None if stopFlag.exists(_.requested) || stopLatches.containsKey(convId) =>
-          // Sigil #415 — the user stopped this conversation; whatever
-          // error the stop's stream-cancel (or the wedged state that
-          // prompted the stop) produced is a byproduct of the stop, not
-          // a failure to surface. End quietly: no Failure bubble, no
-          // recovery machinery, no re-raise — just release the claim.
-          // But ALWAYS settle in-flight tool invokes first: a force-Stop
-          // that cancels the drain mid-tool kills exactly the
-          // continuation that would have settled the invoke, and this
-          // exit was the one stop route that skipped the dangling settle
-          // — leaving the invoke Active forever (spinner never stops,
-          // permanently-unsettled row until boot reconciliation).
-          scribe.info(
-            s"runAgent for ${agent.id.value} in ${convId.value} ended by user Stop " +
-              s"(suppressing ${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")})")
-          Task.pure(
-            settleDanglingToolInvokes(convId, agent.id).handleError(_ => Task.unit)
-              .flatMap(_ => terminate(skipFallback = true).handleError(_ => Task.unit)))
-        case None if _root_.sigil.provider.Provider.isContextOverflow(t)
-                  && overflowCompactions < maxOverflowCompactions =>
-          // Sigil #413 — the provider hard-rejected the request as over
-          // the model's context window (or the pre-flight gate threw
-          // after exhausting its own shed). The wire is ground truth
-          // that the estimator under-counted, so instead of failing the
-          // turn, re-run the iteration with an emergency refit: the
-          // recursion carries `overflowCompactions + 1`, which sets
-          // `emergencyContextFactor = 0.5^n` on the rebuilt TurnContext
-          // — the full shed cascade runs against HALF the window (then a
-          // quarter), and its stage-3 persistence (summary + clearedAt
-          // advance) keeps the NEXT turn under the wall too. Bounded by
-          // `maxOverflowCompactions`; exhaustion falls through to the
-          // clean terminal failure below on the next propagation.
-          scribe.warn(
-            s"Sigil #413 — context overflow for ${agent.id.value} in ${convId.value} " +
-              s"(attempt ${overflowCompactions + 1}/$maxOverflowCompactions): re-running iteration " +
-              s"with emergency refit factor ${math.pow(0.5, overflowCompactions + 1)}")
-          Task.pure(runAgentLoop(
-            agent                     = agent,
-            convId                    = convId,
-            claimed                   = claimed,
-            iteration                 = iteration + 1,
-            sinceTimestamp            = sinceTimestamp,
-            greeting                  = false,
-            userVisibleSeen           = userVisibleSeen,
-            turnExtractorFired        = turnExtractorFired,
-            failurePublished          = failurePublished,
-            forceResponseSynthesis    = forceResponseSynthesis,
-            forcedReason              = forcedReason,
-            noToolCallRetries         = noToolCallRetries,
-            discoveredCapabilitiesRef = discoveredCapabilitiesRef,
-            toolResultCacheRef        = toolResultCacheRef,
-            healedThisTurn            = healedThisTurn,
-            healCorrelationId         = healCorrelationId,
-            overflowCompactions       = overflowCompactions + 1
-          ))
-        case None =>
-          // No heal applied (no match, healing exhausted, or strict
-          // refusal). Fall through to the standard failure path.
-          //
-          // Any unhandled failure mid-turn — surface the failure to the
-          // user so the chat doesn't go silent (Bug #6), then release the
-          // lock so the agent isn't stuck Active forever, then re-raise
-          // so the fiber's error boundary logs it. Each step is
-          // independently best-effort: a downstream failure (DB
-          // unavailable, hub closed, missing topic, etc.) doesn't mask
-          // the original error.
-          //
-          // Sigil bug #200 — `publishFailureMessage` is CAS-gated so an
-          // exception that propagates up through N recursion levels only
-          // surfaces ONE Failure Message in the chat instead of N
-          // identical bubbles. The inner-most handler wins the publish;
-          // outer handlers re-throw silently. `scribe.error` stays per-
-          // level (stack-trace shape differs per recursion depth and is
-          // diagnostically useful in operator logs); `terminate()` stays
-          // per-level (already idempotent). `Task.error(t)` stays
-          // per-level so the failure still propagates to the fiber's
-          // error boundary.
-          scribe.error(s"runAgent failed for ${agent.id.value} in ${convId.value}", t)
-          val publishOnce: Task[Unit] =
-            if (failurePublished.compareAndSet(false, true))
-              publishFailureMessage(agent, convId, t).handleError(_ => Task.unit)
-            else Task.unit
-          // The Failure Message persists inside the batched transaction;
-          // the terminal release + re-raise run as the post-commit
-          // continuation so the Idle/Complete signal never races the commit.
-          publishOnce.map(_ =>
-            terminate(skipFallback = true).handleError(_ => Task.unit).flatMap(_ => Task.error(t)))
-      }
-    }
     // Hold one `events` transaction open across this iteration's
     // work — every `publish` → `apply` and every event read routed
     // through `eventsTransaction(convId)` joins it — then commit
@@ -8060,27 +8518,33 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Sigil bug #198 — assemble an [[AgentRunawayException]] whose
-    * message describes the actual failure mode rather than always
-    * misattributing to "hit maxAgentIterations". Reason carries the
-    * trigger condition (`CapHit` / `NoToolCall` / `StallIntervention`);
-    * `iteration` is the actual loop counter at throw time. */
-  /** A budget-gate verdict: `hard = true` forces terminal synthesis;
-    * `hard = false` is the cooperative check-in. `text` is the
-    * Tool-role directive the agent reads. */
-  private final case class BudgetDirective(hard: Boolean, text: String)
+  /**
+   * Sigil bug #198 — assemble an [[AgentRunawayException]] whose
+   * message describes the actual failure mode rather than always
+   * misattributing to "hit maxAgentIterations". Reason carries the
+   * trigger condition (`CapHit` / `NoToolCall` / `StallIntervention`);
+   * `iteration` is the actual loop counter at throw time.
+   */
+  /**
+   * A budget-gate verdict: `hard = true` forces terminal synthesis;
+   * `hard = false` is the cooperative check-in. `text` is the
+   * Tool-role directive the agent reads.
+   */
+  final private case class BudgetDirective(hard: Boolean, text: String)
 
-  /** Evaluate the spend budgets at an iteration boundary. Hard
-    * ceilings (turn, then conversation) win; soft crossings fire
-    * once per claim per scope; the escalation-headroom flag forces
-    * the soft check-in early. `None` = under budget (or budgets
-    * unset) — zero behavior change. */
-  private final def evaluateBudgetGate(conv: Conversation, claimed: AgentState): Task[Option[BudgetDirective]] = Task {
+  /**
+   * Evaluate the spend budgets at an iteration boundary. Hard
+   * ceilings (turn, then conversation) win; soft crossings fire
+   * once per claim per scope; the escalation-headroom flag forces
+   * the soft check-in early. `None` = under budget (or budgets
+   * unset) — zero behavior change.
+   */
+  final private def evaluateBudgetGate(conv: Conversation, claimed: AgentState): Task[Option[BudgetDirective]] = Task {
     Option(activeClaims.get(claimed._id)).flatMap { entry =>
-      val budgets  = effectiveBudgetsFor(conv)
+      val budgets = effectiveBudgetsFor(conv)
       val turnCost = entry.turnCost
       val convCost = entry.conversationCostAtClaim + turnCost
-      def fmt(v: BigDecimal): String = f"$$${v}%.2f"
+      def fmt(v: BigDecimal): String = f"$$$v%.2f"
       val spendLine =
         s"This turn has spent ${fmt(turnCost)}; the conversation total is ${fmt(convCost)}."
       def checkinText(scope: String, limit: BigDecimal): String =
@@ -8088,15 +8552,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           s"(${fmt(limit)}). Summarize where you are and what remains, then ask the user via `respond_options` " +
           "whether to continue and at what scope — do not keep working until they answer. If the remaining " +
           "work is mechanical, call `request_deescalation` before continuing so it runs on a cheaper tier."
-      val turnHard = budgets.turnHard.filter(turnCost >= _).map(limit => BudgetDirective(hard = true,
-        s"[spend ceiling — internal, not a user message] $spendLine That crosses the hard per-turn ceiling " +
-          s"(${fmt(limit)}). Call `respond` NOW with an honest report: what you accomplished, what remains, " +
-          "and what was spent. Do not start further work."))
-      val convHard = budgets.conversationHard.filter(convCost >= _).map(limit => BudgetDirective(hard = true,
-        s"[spend ceiling — internal, not a user message] $spendLine That crosses the hard conversation ceiling " +
-          s"(${fmt(limit)}). Call `respond` NOW with an honest report: what you accomplished, what remains, " +
-          "and what was spent. Do not start further work."))
-      def softFor(limit: BigDecimal, scope: String, latch: java.util.concurrent.atomic.AtomicBoolean,
+      val turnHard = budgets.turnHard.filter(turnCost >= _).map(limit =>
+        BudgetDirective(
+          hard = true,
+          s"[spend ceiling — internal, not a user message] $spendLine That crosses the hard per-turn ceiling " +
+            s"(${fmt(limit)}). Call `respond` NOW with an honest report: what you accomplished, what remains, " +
+            "and what was spent. Do not start further work."
+        ))
+      val convHard = budgets.conversationHard.filter(convCost >= _).map(limit =>
+        BudgetDirective(
+          hard = true,
+          s"[spend ceiling — internal, not a user message] $spendLine That crosses the hard conversation ceiling " +
+            s"(${fmt(limit)}). Call `respond` NOW with an honest report: what you accomplished, what remains, " +
+            "and what was spent. Do not start further work."
+        ))
+      def softFor(limit: BigDecimal,
+                  scope: String,
+                  latch: java.util.concurrent.atomic.AtomicBoolean,
                   crossed: Boolean): Option[BudgetDirective] =
         if (crossed && latch.compareAndSet(false, true)) Some(BudgetDirective(hard = false, checkinText(scope, limit)))
         else None
@@ -8108,7 +8580,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // total over), not on every turn that starts already above it —
         // the user's continuing messages after a check-in are the
         // approval.
-        softFor(limit, "conversation", entry.conversationSoftFired,
+        softFor(
+          limit,
+          "conversation",
+          entry.conversationSoftFired,
           crossed = entry.conversationCostAtClaim < limit && convCost >= limit))
       val directive = turnHard.orElse(convHard).orElse(turnSoft).orElse(convSoft)
       // With the planner tier enabled, a soft check-in is also an
@@ -8116,38 +8591,41 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // consult so the spend spike gets a strategy review. The budget
       // directive itself is unchanged.
       if (plannerModelId.isDefined && directive.exists(!_.hard)) {
-        checkpointStates.computeIfAbsent(claimed._id,
+        checkpointStates.computeIfAbsent(
+          claimed._id,
           _ => CheckpointState(lastStatus = None, noProgressStreak = 0)).plannerAnomalyPending = true
       }
       directive
     }
   }
 
-  /** Publish an internal framework directive on the stall-nudge
-    * channel: a synthetic internal invoke + a Tool-role,
-    * Agents-visibility Message the agent reads next iteration. Used by
-    * the budget gate (`_budget_ceiling` / `_budget_checkin`) and the
-    * planner checkpoint (`_plan` / `_planner_correction`). */
-  private final def publishInternalDirective(agent: AgentParticipant,
+  /**
+   * Publish an internal framework directive on the stall-nudge
+   * channel: a synthetic internal invoke + a Tool-role,
+   * Agents-visibility Message the agent reads next iteration. Used by
+   * the budget gate (`_budget_ceiling` / `_budget_checkin`) and the
+   * planner checkpoint (`_plan` / `_planner_correction`).
+   */
+  final private def publishInternalDirective(agent: AgentParticipant,
                                              conv: Conversation,
                                              invokeName: String,
                                              text: String): Task[Unit] = {
     val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
       .invoke(invokeName, agent.id, conv._id, conv.currentTopicId)
     val directive = Message(
-      participantId  = agent.id,
+      participantId = agent.id,
       conversationId = conv._id,
-      topicId        = conv.currentTopicId,
-      content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents,
-      origin         = Some(syntheticInvoke._id)
+      topicId = conv.currentTopicId,
+      content = Vector(_root_.sigil.tool.model.ResponseContent.Text(text)),
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      visibility = MessageVisibility.Agents,
+      origin = Some(syntheticInvoke._id)
     )
     publish(syntheticInvoke).flatMap(_ => publish(directive)).unit
   }
 
-  private final def buildRunawayException(agent: AgentParticipant,
+  final private def buildRunawayException(agent: AgentParticipant,
                                           conv: Conversation,
                                           iteration: Int,
                                           maxIter: Int,
@@ -8179,14 +8657,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     new AgentRunawayException(s"Agent ${agent.id.value} $cause $convPart", reason)
   }
 
-  /** Bug #149 — assemble the per-turn extractor's `(userMessage,
-    * agentResponse)` arguments from the conversation's events since
-    * the turn started, and fire `memoryExtractor.extract`. Runs once
-    * per user turn at the agent loop's terminate boundary (see
-    * `terminate()` inside `runAgentLoop`). Background fiber —
-    * failures are logged + swallowed; the agent's settle path never
-    * blocks on extraction. */
-  private final def firePostTurnExtraction(agent: AgentParticipant,
+  /**
+   * Bug #149 — assemble the per-turn extractor's `(userMessage,
+   * agentResponse)` arguments from the conversation's events since
+   * the turn started, and fire `memoryExtractor.extract`. Runs once
+   * per user turn at the agent loop's terminate boundary (see
+   * `terminate()` inside `runAgentLoop`). Background fiber —
+   * failures are logged + swallowed; the agent's settle path never
+   * blocks on extraction.
+   */
+  final private def firePostTurnExtraction(agent: AgentParticipant,
                                            convId: Id[Conversation],
                                            turnStartTimestamp: Timestamp): Task[Unit] =
     withDB(_.conversationEvents(convId)).flatMap { all =>
@@ -8219,12 +8699,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       if (userMessage.isEmpty && agentResponse.isEmpty) Task.unit
       else memoryExtractor
         .extract(
-          sigil          = this,
+          sigil = this,
           conversationId = convId,
-          modelId        = agent.modelId,
-          chain          = List(agent.id),
-          userMessage    = userMessage,
-          agentResponse  = agentResponse
+          modelId = agent.modelId,
+          chain = List(agent.id),
+          userMessage = userMessage,
+          agentResponse = agentResponse
         )
         .unit
         .handleError { e =>
@@ -8232,44 +8712,50 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         }
     }
 
-  /** Outcome of a progress checkpoint dispatch. `None` means continue
-    * the agent loop normally; `Some(message)` means terminate the loop
-    * after publishing this respond Message (the framework intervened
-    * because the agent reported being stuck or asked the user for
-    * guidance). */
-  /** Bug #133 — outcome envelope for a checkpoint's intervention.
-    * Distinguishes the two recoverable shapes the framework can hit:
-    *
-    *   - [[CheckpointIntervention]] with `askingUser = false` — stall
-    *     detector trip, no-progress streak, or any other "agent should
-    *     now do something different" case. The intervention text is
-    *     a directive to the AGENT. Caller publishes as Tool-role +
-    *     runs one forced-synthesis iteration so the agent actually
-    *     gets to act on the guidance (parallel to #125's cap-hit).
-    *   - [[CheckpointIntervention]] with `askingUser = true` — the
-    *     reflector self-reported `shouldAskUser`. Genuine "I need
-    *     user input to proceed" — caller publishes user-visible and
-    *     releases the claim.
-    *
-    * The previous return shape (`Option[Message]`) collapsed both
-    * cases into one path and unconditionally terminated the loop;
-    * the agent never got to act on stall directives. */
-  private final case class CheckpointIntervention(message: Message, askingUser: Boolean, terminal: Boolean = false)
+  /**
+   * Outcome of a progress checkpoint dispatch. `None` means continue
+   * the agent loop normally; `Some(message)` means terminate the loop
+   * after publishing this respond Message (the framework intervened
+   * because the agent reported being stuck or asked the user for
+   * guidance).
+   */
+  /**
+   * Bug #133 — outcome envelope for a checkpoint's intervention.
+   * Distinguishes the two recoverable shapes the framework can hit:
+   *
+   *   - [[CheckpointIntervention]] with `askingUser = false` — stall
+   *     detector trip, no-progress streak, or any other "agent should
+   *     now do something different" case. The intervention text is
+   *     a directive to the AGENT. Caller publishes as Tool-role +
+   *     runs one forced-synthesis iteration so the agent actually
+   *     gets to act on the guidance (parallel to #125's cap-hit).
+   *   - [[CheckpointIntervention]] with `askingUser = true` — the
+   *     reflector self-reported `shouldAskUser`. Genuine "I need
+   *     user input to proceed" — caller publishes user-visible and
+   *     releases the claim.
+   *
+   * The previous return shape (`Option[Message]`) collapsed both
+   * cases into one path and unconditionally terminated the loop;
+   * the agent never got to act on stall directives.
+   */
+  final private case class CheckpointIntervention(message: Message, askingUser: Boolean, terminal: Boolean = false)
 
-  /** Sigil #285 — consult [[intraTurnCompactor]] at an iteration
-    * boundary and, if it fires, run [[intraTurnCompressor.compressCovering]]
-    * to fold this turn's eligible events into a [[ContextSummary]]
-    * tagged with their event ids. The next iteration's curator picks
-    * the summary up and filters those events out of the wire prompt,
-    * shrinking the per-iteration cost without touching the durable
-    * event log.
-    *
-    * Best-effort: a failure inside the compactor or compressor is
-    * logged at WARN and swallowed — the agent loop continues with
-    * the un-folded history (degraded but functional). The compactor
-    * predicate is cheap; the compress call only fires when the
-    * predicate returns true AND there's foldable content. */
-  private final def maybeIntraTurnCompact(agent: AgentParticipant,
+  /**
+   * Sigil #285 — consult [[intraTurnCompactor]] at an iteration
+   * boundary and, if it fires, run [[intraTurnCompressor.compressCovering]]
+   * to fold this turn's eligible events into a [[ContextSummary]]
+   * tagged with their event ids. The next iteration's curator picks
+   * the summary up and filters those events out of the wire prompt,
+   * shrinking the per-iteration cost without touching the durable
+   * event log.
+   *
+   * Best-effort: a failure inside the compactor or compressor is
+   * logged at WARN and swallowed — the agent loop continues with
+   * the un-folded history (degraded but functional). The compactor
+   * predicate is cheap; the compress call only fires when the
+   * predicate returns true AND there's foldable content.
+   */
+  final private def maybeIntraTurnCompact(agent: AgentParticipant,
                                           convId: Id[Conversation],
                                           claimed: AgentState): Task[Unit] = Task.defer {
     val compactor = intraTurnCompactor
@@ -8288,9 +8774,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         if (!compactor.shouldCompact(turnEvents, estimated, threshold)) Task.unit
         else {
           val ctx = _root_.sigil.conversation.compression.TurnEventsContext(
-            conversationId       = convId,
-            claimedAt            = Some(claimed.timestamp),
-            agentId              = Some(agent.id),
+            conversationId = convId,
+            claimedAt = Some(claimed.timestamp),
+            agentId = Some(agent.id),
             deliveredToolResults = deliveredToolResultIds(convId)
           )
           val coverIds = compactor.selectFoldable(turnEvents, ctx).toSet
@@ -8300,27 +8786,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             if (coveredFrames.isEmpty) Task.unit
             else intraTurnCompressor
               .compressCovering(
-                sigil           = this,
-                callerModelId   = agent.modelId,
-                chain           = List(agent.id),
-                frames          = coveredFrames,
-                conversationId  = convId,
-                coversEventIds  = coverIds.toList
+                sigil = this,
+                callerModelId = agent.modelId,
+                chain = List(agent.id),
+                frames = coveredFrames,
+                conversationId = convId,
+                coversEventIds = coverIds.toList
               )
               .map(_ => ())
-              .handleError(t => Task {
-                scribe.warn(s"Sigil #285 — intra-turn compaction failed for ${agent.id.value}/${convId.value}: ${t.getMessage}")
-              })
+              .handleError(t =>
+                Task {
+                  scribe.warn(s"Sigil #285 — intra-turn compaction failed for ${agent.id.value}/${convId.value}: ${t.getMessage}")
+                })
           }
         }
       }
     }
   }
 
-  /** Heuristic text rendering for an Event purely for the
-    * intra-turn-compactor's size estimation. Doesn't need to match
-    * any provider's exact wire shape — only stable enough that a
-    * vector of these is a fair proxy for cumulative cost. */
+  /**
+   * Heuristic text rendering for an Event purely for the
+   * intra-turn-compactor's size estimation. Doesn't need to match
+   * any provider's exact wire shape — only stable enough that a
+   * vector of these is a fair proxy for cumulative cost.
+   */
   private def eventTextForHeuristic(e: Event): String = e match {
     case m: Message =>
       m.content.iterator.map {
@@ -8332,14 +8821,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     case other => other.toString
   }
 
-  private final def runProgressCheckpoint(agent: AgentParticipant,
+  final private def runProgressCheckpoint(agent: AgentParticipant,
                                           convId: Id[Conversation],
                                           claimed: AgentState,
                                           iteration: Int): Task[Option[CheckpointIntervention]] = Task.defer {
     if (progressCheckpointInterval <= 0) Task.pure(None)
     else if (plannerModelId.isDefined) runPlannerCheckpoint(agent, convId, claimed, iteration, plannerModelId.get)
     else {
-      val state = checkpointStates.computeIfAbsent(claimed._id,
+      val state = checkpointStates.computeIfAbsent(
+        claimed._id,
         _ => CheckpointState(lastStatus = None, noProgressStreak = 0))
       val priorStatus = state.lastStatus
       val stallTask = evaluateStall(convId, agent.id)
@@ -8388,8 +8878,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // reached the checkpoint and it ran on the agent's default model (e.g.
         // Fable, which can't satisfy the forced report → silent None).
         val resolveCheckpointModel: Task[Id[Model]] =
-          auxModelFor(convId, sigil.tool.consult.ProgressReflectionTool.consultWorkType,
-            List(agent.id), progressReflectionModelFor(agent))
+          auxModelFor(
+            convId,
+            sigil.tool.consult.ProgressReflectionTool.consultWorkType,
+            List(agent.id),
+            progressReflectionModelFor(agent))
         // Sigil #394 — shared processing for a checkpoint report: persist the
         // ProgressCheckpoint, update the no-progress streak, and build the
         // cooperative/terminal intervention. Called both for a real reflector
@@ -8423,11 +8916,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               else if (state.repeatUnverifiedWindows >= 2)
                 sigil.conversation.compression.StallDetector.Signal(
                   detected = true,
-                  reason   = Some(
+                  reason = Some(
                     s"You have re-edited the same target(s) (${targets.toList.sorted.take(3).mkString(", ")}) across " +
                       s"${state.repeatUnverifiedWindows + 1} checkpoint windows without any compile/test/diagnostics call — " +
                       "editing again cannot tell you whether anything is fixed. VERIFY the current state (compile, run " +
-                      "diagnostics) before touching those targets again."))
+                      "diagnostics) before touching those targets again.")
+                )
               else sigil.conversation.compression.StallDetector.Signal.Empty
             // Sigil bug #124 — fold the objective stall signal into the
             // reflector's self-assessment. The agent's `meaningfulProgress`
@@ -8449,18 +8943,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             // settles).
             val effectiveMeaningful =
               (report.meaningfulProgress || ctx.windowMutations > 0) && !stall.detected
-            val effectiveStuckOn    = stall.reason.orElse(report.stuckOn)
+            val effectiveStuckOn = stall.reason.orElse(report.stuckOn)
             val checkpoint = sigil.event.ProgressCheckpoint(
-              participantId        = agent.id,
-              conversationId       = convId,
-              topicId              = topicId,
-              iterationCount       = iteration,
+              participantId = agent.id,
+              conversationId = convId,
+              topicId = topicId,
+              iterationCount = iteration,
               prevCheckpointStatus = priorStatus,
-              currentStatus        = report.currentStatus,
-              meaningfulProgress   = effectiveMeaningful,
-              remainingSteps       = report.remainingSteps,
-              stuckOn              = effectiveStuckOn,
-              shouldAskUser        = report.shouldAskUser
+              currentStatus = report.currentStatus,
+              meaningfulProgress = effectiveMeaningful,
+              remainingSteps = report.remainingSteps,
+              stuckOn = effectiveStuckOn,
+              shouldAskUser = report.shouldAskUser
             )
             publish(checkpoint).flatMap { _ =>
               // Update side-state for the next checkpoint comparison.
@@ -8501,12 +8995,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 // visibility for the directive case.
                 Task.pure(Some(CheckpointIntervention(
                   message = Message(
-                    participantId  = agent.id,
+                    participantId = agent.id,
                     conversationId = convId,
-                    topicId        = topicId,
-                    content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
-                    state          = EventState.Complete,
-                    role           = MessageRole.Standard
+                    topicId = topicId,
+                    content = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
+                    state = EventState.Complete,
+                    role = MessageRole.Standard
                   ),
                   askingUser = report.shouldAskUser,
                   // Sigil #385 — escalate to a TERMINAL forced synthesis once
@@ -8521,63 +9015,68 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             }
           }
         resolveCheckpointModel.flatMap { checkpointModelId =>
-        sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ProgressReflectionInput](
-          sigil = this,
-          modelId = checkpointModelId,
-          chain = List(agent.id),
-          systemPrompt = systemPrompt,
-          userPrompt = userPrompt,
-          tool = sigil.tool.consult.ProgressReflectionTool,
-          generationSettings = sigil.tool.consult.ProgressReflectionTool.consultSettings
-        ).flatMap {
-        case Some(report) => stallTask.flatMap(stall => processCheckpointReport(report, stall))
-        case None         =>
-          // Sigil #394 — fail SAFE, not open. A checkpoint that couldn't
-          // produce a report (a forced-tool_choice-incompatible model returned
-          // naked text → None) must not silently switch OFF stall detection
-          // (observed: 44 of 64 checkpoints returned None on Fable, the streak
-          // never built, zero interventions across 84 iterations). Fall back to
-          // the objective signals — the StallDetector verdict and the
-          // same-target churn chain — so an incapable checkpoint model
-          // can't disable the guardrails entirely.
-          stallTask.flatMap { stall =>
-            val wouldChurn = ctx.windowMutationTargets.nonEmpty && !ctx.windowVerified &&
-              ctx.windowMutationTargets.subsetOf(state.lastMutationTargets) &&
-              state.repeatUnverifiedWindows + 1 >= 2
-            if (stall.detected || wouldChurn)
-              processCheckpointReport(
-                sigil.tool.consult.ProgressReflectionInput(
-                  currentStatus      = stall.reason.getOrElse("Repeating the same kind of action without new information."),
-                  meaningfulProgress = false,
-                  remainingSteps     = "",
-                  stuckOn            = stall.reason,
-                  shouldAskUser      = false),
-                stall)
-            else Task.pure(None)
+          sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ProgressReflectionInput](
+            sigil = this,
+            modelId = checkpointModelId,
+            chain = List(agent.id),
+            systemPrompt = systemPrompt,
+            userPrompt = userPrompt,
+            tool = sigil.tool.consult.ProgressReflectionTool,
+            generationSettings = sigil.tool.consult.ProgressReflectionTool.consultSettings
+          ).flatMap {
+            case Some(report) => stallTask.flatMap(stall => processCheckpointReport(report, stall))
+            case None =>
+              // Sigil #394 — fail SAFE, not open. A checkpoint that couldn't
+              // produce a report (a forced-tool_choice-incompatible model returned
+              // naked text → None) must not silently switch OFF stall detection
+              // (observed: 44 of 64 checkpoints returned None on Fable, the streak
+              // never built, zero interventions across 84 iterations). Fall back to
+              // the objective signals — the StallDetector verdict and the
+              // same-target churn chain — so an incapable checkpoint model
+              // can't disable the guardrails entirely.
+              stallTask.flatMap { stall =>
+                val wouldChurn = ctx.windowMutationTargets.nonEmpty && !ctx.windowVerified &&
+                  ctx.windowMutationTargets.subsetOf(state.lastMutationTargets) &&
+                  state.repeatUnverifiedWindows + 1 >= 2
+                if (stall.detected || wouldChurn)
+                  processCheckpointReport(
+                    sigil.tool.consult.ProgressReflectionInput(
+                      currentStatus = stall.reason.getOrElse("Repeating the same kind of action without new information."),
+                      meaningfulProgress = false,
+                      remainingSteps = "",
+                      stuckOn = stall.reason,
+                      shouldAskUser = false
+                    ),
+                    stall
+                  )
+                else Task.pure(None)
+              }
+          }.handleError { e =>
+            Task(scribe.warn(s"runProgressCheckpoint failed for ${agent.id.value}/${convId.value} iter=$iteration: ${e.getMessage}"))
+              .map(_ => None)
           }
-      }.handleError { e =>
-        Task(scribe.warn(s"runProgressCheckpoint failed for ${agent.id.value}/${convId.value} iter=$iteration: ${e.getMessage}"))
-          .map(_ => None)
-      }
-      }
+        }
       }
     }
   }
 
-  /** Planner-tier progress checkpoint ([[plannerModelId]]). Replaces
-    * the executor's self-assessment with a higher-tier verdict against
-    * an explicit [[TurnPlan]]. The mechanical signals (StallDetector,
-    * same-target churn chain) arm the planner via the anomaly latch
-    * instead of driving the self-report streak machinery, and the
-    * planner LLM call itself fires sparsely: on a pending anomaly,
-    * when no plan exists yet (the first review creates it), or on the
-    * [[plannerCadence]] tick. All other boundaries are free. */
-  private final def runPlannerCheckpoint(agent: AgentParticipant,
+  /**
+   * Planner-tier progress checkpoint ([[plannerModelId]]). Replaces
+   * the executor's self-assessment with a higher-tier verdict against
+   * an explicit [[TurnPlan]]. The mechanical signals (StallDetector,
+   * same-target churn chain) arm the planner via the anomaly latch
+   * instead of driving the self-report streak machinery, and the
+   * planner LLM call itself fires sparsely: on a pending anomaly,
+   * when no plan exists yet (the first review creates it), or on the
+   * [[plannerCadence]] tick. All other boundaries are free.
+   */
+  final private def runPlannerCheckpoint(agent: AgentParticipant,
                                          convId: Id[Conversation],
                                          claimed: AgentState,
                                          iteration: Int,
                                          plannerModel: Id[Model]): Task[Option[CheckpointIntervention]] = {
-    val state = checkpointStates.computeIfAbsent(claimed._id,
+    val state = checkpointStates.computeIfAbsent(
+      claimed._id,
       _ => CheckpointState(lastStatus = None, noProgressStreak = 0))
     evaluateStall(convId, agent.id).flatMap { rawStall =>
       loadProgressContext(convId, agent.id).flatMap { ctx =>
@@ -8627,32 +9126,32 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 anomalyReason match {
                   case Some(reason) =>
                     val checkpoint = sigil.event.ProgressCheckpoint(
-                      participantId        = agent.id,
-                      conversationId       = convId,
-                      topicId              = conv.currentTopicId,
-                      iterationCount       = iteration,
+                      participantId = agent.id,
+                      conversationId = convId,
+                      topicId = conv.currentTopicId,
+                      iterationCount = iteration,
                       prevCheckpointStatus = state.lastStatus,
-                      currentStatus        = reason,
-                      meaningfulProgress   = false,
-                      remainingSteps       = state.plan.map(_.doneCriteria).getOrElse(""),
-                      stuckOn              = Some(reason),
-                      shouldAskUser        = false
+                      currentStatus = reason,
+                      meaningfulProgress = false,
+                      remainingSteps = state.plan.map(_.doneCriteria).getOrElse(""),
+                      stuckOn = Some(reason),
+                      shouldAskUser = false
                     )
                     publish(checkpoint).map { _ =>
                       state.lastStatus = Some(reason)
                       state.noProgressStreak = state.noProgressStreak + 1
                       Some(CheckpointIntervention(
                         message = Message(
-                          participantId  = agent.id,
+                          participantId = agent.id,
                           conversationId = convId,
-                          topicId        = conv.currentTopicId,
-                          content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(
+                          topicId = conv.currentTopicId,
+                          content = Vector(_root_.sigil.tool.model.ResponseContent.Text(
                             checkpointDirective(reason, Some(reason)))),
-                          state          = EventState.Complete,
-                          role           = MessageRole.Standard
+                          state = EventState.Complete,
+                          role = MessageRole.Standard
                         ),
                         askingUser = false,
-                        terminal   = terminalOnPersistentNoProgress(state.noProgressStreak)
+                        terminal = terminalOnPersistentNoProgress(state.noProgressStreak)
                       ))
                     }
                   case None => Task.pure(None)
@@ -8666,13 +9165,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Route a planner verdict: maintain the plan artifact (created on
-    * the first review, revised on replan), publish the `_plan` and
-    * `_planner_correction` directives, and persist the checkpoint.
-    * Always non-terminal — a plan-holding model saying on_track must
-    * never be stall-killed, and a deviating correction gives the
-    * executor at least one iteration to act on it. */
-  private final def applyPlannerVerdict(agent: AgentParticipant,
+  /**
+   * Route a planner verdict: maintain the plan artifact (created on
+   * the first review, revised on replan), publish the `_plan` and
+   * `_planner_correction` directives, and persist the checkpoint.
+   * Always non-terminal — a plan-holding model saying on_track must
+   * never be stall-killed, and a deviating correction gives the
+   * executor at least one iteration to act on it.
+   */
+  final private def applyPlannerVerdict(agent: AgentParticipant,
                                         conv: Conversation,
                                         state: CheckpointState,
                                         iteration: Int,
@@ -8683,10 +9184,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val returnedPlan =
       if (verdict.objective.trim.nonEmpty && verdict.doneCriteria.trim.nonEmpty)
         Some(TurnPlan(
-          objective    = verdict.objective.trim,
-          constraints  = verdict.constraints.map(_.trim).filter(_.nonEmpty),
+          objective = verdict.objective.trim,
+          constraints = verdict.constraints.map(_.trim).filter(_.nonEmpty),
           doneCriteria = verdict.doneCriteria.trim,
-          currentPhase = returnedPhase))
+          currentPhase =
+            returnedPhase
+        ))
       else None
     val replan = verdict.verdict == "replan"
     val publishPlanTask = returnedPlan match {
@@ -8702,26 +9205,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       .getOrElse("Re-read the plan and realign your next actions with its objective and done criteria.")
     val correctionTask =
       if (deviating)
-        publishInternalDirective(agent, conv, "_planner_correction",
+        publishInternalDirective(
+          agent,
+          conv,
+          "_planner_correction",
           "[planner correction — internal, not a user message; do NOT reply to or acknowledge this in chat]\n" +
             correction + " Adjust your approach now and continue the task. Do not apologize for or narrate " +
-            "this correction to the user; just do the work.")
+            "this correction to the user; just do the work."
+        )
       else Task.unit
     val status =
       if (deviating) s"Planner: deviating — $correction"
       else if (replan) s"Planner: replanned — ${returnedPhase.getOrElse("plan revised")}"
       else s"Planner: on track — ${returnedPhase.getOrElse("progressing")}"
     val checkpoint = sigil.event.ProgressCheckpoint(
-      participantId        = agent.id,
-      conversationId       = conv._id,
-      topicId              = conv.currentTopicId,
-      iterationCount       = iteration,
+      participantId = agent.id,
+      conversationId = conv._id,
+      topicId = conv.currentTopicId,
+      iterationCount = iteration,
       prevCheckpointStatus = state.lastStatus,
-      currentStatus        = status,
-      meaningfulProgress   = !deviating,
-      remainingSteps       = state.plan.map(_.doneCriteria).getOrElse(""),
-      stuckOn              = if (deviating) Some(correction) else None,
-      shouldAskUser        = false
+      currentStatus = status,
+      meaningfulProgress = !deviating,
+      remainingSteps = state.plan.map(_.doneCriteria).getOrElse(""),
+      stuckOn = if (deviating) Some(correction) else None,
+      shouldAskUser = false
     )
     publishPlanTask
       .flatMap(_ => correctionTask)
@@ -8754,8 +9261,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       |executor must not cross), doneCriteria (how anyone can tell the work is finished) —
       |and return it with your verdict.""".stripMargin
 
-  /** Render the `_plan` directive the executor reads: the plan
-    * artifact as an internal Tool-role message. */
+  /**
+   * Render the `_plan` directive the executor reads: the plan
+   * artifact as an internal Tool-role message.
+   */
   private def renderPlanDirective(plan: TurnPlan): String = {
     val constraints =
       if (plan.constraints.isEmpty) ""
@@ -8765,11 +9274,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       s"Objective: ${plan.objective}$constraints\nDone when: ${plan.doneCriteria}$phase"
   }
 
-  /** Stitch the planner consult's user prompt: the user task, the held
-    * plan, the window's activity, turn spend, and the anomaly reason
-    * when one armed this review. Window-scoped and line-bounded via
-    * [[loadProgressContext]], so the prompt stays bounded regardless
-    * of conversation length. */
+  /**
+   * Stitch the planner consult's user prompt: the user task, the held
+   * plan, the window's activity, turn spend, and the anomaly reason
+   * when one armed this review. Window-scoped and line-bounded via
+   * [[loadProgressContext]], so the prompt stays bounded regardless
+   * of conversation length.
+   */
   private def renderPlannerPrompt(ctx: ProgressContext,
                                   plan: Option[TurnPlan],
                                   iteration: Int,
@@ -8779,7 +9290,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case Some(t) =>
         val directiveLine = ctx.latestDirective match {
           case Some(d) => s"The user has since said \"$d\" to continue this objective.\n\n"
-          case None    => "\n"
+          case None => "\n"
         }
         s"The user's request:\n\"$t\"\n\n" + directiveLine
       case None => "The user's request: (no recent substantive user message found)\n\n"
@@ -8801,7 +9312,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         val numbered = list.zipWithIndex.map { case (line, i) => s"  ${i + 1}. $line" }.mkString("\n")
         s"${earlierLine}The executor's work since the last checkpoint:\n$numbered\n\n"
     }
-    val spendLine = turnCost.filter(_ > 0).map(c => f"This turn has spent $$${c}%.2f so far.\n\n").getOrElse("")
+    val spendLine = turnCost.filter(_ > 0).map(c => f"This turn has spent $$$c%.2f so far.\n\n").getOrElse("")
     val anomalyLine = anomaly.map(a => s"An anomaly signal fired: $a\n\n").getOrElse("")
     val ask =
       s"The executor is at iteration $iteration. Deliver your verdict: on_track when this trajectory is " +
@@ -8811,17 +9322,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     taskBlock + planBlock + historyBlock + spendLine + anomalyLine + ask
   }
 
-  /** Load the context the reflection prompt needs: the user's most
-    * recent substantive Message + the agent's tool-call history in the
-    * window since the prior checkpoint. Best-effort — failures fall
-    * through to empty context rather than aborting the checkpoint.
-    *
-    * The window scoping matters more than it looks: the history was
-    * previously the whole arc since the objective, head-capped — so
-    * past ~20 calls the reflector's input FROZE, its status echoed
-    * verbatim forever, and the "identical status = no progress" rule
-    * marched every long healthy turn into a forced kill. */
-  protected final def loadProgressContext(convId: Id[Conversation],
+  /**
+   * Load the context the reflection prompt needs: the user's most
+   * recent substantive Message + the agent's tool-call history in the
+   * window since the prior checkpoint. Best-effort — failures fall
+   * through to empty context rather than aborting the checkpoint.
+   *
+   * The window scoping matters more than it looks: the history was
+   * previously the whole arc since the objective, head-capped — so
+   * past ~20 calls the reflector's input FROZE, its status echoed
+   * verbatim forever, and the "identical status = no progress" rule
+   * marched every long healthy turn into a forced kill.
+   */
+  final protected def loadProgressContext(convId: Id[Conversation],
                                           agentId: ParticipantId): Task[ProgressContext] =
     withDB { db =>
       db.conversationEvents(convId).flatMap { all =>
@@ -8836,9 +9349,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // asked while judging progress against the real goal.
         val userMsgs = convEvents.collect {
           case m: Message
-            if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
-               m.role == MessageRole.Standard &&
-               m.content.nonEmpty =>
+              if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
+                m.role == MessageRole.Standard &&
+                m.content.nonEmpty =>
             m
         }
         val (substantiveUser, directive) =
@@ -8854,7 +9367,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             case m: Message if m.role == MessageRole.Standard && m.content.nonEmpty => m
           }.minByOption(_.timestamp.value)
         )
-        val task: Option[String]            = substantive.map(m => textOfContent(m.content))
+        val task: Option[String] = substantive.map(m => textOfContent(m.content))
         val latestDirective: Option[String] = directive.map(m => textOfContent(m.content))
         val objectiveCutoff = substantive.map(_.timestamp.value).getOrElse(0L)
         // The window opens at the prior checkpoint — never before the
@@ -8869,7 +9382,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // are bookkeeping, not agent activity — excluded.
         val arcInvokes = convEvents.collect {
           case ti: sigil.event.ToolInvoke
-            if ti.timestamp.value > objectiveCutoff && ti.participantId == agentId && !ti.internal => ti
+              if ti.timestamp.value > objectiveCutoff && ti.participantId == agentId && !ti.internal => ti
         }.sortBy(_.timestamp.value)
         val windowInvokes = arcInvokes.filter(_.timestamp.value > windowCutoff)
         val shown = windowInvokes.takeRight(20)
@@ -8891,28 +9404,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             ti.outcome == sigil.event.ToolOutcome.Success &&
               toolsByName.get(ti.toolName.value).exists(_.verification))
           ProgressContext(
-            userTask              = task,
-            toolHistory           = shown.map(renderInvokeHistoryLine),
-            latestDirective       = latestDirective,
-            earlierCalls          = arcInvokes.size - shown.size,
-            windowMutations       = successfulMutations.size,
+            userTask = task,
+            toolHistory = shown.map(renderInvokeHistoryLine),
+            latestDirective = latestDirective,
+            earlierCalls = arcInvokes.size - shown.size,
+            windowMutations = successfulMutations.size,
             windowMutationTargets = targets,
-            windowVerified        = verified
+            windowVerified = verified
           )
         }
       }
     }.handleError(_ => Task.pure(ProgressContext(None, Nil)))
 
-  /** One reflection-history line for a window invoke. Respond calls
-    * carry their `endsTurn` framing: a mid-task status update must not
-    * read as the final reply, or the reflector concludes "final
-    * response delivered" while the work is still in flight and every
-    * later checkpoint inherits the false completion. */
-  private final def renderInvokeHistoryLine(ti: sigil.event.ToolInvoke): String = {
+  /**
+   * One reflection-history line for a window invoke. Respond calls
+   * carry their `endsTurn` framing: a mid-task status update must not
+   * read as the final reply, or the reflector concludes "final
+   * response delivered" while the work is still in flight and every
+   * later checkpoint inherits the false completion.
+   */
+  final private def renderInvokeHistoryLine(ti: sigil.event.ToolInvoke): String = {
     val tail = ti.outcome match {
-      case sigil.event.ToolOutcome.Success       => "OK"
+      case sigil.event.ToolOutcome.Success => "OK"
       case sigil.event.ToolOutcome.Failure(_, _) => "FAIL"
-      case sigil.event.ToolOutcome.Pending       => "(no result yet)"
+      case sigil.event.ToolOutcome.Pending => "(no result yet)"
     }
     ti.input match {
       case Some(r: sigil.tool.model.RespondInput) =>
@@ -8924,30 +9439,36 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  /** Timestamp of the agent's most recent settled [[sigil.event.ProgressCheckpoint]]
-    * — the shared lower bound for the inter-checkpoint window that both
-    * the reflection context and the stall detectors evaluate. */
-  private final def priorCheckpointCutoff(convEvents: List[Event], agentId: ParticipantId): Option[Long] =
+  /**
+   * Timestamp of the agent's most recent settled [[sigil.event.ProgressCheckpoint]]
+   * — the shared lower bound for the inter-checkpoint window that both
+   * the reflection context and the stall detectors evaluate.
+   */
+  final private def priorCheckpointCutoff(convEvents: List[Event], agentId: ParticipantId): Option[Long] =
     convEvents.reverseIterator.collectFirst {
       case c: sigil.event.ProgressCheckpoint
-        if c.participantId == agentId &&
-           c.state == EventState.Complete =>
+          if c.participantId == agentId &&
+            c.state == EventState.Complete =>
         c.timestamp.value
     }
 
-  /** Evaluate the agent's recent tool-call tail for objective stall
-    * signals — identical-call streaks and empty-payload streaks.
-    * Folds into the progress checkpoint's `meaningfulProgress`
-    * computation. Best-effort: failures fall through to the empty
-    * signal rather than aborting the checkpoint. */
-  /** Model-independent hard-stall check. Runs the input-only identical-call
-    * streak at [[hardStallIdenticalCallLimit]] over the same since-checkpoint
-    * tail [[evaluateStall]] uses. Returns the intervention reason when the
-    * model has emitted the same call that many times in one turn — the signal
-    * that every cooperative guard has been ignored and the turn must be force-
-    * ended rather than ground to [[maxAgentIterations]]. Cheap (one event
-    * read, no LLM), so it can run at every iteration boundary. */
-  private final def evaluateHardStall(convId: Id[Conversation],
+  /**
+   * Evaluate the agent's recent tool-call tail for objective stall
+   * signals — identical-call streaks and empty-payload streaks.
+   * Folds into the progress checkpoint's `meaningfulProgress`
+   * computation. Best-effort: failures fall through to the empty
+   * signal rather than aborting the checkpoint.
+   */
+  /**
+   * Model-independent hard-stall check. Runs the input-only identical-call
+   * streak at [[hardStallIdenticalCallLimit]] over the same since-checkpoint
+   * tail [[evaluateStall]] uses. Returns the intervention reason when the
+   * model has emitted the same call that many times in one turn — the signal
+   * that every cooperative guard has been ignored and the turn must be force-
+   * ended rather than ground to [[maxAgentIterations]]. Cheap (one event
+   * read, no LLM), so it can run at every iteration boundary.
+   */
+  final private def evaluateHardStall(convId: Id[Conversation],
                                       agentId: ParticipantId): Task[Option[String]] =
     if (hardStallIdenticalCallLimit <= 0) Task.pure(None)
     else loadStallRecords(convId, agentId).map { records =>
@@ -8956,19 +9477,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         .reason
     }.handleError(_ => Task.pure(None))
 
-  /** Frame a checkpoint DIRECTIVE (the non-ask-user nudge) as an
-    * explicitly internal, non-conversational instruction. The directive
-    * reaches the agent as a Tool-role message hidden from the user, but a
-    * reason worded as a first-person question ("How would you like me to
-    * proceed?") is read by an instruction-following model as the USER
-    * challenging it — so it posts a user-visible "You're right…"
-    * acknowledgment, a reply to a message the user never sent (and, across
-    * repeated checkpoints on a long turn, several such ghost-replies). The
-    * envelope states the situation as a fact, adds an explicit
-    * do-not-acknowledge instruction, and asks a question of nobody — so
-    * there is nothing for the model to answer in chat. The genuine
-    * ask-the-user checkpoint (`shouldAskUser`) keeps its first-person
-    * user-facing wording; only the directive path is reframed. */
+  /**
+   * Frame a checkpoint DIRECTIVE (the non-ask-user nudge) as an
+   * explicitly internal, non-conversational instruction. The directive
+   * reaches the agent as a Tool-role message hidden from the user, but a
+   * reason worded as a first-person question ("How would you like me to
+   * proceed?") is read by an instruction-following model as the USER
+   * challenging it — so it posts a user-visible "You're right…"
+   * acknowledgment, a reply to a message the user never sent (and, across
+   * repeated checkpoints on a long turn, several such ghost-replies). The
+   * envelope states the situation as a fact, adds an explicit
+   * do-not-acknowledge instruction, and asks a question of nobody — so
+   * there is nothing for the model to answer in chat. The genuine
+   * ask-the-user checkpoint (`shouldAskUser`) keeps its first-person
+   * user-facing wording; only the directive path is reframed.
+   */
   private def checkpointDirective(body: String, stuckOn: Option[String]): String = {
     val hint = stuckOn.map(s => s" You are stuck on: $s.").getOrElse("")
     "[progress checkpoint — internal, not a user message; do NOT reply to or acknowledge this in chat]\n" +
@@ -8977,16 +9500,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       "to the user; just do the work."
   }
 
-  private final def evaluateStall(convId: Id[Conversation],
+  final private def evaluateStall(convId: Id[Conversation],
                                   agentId: ParticipantId): Task[sigil.conversation.compression.StallDetector.Signal] =
     loadStallRecords(convId, agentId)
       .map(sigil.conversation.compression.StallDetector.evaluate(_))
       .handleError(_ => Task.pure(sigil.conversation.compression.StallDetector.Signal.Empty))
 
-  /** Build the chronological tail of non-internal tool calls since the prior
-    * checkpoint (falling back to the most recent user Message, then 0) that
-    * both [[evaluateStall]] and [[evaluateHardStall]] evaluate. */
-  private final def loadStallRecords(convId: Id[Conversation],
+  /**
+   * Build the chronological tail of non-internal tool calls since the prior
+   * checkpoint (falling back to the most recent user Message, then 0) that
+   * both [[evaluateStall]] and [[evaluateHardStall]] evaluate.
+   */
+  final private def loadStallRecords(convId: Id[Conversation],
                                      agentId: ParticipantId): Task[List[sigil.conversation.compression.StallDetector.CallRecord]] =
     withDB(_.conversationEvents(convId)).map { all =>
       val convEvents = all.iterator
@@ -8999,46 +9524,50 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       val cutoff = priorCheckpointCutoff(convEvents, agentId).orElse {
         convEvents.reverseIterator.collectFirst {
           case m: Message
-            if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
-               m.role == MessageRole.Standard &&
-               m.content.nonEmpty =>
+              if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
+                m.role == MessageRole.Standard &&
+                m.content.nonEmpty =>
             m.timestamp.value
         }
       }.getOrElse(0L)
 
       val invokes = convEvents.collect {
         case ti: sigil.event.ToolInvoke
-          if ti.timestamp.value > cutoff &&
-             ti.participantId == agentId &&
-             !ti.internal => ti
+            if ti.timestamp.value > cutoff &&
+              ti.participantId == agentId &&
+              !ti.internal => ti
       }
       val messagesByOrigin = convEvents.collect {
         case m: Message if m.role == MessageRole.Tool && m.origin.isDefined => m.origin.get -> m
       }.toMap
       val records = invokes.sortBy(_.timestamp.value).map { ti =>
         sigil.conversation.compression.StallDetector.CallRecord(
-          invoke        = ti,
+          invoke = ti,
           resultMessage = messagesByOrigin.get(ti._id)
         )
       }
       records
     }
 
-  /** Concatenate textual ResponseContent blocks; used to derive a
-    * one-line view of a Message for the reflection prompt. */
-  private final def textOfContent(blocks: Vector[_root_.sigil.tool.model.ResponseContent]): String =
+  /**
+   * Concatenate textual ResponseContent blocks; used to derive a
+   * one-line view of a Message for the reflection prompt.
+   */
+  final private def textOfContent(blocks: Vector[_root_.sigil.tool.model.ResponseContent]): String =
     blocks.collect {
-      case _root_.sigil.tool.model.ResponseContent.Text(t)     => t
+      case _root_.sigil.tool.model.ResponseContent.Text(t) => t
       case _root_.sigil.tool.model.ResponseContent.Markdown(t) => t
     }.mkString(" ").trim
 
-  private final def snippet(s: String, maxLen: Int): String =
+  final private def snippet(s: String, maxLen: Int): String =
     if (s.length <= maxLen) s else s.take(maxLen) + "…"
 
-  /** Stitch the user task + tool history + prior checkpoint status
-    * into the reflection prompt. Pure helper — useful to apps that
-    * want to surface the same context shape to a custom reflection
-    * tool, and to specs verifying the prompt structure. */
+  /**
+   * Stitch the user task + tool history + prior checkpoint status
+   * into the reflection prompt. Pure helper — useful to apps that
+   * want to surface the same context shape to a custom reflection
+   * tool, and to specs verifying the prompt structure.
+   */
   def renderCheckpointPrompt(ctx: ProgressContext,
                              priorStatus: Option[String],
                              iteration: Int): String = {
@@ -9046,10 +9575,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case Some(t) =>
         val directiveLine = ctx.latestDirective match {
           case Some(d) => s"The user has since said \"$d\" to continue this objective.\n\n"
-          case None    => "\n"
+          case None => "\n"
         }
         s"The user's request:\n\"$t\"\n\n" + directiveLine
-      case None    => "The user's request: (no recent substantive user message found)\n\n"
+      case None => "The user's request: (no recent substantive user message found)\n\n"
     }
     val earlierLine =
       if (ctx.earlierCalls > 0)
@@ -9068,7 +9597,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       else ""
     val priorBlock = priorStatus match {
       case Some(s) => s"Prior checkpoint status: \"$s\"\n\n"
-      case None    => "Prior checkpoint status: (first checkpoint)\n\n"
+      case None => "Prior checkpoint status: (first checkpoint)\n\n"
     }
     val ask =
       s"You are at iteration $iteration. " +
@@ -9087,26 +9616,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     taskBlock + historyBlock + mutationsLine + priorBlock + ask
   }
 
-  /** Publish a `Failure`-content Message into the conversation when
-    * `runAgentLoop` crashes mid-turn. Lets clients render a red error
-    * bubble in place of the frozen "still typing" indicator the
-    * activity-state delta from `releaseClaim` would leave on its own.
-    *
-    * Best-effort: degenerate states (conversation gone, no topics) skip
-    * publication rather than fabricate a topic id; the caller's
-    * `releaseClaim` still flips the agent state to Idle/Complete. */
-  /** Sigil bug #282 — publish a synthetic user-visible Message when
-    * the agent loop terminates without any respond having fired.
-    * Composes its body from the most recent [[sigil.event.ProgressCheckpoint]]
-    * the agent persisted this turn (if any) so the user sees the
-    * agent's own stated status / stuck-on reason instead of a blank
-    * spinner. Falls back to a generic placeholder when no checkpoint
-    * exists for this turn.
-    *
-    * Idempotent in spirit — callers should only invoke when
-    * `userVisibleSeen` is false; the helper itself does NOT re-check
-    * to keep the contract surfaced at the call site. */
-  private final def synthesizeFallbackRespond(agent: AgentParticipant,
+  /**
+   * Publish a `Failure`-content Message into the conversation when
+   * `runAgentLoop` crashes mid-turn. Lets clients render a red error
+   * bubble in place of the frozen "still typing" indicator the
+   * activity-state delta from `releaseClaim` would leave on its own.
+   *
+   * Best-effort: degenerate states (conversation gone, no topics) skip
+   * publication rather than fabricate a topic id; the caller's
+   * `releaseClaim` still flips the agent state to Idle/Complete.
+   */
+  /**
+   * Sigil bug #282 — publish a synthetic user-visible Message when
+   * the agent loop terminates without any respond having fired.
+   * Composes its body from the most recent [[sigil.event.ProgressCheckpoint]]
+   * the agent persisted this turn (if any) so the user sees the
+   * agent's own stated status / stuck-on reason instead of a blank
+   * spinner. Falls back to a generic placeholder when no checkpoint
+   * exists for this turn.
+   *
+   * Idempotent in spirit — callers should only invoke when
+   * `userVisibleSeen` is false; the helper itself does NOT re-check
+   * to keep the contract surfaced at the call site.
+   */
+  final private def synthesizeFallbackRespond(agent: AgentParticipant,
                                               convId: Id[Conversation]): Task[Unit] =
     latestCheckpointStatus(agent.id, convId).flatMap { checkpoint =>
       val body = checkpoint match {
@@ -9116,24 +9649,24 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           "The agent's turn ended without producing a reply. Please re-prompt or clarify the request."
       }
       withDB(_.conversations.transaction(_.get(convId))).flatMap {
-        case None       => Task.unit
+        case None => Task.unit
         case Some(conv) => conv.topics.headOption match {
-          case None        => Task.unit
-          case Some(topic) =>
-            publish(Message(
-              participantId  = agent.id,
-              conversationId = convId,
-              topicId        = topic.id,
-              content        = Vector(ResponseContent.Text(body)),
-              disposition    = sigil.event.MessageDisposition.Failure(recoverable = true),
-              state          = EventState.Complete,
-              role           = MessageRole.Standard,
-              // Sigil bug #284 — stamp `source` so consumers render the
-              // framework-synthesised fallback distinctly from a real
-              // agent reply.
-              source         = Some("orchestrator-fallback-respond")
-            )).map(_ => ())
-        }
+            case None => Task.unit
+            case Some(topic) =>
+              publish(Message(
+                participantId = agent.id,
+                conversationId = convId,
+                topicId = topic.id,
+                content = Vector(ResponseContent.Text(body)),
+                disposition = sigil.event.MessageDisposition.Failure(recoverable = true),
+                state = EventState.Complete,
+                role = MessageRole.Standard,
+                // Sigil bug #284 — stamp `source` so consumers render the
+                // framework-synthesised fallback distinctly from a real
+                // agent reply.
+                source = Some("orchestrator-fallback-respond")
+              )).map(_ => ())
+          }
       }
     }.handleError { e =>
       Task(scribe.warn(
@@ -9141,25 +9674,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       ))
     }
 
-  /** Sigil #313 — reactive self-heal entry point invoked from the
-    * agent loop's `handleError`.
-    *
-    * Returns `Some(retryTask)` when the heal applied and the agent
-    * loop should run one more iteration (the retry); `None` when the
-    * standard failure path should take over (no strategy matched, or
-    * we've already healed this turn, or strict mode refused).
-    *
-    * Publishes a durable triple — [[sigil.event.ConversationCorruptionDetected]]
-    * before the strategy runs, [[sigil.event.ConversationHealed]] /
-    * [[sigil.event.HealingExhausted]] after — plus operational
-    * [[sigil.signal.HealingActivityNotice]] pulses so log aggregators
-    * see both the audit (durable) and alerting (transient) channels.
-    *
-    * Best-effort by design: a heal-pipeline DB / hub failure must
-    * not mask the original error. Every publish runs with
-    * `.handleError(_ => Task.unit)` so the worst case is "we lost
-    * the audit pulse, the original failure still surfaces". */
-  private final def tryHealAgentLoopError(agent: AgentParticipant,
+  /**
+   * Sigil #313 — reactive self-heal entry point invoked from the
+   * agent loop's `handleError`.
+   *
+   * Returns `Some(retryTask)` when the heal applied and the agent
+   * loop should run one more iteration (the retry); `None` when the
+   * standard failure path should take over (no strategy matched, or
+   * we've already healed this turn, or strict mode refused).
+   *
+   * Publishes a durable triple — [[sigil.event.ConversationCorruptionDetected]]
+   * before the strategy runs, [[sigil.event.ConversationHealed]] /
+   * [[sigil.event.HealingExhausted]] after — plus operational
+   * [[sigil.signal.HealingActivityNotice]] pulses so log aggregators
+   * see both the audit (durable) and alerting (transient) channels.
+   *
+   * Best-effort by design: a heal-pipeline DB / hub failure must
+   * not mask the original error. Every publish runs with
+   * `.handleError(_ => Task.unit)` so the worst case is "we lost
+   * the audit pulse, the original failure still surfaces".
+   */
+  final private def tryHealAgentLoopError(agent: AgentParticipant,
                                           convId: Id[Conversation],
                                           claimed: AgentState,
                                           thrown: Throwable,
@@ -9188,23 +9723,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // the durable trail must show the failure was seen.
         val detectorSource: String = thrown match {
           case _: sigil.heal.BrokenHistoryException => "renderFrames-invariant"
-          case _                                    => "provider-call"
+          case _ => "provider-call"
         }
         val publishDetected: Task[Unit] = withDB(_.conversations.transaction(_.get(convId))).flatMap {
-          case None       => Task.unit
+          case None => Task.unit
           case Some(conv) =>
             conv.topics.headOption match {
-              case None        => Task.unit
+              case None => Task.unit
               case Some(topic) =>
                 publish(sigil.event.ConversationCorruptionDetected(
-                  conversationId     = convId,
-                  topicId            = topic.id,
-                  detectorSource     = detectorSource,
-                  originalError      = errorEvidence,
-                  correlationId      = correlation,
-                  modelId            = Some(agent.modelId),
+                  conversationId = convId,
+                  topicId = topic.id,
+                  detectorSource = detectorSource,
+                  originalError = errorEvidence,
+                  correlationId = correlation,
+                  modelId = Some(agent.modelId),
                   detectedCorruption = evidence,
-                  participantId      = agent.id
+                  participantId = agent.id
                 )).map(_ => ())
             }
         }.handleError { e =>
@@ -9221,10 +9756,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             // path).
             val notify: Task[Unit] = Task {
               hub.emit(sigil.signal.HealingActivityNotice(
-                conversationId     = convId,
-                strategyName       = strategy.name,
+                conversationId = convId,
+                strategyName = strategy.name,
                 detectedCorruption = evidence,
-                outcome            = sigil.heal.HealingOutcome.StrictRefused
+                outcome = sigil.heal.HealingOutcome.StrictRefused
               ))
               ()
             }.handleError(_ => Task.unit)
@@ -9236,27 +9771,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             // heal couldn't recover this turn" outcomes that must
             // fall through to the standard failure path.
             val publishExhausted: Task[Unit] = withDB(_.conversations.transaction(_.get(convId))).flatMap {
-              case None       => Task.unit
+              case None => Task.unit
               case Some(conv) =>
                 conv.topics.headOption match {
-                  case None        => Task.unit
+                  case None => Task.unit
                   case Some(topic) =>
                     publish(sigil.event.HealingExhausted(
                       conversationId = convId,
-                      topicId        = topic.id,
-                      correlationId  = correlation,
-                      strategyName   = strategy.name,
-                      retryError     = errorEvidence,
-                      participantId  = agent.id
+                      topicId = topic.id,
+                      correlationId = correlation,
+                      strategyName = strategy.name,
+                      retryError = errorEvidence,
+                      participantId = agent.id
                     )).map(_ => ())
                 }
             }.handleError(_ => Task.unit)
             def notifyOutcome(outcome: sigil.heal.HealingOutcome): Task[Unit] = Task {
               hub.emit(sigil.signal.HealingActivityNotice(
-                conversationId     = convId,
-                strategyName       = strategy.name,
+                conversationId = convId,
+                strategyName = strategy.name,
                 detectedCorruption = evidence,
-                outcome            = outcome
+                outcome = outcome
               ))
               ()
             }.handleError(_ => Task.unit)
@@ -9270,28 +9805,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // publish Healed + Healed notice, return retry task.
               val runStrategy: Task[sigil.heal.HealResult] =
                 strategy.apply(evidence, convId, this).handleError { e =>
-                  scribe.error(s"heal[${strategy.name}] strategy.apply threw on " +
-                    s"${agent.id.value}/${convId.value}", e)
+                  scribe.error(
+                    s"heal[${strategy.name}] strategy.apply threw on " +
+                      s"${agent.id.value}/${convId.value}",
+                    e)
                   Task.pure(sigil.heal.HealResult(
-                    corrections     = Nil,
+                    corrections = Nil,
                     remainingIssues = List(s"strategy.apply threw ${e.getClass.getSimpleName}: ${Option(e.getMessage).getOrElse("")}")
                   ))
                 }
               val publishHealed: sigil.heal.HealResult => Task[Unit] = result =>
                 withDB(_.conversations.transaction(_.get(convId))).flatMap {
-                  case None       => Task.unit
+                  case None => Task.unit
                   case Some(conv) =>
                     conv.topics.headOption match {
-                      case None        => Task.unit
+                      case None => Task.unit
                       case Some(topic) =>
                         publish(sigil.event.ConversationHealed(
-                          conversationId  = convId,
-                          topicId         = topic.id,
-                          correlationId   = correlation,
-                          strategyName    = strategy.name,
-                          corrections     = result.corrections,
+                          conversationId = convId,
+                          topicId = topic.id,
+                          correlationId = correlation,
+                          strategyName = strategy.name,
+                          corrections = result.corrections,
                           remainingIssues = result.remainingIssues,
-                          participantId   = agent.id
+                          participantId = agent.id
                         )).map(_ => ())
                     }
                 }.handleError(_ => Task.unit)
@@ -9300,50 +9837,50 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // re-use the SAME claimed (the claim hasn't released);
               // iteration count keeps advancing.
               val retryTask: Task[Unit] = runAgentLoop(
-                agent                     = agent,
-                convId                    = convId,
-                claimed                   = claimed,
-                iteration                 = 1,
-                sinceTimestamp            = claimed.timestamp,
-                greeting                  = false,
-                userVisibleSeen           = new java.util.concurrent.atomic.AtomicBoolean(false),
-                turnExtractorFired        = new java.util.concurrent.atomic.AtomicBoolean(false),
-                failurePublished          = new java.util.concurrent.atomic.AtomicBoolean(false),
+                agent = agent,
+                convId = convId,
+                claimed = claimed,
+                iteration = 1,
+                sinceTimestamp = claimed.timestamp,
+                greeting = false,
+                userVisibleSeen = new java.util.concurrent.atomic.AtomicBoolean(false),
+                turnExtractorFired = new java.util.concurrent.atomic.AtomicBoolean(false),
+                failurePublished = new java.util.concurrent.atomic.AtomicBoolean(false),
                 discoveredCapabilitiesRef = new AtomicReference(Map.empty),
-                toolResultCacheRef        = new AtomicReference(Map.empty),
-                healedThisTurn            = healedThisTurn,
-                healCorrelationId         = healCorrelationId
+                toolResultCacheRef = new AtomicReference(Map.empty),
+                healedThisTurn = healedThisTurn,
+                healCorrelationId = healCorrelationId
               )
               val pipeline: Task[Option[Task[Unit]]] = for {
-                _      <- publishDetected
+                _ <- publishDetected
                 result <- runStrategy
-                out    <- if (evidence.nonEmpty && result.corrections.isEmpty) {
-                            // Sigil #314 — no-op heal: the strategy
-                            // matched and ran but settled NOTHING
-                            // against non-empty corruption evidence.
-                            // Retrying would replay the identical
-                            // broken frames and exhaust on the second
-                            // pass — a heal masquerading as a fix.
-                            // Don't publish `ConversationHealed`;
-                            // mark the turn terminally exhausted, fire
-                            // a `Failed` notice, give back the turn's
-                            // allowance, and fall through to the
-                            // standard failure path so the user sees a
-                            // Failure bubble instead of a silent stall.
-                            scribe.error(
-                              s"heal[${strategy.name}] resolved ZERO corrections against ${evidence.size} " +
-                                s"corruption row(s) for ${agent.id.value}/${convId.value} — treating as a failed " +
-                                s"heal (no retry). remainingIssues=[${result.remainingIssues.mkString("; ")}]"
-                            )
-                            healedThisTurn.set(false)
-                            publishExhausted
-                              .flatMap(_ => notifyOutcome(sigil.heal.HealingOutcome.Failed))
-                              .map(_ => Option.empty[Task[Unit]])
-                          } else {
-                            publishHealed(result)
-                              .flatMap(_ => notifyOutcome(sigil.heal.HealingOutcome.Healed))
-                              .map(_ => Some(retryTask))
-                          }
+                out <- if (evidence.nonEmpty && result.corrections.isEmpty) {
+                  // Sigil #314 — no-op heal: the strategy
+                  // matched and ran but settled NOTHING
+                  // against non-empty corruption evidence.
+                  // Retrying would replay the identical
+                  // broken frames and exhaust on the second
+                  // pass — a heal masquerading as a fix.
+                  // Don't publish `ConversationHealed`;
+                  // mark the turn terminally exhausted, fire
+                  // a `Failed` notice, give back the turn's
+                  // allowance, and fall through to the
+                  // standard failure path so the user sees a
+                  // Failure bubble instead of a silent stall.
+                  scribe.error(
+                    s"heal[${strategy.name}] resolved ZERO corrections against ${evidence.size} " +
+                      s"corruption row(s) for ${agent.id.value}/${convId.value} — treating as a failed " +
+                      s"heal (no retry). remainingIssues=[${result.remainingIssues.mkString("; ")}]"
+                  )
+                  healedThisTurn.set(false)
+                  publishExhausted
+                    .flatMap(_ => notifyOutcome(sigil.heal.HealingOutcome.Failed))
+                    .map(_ => Option.empty[Task[Unit]])
+                } else {
+                  publishHealed(result)
+                    .flatMap(_ => notifyOutcome(sigil.heal.HealingOutcome.Healed))
+                    .map(_ => Some(retryTask))
+                }
               } yield out
               pipeline
             }
@@ -9351,90 +9888,94 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-  private final def publishFailureMessage(agent: AgentParticipant,
+  final private def publishFailureMessage(agent: AgentParticipant,
                                           convId: Id[Conversation],
                                           t: Throwable): Task[Unit] =
     withDB(_.conversations.transaction(_.get(convId))).flatMap {
       case None => Task.unit
       case Some(conv) => conv.topics.headOption match {
-        case None        => Task.unit
-        case Some(topic) =>
-          // Sigil #413 — a context overflow that exhausted the emergency
-          // recovery gets a user-readable explanation, not a raw wire
-          // blob. Everything else runs through the #410 scrub so vendor
-          // support URLs and similar noise never reach the chat; the
-          // provider name isn't resolvable at this seam, so the scrub
-          // receives the "provider" placeholder.
-          val reason =
-            if (_root_.sigil.provider.Provider.isContextOverflow(t))
-              "The conversation has grown past the model's context window, and automatic emergency " +
-                "compaction could not bring it back under the limit. Start a new conversation, or reduce " +
-                "the request (fewer attached files / shorter input) and try again."
-            else if (_root_.sigil.provider.Provider.isInvalidRequest(t))
-              // A non-overflow invalid_request 400 — malformed content the
-              // model API refused. Surface the provider's concise message
-              // (it names the offending part, e.g. an empty image source)
-              // instead of the raw wire blob the #410 scrub would pass
-              // through: the scrub strips vendor identity, not JSON noise.
-              _root_.sigil.provider.Provider.invalidRequestDetail(t) match {
-                case Some(detail) =>
-                  s"The provider rejected the request as invalid: ${sanitizeProviderError("provider", detail)}"
-                case None =>
-                  "The provider rejected the request as invalid (malformed content in the conversation)."
+          case None => Task.unit
+          case Some(topic) =>
+            // Sigil #413 — a context overflow that exhausted the emergency
+            // recovery gets a user-readable explanation, not a raw wire
+            // blob. Everything else runs through the #410 scrub so vendor
+            // support URLs and similar noise never reach the chat; the
+            // provider name isn't resolvable at this seam, so the scrub
+            // receives the "provider" placeholder.
+            val reason =
+              if (_root_.sigil.provider.Provider.isContextOverflow(t))
+                "The conversation has grown past the model's context window, and automatic emergency " +
+                  "compaction could not bring it back under the limit. Start a new conversation, or reduce " +
+                  "the request (fewer attached files / shorter input) and try again."
+              else if (_root_.sigil.provider.Provider.isInvalidRequest(t))
+                // A non-overflow invalid_request 400 — malformed content the
+                // model API refused. Surface the provider's concise message
+                // (it names the offending part, e.g. an empty image source)
+                // instead of the raw wire blob the #410 scrub would pass
+                // through: the scrub strips vendor identity, not JSON noise.
+                _root_.sigil.provider.Provider.invalidRequestDetail(t) match {
+                  case Some(detail) =>
+                    s"The provider rejected the request as invalid: ${sanitizeProviderError("provider", detail)}"
+                  case None =>
+                    "The provider rejected the request as invalid (malformed content in the conversation)."
+                }
+              else sanitizeProviderError(
+                "provider",
+                Option(t.getMessage).filter(_.nonEmpty)
+                  .map(m => s"${t.getClass.getSimpleName}: $m")
+                  .getOrElse(t.getClass.getSimpleName))
+            val ec = sigil.event.ErrorContext.classify(t)
+            // Sigil bug #282 — enrich the user-facing failure body with
+            // the agent's most recent self-reported status (from a
+            // ProgressCheckpoint event) when available. The agent
+            // typically knows what it was working on / stuck on; surfacing
+            // that text alongside the exception class makes the failure
+            // bubble actionable instead of just technical.
+            latestCheckpointStatus(agent.id, convId).flatMap { checkpoint =>
+              val body = checkpoint match {
+                case Some(status) => s"$reason\n\nLast reported status: $status"
+                case None => reason
               }
-            else sanitizeProviderError("provider", Option(t.getMessage).filter(_.nonEmpty)
-              .map(m => s"${t.getClass.getSimpleName}: $m")
-              .getOrElse(t.getClass.getSimpleName))
-          val ec = sigil.event.ErrorContext.classify(t)
-          // Sigil bug #282 — enrich the user-facing failure body with
-          // the agent's most recent self-reported status (from a
-          // ProgressCheckpoint event) when available. The agent
-          // typically knows what it was working on / stuck on; surfacing
-          // that text alongside the exception class makes the failure
-          // bubble actionable instead of just technical.
-          latestCheckpointStatus(agent.id, convId).flatMap { checkpoint =>
-            val body = checkpoint match {
-              case Some(status) => s"$reason\n\nLast reported status: $status"
-              case None         => reason
+              publish(Message(
+                participantId = agent.id,
+                conversationId = convId,
+                topicId = topic.id,
+                content = Vector(sigil.tool.model.ResponseContent.Text(body)),
+                disposition = sigil.event.MessageDisposition.Failure(
+                  // Sigil #376 — a runaway/stall terminal hands back as
+                  // recoverable (a follow-up user message re-engages the
+                  // agent); a genuine crash stays non-recoverable.
+                  recoverable = Sigil.isStallFailure(t),
+                  errorContext = Some(ec)
+                ),
+                state = EventState.Complete,
+                role = MessageRole.Standard
+              )).map(_ => ())
             }
-            publish(Message(
-              participantId  = agent.id,
-              conversationId = convId,
-              topicId        = topic.id,
-              content        = Vector(sigil.tool.model.ResponseContent.Text(body)),
-              disposition    = sigil.event.MessageDisposition.Failure(
-                // Sigil #376 — a runaway/stall terminal hands back as
-                // recoverable (a follow-up user message re-engages the
-                // agent); a genuine crash stays non-recoverable.
-                recoverable  = Sigil.isStallFailure(t),
-                errorContext = Some(ec)
-              ),
-              state          = EventState.Complete,
-              role           = MessageRole.Standard
-            )).map(_ => ())
-          }
-      }
+        }
     }
 
-  /** Sigil bug #282 — return the agent's most recent
-    * [[sigil.event.ProgressCheckpoint]] status text for this
-    * conversation, formatted with stuck-on + remaining-steps when
-    * present. Best-effort — failures fall through to None rather than
-    * aborting the failure-publish path. */
-  private final def latestCheckpointStatus(agentId: ParticipantId,
+  /**
+   * Sigil bug #282 — return the agent's most recent
+   * [[sigil.event.ProgressCheckpoint]] status text for this
+   * conversation, formatted with stuck-on + remaining-steps when
+   * present. Best-effort — failures fall through to None rather than
+   * aborting the failure-publish path.
+   */
+  final private def latestCheckpointStatus(agentId: ParticipantId,
                                            convId: Id[Conversation]): Task[Option[String]] =
     withDB(_.conversationEvents(convId)).map { events =>
       events.collect {
         case cp: sigil.event.ProgressCheckpoint if cp.participantId == agentId => cp
       }.maxByOption(_.timestamp.value).map { cp =>
         val statusLine = if (cp.currentStatus.nonEmpty) cp.currentStatus else "(no status text)"
-        val stuckLine  = cp.stuckOn.filter(_.nonEmpty).map(s => s"\n\nStuck on: $s").getOrElse("")
-        val nextLine   = if (cp.remainingSteps.nonEmpty) s"\n\nRemaining: ${cp.remainingSteps}" else ""
+        val stuckLine = cp.stuckOn.filter(_.nonEmpty).map(s => s"\n\nStuck on: $s").getOrElse("")
+        val nextLine = if (cp.remainingSteps.nonEmpty) s"\n\nRemaining: ${cp.remainingSteps}" else ""
         s"$statusLine$stuckLine$nextLine"
       }
     }.handleError(_ => Task.pure(None))
 
-  private final def releaseClaim(claimed: AgentState): Task[Unit] = {
+  final private def releaseClaim(claimed: AgentState): Task[Unit] = {
     // Always-run cleanup — the flag must never leak even if the
     // Idle/Complete publish fails (broadcaster error, DB error, etc.).
     // A leaked flag is a minor map entry, but across many failures it'd
@@ -9454,15 +9995,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     Task(Option(activeTurnEvents.remove(claimed.conversationId)))
       .flatMap {
         case Some(turnLog) => restampTopicFoundingTurn(claimed.conversationId, turnLog)
-        case None          => Task.unit
+        case None => Task.unit
       }
-      .handleError(t => Task(scribe.warn(
-        s"founding-turn topic re-stamp failed for ${claimed.conversationId.value}: ${t.getMessage}")))
-      .flatMap(_ => publish(AgentStateDelta(
-        target = claimed._id,
-        conversationId = claimed.conversationId,
-        activity = Some(AgentActivity.Idle),
-        state = Some(EventState.Complete))))
+      .handleError(t =>
+        Task(scribe.warn(
+          s"founding-turn topic re-stamp failed for ${claimed.conversationId.value}: ${t.getMessage}")))
+      .flatMap(_ =>
+        publish(AgentStateDelta(
+          target = claimed._id,
+          conversationId = claimed.conversationId,
+          activity = Some(AgentActivity.Idle),
+          state = Some(EventState.Complete))))
       .flatMap(_ => cleanup)
       .handleError(t => cleanup.flatMap(_ => Task.error(t)))
   }
@@ -9494,7 +10037,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * topic id), and the bootstrap-era rename path never emits a
    * Switch.
    */
-  private final def restampTopicFoundingTurn(convId: Id[Conversation], turnLog: TurnEventLog): Task[Unit] = {
+  final private def restampTopicFoundingTurn(convId: Id[Conversation], turnLog: TurnEventLog): Task[Unit] = {
     import scala.jdk.CollectionConverters.*
     val switches = turnLog.switches.asScala.toList.sortBy(_.timestamp.value)
     if (switches.isEmpty) Task.unit
@@ -9512,9 +10055,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               .foldLeft(Option.empty[Event]) { (best, e) =>
                 e match {
                   case m: Message
-                    if m.role == MessageRole.Standard
-                      && !m.participantId.isInstanceOf[AgentParticipantId]
-                      && best.forall(_.timestamp.value < m.timestamp.value) => Some(m)
+                      if m.role == MessageRole.Standard
+                        && !m.participantId.isInstanceOf[AgentParticipantId]
+                        && best.forall(_.timestamp.value < m.timestamp.value) => Some(m)
                   case _ => best
                 }
               }
@@ -9527,7 +10070,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               val newIdx = conv.topics.indexWhere(_.id == tc.topicId)
               val previousTopicId = tc.kind match {
                 case TopicChangeKind.Switch(prev) => prev
-                case _                            => tc.topicId
+                case _ => tc.topicId
               }
               if (newIdx < 0 || previousTopicId == tc.topicId) Task.unit
               else {
@@ -9537,12 +10080,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 }.toList
                 affected.foreach(id => stamps.update(id, tc.topicId))
                 affected.foldLeft(Task.unit) { (a, id) =>
-                  a.flatMap(_ => publish(TopicDelta(
-                    target         = id,
-                    conversationId = convId,
-                    topicId        = tc.topicId,
-                    topicIndex     = newIdx
-                  )).unit)
+                  a.flatMap(_ =>
+                    publish(TopicDelta(
+                      target = id,
+                      conversationId = convId,
+                      topicId = tc.topicId,
+                      topicIndex = newIdx
+                    )).unit)
                 }
               }
             }
@@ -9551,8 +10095,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
   }
 
-
-  private final def buildContext(agent: AgentParticipant,
+  final private def buildContext(agent: AgentParticipant,
                                  conv: Conversation,
                                  sinceTimestamp: Timestamp,
                                  claimedId: Id[Event],
@@ -9563,17 +10106,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                  // Sigil #411 — turn-scoped read-tool result cache, threaded onto the TurnContext.
                                  toolResultCacheRef: AtomicReference[Map[String, Vector[sigil.tool.model.ResponseContent]]] =
                                    new AtomicReference(Map.empty),
-                                 healedThisTurn: Option[java.util.concurrent.atomic.AtomicBoolean] = None): Task[(TurnContext, Stream[Event])] =
+                                 healedThisTurn: Option[java.util.concurrent.atomic.AtomicBoolean] =
+                                   None): Task[(TurnContext, Stream[Event])] =
     for {
       triggerEvents <- withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
         all.view
-          .filter(e => e.conversationId == conv._id
-                    && e.timestamp.value > sinceTimestamp.value
-                    && TriggerFilter.isTriggerFor(agent, e)
-                    && visibilityAllows(e.visibility, agent.id))
+          .filter(e =>
+            e.conversationId == conv._id
+              && e.timestamp.value > sinceTimestamp.value
+              && TriggerFilter.isTriggerFor(agent, e)
+              && visibilityAllows(e.visibility, agent.id))
           .toList
       }
-      _ = {
+      _ =
         // Sigil #313 — reset the heal allowance when a fresh user-
         // authored Standard Message drains as a trigger. The agent's
         // claim can survive across multiple user messages (the #307
@@ -9587,13 +10132,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         healedThisTurn.foreach { flag =>
           val freshUserTurn = triggerEvents.exists {
             case m: Message
-              if m.role == MessageRole.Standard
-              && !m.participantId.isInstanceOf[AgentParticipantId] => true
+                if m.role == MessageRole.Standard
+                  && !m.participantId.isInstanceOf[AgentParticipantId] => true
             case _ => false
           }
           if (freshUserTurn) flag.set(false)
         }
-      }
       chain = buildChain(triggerEvents, agent)
       // Sigil bug #205 — resolve the actually-routed model up-front so
       // the curator's budget gate sees the right context window. The
@@ -9608,42 +10152,44 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // Cache miss throws UnregisteredModelException at the boundary
       // (instead of silently falling through per-fact defaults later).
       routedModel = cache.find(routedModelId).getOrElse(
-                      throw new sigil.provider.UnregisteredModelException(routedModelId, cache.all.map(_._id))
-                    )
-      input         <- curate(conv._id, routedModelId, chain)
+        throw new sigil.provider.UnregisteredModelException(routedModelId, cache.all.map(_._id))
+      )
+      input <- curate(conv._id, routedModelId, chain)
       // Space-scoped always-on skills are injected HERE — after the
       // curator, at the framework-owned choke point every agent turn
       // passes through — so custom curators and apps that suppress
       // `find_capability` still get per-space baseline context with no
       // wiring, and skill edits apply on the very next iteration.
-      alwaysOn      <- alwaysOnSkillsFor(conv)
+      alwaysOn <- alwaysOnSkillsFor(conv)
     } yield {
       val triggers: Stream[Event] = Stream.emits(triggerEvents)
       val ctx = TurnContext(
-        sigil               = this,
-        chain               = chain,
-        conversation        = conv,
-        turnInput           = input.copy(alwaysOnSkills = alwaysOn),
-        model               = routedModel,
+        sigil = this,
+        chain = chain,
+        conversation = conv,
+        turnInput = input.copy(alwaysOnSkills = alwaysOn),
+        model = routedModel,
         currentAgentStateId = Some(claimedId),
-        turnStartedAt       = Some(claimedTimestamp),
-        isGreeting          = isGreeting,
+        turnStartedAt = Some(claimedTimestamp),
+        isGreeting = isGreeting,
         discoveredCapabilitiesRef = discoveredCapabilitiesRef,
         toolResultCacheRef = toolResultCacheRef
       )
       (ctx, triggers)
     }
 
-  /** Sigil bug #205 — resolve the model id this turn will route to,
-    * before [[curate]] runs. Delegates to the shared [[resolveRouting]]
-    * helper (same logic `runAgentTurn` uses), but passes a stub
-    * TurnContext for the classifier callbacks since the full one (with
-    * curated turnInput) isn't yet available.
-    *
-    * `classifyForRoute` memoizes on the user message id, so the
-    * duplicate classifier call inside `runAgentTurn` later in the turn
-    * hits the cache and adds no LLM round-trip cost. */
-  private final def resolveRoutedModelId(agent: AgentParticipant,
+  /**
+   * Sigil bug #205 — resolve the model id this turn will route to,
+   * before [[curate]] runs. Delegates to the shared [[resolveRouting]]
+   * helper (same logic `runAgentTurn` uses), but passes a stub
+   * TurnContext for the classifier callbacks since the full one (with
+   * curated turnInput) isn't yet available.
+   *
+   * `classifyForRoute` memoizes on the user message id, so the
+   * duplicate classifier call inside `runAgentTurn` later in the turn
+   * hits the cache and adds no LLM round-trip cost.
+   */
+  final private def resolveRoutedModelId(agent: AgentParticipant,
                                          conv: Conversation,
                                          chain: List[ParticipantId],
                                          claimedId: Id[Event]): Task[Id[Model]] = {
@@ -9661,55 +10207,61 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       throw new sigil.provider.UnregisteredModelException(agent.modelId, cache.all.map(_._id))
     )
     val stubCtx = TurnContext(
-      sigil               = this,
-      chain               = chain,
-      conversation        = conv,
-      turnInput           = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = conv._id)),
-      model               = nominalModel,
+      sigil = this,
+      chain = chain,
+      conversation = conv,
+      turnInput = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = conv._id)),
+      model = nominalModel,
       currentAgentStateId = Some(claimedId)
     )
     resolveRouting(agent, conv, stubCtx).map(_.modelId)
   }
 
-  private final def newTriggersExist(agent: AgentParticipant,
+  final private def newTriggersExist(agent: AgentParticipant,
                                      conv: Conversation,
                                      sinceTimestamp: Timestamp): Task[Boolean] =
     withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
-      all.exists(e => e.conversationId == conv._id
-                   && e.timestamp.value > sinceTimestamp.value
-                   && TriggerFilter.isTriggerFor(agent, e))
+      all.exists(e =>
+        e.conversationId == conv._id
+          && e.timestamp.value > sinceTimestamp.value
+          && TriggerFilter.isTriggerFor(agent, e))
     }
 
-  /** Like [[newTriggersExist]] but only counts triggers authored by
-    * someone OTHER than the running agent. Used after a turn the agent
-    * ended with a user-visible terminal tool: the turn's own emitted
-    * events (the reply `Message`, the terminal tool's `ToolResults`)
-    * must not keep the loop alive — only a genuine external message
-    * that landed mid-turn should. */
-  private final def externalTriggersExist(agent: AgentParticipant,
+  /**
+   * Like [[newTriggersExist]] but only counts triggers authored by
+   * someone OTHER than the running agent. Used after a turn the agent
+   * ended with a user-visible terminal tool: the turn's own emitted
+   * events (the reply `Message`, the terminal tool's `ToolResults`)
+   * must not keep the loop alive — only a genuine external message
+   * that landed mid-turn should.
+   */
+  final private def externalTriggersExist(agent: AgentParticipant,
                                           conv: Conversation,
                                           sinceTimestamp: Timestamp): Task[Boolean] =
     withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
-      all.exists(e => e.conversationId == conv._id
-                   && e.timestamp.value > sinceTimestamp.value
-                   // A detached tool's completion trigger is agent-
-                   // attributed (the agent made the call) but is
-                   // genuinely EXTERNAL work arriving — without this, a
-                   // completion landing mid-turn evaporates with the
-                   // turn and the agent never sees the result.
-                   && (e.participantId != agent.id
-                       || e.source.contains(sigil.orchestrator.Orchestrator.DetachedContinuationSource))
-                   && TriggerFilter.isTriggerFor(agent, e))
+      all.exists(e =>
+        e.conversationId == conv._id
+          && e.timestamp.value > sinceTimestamp.value
+          // A detached tool's completion trigger is agent-
+          // attributed (the agent made the call) but is
+          // genuinely EXTERNAL work arriving — without this, a
+          // completion landing mid-turn evaporates with the
+          // turn and the agent never sees the result.
+          && (e.participantId != agent.id
+            || e.source.contains(sigil.orchestrator.Orchestrator.DetachedContinuationSource))
+          && TriggerFilter.isTriggerFor(agent, e))
     }
 
-  private final def buildChain(triggers: List[Event], agent: AgentParticipant): List[ParticipantId] = {
+  final private def buildChain(triggers: List[Event], agent: AgentParticipant): List[ParticipantId] = {
     val source = triggers.find(_.participantId != agent.id).map(_.participantId)
     source.toList :+ agent.id
   }
 
-  /** Stable per-(agent, conversation) id used as both the AgentState key and
-    * the lock-acquisition target inside `tx.modify`. */
-  private final def agentStateLockId(agentId: AgentParticipantId, convId: Id[Conversation]): Id[Event] =
+  /**
+   * Stable per-(agent, conversation) id used as both the AgentState key and
+   * the lock-acquisition target inside `tx.modify`.
+   */
+  final private def agentStateLockId(agentId: AgentParticipantId, convId: Id[Conversation]): Id[Event] =
     Id(s"agentlock:${agentId.value}:${convId.value}")
 
   // -- lifecycle --
@@ -9753,8 +10305,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // dispatchers despite the leaf register call succeeding.
       _ = SpaceId.register((RW.static(GlobalSpace) :: spaceIds).distinct*)
       _ = sigil.tool.ToolKind.register(
-            (RW.static(sigil.tool.BuiltinKind) :: toolKindRegistrations).distinct*
-          )
+        (RW.static(sigil.tool.BuiltinKind) :: toolKindRegistrations).distinct*
+      )
       _ = ParticipantId.register((summon[RW[sigil.participant.WorkerParticipantId]] :: participantIds).distinctBy(_.definition.className)*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
       _ = sigil.provider.WorkType.register(workTypes.map(w => RW.static(w))*)
@@ -9763,8 +10315,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // and the `ConversationStatusChanged` notice), so registers here before
       // the aggregate Signal registration below walks the notice definitions.
       _ = sigil.conversation.ConversationStatus.register(
-            (RW.static(sigil.conversation.ConversationStatus.Open) :: conversationStatusRegistrations).distinct*
-          )
+        (RW.static(sigil.conversation.ConversationStatus.Open) :: conversationStatusRegistrations).distinct*
+      )
       // Mixin hook — runs AFTER the framework leaf polytypes (SpaceId,
       // ParticipantId, Mode, WorkType, …) register but BEFORE any aggregate
       // that walks tool / participant / signal Definitions. A mixin polytype
@@ -9801,21 +10353,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // leaf — so drop it here (no concrete leaf is named `ToolOutput`).
       baseToolOutputClassName = summon[RW[sigil.tool.ToolOutput]].definition.className
       _ = sigil.tool.ToolOutput.register(
-            (sigil.tool.ToolOutput.frameworkOutputRWs ++ staticOutputRWs ++ toolOutputRegistrations)
-              .filterNot(_.definition.className == baseToolOutputClassName)
-              .distinctBy(_.definition.className)*
-          )
+        (sigil.tool.ToolOutput.frameworkOutputRWs ++ staticOutputRWs ++ toolOutputRegistrations)
+          .filterNot(_.definition.className == baseToolOutputClassName)
+          .distinctBy(_.definition.className)*
+      )
       _ = sigil.viewer.ViewerStatePayload.register(viewerStatePayloadRegistrations.distinct*)
       // Heal-pipeline polytypes. The framework-shipped CorruptionEvidence
       // subtypes are registered here; apps with their own evidence
       // shapes register through `corruptionEvidenceRegistrations`.
       _ = sigil.heal.CorruptionEvidence.register(
-            (List[RW[? <: sigil.heal.CorruptionEvidence]](
-              summon[RW[sigil.heal.CorruptionEvidence.MissingToolResult]],
-              summon[RW[sigil.heal.CorruptionEvidence.DanglingToolResultOrigin]],
-              summon[RW[sigil.heal.CorruptionEvidence.OrphanSummaryCoverage]]
-            ) ++ corruptionEvidenceRegistrations).distinct*
-          )
+        (List[RW[? <: sigil.heal.CorruptionEvidence]](
+          summon[RW[sigil.heal.CorruptionEvidence.MissingToolResult]],
+          summon[RW[sigil.heal.CorruptionEvidence.DanglingToolResultOrigin]],
+          summon[RW[sigil.heal.CorruptionEvidence.OrphanSummaryCoverage]]
+        ) ++ corruptionEvidenceRegistrations).distinct*
+      )
       // Aggregates after leaves + mixins.
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
@@ -9824,18 +10376,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     } yield ()
   }.singleton
 
-  /** True once [[instance]]'s task body has begun executing — used by
-    * [[shutdown]] to skip DB-dispose when no instance was ever
-    * constructed (e.g. codegen-only paths that ran
-    * `polymorphicRegistrations` without opening the store). */
+  /**
+   * True once [[instance]]'s task body has begun executing — used by
+   * [[shutdown]] to skip DB-dispose when no instance was ever
+   * constructed (e.g. codegen-only paths that ran
+   * `polymorphicRegistrations` without opening the store).
+   */
   private val instanceStarted: java.util.concurrent.atomic.AtomicBoolean =
     new java.util.concurrent.atomic.AtomicBoolean(false)
 
-  /** Synchronous handle to the fully-constructed [[SigilInstance]],
-    * set once [[instance]]'s task body completes. Lets hot-path
-    * helpers (notably [[eventsFor]]'s batched-scope snapshot) reach
-    * the live `DB` without re-running the `instance` task or
-    * blocking on its singleton. `None` until the store is open. */
+  /**
+   * Synchronous handle to the fully-constructed [[SigilInstance]],
+   * set once [[instance]]'s task body completes. Lets hot-path
+   * helpers (notably [[eventsFor]]'s batched-scope snapshot) reach
+   * the live `DB` without re-running the `instance` task or
+   * blocking on its singleton. `None` until the store is open.
+   */
   private[sigil] val startedInstance: java.util.concurrent.atomic.AtomicReference[Option[SigilInstance]] =
     new java.util.concurrent.atomic.AtomicReference[Option[SigilInstance]](None)
 
@@ -9884,47 +10440,51 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _ <- db.init
       _ <- reconcileStaleActiveEvents(db)
       _ <- if (vectorWired) vectorIndex.ensureCollection(embeddingProvider.dimensions)
-           else Task.unit
+      else Task.unit
       _ <- loadAndRefreshModels(db)
       _ <- validateModeSkillSizes()
       _ <- startExpiredMemorySweep()
       _ <- startMaintenanceTasks()
       inst = SigilInstance(
-               config = config,
-               db = db
-             )
+        config = config,
+        db = db
+      )
       _ = startedInstance.set(Some(inst))
     } yield inst
   }.singleton
 
-  /** Sigil bug #172 — at every boot, reconcile any `Event` left at
-    * `state = Active` in `db.events`. A process exit mid-turn (crash,
-    * OOM, SIGKILL, container eviction) strands the in-flight event:
-    * UIs render Messages stuck Active as forever-loading bubbles;
-    * ToolInvokes left Active block subsequent agent logic that
-    * checks "is the agent busy?".
-    *
-    * Bug #171 fixed the in-flight orphan case forward (parse-failure
-    * settle). This is the catch-up for orphans from prior process
-    * exits AND for future hard-crash orphans that bypass #171's
-    * reconciliation point.
-    *
-    * Reconciliation rules:
-    *   - `Message` → state Complete, disposition Failure(recoverable
-    *     = false) with an ErrorContext explaining "stale from prior
-    *     session". Content preserved (whatever partial streamed text
-    *     was persisted) so the user can see what was lost.
-    *   - `AgentState` → state Complete AND activity Idle, so the agent's
-    *     stranded turn lock settles to a true terminal and UIs keying the
-    *     busy indicator off `activity` don't stay stuck "thinking" (#399).
-    *   - All other Event types → state Complete via `.withState`.
-    *
-    * Runs synchronously before WS / Notice ingress opens (placed
-    * between `db.init` and the model-refresh / maintenance-task
-    * fibers), so there are no live subscribers to confuse with the
-    * recovery writes. One bulk transaction per bug #170's pattern. */
-  /** Test-only hook to trigger boot-time reconciliation against the
-    * already-opened DB without re-creating the Sigil instance. */
+  /**
+   * Sigil bug #172 — at every boot, reconcile any `Event` left at
+   * `state = Active` in `db.events`. A process exit mid-turn (crash,
+   * OOM, SIGKILL, container eviction) strands the in-flight event:
+   * UIs render Messages stuck Active as forever-loading bubbles;
+   * ToolInvokes left Active block subsequent agent logic that
+   * checks "is the agent busy?".
+   *
+   * Bug #171 fixed the in-flight orphan case forward (parse-failure
+   * settle). This is the catch-up for orphans from prior process
+   * exits AND for future hard-crash orphans that bypass #171's
+   * reconciliation point.
+   *
+   * Reconciliation rules:
+   *   - `Message` → state Complete, disposition Failure(recoverable
+   *     = false) with an ErrorContext explaining "stale from prior
+   *     session". Content preserved (whatever partial streamed text
+   *     was persisted) so the user can see what was lost.
+   *   - `AgentState` → state Complete AND activity Idle, so the agent's
+   *     stranded turn lock settles to a true terminal and UIs keying the
+   *     busy indicator off `activity` don't stay stuck "thinking" (#399).
+   *   - All other Event types → state Complete via `.withState`.
+   *
+   * Runs synchronously before WS / Notice ingress opens (placed
+   * between `db.init` and the model-refresh / maintenance-task
+   * fibers), so there are no live subscribers to confuse with the
+   * recovery writes. One bulk transaction per bug #170's pattern.
+   */
+  /**
+   * Test-only hook to trigger boot-time reconciliation against the
+   * already-opened DB without re-creating the Sigil instance.
+   */
   protected[sigil] def runStaleActiveReconciliationTask: Task[Unit] =
     withDB(db => reconcileStaleActiveEvents(db))
 
@@ -9965,28 +10525,32 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     }
 
-  /** Per-mode share of the smallest registered model's context window
-    * a Mode's bundled skill content is allowed to consume. Default
-    * 10% — a mode skill that exceeds this at startup fails the
-    * `Sigil.instance` task with `IllegalStateException` so the app
-    * can't ship a configuration that pre-emptively crowds the budget.
-    * Distinct from [[pinnedShareLimit]]: mode skills are app-shipped
-    * config (a config bug should fail-loud at startup); pinned
-    * memories are runtime-authored (a soft warning fits better there). */
+  /**
+   * Per-mode share of the smallest registered model's context window
+   * a Mode's bundled skill content is allowed to consume. Default
+   * 10% — a mode skill that exceeds this at startup fails the
+   * `Sigil.instance` task with `IllegalStateException` so the app
+   * can't ship a configuration that pre-emptively crowds the budget.
+   * Distinct from [[pinnedShareLimit]]: mode skills are app-shipped
+   * config (a config bug should fail-loud at startup); pinned
+   * memories are runtime-authored (a soft warning fits better there).
+   */
   def modeSkillShareLimit: Double = 0.10
 
-  /** Validate that every registered Mode's bundled skill content (if
-    * any) fits under [[modeSkillShareLimit]] × largest-model-context.
-    * Modes share `SkillSource.Mode` slot; one per active mode. Apps
-    * with intentionally large skills override [[modeSkillShareLimit]]
-    * or skip the validation by overriding this method.
-    *
-    * Basis is the LARGEST registered model — complexity-routed setups
-    * register a small local model for `Complexity.Low` traffic that
-    * by design won't run the modes whose skills this validator gates.
-    * The skills always render against a frontier model with ample
-    * headroom; the validator should pessimise against the AGENT's
-    * configured ceiling rather than the cost-tier floor. */
+  /**
+   * Validate that every registered Mode's bundled skill content (if
+   * any) fits under [[modeSkillShareLimit]] × largest-model-context.
+   * Modes share `SkillSource.Mode` slot; one per active mode. Apps
+   * with intentionally large skills override [[modeSkillShareLimit]]
+   * or skip the validation by overriding this method.
+   *
+   * Basis is the LARGEST registered model — complexity-routed setups
+   * register a small local model for `Complexity.Low` traffic that
+   * by design won't run the modes whose skills this validator gates.
+   * The skills always render against a frontier model with ample
+   * headroom; the validator should pessimise against the AGENT's
+   * configured ceiling rather than the cost-tier floor.
+   */
   protected def validateModeSkillSizes(): Task[Unit] = Task {
     sigil.conversation.CoreContextValidator.largestModelContext(this) match {
       case None => () // no models registered → can't validate
@@ -9997,7 +10561,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         if (violations.nonEmpty) {
           val msg = violations.map { case (mode, slot) =>
             val tokens = sigil.tokenize.HeuristicTokenizer.count(slot.content)
-            s"mode '${mode.name}' skill '${slot.name}' is ${tokens} tok (limit ${limit})"
+            s"mode '${mode.name}' skill '${slot.name}' is $tokens tok (limit $limit)"
           }.mkString("; ")
           throw new IllegalStateException(
             s"Mode skill content exceeds modeSkillShareLimit (${(modeSkillShareLimit * 100).toInt}%): $msg. " +
@@ -10031,23 +10595,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private def loadAndRefreshModels(db: DB): Task[Unit] =
     if (!loadOpenRouterModels) Task.unit
     else for {
-      stored      <- db.models.get()
-      _           <- if (stored.list.nonEmpty) cache.replace(stored.list) else Task.unit
-      isFresh     = stored.list.nonEmpty &&
-                      (Timestamp().value - stored.refreshed.value) < modelRefreshInterval.toMillis
-      _           <- if (isFresh) Task.unit else blockingRefresh(db, hadPriorCache = stored.list.nonEmpty)
+      stored <- db.models.get()
+      _ <- if (stored.list.nonEmpty) cache.replace(stored.list) else Task.unit
+      isFresh = stored.list.nonEmpty &&
+        (Timestamp().value - stored.refreshed.value) < modelRefreshInterval.toMillis
+      _ <- if (isFresh) Task.unit else blockingRefresh(db, hadPriorCache = stored.list.nonEmpty)
       // Re-read after the (possibly-just-run) blocking refresh so the
       // schedule's first sleep aligns with the latest stamp.
-      latest      <- db.models.get()
-      _           <- scheduleNextRefresh(db, latest.refreshed)
+      latest <- db.models.get()
+      _ <- scheduleNextRefresh(db, latest.refreshed)
     } yield ()
 
-  /** One-shot blocking refresh from OpenRouter. Delegates to the
-    * boot-safe (sigil, db) overload of [[OpenRouter.refreshModels]] so
-    * the boot fiber doesn't re-enter [[withDB]] — that would await the
-    * in-flight `Sigil.instance.singleton` against itself and deadlock
-    * (sigil bug #281). Post-boot callers use the public 1-arg overload
-    * which resolves the db via `withDB` normally. */
+  /**
+   * One-shot blocking refresh from OpenRouter. Delegates to the
+   * boot-safe (sigil, db) overload of [[OpenRouter.refreshModels]] so
+   * the boot fiber doesn't re-enter [[withDB]] — that would await the
+   * in-flight `Sigil.instance.singleton` against itself and deadlock
+   * (sigil bug #281). Post-boot callers use the public 1-arg overload
+   * which resolves the db via `withDB` normally.
+   */
   private def blockingRefresh(db: DB, hadPriorCache: Boolean): Task[Unit] =
     OpenRouter.refreshModels(this, db).handleError { e =>
       if (hadPriorCache)
@@ -10061,9 +10627,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         ))
     }
 
-  /** Schedule the next refresh at `lastRefreshed + interval`, then
-    * loop every interval after. Floors the initial delay at 1 minute
-    * so a clock skew or a stamp-just-now case doesn't fire instantly. */
+  /**
+   * Schedule the next refresh at `lastRefreshed + interval`, then
+   * loop every interval after. Floors the initial delay at 1 minute
+   * so a clock skew or a stamp-just-now case doesn't fire instantly.
+   */
   private def scheduleNextRefresh(db: DB, lastRefreshed: Timestamp): Task[Unit] = Task {
     val elapsedMs = Timestamp().value - lastRefreshed.value
     val initialDelayMs = math.max(60_000L, modelRefreshInterval.toMillis - elapsedMs)
@@ -10147,26 +10715,32 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       sigil.maintenance.OrphanStagingConversationSweep(orphanStagingSweepInterval, orphanStagingCutoff)
     )
 
-  /** Cadence for [[sigil.maintenance.OrphanStagingConversationSweep]] —
-    * how often the framework reaps abandoned staging conversations
-    * left behind by crashed / killed import workflows. Default: 1
-    * hour. */
+  /**
+   * Cadence for [[sigil.maintenance.OrphanStagingConversationSweep]] —
+   * how often the framework reaps abandoned staging conversations
+   * left behind by crashed / killed import workflows. Default: 1
+   * hour.
+   */
   def orphanStagingSweepInterval: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(1).hour
 
-  /** Age threshold a staging conversation must exceed before the
-    * orphan sweep deletes it. Generous default (24h) so legit
-    * long-running imports finish without false-reaping; apps
-    * running unusually long imports override. */
+  /**
+   * Age threshold a staging conversation must exceed before the
+   * orphan sweep deletes it. Generous default (24h) so legit
+   * long-running imports finish without false-reaping; apps
+   * running unusually long imports override.
+   */
   def orphanStagingCutoff: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(24).hours
 
-  /** Cadence for [[sigil.maintenance.StoredFileExpirationSweep]] —
-    * how often the framework reclaims expired
-    * [[sigil.storage.StoredFile]] records (TTL'd user attachments
-    * and externalized message-content blocks past their retention
-    * window). Default: 1 hour. Apps with stricter retention or
-    * larger volumes override. */
+  /**
+   * Cadence for [[sigil.maintenance.StoredFileExpirationSweep]] —
+   * how often the framework reclaims expired
+   * [[sigil.storage.StoredFile]] records (TTL'd user attachments
+   * and externalized message-content blocks past their retention
+   * window). Default: 1 hour. Apps with stricter retention or
+   * larger volumes override.
+   */
   def storedFileExpirationInterval: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(1).hour
 
@@ -10184,24 +10758,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // lands in the range match). `from = None` means "no lower
       // bound" so any expiresAt up to `now` is in scope.
       tx.query
-        .filter(_ => lightdb.filter.Filter.RangeLong[ContextMemory](
-          fieldName = ContextMemory.expiresAtValue.name,
-          from = None,
-          to = Some(now.value)
-        ))
+        .filter(_ =>
+          lightdb.filter.Filter.RangeLong[ContextMemory](
+            fieldName = ContextMemory.expiresAtValue.name,
+            from = None,
+            to = Some(now.value)
+          ))
         .toList
         .flatMap { expired =>
           Task.sequence(expired.map(m => forgetMemoryById(m._id))).map(_ => expired.size)
         }
     })
 
-  /** Hard-delete a memory by id. Removes the row from the store AND
-    * the corresponding vector-index point (when wired). Used by the
-    * expired-memory sweep; apps can call directly for ad-hoc deletes. */
+  /**
+   * Hard-delete a memory by id. Removes the row from the store AND
+   * the corresponding vector-index point (when wired). Used by the
+   * expired-memory sweep; apps can call directly for ad-hoc deletes.
+   */
   def forgetMemoryById(id: Id[ContextMemory]): Task[Boolean] =
     withDB(_.memories.transaction { tx =>
       tx.get(id).flatMap {
-        case None    => Task.pure(false)
+        case None => Task.pure(false)
         case Some(_) => tx.delete(id).map(_ => true)
       }
     }).flatMap { removed =>
@@ -10211,18 +10788,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     }
 
-  /** Resolve the [[DB]] and run `f` against it. Backed by
-    * `Sigil.instance.flatMap` so callers don't have to think about
-    * initialization timing — `withDB` waits if the instance hasn't
-    * fully booted yet.
-    *
-    * **Don't call from inside `Sigil.instance`'s init for-comp.** The
-    * `instance` task is `.singleton`-memoised; `withDB` re-entering
-    * during init awaits the in-flight resolution against itself and
-    * deadlocks silently (sigil bug #281). Boot-path code receives the
-    * `db` as a parameter — pass it through directly. See
-    * [[OpenRouter.refreshModels]]'s `(sigil, db)` overload for the
-    * canonical pattern. */
+  /**
+   * Resolve the [[DB]] and run `f` against it. Backed by
+   * `Sigil.instance.flatMap` so callers don't have to think about
+   * initialization timing — `withDB` waits if the instance hasn't
+   * fully booted yet.
+   *
+   * **Don't call from inside `Sigil.instance`'s init for-comp.** The
+   * `instance` task is `.singleton`-memoised; `withDB` re-entering
+   * during init awaits the in-flight resolution against itself and
+   * deadlocks silently (sigil bug #281). Boot-path code receives the
+   * `db` as a parameter — pass it through directly. See
+   * [[OpenRouter.refreshModels]]'s `(sigil, db)` overload for the
+   * canonical pattern.
+   */
   def withDB[Return](f: DB => Task[Return]): Task[Return] = instance.flatMap(sigil => f(sigil.db))
 
   // -- active tasks --
@@ -10255,11 +10834,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     }
 
-  /** Project a worker sub-conversation into a [[sigil.conversation.ConversationTask]],
-    * reading the worker agent's live [[AgentState]] to mark it
-    * Running (mid-turn) vs Waiting (yielded). `None` when the
-    * conversation carries no worker agent. */
-  protected final def workerTaskFor(conv: Conversation): Task[Option[sigil.conversation.ConversationTask]] =
+  /**
+   * Project a worker sub-conversation into a [[sigil.conversation.ConversationTask]],
+   * reading the worker agent's live [[AgentState]] to mark it
+   * Running (mid-turn) vs Waiting (yielded). `None` when the
+   * conversation carries no worker agent.
+   */
+  final protected def workerTaskFor(conv: Conversation): Task[Option[sigil.conversation.ConversationTask]] =
     conv.participants.collectFirst {
       case a: AgentParticipant if a.id.isInstanceOf[sigil.participant.WorkerParticipantId] => a.id
     } match {
@@ -10268,7 +10849,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         withDB(_.events.transaction(_.get(agentStateLockId(workerId, conv._id)))).map { st =>
           val active = st.exists {
             case s: AgentState => s.state == EventState.Active
-            case _             => false
+            case _ => false
           }
           Some(sigil.conversation.ConversationTask.fromWorkerConversation(conv, active))
         }
@@ -10406,13 +10987,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   protected def onShutdown: Task[Unit] = Task.unit
 
-  /** Cancellation flag observed by background fibers (model refresh,
-    * MCP reaper, etc.). Set by [[shutdown]]. */
+  /**
+   * Cancellation flag observed by background fibers (model refresh,
+   * MCP reaper, etc.). Set by [[shutdown]].
+   */
   private val shutdownRequested: java.util.concurrent.atomic.AtomicBoolean =
     new java.util.concurrent.atomic.AtomicBoolean(false)
 
-  /** Test hook for background fibers — `true` once [[shutdown]] has
-    * been called. Apps don't usually consult this directly. */
+  /**
+   * Test hook for background fibers — `true` once [[shutdown]] has
+   * been called. Apps don't usually consult this directly.
+   */
   def isShutdown: Boolean = shutdownRequested.get()
 
   /**
@@ -10492,12 +11077,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case _ => true
     }
 
-  /** Sigil #393 — max bytes to fetch for an external image before giving up
-    * (the original, pre-downscale). Beyond this the image is dropped with a
-    * warn rather than buffering an unbounded body. */
+  /**
+   * Sigil #393 — max bytes to fetch for an external image before giving up
+   * (the original, pre-downscale). Beyond this the image is dropped with a
+   * warn rather than buffering an unbounded body.
+   */
   protected def maxExternalImageFetchBytes: Long = 25L * 1024 * 1024
 
-  /** Sigil #393 — timeout for fetching an external image URL. */
+  /**
+   * Sigil #393 — timeout for fetching an external image URL.
+   */
   protected def externalImageFetchTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.FiniteDuration(15, "seconds")
 
@@ -10567,39 +11156,47 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
 object Sigil {
 
-  /** Sigil #410 — known LLM-vendor support/help URLs & domains whose presence
-    * in a raw provider error would leak which backend an app uses. Matched with
-    * any leading subdomain, an optional `http(s)://` scheme, and an optional
-    * path, case-insensitively; the default [[Sigil.sanitizeProviderError]]
-    * replaces each match with a neutral phrase. Covers the vendors sigil ships
-    * providers for; apps needing more scrub the rest via the hook. */
+  /**
+   * Sigil #410 — known LLM-vendor support/help URLs & domains whose presence
+   * in a raw provider error would leak which backend an app uses. Matched with
+   * any leading subdomain, an optional `http(s)://` scheme, and an optional
+   * path, case-insensitively; the default [[Sigil.sanitizeProviderError]]
+   * replaces each match with a neutral phrase. Covers the vendors sigil ships
+   * providers for; apps needing more scrub the rest via the hook.
+   */
   private[sigil] val vendorSupportUrlPattern: scala.util.matching.Regex =
     ("(?i)\\b(?:https?://)?(?:[a-z0-9-]+\\.)*" +
       "(?:openai\\.com|anthropic\\.com|deepseek\\.com|deepinfra\\.com|mistral\\.ai|" +
       "x\\.ai|googleapis\\.com|cloudflare\\.com|digitalocean\\.com)" +
       "(?:/[^\\s)\"']*)?").r
 
-  /** Sigil #376 — an [[AgentRunawayException]] is a STALL terminal (the
-    * agent hit the iteration cap or a progress-checkpoint stall and the
-    * forced-synthesis recovery still failed), not a crash. Its failure
-    * Message is published `recoverable` so a follow-up user message
-    * re-engages the agent instead of dead-ending the conversation;
-    * genuine crashes (tool throws, projection failures, transform
-    * blow-ups, …) stay non-recoverable. */
+  /**
+   * Sigil #376 — an [[AgentRunawayException]] is a STALL terminal (the
+   * agent hit the iteration cap or a progress-checkpoint stall and the
+   * forced-synthesis recovery still failed), not a crash. Its failure
+   * Message is published `recoverable` so a follow-up user message
+   * re-engages the agent instead of dead-ending the conversation;
+   * genuine crashes (tool throws, projection failures, transform
+   * blow-ups, …) stay non-recoverable.
+   */
   def isStallFailure(t: Throwable): Boolean = t.isInstanceOf[AgentRunawayException]
 
-  /** Sigil #378 — `record_consent` is a no-op unless some tool in scope
-    * sets `requiresUserConsent`. Keep it in the per-turn roster only when
-    * a consent-gated tool is actually present (injecting it if absent),
-    * and drop it otherwise — so on apps with no consent-gated tools it's
-    * never a dead-end attractor the model loops on. It stays
-    * DB-registered (resolvable) regardless; this only governs the
-    * per-turn roster surfaced to the model. */
-  /** Sigil #380 — decode tool rows from the store leniently: a row whose
-    * poly type is no longer registered (a removed tool) is skipped rather
-    * than throwing "Type not found" and failing the whole read. So removing
-    * a tool is never DB-corrupting on read. Mirrors the orphan-tolerant
-    * read in [[sigil.tool.StaticToolSyncUpgrade]]. */
+  /**
+   * Sigil #378 — `record_consent` is a no-op unless some tool in scope
+   * sets `requiresUserConsent`. Keep it in the per-turn roster only when
+   * a consent-gated tool is actually present (injecting it if absent),
+   * and drop it otherwise — so on apps with no consent-gated tools it's
+   * never a dead-end attractor the model loops on. It stays
+   * DB-registered (resolvable) regardless; this only governs the
+   * per-turn roster surfaced to the model.
+   */
+  /**
+   * Sigil #380 — decode tool rows from the store leniently: a row whose
+   * poly type is no longer registered (a removed tool) is skipped rather
+   * than throwing "Type not found" and failing the whole read. So removing
+   * a tool is never DB-corrupting on read. Mirrors the orphan-tolerant
+   * read in [[sigil.tool.StaticToolSyncUpgrade]].
+   */
   def decodeToolsLeniently(rows: List[fabric.Json]): List[sigil.tool.Tool] = {
     val toolRW = summon[RW[sigil.tool.Tool]]
     rows.flatMap(json => scala.util.Try(json.as[sigil.tool.Tool](using toolRW)).toOption)
@@ -10613,43 +11210,47 @@ object Sigil {
     } else tools.filterNot(_.schema.name == consent.schema.name)
   }
 
-  /** Sigil #290 — USD cost of a settled provider call from its
-    * [[TokenUsage]] and the model's [[sigil.db.ModelPricing]].
-    *
-    * `usage.promptTokens` is the SUM of every billed input token —
-    * fresh + cache writes + cache reads — per the [[TokenUsage]]
-    * "cache fields are subsets" contract. This method breaks the
-    * sum apart and applies each rate independently:
-    *
-    *   - fresh  =  promptTokens − cacheReadTokens − cacheCreationTokens
-    *   - reads  ×  inputCacheRead  (fallback `prompt × 0.10` — Anthropic's
-    *                                documented cache-hit discount)
-    *   - writes ×  inputCacheWrite (fallback `prompt × 1.25` — Anthropic's
-    *                                documented cache-creation premium)
-    *   - completion × output tokens
-    *
-    * Providers without prompt caching (LlamaCpp etc.) report both
-    * cache fields as `0` so the fallback multipliers never apply
-    * and the math collapses to the prior fresh-only formula.
-    *
-    * Pre-fix (Sigil #290), the cost site used
-    * `prompt × promptTokens + completion × completionTokens` only,
-    * which silently dropped the cache buckets on Anthropic — a
-    * 50K-token cached prefix would shave ~99% of the input billing
-    * off the surfaced number. */
+  /**
+   * Sigil #290 — USD cost of a settled provider call from its
+   * [[TokenUsage]] and the model's [[sigil.db.ModelPricing]].
+   *
+   * `usage.promptTokens` is the SUM of every billed input token —
+   * fresh + cache writes + cache reads — per the [[TokenUsage]]
+   * "cache fields are subsets" contract. This method breaks the
+   * sum apart and applies each rate independently:
+   *
+   *   - fresh  =  promptTokens − cacheReadTokens − cacheCreationTokens
+   *   - reads  ×  inputCacheRead  (fallback `prompt × 0.10` — Anthropic's
+   *                                documented cache-hit discount)
+   *   - writes ×  inputCacheWrite (fallback `prompt × 1.25` — Anthropic's
+   *                                documented cache-creation premium)
+   *   - completion × output tokens
+   *
+   * Providers without prompt caching (LlamaCpp etc.) report both
+   * cache fields as `0` so the fallback multipliers never apply
+   * and the math collapses to the prior fresh-only formula.
+   *
+   * Pre-fix (Sigil #290), the cost site used
+   * `prompt × promptTokens + completion × completionTokens` only,
+   * which silently dropped the cache buckets on Anthropic — a
+   * 50K-token cached prefix would shave ~99% of the input billing
+   * off the surfaced number.
+   */
   def costFor(pricing: sigil.db.ModelPricing, usage: sigil.provider.TokenUsage): BigDecimal = {
     val freshPrompt = math.max(0, usage.promptTokens - usage.cacheReadTokens - usage.cacheCreationTokens)
-    val cacheReadRate  = pricing.inputCacheRead.getOrElse(pricing.prompt * BigDecimal("0.10"))
+    val cacheReadRate = pricing.inputCacheRead.getOrElse(pricing.prompt * BigDecimal("0.10"))
     val cacheWriteRate = pricing.inputCacheWrite.getOrElse(pricing.prompt * BigDecimal("1.25"))
-    pricing.prompt     * BigDecimal(freshPrompt) +
-      cacheReadRate    * BigDecimal(usage.cacheReadTokens) +
-      cacheWriteRate   * BigDecimal(usage.cacheCreationTokens) +
+    pricing.prompt * BigDecimal(freshPrompt) +
+      cacheReadRate * BigDecimal(usage.cacheReadTokens) +
+      cacheWriteRate * BigDecimal(usage.cacheCreationTokens) +
       pricing.completion * BigDecimal(usage.completionTokens)
   }
 
-  /** Default extraction system prompt for [[Sigil.initializeMemories]].
-    * Apps that want a domain-specific extraction shape (e.g. medical
-    * intake, onboarding survey) override the parameter directly. */
+  /**
+   * Default extraction system prompt for [[Sigil.initializeMemories]].
+   * Apps that want a domain-specific extraction shape (e.g. medical
+   * intake, onboarding survey) override the parameter directly.
+   */
   val DefaultInitializationSystemPrompt: String =
     """You convert a list of declarative user statements into durable memories.
       |
@@ -10666,12 +11267,14 @@ object Sigil {
       |One statement maps to one memory. Do not split, merge, or infer beyond
       |what the statements explicitly say.""".stripMargin
 
-  /** JVM-wide registry of in-flight framework workflows, keyed by
-    * workflow id. `runAsFrameworkWorkflow` puts on Start and
-    * removes on Complete/Failed; `cancelFrameworkWorkflow` reads
-    * from here. Concurrent so multiple turns racing on different
-    * Sigil instances in the same JVM don't corrupt each other.
-    * Bug #51. */
+  /**
+   * JVM-wide registry of in-flight framework workflows, keyed by
+   * workflow id. `runAsFrameworkWorkflow` puts on Start and
+   * removes on Complete/Failed; `cancelFrameworkWorkflow` reads
+   * from here. Concurrent so multiple turns racing on different
+   * Sigil instances in the same JVM don't corrupt each other.
+   * Bug #51.
+   */
   private[sigil] val activeFrameworkWorkflows: java.util.concurrent.ConcurrentHashMap[String, ActiveFrameworkWorkflow] =
     new java.util.concurrent.ConcurrentHashMap()
 }

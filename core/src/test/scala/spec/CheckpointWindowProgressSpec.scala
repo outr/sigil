@@ -69,45 +69,47 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
                          input: Option[sigil.tool.ToolInput] = None,
                          internal: Boolean = false): ToolInvoke =
     ToolInvoke(
-      toolName       = ToolName(name),
-      participantId  = TestAgent,
+      toolName = ToolName(name),
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      timestamp      = Timestamp(at),
-      state          = EventState.Complete,
-      outcome        = outcome,
-      internal       = internal,
-      input          = input
+      topicId = TestTopicEntry.id,
+      timestamp = Timestamp(at),
+      state = EventState.Complete,
+      outcome = outcome,
+      internal = internal,
+      input = input
     )
 
-  /** Seed: objective user message at `base`, `preCount` invokes, a
-    * settled checkpoint, then the supplied window events. */
+  /**
+   * Seed: objective user message at `base`, `preCount` invokes, a
+   * settled checkpoint, then the supplied window events.
+   */
   private def seedConversation(preCount: Int, window: List[Event]): Task[Id[Conversation]] = {
     val convId = Conversation.id(s"ckpt-window-${rapid.Unique()}")
     val base = lightdb.util.Nowish() - 100000L
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val objective = Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      content        = Vector(ResponseContent.Text("Remove all bug references from the code.")),
-      state          = EventState.Complete,
-      timestamp      = Timestamp(base)
+      topicId = TestTopicEntry.id,
+      content = Vector(ResponseContent.Text("Remove all bug references from the code.")),
+      state = EventState.Complete,
+      timestamp = Timestamp(base)
     )
     val pre = (1 to preCount).toList.map(i => seedInvoke(convId, s"pre_tool_$i", base + i * 10))
     val checkpoint = ProgressCheckpoint(
-      participantId        = TestAgent,
-      conversationId       = convId,
-      topicId              = TestTopicEntry.id,
-      iterationCount       = 8,
+      participantId = TestAgent,
+      conversationId = convId,
+      topicId = TestTopicEntry.id,
+      iterationCount = 8,
       prevCheckpointStatus = None,
-      currentStatus        = "swept the references",
-      meaningfulProgress   = true,
-      remainingSteps       = "repair fallout",
-      stuckOn              = None,
-      shouldAskUser        = false,
-      timestamp            = Timestamp(base + 50000L),
-      state                = EventState.Complete
+      currentStatus = "swept the references",
+      meaningfulProgress = true,
+      remainingSteps = "repair fallout",
+      stuckOn = None,
+      shouldAskUser = false,
+      timestamp = Timestamp(base + 50000L),
+      state = EventState.Complete
     )
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
@@ -127,12 +129,13 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
         conv <- seedConversation(preCount = 25, window = Nil).flatMap { cid =>
           val at = windowAt(cid)
           val win = (1 to 5).toList.map(i => seedInvoke(cid, s"window_tool_$i", at + i * 10))
-          TestSigil.withDB(_.eventsTransaction(cid)(tx => win.foldLeft(Task.unit)((a, e) => a.flatMap(_ => tx.upsert(e).unit)))).map(_ => cid)
+          TestSigil.withDB(_.eventsTransaction(cid)(tx => win.foldLeft(Task.unit)((a, e) => a.flatMap(_ => tx.upsert(e).unit)))).map(_ =>
+            cid)
         }
         ctx <- TestSigil.progressContextFor(conv, TestAgent)
       } yield {
         ctx.toolHistory should have size 5
-        ctx.toolHistory.foreach(_ should startWith ("window_tool_"))
+        ctx.toolHistory.foreach(_ should startWith("window_tool_"))
         ctx.toolHistory.exists(_.contains("pre_tool_")) shouldBe false
         ctx.earlierCalls shouldBe 25
       }
@@ -143,12 +146,13 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
         conv <- seedConversation(preCount = 0, window = Nil).flatMap { cid =>
           val at = windowAt(cid)
           val win = (1 to 25).toList.map(i => seedInvoke(cid, s"win_$i", at + i * 10))
-          TestSigil.withDB(_.eventsTransaction(cid)(tx => win.foldLeft(Task.unit)((a, e) => a.flatMap(_ => tx.upsert(e).unit)))).map(_ => cid)
+          TestSigil.withDB(_.eventsTransaction(cid)(tx => win.foldLeft(Task.unit)((a, e) => a.flatMap(_ => tx.upsert(e).unit)))).map(_ =>
+            cid)
         }
         ctx <- TestSigil.progressContextFor(conv, TestAgent)
       } yield {
         ctx.toolHistory should have size 20
-        ctx.toolHistory.last should startWith ("win_25")
+        ctx.toolHistory.last should startWith("win_25")
         ctx.toolHistory.exists(_.startsWith("win_1 ")) shouldBe false
         ctx.earlierCalls shouldBe 5
       }
@@ -159,21 +163,34 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
         conv <- seedConversation(preCount = 0, window = Nil).flatMap { cid =>
           val at = windowAt(cid)
           val win = List(
-            seedInvoke(cid, "respond", at + 10, input = Some(RespondInput(
-              topicLabel = "t", topicSummary = "s",
-              content = "Sweep done; now repairing the fallout.", endsTurn = false))),
-            seedInvoke(cid, "respond", at + 20, input = Some(RespondInput(
-              topicLabel = "t", topicSummary = "s",
-              content = "All repaired.", endsTurn = true)))
+            seedInvoke(
+              cid,
+              "respond",
+              at + 10,
+              input = Some(RespondInput(
+                topicLabel = "t",
+                topicSummary = "s",
+                content = "Sweep done; now repairing the fallout.",
+                endsTurn = false))),
+            seedInvoke(
+              cid,
+              "respond",
+              at + 20,
+              input = Some(RespondInput(
+                topicLabel = "t",
+                topicSummary = "s",
+                content = "All repaired.",
+                endsTurn = true)))
           )
-          TestSigil.withDB(_.eventsTransaction(cid)(tx => win.foldLeft(Task.unit)((a, e) => a.flatMap(_ => tx.upsert(e).unit)))).map(_ => cid)
+          TestSigil.withDB(_.eventsTransaction(cid)(tx => win.foldLeft(Task.unit)((a, e) => a.flatMap(_ => tx.upsert(e).unit)))).map(_ =>
+            cid)
         }
         ctx <- TestSigil.progressContextFor(conv, TestAgent)
       } yield {
         ctx.toolHistory should have size 2
-        ctx.toolHistory.head should include ("mid-task status update, NOT a final reply")
-        ctx.toolHistory.head should include ("Sweep done")
-        ctx.toolHistory(1) should include ("final reply")
+        ctx.toolHistory.head should include("mid-task status update, NOT a final reply")
+        ctx.toolHistory.head should include("Sweep done")
+        ctx.toolHistory(1) should include("final reply")
         ctx.toolHistory(1) should not include "NOT a final reply"
       }
     }
@@ -185,12 +202,16 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
           val win = List(
             seedInvoke(cid, MutatingSpecTool.name.value, at + 10),
             seedInvoke(cid, MutatingSpecTool.name.value, at + 20),
-            seedInvoke(cid, MutatingSpecTool.name.value, at + 30,
+            seedInvoke(
+              cid,
+              MutatingSpecTool.name.value,
+              at + 30,
               outcome = ToolOutcome.Failure("did not apply", recoverable = true)),
             seedInvoke(cid, "read_file", at + 40),
             seedInvoke(cid, "_stall_detected", at + 50, internal = true)
           )
-          TestSigil.withDB(_.eventsTransaction(cid)(tx => win.foldLeft(Task.unit)((a, e) => a.flatMap(_ => tx.upsert(e).unit)))).map(_ => cid)
+          TestSigil.withDB(_.eventsTransaction(cid)(tx => win.foldLeft(Task.unit)((a, e) => a.flatMap(_ => tx.upsert(e).unit)))).map(_ =>
+            cid)
         }
         // Also a PRE-window mutation that must not count.
         _ <- TestSigil.withDB(_.eventsTransaction(conv)(_.upsert(
@@ -204,11 +225,13 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
     }
   }
 
-  /** Emits a DISTINCT successful mutation every main-loop turn; the
-    * reflector reports meaningfulProgress = false with an unchanging
-    * "task completed" status (the #423 completion-latch shape). The
-    * forced-synthesis call at the iteration ceiling gets a respond. */
-  private final class MutatingButLatchedProvider extends Provider {
+  /**
+   * Emits a DISTINCT successful mutation every main-loop turn; the
+   * reflector reports meaningfulProgress = false with an unchanging
+   * "task completed" status (the #423 completion-latch shape). The
+   * forced-synthesis call at the iteration ceiling gets a respond.
+   */
+  final private class MutatingButLatchedProvider extends Provider {
     val reflectorCalls = new atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -222,22 +245,29 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
           reflectorCalls.incrementAndGet()
           List(
             ProviderEvent.ToolCallStart(callId, "report_progress"),
-            ProviderEvent.ToolCallComplete(callId, _root_.sigil.tool.consult.ProgressReflectionInput(
-              currentStatus      = "Task completed: references removed, final response delivered to user.",
-              meaningfulProgress = false,
-              remainingSteps     = "",
-              stuckOn            = None,
-              shouldAskUser      = false
-            )),
+            ProviderEvent.ToolCallComplete(
+              callId,
+              _root_.sigil.tool.consult.ProgressReflectionInput(
+                currentStatus = "Task completed: references removed, final response delivered to user.",
+                meaningfulProgress = false,
+                remainingSteps = "",
+                stuckOn = None,
+                shouldAskUser = false
+              )
+            ),
             ProviderEvent.Done(StopReason.Complete)
           )
         } else input.toolChoice match {
           case ToolChoice.Specific(name) if name == RespondTool.schema.name =>
             List(
               ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-              ProviderEvent.ToolCallComplete(callId, RespondInput(
-                topicLabel = "Ceiling", topicSummary = "cap synthesis",
-                content = "Synthesised at the iteration ceiling.", endsTurn = true)),
+              ProviderEvent.ToolCallComplete(
+                callId,
+                RespondInput(
+                  topicLabel = "Ceiling",
+                  topicSummary = "cap synthesis",
+                  content = "Synthesised at the iteration ceiling.",
+                  endsTurn = true)),
               ProviderEvent.Done(StopReason.Complete)
             )
           case _ =>
@@ -253,10 +283,10 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames :+ MutatingSpecTool.name,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames :+ MutatingSpecTool.name,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -275,17 +305,17 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
       val provider = new MutatingButLatchedProvider
       TestSigil.setProvider(Task.pure(provider))
       val convId = Conversation.id(s"ckpt-veto-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Repair the compile errors the sweep introduced.")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Repair the compile errors the sweep introduced.")),
+          state = EventState.Complete
+        ))
         // The ceiling forced-synthesis respond ends the turn; wait for it.
         _ <- waitUntil(30.seconds) {
           TestSigil.withDB(_.eventsTransaction(convId)(_.list)).map(_.exists {

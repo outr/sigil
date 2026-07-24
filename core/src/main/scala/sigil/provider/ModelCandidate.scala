@@ -31,29 +31,31 @@ final case class ModelCandidate(modelId: Id[Model],
 
 object ModelCandidate {
 
-  /** Sensible defaults for a local-llama candidate serving a
-    * reasoning-template model (qwen3.5-9b, DeepSeek-R1 family, etc).
-    * Reasoning channel is off (the chain-of-thought channel inflates
-    * latency without improving small-task tool selection) and the
-    * output is capped at 4096 via [[OutputTokenCap.Below]] (generous
-    * for normal replies, hard wall against reasoning runaway). Apps
-    * wiring a local llama.cpp candidate can pass this instead of
-    * discovering the failure mode in production.
-    *
-    * {{{
-    *   val llamaC = ModelCandidate(
-    *     modelId  = llamaId,
-    *     settings = ModelCandidate.localReasoningTemplateDefaults
-    *   )
-    * }}}
-    *
-    * Distinct from the framework's automatic forced-synthesis
-    * override at the request boundary — that protects against the
-    * case where the app didn't tune the candidate. This helper is
-    * for apps that want the same conservative shape on every turn,
-    * not just the recovery turn. */
+  /**
+   * Sensible defaults for a local-llama candidate serving a
+   * reasoning-template model (qwen3.5-9b, DeepSeek-R1 family, etc).
+   * Reasoning channel is off (the chain-of-thought channel inflates
+   * latency without improving small-task tool selection) and the
+   * output is capped at 4096 via [[OutputTokenCap.Below]] (generous
+   * for normal replies, hard wall against reasoning runaway). Apps
+   * wiring a local llama.cpp candidate can pass this instead of
+   * discovering the failure mode in production.
+   *
+   * {{{
+   *   val llamaC = ModelCandidate(
+   *     modelId  = llamaId,
+   *     settings = ModelCandidate.localReasoningTemplateDefaults
+   *   )
+   * }}}
+   *
+   * Distinct from the framework's automatic forced-synthesis
+   * override at the request boundary — that protects against the
+   * case where the app didn't tune the candidate. This helper is
+   * for apps that want the same conservative shape on every turn,
+   * not just the recovery turn.
+   */
   val localReasoningTemplateDefaults: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(4096),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 }

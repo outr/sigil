@@ -39,9 +39,11 @@ class StreamingLivenessSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   private val modelId: Id[Model] = Model.id("test", "streaming-liveness")
   TestSigil.testModel(modelId)
 
-  /** Emits a first text delta, then blocks on `latch` before emitting the rest
-    * + Done. The first delta's `MessageDelta` must surface while still blocked. */
-  private final class BlockingMidStreamProvider(latch: CountDownLatch) extends Provider {
+  /**
+   * Emits a first text delta, then blocks on `latch` before emitting the rest
+   * + Done. The first delta's `MessageDelta` must surface while still blocked.
+   */
+  final private class BlockingMidStreamProvider(latch: CountDownLatch) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -62,10 +64,10 @@ class StreamingLivenessSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings())
 
   "Content MessageDeltas (sigil #399)" should {
@@ -94,19 +96,21 @@ class StreamingLivenessSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         else Task.sleep(50.millis).flatMap(_ => awaitFirstDelta(deadline))
 
       for {
-        _    <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _    <- TestSigil.publish(Message(
-                  participantId  = TestUser,
-                  conversationId = convId,
-                  topicId        = TestTopicEntry.id,
-                  content        = Vector(ResponseContent.Text("Stream me an answer.")),
-                  state          = EventState.Complete))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Stream me an answer.")),
+          state =
+            EventState.Complete
+        ))
         // The provider is blocked AFTER the first delta. A live stream surfaces
         // the first MessageDelta now; the old buffered shape would not until the
         // block clears (whole stream drained).
         live <- awaitFirstDelta(System.currentTimeMillis() + 10_000L)
-        _    =  latch.countDown()                 // unblock so the turn can settle
-        _    <- TestSigil.awaitSettled(convId)
+        _ = latch.countDown() // unblock so the turn can settle
+        _ <- TestSigil.awaitSettled(convId)
       } yield {
         running = false
         withClue("a content MessageDelta must surface while the provider is still blocked mid-stream: ") {

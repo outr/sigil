@@ -15,10 +15,10 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * from the returned plan fields.
  */
 case object PlannerVerdictTool extends Tool with FrameworkConsult {
-  type Input  = PlannerVerdictInput
+  type Input = PlannerVerdictInput
   type Output = TextToolOutput
   val inputRW: RW[PlannerVerdictInput] = summon[RW[PlannerVerdictInput]]
-  val outputRW: RW[TextToolOutput]     = summon[RW[TextToolOutput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("planner_verdict")
   val description: String =
@@ -35,19 +35,25 @@ case object PlannerVerdictTool extends Tool with FrameworkConsult {
       |otherwise echo the current plan, refreshing `currentPhase` to where the work
       |stands now.""".stripMargin
 
-  /** Strategic oversight — the model is fixed by `Sigil.plannerModelId`,
-    * so this WorkType is declarative only (no routing happens). */
+  /**
+   * Strategic oversight — the model is fixed by `Sigil.plannerModelId`,
+   * so this WorkType is declarative only (no routing happens).
+   */
   override def consultWorkType: WorkType = AnalysisWork
 
-  /** Output is a verdict plus the (possibly revised) plan fields.
-    * 512 tokens covers the structured payload with margin. */
+  /**
+   * Output is a verdict plus the (possibly revised) plan fields.
+   * 512 tokens covers the structured payload with margin.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(512),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   override def executeResult(input: PlannerVerdictInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

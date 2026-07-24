@@ -33,39 +33,50 @@ case class TurnInput(conversationId: Id[Conversation],
                      summaries: Vector[Id[ContextSummary]] = Vector.empty,
                      information: Vector[InformationSummary] = Vector.empty,
                      extraContext: Map[ContextKey, String] = Map.empty,
-                     /** Space-scoped [[sigil.skill.Skill.alwaysOn]] skills for
-                       * this conversation, materialized fresh from `db.skills`
-                       * by the framework at turn build ([[sigil.Sigil]]'s
-                       * `buildContext`) — populated regardless of which curator
-                       * produced the rest of this input, so custom curators and
-                       * apps without `find_capability` get them with no
-                       * wiring. */
+                     /**
+                      * Space-scoped [[sigil.skill.Skill.alwaysOn]] skills for
+                      * this conversation, materialized fresh from `db.skills`
+                      * by the framework at turn build ([[sigil.Sigil]]'s
+                      * `buildContext`) — populated regardless of which curator
+                      * produced the rest of this input, so custom curators and
+                      * apps without `find_capability` get them with no
+                      * wiring.
+                      */
                      alwaysOnSkills: Vector[ActiveSkillSlot] = Vector.empty)
   derives RW {
 
-  /** The projection for `id` within this turn's snapshot — empty if
-    * the chain participant has no recorded projection yet. */
+  /**
+   * The projection for `id` within this turn's snapshot — empty if
+   * the chain participant has no recorded projection yet.
+   */
   def projectionFor(id: ParticipantId): ParticipantProjection =
     participantProjections.getOrElse(id, ParticipantProjection.empty(id, conversationId))
 
-  /** Flat list of active skills across `chain`, plus the conversation
-    * space's always-on skills — deduplicated by name so a skill that is
-    * both always-on and explicitly activated renders once. */
+  /**
+   * Flat list of active skills across `chain`, plus the conversation
+   * space's always-on skills — deduplicated by name so a skill that is
+   * both always-on and explicitly activated renders once.
+   */
   def aggregatedSkills(chain: List[ParticipantId]): Vector[ActiveSkillSlot] =
     (chain.flatMap(id => projectionFor(id).activeSkills.values).toVector ++ alwaysOnSkills)
       .distinctBy(_.name)
 
-  /** Re-pack the curator-controlled fields as a transient
-    * [[ConversationView]] for callers that prefer that DTO. */
+  /**
+   * Re-pack the curator-controlled fields as a transient
+   * [[ConversationView]] for callers that prefer that DTO.
+   */
   def conversationView: ConversationView =
     ConversationView(conversationId, frames, participantProjections)
 }
 
 object TurnInput {
-  /** Convenience factory that lifts a transient [[ConversationView]]
-    * onto a fresh `TurnInput`. Test fixtures use this to keep their
-    * old construction shape; production paths build `TurnInput`
-    * directly. */
+
+  /**
+   * Convenience factory that lifts a transient [[ConversationView]]
+   * onto a fresh `TurnInput`. Test fixtures use this to keep their
+   * old construction shape; production paths build `TurnInput`
+   * directly.
+   */
   def apply(view: ConversationView): TurnInput =
     TurnInput(
       conversationId = view.conversationId,
@@ -73,8 +84,10 @@ object TurnInput {
       participantProjections = view.participantProjections
     )
 
-  /** Convenience factory: lift a [[ConversationView]] plus optional
-    * memory / summary / information references. */
+  /**
+   * Convenience factory: lift a [[ConversationView]] plus optional
+   * memory / summary / information references.
+   */
   def apply(view: ConversationView,
             criticalMemories: Vector[Id[ContextMemory]],
             memories: Vector[Id[ContextMemory]],

@@ -41,25 +41,28 @@ class RefusalPayloadShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   // ---- schema fixtures for the multi-mismatch + closest-name cases ----
 
-  /** Test tool whose input has two fields a model can fumble at once:
-    * `role` (object) and `complexity` (string). Mirrors the field
-    * evidence in the bug doc — a polymorphic-object field + a separate
-    * scalar field on the same call. */
+  /**
+   * Test tool whose input has two fields a model can fumble at once:
+   * `role` (object) and `complexity` (string). Mirrors the field
+   * evidence in the bug doc — a polymorphic-object field + a separate
+   * scalar field on the same call.
+   */
   case class FanoutRole(name: String, workType: String) extends ToolInput derives RW
   case class FanoutInput(role: FanoutRole, complexity: String) extends ToolInput derives RW
 
   case object FanoutTool extends Tool {
-    type Input  = FanoutInput
+    type Input = FanoutInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[FanoutInput]]
+    val inputRW = summon[RW[FanoutInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name = ToolName("fanout_workers")
     val description = "Fan out a per-item action across a container of items."
     override val examples: List[ToolExample] = List(
       ToolExample(
         "kick off a code-review fan-out",
-        FanoutInput(role = FanoutRole(name = "reviewer", workType = "AnalysisWork"),
-                    complexity = "Medium")
+        FanoutInput(
+          role = FanoutRole(name = "reviewer", workType = "AnalysisWork"),
+          complexity = "Medium")
       )
     )
     override def executeOutput(input: FanoutInput, ctx: ToolContext): Task[TextToolOutput] =
@@ -71,19 +74,19 @@ class RefusalPayloadShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   private def turnContextFor(currentMode: sigil.provider.Mode,
                              offered: Vector[Tool] = Vector.empty): Task[TurnContext] = {
     val convId = Conversation.id(s"refusal-payload-${rapid.Unique()}")
-    val topic  = TopicEntry(
-      id      = sigil.conversation.Topic.id(s"topic-$convId"),
-      label   = "test",
+    val topic = TopicEntry(
+      id = sigil.conversation.Topic.id(s"topic-$convId"),
+      label = "test",
       summary = "test"
     )
     val conv = Conversation(_id = convId, topics = List(topic), currentMode = currentMode)
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map { stored =>
       TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestUser, TestAgent),
+        sigil = TestSigil,
+        chain = List(TestUser, TestAgent),
         conversation = stored,
-        turnInput    = TurnInput(conversationId = stored._id),
-        model        = TestSigil.testModel(modelId),
+        turnInput = TurnInput(conversationId = stored._id),
+        model = TestSigil.testModel(modelId),
         offeredTools = offered
       )
     }
@@ -99,7 +102,7 @@ class RefusalPayloadShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   "ChangeModeTool same-mode refusal" should {
     "include the full input_schema for change_mode + a worked example" in {
       for {
-        ctx     <- turnContextFor(TestCodingMode)
+        ctx <- turnContextFor(TestCodingMode)
         signals <- ChangeModeTool.execute(ChangeModeInput(mode = "coding"), ctx, Event.id()).toList
       } yield {
         val body = failureBody(signals)
@@ -118,7 +121,7 @@ class RefusalPayloadShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   "ChangeModeTool unknown-mode refusal" should {
     "include the schema, an example, and the registered modes" in {
       for {
-        ctx     <- turnContextFor(sigil.provider.ConversationMode)
+        ctx <- turnContextFor(sigil.provider.ConversationMode)
         signals <- ChangeModeTool.execute(ChangeModeInput(mode = "ferocity"), ctx, Event.id()).toList
       } yield {
         val body = failureBody(signals)
@@ -136,13 +139,14 @@ class RefusalPayloadShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   "RecordConsentTool unknown-tool refusal" should {
     "include record_consent's schema, an example, and the closest match by name from the registry" in {
       for {
-        ctx     <- turnContextFor(sigil.provider.ConversationMode)
+        ctx <- turnContextFor(sigil.provider.ConversationMode)
         // `send_slack_messag` is one char off from `send_slack_message`
         // which TestSigil registers as a real tool in the static roster.
         signals <- RecordConsentTool.execute(
-                    RecordConsentInput(toolName = "send_slack_messag", approved = true),
-                    ctx, Event.id()
-                  ).toList
+          RecordConsentInput(toolName = "send_slack_messag", approved = true),
+          ctx,
+          Event.id()
+        ).toList
       } yield {
         val body = failureBody(signals)
         body should include("send_slack_messag")
@@ -161,12 +165,13 @@ class RefusalPayloadShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       // Offered roster contains FanoutTool; the model hallucinates a
       // close-but-wrong name (`fanout_worker` — singular).
       for {
-        ctx     <- turnContextFor(sigil.provider.ConversationMode, offered = Vector(FanoutTool, ChangeModeTool))
+        ctx <- turnContextFor(sigil.provider.ConversationMode, offered = Vector(FanoutTool, ChangeModeTool))
         signals <- UnknownTool.execute(
-                    JsonInput(obj("brief" -> str("do something"))),
-                    ctx, Event.id(),
-                    invokedName = ToolName("fanout_worker")
-                  ).toList
+          JsonInput(obj("brief" -> str("do something"))),
+          ctx,
+          Event.id(),
+          invokedName = ToolName("fanout_worker")
+        ).toList
       } yield {
         val body = failureBody(signals)
         body should include("fanout_worker")
@@ -190,19 +195,19 @@ class RefusalPayloadShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val convId = Conversation.id("refusal-multi")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = ConversationRequest(
-        conversationId     = convId,
-        model              = TestSigil.testModel(modelId),
-        instructions       = Instructions(),
-        turnInput          = TurnInput(conversationId = convId),
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
-        previousTopics     = Nil,
+        conversationId = convId,
+        model = TestSigil.testModel(modelId),
+        instructions = Instructions(),
+        turnInput = TurnInput(conversationId = convId),
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
+        previousTopics = Nil,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50)),
-        chain              = List(TestUser, TestAgent),
-        tools              = Vector(FanoutTool)
+        chain = List(TestUser, TestAgent),
+        tools = Vector(FanoutTool)
       )
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
       } yield {
         // Find the settling Failure outcome the agent reads.
@@ -222,9 +227,11 @@ class RefusalPayloadShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     }
   }
 
-  /** Provider that emits a single validator-style error citing two distinct
-    * field mismatches on one tool call. */
-  private final class MultiViolationProvider extends Provider {
+  /**
+   * Provider that emits a single validator-style error citing two distinct
+   * field mismatches on one tool call.
+   */
+  final private class MultiViolationProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil

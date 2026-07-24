@@ -15,4 +15,5 @@ import sigil.conversation.Conversation
 case class ClientToolsRegistered(conversationId: Id[Conversation],
                                  sessionId: String,
                                  accepted: List[String],
-                                 rejected: Map[String, String] = Map.empty) extends ConversationNotice derives RW
+                                 rejected: Map[String, String] = Map.empty)
+  extends ConversationNotice derives RW

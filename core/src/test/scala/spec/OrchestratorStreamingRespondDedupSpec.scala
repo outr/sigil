@@ -45,11 +45,13 @@ class OrchestratorStreamingRespondDedupSpec extends AsyncWordSpec with AsyncTask
   private val RepeatedContent =
     "I'll connect to your project at `/home/u/projects/demo`. Let me first check what's in this directory."
 
-  /** Streams an identical `respond` every iteration. The first iteration
-    * sets `endsTurn = false` to keep the turn open (reproducing the
-    * continuation that exposes the bug); later iterations end the turn so a
-    * pre-fix run terminates at a bounded count instead of running away. */
-  private final class RepeatingStreamingRespondProvider extends Provider {
+  /**
+   * Streams an identical `respond` every iteration. The first iteration
+   * sets `endsTurn = false` to keep the turn open (reproducing the
+   * continuation that exposes the bug); later iterations end the turn so a
+   * pre-fix run terminates at a bounded count instead of running away.
+   */
+  final private class RepeatingStreamingRespondProvider extends Provider {
     private val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -63,12 +65,14 @@ class OrchestratorStreamingRespondDedupSpec extends AsyncWordSpec with AsyncTask
         ProviderEvent.ToolCallStart(callId, "respond"),
         ProviderEvent.ContentBlockStart(callId, "Markdown", None),
         ProviderEvent.ContentBlockDelta(callId, RepeatedContent),
-        ProviderEvent.ToolCallComplete(callId, RespondInput(
-          topicLabel   = "Connect Project",
-          topicSummary = "Connecting the user's project",
-          content      = RepeatedContent,
-          endsTurn     = n >= 3
-        )),
+        ProviderEvent.ToolCallComplete(
+          callId,
+          RespondInput(
+            topicLabel = "Connect Project",
+            topicSummary = "Connecting the user's project",
+            content = RepeatedContent,
+            endsTurn = n >= 3
+          )),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
@@ -76,39 +80,39 @@ class OrchestratorStreamingRespondDedupSpec extends AsyncWordSpec with AsyncTask
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
     )
 
   "Streaming respond" should {
     "deliver an in-turn repeated respond to the user only once" in {
       TestSigil.setProvider(Task.pure(new RepeatingStreamingRespondProvider))
-      val convId  = Conversation.id(s"stream-dedup-${rapid.Unique()}")
-      val topic   = TopicEntry(id = Topic.id(s"t-${rapid.Unique()}"), label = "Connect", summary = "Connecting a project")
-      val agent   = makeAgent()
-      val conv    = Conversation(topics = List(topic), participants = List(agent), _id = convId)
+      val convId = Conversation.id(s"stream-dedup-${rapid.Unique()}")
+      val topic = TopicEntry(id = Topic.id(s"t-${rapid.Unique()}"), label = "Connect", summary = "Connecting a project")
+      val agent = makeAgent()
+      val conv = Conversation(topics = List(topic), participants = List(agent), _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = topic.id,
-                 content        = Vector(ResponseContent.Text("Connect my project at /home/u/projects/demo")),
-                 state          = EventState.Complete
-               ))
-        _   <- TestSigil.awaitSettled(convId)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = topic.id,
+          content = Vector(ResponseContent.Text("Connect my project at /home/u/projects/demo")),
+          state = EventState.Complete
+        ))
+        _ <- TestSigil.awaitSettled(convId)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val agentMessages = evs.collect {
           case m: Message
-            if m.conversationId == convId
-              && m.participantId == agent.id
-              && m.role == MessageRole.Standard
-              && m.state == EventState.Complete
-              && m.content.nonEmpty => m
+              if m.conversationId == convId
+                && m.participantId == agent.id
+                && m.role == MessageRole.Standard
+                && m.state == EventState.Complete
+                && m.content.nonEmpty => m
         }
         withClue(s"user-visible agent messages: ${agentMessages.map(_.content.size).mkString(",")} " +
           s"(${agentMessages.size} total): ") {

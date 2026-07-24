@@ -15,10 +15,10 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
  * intervene.
  */
 case object ProgressReflectionTool extends Tool with FrameworkConsult {
-  type Input  = ProgressReflectionInput
+  type Input = ProgressReflectionInput
   type Output = TextToolOutput
   val inputRW: RW[ProgressReflectionInput] = summon[RW[ProgressReflectionInput]]
-  val outputRW: RW[TextToolOutput]         = summon[RW[TextToolOutput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val name: ToolName = ToolName("report_progress")
   val description: String =
@@ -34,19 +34,24 @@ case object ProgressReflectionTool extends Tool with FrameworkConsult {
       |Be honest — if your status looks identical to the prior status or you're cycling through
       |the same searches, say so (`meaningfulProgress = false`) so the framework can intervene.""".stripMargin
 
-
-  /** Quick self-assessment — routes through the cheap classification tier. */
+  /**
+   * Quick self-assessment — routes through the cheap classification tier.
+   */
   override def consultWorkType: WorkType = ClassificationWork
 
-  /** Output is five short fields. 256 tokens covers the structured
-    * payload plus the reasoning-spill margin. */
+  /**
+   * Output is five short fields. 256 tokens covers the structured
+   * payload plus the reasoning-spill margin.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(256),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   override def executeResult(input: ProgressReflectionInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

@@ -7,13 +7,15 @@ import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolResult}
 
 final case class RequestDeescalationInput(@description("Why the cheaper tier suffices now — e.g. 'the hard restoration is done; remaining work is mechanical error fixes'. Stored for transparency.")
-                                          reason: String)
+reason: String)
   extends ToolInput derives RW
 
-final case class RequestDeescalationOutput(@description("The complexity tier after the step down. Unchanged when there was no escalation to unwind.")
-                                           tier: Complexity,
-                                           @description("True when the call actually lowered the tier; false when the turn was already at its classified base tier.")
-                                           lowered: Boolean) extends ToolOutput derives RW
+final case class RequestDeescalationOutput(
+  @description("The complexity tier after the step down. Unchanged when there was no escalation to unwind.")
+  tier: Complexity,
+  @description("True when the call actually lowered the tier; false when the turn was already at its classified base tier.")
+  lowered: Boolean)
+  extends ToolOutput derives RW
 
 /**
  * The symmetric counterpart to `request_escalation`: step the current
@@ -24,9 +26,9 @@ final case class RequestDeescalationOutput(@description("The complexity tier aft
  * at frontier prices.
  */
 case object RequestDeescalationTool extends Tool {
-  type Input  = RequestDeescalationInput
+  type Input = RequestDeescalationInput
   type Output = RequestDeescalationOutput
-  val inputRW  = summon[RW[RequestDeescalationInput]]
+  val inputRW = summon[RW[RequestDeescalationInput]]
   val outputRW = summon[RW[RequestDeescalationOutput]]
   val name = ToolName("request_deescalation")
   val description =

@@ -61,9 +61,11 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   // ---- 1. stable system prefix across iterations ----
 
-  /** Captures each primary call's system string; iterations 1..2 are
-    * tool calls, 3 responds. */
-  private final class SystemCapturingProvider extends Provider {
+  /**
+   * Captures each primary call's system string; iterations 1..2 are
+   * tool calls, 3 responds.
+   */
+  final private class SystemCapturingProvider extends Provider {
     val systems = new ConcurrentLinkedQueue[String]()
     val calls = new java.util.concurrent.atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -85,12 +87,14 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         else
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, RespondInput(
-              topicLabel   = TestTopicEntry.label,
-              topicSummary = TestTopicEntry.summary,
-              content      = "Done.",
-              endsTurn     = true
-            )),
+            ProviderEvent.ToolCallComplete(
+              callId,
+              RespondInput(
+                topicLabel = TestTopicEntry.label,
+                topicSummary = TestTopicEntry.summary,
+                content = "Done.",
+                endsTurn = true
+              )),
             ProviderEvent.Done(StopReason.ToolCall)
           )
       Stream.emits(emits)
@@ -99,10 +103,10 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames :+ GetMagicNumberTool.name,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames :+ GetMagicNumberTool.name,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -125,10 +129,11 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       // curator uses NoOpMemoryRetriever) — wire the standard
       // retriever so pinned directives reach the prompt.
       TestSigil.setCurate((cid, mid, chain) =>
-        sigil.conversation.compression.StandardContextCurator(TestSigil,
+        sigil.conversation.compression.StandardContextCurator(
+          TestSigil,
           memoryRetriever = sigil.conversation.compression.StandardMemoryRetriever()).curate(cid, mid, chain))
       val convId = Conversation.id(s"sys-stable-${rapid.Unique()}")
-      val conv   = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
+      val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
       val longFact = "The team's Scala backend standardizes on rapid Streams for all concurrency: " +
         ("every service, worker, and batch job composes rapid Tasks; " * 8) +
         "Futures are forbidden outside interop shims."
@@ -137,39 +142,39 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         // A persisted summary exists BEFORE the turn — the shape that
         // previously rendered into the prefix.
         _ <- TestSigil.persistSummary(ContextSummary(
-               text = "Earlier the user set up the project workspace.",
-               conversationId = convId,
-               tokenEstimate = 12
-             ))
+          text = "Earlier the user set up the project workspace.",
+          conversationId = convId,
+          tokenEstimate = 12
+        ))
         // Two pinned directives: one whose summary elides a materially
         // longer fact (gets a lookup handle), one short (stays clean).
         _ <- TestSigil.persistMemory(sigil.conversation.ContextMemory(
-               fact = longFact,
-               label = "scala-concurrency",
-               summary = "Backend concurrency uses rapid Streams.",
-               source = sigil.conversation.MemorySource.Explicit,
-               pinned = true,
-               spaceId = sigil.GlobalSpace,
-               key = Some("scala-concurrency"),
-               conversationId = Some(convId)
-             ))
+          fact = longFact,
+          label = "scala-concurrency",
+          summary = "Backend concurrency uses rapid Streams.",
+          source = sigil.conversation.MemorySource.Explicit,
+          pinned = true,
+          spaceId = sigil.GlobalSpace,
+          key = Some("scala-concurrency"),
+          conversationId = Some(convId)
+        ))
         _ <- TestSigil.persistMemory(sigil.conversation.ContextMemory(
-               fact = "The user's name is Matt.",
-               label = "user-name",
-               summary = "The user's name is Matt.",
-               source = sigil.conversation.MemorySource.Explicit,
-               pinned = true,
-               spaceId = sigil.GlobalSpace,
-               key = Some("user-name"),
-               conversationId = Some(convId)
-             ))
+          fact = "The user's name is Matt.",
+          label = "user-name",
+          summary = "The user's name is Matt.",
+          source = sigil.conversation.MemorySource.Explicit,
+          pinned = true,
+          spaceId = sigil.GlobalSpace,
+          key = Some("user-name"),
+          conversationId = Some(convId)
+        ))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Keep working.")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Keep working.")),
+          state = EventState.Complete
+        ))
         _ <- waitFor(20.seconds)(provider.calls.get() >= 3)
       } yield {
         TestSigil.reset()
@@ -181,7 +186,7 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
           systems.head should not include "Earlier the user set up the project workspace."
           // A summary-elided memory carries its drill-down handle; a
           // short one renders as a clean line without one.
-          systems.head should include ("""[full: lookup("scala-concurrency")]""")
+          systems.head should include("""[full: lookup("scala-concurrency")]""")
           systems.head should not include """[full: lookup("user-name")]"""
         }
       }
@@ -190,7 +195,7 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   // ---- 2. supersede at the writer ----
 
-  private final class ScriptedSummarizer extends Provider {
+  final private class ScriptedSummarizer extends Provider {
     val calls = new java.util.concurrent.atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -216,18 +221,30 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val convId = Conversation.id(s"supersede-${rapid.Unique()}")
       val eventIds = (1 to 6).toList.map(_ => Event.id())
       val frames = eventIds.map { id =>
-        sigil.conversation.ContextFrame.Text(content = s"frame-${id.value.take(4)}",
-          participantId = TestUser, sourceEventId = id)
+        sigil.conversation.ContextFrame.Text(
+          content = s"frame-${id.value.take(4)}",
+          participantId = TestUser,
+          sourceEventId = id)
       }.toVector
       val compressor = MemoryContextCompressor()
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
-               Conversation(topics = TestTopicStack, _id = convId))))
-        first <- compressor.compressCovering(TestSigil, modelId, List(TestAgent),
-                   frames.take(3), convId, eventIds.take(3))
+          Conversation(topics = TestTopicStack, _id = convId))))
+        first <- compressor.compressCovering(
+          TestSigil,
+          modelId,
+          List(TestAgent),
+          frames.take(3),
+          convId,
+          eventIds.take(3))
         between <- TestSigil.summariesFor(convId)
-        second <- compressor.compressCovering(TestSigil, modelId, List(TestAgent),
-                    frames, convId, eventIds)
+        second <- compressor.compressCovering(
+          TestSigil,
+          modelId,
+          List(TestAgent),
+          frames,
+          convId,
+          eventIds)
         after <- TestSigil.summariesFor(convId)
       } yield {
         first should not be empty
@@ -235,7 +252,7 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         second should not be empty
         withClue(s"calls=${summarizer.calls.get()} after=${after.map(s => (s.text, s.coversEventIds.size))}: ") {
           after should have size 1
-          after.head.text should include ("v2")
+          after.head.text should include("v2")
           after.head.coversEventIds should have size 6
         }
       }
@@ -246,17 +263,24 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   "selectSummaries" should {
 
-    def summary(convId: Id[Conversation], text: String, tokens: Int,
-                covers: List[Id[Event]] = Nil, createdAt: Long = 0L): ContextSummary =
-      ContextSummary(text = text, conversationId = convId, tokenEstimate = tokens,
-        coversEventIds = covers, created = Timestamp(createdAt))
+    def summary(convId: Id[Conversation],
+                text: String,
+                tokens: Int,
+                covers: List[Id[Event]] = Nil,
+                createdAt: Long = 0L): ContextSummary =
+      ContextSummary(
+        text = text,
+        conversationId = convId,
+        tokenEstimate = tokens,
+        coversEventIds = covers,
+        created = Timestamp(createdAt))
 
     "drop subsumed restatements and budget newest-first, keeping at least the newest" in Task {
       val convId = Conversation.id("select")
       val e = (1 to 4).toList.map(_ => Event.id())
-      val stale    = summary(convId, "old restatement", 10, covers = e.take(2), createdAt = 1000L)
+      val stale = summary(convId, "old restatement", 10, covers = e.take(2), createdAt = 1000L)
       val superset = summary(convId, "current rolling", 10, covers = e, createdAt = 2000L)
-      val other    = summary(convId, "unrelated narrative", 10, createdAt = 1500L)
+      val other = summary(convId, "unrelated narrative", 10, createdAt = 1500L)
       val selected = StandardContextCurator.selectSummaries(List(stale, superset, other), tokenBudget = 4096)
       selected.map(_.text) should contain theSameElementsAs List("current rolling", "unrelated narrative")
 

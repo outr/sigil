@@ -30,7 +30,9 @@ case class SpaceProviderAssignment(space: SpaceId,
 object SpaceProviderAssignment extends RecordDocumentModel[SpaceProviderAssignment] with JsonConversion[SpaceProviderAssignment] {
   implicit override def rw: RW[SpaceProviderAssignment] = RW.gen
 
-  /** Id derived from the space's `value` — one assignment per space. */
+  /**
+   * Id derived from the space's `value` — one assignment per space.
+   */
   def idFor(space: SpaceId): Id[SpaceProviderAssignment] = Id(space.value)
 
   override def id(value: String): Id[SpaceProviderAssignment] = Id(value)

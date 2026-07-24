@@ -8,13 +8,19 @@ import fabric.rw.*
  */
 enum ProcessSignal derives RW {
 
-  /** Graceful stop — SIGTERM, wait the registry's grace period,
-    * then SIGKILL if the child hasn't exited. */
+  /**
+   * Graceful stop — SIGTERM, wait the registry's grace period,
+   * then SIGKILL if the child hasn't exited.
+   */
   case Terminate
 
-  /** SIGINT-equivalent interrupt. */
+  /**
+   * SIGINT-equivalent interrupt.
+   */
   case Interrupt
 
-  /** Immediate SIGKILL — no grace period. */
+  /**
+   * Immediate SIGKILL — no grace period.
+   */
   case Kill
 }

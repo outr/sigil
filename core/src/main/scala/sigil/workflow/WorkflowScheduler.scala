@@ -25,9 +25,11 @@ import strider.step.Step
  */
 object WorkflowScheduler {
 
-  /** Schedule a workflow from a persisted template. Returns the
-    * inserted `strider.Workflow` row carrying all Sigil-side
-    * metadata. */
+  /**
+   * Schedule a workflow from a persisted template. Returns the
+   * inserted `strider.Workflow` row carrying all Sigil-side
+   * metadata.
+   */
   def scheduleTemplate(host: Sigil { type DB <: sigil.db.SigilDB & WorkflowCollections } & WorkflowSigil,
                        template: WorkflowTemplate,
                        variables: Map[String, Json] = Map.empty,
@@ -56,10 +58,10 @@ object WorkflowScheduler {
     val runConvIdTask: Task[Option[Id[Conversation]]] = (template.conversationId, creator) match {
       case (Some(boundId), Some(c)) =>
         host.newConversation(
-          createdBy            = c,
-          label                = template.name,
-          summary              = template.description.getOrElse(template.name).take(80),
-          participants         = Nil,
+          createdBy = c,
+          label = template.name,
+          summary = template.description.getOrElse(template.name).take(80),
+          participants = Nil,
           parentConversationId = Some(boundId)
         ).map(conv => Some(conv._id))
       case _ => Task.pure(template.conversationId)

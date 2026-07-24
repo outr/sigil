@@ -45,13 +45,14 @@ object CandidateFallback {
   def stream(candidates: List[Id[Model]],
              classifier: ErrorClassifier,
              reportFailure: Id[Model] => Unit,
-             /** Sigil #415 — consulted before advancing to the next
-               * candidate. A user Stop that lands while one tier is
-               * failing must not be answered with a fresh call against
-               * the next tier; the error propagates instead and the
-               * agent loop's stop handling ends the turn quietly. */
-             stopRequested: () => Boolean = () => false)
-            (attempt: Id[Model] => Stream[Signal]): Stream[Signal] =
+             /**
+              * Sigil #415 — consulted before advancing to the next
+              * candidate. A user Stop that lands while one tier is
+              * failing must not be answered with a fresh call against
+              * the next tier; the error propagates instead and the
+              * agent loop's stop handling ends the turn quietly.
+              */
+             stopRequested: () => Boolean = () => false)(attempt: Id[Model] => Stream[Signal]): Stream[Signal] =
     candidates match {
       case Nil =>
         fail(new IllegalStateException("CandidateFallback.stream requires at least one candidate"))
@@ -84,8 +85,10 @@ object CandidateFallback {
           }
     }
 
-  /** Re-raise on pull (matches `Provider.callWithTransientRetry`'s `fail`) so a
-    * downstream `onErrorFinalize` / `guarantee` sees it as a stream error. */
+  /**
+   * Re-raise on pull (matches `Provider.callWithTransientRetry`'s `fail`) so a
+   * downstream `onErrorFinalize` / `guarantee` sees it as a stream error.
+   */
   private def fail(t: Throwable): Stream[Signal] =
     Stream.emit(()).evalMap[Signal](_ => rapid.Task.error[Signal](t))
 }

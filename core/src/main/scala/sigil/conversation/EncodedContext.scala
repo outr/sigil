@@ -39,8 +39,6 @@ import sigil.participant.ParticipantId
  * `lastAccessedAt` drives TTL eviction. Idle caches reclaim space;
  * the surviving caches save real work on the next turn against their
  * (agent, conversation, model) tuple.
- *
-* 
  */
 case class EncodedContext(agentId: ParticipantId,
                           conversationId: Id[Conversation],
@@ -57,9 +55,11 @@ case class EncodedContext(agentId: ParticipantId,
 object EncodedContext extends RecordDocumentModel[EncodedContext] with JsonConversion[EncodedContext] {
   implicit override def rw: RW[EncodedContext] = RW.gen
 
-  /** Compose a deterministic id from `(agentId, conversationId, modelId)`
-    * so lookups are O(1) and the same key always resolves to the same
-    * record. */
+  /**
+   * Compose a deterministic id from `(agentId, conversationId, modelId)`
+   * so lookups are O(1) and the same key always resolves to the same
+   * record.
+   */
   def idFor(agentId: ParticipantId,
             conversationId: Id[Conversation],
             modelId: Id[Model]): Id[EncodedContext] =
@@ -72,7 +72,9 @@ object EncodedContext extends RecordDocumentModel[EncodedContext] with JsonConve
 
   override def id(value: String = rapid.Unique()): Id[EncodedContext] = Id(value)
 
-  /** Fresh empty cache entry for a new (agent, conversation, model) key. */
+  /**
+   * Fresh empty cache entry for a new (agent, conversation, model) key.
+   */
   def empty(agentId: ParticipantId,
             conversationId: Id[Conversation],
             modelId: Id[Model]): EncodedContext =

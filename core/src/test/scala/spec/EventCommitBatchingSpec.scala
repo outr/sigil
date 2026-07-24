@@ -35,11 +35,11 @@ class EventCommitBatchingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private def textMessage(convId: Id[Conversation]): Message =
     Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      content        = Vector(ResponseContent.Text("batched event body")),
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      content = Vector(ResponseContent.Text("batched event body")),
+      state = EventState.Complete
     )
 
   private def seedConversation(convId: Id[Conversation]): Task[Unit] =
@@ -52,78 +52,74 @@ class EventCommitBatchingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     "use exactly one events transaction for many batched signals" in {
       val convId = Conversation.id(s"batch-one-tx-${rapid.Unique()}")
       for {
-        _      <- seedConversation(convId)
+        _ <- seedConversation(convId)
         before <- TestSigil.withDB(db => Task.pure(db.eventsWriteCommits))
-        _      <- TestSigil.withDB(_.withBatchedEvents(convId) {
-                    Task.sequence((1 to 12).toList.map(_ => TestSigil.withDB(_.apply(textMessage(convId)))))
-                  })
-        after  <- TestSigil.withDB(db => Task.pure(db.eventsWriteCommits))
-      } yield {
+        _ <- TestSigil.withDB(_.withBatchedEvents(convId) {
+          Task.sequence((1 to 12).toList.map(_ => TestSigil.withDB(_.apply(textMessage(convId)))))
+        })
+        after <- TestSigil.withDB(db => Task.pure(db.eventsWriteCommits))
+      } yield
         // One transaction (one commit) for the whole scope —
         // the 12 inserts route into the open scope and add none.
         (after - before) shouldBe 1L
-      }
     }
 
     "open one transaction per signal when unbatched" in {
       val convId = Conversation.id(s"batch-unbatched-${rapid.Unique()}")
       for {
-        _      <- seedConversation(convId)
+        _ <- seedConversation(convId)
         before <- TestSigil.withDB(db => Task.pure(db.eventsWriteCommits))
-        _      <- Task.sequence((1 to 12).toList.map(_ => TestSigil.withDB(_.apply(textMessage(convId)))))
-        after  <- TestSigil.withDB(db => Task.pure(db.eventsWriteCommits))
-      } yield {
+        _ <- Task.sequence((1 to 12).toList.map(_ => TestSigil.withDB(_.apply(textMessage(convId)))))
+        after <- TestSigil.withDB(db => Task.pure(db.eventsWriteCommits))
+      } yield
         // No scope active — each `apply` opens its own fresh
         // transaction, exactly the pre-batching behavior.
         (after - before) shouldBe 12L
-      }
     }
 
     "make batched writes durable and queryable through the conversationId index after the scope" in {
       val convId = Conversation.id(s"batch-durable-${rapid.Unique()}")
       val messages = (1 to 8).toList.map(_ => textMessage(convId))
       for {
-        _       <- seedConversation(convId)
-        _       <- TestSigil.withDB(_.withBatchedEvents(convId) {
-                     Task.sequence(messages.map(m => TestSigil.withDB(_.apply(m))))
-                   })
+        _ <- seedConversation(convId)
+        _ <- TestSigil.withDB(_.withBatchedEvents(convId) {
+          Task.sequence(messages.map(m => TestSigil.withDB(_.apply(m))))
+        })
         // Indexed read AFTER the scope closed — the events are
         // committed and the conversationId index resolves them.
         indexed <- TestSigil.withDB(_.events.transaction(
-                     _.query.filter(_.conversationId === convId.value).toList
-                   ))
-      } yield {
-        indexed.map(_._id).toSet shouldBe messages.map(_._id).toSet
-      }
+          _.query.filter(_.conversationId === convId.value).toList
+        ))
+      } yield indexed.map(_._id).toSet shouldBe messages.map(_._id).toSet
     }
 
     "read-your-writes: a Delta inside the batch settles an Event inserted earlier in the same batch" in {
       val convId = Conversation.id(s"batch-ryw-${rapid.Unique()}")
       // An Active message that a ContentDelta later settles to Complete.
       val active = Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        content        = Vector.empty,
-        state          = EventState.Active
+        topicId = TestTopicEntry.id,
+        content = Vector.empty,
+        state = EventState.Active
       )
       for {
-        _       <- seedConversation(convId)
+        _ <- seedConversation(convId)
         settled <- TestSigil.withDB(_.withBatchedEvents(convId) {
-                     for {
-                       _   <- TestSigil.withDB(_.apply(active))
-                       // The Delta's `tx.get(d.target)` must see the
-                       // in-batch insert above, otherwise the upsert
-                       // is a no-op and the row never settles.
-                       _   <- TestSigil.withDB(_.apply(MessageDelta(
-                                target              = active._id,
-                                conversationId      = convId,
-                                contentReplacement  = Some(Vector(ResponseContent.Text("delta body"))),
-                                state               = Some(EventState.Complete)
-                              )))
-                       row <- TestSigil.withDB(_.eventsTransaction(convId)(_.get(active._id)))
-                     } yield row
-                   })
+          for {
+            _ <- TestSigil.withDB(_.apply(active))
+            // The Delta's `tx.get(d.target)` must see the
+            // in-batch insert above, otherwise the upsert
+            // is a no-op and the row never settles.
+            _ <- TestSigil.withDB(_.apply(MessageDelta(
+              target = active._id,
+              conversationId = convId,
+              contentReplacement = Some(Vector(ResponseContent.Text("delta body"))),
+              state = Some(EventState.Complete)
+            )))
+            row <- TestSigil.withDB(_.eventsTransaction(convId)(_.get(active._id)))
+          } yield row
+        })
       } yield {
         settled.map(_.state) shouldBe Some(EventState.Complete)
         settled.collect { case m: Message => m.content } shouldBe
@@ -166,9 +162,9 @@ class EventCommitBatchingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       TestSigil.setProvider(Task.pure(provider))
       val convId = Conversation.id(s"batch-loop-${rapid.Unique()}")
       val agent = DefaultAgentParticipant(
-        id           = TestAgent,
-        modelId      = Model.id("test", "commit-batching"),
-        toolNames    = CoreTools.coreToolNames,
+        id = TestAgent,
+        modelId = Model.id("test", "commit-batching"),
+        toolNames = CoreTools.coreToolNames,
         instructions = Instructions(),
         generationSettings = GenerationSettings(temperature = Some(0.0))
       )
@@ -189,20 +185,20 @@ class EventCommitBatchingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
           else Task.sleep(150.millis).flatMap(_ => awaitSettled(deadline))
         }
       for {
-        _      <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         before <- TestSigil.withDB(db => Task.pure(db.eventsWriteCommits))
-        _      <- TestSigil.publish(Message(
-                    participantId  = TestUser,
-                    conversationId = convId,
-                    topicId        = TestTopicEntry.id,
-                    content        = Vector(ResponseContent.Text("Stream a long reply")),
-                    state          = EventState.Complete
-                  ))
-        _      <- awaitSettled(System.currentTimeMillis() + 15000L)
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Stream a long reply")),
+          state = EventState.Complete
+        ))
+        _ <- awaitSettled(System.currentTimeMillis() + 15000L)
         // Small settle margin so any post-terminate fiber writes
         // (memory extraction is short-circuited here) land.
-        _      <- Task.sleep(500.millis)
-        after  <- TestSigil.withDB(db => Task.pure(db.eventsWriteCommits))
+        _ <- Task.sleep(500.millis)
+        after <- TestSigil.withDB(db => Task.pure(db.eventsWriteCommits))
       } yield {
         val commits = after - before
         scribe.info(s"agent turn streamed $streamedTokens content deltas; events write commits: $commits")

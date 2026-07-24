@@ -37,21 +37,21 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private def msg(text: String, role: MessageRole = MessageRole.Standard): Message =
     Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicId,
-      role           = role,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete
+      topicId = TestTopicId,
+      role = role,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete
     )
 
   private def toolInvoke(name: String): ToolInvoke =
     ToolInvoke(
-      toolName       = ToolName(name),
-      participantId  = TestAgent,
+      toolName = ToolName(name),
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicId,
-      state          = EventState.Complete
+      topicId = TestTopicId,
+      state = EventState.Complete
     )
 
   "StandardIntraTurnCompactor (sigil #285)" should {
@@ -113,14 +113,14 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     "filter frames whose source event id is in any persisted summary's coversEventIds" in {
       // Seed: a topic, three Message events (we'll cover the middle one).
       val topic = TopicEntry(TestTopicId, "test", "test")
-      val conv  = Conversation(_id = convId, topics = List(topic))
+      val conv = Conversation(_id = convId, topics = List(topic))
       val e1 = msg("first")
       val e2 = msg("middle (to be covered)")
       val e3 = msg("third")
       val summary = ContextSummary(
-        text           = "we did some middle work",
+        text = "we did some middle work",
         conversationId = convId,
-        tokenEstimate  = 8,
+        tokenEstimate = 8,
         coversEventIds = List(e2._id)
       )
       for {
@@ -134,10 +134,10 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         turn <- StandardContextCurator(TestSigil).curate(convId, defaultModel._id, List(TestUser))
       } yield {
         val ids = turn.frames.map(_.sourceEventId).toSet
-        ids should contain (e1._id)
-        ids should contain (e3._id)
+        ids should contain(e1._id)
+        ids should contain(e3._id)
         ids should not contain e2._id
-        turn.summaries should contain (summary._id)
+        turn.summaries should contain(summary._id)
       }
     }
   }
@@ -157,19 +157,33 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       // Distinct increasing timestamps so the claim anchor and the
       // user-task invariant pick out their intended events.
       def t(name: String, ts: Long): ToolInvoke = ToolInvoke(
-        toolName = ToolName(name), participantId = TestAgent, conversationId = convId,
-        topicId = TestTopicId, state = EventState.Complete, timestamp = Timestamp(ts)
+        toolName = ToolName(name),
+        participantId = TestAgent,
+        conversationId = convId,
+        topicId = TestTopicId,
+        state = EventState.Complete,
+        timestamp = Timestamp(ts)
       )
       def u(text: String, ts: Long): Message = Message(
-        participantId = TestUser, conversationId = convId, topicId = TestTopicId,
-        role = MessageRole.Standard, content = Vector(ResponseContent.Text(text)),
-        state = EventState.Complete, timestamp = Timestamp(ts)
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicId,
+        role = MessageRole.Standard,
+        content = Vector(ResponseContent.Text(text)),
+        state = EventState.Complete,
+        timestamp = Timestamp(ts)
       )
       val turnEvents: Vector[Event] = Vector(
-        t("read-1", 10), t("read-2", 20), t("read-3", 30),
-        u("I'd like you to find and remove all bug references", 40),   // user task
-        t("read-4", 50), t("read-5", 60), t("read-6", 70),
-        t("read-7", 80), t("read-8", 90), t("read-9", 100)
+        t("read-1", 10),
+        t("read-2", 20),
+        t("read-3", 30),
+        u("I'd like you to find and remove all bug references", 40), // user task
+        t("read-4", 50),
+        t("read-5", 60),
+        t("read-6", 70),
+        t("read-7", 80),
+        t("read-8", 90),
+        t("read-9", 100)
       )
       // Claim was established before the slice — the agent had been
       // running. The claim anchor lands on `read-1`, the first event
@@ -178,8 +192,8 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       // DELIVERED so UndeliveredToolResults releases them — this test
       // pins the user-task protection specifically.
       val ctx = TurnEventsContext(
-        conversationId       = convId,
-        claimedAt            = Some(Timestamp(5L)),
+        conversationId = convId,
+        claimedAt = Some(Timestamp(5L)),
         deliveredToolResults = turnEvents.collect { case ti: ToolInvoke => ti._id }.toSet
       )
       val folded = compactor.selectFoldable(turnEvents, ctx).toSet
@@ -187,20 +201,20 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       folded should not contain userTaskId
       // The middle reads (turnEvents 1, 2 — past the anchor and
       // before the user task) fold normally.
-      folded should contain (turnEvents(1)._id)
-      folded should contain (turnEvents(2)._id)
+      folded should contain(turnEvents(1)._id)
+      folded should contain(turnEvents(2)._id)
     }
 
     "fold agent-authored Standard-role Messages normally (only user-authored is protected)" in Task {
       // The protection is "Standard-role from a NON-agent participant"
       // — the agent's own responses are still foldable.
       val agentMsg = Message(
-        participantId  = TestAgent,
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = TestTopicId,
-        role           = MessageRole.Standard,
-        content        = Vector(ResponseContent.Text("here is my reply")),
-        state          = EventState.Complete
+        topicId = TestTopicId,
+        role = MessageRole.Standard,
+        content = Vector(ResponseContent.Text("here is my reply")),
+        state = EventState.Complete
       )
       val compactor = StandardIntraTurnCompactor(recentTailN = 2)
       val turnEvents: Vector[Event] = Vector(
@@ -211,7 +225,7 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       )
       val ctx = TurnEventsContext(conversationId = convId)
       val folded = compactor.selectFoldable(turnEvents, ctx).toSet
-      folded should contain (agentMsg._id)
+      folded should contain(agentMsg._id)
     }
   }
 

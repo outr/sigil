@@ -16,8 +16,6 @@ import scala.concurrent.duration.*
  * Llama, Qwen, and other open-weight models on vLLM / SGLang
  * upstream. Function calling and streaming SSE both supported.
  *
-*
- *
  * Schemas pass through [[StrictSchema.stripUnsupportedKeys]] —
  * conservative dialect-friendly shape; no `strict: true` since
  * DeepInfra documents OpenAI compatibility, not strict-mode.
@@ -34,15 +32,18 @@ import scala.concurrent.duration.*
  * 100%. Apps wanting bounded reasoning latency on kimi should set
  * `GenerationSettings(reasoningMode = ReasoningMode.On, effort =
  * Some(Effort.Low))` instead of `Off` — caps reasoning at ~120
-    * tokens (~1-2s) while preserving tool compliance.
+ * tokens (~1-2s) while preserving tool compliance.
  */
 case class DeepInfraProvider(apiKey: String,
                              sigilRef: Sigil,
                              baseUrl: URL = url"https://api.deepinfra.com",
-                             /** Per-read idle timeout for the SSE stream. Fires
-                               * only when no bytes arrive for the duration —
-                               * slow-but-working streams keep going. */
-                             tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
+                             /**
+                              * Per-read idle timeout for the SSE stream. Fires
+                              * only when no bytes arrive for the duration —
+                              * slow-but-working streams keep going.
+                              */
+                             tokenIdleTimeout: FiniteDuration = 120.seconds)
+  extends Provider {
   override def `type`: ProviderType = ProviderType.DeepInfra
   override val providerKey: String = DeepInfra.Provider
   override protected def sigil: Sigil = sigilRef

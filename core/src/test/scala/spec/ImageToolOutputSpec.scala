@@ -22,29 +22,29 @@ import spice.net.URL
  */
 class ImageToolOutputSpec extends AnyWordSpec with Matchers {
 
-  private val convId   = sigil.conversation.Conversation.id("img-test-conv")
-  private val topicId  = sigil.conversation.Topic.id("img-test-topic")
+  private val convId = sigil.conversation.Conversation.id("img-test-conv")
+  private val topicId = sigil.conversation.Topic.id("img-test-topic")
   private val sampleUrl: URL =
     URL.get("sigil://storage/abc123", tldValidation = spice.net.TLDValidation.Off).toOption.get
 
   private def settledInvoke(out: ImageToolOutput, summary: String = ""): ToolInvoke = ToolInvoke(
-    toolName       = ToolName("preview_theme"),
-    participantId  = TestAgent,
+    toolName = ToolName("preview_theme"),
+    participantId = TestAgent,
     conversationId = convId,
-    topicId        = topicId,
-    state          = EventState.Complete,
-    outcome        = ToolOutcome.Success,
-    output         = out,
-    summary        = summary,
-    timestamp      = Timestamp()
+    topicId = topicId,
+    state = EventState.Complete,
+    outcome = ToolOutcome.Success,
+    output = out,
+    summary = summary,
+    timestamp = Timestamp()
   )
 
   "FrameBuilder.computeFrame for an ImageToolOutput-settled ToolInvoke" should {
 
     "lift the image URL into ContextFrame.ToolCall.state.images" in {
-      val out    = ImageToolOutput(sampleUrl, alt = "preview", text = Some("Preview of /pages/x"))
+      val out = ImageToolOutput(sampleUrl, alt = "preview", text = Some("Preview of /pages/x"))
       val invoke = settledInvoke(out)
-      val frame  = FrameBuilder.computeFrame(invoke)
+      val frame = FrameBuilder.computeFrame(invoke)
       frame shouldBe defined
       val toolFrame = frame.get.asInstanceOf[ContextFrame.ToolCall]
       toolFrame.state match {

@@ -30,5 +30,6 @@ import sigil.participant.ParticipantId
  * about (e.g. cached `previous_response_id` for provider streaming).
  */
 case class ParticipantProjectionUpdated(conversationId: Id[Conversation],
-                                         participantId: ParticipantId,
-                                         projection: ParticipantProjection) extends ConversationNotice derives RW
+                                        participantId: ParticipantId,
+                                        projection: ParticipantProjection)
+  extends ConversationNotice derives RW

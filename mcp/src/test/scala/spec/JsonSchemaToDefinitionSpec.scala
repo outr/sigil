@@ -30,7 +30,7 @@ class JsonSchemaToDefinitionSpec extends AnyWordSpec with Matchers {
         "type" -> str("object"),
         "properties" -> obj(
           "name" -> obj("type" -> str("string")),
-          "age"  -> obj("type" -> str("integer"))
+          "age" -> obj("type" -> str("integer"))
         ),
         "required" -> Arr(Vector(str("name")))
       )
@@ -45,12 +45,12 @@ class JsonSchemaToDefinitionSpec extends AnyWordSpec with Matchers {
 
     "convert an array schema with primitive items" in {
       val schema = obj(
-        "type"  -> str("array"),
+        "type" -> str("array"),
         "items" -> obj("type" -> str("string"))
       )
       JsonSchemaToDefinition(schema).defType match {
         case DefType.Arr(inner) => inner.defType shouldBe DefType.Str
-        case other              => fail(s"expected Arr, got $other")
+        case other => fail(s"expected Arr, got $other")
       }
     }
 

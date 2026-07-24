@@ -28,8 +28,10 @@ class OrphanProviderErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private val modelId: Id[Model] = Model.id("test", "model-67")
 
-  /** Provider that emits `ProviderEvent.Error` immediately —
-    * before any ToolCallStart, mirroring a pre-flight failure. */
+  /**
+   * Provider that emits `ProviderEvent.Error` immediately —
+   * before any ToolCallStart, mirroring a pre-flight failure.
+   */
   private class PreflightErrorProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -45,28 +47,28 @@ class OrphanProviderErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private def runOrchestrator(): Task[List[Signal]] = {
     val convId = Conversation.id("orphan-error-test")
-    val conv   = Conversation(topics = TestTopicStack, _id = convId)
+    val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector.empty
+      chain = List(TestUser, TestAgent),
+      tools = Vector.empty
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, new PreflightErrorProvider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator (bug #67)" should {
 
-    "synthesize a stub ToolInvoke + pair the error Message to it when ProviderEvent.Error fires before any tool call" in {
+    "synthesize a stub ToolInvoke + pair the error Message to it when ProviderEvent.Error fires before any tool call" in
       runOrchestrator().map { signals =>
         // The synthetic ToolInvoke that gives the error a parent.
         val synthetic = signals.collect {
@@ -81,11 +83,12 @@ class OrphanProviderErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         // travels through the wire; the agent reads "the call failed
         // because $msg; retry with corrected args" on its next turn.
         val errorDeltas = signals.collect {
-          case d: ToolDelta if d.target == synthetic.head._id &&
-            (d.outcome match {
-              case Some(ToolOutcome.Failure(reason, _)) => reason.contains("Provider error")
-              case _                                    => false
-            }) => d
+          case d: ToolDelta
+              if d.target == synthetic.head._id &&
+                (d.outcome match {
+                  case Some(ToolOutcome.Failure(reason, _)) => reason.contains("Provider error")
+                  case _ => false
+                }) => d
         }
         errorDeltas should have size 1
 
@@ -97,7 +100,6 @@ class OrphanProviderErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         }
         orphanedToolEvents shouldBe empty
       }
-    }
   }
 
   "tear down" should {

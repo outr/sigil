@@ -37,17 +37,17 @@ class UserMessageImageVisionSpec extends AnyWordSpec with Matchers {
   "FrameBuilder (#405)" should {
     "carry a user Message's ResponseContent.Image URLs onto the Text frame" in {
       val m = Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = Conversation.id("img-conv"),
-        topicId        = Id[Topic]("t"),
-        content        = Vector(ResponseContent.Text("describe this image"), ResponseContent.Image(imgUrl)),
-        state          = EventState.Complete
+        topicId = Id[Topic]("t"),
+        content = Vector(ResponseContent.Text("describe this image"), ResponseContent.Image(imgUrl)),
+        state = EventState.Complete
       )
       FrameBuilder.computeFrame(m) match {
         case Some(t: ContextFrame.Text) =>
           t.images shouldBe List(imgUrl)
           // Text still reduces the image to a placeholder — no base64 in frames.
-          t.content should include ("describe this image")
+          t.content should include("describe this image")
         case other => fail(s"expected a Text frame, got $other")
       }
     }
@@ -71,7 +71,7 @@ class UserMessageImageVisionSpec extends AnyWordSpec with Matchers {
         images should have size 1
         images.head.url shouldBe imgUrl
         // Caption stays adjacent to the image (#391).
-        user.content.collectFirst { case t: MessageContent.Text => t.text }.get should include ("describe")
+        user.content.collectFirst { case t: MessageContent.Text => t.text }.get should include("describe")
       }
     }
 
@@ -87,7 +87,7 @@ class UserMessageImageVisionSpec extends AnyWordSpec with Matchers {
       msgs.collectFirst { case a: ProviderMessage.Assistant => a }.isDefined shouldBe true
       msgs.flatMap {
         case u: ProviderMessage.User => u.content.collect { case i: MessageContent.Image => i }
-        case _                       => Nil
+        case _ => Nil
       } shouldBe empty
     }
 

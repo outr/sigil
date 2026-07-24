@@ -32,8 +32,10 @@ import scala.concurrent.duration.*
  */
 class LlamaCppTokenizerHardeningSpec extends AnyWordSpec with Matchers {
 
-  /** Counts how many times the fallback was consulted; lets us
-    * assert "cache hit" without instrumenting the tokenizer. */
+  /**
+   * Counts how many times the fallback was consulted; lets us
+   * assert "cache hit" without instrumenting the tokenizer.
+   */
   private class CountingFallback extends Tokenizer {
     val invocations: AtomicInteger = new AtomicInteger(0)
     override def count(text: String): Int = {
@@ -56,7 +58,7 @@ class LlamaCppTokenizerHardeningSpec extends AnyWordSpec with Matchers {
         fallback = fallback,
         requestTimeout = 200.millis,
         cacheSize = 64,
-        breakerThreshold = 1000  // disable breaker for this test
+        breakerThreshold = 1000 // disable breaker for this test
       )
       val n1 = tok.count("hello world")
       val before = fallback.invocations.get()

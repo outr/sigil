@@ -35,7 +35,7 @@ object WorkerConversationAddressingTransform extends InboundTransform {
     case m: Message if m.role == MessageRole.Standard && m.addressees.forall(_.isEmpty) =>
       self.withDB(_.conversations.transaction(_.get(m.conversationId))).map {
         case Some(conv) if conv.parentConversationId.isDefined =>
-          val agentIds = conv.participants.collect { case a: AgentParticipant => (a.id: sigil.participant.ParticipantId) }
+          val agentIds = conv.participants.collect { case a: AgentParticipant => a.id: sigil.participant.ParticipantId }
           if (agentIds.sizeIs >= 2 && agentIds.contains(m.participantId)) {
             val others = agentIds.iterator.filterNot(_ == m.participantId).toSet
             if (others.nonEmpty) m.copy(addressees = Some(others)) else m

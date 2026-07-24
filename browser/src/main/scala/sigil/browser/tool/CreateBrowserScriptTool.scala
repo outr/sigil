@@ -22,9 +22,9 @@ import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, T
  * `find_capability` round-trip.
  */
 case object CreateBrowserScriptTool extends Tool {
-  type Input  = CreateBrowserScriptInput
+  type Input = CreateBrowserScriptInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[CreateBrowserScriptInput]]
+  val inputRW = summon[RW[CreateBrowserScriptInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("create_browser_script")
@@ -48,14 +48,14 @@ case object CreateBrowserScriptTool extends Tool {
     case bs: BrowserSigil =>
       bs.browserScriptSpace(ctx.chain, input.space).flatMap { resolvedSpace =>
         val script = BrowserScript(
-          name        = ToolName(input.name),
+          name = ToolName(input.name),
           description = input.description,
-          parameters  = JsonSchemaToDefinition(input.parameters),
-          steps       = input.steps,
-          space       = resolvedSpace,
+          parameters = JsonSchemaToDefinition(input.parameters),
+          steps = input.steps,
+          space = resolvedSpace,
           cookieJarId = input.cookieJarId.map(s => Id[CookieJar](s)),
-          keywords    = input.keywords,
-          createdBy   = Some(ctx.caller)
+          keywords = input.keywords,
+          createdBy = Some(ctx.caller)
         )
         ctx.sigil.createTool(script).map { stored =>
           val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
@@ -69,8 +69,9 @@ case object CreateBrowserScriptTool extends Tool {
           text.append("Authoring follow-ups: update_browser_script, delete_browser_script.\n")
           ToolResult.Success(TextToolOutput(text.toString))
         }
-      }.handleError(t => Task.pure(ToolResult.failure(
-        s"Failed to create browser script: ${t.getMessage}")))
+      }.handleError(t =>
+        Task.pure(ToolResult.failure(
+          s"Failed to create browser script: ${t.getMessage}")))
     case _ =>
       Task.pure(ToolResult.failure(
         "Sigil instance does not mix in BrowserSigil; cannot create browser scripts."))

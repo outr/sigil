@@ -26,9 +26,9 @@ import sigil.tool.model.ChangeModeInput
  * available" prompt block needed.
  */
 case object ChangeModeTool extends Tool {
-  type Input  = ChangeModeInput
+  type Input = ChangeModeInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ChangeModeInput]]
+  val inputRW = summon[RW[ChangeModeInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("change_mode")
@@ -54,15 +54,23 @@ case object ChangeModeTool extends Tool {
       |on the next turn.""".stripMargin
 
   // Curated keyword surface for discovery ranking. Tight on what
-   // `change_mode` actually does — switch the agent's operating
-   // posture / toolset — without leaking into adjacent intents like
-   // `pin_complexity` (tier / level / complexity / cost), which are
-   // separate tools with their own keyword sets. Without these, the
-   // BM25 ranker would score `change_mode` purely on its description
-   // prose and accidentally match tier-shaped queries.
+  // `change_mode` actually does — switch the agent's operating
+  // posture / toolset — without leaking into adjacent intents like
+  // `pin_complexity` (tier / level / complexity / cost), which are
+  // separate tools with their own keyword sets. Without these, the
+  // BM25 ranker would score `change_mode` purely on its description
+  // prose and accidentally match tier-shaped queries.
   override val keywords: Set[String] = Set(
-    "mode", "modes", "switch", "change", "transition",
-    "operating", "posture", "kit", "toolset", "tools"
+    "mode",
+    "modes",
+    "switch",
+    "change",
+    "transition",
+    "operating",
+    "posture",
+    "kit",
+    "toolset",
+    "tools"
   )
 
   override val examples: List[sigil.tool.ToolExample] = List(
@@ -115,9 +123,11 @@ case object ChangeModeTool extends Tool {
         ))
     }
 
-  /** Append the live set of switchable modes to the static
-    * description so the LLM sees the available targets without a
-    * separate prompt-rendering pass. */
+  /**
+   * Append the live set of switchable modes to the static
+   * description so the LLM sees the available targets without a
+   * separate prompt-rendering pass.
+   */
   override def descriptionFor(mode: Mode, sigil: Sigil): String = {
     val others = sigil.availableModes.filterNot(_.name == mode.name)
     if (others.isEmpty) description

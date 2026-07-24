@@ -56,5 +56,6 @@ case class SecretSubmission(secretId: String,
   override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event =
+    copy(conversationId = conversationId)
 }

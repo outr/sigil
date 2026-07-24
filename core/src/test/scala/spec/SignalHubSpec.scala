@@ -40,7 +40,9 @@ class SignalHubSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       timestamp = Timestamp(ts)
     )
 
-  /** A transient `Delta` signal — sheddable under overflow. */
+  /**
+   * A transient `Delta` signal — sheddable under overflow.
+   */
   private def delta(targetId: String): Signal =
     StateDelta(
       target = Id[Event](targetId),
@@ -74,7 +76,7 @@ class SignalHubSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val draining = drainTask.start()
       // Trigger termination so toList completes.
       Task.sleep(50.millis).flatMap { _ =>
-        Task { hub.close() }.flatMap { _ =>
+        Task(hub.close()).flatMap { _ =>
           draining.flatMap { signals =>
             val texts = signals.collect {
               case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
@@ -91,7 +93,7 @@ class SignalHubSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       hub.subscriberCount shouldBe 1
       val drainTask = stream.toList.start()
       Task.sleep(25.millis).flatMap { _ =>
-        Task { hub.close() }.flatMap { _ =>
+        Task(hub.close()).flatMap { _ =>
           drainTask.flatMap { _ =>
             // After the stream completes, the subscriber should be
             // removed from the hub's list.
@@ -119,9 +121,9 @@ class SignalHubSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       hub.emit(msg("E4"))
       val draining = stream.toList.start()
       Task.sleep(50.millis).flatMap { _ =>
-        Task { hub.close() }.flatMap { _ =>
+        Task(hub.close()).flatMap { _ =>
           draining.flatMap { signals =>
-            val texts  = signals.collect {
+            val texts = signals.collect {
               case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
             }
             val deltas = signals.collect { case d: StateDelta => d }
@@ -148,14 +150,14 @@ class SignalHubSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       hub.emit(msg("E4"))
       val draining = stream.toList.start()
       Task.sleep(50.millis).flatMap { _ =>
-        Task { hub.close() }.flatMap { _ =>
+        Task(hub.close()).flatMap { _ =>
           draining.flatMap { signals =>
             val texts = signals.collect {
               case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
             }
             Task.pure {
               texts should not contain "E1" // oldest Event dropped on overflow
-              texts should contain ("E4")   // newest Event kept
+              texts should contain("E4") // newest Event kept
             }
           }
         }

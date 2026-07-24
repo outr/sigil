@@ -17,4 +17,5 @@ case class ProcessOutput(handle: String,
                          nextCursor: Long,
                          status: ProcessStatus,
                          exitCode: Option[Int],
-                         dropped: Boolean) derives RW
+                         dropped: Boolean)
+  derives RW

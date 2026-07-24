@@ -84,10 +84,12 @@ class ToolIterationUsageCostSpec extends AsyncWordSpec with AsyncTaskSpec with M
       Task.pure(Nil)
   }
 
-  /** Iteration 1: a pure tool call (no streamed text) with usage
-    * emitted AFTER the tool-call complete — the normalized provider
-    * ordering. Iteration 2: a terminating respond with its own usage. */
-  private final class ToolThenRespondProvider extends Provider {
+  /**
+   * Iteration 1: a pure tool call (no streamed text) with usage
+   * emitted AFTER the tool-call complete — the normalized provider
+   * ordering. Iteration 2: a terminating respond with its own usage.
+   */
+  final private class ToolThenRespondProvider extends Provider {
     val calls = new java.util.concurrent.atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -107,12 +109,14 @@ class ToolIterationUsageCostSpec extends AsyncWordSpec with AsyncTaskSpec with M
         else
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, RespondInput(
-              topicLabel   = TestTopicEntry.label,
-              topicSummary = TestTopicEntry.summary,
-              content      = "The magic number is 42.",
-              endsTurn     = true
-            )),
+            ProviderEvent.ToolCallComplete(
+              callId,
+              RespondInput(
+                topicLabel = TestTopicEntry.label,
+                topicSummary = TestTopicEntry.summary,
+                content = "The magic number is 42.",
+                endsTurn = true
+              )),
             ProviderEvent.Usage(TokenUsage(2000, 25, 2025)),
             ProviderEvent.Done(StopReason.ToolCall)
           )
@@ -122,10 +126,10 @@ class ToolIterationUsageCostSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = pricedModelId,
-      toolNames          = CoreTools.coreToolNames :+ GetMagicNumberTool.name,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = pricedModelId,
+      toolNames = CoreTools.coreToolNames :+ GetMagicNumberTool.name,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -144,8 +148,8 @@ class ToolIterationUsageCostSpec extends AsyncWordSpec with AsyncTaskSpec with M
       TestSigil.setProvider(Task.pure(provider))
       TestSigil.setMemoryExtractor(NoExtraction)
       val convId = Conversation.id(s"iter-usage-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
       val recorded = new ConcurrentLinkedQueue[Signal]()
       @volatile var running = true
@@ -160,19 +164,19 @@ class ToolIterationUsageCostSpec extends AsyncWordSpec with AsyncTaskSpec with M
           case n: ConversationCostUpdated if n.conversationId == convId => n
         }.toList
 
-      val toolCharge    = pricing.prompt * 1000 + pricing.completion * 50
+      val toolCharge = pricing.prompt * 1000 + pricing.completion * 50
       val respondCharge = pricing.prompt * 2000 + pricing.completion * 25
 
       for {
         _ <- Task.sleep(150.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("What is the magic number?")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("What is the magic number?")),
+          state = EventState.Complete
+        ))
         _ <- waitFor(20.seconds)(costNotices.size >= 2)
         events <- TestSigil.withDB(_.eventsTransaction(convId)(_.list)).map(_.filter(_.conversationId == convId))
       } yield {
@@ -188,8 +192,8 @@ class ToolIterationUsageCostSpec extends AsyncWordSpec with AsyncTaskSpec with M
           notices.size should be >= 2
           // The tool iteration charged on its own — the badge moved
           // BEFORE the final respond landed.
-          notices.map(_.delta) should contain (toolCharge)
-          notices.map(_.delta) should contain (respondCharge)
+          notices.map(_.delta) should contain(toolCharge)
+          notices.map(_.delta) should contain(respondCharge)
         }
       }
     }

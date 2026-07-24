@@ -14,16 +14,19 @@ final case class MutatingSpecInput(step: String, target: Option[String] = None) 
  * stall detector.
  */
 case object MutatingSpecTool extends Tool with DestructiveExternalTool {
-  type Input  = MutatingSpecInput
+  type Input = MutatingSpecInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[MutatingSpecInput]]
+  val inputRW = summon[RW[MutatingSpecInput]]
   val outputRW = summon[RW[TextToolOutput]]
   val name = ToolName("mutate_spec_state")
   val description = "Test-only state-changing tool; applies the named step."
   override val keywords: Set[String] = Set("mutate", "test")
-  /** Target defaults to the step itself — each distinct step models a
-    * distinct file, like a bulk sweep; churn specs pin `target` to
-    * model re-editing one file. */
+
+  /**
+   * Target defaults to the step itself — each distinct step models a
+   * distinct file, like a bulk sweep; churn specs pin `target` to
+   * model re-editing one file.
+   */
   override def mutationTarget(input: MutatingSpecInput): Option[String] =
     Some(input.target.getOrElse(input.step))
 

@@ -17,9 +17,9 @@ import sigil.tool.{PlaceholderInputDetector, TextToolOutput, Tool, ToolExample, 
  * that confines the command's working directory.
  */
 final class BashTool(context: FileSystemContext) extends Tool with sigil.tool.DestructiveExternalTool {
-  type Input  = BashInput
+  type Input = BashInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[BashInput]]
+  val inputRW = summon[RW[BashInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
   val name = ToolName("bash")
@@ -33,9 +33,21 @@ final class BashTool(context: FileSystemContext) extends Tool with sigil.tool.De
   )
 
   override val keywords: Set[String] = Set(
-    "bash", "shell", "command", "exec", "run", "sh",
-    "script", "terminal", "execute", "invoke", "system",
-    "cli", "process", "spawn", "subprocess"
+    "bash",
+    "shell",
+    "command",
+    "exec",
+    "run",
+    "sh",
+    "script",
+    "terminal",
+    "execute",
+    "invoke",
+    "system",
+    "cli",
+    "process",
+    "spawn",
+    "subprocess"
   )
 
   override def preferIfNoBetter: Boolean = true

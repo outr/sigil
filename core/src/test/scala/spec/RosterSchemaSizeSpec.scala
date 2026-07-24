@@ -30,15 +30,16 @@ class RosterSchemaSizeSpec extends AnyWordSpec with Matchers {
                        field09: String = "",
                        field10: String = "",
                        field11: String = "",
-                       field12: String = "") extends ToolInput derives RW
+                       field12: String = "")
+    extends ToolInput derives RW
 
   case object WideTool extends Tool {
-    type Input  = WideInput
+    type Input = WideInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[WideInput]]
+    val inputRW = summon[RW[WideInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("wide_tool")
+    val name = ToolName("wide_tool")
     val description = "A short description."
 
     override def executeOutput(input: WideInput, context: ToolContext): Task[TextToolOutput] =

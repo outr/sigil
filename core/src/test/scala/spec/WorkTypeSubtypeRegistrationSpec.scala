@@ -6,10 +6,12 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.WorkType
 
-/** Coverage for sigil bug #18 — the Dart codegen renders an empty
-  * `WorkType` abstract class. Confirms whether the subtype list is
-  * actually populated post-`polymorphicRegistrations`, and serves as
-  * a regression guard once it is. */
+/**
+ * Coverage for sigil bug #18 — the Dart codegen renders an empty
+ * `WorkType` abstract class. Confirms whether the subtype list is
+ * actually populated post-`polymorphicRegistrations`, and serves as
+ * a regression guard once it is.
+ */
 class WorkTypeSubtypeRegistrationSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
@@ -39,7 +41,7 @@ class WorkTypeSubtypeRegistrationSpec extends AnyWordSpec with Matchers {
           )
           val polyDefn = workTypeFieldDefn.defType match {
             case DefType.Opt(inner) => inner
-            case _                  => workTypeFieldDefn
+            case _ => workTypeFieldDefn
           }
           polyDefn.defType match {
             case p: DefType.Poly =>
@@ -62,7 +64,7 @@ class WorkTypeSubtypeRegistrationSpec extends AnyWordSpec with Matchers {
       val files = spice.openapi.generator.dart.DurableSocketDartGenerator(
         spice.openapi.generator.dart.DurableSocketDartConfig(
           serviceName = "Test",
-          wireType    = "Signal" -> signalDefn
+          wireType = "Signal" -> signalDefn
         )
       ).generate()
       val workTypeFile = files.find(_.fileName == "work_type.dart").map(_.source).getOrElse(

@@ -11,4 +11,5 @@ final case class BankingUserAccount(firstName: String,
                                     lastName: String,
                                     street: String,
                                     city: String,
-                                    password: String) derives RW
+                                    password: String)
+  derives RW

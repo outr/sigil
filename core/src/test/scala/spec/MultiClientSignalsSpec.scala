@@ -61,20 +61,29 @@ class MultiClientSignalsSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         // location), one by TestAgent (must be excluded from
         // TestUser's view).
         _ <- TestSigil.persistMemory(ContextMemory(
-          fact = "User favorite color is amber", label = "color", summary = "amber",
-          source = MemorySource.Explicit, spaceId = TestSpace,
-          pinned = true, createdBy = Some(TestUser)
+          fact = "User favorite color is amber",
+          label = "color",
+          summary = "amber",
+          source = MemorySource.Explicit,
+          spaceId = TestSpace,
+          pinned = true,
+          createdBy = Some(TestUser)
         ))
         _ <- TestSigil.persistMemory(ContextMemory(
-          fact = "User lives in Seattle", label = "location", summary = "Seattle WA",
-          source = MemorySource.Explicit, spaceId = TestSpace,
+          fact = "User lives in Seattle",
+          label = "location",
+          summary = "Seattle WA",
+          source = MemorySource.Explicit,
+          spaceId = TestSpace,
           createdBy = Some(TestUser),
           location = Some(Place(point = lightdb.spatial.Point(47.6, -122.3)))
         ))
         _ <- TestSigil.persistMemory(ContextMemory(
-          fact = "Agent observed user prefers terse replies", label = "style",
+          fact = "Agent observed user prefers terse replies",
+          label = "style",
           summary = "terse",
-          source = MemorySource.Compression, spaceId = TestSpace,
+          source = MemorySource.Compression,
+          spaceId = TestSpace,
           createdBy = Some(TestAgent)
         ))
         // Unfiltered request — TestUser's two memories should land,
@@ -128,7 +137,7 @@ class MultiClientSignalsSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         val snaps = collect[MemoryListSnapshot](recorded)
         val first = snaps.head
         first.memories.size shouldBe 1
-        first.memories.head.summary should include ("amber")
+        first.memories.head.summary should include("amber")
       }
     }
   }
@@ -180,8 +189,8 @@ class MultiClientSignalsSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
     "broadcast when an app writes through setParticipantContext" in {
       val convId = Conversation.id(s"p291-broadcast-${rapid.Unique()}")
-      val topic  = TopicEntry(TestTopicId, "t", "t")
-      val conv   = Conversation(_id = convId, topics = List(topic))
+      val topic = TopicEntry(TestTopicId, "t", "t")
+      val conv = Conversation(_id = convId, topics = List(topic))
       val (recorded, stop) = subscribe(TestUser)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
@@ -198,8 +207,8 @@ class MultiClientSignalsSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
     "suppress broadcast on framework-internal cache writes (broadcast = false)" in {
       val convId = Conversation.id(s"p291-quiet-${rapid.Unique()}")
-      val topic  = TopicEntry(TestTopicId, "t", "t")
-      val conv   = Conversation(_id = convId, topics = List(topic))
+      val topic = TopicEntry(TestTopicId, "t", "t")
+      val conv = Conversation(_id = convId, topics = List(topic))
       val (recorded, stop) = subscribe(TestUser)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))

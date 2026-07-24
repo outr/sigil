@@ -5,9 +5,7 @@ import fabric.io.JsonFormatter
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.db.Model
-import sigil.provider.{
-  GenerationSettings, ProviderCall, ProviderStreamException, ReasoningMode, ToolCallAccumulator, ToolChoice
-}
+import sigil.provider.{GenerationSettings, ProviderCall, ProviderStreamException, ReasoningMode, ToolCallAccumulator, ToolChoice}
 import sigil.provider.wire.OpenAIChatCompletions
 
 /**
@@ -26,10 +24,10 @@ class TruncatedStreamSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private val cfg: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
-    providerNamespace        = "cloudflare",
-    providerName             = "Cloudflare",
+    providerNamespace = "cloudflare",
+    providerName = "Cloudflare",
     nonStrictSchemaTransform = identity,
-    emptyBudgetBurnThrows    = true
+    emptyBudgetBurnThrows = true
   )
 
   private def freshState(): OpenAIChatCompletions.StreamState =
@@ -38,12 +36,14 @@ class TruncatedStreamSpec extends AnyWordSpec with Matchers {
   private def feed(state: OpenAIChatCompletions.StreamState, json: Json): Unit =
     OpenAIChatCompletions.parseLine("data: " + JsonFormatter.Compact(json), state, cfg)
 
-  /** The bug's final chunk: reasoning only, finish_reason null. */
+  /**
+   * The bug's final chunk: reasoning only, finish_reason null.
+   */
   private val reasoningChunk: Json = obj(
     "choices" -> arr(obj(
-      "delta"         -> obj("content" -> Null, "reasoning_content" -> str(" workflow."), "tool_calls" -> Null),
+      "delta" -> obj("content" -> Null, "reasoning_content" -> str(" workflow."), "tool_calls" -> Null),
       "finish_reason" -> Null,
-      "index"         -> num(0)
+      "index" -> num(0)
     ))
   )
 
@@ -89,18 +89,18 @@ class TruncatedStreamSpec extends AnyWordSpec with Matchers {
     val model = TestSigil.testModel(Model.id("test", "reasoner-360"))
     def call(mode: ReasoningMode): ProviderCall =
       ProviderCall(
-        model              = model,
-        system             = "",
-        messages           = Vector.empty,
-        tools              = Vector.empty,
-        builtInTools       = Set.empty,
-        toolChoice         = ToolChoice.None,
+        model = model,
+        system = "",
+        messages = Vector.empty,
+        tools = Vector.empty,
+        builtInTools = Set.empty,
+        toolChoice = ToolChoice.None,
         generationSettings = GenerationSettings(reasoningMode = mode)
       )
     val reasoningCfg = cfg.copy(reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ChatTemplateEnableThinking)
 
     "be true when a reasoning policy is active and reasoning isn't Off (On / Auto)" in {
-      OpenAIChatCompletions.isReasoningRequest(call(ReasoningMode.On), reasoningCfg)   shouldBe true
+      OpenAIChatCompletions.isReasoningRequest(call(ReasoningMode.On), reasoningCfg) shouldBe true
       OpenAIChatCompletions.isReasoningRequest(call(ReasoningMode.Auto), reasoningCfg) shouldBe true
     }
 

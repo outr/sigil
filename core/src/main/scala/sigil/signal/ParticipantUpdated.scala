@@ -19,4 +19,5 @@ import sigil.participant.Participant
  * Emitted from `Sigil.updateParticipant`.
  */
 case class ParticipantUpdated(conversationId: Id[Conversation],
-                              participant: Participant) extends ConversationNotice derives RW
+                              participant: Participant)
+  extends ConversationNotice derives RW

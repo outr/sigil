@@ -38,26 +38,36 @@ import scala.concurrent.duration.*
  */
 object AnthropicBatch {
 
-  /** Anthropic's documented per-batch ceiling (entries). */
+  /**
+   * Anthropic's documented per-batch ceiling (entries).
+   */
   val MaxRequestsPerBatch: Int = 100_000
 
-  /** Initial poll interval. Anthropic batches complete on similar
-    * timescales to OpenAI's — small batches in seconds-to-minutes,
-    * large batches up to the 24h SLA. */
+  /**
+   * Initial poll interval. Anthropic batches complete on similar
+   * timescales to OpenAI's — small batches in seconds-to-minutes,
+   * large batches up to the 24h SLA.
+   */
   val InitialPollInterval: FiniteDuration = 5.seconds
 
-  /** Max poll interval. */
+  /**
+   * Max poll interval.
+   */
   val MaxPollInterval: FiniteDuration = 60.seconds
 
-  /** Default per-request `max_tokens` when the caller hasn't supplied
-    * one. Anthropic requires `max_tokens` on every Messages request
-    * (it's not optional like OpenAI's `max_completion_tokens`). */
+  /**
+   * Default per-request `max_tokens` when the caller hasn't supplied
+   * one. Anthropic requires `max_tokens` on every Messages request
+   * (it's not optional like OpenAI's `max_completion_tokens`).
+   */
   val DefaultMaxTokens: Int = 4096
 
-  /** Render one OneShotRequest into the Anthropic Message Batches
-    * entry shape: `{custom_id, params: {model, max_tokens, system,
-    * messages}}`. Used by [[submitChunk]] to build the inline
-    * `requests` array. */
+  /**
+   * Render one OneShotRequest into the Anthropic Message Batches
+   * entry shape: `{custom_id, params: {model, max_tokens, system,
+   * messages}}`. Used by [[submitChunk]] to build the inline
+   * `requests` array.
+   */
   def renderRequestEntry(request: OneShotRequest): Json = {
     val modelName = stripNamespacePrefix(request.model._id.value)
     val userContent: Vector[Json] =
@@ -66,50 +76,52 @@ object AnthropicBatch {
       else
         request.userContent.flatMap(rcToAnthropicContent)
     val userMsg = obj(
-      "role"    -> str("user"),
+      "role" -> str("user"),
       "content" -> arr(userContent*)
     )
     val maxTokens = request.generationSettings.effectiveCap match {
       case sigil.provider.OutputTokenCap.Below(n) => n
-      case _                                      => DefaultMaxTokens
+      case _ => DefaultMaxTokens
     }
     val params = Vector[(String, Json)](
-      "model"      -> str(modelName),
+      "model" -> str(modelName),
       "max_tokens" -> num(maxTokens),
-      "messages"   -> arr(userMsg)
+      "messages" -> arr(userMsg)
     )
     val withSystem: Vector[(String, Json)] =
       if (request.systemPrompt.isEmpty) params
       else params :+ ("system" -> str(request.systemPrompt))
     val withTemp: Vector[(String, Json)] = request.generationSettings.temperature match {
       case Some(t) => withSystem :+ ("temperature" -> num(t))
-      case None    => withSystem
+      case None => withSystem
     }
     obj(
       "custom_id" -> str(request.requestId.value),
-      "params"    -> obj(withTemp*)
+      "params" -> obj(withTemp*)
     )
   }
 
-  /** Convert a [[ResponseContent]] block into one or more Anthropic
-    * Messages-API content entries. Text → `text` block. Image (URL)
-    * → `image.source.type = "url"`. ImageBytes → `image.source.type
-    * = "base64"`. Other variants flatten through markdown to text. */
+  /**
+   * Convert a [[ResponseContent]] block into one or more Anthropic
+   * Messages-API content entries. Text → `text` block. Image (URL)
+   * → `image.source.type = "url"`. ImageBytes → `image.source.type
+   * = "base64"`. Other variants flatten through markdown to text.
+   */
   private def rcToAnthropicContent(rc: ResponseContent): Vector[Json] = rc match {
     case ResponseContent.Text(t) =>
       Vector(obj("type" -> str("text"), "text" -> str(t)))
     case ResponseContent.Image(url, _) =>
       Vector(obj(
-        "type"   -> str("image"),
+        "type" -> str("image"),
         "source" -> obj("type" -> str("url"), "url" -> str(url.toString))
       ))
     case ResponseContent.ImageBytes(mt, b64, _) =>
       Vector(obj(
-        "type"   -> str("image"),
+        "type" -> str("image"),
         "source" -> obj(
-          "type"       -> str("base64"),
+          "type" -> str("base64"),
           "media_type" -> str(mt),
-          "data"       -> str(b64)
+          "data" -> str(b64)
         )
       ))
     case other =>
@@ -119,9 +131,11 @@ object AnthropicBatch {
       ))
   }
 
-  /** Parse one JSONL result line into a [[OneShotResponse]]. Anthropic
-    * shape: `{custom_id, result: {type: "succeeded"|"errored"|...,
-    * message?, error?}}`. */
+  /**
+   * Parse one JSONL result line into a [[OneShotResponse]]. Anthropic
+   * shape: `{custom_id, result: {type: "succeeded"|"errored"|...,
+   * message?, error?}}`.
+   */
   def parseResultLine(line: String): Option[OneShotResponse] = {
     if (line.trim.isEmpty) return None
     scala.util.Try(JsonParser(line)).toOption.flatMap { json =>
@@ -139,24 +153,24 @@ object AnthropicBatch {
               .getOrElse("")
             val usage = message.flatMap(_.get("usage")).map { u =>
               TokenUsage(
-                promptTokens     = u.get("input_tokens").map(_.asInt).getOrElse(0),
+                promptTokens = u.get("input_tokens").map(_.asInt).getOrElse(0),
                 completionTokens = u.get("output_tokens").map(_.asInt).getOrElse(0),
-                totalTokens      = u.get("input_tokens").map(_.asInt).getOrElse(0) +
-                                     u.get("output_tokens").map(_.asInt).getOrElse(0)
+                totalTokens = u.get("input_tokens").map(_.asInt).getOrElse(0) +
+                  u.get("output_tokens").map(_.asInt).getOrElse(0)
               )
             }
             OneShotResponse(
               requestId = reqId,
-              content   = if (text.isEmpty) Vector.empty else Vector(ResponseContent.Text(text)),
-              usage     = usage
+              content = if (text.isEmpty) Vector.empty else Vector(ResponseContent.Text(text)),
+              usage = usage
             )
           case Some("errored") =>
             val err = result.flatMap(_.get("error"))
-            val msg  = err.flatMap(_.get("message")).map(_.asString).getOrElse("unknown error")
+            val msg = err.flatMap(_.get("message")).map(_.asString).getOrElse("unknown error")
             val code = err.flatMap(_.get("type")).map(_.asString)
             OneShotResponse(
               requestId = reqId,
-              error     = Some(OneShotResponse.Error(message = msg, code = code, recoverable = false))
+              error = Some(OneShotResponse.Error(message = msg, code = code, recoverable = false))
             )
           case Some(other) =>
             // "canceled" / "expired" — surface as error with the
@@ -164,17 +178,17 @@ object AnthropicBatch {
             // failures.
             OneShotResponse(
               requestId = reqId,
-              error     = Some(OneShotResponse.Error(
-                message     = s"batch entry status: $other",
-                code        = Some(other),
+              error = Some(OneShotResponse.Error(
+                message = s"batch entry status: $other",
+                code = Some(other),
                 recoverable = other == "expired"
               ))
             )
           case None =>
             OneShotResponse(
               requestId = reqId,
-              error     = Some(OneShotResponse.Error(
-                message     = "batch result line missing `result.type`",
+              error = Some(OneShotResponse.Error(
+                message = "batch result line missing `result.type`",
                 recoverable = false
               ))
             )
@@ -183,14 +197,18 @@ object AnthropicBatch {
     }
   }
 
-  /** Strip the `anthropic/` namespace prefix from a model id. */
+  /**
+   * Strip the `anthropic/` namespace prefix from a model id.
+   */
   private def stripNamespacePrefix(modelId: String): String = {
     val prefix = "anthropic/"
     if (modelId.toLowerCase.startsWith(prefix)) modelId.drop(prefix.length) else modelId
   }
 
-  /** Submit one chunk of requests as a single Anthropic batch, poll
-    * until completion, return the parsed responses as a stream. */
+  /**
+   * Submit one chunk of requests as a single Anthropic batch, poll
+   * until completion, return the parsed responses as a stream.
+   */
   def submitChunk(chunk: List[OneShotRequest],
                   apiKey: String,
                   baseUrl: URL,
@@ -204,9 +222,9 @@ object AnthropicBatch {
                        authMode: AnthropicAuthMode): Task[List[OneShotResponse]] = {
     val customIds = chunk.map(_.requestId).toSet
     for {
-      batchId  <- createBatch(chunk, apiKey, baseUrl, authMode)
-      finalSt  <- pollUntilEnded(batchId, apiKey, baseUrl, authMode)
-      results  <- finalSt.resultsUrl match {
+      batchId <- createBatch(chunk, apiKey, baseUrl, authMode)
+      finalSt <- pollUntilEnded(batchId, apiKey, baseUrl, authMode)
+      results <- finalSt.resultsUrl match {
         case Some(url) =>
           downloadResults(url, apiKey, authMode).map { jsonl =>
             jsonl.split('\n').iterator.flatMap(parseResultLine).toList
@@ -215,9 +233,9 @@ object AnthropicBatch {
           Task.pure(chunk.map { r =>
             OneShotResponse(
               requestId = r.requestId,
-              error     = Some(OneShotResponse.Error(
-                message     = s"batch ended with no results URL (status=${finalSt.processingStatus})",
-                code        = Some(finalSt.processingStatus),
+              error = Some(OneShotResponse.Error(
+                message = s"batch ended with no results URL (status=${finalSt.processingStatus})",
+                code = Some(finalSt.processingStatus),
                 recoverable = false
               ))
             )
@@ -227,8 +245,8 @@ object AnthropicBatch {
       missing = customIds.diff(seenIds).toList.map { rid =>
         OneShotResponse(
           requestId = rid,
-          error     = Some(OneShotResponse.Error(
-            message     = "request did not appear in batch results",
+          error = Some(OneShotResponse.Error(
+            message = "request did not appear in batch results",
             recoverable = false
           ))
         )
@@ -236,8 +254,10 @@ object AnthropicBatch {
     } yield results ++ missing
   }
 
-  /** Auth-header helper — Anthropic's two auth modes share the same
-    * shape across all batch endpoints. */
+  /**
+   * Auth-header helper — Anthropic's two auth modes share the same
+   * shape across all batch endpoints.
+   */
   private def auth(req: HttpRequest, apiKey: String, authMode: AnthropicAuthMode): HttpRequest = authMode match {
     case AnthropicAuthMode.XApiKey =>
       req.withHeader("x-api-key", apiKey).withHeader("anthropic-version", Anthropic.ApiVersion)
@@ -246,7 +266,9 @@ object AnthropicBatch {
         .withHeader("anthropic-version", Anthropic.ApiVersion)
   }
 
-  /** Create the batch via POST /v1/messages/batches with inline requests. */
+  /**
+   * Create the batch via POST /v1/messages/batches with inline requests.
+   */
   def createBatch(chunk: List[OneShotRequest],
                   apiKey: String,
                   baseUrl: URL,
@@ -255,28 +277,31 @@ object AnthropicBatch {
     val body = obj("requests" -> arr(entries*))
     val req = auth(
       HttpRequest(
-        method  = HttpMethod.Post,
-        url     = baseUrl.withPath("/v1/messages/batches"),
+        method = HttpMethod.Post,
+        url = baseUrl.withPath("/v1/messages/batches"),
         content = Some(StringContent(JsonFormatter.Compact(body), ContentType.`application/json`))
       ),
-      apiKey, authMode
+      apiKey,
+      authMode
     )
     HttpClient.modify(_ => req).noFailOnHttpStatus.send().flatMap { resp =>
       resp.content match {
         case Some(c) => c.asString.flatMap { resBody =>
-          if (resp.status.isSuccess) Task {
-            JsonParser(resBody).get("id").map(_.asString).getOrElse {
-              throw new RuntimeException(s"Anthropic Batch: missing `id` in response: $resBody")
+            if (resp.status.isSuccess) Task {
+              JsonParser(resBody).get("id").map(_.asString).getOrElse {
+                throw new RuntimeException(s"Anthropic Batch: missing `id` in response: $resBody")
+              }
             }
+            else Task.error(new RuntimeException(s"Anthropic Batch: create failed (${resp.status}): $resBody"))
           }
-          else Task.error(new RuntimeException(s"Anthropic Batch: create failed (${resp.status}): $resBody"))
-        }
         case None => Task.error(new RuntimeException(s"Anthropic Batch: empty body on create (${resp.status})"))
       }
     }
   }
 
-  /** Snapshot of an Anthropic batch's poll-state. */
+  /**
+   * Snapshot of an Anthropic batch's poll-state.
+   */
   case class BatchState(processingStatus: String,
                         resultsUrl: Option[String])
 
@@ -298,35 +323,39 @@ object AnthropicBatch {
                             authMode: AnthropicAuthMode): Task[BatchState] = {
     val req = auth(
       HttpRequest(method = HttpMethod.Get, url = baseUrl.withPath(s"/v1/messages/batches/$batchId")),
-      apiKey, authMode
+      apiKey,
+      authMode
     )
     HttpClient.modify(_ => req).noFailOnHttpStatus.send().flatMap { resp =>
       resp.content match {
         case Some(c) => c.asString.flatMap { body =>
-          if (resp.status.isSuccess) Task {
-            val json = JsonParser(body)
-            BatchState(
-              processingStatus = json.get("processing_status").map(_.asString).getOrElse("unknown"),
-              resultsUrl       = json.get("results_url").filter(_ != fabric.Null).map(_.asString)
-            )
+            if (resp.status.isSuccess) Task {
+              val json = JsonParser(body)
+              BatchState(
+                processingStatus = json.get("processing_status").map(_.asString).getOrElse("unknown"),
+                resultsUrl = json.get("results_url").filter(_ != fabric.Null).map(_.asString)
+              )
+            }
+            else Task.error(new RuntimeException(s"Anthropic Batch: state fetch failed (${resp.status}): $body"))
           }
-          else Task.error(new RuntimeException(s"Anthropic Batch: state fetch failed (${resp.status}): $body"))
-        }
         case None => Task.error(new RuntimeException(s"Anthropic Batch: empty body on state fetch (${resp.status})"))
       }
     }
   }
 
-  /** Download results — Anthropic returns a `results_url` (an
-    * absolute URL the client GETs directly with the same auth
-    * headers). The body is JSONL. */
+  /**
+   * Download results — Anthropic returns a `results_url` (an
+   * absolute URL the client GETs directly with the same auth
+   * headers). The body is JSONL.
+   */
   def downloadResults(resultsUrl: String,
                       apiKey: String,
                       authMode: AnthropicAuthMode): Task[String] = {
     val parsed = spice.net.URL.parse(resultsUrl)
     val req = auth(
       HttpRequest(method = HttpMethod.Get, url = parsed),
-      apiKey, authMode
+      apiKey,
+      authMode
     )
     HttpClient.modify(_ => req).noFailOnHttpStatus.send().flatMap { resp =>
       resp.content match {

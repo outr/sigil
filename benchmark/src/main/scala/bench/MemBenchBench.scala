@@ -114,73 +114,77 @@ object MemBenchBench {
         if (rolesOpt.isEmpty) {
           println(s"  Skipping $cat — schema lacks 'roles' (recommendation-category variant)")
         } else {
-        val roles = rolesOpt.get.take(limit)
-        println(s"  Loaded ${roles.size} roles")
+          val roles = rolesOpt.get.take(limit)
+          println(s"  Loaded ${roles.size} roles")
 
-        var catCorrect = 0
-        var catRun = 0
+          var catCorrect = 0
+          var catRun = 0
 
-        roles.zipWithIndex.foreach { case (role, roleIdx) =>
-          val tid = role.get("tid").map(_.asInt).getOrElse(roleIdx)
-          val messageList = role("message_list").asVector
-          val qa = role("QA")
-          val question = qa("question").asString
-          // target_step_id is a list of [global_sid, session_idx] pairs
-          // where global_sid is the turn's `sid` field (unique across
-          // all sessions for this role). We index each turn by its
-          // sid and match against target sids.
-          val targets: Set[Int] = qa("target_step_id").asVector.flatMap { pair =>
-            val p = pair.asVector
-            if (p.nonEmpty) Some(p(0).asInt) else None
-          }.toSet
-          if (targets.nonEmpty) {
-            harness.resetCollection().sync()
+          roles.zipWithIndex.foreach { case (role, roleIdx) =>
+            val tid = role.get("tid").map(_.asInt).getOrElse(roleIdx)
+            val messageList = role("message_list").asVector
+            val qa = role("QA")
+            val question = qa("question").asString
+            // target_step_id is a list of [global_sid, session_idx] pairs
+            // where global_sid is the turn's `sid` field (unique across
+            // all sessions for this role). We index each turn by its
+            // sid and match against target sids.
+            val targets: Set[Int] = qa("target_step_id").asVector.flatMap { pair =>
+              val p = pair.asVector
+              if (p.nonEmpty) Some(p(0).asInt) else None
+            }.toSet
+            if (targets.nonEmpty) {
+              harness.resetCollection().sync()
 
-            val batch = scala.collection.mutable.ListBuffer.empty[(String, String, Map[String, String])]
-            messageList.zipWithIndex.foreach { case (session, sessionIdx) =>
-              session.asVector.zipWithIndex.foreach { case (turn, turnIdx) =>
-                val sid = turn.get("sid").map(_.asInt).getOrElse(-1)
-                val user = turn.get("user_message").map(_.asString).getOrElse("")
-                val assist = turn.get("assistant_message").map(_.asString).getOrElse("")
-                val place = turn.get("place").map(_.asString).getOrElse("")
-                val time = turn.get("time").map(_.asString).getOrElse("")
-                val text = s"$place ($time) USER: $user ASSISTANT: $assist".trim
-                val id = s"r$tid-sid$sid"
-                batch += ((id, text, Map(
-                  "kind" -> "membench-turn",
-                  "roleId" -> tid.toString,
-                  "sid" -> sid.toString,
-                  "sessionIdx" -> sessionIdx.toString,
-                  "turnIdx" -> turnIdx.toString
-                )))
+              val batch = scala.collection.mutable.ListBuffer.empty[(String, String, Map[String, String])]
+              messageList.zipWithIndex.foreach { case (session, sessionIdx) =>
+                session.asVector.zipWithIndex.foreach { case (turn, turnIdx) =>
+                  val sid = turn.get("sid").map(_.asInt).getOrElse(-1)
+                  val user = turn.get("user_message").map(_.asString).getOrElse("")
+                  val assist = turn.get("assistant_message").map(_.asString).getOrElse("")
+                  val place = turn.get("place").map(_.asString).getOrElse("")
+                  val time = turn.get("time").map(_.asString).getOrElse("")
+                  val text = s"$place ($time) USER: $user ASSISTANT: $assist".trim
+                  val id = s"r$tid-sid$sid"
+                  batch +=
+                    ((
+                      id,
+                      text,
+                      Map(
+                        "kind" -> "membench-turn",
+                        "roleId" -> tid.toString,
+                        "sid" -> sid.toString,
+                        "sessionIdx" -> sessionIdx.toString,
+                        "turnIdx" -> turnIdx.toString
+                      )))
+                }
+              }
+              harness.embedAndIndexBatch(batch.toList).sync()
+
+              val results = harness.searchByQueryEnhanced(question, retrieval, limit = math.max(k, 50)).sync()
+              val rankedSids: List[Int] = results.flatMap(_.payload.get("sid").flatMap(_.toIntOption))
+              val topK = rankedSids.take(k).toSet
+              val hit = targets.exists(topK.contains)
+              if (hit) { totalCorrect += 1; catCorrect += 1 }
+              totalRun += 1
+              catRun += 1
+
+              if (!hit && reportPath.nonEmpty) {
+                failures += ((cat, tid, question, targets, rankedSids.take(k)))
+              }
+
+              if (roleIdx % 50 == 0 || roleIdx == roles.size - 1) {
+                val elapsed = (System.currentTimeMillis() - startTime) / 1000.0
+                val pct = if (totalRun > 0) totalCorrect.toDouble / totalRun * 100 else 0.0
+                println(f"  [$cat $roleIdx/${roles.size}] R@$k=$pct%.1f%% ($totalCorrect/$totalRun, $elapsed%.0fs)")
               }
             }
-            harness.embedAndIndexBatch(batch.toList).sync()
-
-            val results = harness.searchByQueryEnhanced(question, retrieval, limit = math.max(k, 50)).sync()
-            val rankedSids: List[Int] = results.flatMap(_.payload.get("sid").flatMap(_.toIntOption))
-            val topK = rankedSids.take(k).toSet
-            val hit = targets.exists(topK.contains)
-            if (hit) { totalCorrect += 1; catCorrect += 1 }
-            totalRun += 1
-            catRun += 1
-
-            if (!hit && reportPath.nonEmpty) {
-              failures += ((cat, tid, question, targets, rankedSids.take(k)))
-            }
-
-            if (roleIdx % 50 == 0 || roleIdx == roles.size - 1) {
-              val elapsed = (System.currentTimeMillis() - startTime) / 1000.0
-              val pct = if (totalRun > 0) totalCorrect.toDouble / totalRun * 100 else 0.0
-              println(f"  [$cat $roleIdx/${roles.size}] R@$k=$pct%.1f%% ($totalCorrect/$totalRun, ${elapsed}%.0fs)")
-            }
           }
-        }
 
-        categoryBreakdown(cat) = (catCorrect, catRun)
-        val catPct = if (catRun > 0) catCorrect.toDouble / catRun * 100 else 0.0
-        println(f"  $cat%-18s $catCorrect/$catRun ($catPct%.1f%%)")
-        }  // end of rolesOpt.isDefined branch
+          categoryBreakdown(cat) = (catCorrect, catRun)
+          val catPct = if (catRun > 0) catCorrect.toDouble / catRun * 100 else 0.0
+          println(f"  $cat%-18s $catCorrect/$catRun ($catPct%.1f%%)")
+        } // end of rolesOpt.isDefined branch
       }
     }
 
@@ -189,7 +193,7 @@ object MemBenchBench {
     println("=== Results ===")
     val overall = if (totalRun > 0) totalCorrect.toDouble / totalRun * 100 else 0.0
     println(f"Recall@$k: $totalCorrect/$totalRun ($overall%.1f%%)")
-    println(f"Time: ${elapsed}%.0fs")
+    println(f"Time: $elapsed%.0fs")
     println()
     println("By category:")
     categoryBreakdown.toList.sortBy(_._1).foreach { case (cat, (c, t)) =>
@@ -213,9 +217,9 @@ object MemBenchBench {
       }
       sb.append(s"\n## Failures (${failures.size})\n\n")
       failures.toList.foreach { case (cat, tid, q, expected, topK) =>
-        sb.append(s"### [$cat tid=$tid] `${q}`\n\n")
+        sb.append(s"### [$cat tid=$tid] `$q`\n\n")
         sb.append(s"- expected sids: ${expected.toList.sorted.mkString(", ")}\n")
-        sb.append(s"- top-${k} sids: ${topK.mkString(", ")}\n\n")
+        sb.append(s"- top-$k sids: ${topK.mkString(", ")}\n\n")
       }
       java.nio.file.Files.writeString(java.nio.file.Paths.get(path), sb.toString)
       println(s"\nReport written: $path")

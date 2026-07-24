@@ -22,10 +22,10 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   )
 
   private def turnCtx: TurnContext = TurnContext(
-    sigil            = ScriptToolsTestSigil,
-    chain            = List(TestScriptUser),
-    conversation     = Conversation(topics = List(testTopic), _id = convId),
-    turnInput        = TurnInput(conversationId = convId),
+    sigil = ScriptToolsTestSigil,
+    chain = List(TestScriptUser),
+    conversation = Conversation(topics = List(testTopic), _id = convId),
+    turnInput = TurnInput(conversationId = convId),
     model = TestSigil.defaultTestModel
   )
 
@@ -76,15 +76,16 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           |val out = tools.callTool[EchoOutput]("echo", EchoInput("from-script"))
           |s"${out.echoed}/${out.length}"
           |""".stripMargin
-      tool.execute(sigil.script.ScriptInput(code = script, summary = "test: execute script body"), turnCtx, Event.id()).toList.map { signals =>
-        val output = signals.collectFirst {
-          case d: sigil.signal.ToolDelta if d.outcome.contains(sigil.event.ToolOutcome.Success) =>
-            d.output.collect { case o: sigil.script.ScriptToolOutput => o }
-        }.flatten.getOrElse(fail("script produced no settling Success ToolDelta with ScriptToolOutput"))
-        val resultText = output.output.filterNot(_.isEmpty)
-          .orElse(output.error.filterNot(_.isEmpty))
-          .getOrElse(fail("ScriptToolOutput carried no output or error"))
-        resultText shouldBe "from-script/11"
+      tool.execute(sigil.script.ScriptInput(code = script, summary = "test: execute script body"), turnCtx, Event.id()).toList.map {
+        signals =>
+          val output = signals.collectFirst {
+            case d: sigil.signal.ToolDelta if d.outcome.contains(sigil.event.ToolOutcome.Success) =>
+              d.output.collect { case o: sigil.script.ScriptToolOutput => o }
+          }.flatten.getOrElse(fail("script produced no settling Success ToolDelta with ScriptToolOutput"))
+          val resultText = output.output.filterNot(_.isEmpty)
+            .orElse(output.error.filterNot(_.isEmpty))
+            .getOrElse(fail("ScriptToolOutput carried no output or error"))
+          resultText shouldBe "from-script/11"
       }
     }
 
@@ -99,12 +100,12 @@ case class EchoInput(text: String) extends ToolInput derives RW
 case class EchoOutput(echoed: String, length: Int) extends ToolOutput derives RW
 
 case object EchoTool extends Tool {
-  type Input  = EchoInput
+  type Input = EchoInput
   type Output = EchoOutput
-  val inputRW  = summon[RW[EchoInput]]
+  val inputRW = summon[RW[EchoInput]]
   val outputRW = summon[RW[EchoOutput]]
 
-  val name        = ToolName("echo")
+  val name = ToolName("echo")
   val description = "Echo the input text back with its length."
   override val examples: List[ToolExample] = List(ToolExample("echo a string", EchoInput("hello")))
 
@@ -112,13 +113,11 @@ case object EchoTool extends Tool {
     Task.pure(EchoOutput(echoed = input.text, length = input.text.length))
 }
 
-object ScriptToolsTestSigil
-  extends sigil.Sigil
-  with sigil.script.ScriptSigil {
+object ScriptToolsTestSigil extends sigil.Sigil with sigil.script.ScriptSigil {
   override type DB = sigil.db.DefaultSigilDB
   override protected def buildDB(directory: Option[java.nio.file.Path],
-                                  storeManager: lightdb.store.CollectionManager,
-                                  upgrades: List[lightdb.upgrade.DatabaseUpgrade]): sigil.db.DefaultSigilDB =
+                                 storeManager: lightdb.store.CollectionManager,
+                                 upgrades: List[lightdb.upgrade.DatabaseUpgrade]): sigil.db.DefaultSigilDB =
     new sigil.db.DefaultSigilDB(directory, storeManager, upgrades)
   override def testMode: Boolean = true
   override protected def participantIds: List[RW[? <: sigil.participant.ParticipantId]] =
@@ -133,7 +132,8 @@ object ScriptToolsTestSigil
   override def curate(conversationId: lightdb.id.Id[Conversation],
                       modelId: lightdb.id.Id[sigil.db.Model],
                       chain: List[sigil.participant.ParticipantId]): Task[TurnInput] = Task.pure(TurnInput(conversationId = conversationId))
-  override def getInformation(id: lightdb.id.Id[sigil.information.Information]): Task[Option[sigil.information.Information]] = Task.pure(None)
+  override def getInformation(id: lightdb.id.Id[sigil.information.Information]): Task[Option[sigil.information.Information]] =
+    Task.pure(None)
   override def putInformation(information: sigil.information.Information): Task[Unit] = Task.unit
   override def compressionMemorySpace(conversationId: lightdb.id.Id[Conversation]): Task[Option[sigil.SpaceId]] = Task.pure(None)
   override def modelResolver: sigil.provider.ModelResolver = _ => None
@@ -149,7 +149,7 @@ object ScriptToolsTestSigil
     ()
   }
 
-  private def deleteRecursive(path: java.nio.file.Path): Unit = {
+  private def deleteRecursive(path: java.nio.file.Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val s = java.nio.file.Files.walk(path)
       try {
@@ -157,5 +157,4 @@ object ScriptToolsTestSigil
         s.iterator().asScala.toList.reverse.foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally s.close()
     }
-  }
 }

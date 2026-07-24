@@ -10,7 +10,7 @@ import sigil.signal.EventState
 
 /**
  * Provider-internal reasoning state captured during a streaming LLM
-* response.
+ * response.
  *
  * **Lifecycle.** Persisted to `SigilDB.events` like every other
  * Event so it survives restarts and reconnects. The originating

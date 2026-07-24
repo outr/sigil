@@ -18,10 +18,12 @@ import sigil.tool.TextToolOutput
  */
 private[tool] object BrowserToolBase {
 
-  /** Resolve the [[BrowserController]] for the active conversation.
-    * Errors loudly when the surrounding `Sigil` doesn't mix in
-    * [[BrowserSigil]] — tells the app to add the trait rather than
-    * silently failing the tool. */
+  /**
+   * Resolve the [[BrowserController]] for the active conversation.
+   * Errors loudly when the surrounding `Sigil` doesn't mix in
+   * [[BrowserSigil]] — tells the app to add the trait rather than
+   * silently failing the tool.
+   */
   def resolveController(ctx: ToolContext): Task[BrowserController] =
     ctx.sigil match {
       case bs: BrowserSigil =>
@@ -31,8 +33,10 @@ private[tool] object BrowserToolBase {
           "Browser tools require BrowserSigil — mix `BrowserSigil` into your Sigil class."))
     }
 
-  /** Wrap a JSON payload as a [[TextToolOutput]] — the browser
-    * family's result is the compact-rendered JSON the agent reads. */
+  /**
+   * Wrap a JSON payload as a [[TextToolOutput]] — the browser
+   * family's result is the compact-rendered JSON the agent reads.
+   */
   def toolResult(payload: Json): TextToolOutput =
     TextToolOutput(JsonFormatter.Compact(payload))
 }

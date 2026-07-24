@@ -35,7 +35,8 @@ class StandardMemoryRetrieverSpec extends AsyncWordSpec with AsyncTaskSpec with 
         fact = "The user must never be given financial advice.",
         label = "No financial advice",
         summary = "Never give the user financial advice.",
-        source = MemorySource.Explicit, pinned = true,
+        source = MemorySource.Explicit,
+        pinned = true,
         spaceId = MemoryTestSpace
       )).sync()
       val relevant = TestSigil.persistMemory(ContextMemory(

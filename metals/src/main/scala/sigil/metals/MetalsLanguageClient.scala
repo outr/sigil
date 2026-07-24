@@ -14,7 +14,7 @@ import scala.jdk.CollectionConverters.*
  * `LanguageClient` Sigil installs against the Metals subprocess. Two
  * jobs:
  *
-*  1. **Auto-respond to `window/showMessageRequest`** so Metals doesn't
+ *  1. **Auto-respond to `window/showMessageRequest`** so Metals doesn't
  *     sit forever waiting for a human. Real Metals
  *     fires this when it detects a build tool — "New sbt workspace
  *     detected, would you like to import the build?" with actions
@@ -28,23 +28,24 @@ import scala.jdk.CollectionConverters.*
  *     `onLogLine` callback** so Metals' streaming progress reaches
  *     the chat chip via [[sigil.event.ToolLog]] events. The callback is supplied per-spawn by [[MetalsManager]]
  *     and updated on idempotent re-attaches.
- *
  */
 final class MetalsLanguageClient(label: String,
-                                  onLogLine: AtomicReference[Option[String => Task[Unit]]],
-                                  onStatus: AtomicReference[Option[String => Task[Unit]]] =
-                                    new AtomicReference(None))
+                                 onLogLine: AtomicReference[Option[String => Task[Unit]]],
+                                 onStatus: AtomicReference[Option[String => Task[Unit]]] =
+                                   new AtomicReference(None))
   extends LanguageClient {
 
-  /** Action title to pick when Metals fires `showMessageRequest`.
-    * Restricted to known-safe initialisation actions — picking the
-    * first action blindly opens browsers (Metals Doctor: "More
-    * information") and starts ancillary HTTP servers ("Http server
-    * is required ... Start") that have nothing to do with importing
-    * the build. Returns `null` for prompts that lack a recognised
-    * action so Metals dismisses them quietly.
-    *
-    * Apps that want a different policy subclass and override. */
+  /**
+   * Action title to pick when Metals fires `showMessageRequest`.
+   * Restricted to known-safe initialisation actions — picking the
+   * first action blindly opens browsers (Metals Doctor: "More
+   * information") and starts ancillary HTTP servers ("Http server
+   * is required ... Start") that have nothing to do with importing
+   * the build. Returns `null` for prompts that lack a recognised
+   * action so Metals dismisses them quietly.
+   *
+   * Apps that want a different policy subclass and override.
+   */
   protected def preferredAction(params: ShowMessageRequestParams): Option[String] = {
     val actions = Option(params.getActions).map(_.asScala.toList.map(_.getTitle)).getOrElse(Nil)
     actions.find(MetalsLanguageClient.SafeAutoResponseTitles.contains)
@@ -100,17 +101,19 @@ final class MetalsLanguageClient(label: String,
     val results: java.util.List[Object] = items.map { item =>
       Option(item.getSection) match {
         case Some("metals") => userConfigJson(): Object
-        case _              => new JsonObject(): Object
+        case _ => new JsonObject(): Object
       }
     }.asJava
     CompletableFuture.completedFuture(results)
   }
 
-  /** JSON config Metals reads via `workspace/configuration`.
-    * `start-mcp-server: true` enables the MCP endpoint we need.
-    * Subclasses override [[mcpClientName]] to identify which
-    * client variant the on-disk `.metals/mcp.json` is tagged
-    * with. */
+  /**
+   * JSON config Metals reads via `workspace/configuration`.
+   * `start-mcp-server: true` enables the MCP endpoint we need.
+   * Subclasses override [[mcpClientName]] to identify which
+   * client variant the on-disk `.metals/mcp.json` is tagged
+   * with.
+   */
   private def userConfigJson(): JsonObject = {
     val obj = new JsonObject()
     obj.addProperty("start-mcp-server", true)
@@ -118,9 +121,11 @@ final class MetalsLanguageClient(label: String,
     obj
   }
 
-  /** Identifier Metals stamps into `.metals/mcp.json` so per-client
-    * config files (Cursor, Claude Desktop, …) don't collide.
-    * Default `"sigil"` — Metals supports an opaque string here. */
+  /**
+   * Identifier Metals stamps into `.metals/mcp.json` so per-client
+   * config files (Cursor, Claude Desktop, …) don't collide.
+   * Default `"sigil"` — Metals supports an opaque string here.
+   */
   protected def mcpClientName: String = "sigil"
 
   override def workspaceFolders(): CompletableFuture[java.util.List[WorkspaceFolder]] =
@@ -138,10 +143,10 @@ final class MetalsLanguageClient(label: String,
   override def logTrace(params: LogTraceParams): Unit = ()
 
   override def refreshSemanticTokens(): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
-  override def refreshCodeLenses():    CompletableFuture[Void] = CompletableFuture.completedFuture(null)
-  override def refreshInlayHints():    CompletableFuture[Void] = CompletableFuture.completedFuture(null)
-  override def refreshInlineValues():  CompletableFuture[Void] = CompletableFuture.completedFuture(null)
-  override def refreshDiagnostics():   CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshCodeLenses(): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshInlayHints(): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshInlineValues(): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshDiagnostics(): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
   override def refreshFoldingRanges(): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
   override def refreshTextDocumentContent(params: TextDocumentContentRefreshParams): CompletableFuture[Void] =
     CompletableFuture.completedFuture(null)
@@ -157,18 +162,17 @@ final class MetalsLanguageClient(label: String,
     if (notification != null && notification.isLeft) {
       val wd = notification.getLeft
       val msg = wd match {
-        case b: WorkDoneProgressBegin  => Option(b.getTitle).orElse(Option(b.getMessage))
+        case b: WorkDoneProgressBegin => Option(b.getTitle).orElse(Option(b.getMessage))
         case r: WorkDoneProgressReport => Option(r.getMessage)
-        case _: WorkDoneProgressEnd    => None
-        case _                         => None
+        case _: WorkDoneProgressEnd => None
+        case _ => None
       }
       msg.foreach(m => publishLine(s"[metals] $m"))
     }
   }
 
-  private def publishLine(line: String): Unit = {
+  private def publishLine(line: String): Unit =
     onLogLine.get().foreach(cb => cb(line).handleError(_ => Task.unit).startUnit())
-  }
 
   @JsonNotification("metals/status")
   def metalsStatus(params: Object): Unit = {
@@ -182,12 +186,15 @@ final class MetalsLanguageClient(label: String,
 }
 
 object MetalsLanguageClient {
-  /** Action titles we'll pick when Metals prompts. Initialisation
-    * actions only — the build-import path has to run for indexing
-    * to complete. Excludes "More information" (opens doctor in
-    * browser), "Start" (HTTP server prompt), "Goto location"
-    * (anything pointing at a URL), and similar UI-side actions
-    * that have no value for an automated agent. */
+
+  /**
+   * Action titles we'll pick when Metals prompts. Initialisation
+   * actions only — the build-import path has to run for indexing
+   * to complete. Excludes "More information" (opens doctor in
+   * browser), "Start" (HTTP server prompt), "Goto location"
+   * (anything pointing at a URL), and similar UI-side actions
+   * that have no value for an automated agent.
+   */
   val SafeAutoResponseTitles: Set[String] = Set(
     "Import build",
     "Import changes",

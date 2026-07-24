@@ -25,32 +25,36 @@ import sigil.tool.model.ResponseContent
  */
 object SyntheticDiagnostic {
 
-  /** Mint the synthetic `internal = true` `ToolInvoke` that parents a
-    * diagnostic Message. Callers that build a bespoke Message (a copy of
-    * an existing intervention, a non-Failure directive) use this and
-    * stamp `origin = Some(invoke._id)` themselves; callers that want the
-    * standard Failure-message pairing use [[apply]]. */
+  /**
+   * Mint the synthetic `internal = true` `ToolInvoke` that parents a
+   * diagnostic Message. Callers that build a bespoke Message (a copy of
+   * an existing intervention, a non-Failure directive) use this and
+   * stamp `origin = Some(invoke._id)` themselves; callers that want the
+   * standard Failure-message pairing use [[apply]].
+   */
   def invoke(name: String,
              caller: ParticipantId,
              convId: Id[Conversation],
              topicId: Id[Topic]): ToolInvoke = {
     val syntheticInvokeId = Event.id()
     ToolInvoke(
-      toolName       = ToolName(name),
-      participantId  = caller,
+      toolName = ToolName(name),
+      participantId = caller,
       conversationId = convId,
-      topicId        = topicId,
-      _id            = syntheticInvokeId,
-      state          = EventState.Complete,
-      internal       = true
+      topicId = topicId,
+      _id = syntheticInvokeId,
+      state = EventState.Complete,
+      internal = true
     )
   }
 
-  /** Build the (synthetic-invoke, paired Tool-role Message) signal pair.
-    * The Message carries `MessageVisibility.Agents` so the diagnostic
-    * never leaks to user-facing viewers; `disposition` defaults to
-    * `Success` (the `_provider_error` shape) — callers surfacing a
-    * recoverable failure pass `MessageDisposition.Failure(...)`. */
+  /**
+   * Build the (synthetic-invoke, paired Tool-role Message) signal pair.
+   * The Message carries `MessageVisibility.Agents` so the diagnostic
+   * never leaks to user-facing viewers; `disposition` defaults to
+   * `Success` (the `_provider_error` shape) — callers surfacing a
+   * recoverable failure pass `MessageDisposition.Failure(...)`.
+   */
   def apply(name: String,
             caller: ParticipantId,
             convId: Id[Conversation],
@@ -69,19 +73,19 @@ object SyntheticDiagnostic {
     // frame regardless of whether the paired Message does.
     val outcome = disposition match {
       case f: MessageDisposition.Failure => ToolOutcome.Failure(reason, f.recoverable)
-      case _                             => ToolOutcome.Success
+      case _ => ToolOutcome.Success
     }
     val syntheticInvoke = invoke(name, caller, convId, topicId).copy(outcome = outcome, summary = reason)
     val diagnostic = Message(
-      participantId  = caller,
+      participantId = caller,
       conversationId = convId,
-      topicId        = topicId,
-      role           = MessageRole.Tool,
-      content        = Vector(ResponseContent.Text(reason)),
-      disposition    = disposition,
-      state          = EventState.Complete,
-      visibility     = MessageVisibility.Agents,
-      origin         = Some(syntheticInvoke._id)
+      topicId = topicId,
+      role = MessageRole.Tool,
+      content = Vector(ResponseContent.Text(reason)),
+      disposition = disposition,
+      state = EventState.Complete,
+      visibility = MessageVisibility.Agents,
+      origin = Some(syntheticInvoke._id)
     )
     List[Signal](syntheticInvoke, diagnostic)
   }

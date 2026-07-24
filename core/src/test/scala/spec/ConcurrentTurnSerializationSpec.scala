@@ -55,10 +55,12 @@ class ConcurrentTurnSerializationSpec extends AsyncWordSpec with AsyncTaskSpec w
       Task.pure(Nil)
   }
 
-  /** Every call: bump the in-flight gauge, hold the "generation" open
-    * for `holdMs`, respond, release. `peakOverlap` records the peak
-    * overlap — the spec's core assertion. */
-  private final class SlowRespondProvider(holdMs: Long) extends Provider {
+  /**
+   * Every call: bump the in-flight gauge, hold the "generation" open
+   * for `holdMs`, respond, release. `peakOverlap` records the peak
+   * overlap — the spec's core assertion.
+   */
+  final private class SlowRespondProvider(holdMs: Long) extends Provider {
     val inFlight = new AtomicInteger(0)
     val peakOverlap = new AtomicInteger(0)
     val calls = new AtomicInteger(0)
@@ -78,12 +80,14 @@ class ConcurrentTurnSerializationSpec extends AsyncWordSpec with AsyncTaskSpec w
         }.flatMap(_ => Task.sleep(holdMs.millis)).map { _ =>
           Stream.emits(List[ProviderEvent](
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, RespondInput(
-              topicLabel   = TestTopicEntry.label,
-              topicSummary = TestTopicEntry.summary,
-              content      = s"Reply $n",
-              endsTurn     = true
-            )),
+            ProviderEvent.ToolCallComplete(
+              callId,
+              RespondInput(
+                topicLabel = TestTopicEntry.label,
+                topicSummary = TestTopicEntry.summary,
+                content = s"Reply $n",
+                endsTurn = true
+              )),
             ProviderEvent.Done(StopReason.ToolCall)
           )).onFinalize(Task { inFlight.decrementAndGet(); () })
         }
@@ -93,20 +97,20 @@ class ConcurrentTurnSerializationSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def userMessage(convId: Id[Conversation], text: String): Message =
     Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete
     )
 
   private def waitFor(timeout: FiniteDuration)(cond: => Boolean): Task[Unit] = {
@@ -120,7 +124,7 @@ class ConcurrentTurnSerializationSpec extends AsyncWordSpec with AsyncTaskSpec w
   private def agentReplies(convId: Id[Conversation]): Task[List[Message]] =
     TestSigil.withDB(_.eventsTransaction(convId)(_.list)).map(_.collect {
       case m: Message
-        if m.conversationId == convId && m.participantId == TestAgent && m.role == MessageRole.Standard => m
+          if m.conversationId == convId && m.participantId == TestAgent && m.role == MessageRole.Standard => m
     })
 
   "rapid successive user messages" should {
@@ -130,7 +134,7 @@ class ConcurrentTurnSerializationSpec extends AsyncWordSpec with AsyncTaskSpec w
       TestSigil.setProvider(Task.pure(provider))
       TestSigil.setMemoryExtractor(NoExtraction)
       val convId = Conversation.id(s"concurrent-${rapid.Unique()}")
-      val conv   = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
+      val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         // Two publishes on INDEPENDENT fibers — the voice-consumer
@@ -146,12 +150,10 @@ class ConcurrentTurnSerializationSpec extends AsyncWordSpec with AsyncTaskSpec w
         _ <- Task.sleep(1.second)
         _ <- waitFor(10.seconds)(provider.inFlight.get() == 0)
         replies <- agentReplies(convId)
-      } yield {
-        withClue(s"calls=${provider.calls.get()} peakOverlap=${provider.peakOverlap.get()} " +
-          s"replies=${replies.map(m => m.content.collectFirst { case t: ResponseContent.Text => t.text })}: ") {
-          provider.peakOverlap.get() shouldBe 1
-          replies should not be empty
-        }
+      } yield withClue(s"calls=${provider.calls.get()} peakOverlap=${provider.peakOverlap.get()} " +
+        s"replies=${replies.map(m => m.content.collectFirst { case t: ResponseContent.Text => t.text })}: ") {
+        provider.peakOverlap.get() shouldBe 1
+        replies should not be empty
       }
     }
 
@@ -160,7 +162,7 @@ class ConcurrentTurnSerializationSpec extends AsyncWordSpec with AsyncTaskSpec w
       TestSigil.setProvider(Task.pure(provider))
       TestSigil.setMemoryExtractor(NoExtraction)
       val convId = Conversation.id(s"burst-${rapid.Unique()}")
-      val conv   = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
+      val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
       def burst(n: Int): Task[Long] =
         if (n <= 0) Task.pure(0L)
         else {
@@ -177,15 +179,13 @@ class ConcurrentTurnSerializationSpec extends AsyncWordSpec with AsyncTaskSpec w
         // postdates the last user message (nothing stranded).
         _ <- waitFor(30.seconds) {
           provider.inFlight.get() == 0 &&
-            agentReplies(convId).sync().exists(_.timestamp.value > lastUserTs)
+          agentReplies(convId).sync().exists(_.timestamp.value > lastUserTs)
         }
         replies <- agentReplies(convId)
-      } yield {
-        withClue(s"calls=${provider.calls.get()} peakOverlap=${provider.peakOverlap.get()} " +
-          s"lastUser=$lastUserTs replyTs=${replies.map(_.timestamp.value)}: ") {
-          provider.peakOverlap.get() shouldBe 1
-          replies.exists(_.timestamp.value > lastUserTs) shouldBe true
-        }
+      } yield withClue(s"calls=${provider.calls.get()} peakOverlap=${provider.peakOverlap.get()} " +
+        s"lastUser=$lastUserTs replyTs=${replies.map(_.timestamp.value)}: ") {
+        provider.peakOverlap.get() shouldBe 1
+        replies.exists(_.timestamp.value > lastUserTs) shouldBe true
       }
     }
   }

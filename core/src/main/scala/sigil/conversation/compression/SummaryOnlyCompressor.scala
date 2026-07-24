@@ -38,28 +38,33 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
                                  tokenizer: Tokenizer = HeuristicTokenizer,
                                  reservedOutputTokens: Long = 1024L,
                                  promptOverheadTokens: Long = 512L,
-                                 /** Per-chunk wire-protocol body ceiling. OpenAI caps
-     42|                                    * each `input[…].content[…].text` at 10 MB; llama.cpp
-     43|                                    * HTTP servers cap their request bodies similarly.
-     44|                                    * Default 8 MB stays comfortably under both. Apps
-     45|                                    * pointed at a provider with a different limit
-     46|                                    * override. */
+                                 /**
+                                  * Per-chunk wire-protocol body ceiling. OpenAI caps
+                                  *     42|                                    * each `input[…].content[…].text` at 10 MB; llama.cpp
+                                  *     43|                                    * HTTP servers cap their request bodies similarly.
+                                  *     44|                                    * Default 8 MB stays comfortably under both. Apps
+                                  *     45|                                    * pointed at a provider with a different limit
+                                  *     46|                                    * override.
+                                  */
                                  maxChunkBytes: Long = SummaryOnlyCompressor.DefaultMaxChunkBytes,
-                                 /** Hard cap on the summarisation call's
-                                    * generation. Same rationale as
-                                    * [[MemoryContextCompressor.maxSummaryTokens]] —
-                                    * without a cap the model can produce a
-                                    * paraphrase the size of the input that
-                                    * the server truncates mid-sentence and
-                                    * the framework persists anyway. */
-                                 maxSummaryTokens: Int = 2048) extends ContextCompressor {
+                                 /**
+                                  * Hard cap on the summarisation call's
+                                  * generation. Same rationale as
+                                  * [[MemoryContextCompressor.maxSummaryTokens]] —
+                                  * without a cap the model can produce a
+                                  * paraphrase the size of the input that
+                                  * the server truncates mid-sentence and
+                                  * the framework persists anyway.
+                                  */
+                                 maxSummaryTokens: Int = 2048)
+  extends ContextCompressor {
 
   override def compress(sigil: Sigil,
                         callerModelId: Id[Model],
                         chain: List[ParticipantId],
                         frames: Stream[ContextFrame],
                         conversationId: Id[Conversation]): Task[Option[ContextSummary]] =
-   frames.toList.flatMap { framesList =>
+    frames.toList.flatMap { framesList =>
       val materialized = framesList.toVector
       if (materialized.isEmpty) Task.pure(None)
       else for {
@@ -71,9 +76,11 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
       } yield result
     }
 
-  /** Decide between single-shot and chunk-and-merge based on whether
-    * the rendered transcript fits the picked model's context window.
-    * `Model.contextLength` unknown → assume single-shot is fine. */
+  /**
+   * Decide between single-shot and chunk-and-merge based on whether
+   * the rendered transcript fits the picked model's context window.
+   * `Model.contextLength` unknown → assume single-shot is fine.
+   */
   private def compressOrChunk(sigil: Sigil,
                               modelId: Id[Model],
                               chain: List[ParticipantId],
@@ -82,10 +89,10 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
                               conversationId: Id[Conversation]): Task[Option[ContextSummary]] = {
     val transcript = renderTranscript(frames, ctx._1, ctx._2)
     val transcriptTokens = tokenizer.count(transcript).toLong
-    val transcriptBytes  = transcript.getBytes(java.nio.charset.StandardCharsets.UTF_8).length.toLong
+    val transcriptBytes = transcript.getBytes(java.nio.charset.StandardCharsets.UTF_8).length.toLong
     val available = sigil.cache.find(modelId).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
     val fitsTokens = available <= 0L || transcriptTokens <= available
-    val fitsBytes  = transcriptBytes <= maxChunkBytes
+    val fitsBytes = transcriptBytes <= maxChunkBytes
     if (fitsTokens && fitsBytes)
       summarizeOnce(sigil, modelId, chain, transcript, conversationId)
     else
@@ -99,7 +106,7 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
                             conversationId: Id[Conversation]): Task[Option[ContextSummary]] = {
     val userPrompt = s"""Summarize the following conversation excerpt. Output via the `summarize_conversation` tool.
                         |
-                        |${transcript}""".stripMargin
+                        |$transcript""".stripMargin
     ConsultTool.invoke[SummarizationInput](
       sigil = sigil,
       modelId = modelId,
@@ -109,7 +116,7 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
       tool = SummarizationTool,
       generationSettings = GenerationSettings(
         outputTokenCap = OutputTokenCap.Below(maxSummaryTokens),
-        reasoningMode  = ReasoningMode.Off
+        reasoningMode = ReasoningMode.Off
       )
     ).flatMap {
       case Some(r) if r.summary.trim.nonEmpty =>
@@ -128,11 +135,13 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
     }
   }
 
-  /** Bug #41 fallback — input exceeds the picked model's window. Split
-    * `frames` into chunks each sized for `availableTokens`,
-    * summarize each, then merge the per-chunk summaries with one
-    * final call. Bounded memory throughout: each chunk's frames are
-    * dropped after `summarizeOnce` returns. */
+  /**
+   * Bug #41 fallback — input exceeds the picked model's window. Split
+   * `frames` into chunks each sized for `availableTokens`,
+   * summarize each, then merge the per-chunk summaries with one
+   * final call. Bounded memory throughout: each chunk's frames are
+   * dropped after `summarizeOnce` returns.
+   */
   private def chunkAndMerge(sigil: Sigil,
                             modelId: Id[Model],
                             chain: List[ParticipantId],
@@ -142,7 +151,12 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
                             availableTokens: Long): Task[Option[ContextSummary]] = {
     val effectiveTokenBudget = if (availableTokens <= 0L) Long.MaxValue else availableTokens
     val chunks = SummaryOnlyCompressor.chunkByTokensAndBytes(
-      frames, ctx, renderTranscript, tokenizer, effectiveTokenBudget, maxChunkBytes
+      frames,
+      ctx,
+      renderTranscript,
+      tokenizer,
+      effectiveTokenBudget,
+      maxChunkBytes
     )
     val perChunkTask: Task[List[ContextSummary]] = Task.sequence(chunks.map { chunk =>
       val text = renderTranscript(chunk, ctx._1, ctx._2)
@@ -175,38 +189,47 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
       reservedOutputTokens = reservedOutputTokens
     ).handleError(_ => Task.pure(callerModelId))
 
-  /** Load the active conversation so the renderer can scope the
-    * transcript with mode + topic. Missing conversation (shouldn't
-    * happen in the live path) falls through with empty scope. */
+  /**
+   * Load the active conversation so the renderer can scope the
+   * transcript with mode + topic. Missing conversation (shouldn't
+   * happen in the live path) falls through with empty scope.
+   */
   private def loadContext(sigil: Sigil, conversationId: Id[Conversation]) =
     sigil.withDB(_.conversations.transaction(_.get(conversationId))).map {
       case Some(conv) => (Some(conv.currentMode), conv.topics.lastOption)
-      case None       => (None, None)
+      case None => (None, None)
     }
 }
 
 object SummaryOnlyCompressor {
-  /** Renderer signature — frames + optional mode + optional topic → transcript. */
+
+  /**
+   * Renderer signature — frames + optional mode + optional topic → transcript.
+   */
   type Renderer = (Vector[ContextFrame],
                    Option[sigil.provider.Mode],
                    Option[sigil.conversation.TopicEntry]) => String
 
   val DefaultRenderer: Renderer = TranscriptRenderer.render
 
-  /** Default per-chunk wire-protocol body ceiling. OpenAI's
-     * Responses API caps each text input field at 10 MB; llama.cpp's
-     * HTTP server typically caps lower. 8 MB stays comfortably under
-     * both without inflating chunk count on normal-sized inputs. */
+  /**
+   * Default per-chunk wire-protocol body ceiling. OpenAI's
+   * Responses API caps each text input field at 10 MB; llama.cpp's
+   * HTTP server typically caps lower. 8 MB stays comfortably under
+   * both without inflating chunk count on normal-sized inputs.
+   */
   val DefaultMaxChunkBytes: Long = 8L * 1024L * 1024L
 
- /** Split a frame vector into chunks each rendering to ≤
-    * `budgetTokens` per `tokenizer`. Greedy: walks frames in order,
-    * accumulates into the current chunk until adding the next frame
-    * would exceed the budget, then starts a new chunk. Single frames
-    * larger than the budget land in their own chunk on their own
-    * (the chunk-and-merge path can't sub-split a single frame; the
-    * downstream `summarizeOnce` will let the provider handle it or
-    * fail loudly). */
+  /**
+   * Split a frame vector into chunks each rendering to ≤
+   * `budgetTokens` per `tokenizer`. Greedy: walks frames in order,
+   * accumulates into the current chunk until adding the next frame
+   * would exceed the budget, then starts a new chunk. Single frames
+   * larger than the budget land in their own chunk on their own
+   * (the chunk-and-merge path can't sub-split a single frame; the
+   * downstream `summarizeOnce` will let the provider handle it or
+   * fail loudly).
+   */
   def chunkByTokens(frames: Vector[ContextFrame],
                     ctx: (Option[_root_.sigil.provider.Mode], Option[_root_.sigil.conversation.TopicEntry]),
                     render: Renderer,
@@ -214,15 +237,17 @@ object SummaryOnlyCompressor {
                     budgetTokens: Long): List[Vector[ContextFrame]] =
     chunkByTokensAndBytes(frames, ctx, render, tokenizer, budgetTokens, maxBytes = Long.MaxValue)
 
- /** Split a frame vector into chunks satisfying BOTH a token budget
-    * AND a byte ceiling — splits whenever adding the next frame would
-    * exceed either constraint. The byte ceiling captures the wire-
-    * protocol body cap that every provider enforces below the model's
-    * claimed token context (OpenAI: 10 MB per input field, llama.cpp:
-    * server-configured but typically smaller, …). Token-window math
-    * is necessary but not sufficient. Single frames whose own size
-    * exceeds either budget land alone in their chunk — caller decides
-    * whether to refuse or let the provider handle it. */
+  /**
+   * Split a frame vector into chunks satisfying BOTH a token budget
+   * AND a byte ceiling — splits whenever adding the next frame would
+   * exceed either constraint. The byte ceiling captures the wire-
+   * protocol body cap that every provider enforces below the model's
+   * claimed token context (OpenAI: 10 MB per input field, llama.cpp:
+   * server-configured but typically smaller, …). Token-window math
+   * is necessary but not sufficient. Single frames whose own size
+   * exceeds either budget land alone in their chunk — caller decides
+   * whether to refuse or let the provider handle it.
+   */
   def chunkByTokensAndBytes(frames: Vector[ContextFrame],
                             ctx: (Option[_root_.sigil.provider.Mode], Option[_root_.sigil.conversation.TopicEntry]),
                             render: Renderer,
@@ -232,11 +257,11 @@ object SummaryOnlyCompressor {
     val out = scala.collection.mutable.ListBuffer.empty[Vector[ContextFrame]]
     var current = Vector.empty[ContextFrame]
     var currentTokens = 0L
-    var currentBytes  = 0L
+    var currentBytes = 0L
     frames.foreach { frame =>
-      val rendered    = render(Vector(frame), ctx._1, ctx._2)
+      val rendered = render(Vector(frame), ctx._1, ctx._2)
       val frameTokens = tokenizer.count(rendered).toLong
-      val frameBytes  = rendered.getBytes(java.nio.charset.StandardCharsets.UTF_8).length.toLong
+      val frameBytes = rendered.getBytes(java.nio.charset.StandardCharsets.UTF_8).length.toLong
       val wouldExceed =
         current.nonEmpty &&
           ((currentTokens + frameTokens > budgetTokens) ||
@@ -245,11 +270,11 @@ object SummaryOnlyCompressor {
         out += current
         current = Vector(frame)
         currentTokens = frameTokens
-        currentBytes  = frameBytes
+        currentBytes = frameBytes
       } else {
         current = current :+ frame
         currentTokens += frameTokens
-        currentBytes  += frameBytes
+        currentBytes += frameBytes
       }
     }
     if (current.nonEmpty) out += current

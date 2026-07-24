@@ -16,7 +16,7 @@ import org.scalatest.wordspec.AnyWordSpec
 class WorkflowJsonArgCoercionSpec extends AnyWordSpec with Matchers {
 
   private val expected: Json = obj(
-    "path"      -> str("a"),
+    "path" -> str("a"),
     "oldString" -> str("x"),
     "newString" -> str("")
   )

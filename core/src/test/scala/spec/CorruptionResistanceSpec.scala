@@ -51,14 +51,16 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   ToolInput.register(RW.static(AnotherInput()))
   ToolInput.register(RW.static(ThirdInput()))
 
-  /** Tool whose resolution resolves a benign success. Under the new
-    * `Tool` contract `execute` is final and always builds exactly one
-    * paired result event — "silent no-op" is unrepresentable. The
-    * invariant must still hold for an ordinary success. */
+  /**
+   * Tool whose resolution resolves a benign success. Under the new
+   * `Tool` contract `execute` is final and always builds exactly one
+   * paired result event — "silent no-op" is unrepresentable. The
+   * invariant must still hold for an ordinary success.
+   */
   private case object SilentTool extends Tool {
-    type Input  = AdversarialInput
+    type Input = AdversarialInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[AdversarialInput]]
+    val inputRW = summon[RW[AdversarialInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name = ToolName("adversarial_silent")
     val description = "Adversarial tool: resolves a benign success."
@@ -67,13 +69,15 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
-  /** Tool whose resolution synchronously throws while building the
-    * `Task`. The framework's `runResolution` handleError catches this
-    * — verify it persists a paired Failure result. */
+  /**
+   * Tool whose resolution synchronously throws while building the
+   * `Task`. The framework's `runResolution` handleError catches this
+   * — verify it persists a paired Failure result.
+   */
   private case object SyncThrowTool extends Tool {
-    type Input  = AnotherInput
+    type Input = AnotherInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[AnotherInput]]
+    val inputRW = summon[RW[AnotherInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name = ToolName("adversarial_sync_throw")
     val description = "Adversarial tool: throws while constructing the Task."
@@ -82,13 +86,15 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       throw new RuntimeException("adversarial: sync construction throw")
   }
 
-  /** Tool whose resolution `Task` errors when evaluated. The
-    * framework's `runResolution` handleError maps the thrown error to
-    * a recoverable Failure so the ToolInvoke still pairs cleanly. */
+  /**
+   * Tool whose resolution `Task` errors when evaluated. The
+   * framework's `runResolution` handleError maps the thrown error to
+   * a recoverable Failure so the ToolInvoke still pairs cleanly.
+   */
   private case object MidStreamErrorTool extends Tool {
-    type Input  = ThirdInput
+    type Input = ThirdInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[ThirdInput]]
+    val inputRW = summon[RW[ThirdInput]]
     val outputRW = summon[RW[TextToolOutput]]
     val name = ToolName("adversarial_mid_stream_error")
     val description = "Adversarial tool: errors when the resolution Task is evaluated."
@@ -100,16 +106,16 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   private def buildRequest(convId: Id[Conversation],
                            extraTools: Vector[sigil.tool.Tool]): ConversationRequest =
     ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = CoreTools.all.toVector ++ extraTools
+      chain = List(TestUser, TestAgent),
+      tools = CoreTools.all.toVector ++ extraTools
     )
 
   private def seedConversation(convId: Id[Conversation]): Task[Conversation] = {
@@ -117,7 +123,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map(_ => conv)
   }
 
-  private final class SingleToolCallProvider(toolName: String, input: ToolInput) extends Provider {
+  final private class SingleToolCallProvider(toolName: String, input: ToolInput) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -130,21 +136,23 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     ))
   }
 
-  /** Drains the orchestrator's stream the way the live runAgentLoop does
-    * — `evalTap(publish)` so each signal lands in the DB as soon as
-    * it's emitted. Stream-level errors after partial emission still
-    * surface, but `Orchestrator.process`'s `onErrorFinalize` clean-up
-    * has already published any orphan-settle signals before the
-    * exception propagates. */
+  /**
+   * Drains the orchestrator's stream the way the live runAgentLoop does
+   * — `evalTap(publish)` so each signal lands in the DB as soon as
+   * it's emitted. Stream-level errors after partial emission still
+   * surface, but `Orchestrator.process`'s `onErrorFinalize` clean-up
+   * has already published any orphan-settle signals before the
+   * exception propagates.
+   */
   private def runAndReadEvents(provider: Provider,
                                convId: Id[Conversation],
                                conv: Conversation,
                                request: ConversationRequest): Task[List[Event]] =
     for {
-      _   <- Orchestrator.process(TestSigil, provider, request, conv)
-               .evalTap(s => TestSigil.publish(s).handleError(_ => Task.unit))
-               .drain
-               .handleError(_ => Task.unit)
+      _ <- Orchestrator.process(TestSigil, provider, request, conv)
+        .evalTap(s => TestSigil.publish(s).handleError(_ => Task.unit))
+        .drain
+        .handleError(_ => Task.unit)
       evs <- TestSigil.withDB(_.events.transaction(_.list))
     } yield evs.filter(_.conversationId == convId)
 
@@ -165,7 +173,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val settled = invoke.outcome != ToolOutcome.Pending
       val pairedMessage = events.exists {
         case m: Message if m.role == MessageRole.Tool && m.origin.contains(invoke._id) => true
-        case _                                                                         => false
+        case _ => false
       }
       withClue(s"ToolInvoke ${invoke._id.value} (tool=${invoke.toolName.value}) must be self-settled (outcome != Pending) OR have a paired Tool-role Message: ") {
         (settled || pairedMessage) shouldBe true
@@ -180,10 +188,12 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val convId = Conversation.id(s"silent-${rapid.Unique()}")
       for {
         conv <- seedConversation(convId)
-        evs  <- runAndReadEvents(
-                  new SingleToolCallProvider(SilentTool.name.value, AdversarialInput()),
-                  convId, conv, buildRequest(convId, Vector(SilentTool))
-                )
+        evs <- runAndReadEvents(
+          new SingleToolCallProvider(SilentTool.name.value, AdversarialInput()),
+          convId,
+          conv,
+          buildRequest(convId, Vector(SilentTool))
+        )
       } yield assertInvariantHolds(evs)
     }
 
@@ -191,10 +201,12 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val convId = Conversation.id(s"sync-throw-${rapid.Unique()}")
       for {
         conv <- seedConversation(convId)
-        evs  <- runAndReadEvents(
-                  new SingleToolCallProvider(SyncThrowTool.name.value, AnotherInput()),
-                  convId, conv, buildRequest(convId, Vector(SyncThrowTool))
-                )
+        evs <- runAndReadEvents(
+          new SingleToolCallProvider(SyncThrowTool.name.value, AnotherInput()),
+          convId,
+          conv,
+          buildRequest(convId, Vector(SyncThrowTool))
+        )
       } yield assertInvariantHolds(evs)
     }
 
@@ -202,10 +214,12 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val convId = Conversation.id(s"mid-stream-${rapid.Unique()}")
       for {
         conv <- seedConversation(convId)
-        evs  <- runAndReadEvents(
-                  new SingleToolCallProvider(MidStreamErrorTool.name.value, ThirdInput()),
-                  convId, conv, buildRequest(convId, Vector(MidStreamErrorTool))
-                )
+        evs <- runAndReadEvents(
+          new SingleToolCallProvider(MidStreamErrorTool.name.value, ThirdInput()),
+          convId,
+          conv,
+          buildRequest(convId, Vector(MidStreamErrorTool))
+        )
       } yield assertInvariantHolds(evs)
     }
 
@@ -233,7 +247,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
       for {
         conv <- seedConversation(convId)
-        evs  <- runAndReadEvents(abortingProvider, convId, conv, buildRequest(convId, Vector.empty))
+        evs <- runAndReadEvents(abortingProvider, convId, conv, buildRequest(convId, Vector.empty))
       } yield assertInvariantHolds(evs)
     }
   }

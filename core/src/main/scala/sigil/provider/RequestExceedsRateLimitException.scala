@@ -26,9 +26,9 @@ import sigil.db.Model
  * higher.
  */
 final class RequestExceedsRateLimitException(val estimatedTokens: Int,
-                                              val inputTokensPerMinute: Long,
-                                              val safetyMargin: Double,
-                                              val modelId: Id[Model])
+                                             val inputTokensPerMinute: Long,
+                                             val safetyMargin: Double,
+                                             val modelId: Id[Model])
   extends RuntimeException(
     s"Provider request estimated at $estimatedTokens input tokens exceeds the per-request rate ceiling for " +
       s"model ${modelId.value} (${(inputTokensPerMinute * safetyMargin).toLong} tokens — $inputTokensPerMinute " +

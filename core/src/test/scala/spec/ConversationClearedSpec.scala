@@ -33,12 +33,12 @@ class ConversationClearedSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private def msg(convId: Id[Conversation], text: String, ts: Long = System.currentTimeMillis()): Message =
     Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      timestamp      = lightdb.time.Timestamp(ts)
+      topicId = TestTopicId,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      timestamp = lightdb.time.Timestamp(ts)
     )
 
   "Sigil.clearConversation" should {
@@ -47,13 +47,13 @@ class ConversationClearedSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val convId = freshConvId("basic")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _           <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _           <- TestSigil.publish(msg(convId, "pre-clear-1"))
-        _           <- TestSigil.publish(msg(convId, "pre-clear-2"))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(msg(convId, "pre-clear-1"))
+        _ <- TestSigil.publish(msg(convId, "pre-clear-2"))
         framesBefore <- TestSigil.framesFor(convId)
-        _           <- TestSigil.clearConversation(convId, TestUser)
+        _ <- TestSigil.clearConversation(convId, TestUser)
         framesAfter <- TestSigil.framesFor(convId)
-        convAfter   <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+        convAfter <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
         framesBefore should have size 2
         framesAfter shouldBe empty
@@ -68,9 +68,9 @@ class ConversationClearedSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val convId = freshConvId("audit")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _      <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _      <- TestSigil.publish(msg(convId, "audit-pre-clear"))
-        _      <- TestSigil.clearConversation(convId, TestUser)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(msg(convId, "audit-pre-clear"))
+        _ <- TestSigil.clearConversation(convId, TestUser)
         events <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         // The pre-clear message is still in the events store.
@@ -78,9 +78,9 @@ class ConversationClearedSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         ours.size should be >= 1
         ours.exists {
           case m: Message => m.content.exists {
-            case ResponseContent.Text(t) => t == "audit-pre-clear"
-            case _                       => false
-          }
+              case ResponseContent.Text(t) => t == "audit-pre-clear"
+              case _ => false
+            }
           case _ => false
         } shouldBe true
       }
@@ -90,16 +90,14 @@ class ConversationClearedSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val convId = freshConvId("post-clear")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _    <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _    <- TestSigil.publish(msg(convId, "pre-clear"))
-        _    <- TestSigil.clearConversation(convId, TestUser)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(msg(convId, "pre-clear"))
+        _ <- TestSigil.clearConversation(convId, TestUser)
         // Use a future-stamped message so it definitely lands after
         // the watermark even if wall-clock granularity collides.
-        _      <- TestSigil.publish(msg(convId, "post-clear", System.currentTimeMillis() + 5000))
+        _ <- TestSigil.publish(msg(convId, "post-clear", System.currentTimeMillis() + 5000))
         frames <- TestSigil.framesFor(convId)
-      } yield {
-        frames.collect { case t: ContextFrame.Text => t.content } shouldBe Vector("post-clear")
-      }
+      } yield frames.collect { case t: ContextFrame.Text => t.content } shouldBe Vector("post-clear")
     }
 
     "broadcast a ConversationCleared Notice carrying the watermark + clearedBy" in {
@@ -133,13 +131,11 @@ class ConversationClearedSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val convId = freshConvId("rebuild")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _      <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _      <- TestSigil.publish(msg(convId, "pre-rebuild"))
-        _      <- TestSigil.clearConversation(convId, TestUser)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(msg(convId, "pre-rebuild"))
+        _ <- TestSigil.clearConversation(convId, TestUser)
         frames <- TestSigil.framesFor(convId)
-      } yield {
-        frames shouldBe empty
-      }
+      } yield frames shouldBe empty
     }
 
     "no-op silently when the conversation doesn't exist" in {
