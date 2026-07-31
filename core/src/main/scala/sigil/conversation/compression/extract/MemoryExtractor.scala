@@ -32,12 +32,26 @@ trait MemoryExtractor {
               userMessage: String,
               agentResponse: String): Task[List[ContextMemory]]
 
+  /** Rich-turn entry point — the agent loop's post-turn extraction
+    * builds an [[ExtractionTurn]] carrying the window's event ids and
+    * settled tool mutations alongside the rendered text. The default
+    * delegates to [[extract]] (text-only implementations keep
+    * working); implementations that stamp provenance or gate on
+    * structured turn evidence override this. */
+  def extractTurn(sigil: Sigil,
+                  conversationId: Id[Conversation],
+                  modelId: Id[Model],
+                  chain: List[ParticipantId],
+                  turn: ExtractionTurn): Task[List[ContextMemory]] =
+    extract(sigil, conversationId, modelId, chain, turn.userMessage, turn.agentResponse)
+
   /** Compression-time extraction over the about-to-be-shed frame
     * slice. Default reduces the slice to a transcript and delegates
-    * to [[extract]] with the user-side text concatenated as
-    * `userMessage` and the agent-side text as `agentResponse`.
-    * Apps override for frame-aware extraction (e.g. type-aware
-    * branching by `ContextFrame` subtype). */
+    * to [[extractTurn]] with the user-side text concatenated as
+    * `userMessage`, the agent-side text as `agentResponse`, and the
+    * slice's source event ids as provenance. Apps override for
+    * frame-aware extraction (e.g. type-aware branching by
+    * `ContextFrame` subtype). */
   def extractFromFrames(sigil: Sigil,
                         conversationId: Id[Conversation],
                         modelId: Id[Model],
@@ -68,13 +82,16 @@ trait MemoryExtractor {
             (users, agents)
         }
     }
-    extract(
+    extractTurn(
       sigil          = sigil,
       conversationId = conversationId,
       modelId        = modelId,
       chain          = chain,
-      userMessage    = userText.mkString("\n"),
-      agentResponse  = agentText.mkString("\n")
+      turn           = ExtractionTurn(
+        userMessage    = userText.mkString("\n"),
+        agentResponse  = agentText.mkString("\n"),
+        sourceEventIds = frames.iterator.map(_.sourceEventId).distinct.toList
+      )
     )
   }
 }

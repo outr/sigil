@@ -8,6 +8,7 @@ import rapid.Unique
 import sigil.SpaceId
 import sigil.SpaceId.given
 import sigil.conversation.MemoryType.given
+import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.participant.ParticipantId.given
 import sigil.provider.Mode
@@ -72,19 +73,31 @@ case class ContextMemory(fact: String,
                          location: Option[Place] = None,
                          extraContext: Map[ContextKey, String] = Map.empty,
                          /** Per-[[Mode]] retrieval gate. When non-empty, the
-     75|                            * memory only surfaces during turns whose
-     76|                            * [[Conversation.currentMode]] id is in this set.
-     77|                            * Empty (the default) = the memory is universal —
-     78|                            * surfaces regardless of current mode.
-     79|                            *
-     80|                            * Scoping critical directives to the mode they
-     81|                            * apply to avoids loading them into every turn of
-     82|                            * conversations that swap modes — a "always create
-     83|                            * failing tests before fixing" directive captured
-     84|                            * during Coding mode is wasted prompt budget when
-     85|                            * the conversation switches back to Conversation
-     86|                            * mode. */
+                           * memory only surfaces during turns whose
+                           * [[Conversation.currentMode]] id is in this set.
+                           * Empty (the default) = the memory is universal —
+                           * surfaces regardless of current mode.
+                           *
+                           * Scoping critical directives to the mode they
+                           * apply to avoids loading them into every turn of
+                           * conversations that swap modes — a "always create
+                           * failing tests before fixing" directive captured
+                           * during Coding mode is wasted prompt budget when
+                           * the conversation switches back to Conversation
+                           * mode. */
                          modeAffinity: Set[Id[Mode]] = Set.empty,
+                         /** Event-grain provenance — the durable [[Event]] ids
+                           * of the exchange this memory was extracted from.
+                           * Populated by the per-turn extractor (the turn's
+                           * event window) and the compression-time extractor
+                           * (the summarised chunk's frames). Keyed-upsert
+                           * semantics: a `Refreshed` write unions the prior
+                           * record's ids with the new extraction's; a
+                           * `Versioned` write starts the new record with only
+                           * the new extraction's ids (the superseded version
+                           * keeps its own). Empty for memories written outside
+                           * any conversation (seeding, app-side writes). */
+                         sourceEventIds: List[Id[Event]] = Nil,
                          created: Timestamp = Timestamp(),
                          modified: Timestamp = Timestamp(),
                          _id: Id[ContextMemory] = ContextMemory.id())

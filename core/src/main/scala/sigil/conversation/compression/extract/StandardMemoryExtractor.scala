@@ -13,8 +13,8 @@ import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesToo
 /**
  * Per-turn memory extractor:
  *
- *   1. Runs [[filter.isHighSignal]] on the user message; short-
- *      circuits with `Nil` on low-signal turns (no LLM call).
+ *   1. Runs [[filter.isHighSignal]] on the turn; short-circuits
+ *      with `Nil` on low-signal turns (no LLM call).
  *   2. Consults the configured model with
  *      [[ExtractMemoriesTool]] wrapping the user message +
  *      agent response.
@@ -59,8 +59,15 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                        modelId: Id[Model],
                        chain: List[ParticipantId],
                        userMessage: String,
-                       agentResponse: String): Task[List[ContextMemory]] = {
-    if (!filter.isHighSignal(userMessage)) Task.pure(Nil)
+                       agentResponse: String): Task[List[ContextMemory]] =
+    extractTurn(sigil, conversationId, modelId, chain, ExtractionTurn(userMessage, agentResponse))
+
+  override def extractTurn(sigil: Sigil,
+                           conversationId: Id[Conversation],
+                           modelId: Id[Model],
+                           chain: List[ParticipantId],
+                           turn: ExtractionTurn): Task[List[ContextMemory]] = {
+    if (!filter.isHighSignal(turn)) Task.pure(Nil)
     else spaceIdFor(conversationId).flatMap {
       case None        => Task.pure(Nil)
       case Some(space) =>
@@ -68,9 +75,9 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
           s"""Extract durable memories from the following exchange. Output via the
              |`extract_memories` tool.
              |
-             |USER: $userMessage
+             |USER: ${turn.userMessage}
              |
-             |AGENT: $agentResponse""".stripMargin
+             |AGENT: ${turn.agentResponse}""".stripMargin
         sigil.auxModelFor(conversationId, ExtractMemoriesTool.consultWorkType, chain, modelId).flatMap { routedModelId =>
           // Reasoning-off + tool name come from `ExtractMemoriesTool`'s
           // canonical consultSettings; the cap is stamped per-extractor
@@ -119,7 +126,8 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                 memoryType     = defaultType,
                 status         = defaultStatus,
                 conversationId = Some(conversationId),
-                modeAffinity   = resolvedModes
+                modeAffinity   = resolvedModes,
+                sourceEventIds = turn.sourceEventIds
               )
             }
             sigil.persistMemoriesFor(memories, chain, conversationId)

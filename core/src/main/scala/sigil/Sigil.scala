@@ -5218,6 +5218,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     })
 
+  /** Batched [[recordMemoryAccess]] — one transaction bumps
+    * `accessCount` / `lastAccessedAt` for every id. Missing ids are
+    * skipped; failures are logged and swallowed (access marking is a
+    * feedback signal, never worth failing a retrieval over). The
+    * retrieval pipeline's Record stage fires this on a background
+    * task for the turn's surfaced memories. */
+  def recordMemoryAccesses(ids: Seq[Id[ContextMemory]]): Task[Unit] =
+    if (ids.isEmpty) Task.unit
+    else {
+      val now = Timestamp()
+      withDB(_.memories.transaction { tx =>
+        Task.sequence(ids.distinct.toList.map { id =>
+          tx.get(id).flatMap {
+            case None => Task.unit
+            case Some(m) => tx.upsert(m.copy(accessCount = m.accessCount + 1, lastAccessedAt = now)).unit
+          }
+        }).unit
+      }).handleError { e =>
+        Task(scribe.warn(s"recordMemoryAccesses failed for ${ids.size} memories: ${e.getMessage}"))
+      }
+    }
+
   /** Load all summaries for a conversation, oldest-first. */
   def summariesFor(conversationId: Id[Conversation]): Task[List[ContextSummary]] =
     withDB(_.summaries.transaction { tx =>
@@ -8215,10 +8237,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         .filter(_.state == EventState.Complete)
         .toVector
         .sortBy(_.timestamp.value)
-      // Agent response: text frames the agent authored DURING this
-      // turn (events at or after `claimed.timestamp`).
-      val agentResponse = convEvents.iterator
-        .filter(_.timestamp.value >= turnStartTimestamp.value)
+      // The turn window: events at or after `claimed.timestamp`.
+      val turnEvents = convEvents.filter(_.timestamp.value >= turnStartTimestamp.value)
+      // Agent response: text frames the agent authored DURING this turn.
+      val agentResponse = turnEvents.iterator
         .collect {
           case m: Message if m.participantId == agent.id && m.role == MessageRole.Standard =>
             m.content.collect { case sigil.tool.model.ResponseContent.Text(t) => t }.mkString("")
@@ -8229,23 +8251,50 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // entire conversation. The triggering message PRECEDES the
       // agent's claim timestamp (it's what woke the agent), so
       // turn-window filtering would miss it.
-      val userMessage = convEvents.reverseIterator
+      val userMessageEvent = convEvents.reverseIterator
         .collectFirst {
-          case m: Message if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] && m.role == MessageRole.Standard =>
-            m.content.collect { case sigil.tool.model.ResponseContent.Text(t) => t }.mkString("")
+          case m: Message if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] && m.role == MessageRole.Standard => m
         }
+      val userMessage = userMessageEvent
+        .map(_.content.collect { case sigil.tool.model.ResponseContent.Text(t) => t }.mkString(""))
         .getOrElse("")
         .trim
+      // Provenance: the extraction window is the triggering user
+      // message plus the turn's events.
+      val windowEventIds = (userMessageEvent.map(_._id).toList ::: turnEvents.iterator.map(_._id).toList).distinct
+      // Structured turn evidence: names of tools that settled
+      // successfully during the turn with a mutating effect profile.
+      // Resolved from the persisted tool catalog only when the turn
+      // actually invoked tools.
+      val successfulInvokes = turnEvents.collect {
+        case ti: sigil.event.ToolInvoke if ti.outcome == sigil.event.ToolOutcome.Success && !ti.internal => ti
+      }
+      val settledMutations: Task[List[sigil.tool.ToolName]] =
+        if (successfulInvokes.isEmpty) Task.pure(Nil)
+        else withDB(_.tools.transaction(_.list)).map { toolRows =>
+          val toolsByName = toolRows.iterator.map(t => t.name.value -> t).toMap
+          successfulInvokes.iterator
+            .filter(ti => toolsByName.get(ti.toolName.value).exists(_.spec.profile.effect.mutates))
+            .map(_.toolName)
+            .toList
+            .distinct
+        }
       if (userMessage.isEmpty && agentResponse.isEmpty) Task.unit
-      else memoryExtractor
-        .extract(
-          sigil          = this,
-          conversationId = convId,
-          modelId        = agent.modelId,
-          chain          = List(agent.id),
-          userMessage    = userMessage,
-          agentResponse  = agentResponse
-        )
+      else settledMutations
+        .flatMap { mutations =>
+          memoryExtractor.extractTurn(
+            sigil          = this,
+            conversationId = convId,
+            modelId        = agent.modelId,
+            chain          = List(agent.id),
+            turn           = sigil.conversation.compression.extract.ExtractionTurn(
+              userMessage      = userMessage,
+              agentResponse    = agentResponse,
+              sourceEventIds   = windowEventIds,
+              settledMutations = mutations
+            )
+          )
+        }
         .unit
         .handleError { e =>
           Task(scribe.warn(s"MemoryExtractor failed for conversation ${convId.value}: ${e.getMessage}"))

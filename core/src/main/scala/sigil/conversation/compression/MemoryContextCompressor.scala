@@ -133,7 +133,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
           _ <- spaceOpt match {
                  case Some(space) =>
                    if (fitsSinglePass)
-                     extractAndPersist(sigil, summarizationModel, chain, transcript, conversationId, space)
+                     extractAndPersist(sigil, summarizationModel, chain, transcript, conversationId, space,
+                       materialized.iterator.map(_.sourceEventId).distinct.toList)
                    else
                      extractAndPersistChunked(sigil, summarizationModel, chain, materialized, ctx, conversationId, space, available)
                  case None => Task.unit
@@ -174,7 +175,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
     )
     Task.sequence(chunks.map { chunk =>
       val text = renderTranscript(chunk, ctx._1, ctx._2)
-      extractAndPersist(sigil, modelId, chain, text, conversationId, space)
+      extractAndPersist(sigil, modelId, chain, text, conversationId, space,
+        chunk.iterator.map(_.sourceEventId).distinct.toList)
     }).unit
   }
 
@@ -183,7 +185,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                 chain: List[ParticipantId],
                                 transcript: String,
                                 conversationId: Id[Conversation],
-                                space: SpaceId): Task[Unit] = {
+                                space: SpaceId,
+                                sourceEventIds: List[Id[_root_.sigil.event.Event]]): Task[Unit] = {
     val userPrompt =
       s"""Extract durable facts from the following conversation excerpt. Output via the
          |`extract_memories` tool. Supply a `key` for facts that represent a durable
@@ -216,7 +219,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
             spaceId = space,
             key = m.key,
             keywords = m.tags.toVector,
-            conversationId = Some(conversationId)
+            conversationId = Some(conversationId),
+            sourceEventIds = sourceEventIds
           )
         }
         sigil.persistMemoriesFor(memories, chain, conversationId).unit

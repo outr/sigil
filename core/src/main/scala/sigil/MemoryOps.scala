@@ -64,9 +64,10 @@ trait MemoryOps { this: Sigil =>
    *   - If the prior memory's `fact` matches → refresh metadata
    *     (label, summary, keywords, memoryType, confidence, pinned,
    *     extraContext, modeAffinity, expiresAt, justification,
-   *     location, modified) in place, keep same `_id` and the
-   *     original `conversationId` / `validFrom`. Returns the
-   *     refreshed record.
+   *     location, modified) in place — `sourceEventIds` unions the
+   *     prior record's ids with the new extraction's — keep same
+   *     `_id` and the original `conversationId` / `validFrom`.
+   *     Returns the refreshed record.
    *   - If the prior memory's `fact` differs → archive the prior
    *     (`validUntil = now`, `supersededBy = new._id`) and insert the
    *     new memory with `supersedes = prior._id`, `validFrom = now`.
@@ -117,6 +118,7 @@ trait MemoryOps { this: Sigil =>
                   expiresAt = memory.expiresAt,
                   justification = memory.justification,
                   location = memory.location,
+                  sourceEventIds = (prior.sourceEventIds ++ memory.sourceEventIds).distinct,
                   modified = Timestamp()
                 )
                 tx.upsert(refreshed).map(_ => UpsertMemoryResult.Refreshed(refreshed))
