@@ -1,0 +1,59 @@
+{"requestHash":"d72e489527ce3fc7cf1595fe996f72d533e32aecf850f227f18f0c0536394d8d","recordedAt":1785529173340}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" wants","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" ask","type":"ProviderEvent.ThinkingDelta"}
+{"text":" them","type":"ProviderEvent.ThinkingDelta"}
+{"text":" which","type":"ProviderEvent.ThinkingDelta"}
+{"text":" backend","type":"ProviderEvent.ThinkingDelta"}
+{"text":" language","type":"ProviderEvent.ThinkingDelta"}
+{"text":" they","type":"ProviderEvent.ThinkingDelta"}
+{"text":" want","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":16,"totalTokens":16,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" pick","type":"ProviderEvent.ThinkingDelta"}
+{"text":" from","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Python","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Node","type":"ProviderEvent.ThinkingDelta"}
+{"text":".js","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" or","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Go","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" This","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" simple","type":"ProviderEvent.ThinkingDelta"}
+{"text":" question","type":"ProviderEvent.ThinkingDelta"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":32,"totalTokens":32,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" requires","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" present","type":"ProviderEvent.ThinkingDelta"}
+{"text":" options","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" should","type":"ProviderEvent.ThinkingDelta"}
+{"text":" use","type":"ProviderEvent.ThinkingDelta"}
+{"text":" respond","type":"ProviderEvent.ThinkingDelta"}
+{"text":"_options","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" give","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":52,"totalTokens":52,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" them","type":"ProviderEvent.ThinkingDelta"}
+{"text":" clickable","type":"ProviderEvent.ThinkingDelta"}
+{"text":" choices","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"callId":"f4d126297","toolName":"respond_options","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":59,"totalTokens":59,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"f4d126297","call":{"type":"decoded","name":"respond_options","args":{"prompt":"Which backend language would you like to use for your new web service?","options":[{"label":"Python","value":"python","description":"Great for data-heavy services, rapid development, and AI\/ML integration","exclusive":false},{"label":"Node.js","value":"nodejs","description":"JavaScript runtime, great for real-time apps and full-stack JavaScript","exclusive":false},{"label":"Go","value":"go","description":"High performance, concurrent, and great for microservices","exclusive":false}],"allowMultiple":false}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4346,"completionTokens":220,"totalTokens":4566,"isEstimated":false,"cacheReadTokens":4309,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

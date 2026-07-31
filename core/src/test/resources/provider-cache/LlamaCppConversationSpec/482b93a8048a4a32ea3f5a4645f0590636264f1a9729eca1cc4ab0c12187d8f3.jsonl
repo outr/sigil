@@ -1,7 +1,0 @@
-{"requestHash":"482b93a8048a4a32ea3f5a4645f0590636264f1a9729eca1cc4ab0c12187d8f3","recordedAt":1780349561886}
-{"callId":"b4db15dc6","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
-{"callId":"b4db15dc6","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
-{"callId":"b4db15dc6","text":"hi","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"b4db15dc6","input":{"topicLabel":"Greeting","topicSummary":"User asked for a simple greeting.","content":"hi","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":["greeting"],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4979,"completionTokens":100,"totalTokens":5079,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

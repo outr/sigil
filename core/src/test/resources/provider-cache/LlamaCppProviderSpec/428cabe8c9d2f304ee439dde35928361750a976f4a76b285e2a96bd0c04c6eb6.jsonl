@@ -1,5 +1,0 @@
-{"requestHash":"428cabe8c9d2f304ee439dde35928361750a976f4a76b285e2a96bd0c04c6eb6","recordedAt":1779589147743}
-{"callId":"a57e6c8c6","toolName":"find_capability","type":"ProviderEvent.ToolCallStart"}
-{"callId":"a57e6c8c6","input":{"keywords":"send slack channel message","type":"FindCapabilityInput"},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4571,"completionTokens":15,"totalTokens":4586,"isEstimated":false,"cacheReadTokens":4550,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

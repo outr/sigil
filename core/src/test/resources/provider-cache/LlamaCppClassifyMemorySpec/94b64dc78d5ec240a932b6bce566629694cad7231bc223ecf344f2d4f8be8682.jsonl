@@ -1,5 +1,0 @@
-{"requestHash":"94b64dc78d5ec240a932b6bce566629694cad7231bc223ecf344f2d4f8be8682","recordedAt":1785524625157}
-{"callId":"b411231c9","toolName":"classify_memory","type":"ProviderEvent.ToolCallStart"}
-{"callId":"b411231c9","call":{"type":"decoded","name":"classify_memory","args":{"keywords":["scala","concurrency","streams","rapid","backend","code-style","naming","review"],"permanence":"Permanence.Always","space":"project","ambiguityReason":null}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":1034,"completionTokens":79,"totalTokens":1113,"isEstimated":false,"cacheReadTokens":871,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

@@ -1,5 +1,0 @@
-{"requestHash":"f6710c53b872b1351ba18bf44ca30950157d78cca221ab580be909a0fad07b13","recordedAt":1779589171650}
-{"callId":"9f156fcf4","toolName":"classify_memory","type":"ProviderEvent.ToolCallStart"}
-{"callId":"9f156fcf4","input":{"keywords":["rapid","scala","backend","library","preference"],"permanence":"Permanence.Once","space":"memory-compressor-space","ambiguityReason":null,"type":"ClassifyMemoryInput"},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":842,"completionTokens":49,"totalTokens":891,"isEstimated":false,"cacheReadTokens":698,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

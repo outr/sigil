@@ -1,5 +1,0 @@
-{"requestHash":"0a0d3fe5c51a68a2c13795534d9b78350f846fe9fdf0e7c3cd3a5936f627c6af","recordedAt":1779452401417}
-{"callId":"e531ac993","toolName":"find_capability","type":"ToolCallStart"}
-{"callId":"e531ac993","input":{"keywords":"list workspace directory files glob","type":"FindCapabilityInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":6507,"completionTokens":30,"totalTokens":6537,"isEstimated":false,"cacheReadTokens":4454,"cacheCreationTokens":0},"type":"Usage"}
-{"stopReason":"ToolCall","type":"Done"}

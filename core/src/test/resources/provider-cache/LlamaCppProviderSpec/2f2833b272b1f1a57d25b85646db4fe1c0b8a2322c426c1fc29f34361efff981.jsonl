@@ -1,7 +1,0 @@
-{"requestHash":"2f2833b272b1f1a57d25b85646db4fe1c0b8a2322c426c1fc29f34361efff981","recordedAt":1779589144631}
-{"callId":"c8e1ea654","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
-{"callId":"c8e1ea654","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
-{"callId":"c8e1ea654","text":"4","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"c8e1ea654","input":{"topicLabel":"Test Topic","topicSummary":"Answering a simple arithmetic question.","content":"4","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":["math","arithmetic"],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4564,"completionTokens":57,"totalTokens":4621,"isEstimated":false,"cacheReadTokens":3,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

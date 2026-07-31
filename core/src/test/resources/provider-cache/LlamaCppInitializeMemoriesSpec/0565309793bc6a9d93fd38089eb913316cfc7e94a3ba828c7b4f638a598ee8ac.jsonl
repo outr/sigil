@@ -1,5 +1,0 @@
-{"requestHash":"0565309793bc6a9d93fd38089eb913316cfc7e94a3ba828c7b4f638a598ee8ac","recordedAt":1785524617894}
-{"callId":"0680402fd","toolName":"extract_memories","type":"ProviderEvent.ToolCallStart"}
-{"callId":"0680402fd","call":{"type":"decoded","name":"extract_memories","args":{"memories":[{"content":"User's first name is Matt.","label":"First name","key":"user.first_name","tags":["identity","name"]},{"content":"User's last name is Hicks.","label":"Last name","key":"user.last_name","tags":["identity","name"]},{"content":"User's email address is matt@outr.com.","label":"Email address","key":"user.email","tags":["identity","contact"]},{"content":"User is 46 years old.","label":"Age","key":"user.age","tags":["identity"]}]}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":1059,"completionTokens":172,"totalTokens":1231,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

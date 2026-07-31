@@ -1,5 +1,0 @@
-{"requestHash":"0a34bf868d2aa5eb8b90898bd84b23d24ea6583a3e04a0769a02130f75b6a390","recordedAt":1779589254216}
-{"callId":"06fa9d6aa","toolName":"classify_memory","type":"ProviderEvent.ToolCallStart"}
-{"callId":"06fa9d6aa","input":{"keywords":["carol","color","blue","preference","favorite"],"permanence":"Permanence.Once","space":"memory-compressor-space","ambiguityReason":null,"type":"ClassifyMemoryInput"},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":808,"completionTokens":49,"totalTokens":857,"isEstimated":false,"cacheReadTokens":698,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

@@ -1,5 +1,0 @@
-{"requestHash":"96025a3e8d7793912aebf5d1822bac0df591aa13a6d68cddc978683461656cdd","recordedAt":1779589147529}
-{"callId":"50a96d5cb","toolName":"respond_options","type":"ProviderEvent.ToolCallStart"}
-{"callId":"50a96d5cb","input":{"prompt":"Which notification methods would you like to enable? You can select multiple options, but not the 'None' option in combination with any other.","options":[{"label":"Email","value":"email","description":null,"exclusive":false},{"label":"SMS","value":"sms","description":null,"exclusive":false},{"label":"Push","value":"push","description":null,"exclusive":false},{"label":"None","value":"none","description":"Select this if you do not want any notifications.","exclusive":true}],"allowMultiple":true,"type":"RespondOptionsInput"},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4588,"completionTokens":137,"totalTokens":4725,"isEstimated":false,"cacheReadTokens":4551,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

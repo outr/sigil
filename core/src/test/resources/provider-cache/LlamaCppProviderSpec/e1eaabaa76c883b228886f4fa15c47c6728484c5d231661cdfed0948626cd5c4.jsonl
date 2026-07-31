@@ -1,0 +1,46 @@
+{"requestHash":"e1eaabaa76c883b228886f4fa15c47c6728484c5d231661cdfed0948626cd5c4","recordedAt":1785529181491}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" wants","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" post","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" message","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Slack","type":"ProviderEvent.ThinkingDelta"}
+{"text":" channel","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" This","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"text":" an","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":16,"totalTokens":16,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" action","type":"ProviderEvent.ThinkingDelta"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"text":" requires","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" capability","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" send","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Slack","type":"ProviderEvent.ThinkingDelta"}
+{"text":" messages","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" should","type":"ProviderEvent.ThinkingDelta"}
+{"text":" search","type":"ProviderEvent.ThinkingDelta"}
+{"text":" for","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" capability","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":39,"totalTokens":39,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"text":" handles","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Slack","type":"ProviderEvent.ThinkingDelta"}
+{"text":" messaging","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"callId":"42c4878df","toolName":"find_capability","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":47,"totalTokens":47,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"42c4878df","call":{"type":"decoded","name":"find_capability","args":{"keywords":"send slack channel message post update"}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4337,"completionTokens":71,"totalTokens":4408,"isEstimated":false,"cacheReadTokens":4309,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

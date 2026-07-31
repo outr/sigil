@@ -1,5 +1,0 @@
-{"requestHash":"404a21f018674fc0668144c83bc59b4258a703b203d8de45a25bbbaffd497d0c","recordedAt":1779413494194}
-{"callId":"e1d1ee971","toolName":"classify_topic_shift","type":"ToolCallStart"}
-{"callId":"e1d1ee971","input":{"kind":"New","type":"TopicClassifierInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":595,"completionTokens":28,"totalTokens":623,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
-{"stopReason":"ToolCall","type":"Done"}

@@ -1,5 +1,0 @@
-{"requestHash":"549ca2b2322ec2ce6797c923d8aa38a56bc8c02dae6181e6fa2d87017de199a7","recordedAt":1779155024634}
-{"callId":"3604500de","toolName":"get_magic_number","type":"ToolCallStart"}
-{"callId":"3604500de","input":{"type":"GetMagicNumberInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":4808,"completionTokens":15,"totalTokens":4823,"isEstimated":false},"type":"Usage"}
-{"stopReason":"ToolCall","type":"Done"}

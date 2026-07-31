@@ -1,5 +1,0 @@
-{"requestHash":"a42e817bc173b3b6758098adc8cbc68c9dd261160418277cb7b57bfd7ca8a409","recordedAt":1779452403510}
-{"callId":"0663034e3","toolName":"find_capability","type":"ToolCallStart"}
-{"callId":"0663034e3","input":{"keywords":"workspace directory files list","type":"FindCapabilityInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":6545,"completionTokens":29,"totalTokens":6574,"isEstimated":false,"cacheReadTokens":4454,"cacheCreationTokens":0},"type":"Usage"}
-{"stopReason":"ToolCall","type":"Done"}

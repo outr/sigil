@@ -1,8 +1,0 @@
-{"requestHash":"03b94f590c9ad650e0ca8e34150fb0f473b3f4254f918f955743464211a24a82","recordedAt":1780349566866}
-{"callId":"2918f31f4","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
-{"callId":"2918f31f4","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
-{"callId":"2918f31f4","text":"Blue","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"2918f31f4","text":".","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"2918f31f4","input":{"topicLabel":"Color preference","topicSummary":"User asked for a one-word recall of their favorite color (blue).","content":"Blue.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":["color","favorite","blue"],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":5294,"completionTokens":113,"totalTokens":5407,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

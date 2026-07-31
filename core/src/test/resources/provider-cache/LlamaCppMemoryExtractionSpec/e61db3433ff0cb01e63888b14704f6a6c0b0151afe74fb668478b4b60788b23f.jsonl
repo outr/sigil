@@ -1,5 +1,0 @@
-{"requestHash":"e61db3433ff0cb01e63888b14704f6a6c0b0151afe74fb668478b4b60788b23f","recordedAt":1779154984117}
-{"callId":"4fbdf0d25","toolName":"extract_memories","type":"ToolCallStart"}
-{"callId":"4fbdf0d25","input":{"memories":[{"content":"User's name is Alice.","label":"User name","key":"user.name","tags":["identity"]},{"content":"User prefers dark-mode interfaces in all applications.","label":"Preferred interface theme","key":"user.preferred_theme","tags":["preference"]},{"content":"Deployment target is staging.us-east-1 for infrastructure-related tasks.","label":"Deployment target","key":"project.deploy_target","tags":["infrastructure"]}],"type":"ExtractMemoriesInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":1147,"completionTokens":136,"totalTokens":1283,"isEstimated":false},"type":"Usage"}
-{"stopReason":"ToolCall","type":"Done"}

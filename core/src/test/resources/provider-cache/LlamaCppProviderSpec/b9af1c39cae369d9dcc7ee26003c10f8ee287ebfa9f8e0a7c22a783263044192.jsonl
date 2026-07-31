@@ -1,0 +1,127 @@
+{"requestHash":"b9af1c39cae369d9dcc7ee26003c10f8ee287ebfa9f8e0a7c22a783263044192","recordedAt":1785529184818}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" wants","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" find","type":"ProviderEvent.ThinkingDelta"}
+{"text":" all","type":"ProviderEvent.ThinkingDelta"}
+{"text":" configuration","type":"ProviderEvent.ThinkingDelta"}
+{"text":" files","type":"ProviderEvent.ThinkingDelta"}
+{"text":" in","type":"ProviderEvent.ThinkingDelta"}
+{"text":" their","type":"ProviderEvent.ThinkingDelta"}
+{"text":" project","type":"ProviderEvent.ThinkingDelta"}
+{"text":" and","type":"ProviderEvent.ThinkingDelta"}
+{"text":" explain","type":"ProviderEvent.ThinkingDelta"}
+{"text":" what","type":"ProviderEvent.ThinkingDelta"}
+{"text":" each","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":22,"totalTokens":22,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" one","type":"ProviderEvent.ThinkingDelta"}
+{"text":" controls","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" This","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" file","type":"ProviderEvent.ThinkingDelta"}
+{"text":" discovery","type":"ProviderEvent.ThinkingDelta"}
+{"text":" task","type":"ProviderEvent.ThinkingDelta"}
+{"text":" -","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" need","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" search","type":"ProviderEvent.ThinkingDelta"}
+{"text":" for","type":"ProviderEvent.ThinkingDelta"}
+{"text":" configuration","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":42,"totalTokens":42,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" files","type":"ProviderEvent.ThinkingDelta"}
+{"text":" and","type":"ProviderEvent.ThinkingDelta"}
+{"text":" then","type":"ProviderEvent.ThinkingDelta"}
+{"text":" inspect","type":"ProviderEvent.ThinkingDelta"}
+{"text":" them","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" understand","type":"ProviderEvent.ThinkingDelta"}
+{"text":" their","type":"ProviderEvent.ThinkingDelta"}
+{"text":" purpose","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Let","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" start","type":"ProviderEvent.ThinkingDelta"}
+{"text":" by","type":"ProviderEvent.ThinkingDelta"}
+{"text":" searching","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":63,"totalTokens":63,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" for","type":"ProviderEvent.ThinkingDelta"}
+{"text":" configuration","type":"ProviderEvent.ThinkingDelta"}
+{"text":" files","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Common","type":"ProviderEvent.ThinkingDelta"}
+{"text":" config","type":"ProviderEvent.ThinkingDelta"}
+{"text":" file","type":"ProviderEvent.ThinkingDelta"}
+{"text":" patterns","type":"ProviderEvent.ThinkingDelta"}
+{"text":" include","type":"ProviderEvent.ThinkingDelta"}
+{"text":":","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-","type":"ProviderEvent.ThinkingDelta"}
+{"text":" .","type":"ProviderEvent.ThinkingDelta"}
+{"text":"env","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" .","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":81,"totalTokens":81,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"env","type":"ProviderEvent.ThinkingDelta"}
+{"text":".*","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-","type":"ProviderEvent.ThinkingDelta"}
+{"text":" config","type":"ProviderEvent.ThinkingDelta"}
+{"text":" files","type":"ProviderEvent.ThinkingDelta"}
+{"text":" with","type":"ProviderEvent.ThinkingDelta"}
+{"text":" various","type":"ProviderEvent.ThinkingDelta"}
+{"text":" extensions","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-","type":"ProviderEvent.ThinkingDelta"}
+{"text":" YAML","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" JSON","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" TOM","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":96,"totalTokens":96,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"L","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" IN","type":"ProviderEvent.ThinkingDelta"}
+{"text":"I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" files","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Project","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-specific","type":"ProviderEvent.ThinkingDelta"}
+{"text":" config","type":"ProviderEvent.ThinkingDelta"}
+{"text":" files","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" should","type":"ProviderEvent.ThinkingDelta"}
+{"text":" use","type":"ProviderEvent.ThinkingDelta"}
+{"text":" find","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":112,"totalTokens":112,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"_capability","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" search","type":"ProviderEvent.ThinkingDelta"}
+{"text":" for","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" capability","type":"ProviderEvent.ThinkingDelta"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"text":" can","type":"ProviderEvent.ThinkingDelta"}
+{"text":" help","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" list","type":"ProviderEvent.ThinkingDelta"}
+{"text":" and","type":"ProviderEvent.ThinkingDelta"}
+{"text":" search","type":"ProviderEvent.ThinkingDelta"}
+{"text":" for","type":"ProviderEvent.ThinkingDelta"}
+{"text":" configuration","type":"ProviderEvent.ThinkingDelta"}
+{"text":" files","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":136,"totalTokens":136,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"callId":"21482ed41","toolName":"find_capability","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":136,"totalTokens":136,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"21482ed41","call":{"type":"decoded","name":"find_capability","args":{"keywords":"list files directory configuration search"}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4335,"completionTokens":146,"totalTokens":4481,"isEstimated":false,"cacheReadTokens":4309,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

@@ -1,7 +1,0 @@
-{"requestHash":"2af96077cf0eb2ef02aa2d49102b86b53e89d1d9f013b7c85b50d0c58c6ebf8b","recordedAt":1779452411240}
-{"callId":"cfad4f6c1","toolName":"respond","type":"ToolCallStart"}
-{"callId":"cfad4f6c1","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
-{"callId":"cfad4f6c1","text":"two","type":"ContentBlockDelta"}
-{"callId":"cfad4f6c1","input":{"topicLabel":"Simple word reply","topicSummary":"User asked for the single word 'two'.","content":"two","disposition":"Success","endsTurn":true,"keywords":["simple","word","reply"],"type":"RespondInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":4888,"completionTokens":108,"totalTokens":4996,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
-{"stopReason":"ToolCall","type":"Done"}

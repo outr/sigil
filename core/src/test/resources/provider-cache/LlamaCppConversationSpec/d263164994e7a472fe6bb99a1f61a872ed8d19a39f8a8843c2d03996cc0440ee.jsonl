@@ -1,7 +1,0 @@
-{"requestHash":"d263164994e7a472fe6bb99a1f61a872ed8d19a39f8a8843c2d03996cc0440ee","recordedAt":1780799372799}
-{"callId":"f844dfccc","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
-{"callId":"f844dfccc","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
-{"callId":"f844dfccc","text":"Blue","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"f844dfccc","input":{"topicLabel":"Favorite Color","topicSummary":"User shared their favorite color.","content":"Blue","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4549,"completionTokens":84,"totalTokens":4633,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

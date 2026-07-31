@@ -1,7 +1,0 @@
-{"requestHash":"9c44cb7aeffed6a04accaca9f6b09e6268b5e8f86bdd7f12c24a663884783d8c","recordedAt":1779589187435}
-{"callId":"fc8c6cb97","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
-{"callId":"fc8c6cb97","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
-{"callId":"fc8c6cb97","text":"one","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"fc8c6cb97","input":{"topicLabel":"Test Topic","topicSummary":"User requested a single-word reply.","content":"one","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":["reply","word"],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4586,"completionTokens":56,"totalTokens":4642,"isEstimated":false,"cacheReadTokens":4577,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

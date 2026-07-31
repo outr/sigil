@@ -1,5 +1,0 @@
-{"requestHash":"a10a2e7c2124f437d1541f6c0543f6c122056cd677366018d360ff56b8a85f86","recordedAt":1779589201642}
-{"callId":"841157600","toolName":"change_mode","type":"ProviderEvent.ToolCallStart"}
-{"callId":"841157600","input":{"mode":"coding","reason":"User is starting a multi-step coding session on a Scala project and wants to iterate on a small library.","type":"ChangeModeInput"},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4869,"completionTokens":37,"totalTokens":4906,"isEstimated":false,"cacheReadTokens":4826,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}
