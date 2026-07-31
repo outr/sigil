@@ -88,7 +88,23 @@ case class ContextMemory(fact: String,
                          created: Timestamp = Timestamp(),
                          modified: Timestamp = Timestamp(),
                          _id: Id[ContextMemory] = ContextMemory.id())
-  extends RecordDocument[ContextMemory]
+  extends RecordDocument[ContextMemory] {
+
+  /** The shared retrieval gate: `true` when this record is the current
+    * version of its slot (`validUntil` unset), its `status` is
+    * [[MemoryStatus.Approved]], and it has not expired (`expiresAt`
+    * unset or in the future). Every retrieval surface — the hybrid
+    * retriever legs, the pinned load, [[sigil.Sigil.searchMemories]],
+    * [[sigil.Sigil.findMemories]] — applies this predicate, so
+    * superseded versions, pending / rejected records, and expired
+    * records never reach a prompt. Versioning and history queries
+    * (`memoryHistory`, the keyed-upsert write path,
+    * `listPendingMemories`) deliberately bypass it. */
+  def isRecallable(now: Timestamp): Boolean =
+    validUntil.isEmpty &&
+      status == MemoryStatus.Approved &&
+      !expiresAt.exists(_.value <= now.value)
+}
 
 object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConversion[ContextMemory] {
   implicit override def rw: RW[ContextMemory] = RW.gen

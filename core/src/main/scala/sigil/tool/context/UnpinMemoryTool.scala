@@ -9,7 +9,7 @@ import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Unpin a memory so it stops rendering every turn. The record stays
- * on disk; only its rendering policy changes — `recall_memory` /
+ * on disk; only its rendering policy changes — `semantic_search` /
  * `lookup` can still surface it on demand and topical retrieval will
  * pick it up when keywords match.
  *
@@ -52,10 +52,9 @@ case object UnpinMemoryTool extends Tool {
       else
         findTarget(input.key, effective, context).flatMap {
           case Some(memory) if memory.pinned =>
-            val unpinned = memory.copy(pinned = false)
-            context.sigil.withDB(_.memories.transaction(_.upsert(unpinned))).map { _ =>
+            context.sigil.updateMemory(memory.copy(pinned = false)).map { _ =>
               ToolResult.Success(TextToolOutput(
-                s"[unpin_memory] unpinned memory '${displayKey(memory)}'. The record remains accessible via topical retrieval, lookup, and recall_memory."))
+                s"[unpin_memory] unpinned memory '${displayKey(memory)}'. The record remains accessible via topical retrieval, lookup, and semantic_search."))
             }
           case Some(memory) =>
             Task.pure(ToolResult.Success(TextToolOutput(

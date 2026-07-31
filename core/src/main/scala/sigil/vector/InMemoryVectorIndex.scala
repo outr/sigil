@@ -25,10 +25,15 @@ class InMemoryVectorIndex extends VectorIndex {
 
   override def search(vector: Vector[Double],
                       limit: Int,
-                      filter: Map[String, String]): Task[List[VectorSearchResult]] = Task {
+                      filter: Map[String, String]): Task[List[VectorSearchResult]] =
+    search(vector, limit, VectorQueryFilter(exact = filter))
+
+  override def search(vector: Vector[Double],
+                      limit: Int,
+                      filter: VectorQueryFilter): Task[List[VectorSearchResult]] = Task {
     val qNorm = norm(vector)
     val candidates = points.values().iterator().asScala
-      .filter(p => filter.forall { case (k, v) => p.payload.get(k).contains(v) })
+      .filter(p => filter.matches(p.payload))
       .map { p =>
         val sim = if (qNorm == 0.0 || norm(p.vector) == 0.0) 0.0
                   else cosine(vector, p.vector, qNorm, norm(p.vector))

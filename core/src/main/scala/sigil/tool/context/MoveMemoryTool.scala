@@ -66,8 +66,7 @@ case object MoveMemoryTool extends Tool {
             Task.pure(ToolResult.Success(TextToolOutput(
               s"[move_memory] memory '${displayKey(memory)}' is already in space '${input.newSpace.value}'; nothing to do.")))
           case Some(memory) =>
-            val moved = memory.copy(spaceId = input.newSpace, modified = lightdb.time.Timestamp())
-            context.sigil.withDB(_.memories.transaction(_.upsert(moved))).map { _ =>
+            context.sigil.updateMemory(memory.copy(spaceId = input.newSpace)).map { _ =>
               ToolResult.Success(TextToolOutput(
                 s"[move_memory] moved memory '${displayKey(memory)}' from space '${memory.spaceId.value}' to '${input.newSpace.value}'."))
             }

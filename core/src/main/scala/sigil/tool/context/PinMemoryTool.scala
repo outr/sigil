@@ -56,8 +56,7 @@ case object PinMemoryTool extends Tool {
       else
         findTarget(input.key, effective, context).flatMap {
           case Some(memory) if !memory.pinned =>
-            val pinned = memory.copy(pinned = true)
-            context.sigil.withDB(_.memories.transaction(_.upsert(pinned))).map { _ =>
+            context.sigil.updateMemory(memory.copy(pinned = true)).map { _ =>
               ToolResult.Success(TextToolOutput(
                 s"[pin_memory] pinned memory '${displayKey(memory)}'. It will now render every turn until unpinned."))
             }

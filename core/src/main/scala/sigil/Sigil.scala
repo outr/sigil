@@ -1876,9 +1876,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     import sigil.tool.skill.ActivateSkillTool
     // Reply surface: `respond` (markdown + Field-callout + H2-Card +
     // disposition) for telling; `respond_options` (typed) for asking.
-    // The standalone `respond_field` / `respond_failure` /
-    // `respond_card` tools are opt-in (not essentials) — markdown
-    // callouts and disposition cover their cases in `respond`.
+    // The standalone `respond_card` / `respond_cards` tools are opt-in
+    // (not essentials) — markdown callouts and disposition cover
+    // their cases in `respond`.
     // `no_response` dropped from defaults.
     // `cancel` deliberately omitted from both essentials lists — agents
     // reach for it under stress (duplicate-call warning, ambiguous
@@ -2495,14 +2495,24 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def defaultRecallSpaces(conversationId: Id[Conversation]): Task[Set[SpaceId]] =
     defaultMemorySpace(conversationId).map(_.toSet)
 
-  def findMemories(spaces: Set[SpaceId]): Task[List[ContextMemory]] =
+  /** Space-scoped memory listing. By default only recallable records
+    * are returned — the current version of each slot, `Approved`, and
+    * unexpired (see [[ContextMemory.isRecallable]]). Pass
+    * `recallableOnly = false` for administrative access to every row,
+    * including superseded versions and pending / rejected records. */
+  def findMemories(spaces: Set[SpaceId], recallableOnly: Boolean = true): Task[List[ContextMemory]] =
     if (spaces.isEmpty) Task.pure(Nil)
     else withDB(_.memories.transaction { tx =>
       import lightdb.filter.*
       tx.query
         .filter(m => spaces.map(s => m.spaceIdValue === s.value).reduce(_ || _))
         .toList
-    })
+    }).map { rows =>
+      if (recallableOnly) {
+        val now = Timestamp()
+        rows.filter(_.isRecallable(now))
+      } else rows
+    }
 
   /** All pinned memories scoped to the supplied spaces — the
     * inviolable subset the framework renders every turn. Used by
@@ -5241,23 +5251,33 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   /**
    * Semantic search across persisted [[ContextMemory]] records,
    * restricted to the given spaces. When vector search is wired, embed
-   * the query, hit the vector index with a `kind=memory` filter, then
-   * hydrate ids via [[SigilDB.memories]]. When not wired, fall back to
-   * the existing space-scoped listing (relevance-unordered — callers
-   * that care should override this method).
+   * the query and hit the vector index with a `kind=memory` filter
+   * plus a `spaceId` any-of clause — the space scope applies inside
+   * the index's top-K cut, so a large multi-tenant store can't crowd
+   * in-space matches out of the candidate pool — then hydrate ids via
+   * [[SigilDB.memories]]. Only recallable records are returned (see
+   * [[ContextMemory.isRecallable]]). When not wired, fall back to the
+   * space-scoped listing (relevance-unordered — callers that care
+   * should override this method).
    */
   def searchMemories(query: String,
                      spaces: Set[SpaceId],
                      limit: Int = 10): Task[List[ContextMemory]] =
     if (!vectorWired) findMemories(spaces).map(_.take(limit))
     else embeddingProvider.embed(query).flatMap { vec =>
-      vectorIndex.search(vec, limit = limit, filter = Map("kind" -> "memory")).flatMap { hits =>
+      val filter = sigil.vector.VectorQueryFilter(
+        exact = Map("kind" -> "memory"),
+        anyOf = if (spaces.isEmpty) Map.empty else Map("spaceId" -> spaces.map(_.value))
+      )
+      vectorIndex.search(vec, limit = limit, filter = filter).flatMap { hits =>
         val ids = hits.flatMap(_.payload.get("memoryId")).map(Id[ContextMemory](_))
         withDB { db =>
           db.memories.transaction { tx =>
             Task.sequence(ids.map(id => tx.get(id))).map { loaded =>
-              val filtered = loaded.flatten.filter(m => spaces.isEmpty || spaces.contains(m.spaceId))
-              filtered
+              val now = Timestamp()
+              loaded.flatten
+                .filter(m => spaces.isEmpty || spaces.contains(m.spaceId))
+                .filter(_.isRecallable(now))
             }
           }
         }

@@ -19,6 +19,11 @@ object NoOpVectorIndex extends VectorIndex {
                       filter: Map[String, String]): Task[List[VectorSearchResult]] =
     Task.pure(Nil)
 
+  override def search(vector: Vector[Double],
+                      limit: Int,
+                      filter: VectorQueryFilter): Task[List[VectorSearchResult]] =
+    Task.pure(Nil)
+
   override def delete(id: String): Task[Unit] = Task.unit
 
   override def ensureCollection(dimensions: Int): Task[Unit] = Task.unit

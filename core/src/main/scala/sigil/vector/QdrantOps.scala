@@ -67,12 +67,19 @@ object QdrantOps {
              collection: String,
              vector: Vector[Double],
              limit: Int,
-             filter: Map[String, String]): Task[List[VectorSearchResult]] = {
+             filter: Map[String, String]): Task[List[VectorSearchResult]] =
+    search(baseUrl, collection, vector, limit, VectorQueryFilter(exact = filter))
+
+  def search(baseUrl: URL,
+             collection: String,
+             vector: Vector[Double],
+             limit: Int,
+             filter: VectorQueryFilter): Task[List[VectorSearchResult]] = {
     val bodyFields = List(
       "vector" -> arr(vector.map(num)*),
       "limit" -> num(limit),
       "with_payload" -> bool(true)
-    ) ++ (if (filter.nonEmpty) List("filter" -> filterExpr(filter)) else Nil)
+    ) ++ (if (filter.isEmpty) Nil else List("filter" -> filterExpr(filter)))
     postJson(baseUrl.withPath(s"/collections/$collection/points/search"), obj(bodyFields*)).map { json =>
       json("result").asVector.map { r =>
         val id = r("id") match {
@@ -107,13 +114,17 @@ object QdrantOps {
     * opaque strings, not integers. */
   def generateId(): String = Unique.uuid.sync()
 
-  /** Translate a flat `Map[String, String]` filter into Qdrant's
-    * `must + match` shape. */
-  private def filterExpr(filter: Map[String, String]): Json = {
-    val conditions = filter.toList.map { case (k, v) =>
+  /** Translate a [[VectorQueryFilter]] into Qdrant's `must + match`
+    * shape — exact clauses as `match.value`, any-of clauses as
+    * `match.any`. */
+  private def filterExpr(filter: VectorQueryFilter): Json = {
+    val exactConditions = filter.exact.toList.map { case (k, v) =>
       obj("key" -> str(k), "match" -> obj("value" -> str(v)))
     }
-    obj("must" -> arr(conditions*))
+    val anyConditions = filter.anyOf.toList.map { case (k, values) =>
+      obj("key" -> str(k), "match" -> obj("any" -> arr(values.toList.sorted.map(str)*)))
+    }
+    obj("must" -> arr((exactConditions ++ anyConditions)*))
   }
 
   private def putJson(url: URL, body: Json): Task[Json] =

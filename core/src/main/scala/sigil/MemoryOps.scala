@@ -62,8 +62,11 @@ trait MemoryOps { this: Sigil =>
    *   - If no prior memory exists at `(spaceId, key)` → insert with
    *     `validFrom = now`, return the new record.
    *   - If the prior memory's `fact` matches → refresh metadata
-   *     (label, summary, tags, memoryType, modified) in place, keep
-   *     same `_id`. Returns the refreshed record.
+   *     (label, summary, keywords, memoryType, confidence, pinned,
+   *     extraContext, modeAffinity, expiresAt, justification,
+   *     location, modified) in place, keep same `_id` and the
+   *     original `conversationId` / `validFrom`. Returns the
+   *     refreshed record.
    *   - If the prior memory's `fact` differs → archive the prior
    *     (`validUntil = now`, `supersededBy = new._id`) and insert the
    *     new memory with `supersedes = prior._id`, `validFrom = now`.
@@ -110,6 +113,10 @@ trait MemoryOps { this: Sigil =>
                   confidence = memory.confidence,
                   pinned = memory.pinned,
                   extraContext = memory.extraContext,
+                  modeAffinity = memory.modeAffinity,
+                  expiresAt = memory.expiresAt,
+                  justification = memory.justification,
+                  location = memory.location,
                   modified = Timestamp()
                 )
                 tx.upsert(refreshed).map(_ => UpsertMemoryResult.Refreshed(refreshed))
@@ -130,6 +137,21 @@ trait MemoryOps { this: Sigil =>
           }
       }
     }
+
+  /**
+   * Persist an in-place mutation of an existing memory record and
+   * refresh its vector-index entry so the payload metadata (space,
+   * fact text) stays consistent with the store. Skips classification
+   * and the pinned-cap hook — intended for metadata mutations
+   * (pin / unpin / move), not for new facts; those go through
+   * [[persistMemory]] / [[upsertMemoryByKey]].
+   */
+  def updateMemory(memory: ContextMemory): Task[ContextMemory] = {
+    val stamped = memory.copy(modified = Timestamp())
+    withDB(_.memories.transaction(_.upsert(stamped))).flatMap { stored =>
+      indexMemory(stored).map(_ => stored)
+    }
+  }
 
   /**
    * Convenience overload: persist a memory and auto-fill `createdBy`

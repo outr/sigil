@@ -8,10 +8,10 @@ import fabric.rw.*
  *
  * Distinct from `MessageDisposition.Failure`-shaped content blocks
  * (which encode a user-facing "agent couldn't complete the task" via
- * `respond_failure`); `ToolOutcome` is the framework-level "did this
- * tool's invocation produce a usable result?" answer. Lets consumers
- * pattern-match on tool-call success without inspecting individual
- * content blocks.
+ * `respond` with `disposition = "failure"`); `ToolOutcome` is the
+ * framework-level "did this tool's invocation produce a usable
+ * result?" answer. Lets consumers pattern-match on tool-call success
+ * without inspecting individual content blocks.
  *
  * Tools authoring against the framework set this directly when they
  * emit a [[ToolResults]] event; the framework's own dispatchers

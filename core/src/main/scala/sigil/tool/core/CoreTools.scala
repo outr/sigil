@@ -42,12 +42,6 @@ import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
  *     one [[sigil.provider.Mode]]. Single-mode apps would surface it
  *     as a no-op tool the model could waste tokens trying to call.
  *
- *   - `respond_failure` / `respond_field` — typed-emission siblings of
- *     the markdown extensions on `respond`. `respond` with
- *     `disposition = "failure"` (or a `> [!Field …]` callout in
- *     content) covers the common case; these standalone tools stay
- *     in core for apps that prefer the named-tool dispatch path.
- *
  *   - `respond_card` / `respond_cards` — composite Card-block reply
  *     surfaces with explicit `kind` and nested sections. `## H2`
  *     headings inside `respond` content auto-wrap into Cards for the

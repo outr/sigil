@@ -23,6 +23,11 @@ case class QdrantVectorIndex(baseUrl: URL, collection: String) extends VectorInd
   override def search(vector: Vector[Double],
                       limit: Int,
                       filter: Map[String, String]): Task[List[VectorSearchResult]] =
+    QdrantOps.search(baseUrl, collection, vector, limit, VectorQueryFilter(exact = filter))
+
+  override def search(vector: Vector[Double],
+                      limit: Int,
+                      filter: VectorQueryFilter): Task[List[VectorSearchResult]] =
     QdrantOps.search(baseUrl, collection, vector, limit, filter)
 
   override def delete(id: String): Task[Unit] =

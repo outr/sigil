@@ -6,7 +6,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.{GlobalSpace, Sigil, SpaceId}
-import sigil.conversation.{ContextFrame, ContextMemory, Conversation}
+import sigil.conversation.{ContextFrame, ContextMemory, Conversation, MemoryStatus}
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
 
@@ -146,12 +146,16 @@ case class StandardMemoryRetriever(limit: Int = 5,
         }
     }
 
-  /** Run vector + Lucene retrieval in parallel, fuse via RRF. Drops
-    * memories outside `spaces`, expired records, and pinned memories
-    * (those render in the Pinned section already; topical retrieval
-    * mustn't double-render). The Lucene leg pushes the `pinned ==
-    * false` filter into the index; the vector leg filters post-fetch
-    * since the vector payload doesn't carry pinned status. */
+  /** Run vector + Lucene retrieval in parallel, fuse via RRF. Both
+    * legs pass through the shared recall gate
+    * ([[ContextMemory.isRecallable]] — current version, `Approved`,
+    * unexpired) plus the per-turn mode-affinity check, and drop pinned
+    * memories (those render in the Pinned section already; topical
+    * retrieval mustn't double-render). The Lucene leg pushes spaces,
+    * `pinned == false`, and `status == Approved` into the index; the
+    * vector leg pushes spaces down via [[Sigil.searchMemories]] and
+    * filters pinned post-fetch since the vector payload doesn't carry
+    * pinned status. */
   private def hybridSearch(sigil: Sigil,
                            query: String,
                            spaces: Set[SpaceId],
@@ -164,11 +168,11 @@ case class StandardMemoryRetriever(limit: Int = 5,
     } yield {
       val vectorIds  = vectorHits.iterator
         .filterNot(_.pinned)
-        .filterNot(StandardMemoryRetriever.isExpired(_, now))
+        .filter(_.isRecallable(now))
         .filter(matchesCurrentMode(_, currentMode))
         .map(_._id).toList
       val lexicalIds = lexicalHits.iterator
-        .filterNot(StandardMemoryRetriever.isExpired(_, now))
+        .filter(_.isRecallable(now))
         .filter(matchesCurrentMode(_, currentMode))
         .map(_._id).toList
       // Confidence shapes the fused score: a 0.5-confidence memory's
@@ -193,8 +197,11 @@ case class StandardMemoryRetriever(limit: Int = 5,
 
   /** Lucene BM25 query over `ContextMemory.searchText`. Splits `query`
     * into whitespace tokens and OR-matches; result order is BM25
-    * relevance. Filters to the supplied spaces and excludes pinned
-    * memories (those render in the Pinned section already). */
+    * relevance. Spaces, `pinned == false`, and `status == Approved`
+    * are compiled into the index query — the space scope applies
+    * inside the candidate cut, so a large multi-tenant store can't
+    * crowd in-space matches out of the pool. Pinned memories are
+    * excluded because they render in the Pinned section already. */
   private def luceneHits(sigil: Sigil,
                          query: String,
                          spaces: Set[SpaceId],
@@ -207,20 +214,28 @@ case class StandardMemoryRetriever(limit: Int = 5,
           val clauses = tokens.map { kw =>
             FilterClause(ContextMemory.searchText.exactly(kw), Condition.Should, None)
           }
+          val spaceClauses = spaces.toList.map { space =>
+            FilterClause(ContextMemory.spaceIdValue === space.value, Condition.Should, None)
+          }
           Filter.Multi(minShould = 1, filters = clauses) &&
-            (ContextMemory.pinned === false)
+            Filter.Multi(minShould = 1, filters = spaceClauses) &&
+            (ContextMemory.pinned === false) &&
+            (ContextMemory.statusName === MemoryStatus.Approved.toString)
         }
         .scored
         .sort(Sort.BestMatch())
         .limit(candidatePool)
         .toList
-    }).map(_.filter(m => spaces.contains(m.spaceId)))
+    })
   }
 
   /** Load every pinned memory in the supplied spaces. Pushes the
-    * filter into Lucene via the indexed `pinned` boolean and the
-    * `spaceIdValue` string projection: `pinned == true AND spaceIdValue
-    * IN spaces`. Expiry is filtered in-memory on the (small) result.
+    * filter into Lucene via the indexed `pinned` boolean, the
+    * `statusName` projection, and the `spaceIdValue` string
+    * projection: `pinned == true AND status == Approved AND
+    * spaceIdValue IN spaces`. The remainder of the recall gate
+    * ([[ContextMemory.isRecallable]] — current version + expiry) is
+    * filtered in-memory on the (small) result.
     * O(N_pinned_in_accessible_spaces) per turn instead of
     * O(N_total_memories). */
   private def loadPinned(sigil: Sigil,
@@ -235,12 +250,13 @@ case class StandardMemoryRetriever(limit: Int = 5,
       tx.query
         .filter(_ =>
           Filter.Multi(minShould = 1, filters = spaceClauses) &&
-            (ContextMemory.pinned === true)
+            (ContextMemory.pinned === true) &&
+            (ContextMemory.statusName === MemoryStatus.Approved.toString)
         )
         .toList
     }).map { rows =>
       rows.iterator
-        .filterNot(StandardMemoryRetriever.isExpired(_, now))
+        .filter(_.isRecallable(now))
         .filter(matchesCurrentMode(_, currentMode))
         .map(_._id).toVector
     }

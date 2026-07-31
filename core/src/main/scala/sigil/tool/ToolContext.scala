@@ -32,8 +32,8 @@ import java.util.concurrent.atomic.AtomicReference
  * @param currentMessageId the id of an in-flight assistant
  *                         [[sigil.event.Message]] when the orchestrator
  *                         pre-allocated one before dispatching an atomic
- *                         content tool (`respond_options`, `respond_field`,
- *                         `respond_failure`). Lets those tools adopt the
+ *                         content tool (`respond_options`, `respond_card`,
+ *                         `respond_cards`). Lets those tools adopt the
  *                         same Message id the streaming content path was
  *                         building toward, instead of opening a second
  *                         user-visible Message. `None` for ordinary tools.

@@ -4,8 +4,8 @@ import sigil.tool.Tool
 
 /**
   * Annotation mix-in for the respond-family tools
-  * (`respond`, `respond_options`, `respond_field`, `respond_failure`,
-  * `respond_card`, `respond_cards`, `no_response`). Each is
+  * (`respond`, `respond_options`, `respond_card`, `respond_cards`,
+  * `no_response`). Each is
   * destructive (ends the turn), open-world (the user reads the
   * Message), not idempotent (calling twice produces two messages).
   *

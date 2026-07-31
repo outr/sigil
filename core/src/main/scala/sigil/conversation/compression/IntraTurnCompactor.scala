@@ -30,7 +30,7 @@ import sigil.tool.ToolName
  * subsequent turns' frames — the agent sees the summary's text in
  * their place. Durable event log is untouched: anything compacted
  * remains recoverable via `search_conversation` /
- * `recall_memory` / `lookup`.
+ * `semantic_search` / `lookup`.
  *
  * Apps override via [[sigil.Sigil.intraTurnCompactor]] for app-
  * specific triggers (e.g. "fold after every `preview_theme` success"

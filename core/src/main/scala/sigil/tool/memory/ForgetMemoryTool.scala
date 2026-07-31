@@ -20,7 +20,8 @@ import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
  *                  including any vector-index points.
  *
  * Pair with [[sigil.tool.util.SaveMemoryTool]] (write) and
- * [[RecallMemoryTool]] (search) for the full memory CRUD surface.
+ * [[sigil.tool.util.SemanticSearchTool]] (search) for the full memory
+ * CRUD surface.
  */
 case object ForgetMemoryTool extends Tool {
   type Input  = ForgetMemoryInput

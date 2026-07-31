@@ -96,7 +96,7 @@ case class StandardContextCurator(sigil: Sigil,
                                     * memory retrieval, and budget resolution. Older
                                     * frames remain in the durable event log and stay
                                     * reachable via `search_conversation` /
-                                    * `recall_memory` / persisted summaries —
+                                    * `semantic_search` / persisted summaries —
                                     * they're just skipped on the hot path so the
                                     * curator doesn't try to summarize the entire
                                     * history every turn. `Int.MaxValue` disables the

@@ -30,9 +30,9 @@ enum ToolPolicy derives RW {
 
   /** Roster = `find_capability` + `stop` + the agent's baseline tools
     * (and any `Active` extras from other contributors). The respond
-    * family (`respond`, `respond_options`, `respond_field`,
-    * `respond_failure`) and `no_response` are stripped, forcing every
-    * reply to flow through `find_capability` first.
+    * family (`respond`, `respond_options`) and `no_response` are
+    * stripped, forcing every reply to flow through `find_capability`
+    * first.
     *
     * Right for small / quantised models that lock onto the `respond`
     * tool when it sits in the immediate roster. Adds one round-trip
