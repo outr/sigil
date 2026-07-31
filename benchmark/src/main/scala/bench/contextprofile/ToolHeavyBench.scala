@@ -75,7 +75,7 @@ object ToolHeavyBench {
       val turnNumber = idx + 1
       // Suggested tools list grows with discovered names — single-turn ephemeral
       // per `decaySuggestedTools`, so we add only the most recently discovered.
-      val suggested = List(ToolName(s"tool_${turnNumber % 25}"))
+      val suggested = List(ToolName.parse(s"tool_${turnNumber % 25}").fold(sys.error, identity))
       val projections: Map[sigil.participant.ParticipantId, ParticipantProjection] = Map(
         ProfilerHarness.AgentId -> ParticipantProjection.empty(ProfilerHarness.AgentId, ProfilerHarness.ConvId)
           .copy(suggestedTools = suggested)

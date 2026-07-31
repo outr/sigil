@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.Message
 import sigil.signal.EventState
-import sigil.tool.{TextToolOutput, ToolName, ToolResult}
+import sigil.tool.{TextToolOutput, ToolName, ToolResult, ToolSpec}
 import sigil.tool.model.RespondCardsInput
 
 /**
@@ -24,8 +24,8 @@ case object RespondCardsTool extends RespondFamilyTool {
   val inputRW  = summon[RW[RespondCardsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("respond_cards")
-  val description =
+  override val name = ToolName("respond_cards")
+  override val description =
     """Emit a sequence of composite Cards in one reply — for dashboards (multiple metric tiles),
       |result sets (one card per hit), or any response composed of several distinct grouped units.
       |Each card carries its own optional title + kind + sections.
@@ -33,6 +33,12 @@ case object RespondCardsTool extends RespondFamilyTool {
       |- `topicLabel` — 3-6 words.
       |- `topicSummary` — 1-2 sentences.
       |- `cards` — the cards, in order.""".stripMargin
+
+  val spec: ToolSpec = RespondFamilyTool.spec(
+    name = name,
+    description = description,
+    keywords = Set("respond", "reply", "cards", "dashboard", "tiles", "results")
+  )
 
   override def executeResult(input: RespondCardsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.emit(Message(

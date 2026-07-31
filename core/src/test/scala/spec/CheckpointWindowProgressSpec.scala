@@ -70,7 +70,7 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
                          input: Option[sigil.tool.ToolInput] = None,
                          internal: Boolean = false): ToolInvoke =
     ToolInvoke(
-      toolName       = ToolName(name),
+      toolName       = ToolName.parse(name).fold(sys.error, identity),
       participantId  = TestAgent,
       conversationId = convId,
       topicId        = TestTopicEntry.id,

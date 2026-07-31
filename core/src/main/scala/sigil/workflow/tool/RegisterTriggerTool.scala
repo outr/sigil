@@ -5,7 +5,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
 case class RegisterTriggerInput(workflowId: String,
@@ -25,8 +25,8 @@ final class RegisterTriggerTool extends Tool with WorkflowToolSupport {
   type Output = TextToolOutput
   val inputRW  = summon[RW[RegisterTriggerInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("register_trigger")
-  val description =
+  override val name = ToolName("register_trigger")
+  override val description =
     """Add a typed WorkflowTrigger to a workflow template.
       |
       |`workflowId` is the template id. `trigger` is the typed trigger shape — pick
@@ -41,7 +41,12 @@ final class RegisterTriggerTool extends Tool with WorkflowToolSupport {
       )
     )
   )
-  override val keywords = Set("workflow", "trigger", "schedule", "register")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("workflow", "trigger", "schedule", "register"))
+  )
 
   override def executeResult(input: RegisterTriggerInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)

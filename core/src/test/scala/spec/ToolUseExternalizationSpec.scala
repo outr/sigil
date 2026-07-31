@@ -9,7 +9,7 @@ import sigil.conversation.compression.StandardContextCurator
 import sigil.conversation.{Conversation, ToolCallState, Topic, TopicEntry}
 import sigil.event.{ToolInvoke, ToolOutcome}
 import sigil.signal.EventState
-import sigil.tool.{InMemoryToolFinder, Tool, ToolContext, ToolInput, ToolName, TextToolOutput}
+import sigil.tool.{DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Regression for sigil bug #288 — agent-emitted tool_use content
@@ -28,8 +28,14 @@ class ToolUseExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec with M
     type Output = TextToolOutput
     val inputRW: RW[WriteFileInput]   = summon[RW[WriteFileInput]]
     val outputRW: RW[TextToolOutput]  = summon[RW[TextToolOutput]]
-    val name = ToolName("synthetic_write_file")
-    val description = "Synthetic test tool that opts `content` in for externalization."
+    override val name = ToolName("synthetic_write_file")
+    override val description = "Synthetic test tool that opts `content` in for externalization."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "write", "externalization"))
+    )
     override val externalizableInputFields: Set[String] = Set("content")
     override def executeOutput(input: WriteFileInput, context: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(s"wrote ${input.content.length} chars to ${input.path}"))
@@ -114,8 +120,14 @@ class ToolUseExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec with M
         type Output = TextToolOutput
         val inputRW: RW[WriteFileInput] = summon[RW[WriteFileInput]]
         val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
-        val name = ToolName("nothing_externalized")
-        val description = ""
+        override val name = ToolName("nothing_externalized")
+        override val description = "Test-only tool that externalizes nothing."
+        val spec: ToolSpec = ToolSpec(
+          name = name,
+          description = description,
+          profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+          discovery = DiscoverySpec(keywords = Set("test", "externalization"))
+        )
         override def executeOutput(input: WriteFileInput, context: ToolContext): Task[TextToolOutput] =
           Task.pure(TextToolOutput(""))
       }

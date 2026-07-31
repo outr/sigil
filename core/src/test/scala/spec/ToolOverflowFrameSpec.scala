@@ -8,7 +8,7 @@ import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
 import sigil.event.Event
 import sigil.signal.ToolDelta
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Proves C — when a tool's result overflows `inlineContentThreshold`, the
@@ -37,8 +37,14 @@ class ToolOverflowFrameSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     type Output = TextToolOutput
     val inputRW  = summon[RW[OverflowProbeInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName("big_output")
-    val description = "Returns a result far larger than the inline threshold."
+    override val name = ToolName("big_output")
+    override val description = "Returns a result far larger than the inline threshold."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "overflow", "output"))
+    )
     override def executeResult(input: OverflowProbeInput, c: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(bigText)))
   }

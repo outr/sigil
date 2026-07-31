@@ -12,7 +12,7 @@ import sigil.provider.{
 }
 import sigil.tool.consult.{ConsultOutcome, ConsultTool}
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import spice.http.HttpRequest
 
 /**
@@ -44,8 +44,14 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     type Output = TextToolOutput
     val inputRW  = summon[RW[ProbeInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName("consult_probe")
-    val description = "Probe target for ConsultTool outcome tests."
+    override val name = ToolName("consult_probe")
+    override val description = "Probe target for ConsultTool outcome tests."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "consult", "probe"))
+    )
 
     override def executeResult(input: ProbeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.answer)))

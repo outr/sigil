@@ -6,7 +6,7 @@ import sigil.Sigil
 import sigil.tool.ToolContext
 import sigil.event.{ModeChange, MessageRole}
 import sigil.provider.Mode
-import sigil.tool.{RefusalPayload, TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, RefusalPayload, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.model.ChangeModeInput
 
 /**
@@ -31,8 +31,8 @@ case object ChangeModeTool extends Tool {
   val inputRW  = summon[RW[ChangeModeInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("change_mode")
-  val description =
+  override val name = ToolName("change_mode")
+  override val description =
     """Switch to a mode whose domain matches the user's current task. Each
       |listed mode below describes the work it handles (writing code, web
       |research, etc.); when the user's request lands in that domain — even
@@ -60,9 +60,14 @@ case object ChangeModeTool extends Tool {
    // separate tools with their own keyword sets. Without these, the
    // BM25 ranker would score `change_mode` purely on its description
    // prose and accidentally match tier-shaped queries.
-  override val keywords: Set[String] = Set(
-    "mode", "modes", "switch", "change", "transition",
-    "operating", "posture", "kit", "toolset", "tools"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set(
+      "mode", "modes", "switch", "change", "transition",
+      "operating", "posture", "kit", "toolset", "tools"
+    ))
   )
 
   override val examples: List[sigil.tool.ToolExample] = List(
@@ -71,12 +76,6 @@ case object ChangeModeTool extends Tool {
       ChangeModeInput(mode = "coding", reason = Some("user wants a function written"))
     )
   )
-
-  // ModeChange Events update Conversation.currentMode and the system
-  // prompt's "Current mode" line. The verbose settled tool-call
-  // frame is redundant after the mode is in effect — mark ephemeral
-  // so the curator elides it from future turns.
-  override def resultTtl: Option[Int] = Some(0)
 
   override def executeResult(input: ChangeModeInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.modeByName(input.mode) match {

@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Task
 import sigil.Sigil
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{ConsentSpec, DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolGates, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.core.RecordConsentTool
 
 /**
@@ -25,8 +25,14 @@ class RecordConsentRosterSpec extends AnyWordSpec with Matchers {
     type Output = TextToolOutput
     val inputRW  = summon[RW[PlainInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("plain_action")
-    val description = "An action that needs no consent."
+    override val name        = ToolName("plain_action")
+    override val description = "An action that needs no consent."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "plain"))
+    )
     override def executeResult(input: PlainInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }
@@ -37,9 +43,17 @@ class RecordConsentRosterSpec extends AnyWordSpec with Matchers {
     type Output = TextToolOutput
     val inputRW  = summon[RW[GatedInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("gated_action")
-    val description = "An action that requires user consent."
-    override def requiresUserConsent: Boolean = true
+    override val name        = ToolName("gated_action")
+    override val description = "An action that requires user consent."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(
+        effect = Effect.Mutating(MutationTargeting.none),
+        gates = ToolGates(consent = Some(ConsentSpec("Allow this test tool to run?")))
+      ),
+      discovery = DiscoverySpec(keywords = Set("test", "gated"))
+    )
     override def executeResult(input: GatedInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }

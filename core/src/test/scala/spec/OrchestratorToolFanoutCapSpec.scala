@@ -15,7 +15,7 @@ import sigil.provider.{
   Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.{EventState, Signal}
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import spice.http.HttpRequest
 
 /** A trivial action tool taking a distinct arg, so N calls aren't collapsed
@@ -27,8 +27,14 @@ case object ProbeTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[ProbeInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("probe")
-  val description = "A trivial probe tool."
+  override val name = ToolName("probe")
+  override val description = "A trivial probe tool."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("test", "probe"))
+  )
   override def executeResult(input: ProbeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.Success(TextToolOutput(s"probe-${input.n}")))
 }

@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.{ActiveSkillSlot, SkillSource}
 import sigil.skill.Skill
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Loads a [[sigil.skill.Skill]] into the agent's
@@ -34,8 +34,8 @@ case object ActivateSkillTool extends Tool {
   val inputRW: RW[ActivateSkillInput] = summon[RW[ActivateSkillInput]]
   val outputRW: RW[TextToolOutput]    = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("activate_skill")
-  val description: String =
+  override val name: ToolName = ToolName("activate_skill")
+  override val description: String =
     """Activate a discovered Skill — a system-prompt overlay that specializes you for a focused
       |task. Pass the skill's `name` (returned by capability discovery).
       |
@@ -46,7 +46,13 @@ case object ActivateSkillTool extends Tool {
       |
       |If the skill isn't found OR isn't available in the current mode, this tool reports
       |the failure and changes nothing.""".stripMargin
-  override val keywords: Set[String] = Set("activate", "skill", "load", "enable", "use")
+
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("activate", "skill", "load", "enable", "use"))
+  )
 
   override def executeResult(input: ActivateSkillInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.withDB(_.skills.transaction(_.get(lightdb.id.Id[Skill](input.name)))).flatMap {

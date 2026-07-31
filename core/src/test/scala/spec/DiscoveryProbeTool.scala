@@ -2,7 +2,7 @@ package spec
 
 import fabric.rw.*
 import rapid.Task
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /** Input for [[DiscoveryProbeTool]] — `count` controls how many items it emits. */
 case class DiscoveryProbeInput(count: Int) extends ToolInput derives RW
@@ -18,8 +18,14 @@ case object DiscoveryProbeTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[DiscoveryProbeInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("discovery_probe")
-  val description = "Emits N newline-separated items — a discovery-step stand-in for workflow tests."
+  override val name = ToolName("discovery_probe")
+  override val description = "Emits N newline-separated items — a discovery-step stand-in for workflow tests."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Pure)),
+    discovery = DiscoverySpec(keywords = Set("test", "discovery_probe"))
+  )
   override def executeResult(input: DiscoveryProbeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     // Items are wide (path-shaped) so a modest count still exceeds the inline
     // cap — exercises the overflow path without thousands of loop iterations.

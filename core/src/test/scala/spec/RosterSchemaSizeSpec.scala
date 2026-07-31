@@ -7,7 +7,7 @@ import rapid.{Stream, Task}
 import sigil.provider.{ConversationMode, Provider, ProviderCall, ProviderType}
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Coverage for sigil bug #43 — `Provider.estimateRoster` must include
@@ -38,8 +38,14 @@ class RosterSchemaSizeSpec extends AnyWordSpec with Matchers {
     val inputRW  = summon[RW[WideInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("wide_tool")
-    val description = "A short description."
+    override val name        = ToolName("wide_tool")
+    override val description = "A short description."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "wide_tool"))
+    )
 
     override def executeOutput(input: WideInput, context: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(""))

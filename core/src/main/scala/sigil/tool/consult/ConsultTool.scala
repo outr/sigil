@@ -8,7 +8,7 @@ import sigil.tool.ToolContext
 import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, StopReason}
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * One-shot LLM consultation. Two surfaces on the same object:
@@ -27,8 +27,8 @@ case object ConsultTool extends Tool {
   val inputRW: RW[ConsultInput]    = summon[RW[ConsultInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("consult")
-  val description: String =
+  override val name: ToolName = ToolName("consult")
+  override val description: String =
     """Consult another model — or yourself with no conversation history — for a focused sub-question.
       |
       |Use this when:
@@ -46,6 +46,13 @@ case object ConsultTool extends Tool {
       |`systemPrompt` — set the consulted model's role / context for this question. One paragraph max.
       |
       |`userPrompt` — the actual question or task. Be specific; the consulted model has no other context.""".stripMargin
+
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("consult", "model", "ask", "delegate", "question", "opinion", "llm"))
+  )
 
   override val examples: List[ToolExample] = List(
     ToolExample(

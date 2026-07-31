@@ -36,7 +36,7 @@ object SyntheticDiagnostic {
              topicId: Id[Topic]): ToolInvoke = {
     val syntheticInvokeId = Event.id()
     ToolInvoke(
-      toolName       = ToolName(name),
+      toolName       = ToolName.internal(name),
       participantId  = caller,
       conversationId = convId,
       topicId        = topicId,

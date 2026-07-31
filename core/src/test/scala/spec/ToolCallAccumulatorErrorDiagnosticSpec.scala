@@ -7,10 +7,10 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Task
-import sigil.{GlobalSpace, SpaceId, TurnContext}
+import sigil.TurnContext
 import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.tool.ToolRoster
 
@@ -66,9 +66,14 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
     type Output = TextToolOutput
     val inputRW  = throwingRW
     val outputRW = summon[RW[TextToolOutput]]
-    val name: ToolName = ToolName("throwing_tool")
-    val description: String = "Always throws on inputRW.write."
-    override def space: SpaceId = GlobalSpace
+    override val name: ToolName = ToolName("throwing_tool")
+    override val description: String = "Always throws on inputRW.write."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "throwing_tool"))
+    )
     override def _id: Id[Tool] = Id[Tool](name.value)
     override def executeResult(input: ToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
@@ -79,9 +84,14 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
     type Output = TextToolOutput
     val inputRW  = summon[RW[ValidInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name: ToolName = ToolName("valid_tool")
-    val description: String = "Round-trips ValidInput cleanly."
-    override def space: SpaceId = GlobalSpace
+    override val name: ToolName = ToolName("valid_tool")
+    override val description: String = "Round-trips ValidInput cleanly."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "valid_tool"))
+    )
     override def _id: Id[Tool] = Id[Tool](name.value)
     override def executeResult(input: ValidInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.name)))
@@ -171,9 +181,14 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
         type Output = TextToolOutput
         val inputRW  = throwingOptRW
         val outputRW = summon[RW[TextToolOutput]]
-        val name: ToolName = ToolName("with_opt_tool")
-        val description: String = "Tool with required + optional fields."
-        override def space: SpaceId = GlobalSpace
+        override val name: ToolName = ToolName("with_opt_tool")
+        override val description: String = "Tool with required + optional fields."
+        val spec: ToolSpec = ToolSpec(
+          name = name,
+          description = description,
+          profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+          discovery = DiscoverySpec(keywords = Set("test", "with_opt_tool"))
+        )
         override def _id: Id[Tool] = Id[Tool](name.value)
         override def executeResult(input: ToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
           Task.pure(ToolResult.Success(TextToolOutput("")))

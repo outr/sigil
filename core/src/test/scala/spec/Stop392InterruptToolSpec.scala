@@ -14,7 +14,7 @@ import sigil.provider.{
   ProviderType, StopReason
 }
 import sigil.signal.EventState
-import sigil.tool.{InMemoryToolFinder, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.core.CoreTools
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
@@ -49,8 +49,14 @@ class Stop392InterruptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     type Output = TextToolOutput
     val inputRW  = summon[RW[SlowInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName("slow_blocking")
-    val description = "Blocks for 30s; used to prove a force Stop interrupts an in-flight tool."
+    override val name = ToolName("slow_blocking")
+    override val description = "Blocks for 30s; used to prove a force Stop interrupts an in-flight tool."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "slow", "blocking"))
+    )
     override def executeResult(input: SlowInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task { Thread.sleep(30000L); ToolResult.Success(TextToolOutput("done")) }
   }

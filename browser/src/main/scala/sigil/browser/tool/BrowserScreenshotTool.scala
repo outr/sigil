@@ -6,7 +6,7 @@ import rapid.Task
 import robobrowser.RoboBrowser
 import sigil.browser.BrowserStateDelta
 import sigil.browser.WebBrowserMode
-import sigil.tool.{ImageQuality, ImageToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, ImageQuality, ImageToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
@@ -33,18 +33,25 @@ final class BrowserScreenshotTool extends Tool {
   val inputRW  = summon[RW[BrowserScreenshotInput]]
   val outputRW = summon[RW[ImageToolOutput]]
 
-  val name = ToolName("browser_screenshot")
-  val description =
+  override val name = ToolName("browser_screenshot")
+  override val description =
     """Take a screenshot of the current page. Returns the rendered image as part of the chat (both you and the user see it).
       |Use when text-only scraping isn't enough — graphical UIs, layout-dependent pages, error states.
       |Set `fullPage = true` to capture the entire scrollable page instead of just the visible viewport.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(
+      keywords = Set("browser", "screenshot", "image", "capture", "render"),
+      modes = Set(WebBrowserMode.id)
+    )
+  )
   override val examples = List(
     ToolExample("Default screenshot", BrowserScreenshotInput()),
     ToolExample("Wait 5s for animations", BrowserScreenshotInput(waitSeconds = 5)),
     ToolExample("Full-page capture", BrowserScreenshotInput(fullPage = true))
   )
-  override val modes = Set(WebBrowserMode.id)
-  override val keywords = Set("browser", "screenshot", "image", "capture", "render")
 
   override def executeResult(input: BrowserScreenshotInput,
                              ctx: ToolContext): Task[ToolResult[ImageToolOutput]] =

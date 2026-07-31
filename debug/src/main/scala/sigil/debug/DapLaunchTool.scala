@@ -4,7 +4,7 @@ import fabric.Json
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import scala.jdk.CollectionConverters.*
 
@@ -38,8 +38,8 @@ final class DapLaunchTool(val manager: DapManager) extends Tool with DapToolSupp
   type Output = TextToolOutput
   val inputRW = summon[RW[DapLaunchInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("dap_launch")
-  val description =
+  override val name = ToolName("dap_launch")
+  override val description =
     """Spawn a debug adapter and launch a fresh program for debugging.
       |
       |`languageId` selects the persisted DebugAdapterConfig.
@@ -49,6 +49,12 @@ final class DapLaunchTool(val manager: DapManager) extends Tool with DapToolSupp
       |`breakpointsByFile` (optional) is a map of source path → line numbers for initial breakpoints.
       |`exceptionFilters` (optional) is a list of adapter-defined filter ids (e.g. "uncaught", "all").
       |Returns the resulting session id and any breakpoints that failed to verify.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "launch", "run", "program", "debugger", "start"))
+  )
   override val examples = List(
     ToolExample(
       "launch a sbt main class with one breakpoint",

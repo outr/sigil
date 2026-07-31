@@ -66,7 +66,7 @@ final class ClientToolRegistry(sigil: _root_.sigil.Sigil) {
     // Server-tool collision check is effectful (finder lookup); run it
     // only for the survivors.
     Task.sequence(results.collect { case Right(spec) => spec }.map { spec =>
-      sigil.findTools.byName(ToolName(spec.name)).map {
+      sigil.findTools.byName(ToolName.internal(spec.name)).map {
         case Some(_) => Left(spec.name -> "collides with a server-registered tool of the same name")
         case None    => Right(spec)
       }

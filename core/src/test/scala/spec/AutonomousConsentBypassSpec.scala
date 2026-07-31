@@ -11,7 +11,7 @@ import sigil.orchestrator.Orchestrator
 import sigil.participant.DefaultAgentParticipant
 import sigil.provider.{GenerationSettings, Instructions, SafetyPosture}
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{ConsentSpec, DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolGates, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 
 /**
@@ -36,10 +36,17 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
     type Output = TextToolOutput
     val inputRW  = summon[RW[BypassInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName("bypass_demo_tool")
-    val description = "A consent-gated demo tool used by the bypass spec."
-
-    override def requiresUserConsent: Boolean = true
+    override val name = ToolName("bypass_demo_tool")
+    override val description = "A consent-gated demo tool used by the bypass spec."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(
+        effect = Effect.Mutating(MutationTargeting.none),
+        gates = ToolGates(consent = Some(ConsentSpec("Allow this test tool to run?")))
+      ),
+      discovery = DiscoverySpec(keywords = Set("test", "bypass"))
+    )
 
     override def executeResult(input: BypassInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task {

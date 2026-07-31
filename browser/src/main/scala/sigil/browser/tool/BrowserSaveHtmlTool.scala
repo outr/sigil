@@ -8,7 +8,7 @@ import robobrowser.select.Selector
 import sigil.browser.BrowserStateDelta
 import sigil.browser.WebBrowserMode
 import sigil.information.StoredInformation
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
@@ -33,18 +33,25 @@ final class BrowserSaveHtmlTool extends Tool {
   val inputRW  = summon[RW[BrowserSaveHtmlInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("browser_save_html")
-  val description =
+  override val name = ToolName("browser_save_html")
+  override val description =
     """Persist the current page's HTML and return a compact structural overview (headings, landmarks, link clusters,
       |totals) plus an `htmlFileId` and an `informationId`. To read the WHOLE page (e.g. to understand or faithfully
       |reproduce it), call lookup(capabilityType="Information", name=<informationId>) — the same way you read an uploaded
       |HTML file. For surgical extraction from a large page, pass the `htmlFileId` to `browser_xpath_query` or
       |`browser_text_search`. Call once per page; repeat after navigation.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(
+      keywords = Set("browser", "html", "save", "snapshot", "overview", "structure"),
+      modes = Set(WebBrowserMode.id)
+    )
+  )
   override val examples = List(
     ToolExample("Save the current page", BrowserSaveHtmlInput())
   )
-  override val modes = Set(WebBrowserMode.id)
-  override val keywords = Set("browser", "html", "save", "snapshot", "overview", "structure")
 
   override def executeResult(input: BrowserSaveHtmlInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

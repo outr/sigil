@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DapSetBreakpointsInput(sessionId: String,
                                   filePath: String,
@@ -21,14 +21,20 @@ final class DapSetBreakpointsTool(val manager: DapManager) extends Tool with Dap
   type Output = TextToolOutput
   val inputRW = summon[RW[DapSetBreakpointsInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("dap_set_breakpoints")
-  val description =
+  override val name = ToolName("dap_set_breakpoints")
+  override val description =
     """Set source breakpoints for a file in an active debug session (replaces any prior set).
       |
       |`sessionId` selects the active session.
       |`filePath` is the absolute path.
       |`lines` is the list of 1-based line numbers; empty clears the file's breakpoints.
       |Returns each breakpoint's verified state and any line adjustment the adapter made.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "breakpoints", "breakpoint", "set", "source", "line"))
+  )
   override val examples = List(
     ToolExample(
       "set two breakpoints",

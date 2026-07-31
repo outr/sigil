@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.DocumentLink
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspDocumentLinkItem, LspDocumentLinkResult, LspPosition}
 
 case class LspDocumentLinkInput(languageId: String,
@@ -18,19 +18,26 @@ case class LspDocumentLinkInput(languageId: String,
  * an empty list.
  */
 final class LspDocumentLinkTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspDocumentLinkInput
   type Output = LspDocumentLinkResult
   val inputRW  = summon[RW[LspDocumentLinkInput]]
   val outputRW = summon[RW[LspDocumentLinkResult]]
-  val name = ToolName("lsp_document_links")
-  val description =
+  override val name = ToolName("lsp_document_links")
+  override val description =
     """List the document links the language server has identified in a file.
       |
       |`languageId` + `filePath` identify the document.
       |Each entry shows the link's start position and target URI (when resolved).""".stripMargin
-  override val keywords = Set("lsp", "links", "document link", "hyperlink", "navigate")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "links", "document link", "hyperlink", "navigate"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspDocumentLinkInput, context: ToolContext): Task[LspDocumentLinkResult] =
     withOpenDocumentOrThrow[LspDocumentLinkResult](

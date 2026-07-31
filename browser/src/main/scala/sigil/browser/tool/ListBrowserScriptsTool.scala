@@ -6,7 +6,7 @@ import fabric.{arr, num, obj, str}
 import rapid.Task
 import sigil.browser.BrowserScript
 import sigil.browser.WebBrowserMode
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
@@ -20,11 +20,18 @@ case object ListBrowserScriptsTool extends Tool {
   val inputRW  = summon[RW[ListBrowserScriptsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("list_browser_scripts")
-  val description =
+  override val name = ToolName("list_browser_scripts")
+  override val description =
     "List browser-script tools accessible to the caller (filtered by space scoping)."
-  override val modes = Set(WebBrowserMode.id)
-  override val keywords = Set("list", "browser", "scripts", "browse", "find")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("list", "browser", "scripts", "browse", "find"),
+      modes = Set(WebBrowserMode.id)
+    )
+  )
 
   override def executeResult(input: ListBrowserScriptsInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

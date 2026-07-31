@@ -55,7 +55,7 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   /** Convenience: build a ToolInvoke with a controlled `timestamp`. */
   private def tool(convId: Id[Conversation], ts: Long, name: String): ToolInvoke =
     ToolInvoke(
-      toolName = ToolName(name),
+      toolName = ToolName.parse(name).fold(sys.error, identity),
       participantId = TestUser,
       conversationId = convId,
       topicId = TestTopicId,

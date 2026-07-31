@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.ToolApproval
-import sigil.tool.{RefusalPayload, TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, RefusalPayload, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.model.RecordConsentInput
 
 case object RecordConsentTool extends Tool {
@@ -13,8 +13,8 @@ case object RecordConsentTool extends Tool {
   val inputRW  = summon[RW[RecordConsentInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("record_consent")
-  val description =
+  override val name = ToolName("record_consent")
+  override val description =
     """Record the user's consent decision for a consent-gated tool. Consent is REACTIVE,
       |not a courtesy: call this ONLY when a tool you tried to use was REFUSED pending consent
       |— i.e. the framework returned a Tool-result telling you the tool needs consent and to
@@ -33,6 +33,13 @@ case object RecordConsentTool extends Tool {
       |When the user declines the prompt, record `approved=false` so a later iteration doesn't
       |re-offer it.""".stripMargin
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("consent", "approval", "approve", "decline", "permission", "record"))
+  )
+
   override val examples: List[ToolExample] = List(
     ToolExample(
       "load_claude_state was refused pending consent; the user approved the prompt",
@@ -47,7 +54,7 @@ case object RecordConsentTool extends Tool {
   )
 
   override def executeResult(input: RecordConsentInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
-    val targetName = ToolName(input.toolName)
+    val targetName = ToolName.internal(input.toolName)
     ctx.sigil.findTools.byName(targetName).flatMap {
       case None =>
         // Refuse to persist `ToolApproval` for a toolName that isn't in

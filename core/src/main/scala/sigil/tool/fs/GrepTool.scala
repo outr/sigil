@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{GrepInput, GrepOutputMode}
-import sigil.tool.{PlaceholderInputDetector, TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, PlaceholderInputDetector, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.nio.file.Path
 import scala.jdk.CollectionConverters.*
@@ -24,15 +24,15 @@ import scala.jdk.CollectionConverters.*
  * [[GrepTool.DefaultExcludedSegments]]; callers opt back in via
  * [[GrepInput.includeIgnored]].
  */
-final class GrepTool(context: FileSystemContext) extends Tool with sigil.tool.ReadOnlyExternalTool {
+final class GrepTool(context: FileSystemContext) extends Tool {
   type Input  = GrepInput
   type Output = TextToolOutput
   val inputRW  = summon[RW[GrepInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("grep")
-  val description =
-    """Search files under `path` for a regex `pattern`. Output is bounded and lands directly in
+  val spec: ToolSpec = ToolSpec(
+    name = ToolName("grep"),
+    description = """Search files under `path` for a regex `pattern`. Output is bounded and lands directly in
       |your reply context — there is no pagination.
       |
       |`outputMode`:
@@ -49,21 +49,23 @@ final class GrepTool(context: FileSystemContext) extends Tool with sigil.tool.Re
       |
       |By default grep skips noise directories: .git, target, node_modules, dist, .venv, __pycache__,
       |.idea, .vscode, .metals, .bloop, .claude (Claude Code worktrees), and similar. Pass
-      |`includeIgnored: true` to search inside them.""".stripMargin
+      |`includeIgnored: true` to search inside them.""".stripMargin,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "grep", "search", "regex", "find", "match", "lines",
+        "lookup", "ripgrep", "rg", "code", "text", "files", "pattern",
+        "scan", "look", "occurrence", "string"
+      ),
+      preferIfNoBetter = true
+    )
+  )
 
   override val examples: List[ToolExample] = List(
     ToolExample("Which Scala files mention TODO", GrepInput(path = "src", pattern = "TODO", glob = Some("**/*.scala"))),
     ToolExample("Show the matching lines for a definition", GrepInput(path = ".", pattern = "def myFunction",
       outputMode = GrepOutputMode.Content, contextLines = 2))
   )
-
-  override val keywords: Set[String] = Set(
-    "grep", "search", "regex", "find", "match", "lines",
-    "lookup", "ripgrep", "rg", "code", "text", "files", "pattern",
-    "scan", "look", "occurrence", "string"
-  )
-
-  override def preferIfNoBetter: Boolean = true
 
   override def executeResult(input: GrepInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {

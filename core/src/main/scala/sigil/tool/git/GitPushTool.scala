@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitPushError, GitPushInput, GitPushOutput}
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
 
 /**
  * `git_push` — push committed changes to a remote. WRITES external
@@ -27,14 +27,13 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * with a classified [[GitPushError]] otherwise so the agent can
  * pattern-match without parsing raw stderr.
  */
-final class GitPushTool(context: FileSystemContext)
-  extends Tool with sigil.tool.DestructiveExternalTool {
+final class GitPushTool(context: FileSystemContext) extends Tool {
   type Input  = GitPushInput
   type Output = GitPushOutput
   val inputRW  = summon[RW[GitPushInput]]
   val outputRW = summon[RW[GitPushOutput]]
-  val name = ToolName("git_push")
-  val description =
+  override val name = ToolName("git_push")
+  override val description =
     """Push committed changes to a remote. Defaults push the current branch to its tracked
       |upstream; pass `remote` / `branch` for explicit targets, `setUpstream` on a new
       |branch's first push, `forceWithLease` for safer force-pushes.
@@ -46,6 +45,12 @@ final class GitPushTool(context: FileSystemContext)
       |Returns the push outcome — `Pushed` on success, or `Failed` with a classified error
       |(non-fast-forward / rejected / no upstream / auth-failed / force-push-blocked /
       |unknown) so the agent can react programmatically without parsing raw stderr.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Destructive(target = MutationTargeting.none, consequence = "DESTRUCTIVE.")),
+    discovery = DiscoverySpec(keywords = Set("git", "push", "publish", "upload", "remote", "upstream", "deploy", "sync"))
+  )
   override val examples = List(
     ToolExample("Push current branch to its upstream", GitPushInput()),
     ToolExample("First push of a feature branch",      GitPushInput(setUpstream = true)),
@@ -53,7 +58,6 @@ final class GitPushTool(context: FileSystemContext)
     ToolExample("Force-with-lease (safer force)",      GitPushInput(forceWithLease = true)),
     ToolExample("Explicit remote and branch",          GitPushInput(remote = Some("upstream"), branch = Some("feature/x")))
   )
-  override val keywords = Set("git", "push", "publish", "upload", "remote", "upstream", "deploy", "sync")
 
   override def executeOutput(input: GitPushInput, ctx: ToolContext): Task[GitPushOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

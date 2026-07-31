@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import strider.Workflow
 
 case class CancelWorkflowInput(runId: String) extends ToolInput derives RW
@@ -22,14 +22,19 @@ final class CancelWorkflowTool extends Tool with WorkflowToolSupport {
   type Output = TextToolOutput
   val inputRW  = summon[RW[CancelWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("cancel_workflow")
-  val description =
+  override val name = ToolName("cancel_workflow")
+  override val description =
     """Cancel a running or scheduled workflow run.
       |
       |`runId` is the run id. The run's current step finishes if mid-execution, then
       |no further steps run. Idempotent — cancelling a finished run is a no-op.""".stripMargin
   override val examples = List(ToolExample("cancel by run id", CancelWorkflowInput(runId = "run-abc")))
-  override val keywords = Set("workflow", "cancel", "stop", "abort")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("workflow", "cancel", "stop", "abort"))
+  )
 
   override def executeResult(input: CancelWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)

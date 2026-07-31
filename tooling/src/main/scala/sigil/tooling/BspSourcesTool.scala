@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspSourceItem, BspSourcesResult, BspTargetSources}
 
 import scala.jdk.CollectionConverters.*
@@ -22,18 +22,25 @@ final class BspSourcesTool(val manager: BspManager) extends Tool with BspToolSup
   val inputRW  = summon[RW[BspSourcesInput]]
   val outputRW = summon[RW[BspSourcesResult]]
 
-  val name = ToolName("bsp_sources")
-  val description =
+  override val name = ToolName("bsp_sources")
+  override val description =
     """List source roots / files for the given build targets.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.
       |Returns each target's source items as `{uri, kind: "dir"|"file", generated}`.""".stripMargin
-  override val keywords = Set(
-    "bsp", "sources", "source files", "list sources", "target sources",
-    "scala", "sbt", "project", "files", "code", "examine", "inspect"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "bsp", "sources", "source files", "list sources", "target sources",
+        "scala", "sbt", "project", "files", "code", "examine", "inspect"
+      ),
+      toolchain = Some("bsp")
+    )
   )
-
 
   override def executeOutput(input: BspSourcesInput, context: ToolContext): Task[BspSourcesResult] =
     withTargets[BspSourcesResult](

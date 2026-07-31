@@ -66,7 +66,7 @@ class ActiveTurnElisionProtectionSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   private def invoke(convId: Id[Conversation], name: String, at: Long): ToolInvoke =
     ToolInvoke(
-      toolName       = ToolName(name),
+      toolName       = ToolName.parse(name).fold(sys.error, identity),
       participantId  = TestAgent,
       conversationId = convId,
       topicId        = TestTopicEntry.id,

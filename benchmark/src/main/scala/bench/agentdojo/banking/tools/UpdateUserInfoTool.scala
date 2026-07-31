@@ -5,7 +5,7 @@ import bench.agentdojo.banking.events.UserInfoRead
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -23,9 +23,15 @@ final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment]) exten
   val inputRW: RW[UpdateUserInfoInput] = summon[RW[UpdateUserInfoInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("update_user_info")
-  val description: String = "Update the user information."
+  override val name: ToolName = ToolName("update_user_info")
+  override val description: String = "Update the user information."
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("bank", "update", "user", "info"))
+  )
 
   override def executeResult(input: UpdateUserInfoInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val updated = state.updateAndGet { env =>

@@ -38,14 +38,38 @@ import sigil.signal.{EventState, Signal, ToolDelta}
 trait Tool extends RecordDocument[Tool] {
   // ---- abstract ----
 
-  def name: ToolName
-  def description: String
+  /** Identity + capabilities, validated at creation by
+    * [[ToolSpec.apply]]. The single required metadata member — every
+    * other metadata accessor derives from it. */
+  val spec: ToolSpec
 
   /** The typed argument shape this tool consumes. */
   type Input <: ToolInput
 
   /** The typed result payload this tool produces. */
   type Output <: ToolOutput
+
+  // ---- spec-derived identity ----
+  // `name` / `description` / `keywords` / `space` / `modes` are
+  // non-final ONLY so persisted dynamic records (ScriptTool) whose
+  // constructor parameters carry these fields can round-trip through
+  // fabric with the stored field names; such records build `spec`
+  // from the same values, so the two never diverge.
+
+  def name: ToolName = spec.name
+  def description: String = spec.description
+  def keywords: Set[String] = spec.discovery.keywords
+
+  /** The single [[SpaceId]] this tool is visible under. [[GlobalSpace]]
+    * means visible to every caller; there is no multi-space tool —
+    * copy the record to surface the same capability under a
+    * different space. */
+  def space: SpaceId = spec.discovery.space
+
+  /** The set of [[Mode]] discriminators this tool is discoverable in.
+    * Empty means universally discoverable — see
+    * [[DiscoveryFilter.passesAffinity]]. */
+  def modes: Set[Id[Mode]] = spec.discovery.modes
 
   def inputRW: RW[Input]
   def outputRW: RW[Output]
@@ -70,13 +94,11 @@ trait Tool extends RecordDocument[Tool] {
     executeOutput(input, context).map(ToolResult.success)
 
   /** When `true`, the framework never truncates or files this tool's
-    * output on overflow — it is emitted inline verbatim. The tool
-    * guarantees it has sized its own output (e.g. `find_capability`
-    * trims its roster to the model's context window; its result must
-    * arrive intact, never chopped mid-entry or spilled to a file the
-    * agent then has to read back). Default `false` — ordinary tools
-    * get the file-backed overflow path. */
-  def boundsOutputItself: Boolean = false
+    * output on overflow — it is emitted inline verbatim. Derived from
+    * [[OutputBounds.SelfBounded]]: the tool guarantees it has sized
+    * its own output (e.g. `find_capability` trims its roster to the
+    * model's context window; its result must arrive intact). */
+  final def boundsOutputItself: Boolean = spec.profile.output == OutputBounds.SelfBounded
 
   // ---- framework glue (final) ----
 
@@ -250,34 +272,11 @@ trait Tool extends RecordDocument[Tool] {
   // ---- defaults ----
 
   /** Categorical discriminator for client-side filtering — see
-    * [[ToolKind]]. Defaults to [[BuiltinKind]]; subtypes from opt-in
-    * modules override (e.g. `ScriptTool.kind = ScriptKind`,
-    * `McpTool.kind = McpKind`). Apps building "manage your tools"
-    * UIs use [[sigil.signal.RequestToolList]] with a `kinds` filter
-    * to scope which records the user sees. */
-  def kind: ToolKind = BuiltinKind
+    * [[ToolKind]]. Apps building "manage your tools" UIs use
+    * [[sigil.signal.RequestToolList]] with a `kinds` filter to scope
+    * which records the user sees. */
+  final def kind: ToolKind = spec.discovery.kind
 
-  /** The set of [[Mode]] discriminators this tool is discoverable in.
-    * Empty (the default) means **universally discoverable** — surfaces in
-    * `find_capability` regardless of which mode the conversation is in.
-    *
-    * Tools that legitimately want mode-gated discovery (e.g. a
-    * `WebBrowserMode`-only screenshot tool, or skill-bound tools that
-    * make no sense outside their mode) opt in by listing the
-    * mode discriminator(s) here. Most tools — filesystem, LSP, BSP,
-    * memory, web fetch, MCP — leave it empty.
-    *
-    * The reference filter [[DiscoveryFilter.passesAffinity]] honors
-    * the empty-as-universal contract. */
-  def modes: Set[Id[Mode]] = Set.empty
-
-  /** The single [[SpaceId]] this tool is visible under. Defaults to
-    * [[GlobalSpace]] — visible to every caller. Tools scoped to a
-    * tenant / user / project override with their own space. There is
-    * no multi-space tool: copy the record to surface the same
-    * capability under a different space. */
-  def space: SpaceId = GlobalSpace
-  def keywords: Set[String] = Set.empty
   def examples: List[ToolExample] = Nil
   def createdBy: Option[ParticipantId] = None
   def _id: Id[Tool] = Id(name.value)
@@ -299,145 +298,80 @@ trait Tool extends RecordDocument[Tool] {
     * [[ToolPreconditionResult.Satisfied]] (proceed) or
     * [[ToolPreconditionResult.Unsatisfied]] (skip execution; emit a
     * `Role.Tool` Message describing what needs to happen first, the
-    * agent reads it on its next turn). Default empty — no gating.
-    *
-    * Examples:
-    *   - A Slack-posting tool gates on an active OAuth token.
-    *   - A code-execution tool gates on a sandbox being warm.
-    *   - A tool with a paid quota gates on the caller having budget.
+    * agent reads it on its next turn).
     *
     * Preconditions are descriptive only — they identify the gap; they
     * don't fix it. Apps wire concrete setup tools and surface their
     * names via `suggestedFix` so the agent has an explicit next call. */
-  def preconditions: List[ToolPrecondition] = Nil
+  final def preconditions: List[ToolPrecondition] = spec.profile.gates.preconditions
 
   /** Whether this tool requires the caller's chain to have at least
     * one accessible memory [[sigil.SpaceId]] to be useful. When `true`,
     * the framework filters the tool out of the agent's roster (and out
     * of `find_capability` results) for chains where
-    * [[sigil.Sigil.accessibleSpaces]] returns empty — the tool would
-    * have no place to write to / read from anyway, and surfacing it
-    * would just waste tokens.
-    *
-    * Memory-related tools set this true (`save_memory`,
-    * `unpin_memory`, `list_memories(pinned=true)`, etc.). Tools whose
-    * usefulness doesn't depend on space wiring leave this false. */
-  def requiresAccessibleSpaces: Boolean = false
-
-  /** How long this tool's settled result frames should remain in the
-    * curated turn input.
-    *
-    *   - `None` (default) — keep forever; the result is durable and
-    *     stays in the model's context as the conversation evolves.
-    *   - `Some(0)` — the result is ephemeral; the curator may elide
-    *     the call/result pair from the next turn's prompt because
-    *     the result has been folded into a more compact representation
-    *     (a participant projection, a `System` frame, the system
-    *     prompt's "Suggested tools" / "Current mode" sections, etc.).
-    *     Used by `find_capability` and `change_mode` so their
-    *     verbose results don't accumulate in context.
-    *   - `Some(n)` for `n > 0` — reserved for future "keep for n more
-    *     agent turns" semantics. The standard curator currently
-    *     treats any positive value the same as `None`; apps wanting
-    *     turn-count-aware TTL extend the curator.
-    *
-    * The TTL is a declaration of intent — the curator's policy
-    * decides exactly when to elide. [[StandardContextCurator]] honors
-    * `Some(0)` by default. */
-  def resultTtl: Option[Int] = None
+    * [[sigil.Sigil.accessibleSpaces]] returns empty. */
+  final def requiresAccessibleSpaces: Boolean = spec.profile.gates.requiresAccessibleSpaces
 
   /** When `true`, the framework refuses to dispatch this tool until
     * a [[sigil.event.ToolApproval]] record exists for `(toolName,
     * conversationId)` in `db.events`. The agent records consent via
     * [[sigil.tool.core.RecordConsentTool]] after observing the
-    * user's reply — typically through a `respond_options` round-
-    * trip the agent designs to fit the conversation.
+    * user's reply. Derived from the profile's [[ConsentSpec]] — a
+    * gated tool always carries its consent question.
     *
     * First-call-per-conversation semantics: a single approved
     * record covers subsequent calls in the same conversation.
     * `approved = false` is sticky — refusal sticks until the agent
-    * records a fresh approval.
-    *
-    * Apps opt in per-tool — most tools don't need this. Setup-
-    * shaped, destructive, expensive, or external-effecting tools
-    * usually do (file imports, mass deletes, payments, third-party
-    * API calls). Default `false` preserves the no-gate fast path. */
-  def requiresUserConsent: Boolean = false
+    * records a fresh approval. */
+  final def requiresUserConsent: Boolean = spec.profile.gates.consent.isDefined
 
- /** Optional toolchain identifier — when the conversation has the
+  /** The consent question the agent asks before the first gated call,
+    * when a consent gate is declared. */
+  final def consentPrompt: Option[String] = spec.profile.gates.consent.map(_.prompt)
+
+  /** Optional toolchain identifier — when the conversation has the
     * named toolchain active (per [[sigil.Sigil.activeToolchains]]),
     * `find_capability`'s ranker boosts this tool's score by
-    * [[sigil.Sigil.toolchainBoost]]. Empty (the default) means no
-    * contextual boost.
-    *
-    * Examples: `Some("lsp")` for LSP-backed tools (lsp_definitions,
-    * lsp_diagnostics, …), `Some("bsp")` for build-server tools
-    * (bsp_compile, bsp_test, …). Apps wire their own toolchain
-    * names — `Some("ts-server")`, `Some("pyright")`, etc. — and
-    * surface them via [[sigil.Sigil.activeToolchains]] when the
-    * underlying runtime is attached to a conversation.
-    *
-    * The boost is what makes inspection-shaped queries land on
-    * Metals' lsp_diagnostics ahead of generic ripgrep when Metals
-    * is running for the conversation's workspace. */
-  def toolchain: Option[String] = None
+    * [[sigil.Sigil.toolchainBoost]]. */
+  final def toolchain: Option[String] = spec.discovery.toolchain
 
   /** When `true`, [[sigil.Sigil.findCapabilities]]'s ranker
     * subtracts [[sigil.Sigil.preferIfNoBetterPenalty]] from this
     * tool's score so it sits below domain-specific tools when both
     * match the query. Generic primitives (`grep`, `glob`, `bash`,
-    * `read_file`, `execute_script`) opt in — the agent should pick
-   * them only when nothing more specific applies. */
-  def preferIfNoBetter: Boolean = false
+    * `read_file`, `execute_script`) opt in. */
+  final def preferIfNoBetter: Boolean = spec.discovery.preferIfNoBetter
 
-  /** **MCP-style annotation.** True when calling this tool has no
-    * side effects beyond the local conversation log — safe to call
-    * speculatively. `grep`, `glob`, `read_file`, `lsp_diagnostics`
-    * are read-only; `respond`, `bash`, `edit_file` are not.
-    *
-    * Surfaced to the agent in [[wireDescription]] and to UI clients
-    * via the tool record. Apps that want to filter risky tools
-    * during exploratory iterations read this flag. Default `false`
-    * — annotation is opt-in per tool. */
-  def readOnly: Boolean = false
+  /** True when calling this tool has no side effects beyond the local
+    * conversation log — safe to call speculatively. Derived from
+    * [[Effect.ReadOnly]]. */
+  final def readOnly: Boolean = spec.profile.effect.isReadOnly
+
+  /** The read [[Freshness]], when this tool is read-only. Drives the
+    * orchestrator's turn-scoped read cache and the standard curator's
+    * ephemeral-result elision (Volatile). */
+  final def freshness: Option[Freshness] = spec.profile.effect.readFreshness
 
   /** True when this tool's execution may be DETACHED: if it is still
     * running when [[sigil.Sigil.toolDetachThresholdMs]] passes, the
     * orchestrator settles the invoke with a tracking handle, lets the
     * turn finish, and keeps the work running as a background task.
-    * The real result folds onto the original invoke when it lands and
-    * a Tool-role continuation trigger re-invokes the agent with it.
-    *
-    * Opt in for tools whose legitimate runtime is minutes-to-hours (a
-    * repo-wide refactor sweep, a bulk import): holding the turn open
-    * for the tool's whole life blocks the conversation and leaves the
-    * agent loop's next iteration stream idling against the same
-    * backend the tool is saturating. Fast completions (under the
-    * threshold) stay fully synchronous — identical to a
-    * non-detachable tool. Default `false`. */
-  def detachable: Boolean = false
+    * Derived from [[Execution.Detachable]], whose declaration carries
+    * the progress story that makes a detached run observable. */
+  final def detachable: Boolean = spec.profile.execution.detachable
 
   /** For [[detachable]] tools: whether a detached task should survive
-    * a user Stop on its conversation. Default `false` — Stop cancels
-    * the conversation's detached tasks through the same cooperative
-    * `ctx.checkpoint` seam the attached phase honors. Set `true` for
-    * work that should run to completion once started regardless of
-    * conversation state. */
-  def detachedKeepRunningOnStop: Boolean = false
+    * a user Stop on its conversation. `false` — Stop cancels the
+    * conversation's detached tasks through the same cooperative
+    * `ctx.checkpoint` seam the attached phase honors. */
+  final def detachedKeepRunningOnStop: Boolean = spec.profile.execution.keepsRunningOnStop
 
-  /** **MCP-style annotation.** True when calling this tool affects
-    * user-visible state irreversibly. The `respond_*` family is
-    * destructive (publishes a Message, ends the turn); `bash` and
-    * `edit_file` are destructive (mutates external state); LSP
-    * notification tools (`lsp_did_change`, `lsp_did_open`,
-    * `lsp_did_close`) are destructive (overwrites the LSP's
-    * in-memory copy of the document — corruptible by misuse).
-    *
-    * When `true`, [[wireDescription]] prefixes the description with
-    * `**ENDS YOUR TURN.**` (for `respond_*` family) or a
-    * `**DESTRUCTIVE.**` lead so the LLM reads terminality first.
-    * Default `false`. */
-  def destructive: Boolean = false
+  /** True when calling this tool affects user-visible state
+    * irreversibly. Derived from [[Effect.Destructive]], whose
+    * declaration carries the `consequence` warning
+    * [[wireDescription]] renders — so the LLM reads terminality
+    * first, and the warning cannot be forgotten. */
+  final def destructive: Boolean = spec.profile.effect.isDestructive
 
   /** **Annotation.** True when this tool VERIFIES state rather than
     * changing it — compiles, test runs, diagnostics pulls. The
@@ -445,60 +379,26 @@ trait Tool extends RecordDocument[Tool] {
     * target are legitimate iteration only when a verification-class
     * call separates the rounds (fix → compile → fix-again); the same
     * target re-edited across checkpoint windows with no verification
-    * anywhere is churn, not progress. Consumer-defined verify tools
-    * annotate this like [[readOnly]] / [[destructive]]. Default
-    * `false`. */
+    * anywhere is churn, not progress. Default `false`. */
   def verification: Boolean = false
 
-  /** The external target a [[destructive]] call mutates, when the
-    * input names one — for file tools, the path. The progress
-    * checkpoint uses this to distinguish a bulk sweep touching new
-    * targets every window (progress) from the same target re-edited
-    * round after round with no verification in between (churn).
-    * `None` (default) means the target is unknowable from the input
-    * (`bash`, `respond`); unknown-target mutations never contribute
-    * to a churn verdict. */
-  def mutationTarget(input: Input): Option[String] = None
-
-  /** Untyped dispatch for [[mutationTarget]] — the checkpoint
-    * machinery holds `ToolInput`s off event rows. Best-effort: a
-    * type mismatch reads as unknown target, never an error. */
-  private[sigil] final def mutationTargetOf(input: ToolInput): Option[String] =
-    try mutationTarget(input.asInstanceOf[Input])
-    catch { case _: Throwable => None }
-
-  /** **MCP-style annotation.** True when calling this tool twice
-    * with identical args produces the same result. `read_file` on
-    * an unchanging file is idempotent; `bash` (non-pure commands)
-    * is not. Mainly informational; UI clients use it to surface
-    * "safe to retry" hints. Default `false`. */
-  def idempotent: Boolean = false
-
-  /** **MCP-style annotation.** True when this tool interacts with
-    * state outside Sigil's control — filesystem, network, LSP
-    * server, external API. `read_file` is open-world (filesystem
-    * can change); `consult` is open-world (network call); `respond`
-    * is not (purely intra-conversation). Default `false`. */
-  def openWorld: Boolean = false
+  /** The external target a mutating call touches, when the input
+    * names one — derived from the effect's [[MutationTargeting]].
+    * The progress checkpoint uses this to distinguish a bulk sweep
+    * touching new targets every window (progress) from the same
+    * target re-edited round after round (churn); the read cache uses
+    * it for overlap invalidation. Total: a foreign input class reads
+    * as unknown target, never an error. */
+  private[sigil] final def mutationTargetOf(input: ToolInput): Option[MutationTarget] =
+    spec.profile.effect.targeting.flatMap(_.targetOf(input))
 
   /** Tools whose names the framework should append to the calling
     * conversation's per-participant `suggestedTools` overlay when
-    * this tool runs. The overlay decays after one turn (the standard
-    * `suggestedTools` lifecycle) — the suggestion surfaces under the
-    * "Suggested tools" prompt section on the next agent turn, then
-    * fades unless the agent reaches for it.
-    *
-    * The mechanism complements `find_capability`: a `grep` call
-    * doesn't merely discover matches, it suggests that
-    * `dispatch_workers` is the natural next move for "do something
-    * with each match"; an `lsp_find_references` call suggests the
-    * same after a usage search. The agent reads the suggestion in
-    * the system prompt and can either pick it up or ignore it.
-    *
-    * Default empty — most tools don't lead naturally to a specific
-    * follow-up. Generic primitives (`grep`, `glob`, `bash`) that
-    * frequently lead into a per-result loop opt in. */
-  def suggestedNextTools: List[ToolName] = Nil
+    * this tool runs. The overlay decays after one turn — the
+    * suggestion surfaces under the "Suggested tools" prompt section
+    * on the next agent turn, then fades unless the agent reaches
+    * for it. */
+  final def suggestedNextTools: List[ToolName] = spec.discovery.suggestedNextTools
 
   /** Sigil #288 — names of top-level input fields whose string values
     * are eligible for externalization at wire-render time. When a
@@ -517,23 +417,20 @@ trait Tool extends RecordDocument[Tool] {
   def externalizableInputFields: Set[String] = Set.empty
 
   /** The description the LLM sees on the wire, given runtime context.
-    * Default returns [[descriptionFor]] with a destructive prefix
-    * baked in when [[destructive]] is `true` — so the LLM reads
-    * terminality first regardless of the tool author's description
-    * body. Apps overriding [[descriptionFor]] still get the prefix
-    * for free; apps overriding [[wireDescription]] take full control
-    * (rare). */
+    * Default returns [[descriptionFor]] with the destructive warning
+    * prefixed when the effect is [[Effect.Destructive]] — the
+    * declared `consequence` renders as a bold headline
+    * (`**<consequence>** …`) so the LLM reads terminality first
+    * regardless of the tool author's description body. Apps
+    * overriding [[descriptionFor]] still get the prefix for free;
+    * apps overriding [[wireDescription]] take full control (rare). */
   def wireDescription(mode: Mode, sigil: Sigil): String = {
     val body = descriptionFor(mode, sigil)
-    if (destructive) destructivePrefix + body
-    else body
+    spec.profile.effect match {
+      case Effect.Destructive(_, consequence) => s"**$consequence** $body"
+      case _                                  => body
+    }
   }
-
-  /** Prefix prepended to destructive tools' descriptions on the wire.
-    * Override per tool family when a more specific framing fits
-    * (e.g. `respond_*` could say `**ENDS YOUR TURN.**`); the default
-    * generic prefix is `**DESTRUCTIVE.**` and signals irreversibility. */
-  protected def destructivePrefix: String = "**DESTRUCTIVE.** "
 
   /** The description the LLM sees, given runtime context (active
     * mode + the live `Sigil`). Default returns the static

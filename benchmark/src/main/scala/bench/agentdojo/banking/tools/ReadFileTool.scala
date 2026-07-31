@@ -5,7 +5,7 @@ import bench.agentdojo.banking.events.FileRead
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -22,9 +22,15 @@ final class ReadFileTool(state: AtomicReference[BankingEnvironment]) extends Too
   val inputRW: RW[ReadFileInput] = summon[RW[ReadFileInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("read_file")
-  val description: String = "Reads the contents of the file at the given path."
+  override val name: ToolName = ToolName("read_file")
+  override val description: String = "Reads the contents of the file at the given path."
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("file", "read", "contents", "path"))
+  )
 
   override def executeResult(input: ReadFileInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val content = state.get.filesystem.files.getOrElse(input.file_path, "")

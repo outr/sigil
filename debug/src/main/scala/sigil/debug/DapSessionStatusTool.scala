@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DapSessionStatusInput(sessionId: String,
                                  waitForStopMs: Long = 0L,
@@ -25,13 +25,19 @@ final class DapSessionStatusTool(val manager: DapManager) extends Tool with DapT
   type Output = TextToolOutput
   val inputRW = summon[RW[DapSessionStatusInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("dap_session_status")
-  val description =
+  override val name = ToolName("dap_session_status")
+  override val description =
     """Snapshot a debug session's state — running / stopped / terminated, output, etc.
       |
       |`sessionId` selects the active session.
       |`waitForStopMs` (default 0) — when > 0, blocks until the next stop event or timeout.
       |`drainOutput` (default true) — consume captured stdout/stderr (so next call sees only new output).""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "session", "status", "stopped", "output", "wait"))
+  )
   override val examples = List(
     ToolExample(
       "wait up to 5 seconds for the next stop event",

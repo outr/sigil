@@ -16,7 +16,7 @@ import sigil.provider.{
   StopReason
 }
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
@@ -46,8 +46,14 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
     type Output = TextToolOutput
     val inputRW  = summon[RW[CountingInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("counting_tool")
-    val description = "Records every execution."
+    override val name        = ToolName("counting_tool")
+    override val description = "Records every execution."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "counting"))
+    )
 
     override def executeResult(input: CountingInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task {

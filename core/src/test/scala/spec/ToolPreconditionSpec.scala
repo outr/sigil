@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
-import sigil.{GlobalSpace, SpaceId, TurnContext}
+import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolOutcome}
@@ -14,7 +14,7 @@ import sigil.provider.{
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.{EventState, Signal, ToolDelta}
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolPrecondition, ToolPreconditionResult, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolGates, ToolInput, ToolName, ToolPrecondition, ToolPreconditionResult, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.tool.model.{NoResponseInput, ResponseContent}
 import spice.http.HttpRequest
@@ -46,14 +46,21 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     type Output = TextToolOutput
     val inputRW  = summon[RW[NoResponseInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name: ToolName = ToolName("gate_satisfied")
-    val description: String = "tool whose preconditions pass"
-    override def space: SpaceId = GlobalSpace
-    override def _id: Id[Tool] = Id[Tool](name.value)
-    override def preconditions: List[ToolPrecondition] = List(
-      StaticPrecondition("ok-1", ToolPreconditionResult.Satisfied),
-      StaticPrecondition("ok-2", ToolPreconditionResult.Satisfied)
+    override val name: ToolName = ToolName("gate_satisfied")
+    override val description: String = "tool whose preconditions pass"
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(
+        effect = Effect.Mutating(MutationTargeting.none),
+        gates = ToolGates(preconditions = List(
+          StaticPrecondition("ok-1", ToolPreconditionResult.Satisfied),
+          StaticPrecondition("ok-2", ToolPreconditionResult.Satisfied)
+        ))
+      ),
+      discovery = DiscoverySpec(keywords = Set("test", "gate"))
     )
+    override def _id: Id[Tool] = Id[Tool](name.value)
     override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("RAN")))
   }
@@ -63,14 +70,21 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     type Output = TextToolOutput
     val inputRW  = summon[RW[NoResponseInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name: ToolName = ToolName("gate_blocked")
-    val description: String = "tool with one unsatisfied precondition"
-    override def space: SpaceId = GlobalSpace
-    override def _id: Id[Tool] = Id[Tool](name.value)
-    override def preconditions: List[ToolPrecondition] = List(
-      StaticPrecondition("oauth", ToolPreconditionResult.Satisfied),
-      StaticPrecondition("rate-limit", ToolPreconditionResult.Unsatisfied("daily quota exceeded", suggestedFix = Some("upgrade_plan")))
+    override val name: ToolName = ToolName("gate_blocked")
+    override val description: String = "tool with one unsatisfied precondition"
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(
+        effect = Effect.Mutating(MutationTargeting.none),
+        gates = ToolGates(preconditions = List(
+          StaticPrecondition("oauth", ToolPreconditionResult.Satisfied),
+          StaticPrecondition("rate-limit", ToolPreconditionResult.Unsatisfied("daily quota exceeded", suggestedFix = Some("upgrade_plan")))
+        ))
+      ),
+      discovery = DiscoverySpec(keywords = Set("test", "gate"))
     )
+    override def _id: Id[Tool] = Id[Tool](name.value)
     override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("SHOULD_NOT_RUN")))
   }

@@ -6,7 +6,7 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DefinitionToSchema, DiscoverySpec, Effect, JsonSchemaToDefinition, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Modify an existing [[ScriptTool]] in-place. Looks the record up by
@@ -27,13 +27,20 @@ case object UpdateScriptToolTool extends Tool {
   val inputRW  = summon[RW[UpdateScriptToolInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("update_script_tool")
-  val description =
+  override val name = ToolName("update_script_tool")
+  override val description =
     """Update the body, description, parameters schema, or keywords of an existing script-backed
       |tool. Identified by `name`; any omitted field keeps its stored value. The tool's space is
       |fixed at creation — copy the tool to surface it under a different space.""".stripMargin
-  override val modes = Set(ScriptAuthoringMode.id)
-  override val keywords = Set("update", "edit", "modify", "tool", "script", "change")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set("update", "edit", "modify", "tool", "script", "change"),
+      modes = Set(ScriptAuthoringMode.id)
+    )
+  )
 
   override def executeResult(input: UpdateScriptToolInput,
                              context: ToolContext): Task[ToolResult[TextToolOutput]] =

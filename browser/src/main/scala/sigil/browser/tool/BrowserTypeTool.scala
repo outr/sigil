@@ -6,7 +6,7 @@ import rapid.Task
 import robobrowser.select.Selector
 import sigil.tool.ToolContext
 import sigil.browser.WebBrowserMode
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /** Type a value into the element matched by `selector`. `clearFirst`
   * clears the field first so re-runs don't append. */
@@ -16,15 +16,22 @@ final class BrowserTypeTool extends Tool {
   val inputRW  = summon[RW[BrowserTypeInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("browser_type")
-  val description =
+  override val name = ToolName("browser_type")
+  override val description =
     """Type a value into the element matching the CSS selector. Sets the field's value and dispatches an `input` event so React/Vue forms react.
       |Use `clearFirst = false` to append to an existing value.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set("browser", "type", "input", "form", "fill"),
+      modes = Set(WebBrowserMode.id)
+    )
+  )
   override val examples = List(
     ToolExample("Type into a search box", BrowserTypeInput(selector = "input[name=q]", value = "scala"))
   )
-  override val modes = Set(WebBrowserMode.id)
-  override val keywords = Set("browser", "type", "input", "form", "fill")
 
   override def executeResult(input: BrowserTypeInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

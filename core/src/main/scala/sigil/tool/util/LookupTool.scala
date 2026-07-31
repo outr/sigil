@@ -11,7 +11,7 @@ import sigil.information.Information
 import sigil.information.Information.given
 import sigil.skill.Skill
 import sigil.tool.discovery.CapabilityType
-import sigil.tool.{Tool, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.model.{LookupChunk, LookupInput, LookupOutput}
 
 /**
@@ -34,13 +34,13 @@ import sigil.tool.model.{LookupChunk, LookupInput, LookupOutput}
  * matched record's JSON for the caller to deserialize against
  * whichever shape matches `capabilityType`.
  */
-case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
+case object LookupTool extends Tool {
   type Input  = LookupInput
   type Output = LookupOutput
   val inputRW  = summon[RW[LookupInput]]
   val outputRW = summon[RW[LookupOutput]]
-  val name = ToolName("lookup")
-  val description =
+  override val name = ToolName("lookup")
+  override val description =
     """Resolve a capability match (from a capability search) to its full record. Use this when
       |you need the details behind a memory's summary, the body of a referenced Information
       |record, or any other discovered capability with stored content.
@@ -55,7 +55,12 @@ case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
       |Tools and modes are not retrievable — call tools directly; switch modes via `change_mode`.
       |Returns `Found(capabilityType, name, payload, chunk?)`, `NotFound(capabilityType, name)`, or
       |`NotRetrievable(capabilityType, name, hint)`.""".stripMargin
-  override val keywords = Set("lookup", "fetch", "retrieve", "resolve", "details", "full", "expand")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("lookup", "fetch", "retrieve", "resolve", "details", "full", "expand"))
+  )
 
   override def executeOutput(input: LookupInput, context: ToolContext): Task[LookupOutput] = {
     val typeName = input.capabilityType.toString

@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{ClassificationWork, GenerationSettings, OutputTokenCap, ReasoningMode, WorkType}
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal-only one-shot tool. Invoked by [[sigil.Sigil.persistMemory]]
@@ -21,8 +21,8 @@ case object ClassifyMemoryTool extends Tool with FrameworkConsult {
   val inputRW: RW[ClassifyMemoryInput] = summon[RW[ClassifyMemoryInput]]
   val outputRW: RW[TextToolOutput]     = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("classify_memory")
-  val description: String =
+  override val name: ToolName = ToolName("classify_memory")
+  override val description: String =
     """Classify a memory the framework is about to persist. Produce three decisions in one call:
       |
       |1. `keywords` — 5–10 retrieval-shaped tokens for this memory. Pick terms a future query
@@ -52,6 +52,12 @@ case object ClassifyMemoryTool extends Tool with FrameworkConsult {
       |4. `ambiguityReason` — required when `space == "ambiguous"`; one short sentence telling
       |   the user what's unclear ("could apply to user or project; please pick").""".stripMargin
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(kind = ConsultKind)
+  )
 
   /** Categorical decision — routes through the cheap classification tier. */
   override def consultWorkType: WorkType = ClassificationWork

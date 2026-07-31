@@ -12,7 +12,7 @@ import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import spice.http.HttpRequest
 
@@ -50,8 +50,14 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
     type Output = TextToolOutput
     val inputRW  = summon[RW[CaptureInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("capture")
-    val description = "test-only — captures the TurnContext's conversation"
+    override val name        = ToolName("capture")
+    override val description = "test-only — captures the TurnContext's conversation"
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "capture"))
+    )
     override def executeResult(input: CaptureInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task {
         captured.set(Some(ctx.conversation))

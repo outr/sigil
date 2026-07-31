@@ -19,9 +19,9 @@ import sigil.conversation.ContextFrame
  *     the same participant with identical content (UI retries,
  *     duplicate streaming flushes).
  *
- *   - Tool-pair stripping is data-driven via [[sigil.tool.Tool.resultTtl]]:
+ *   - Tool-pair stripping is data-driven from tool freshness:
  *     [[StandardContextCurator]] resolves the elide-set per turn and
- *     passes it to `optimize`. Tools that declare `resultTtl = Some(0)`
+ *     passes it to `optimize`. Tools that declare `Freshness.Volatile` reads
  *     (e.g. `find_capability`, `change_mode`) get their call/result
  *     pairs dropped because the meaningful effect lives on a
  *     projection or `System` frame, not in the verbose settled
@@ -29,7 +29,7 @@ import sigil.conversation.ContextFrame
  *
  *   - [[stripStaleTools]]: explicit additional tool names whose
  *     call/result pairs should be collapsed regardless of their
- *     `resultTtl`. Useful for app code that wants to elide a tool
+ *     freshness. Useful for app code that wants to elide a tool
  *     it doesn't own (e.g. an experimental built-in whose author
  *     hasn't declared a TTL yet).
  */
@@ -77,7 +77,7 @@ case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
     // participantId matches `currentTurnSource`. The boundary marks
     // the start of the current agent turn — frames at index >=
     // boundary are "within-turn" and MUST be preserved regardless of
-    // resultTtl. -1 means no boundary (no source supplied or no
+    // freshness. -1 means no boundary (no source supplied or no
     // matching frame); falls through to legacy global behaviour.
     val boundaryIdx: Int = currentTurnSource match {
       case Some(src) =>

@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.CompletionItem
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspCompletionItem, LspCompletionResult}
 
 case class LspCompletionInput(languageId: String,
@@ -25,21 +25,28 @@ case class LspCompletionInput(languageId: String,
  * naming conventions.
  */
 final class LspCompletionTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspCompletionInput
   type Output = LspCompletionResult
   val inputRW  = summon[RW[LspCompletionInput]]
   val outputRW = summon[RW[LspCompletionResult]]
-  val name = ToolName("lsp_completion")
-  val description =
+  override val name = ToolName("lsp_completion")
+  override val description =
     """Get completion candidates at a position.
       |
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at the cursor location.
       |`maxResults` (default 50) caps the response so large catalogs don't flood context.
       |Returns `{filePath, items: [{label, kind, detail}], totalCount, truncated}`.""".stripMargin
-  override val keywords = Set("lsp", "completion", "complete", "autocomplete", "suggest", "suggestion", "intellisense")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "completion", "complete", "autocomplete", "suggest", "suggestion", "intellisense"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspCompletionInput, context: ToolContext): Task[LspCompletionResult] =
     withOpenDocumentOrThrow[LspCompletionResult](

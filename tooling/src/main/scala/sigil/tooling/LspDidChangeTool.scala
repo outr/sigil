@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tooling.types.LspDidChangeResult
 
 case class LspDidChangeInput(languageId: String,
@@ -22,13 +22,13 @@ case class LspDidChangeInput(languageId: String,
  * fan-out path. This tool exists for explicit "refresh now" flows.
  */
 final class LspDidChangeTool(val manager: LspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspDidChangeInput
   type Output = LspDidChangeResult
   val inputRW  = summon[RW[LspDidChangeInput]]
   val outputRW = summon[RW[LspDidChangeResult]]
-  val name = ToolName("lsp_did_change")
-  val description =
+  override val name = ToolName("lsp_did_change")
+  override val description =
     """Update the language server's in-memory copy of a document by passing the file's
       |complete new contents. The server's diagnostic and completion computations operate
       |against this in-memory copy until the next change is sent or the document is
@@ -39,8 +39,15 @@ final class LspDidChangeTool(val manager: LspManager) extends Tool
       |`languageId` selects the persisted LspServerConfig. `filePath` is the absolute
       |path; the server's open-document state for the URI is refreshed with `text` and
       |the document version is bumped.""".stripMargin
-  override val keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Destructive(MutationTargeting.none, "DESTRUCTIVE.")),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeResult(input: LspDidChangeInput,
                              context: ToolContext): Task[ToolResult[LspDidChangeResult]] = {

@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.WorkspacePathResolver
 import sigil.tool.model.{ProcessSpawnInput, ProcessSpawnOutput}
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Spawn a subprocess and return a handle for later
@@ -20,19 +20,24 @@ final class ProcessSpawnTool(registry: ProcessRegistry) extends Tool {
   val inputRW  = summon[RW[ProcessSpawnInput]]
   val outputRW = summon[RW[ProcessSpawnOutput]]
 
-  val name = ToolName("process_spawn")
-  val description =
+  override val name = ToolName("process_spawn")
+  override val description =
     """Fork a subprocess and detach — call returns immediately with the handle, pid, and start time.
       |Read accumulated stdout/stderr or signal the child through the matching process
       |output / signal tools paired by `handle`. Optional `workingDir` overrides the
       |conversation workspace; `env` extra env vars; `stdin` is piped to the child once
       |(the child sees EOF).""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("process", "spawn", "background", "watch", "tail", "stream", "subprocess"))
+  )
   override val examples = List(
     ToolExample("Start tsc --watch",   ProcessSpawnInput(command = "tsc --watch --noEmit")),
     ToolExample("Start a dev server",   ProcessSpawnInput(command = "npm run dev")),
     ToolExample("Tail a log",           ProcessSpawnInput(command = "tail -F app.log"))
   )
-  override val keywords = Set("process", "spawn", "background", "watch", "tail", "stream", "subprocess")
 
   override def executeOutput(input: ProcessSpawnInput, ctx: ToolContext): Task[ProcessSpawnOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

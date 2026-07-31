@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.CodeLens
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspCodeLensItem, LspCodeLensResult, LspPosition}
 
 case class LspCodeLensInput(languageId: String,
@@ -18,20 +18,27 @@ case class LspCodeLensInput(languageId: String,
  * for the lens's underlying command.
  */
 final class LspCodeLensTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspCodeLensInput
   type Output = LspCodeLensResult
   val inputRW  = summon[RW[LspCodeLensInput]]
   val outputRW = summon[RW[LspCodeLensResult]]
-  val name = ToolName("lsp_code_lens")
-  val description =
+  override val name = ToolName("lsp_code_lens")
+  override val description =
     """List code lenses in a file (run / debug / N-references / etc. annotations).
       |
       |`languageId` + `filePath` identify the document.
       |Informational only: returns each lens's position and optional title for awareness.
       |There is no tool to execute a lens's command.""".stripMargin
-  override val keywords = Set("lsp", "code lens", "lens", "inline action", "above-line action")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "code lens", "lens", "inline action", "above-line action"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspCodeLensInput, context: ToolContext): Task[LspCodeLensResult] =
     withOpenDocumentOrThrow[LspCodeLensResult](

@@ -14,7 +14,7 @@ class ScriptTools(context: ToolContext) {
     summon[RW[Out]].write(callToolJson(name, input))
 
   def callToolJson(name: String, input: ToolInput): fabric.Json = {
-    val tool = context.sigil.findTools.byName(ToolName(name)).sync().getOrElse(
+    val tool = context.sigil.findTools.byName(ToolName.internal(name)).sync().getOrElse(
       throw new RuntimeException(s"callTool: no tool registered as '$name'")
     )
     val signals: List[Signal] = tool.execute(input, context.turn, Event.id()).toList.sync()
@@ -29,7 +29,7 @@ class ScriptTools(context: ToolContext) {
   }
 
   def has(name: String): Boolean =
-    context.sigil.findTools.byName(ToolName(name)).sync().isDefined
+    context.sigil.findTools.byName(ToolName.internal(name)).sync().isDefined
 }
 
 object ScriptTools {

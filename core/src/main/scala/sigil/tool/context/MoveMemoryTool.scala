@@ -6,7 +6,7 @@ import rapid.Task
 import sigil.SpaceId
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolGates, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Re-scope an existing memory to a different accessible
@@ -31,8 +31,8 @@ case object MoveMemoryTool extends Tool {
   val inputRW: RW[MoveMemoryInput]  = summon[RW[MoveMemoryInput]]
   val outputRW: RW[TextToolOutput]  = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("move_memory")
-  val description: String =
+  override val name: ToolName = ToolName("move_memory")
+  override val description: String =
     """Re-scope a memory to a different accessible space — useful when a memory was classified
       |into the wrong space ("oh, this isn't a project rule, it's a personal preference") or
       |when scope changes ("this used to be project-A only; it now applies to me across projects").
@@ -42,10 +42,16 @@ case object MoveMemoryTool extends Tool {
       |- `fromSpace` — optional disambiguator when the same key exists in multiple spaces.
       |
       |The record's id, key, and pinned status are preserved.""".stripMargin
-  override val keywords: Set[String] = Set("move", "rescope", "memory", "space", "transfer")
 
-  override def resultTtl: Option[Int] = Some(0)
-  override val requiresAccessibleSpaces: Boolean = true
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(
+      effect = Effect.Mutating(MutationTargeting.none),
+      gates = ToolGates(requiresAccessibleSpaces = true)
+    ),
+    discovery = DiscoverySpec(keywords = Set("move", "rescope", "memory", "space", "transfer"))
+  )
 
   override def executeResult(input: MoveMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>

@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.SpaceId
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Forget (mark rejected, or hard-delete by key) a previously stored
@@ -29,19 +29,26 @@ case object ForgetMemoryTool extends Tool {
   val inputRW: RW[ForgetMemoryInput] = summon[RW[ForgetMemoryInput]]
   val outputRW: RW[TextToolOutput]   = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("forget_memory")
-  val description: String =
+  override val name: ToolName = ToolName("forget_memory")
+  override val description: String =
     """Mark a memory as forgotten. Pass `memoryId` to soft-delete a single record (kept on disk
       |for lineage but hidden from recall). Pass `key` to hard-delete every version of a keyed
       |memory in the caller's default space. Use sparingly — most "I changed my mind" updates
       |are better expressed by saving a new memory under the same key (versioned upsert).""".stripMargin
+
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("memory", "forget", "delete", "remove"))
+  )
+
   override val examples: List[ToolExample] = List(
     ToolExample("Reject a single auto-extracted memory",
       ForgetMemoryInput(memoryId = Some(lightdb.id.Id("mem-12345")))),
     ToolExample("Hard-delete every version of a keyed memory",
       ForgetMemoryInput(key = Some("user.units")))
   )
-  override val keywords: Set[String] = Set("memory", "forget", "delete", "remove")
 
   override def executeResult(input: ForgetMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     (input.memoryId, input.key) match {

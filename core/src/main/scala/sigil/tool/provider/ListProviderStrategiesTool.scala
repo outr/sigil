@@ -5,7 +5,7 @@ import fabric.rw.*
 import fabric.{arr, obj, str}
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /** List provider strategies visible to the caller in the
   * conversation's space, including a marker for the currently-
@@ -18,11 +18,16 @@ case object ListProviderStrategiesTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[ListProviderStrategiesInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("list_provider_strategies")
-  val description =
+  override val name = ToolName("list_provider_strategies")
+  override val description =
     "List provider strategies saved under the current conversation's space, " +
       "including a marker for the currently-assigned one."
-  override val keywords = Set("list", "provider", "strategy", "strategies", "models")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("list", "provider", "strategy", "strategies", "models"))
+  )
 
   override def executeResult(input: ListProviderStrategiesInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

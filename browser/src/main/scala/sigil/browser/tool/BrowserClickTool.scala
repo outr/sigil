@@ -6,7 +6,7 @@ import rapid.Task
 import robobrowser.select.Selector
 import sigil.tool.ToolContext
 import sigil.browser.WebBrowserMode
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /** Click the first element matching a CSS selector. Subsequent
   * scrape / screenshot calls reflect the resulting page state. */
@@ -16,15 +16,22 @@ final class BrowserClickTool extends Tool {
   val inputRW  = summon[RW[BrowserClickInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("browser_click")
-  val description =
+  override val name = ToolName("browser_click")
+  override val description =
     "Click the first element matching the given CSS selector. Use after scraping to find selectors."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set("browser", "click", "tap", "interact", "button"),
+      modes = Set(WebBrowserMode.id)
+    )
+  )
   override val examples = List(
     ToolExample("Click a button", BrowserClickInput(selector = "button.submit")),
     ToolExample("Click a link", BrowserClickInput(selector = "a.next-page"))
   )
-  override val modes = Set(WebBrowserMode.id)
-  override val keywords = Set("browser", "click", "tap", "interact", "button")
 
   override def executeResult(input: BrowserClickInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

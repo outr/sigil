@@ -5,7 +5,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import strider.Workflow
 import strider.step.Step
 
@@ -29,8 +29,8 @@ final class DeclineWorkflowTool extends Tool with WorkflowToolSupport {
   type Output = TextToolOutput
   val inputRW  = summon[RW[DeclineWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("decline_workflow")
-  val description =
+  override val name = ToolName("decline_workflow")
+  override val description =
     """Decline a workflow run paused on an approval step.
       |
       |`runId` is the run id; `stepId` is the id of the waiting approval step. `reason` is
@@ -42,7 +42,12 @@ final class DeclineWorkflowTool extends Tool with WorkflowToolSupport {
     ToolExample("Decline with a reason",
       DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate", reason = Some("staging tests failing")))
   )
-  override val keywords = Set("workflow", "decline", "reject", "no", "deny", "refuse")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("workflow", "decline", "reject", "no", "deny", "refuse"))
+  )
 
   override def executeResult(input: DeclineWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)

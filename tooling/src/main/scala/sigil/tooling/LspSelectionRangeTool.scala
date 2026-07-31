@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{Position, SelectionRange}
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspRange, LspSelectionRangeChain, LspSelectionRangeResult}
 
 case class LspSelectionRangeInput(languageId: String,
@@ -28,22 +28,29 @@ object LspSelectionRangeInput {
  * context" for an edit.
  */
 final class LspSelectionRangeTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspSelectionRangeInput
   type Output = LspSelectionRangeResult
   val inputRW  = summon[RW[LspSelectionRangeInput]]
   val outputRW = summon[RW[LspSelectionRangeResult]]
 
-  val name = ToolName("lsp_selection_range")
-  val description =
+  override val name = ToolName("lsp_selection_range")
+  override val description =
     """For each input cursor position, return the chain of progressively-larger semantic
       |regions enclosing it (identifier → expression → statement → method → class …).
       |
       |`languageId` + `filePath` identify the document.
       |`positions` is the list of (line, character) pairs (0-based).
       |Returns `{filePath, chains: [{ranges: [innermost, ..., outermost]}]}` — one chain per input position.""".stripMargin
-  override val keywords = Set("lsp", "selection", "expand selection", "smart selection")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "selection", "expand selection", "smart selection"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspSelectionRangeInput, context: ToolContext): Task[LspSelectionRangeResult] =
     withOpenDocumentOrThrow[LspSelectionRangeResult](

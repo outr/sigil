@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.GlobalSpace
 import sigil.conversation.Conversation
-import sigil.tool.{DiscoveryRequest, InMemoryToolFinder, TextToolOutput, Tool, ToolFinder, ToolInput, ToolName}
+import sigil.tool.{DiscoveryRequest, DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting, TextToolOutput, Tool, ToolFinder, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.TurnContext
 
@@ -39,9 +39,14 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     val inputRW  = summon[RW[GenericInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("grep_like")
-    val description = "Generic search."
-    override val keywords = Set("grep", "search", "examine", "inspect", "code")
+    override val name        = ToolName("grep_like")
+    override val description = "Generic search."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("grep", "search", "examine", "inspect", "code"))
+    )
 
     override def executeOutput(input: GenericInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(""))
@@ -54,10 +59,14 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     val inputRW  = summon[RW[GenericInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("lsp_like_diagnostics")
-    val description = "LSP-backed inspection."
-    override val keywords = Set("lsp", "examine", "inspect", "analyze")
-    override def toolchain: Option[String] = Some("lsp")
+    override val name        = ToolName("lsp_like_diagnostics")
+    override val description = "LSP-backed inspection."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("lsp", "examine", "inspect", "analyze"), toolchain = Some("lsp"))
+    )
 
     override def executeOutput(input: GenericInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(""))

@@ -3,7 +3,7 @@ package sigil.tool.random
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.model.{RandomIntInput, RandomIntOutput}
 
 /**
@@ -25,19 +25,24 @@ case object RandomIntTool extends Tool {
   val inputRW  = summon[RW[RandomIntInput]]
   val outputRW = summon[RW[RandomIntOutput]]
 
-  val name = ToolName("random_int")
-  val description =
+  override val name = ToolName("random_int")
+  override val description =
     """Generate a uniformly random integer in `[min, max]` (inclusive on both ends).
       |
       |Optional `seed` makes the draw reproducible — same seed yields the same value
       |across calls and machines. Omit `seed` for genuine entropy.
       |
       |Errors if `min > max`. Returns `{value, min, max, seed}`.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(keywords = Set("random", "rand", "int", "integer", "number", "rng", "dice", "roll"))
+  )
   override val examples = List(
     ToolExample("d20 dice roll", RandomIntInput(min = 1, max = 20)),
     ToolExample("seeded coin flip (reproducible)", RandomIntInput(min = 0, max = 1, seed = Some(42L)))
   )
-  override val keywords = Set("random", "rand", "int", "integer", "number", "rng", "dice", "roll")
 
   override def executeOutput(input: RandomIntInput, context: ToolContext): Task[RandomIntOutput] = Task {
     require(input.min <= input.max, s"random_int: min (${input.min}) must be <= max (${input.max})")

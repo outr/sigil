@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.CodeAction
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.LspApplyCodeActionResult
 
 import scala.jdk.CollectionConverters.*
@@ -33,25 +33,32 @@ case class LspApplyCodeActionInput(languageId: String,
  * are framework-hidden.
  */
 final class LspApplyCodeActionTool(val manager: LspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspApplyCodeActionInput
   type Output = LspApplyCodeActionResult
   val inputRW  = summon[RW[LspApplyCodeActionInput]]
   val outputRW = summon[RW[LspApplyCodeActionResult]]
-  val name = ToolName("lsp_apply_code_action")
-  val description =
+  override val name = ToolName("lsp_apply_code_action")
+  override val description =
     """Apply a code action by index from the most-recently-cached code-action listing for
       |a given (languageId, filePath) pair.
       |
       |`languageId` + `filePath` identify the cached action set.
       |`index` is the 0-based position in the prior listing.
       |Returns one of `Applied` / `CommandExecuted` / `Failed` / `CacheEmpty` / `OutOfRange`.""".stripMargin
-  override val keywords = Set(
-    "lsp", "apply", "fix", "quickfix", "refactor", "refactoring", "code action", "execute fix",
-    "extract method", "extract variable", "organize imports", "missing imports",
-    "modify", "change", "transform"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Destructive(MutationTargeting.none, "DESTRUCTIVE.")),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "lsp", "apply", "fix", "quickfix", "refactor", "refactoring", "code action", "execute fix",
+        "extract method", "extract variable", "organize imports", "missing imports",
+        "modify", "change", "transform"
+      ),
+      toolchain = Some("lsp")
+    )
   )
-
 
   override def executeOutput(input: LspApplyCodeActionInput, context: ToolContext): Task[LspApplyCodeActionResult] =
     withSessionOrThrow[LspApplyCodeActionResult](

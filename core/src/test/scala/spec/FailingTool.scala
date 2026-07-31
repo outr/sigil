@@ -3,7 +3,7 @@ package spec
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 
 /** Test-only tool that unconditionally throws when executed. Used by
@@ -15,9 +15,14 @@ case object FailingTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[FailingToolInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("intentional_failure")
-  val description = "Test-only tool that always throws an exception when called."
-  override val keywords = Set("fail", "test", "error")
+  override val name = ToolName("intentional_failure")
+  override val description = "Test-only tool that always throws an exception when called."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("fail", "test", "error"))
+  )
 
   override def executeResult(input: FailingToolInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.error(new RuntimeException("intentional failure for worker error-handling test"))

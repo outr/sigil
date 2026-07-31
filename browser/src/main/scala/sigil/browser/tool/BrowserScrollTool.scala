@@ -5,7 +5,7 @@ import fabric.{obj, str}
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.browser.{ScrollAmount, ScrollDirection, WebBrowserMode}
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /** Scroll the page. `direction` chooses up / down; `amount` chooses a
   * one-viewport page move or an absolute top / bottom jump. */
@@ -15,16 +15,23 @@ final class BrowserScrollTool extends Tool {
   val inputRW  = summon[RW[BrowserScrollInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("browser_scroll")
-  val description =
+  override val name = ToolName("browser_scroll")
+  override val description =
     "Scroll the page. `direction` is up or down; `amount` is page (one viewport), top, or bottom."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set("browser", "scroll", "viewport"),
+      modes = Set(WebBrowserMode.id)
+    )
+  )
   override val examples = List(
     ToolExample("Scroll one viewport down", BrowserScrollInput()),
     ToolExample("Jump to the top", BrowserScrollInput(direction = ScrollDirection.Up, amount = ScrollAmount.Top)),
     ToolExample("Jump to the bottom", BrowserScrollInput(direction = ScrollDirection.Down, amount = ScrollAmount.Bottom))
   )
-  override val modes = Set(WebBrowserMode.id)
-  override val keywords = Set("browser", "scroll", "viewport")
 
   override def executeResult(input: BrowserScrollInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

@@ -7,7 +7,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.storage.{FileVersion, WriteResult}
 import sigil.tool.model.{WriteFileInput, WriteFileOutput}
-import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Write `content` (UTF-8) to `path`, creating parent directories
@@ -21,15 +21,13 @@ import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolRe
  * — the legacy single-agent path returns [[WriteFileOutput.Success]]
  * with `hash = None`.
  */
-final class WriteFileTool(context: FileSystemContext)
-  extends Tool with sigil.tool.DestructiveExternalTool {
+final class WriteFileTool(context: FileSystemContext) extends Tool {
   type Input  = WriteFileInput
   type Output = WriteFileOutput
   val inputRW  = summon[RW[WriteFileInput]]
   val outputRW = summon[RW[WriteFileOutput]]
-  val name = ToolName("write_file")
-  override def mutationTarget(input: WriteFileInput): Option[String] = Some(input.path)
-  val description =
+  override val name = ToolName("write_file")
+  override val description =
     """Write content (UTF-8) to a file. Creates parent directories. Overwrites existing content.
       |
       |Pass `expectedHash` (SHA-256 of the file's last-known contents) to enable safe-edit:
@@ -38,6 +36,17 @@ final class WriteFileTool(context: FileSystemContext)
       |change against the new state.
       |
       |Output: `Success(bytesWritten, hash?) | Stale(currentHash, currentContent) | NotFound`.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(
+      effect = Effect.Destructive(
+        target = MutationTargeting.typed[WriteFileInput](i => Some(MutationTarget(i.path))),
+        consequence = "DESTRUCTIVE."
+      )
+    ),
+    discovery = DiscoverySpec(keywords = Set("file", "write", "save", "create", "output"))
+  )
   override val examples = List(
     ToolExample("Save text to a new file", WriteFileInput(path = "notes.txt", content = "Some notes.")),
     ToolExample(
@@ -45,7 +54,6 @@ final class WriteFileTool(context: FileSystemContext)
       WriteFileInput(path = "config.yaml", content = "debug: true", expectedHash = Some("abc123..."))
     )
   )
-  override val keywords = Set("file", "write", "save", "create", "output")
 
   /** Non-Success WriteFileOutputs (Stale, NotFound) are logical failures of
     * the WRITE operation — the commit did NOT land. Surfacing them through

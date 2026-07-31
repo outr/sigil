@@ -17,7 +17,7 @@ import sigil.provider.{
 import sigil.signal.Signal
 import sigil.signal.ToolDelta
 import sigil.event.ToolOutcome
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import spice.http.HttpRequest
 import sigil.tool.WireCall
@@ -54,8 +54,14 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
     type Output = TextToolOutput
     val inputRW  = summon[RW[EmptyToolInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("silent_tool")
-    val description = "Returns nothing useful."
+    override val name        = ToolName("silent_tool")
+    override val description = "Returns nothing useful."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "silent"))
+    )
     override def executeResult(input: EmptyToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.failure("Tool 'silent_tool' failed internally — it produced no usable result."))
   }

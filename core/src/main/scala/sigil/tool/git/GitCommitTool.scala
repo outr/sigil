@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitCommitInput, GitCommitOutput}
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
 
 /**
  * `git_commit` — stage `paths` (or every tracked change when
@@ -14,22 +14,26 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * the default `AllShippedTools` list. Apps that want commit authorship
  * register an instance explicitly.
  */
-final class GitCommitTool(context: FileSystemContext)
-  extends Tool with sigil.tool.DestructiveExternalTool {
+final class GitCommitTool(context: FileSystemContext) extends Tool {
   type Input  = GitCommitInput
   type Output = GitCommitOutput
   val inputRW  = summon[RW[GitCommitInput]]
   val outputRW = summon[RW[GitCommitOutput]]
-  val name = ToolName("git_commit")
-  val description =
+  override val name = ToolName("git_commit")
+  override val description =
     """Stage `paths` (or all tracked changes when omitted) and create a commit. Returns the new
       |commit sha on success or a structured failure. WRITES — apps that want this exposed
       |register it on top of `AllShippedTools`.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Destructive(target = MutationTargeting.none, consequence = "DESTRUCTIVE.")),
+    discovery = DiscoverySpec(keywords = Set("git", "commit", "save", "checkpoint"))
+  )
   override val examples = List(
     ToolExample("Commit all tracked changes", GitCommitInput(message = "Fix typo")),
     ToolExample("Commit specific paths",      GitCommitInput(message = "Add config", paths = Some(List("config/app.yaml"))))
   )
-  override val keywords = Set("git", "commit", "save", "checkpoint")
 
   override def executeOutput(input: GitCommitInput, ctx: ToolContext): Task[GitCommitOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

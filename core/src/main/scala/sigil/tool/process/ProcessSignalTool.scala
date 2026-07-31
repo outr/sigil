@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{ProcessSignalInput, ProcessSignalOutput}
-import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Send a signal to a registered subprocess. Default `terminate`
@@ -18,16 +18,21 @@ final class ProcessSignalTool(registry: ProcessRegistry) extends Tool {
   val inputRW  = summon[RW[ProcessSignalInput]]
   val outputRW = summon[RW[ProcessSignalOutput]]
 
-  val name = ToolName("process_signal")
-  val description =
+  override val name = ToolName("process_signal")
+  override val description =
     """Send a signal to a subprocess. `signal` is one of `terminate` (default — graceful SIGTERM
       |then SIGKILL on grace timeout), `interrupt` (SIGINT-equivalent), `kill` (SIGKILL).
       |Returns the handle, the delivered signal, and whether delivery succeeded.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("process", "signal", "terminate", "kill", "stop"))
+  )
   override val examples = List(
     ToolExample("Terminate gracefully",  ProcessSignalInput(handle = "p1")),
     ToolExample("Force-kill a hung proc", ProcessSignalInput(handle = "p1", signal = sigil.tool.model.ProcessSignal.Kill))
   )
-  override val keywords = Set("process", "signal", "terminate", "kill", "stop")
 
   override def executeResult(input: ProcessSignalInput, ctx: ToolContext): Task[ToolResult[ProcessSignalOutput]] =
     registry.signal(input.handle, input.signal).map {

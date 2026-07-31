@@ -6,7 +6,7 @@ import sigil.event.{Message, MessageRole}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
 import sigil.tool.model.{RelayMessageInput, ResponseContent}
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Opt-in util-tier tool: the cross-conversation *write* half (sigil
@@ -33,8 +33,8 @@ case object RelayMessageTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[RelayMessageInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("relay_message")
-  val description =
+  override val name = ToolName("relay_message")
+  override val description =
     """Post a message into ANOTHER conversation you are a participant of — the cross-conversation
       |write primitive that bridges a parent conversation and a worker sub-conversation.
       |
@@ -52,7 +52,12 @@ case object RelayMessageTool extends Tool {
       |
       |`addressees` — optional list of participant-id values in the target conversation to direct the
       |message at (only those participants are woken). Omit to broadcast to everyone in the target.""".stripMargin
-  override val keywords = Set("relay", "bridge", "forward", "cross-conversation", "parent", "worker", "surface")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("relay", "bridge", "forward", "cross-conversation", "parent", "worker", "surface"))
+  )
 
   override def executeResult(input: RelayMessageInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.withDB(_.conversations.transaction(_.get(input.conversationId))).flatMap {

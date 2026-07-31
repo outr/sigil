@@ -6,7 +6,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.db.Model
 import sigil.provider.{ModelCandidate, ProviderStrategyRecord}
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Switch the conversation's active provider strategy. Disambiguates
@@ -36,8 +36,8 @@ case object SwitchModelTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[SwitchModelInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("switch_model")
-  val description =
+  override val name = ToolName("switch_model")
+  override val description =
     """Switch the AI model or provider strategy used for this conversation. Accepts:
       |  - a model id (e.g. "anthropic/claude-opus-4-7", "openai/gpt-5.4") — creates an ad-hoc
       |    single-model override and assigns it
@@ -51,7 +51,12 @@ case object SwitchModelTool extends Tool {
     ToolExample("Use a saved strategy by label", SwitchModelInput("Balanced")),
     ToolExample("Revert to default", SwitchModelInput("auto"))
   )
-  override val keywords = Set("switch", "model", "strategy", "provider", "change", "use", "auto", "default")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("switch", "model", "strategy", "provider", "change", "use", "auto", "default"))
+  )
 
   override def executeResult(input: SwitchModelInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

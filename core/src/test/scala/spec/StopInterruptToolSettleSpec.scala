@@ -15,7 +15,7 @@ import sigil.provider.{
 }
 import sigil.signal.{EventState, Signal}
 import sigil.tool.core.CoreTools
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import spice.http.HttpRequest
 import sigil.tool.WireCall
 
@@ -61,8 +61,14 @@ class StopInterruptToolSettleSpec extends AsyncWordSpec with AsyncTaskSpec with 
     type Output = TextToolOutput
     val inputRW  = summon[RW[SlowInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName("slow_screenshot")
-    val description = "Atomic screenshot tool; a Stop arrives just after its invoke is emitted."
+    override val name = ToolName("slow_screenshot")
+    override val description = "Atomic screenshot tool; a Stop arrives just after its invoke is emitted."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "screenshot"))
+    )
 
     override def executeResult(input: SlowInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("screenshot-bytes")))

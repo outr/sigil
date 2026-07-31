@@ -13,7 +13,7 @@ import sigil.tool.ToolContext
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
 import sigil.storage.StoredFile
-import sigil.tool.{JsonInput, TextToolOutput, Tool, ToolExample, ToolResult, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, JsonInput, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import scala.concurrent.duration.*
 
@@ -44,8 +44,8 @@ import scala.concurrent.duration.*
  * [[TextToolOutput]] whose JSON payload aggregates the per-step
  * outputs.
  */
-case class BrowserScript(name: ToolName,
-                         description: String,
+case class BrowserScript(override val name: ToolName,
+                         override val description: String,
                          parameters: Definition,
                          steps: List[BrowserStep],
                          override val space: SpaceId,
@@ -58,6 +58,11 @@ case class BrowserScript(name: ToolName,
                          override val modified: Timestamp = Timestamp(Nowish()),
                          override val _id: Id[Tool] = Id(Unique())) extends Tool derives RW {
 
+  /** Derived from the persisted constructor fields, so validation
+    * runs on every load — a legacy row that has drifted out of
+    * validity is repaired with a warn where safe (blank description,
+    * empty keywords) rather than bricking the collection read. */
+  val spec: ToolSpec = BrowserScript.specFor(name, description, space, keywords, modes)
 
   type Input  = JsonInput
   type Output = TextToolOutput
@@ -72,6 +77,36 @@ case class BrowserScript(name: ToolName,
 }
 
 object BrowserScript {
+
+  /** Build the validated [[ToolSpec]] from persisted fields. A replay
+    * drives the live browser, so the effect is conservatively
+    * [[Effect.Mutating]] with unknown targets. Legacy rows with a
+    * blank description or no keywords are repaired with a warn — the
+    * row stays readable; the create path enforces the full contract
+    * for new records. */
+  def specFor(name: ToolName,
+              description: String,
+              space: SpaceId,
+              keywords: Set[String],
+              modes: Set[Id[Mode]]): ToolSpec = {
+    val desc =
+      if (description.isBlank) {
+        scribe.warn(s"Browser script '${name.value}' has a blank persisted description; substituting a stub.")
+        s"User-created browser script `${name.value}`."
+      } else description
+    val kw =
+      if (keywords.nonEmpty) keywords
+      else {
+        scribe.warn(s"Browser script '${name.value}' has no persisted keywords; falling back to its name.")
+        Set(name.value)
+      }
+    ToolSpec(
+      name = name,
+      description = desc,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = kw, space = space, modes = modes)
+    )
+  }
 
   /** Run every step in order against the conversation's
     * [[BrowserController]]. Resolves to a [[TextToolOutput]] whose

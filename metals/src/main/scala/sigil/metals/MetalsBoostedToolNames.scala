@@ -33,7 +33,7 @@ object MetalsBoostedToolNames {
     "lsp_did_change",
     "lsp_folding_range", "lsp_selection_range",
     "lsp_inlay_hints", "lsp_code_lens", "lsp_document_link"
-  ).map(ToolName(_))
+  ).map(ToolName.internal)
 
   val bsp: List[ToolName] = List(
     "bsp_compile", "bsp_test", "bsp_run", "bsp_clean", "bsp_reload",
@@ -41,11 +41,11 @@ object MetalsBoostedToolNames {
     "bsp_dependency_sources", "bsp_dependency_modules",
     "bsp_resources", "bsp_output_paths",
     "bsp_scalac_options", "bsp_scala_test_classes", "bsp_scala_main_classes"
-  ).map(ToolName(_))
+  ).map(ToolName.internal)
 
   val metals: List[ToolName] = List(
     "start_metals", "stop_metals", "metals_status"
-  ).map(ToolName(_))
+  ).map(ToolName.internal)
 
   val all: List[ToolName] = lsp ++ bsp ++ metals
 

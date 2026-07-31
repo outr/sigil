@@ -20,7 +20,7 @@ class StaleInternalFrameSheddingSpec extends AnyWordSpec with Matchers {
   private def tc(name: String, internal: Boolean, content: String): ContextFrame.ToolCall = {
     val id = Id[Event](rapid.Unique())
     ContextFrame.ToolCall(
-      toolName      = ToolName(name),
+      toolName      = ToolName.parse(name).fold(sys.error, identity),
       argsJson      = "{}",
       callId        = id,
       participantId = TestAgent,

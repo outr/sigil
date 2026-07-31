@@ -7,7 +7,7 @@ import rapid.Task
 import sigil.TurnContext
 import sigil.provider.ToolPolicy
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoveryFilter, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoveryFilter, DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DiscoveryFilterPolicyStubInput(text: String = "") extends ToolInput derives RW
 
@@ -16,8 +16,14 @@ final class DiscoveryFilterPolicyStubTool(n: String) extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[DiscoveryFilterPolicyStubInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName(n)
-  val description = s"Stub $n"
+  override val name = ToolName.parse(n).fold(sys.error, identity)
+  override val description = s"Stub $n"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("test", n))
+  )
 
   override def executeResult(input: DiscoveryFilterPolicyStubInput,
                              context: ToolContext): Task[ToolResult[TextToolOutput]] =

@@ -157,7 +157,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
   "ScriptTool (bug #67) — same recovery in the persisted-tool path" should {
     "settle a recoverable Failure carrying the error when the script body throws" in {
       val tool = ScriptTool(
-        name = ToolName("recover-test-throws"),
+        name = ToolName.parse("recover-test-throws").fold(sys.error, identity),
         description = "A script that throws a runtime exception.",
         code = """throw new RuntimeException("script body throw")""",
         parameters = JsonSchemaToDefinition(obj("type" -> str("object"))),

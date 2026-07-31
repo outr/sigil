@@ -4,11 +4,9 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.SpaceId
 import sigil.tool.ToolContext
 import sigil.participant.ParticipantId
-import sigil.provider.Mode
-import sigil.tool.{Tool, ToolExample, ToolName, ToolResult, ToolSchema}
+import sigil.tool.{Tool, ToolExample, ToolResult, ToolSchema, ToolSpec}
 
 /**
  * Wraps an existing [[Tool]] so its execution is dispatched through
@@ -44,14 +42,14 @@ class ProxyTool(val wrapped: Tool, transport: ToolProxyTransport) extends Tool {
   def inputRW: RW[Input]   = wrapped.inputRW
   def outputRW: RW[Output] = wrapped.outputRW
 
-  def name: ToolName      = wrapped.name
-  def description: String = wrapped.description
+  /** Capabilities forwarded by construction — the proxy carries the
+    * wrapped tool's whole spec (effect, gates, execution, discovery),
+    * so a consent gate or destructive warning can never be dropped by
+    * proxying. */
+  val spec: ToolSpec = wrapped.spec
 
   override def inputDefinition: fabric.define.Definition = wrapped.inputDefinition
   override def outputDefinition: Option[fabric.define.Definition] = wrapped.outputDefinition
-  override def modes: Set[Id[Mode]]             = wrapped.modes
-  override def space: SpaceId                   = wrapped.space
-  override def keywords: Set[String]            = wrapped.keywords
   override def examples: List[ToolExample]      = wrapped.examples
   override def createdBy: Option[ParticipantId] = wrapped.createdBy
   override def _id: Id[Tool]                    = wrapped._id

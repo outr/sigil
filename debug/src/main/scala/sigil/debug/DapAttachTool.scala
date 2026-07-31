@@ -4,7 +4,7 @@ import fabric.Json
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import scala.jdk.CollectionConverters.*
 
@@ -22,13 +22,19 @@ final class DapAttachTool(val manager: DapManager) extends Tool with DapToolSupp
   type Output = TextToolOutput
   val inputRW = summon[RW[DapAttachInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("dap_attach")
-  val description =
+  override val name = ToolName("dap_attach")
+  override val description =
     """Attach a debug adapter to a running process.
       |
       |`languageId` selects the persisted DebugAdapterConfig.
       |`sessionId` is the opaque id for subsequent dap_* calls.
       |`attachArguments` is the adapter-specific payload (pid, host/port, etc.).""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "attach", "process", "pid", "debugger"))
+  )
   override val examples = List(
     ToolExample(
       "attach to a running JVM by port",

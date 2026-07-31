@@ -14,7 +14,7 @@ import sigil.provider.{
   ReasoningMode, ToolCallMessage, ToolChoice
 }
 import sigil.script.ScalaScriptExecutor
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, MutationTarget, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.nio.file.{Files, Path}
 import scala.concurrent.duration.*
@@ -124,28 +124,52 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     List(
       new WsTool {
         type Input = ListInput; val inputRW = summon[RW[ListInput]]
-        val name = ToolName("list_files"); val description = "List the .scala files in the project."
+        val spec: ToolSpec = ToolSpec(
+          name = ToolName("list_files"),
+          description = "List the .scala files in the project.",
+          profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+          discovery = DiscoverySpec(keywords = Set("test", "list_files"))
+        )
         def run(in: ToolInput) = readAll.mkString("\n")
       },
       new WsTool {
         type Input = ReadInput; val inputRW = summon[RW[ReadInput]]
-        val name = ToolName("read_file"); val description = "Read a file's full contents (with line numbers). Args: path."
+        val spec: ToolSpec = ToolSpec(
+          name = ToolName("read_file"),
+          description = "Read a file's full contents (with line numbers). Args: path.",
+          profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+          discovery = DiscoverySpec(keywords = Set("test", "read_file"))
+        )
         def run(in: ToolInput) = readFile(ws, in.asInstanceOf[ReadInput].path)
       },
       new WsTool {
         type Input = GrepInput; val inputRW = summon[RW[GrepInput]]
-        val name = ToolName("grep"); val description = "Search all files for a substring. Args: pattern. Returns file:line matches."
+        val spec: ToolSpec = ToolSpec(
+          name = ToolName("grep"),
+          description = "Search all files for a substring. Args: pattern. Returns file:line matches.",
+          profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+          discovery = DiscoverySpec(keywords = Set("test", "grep"))
+        )
         def run(in: ToolInput) = grep(ws, in.asInstanceOf[GrepInput].pattern)
       },
       new WsTool {
         type Input = EditInput; val inputRW = summon[RW[EditInput]]
-        val name = ToolName("edit_file")
-        val description = "Replace the FIRST exact occurrence of `find` with `replace` in `path`. Args: path, find, replace."
+        val spec: ToolSpec = ToolSpec(
+          name = ToolName("edit_file"),
+          description = "Replace the FIRST exact occurrence of `find` with `replace` in `path`. Args: path, find, replace.",
+          profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.typed[EditInput](i => Some(MutationTarget(i.path))))),
+          discovery = DiscoverySpec(keywords = Set("test", "edit_file"))
+        )
         def run(in: ToolInput) = { val e = in.asInstanceOf[EditInput]; edit(ws, e.path, e.find, e.replace) }
       },
       new WsTool {
         type Input = RunInput; val inputRW = summon[RW[RunInput]]
-        val name = ToolName("run_tests"); val description = "Compile the project and run the hidden test cases. Call this to verify your fix."
+        val spec: ToolSpec = ToolSpec(
+          name = ToolName("run_tests"),
+          description = "Compile the project and run the hidden test cases. Call this to verify your fix.",
+          profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+          discovery = DiscoverySpec(keywords = Set("test", "run_tests"))
+        )
         def run(in: ToolInput) = runTests(ws)
       }
     )

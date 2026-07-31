@@ -9,6 +9,7 @@ import sigil.information.InformationSummary
 import sigil.participant.ParticipantId
 import sigil.conversation.compression.extract.{MemoryExtractor, NoOpMemoryExtractor}
 import sigil.tokenize.{HeuristicTokenizer, JtokkitTokenizer, Tokenizer}
+import sigil.tool.Freshness
 
 /**
  * Default [[ContextCurator]]. Bug #26 — sources frames from
@@ -141,7 +142,7 @@ case class StandardContextCurator(sigil: Sigil,
       // flickers — fine), after a bulk import it's the user-
       // perceptible window the activity bar needs to surface.
       val elide: Set[String] = sigil.staticTools.iterator
-        .collect { case t if t.resultTtl.contains(0) => t.name.value }
+        .collect { case t if t.freshness.contains(Freshness.Volatile) => t.name.value }
         .toSet
       for {
         _             <- control.step("Loading frames")

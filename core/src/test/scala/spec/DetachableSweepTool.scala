@@ -1,7 +1,7 @@
 package spec
 
 import rapid.Task
-import sigil.tool.{TextToolOutput, ToolContext, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Execution, MutationTargeting, ProgressContract, TextToolOutput, ToolContext, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.util.concurrent.TimeUnit
 
@@ -11,10 +11,17 @@ import java.util.concurrent.TimeUnit
   * the batch. Exercises the full detached lifecycle — promotion,
   * post-detach progress, cooperative Stop, and the completion fold. */
 case object DetachableSweepTool extends SlowStopToolBase {
-  val name = ToolName("detachable_sweep")
-  val description = "Test-only detachable slow batch tool."
-  override val keywords: Set[String] = Set("detachable", "sweep", "test")
-  override def detachable: Boolean = true
+  override val name = ToolName("detachable_sweep")
+  override val description = "Test-only detachable slow batch tool."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(
+      effect = Effect.Mutating(MutationTargeting.none),
+      execution = Execution.Detachable(keepRunningOnStop = false, progress = ProgressContract("test fixture progress"))
+    ),
+    discovery = DiscoverySpec(keywords = Set("detachable", "sweep", "test"))
+  )
 
   override def executeResult(input: SlowStopInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task {

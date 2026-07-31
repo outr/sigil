@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.Message
 import sigil.signal.EventState
-import sigil.tool.{TextToolOutput, ToolName, ToolResult}
+import sigil.tool.{TextToolOutput, ToolName, ToolResult, ToolSpec}
 import sigil.tool.model.RespondCardInput
 
 /**
@@ -26,8 +26,8 @@ case object RespondCardTool extends RespondFamilyTool {
   val inputRW  = summon[RW[RespondCardInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("respond_card")
-  val description =
+  override val name = ToolName("respond_card")
+  override val description =
     """Emit a composite Card — a titled, optionally-kinded grouping of standard content blocks
       |(Heading, Field, Code, ItemList, Image, Options, Table, etc.). Use when several blocks
       |belong together as one logical unit (a status panel, a recipe summary, a metric card).
@@ -37,6 +37,12 @@ case object RespondCardTool extends RespondFamilyTool {
       |- `card.title` — optional card header (renderer styles distinct from inner Heading blocks).
       |- `card.kind` — optional UI styling hint (e.g. "alert", "info", "metric", "recipe").
       |- `card.sections` — the building blocks, in order. Recursive: nested Cards are allowed.""".stripMargin
+
+  val spec: ToolSpec = RespondFamilyTool.spec(
+    name = name,
+    description = description,
+    keywords = Set("respond", "reply", "card", "structured", "sections")
+  )
 
   override def executeResult(input: RespondCardInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.emit(Message(

@@ -8,8 +8,8 @@ import sigil.{GlobalSpace, TurnContext}
 import sigil.conversation.Conversation
 import sigil.provider.{ConversationMode, Mode}
 import sigil.tool.{
-  DiscoveryFilter, DiscoveryRequest, InMemoryToolFinder, TextToolOutput, Tool, ToolFinder,
-  ToolInput, ToolName, ToolContext
+  DiscoveryFilter, DiscoveryRequest, DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting,
+  TextToolOutput, Tool, ToolFinder, ToolInput, ToolName, ToolContext, ToolProfile, ToolSpec
 }
 import sigil.tool.discovery.CapabilityType
 import sigil.tool.fs.{GlobTool, GrepTool, LocalFileSystemContext, ReadFileTool}
@@ -51,8 +51,14 @@ class ToolModesDefaultRegressionSpec extends AsyncWordSpec with AsyncTaskSpec wi
     val inputRW  = summon[RW[StubInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("vanilla_default_tool")
-    val description = "A test tool that doesn't override modes."
+    override val name        = ToolName("vanilla_default_tool")
+    override val description = "A test tool that doesn't override modes."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "vanilla_default_tool"))
+    )
 
     override def executeOutput(input: StubInput, context: ToolContext): rapid.Task[TextToolOutput] =
       rapid.Task.pure(TextToolOutput(""))

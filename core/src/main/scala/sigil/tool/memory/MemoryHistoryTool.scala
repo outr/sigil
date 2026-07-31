@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Opt-in tool: return the full version history of a keyed memory,
@@ -16,18 +16,25 @@ case object MemoryHistoryTool extends Tool {
   val inputRW: RW[MemoryHistoryInput] = summon[RW[MemoryHistoryInput]]
   val outputRW: RW[TextToolOutput]    = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("memory_history")
-  val description: String =
+  override val name: ToolName = ToolName("memory_history")
+  override val description: String =
     """Show the version history of a keyed memory — every past value for this key,
       |with valid-from / valid-until timestamps. Use when you need to understand how
       |a fact has changed over time (e.g. "what did the user prefer before they changed their mind?").
       |
       |`key`     — the memory key whose history you want.
       |`spaceId` — optional; omit to use the caller's default scope.""".stripMargin
+
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("memory", "history", "version"))
+  )
+
   override val examples: List[ToolExample] = List(
     ToolExample("History of the user's theme preference", MemoryHistoryInput(key = "user.ui.theme"))
   )
-  override val keywords: Set[String] = Set("memory", "history", "version")
 
   override def executeResult(input: MemoryHistoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     resolveSpace(input, context).flatMap {

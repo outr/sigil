@@ -3,7 +3,7 @@ package sigil.metals
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class MetalsStatusInput() extends ToolInput derives RW
 
@@ -22,14 +22,21 @@ final class MetalsStatusTool extends Tool {
   val inputRW  = summon[RW[MetalsStatusInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("metals_status")
-  val description =
+  override val name = ToolName("metals_status")
+  override val description =
     """List every workspace currently backed by a Metals subprocess. Reports the workspace path,
       |MCP endpoint URL, alive flag, and milliseconds since the last touch (so you can see which
       |sessions are about to be reaped by the idle sweeper).""".stripMargin
-  override val keywords = Set(
-    "metals", "status", "health", "indexing", "ready",
-    "scala", "compile", "subprocess", "running", "lsp"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "metals", "status", "health", "indexing", "ready",
+        "scala", "compile", "subprocess", "running", "lsp"
+      )
+    )
   )
 
   import MetalsToolSupport.*

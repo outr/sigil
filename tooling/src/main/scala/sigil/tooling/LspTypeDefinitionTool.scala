@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspLocation, LspLocationsResult}
 
 case class LspTypeDefinitionInput(languageId: String,
@@ -21,22 +21,29 @@ case class LspTypeDefinitionInput(languageId: String,
  * a method's return shape. Emits `LspLocationsResult`.
  */
 final class LspTypeDefinitionTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspTypeDefinitionInput
   type Output = LspLocationsResult
   val inputRW  = summon[RW[LspTypeDefinitionInput]]
   val outputRW = summon[RW[LspLocationsResult]]
 
-  val name = ToolName("lsp_type_definition")
-  val description =
+  override val name = ToolName("lsp_type_definition")
+  override val description =
     """Find the type of a symbol — its class / trait / struct definition. Distinct from
       |the symbol's own definition: this resolves to the symbol's TYPE.
       |
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point at the symbol whose type to look up.
       |Returns `[{uri, filePath, range}]`.""".stripMargin
-  override val keywords = Set("lsp", "type definition", "type", "where defined", "type declaration", "examine", "inspect")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "type definition", "type", "where defined", "type declaration", "examine", "inspect"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspTypeDefinitionInput, context: ToolContext): Task[LspLocationsResult] =
     withOpenDocumentOrThrow[LspLocationsResult](

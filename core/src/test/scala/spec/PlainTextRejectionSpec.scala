@@ -38,6 +38,8 @@ import spice.http.HttpRequest
 class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
+  private def tn(s: String): ToolName = ToolName.parse(s).fold(sys.error, identity)
+
   /** Provider that emits plain text deltas with no tool call —
     * mirrors gemma-26B-A4B-Q4's drift behaviour from the bug's
     * wire log: `delta.content` fragments + `finish_reason: stop`,
@@ -120,7 +122,7 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         // internal name and `internal = true` flag.
         val invokes = signals.collect { case ti: ToolInvoke => ti }
         invokes should have size 1
-        invokes.head.toolName shouldBe ToolName("_plain_text_reply")
+        invokes.head.toolName shouldBe tn("_plain_text_reply")
         invokes.head.internal shouldBe true
 
         // Tool-role Message with Failure disposition paired to that invoke.
@@ -149,7 +151,7 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       runWith(new TextAndToolCallProvider, "narration-ok").map { signals =>
         val invokes = signals.collect { case ti: ToolInvoke => ti }
         // Only the real tool call; no synthetic _plain_text_reply.
-        invokes.map(_.toolName) shouldNot contain (ToolName("_plain_text_reply"))
+        invokes.map(_.toolName) shouldNot contain (tn("_plain_text_reply"))
         // No Tool-role Message with Failure disposition either.
         val failures = signals.collect {
           case m: Message if m.role == MessageRole.Tool && m.isFailure => m
@@ -166,7 +168,7 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         // Done handler stays clean — drift detection only fires
         // when there's real text to point at.
         val invokes = signals.collect { case ti: ToolInvoke => ti }
-        invokes.map(_.toolName) shouldNot contain (ToolName("_plain_text_reply"))
+        invokes.map(_.toolName) shouldNot contain (tn("_plain_text_reply"))
         succeed
       }
     }

@@ -10,7 +10,7 @@ import sigil.provider.{
 }
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.tool.model.SelectOption
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult, WireCall}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec, WireCall}
 
 /**
  * Empirical probe for the `respond_*` unification design decision.
@@ -88,12 +88,18 @@ object RespondUnificationProbe {
     type Output = TextToolOutput
     val inputRW: RW[UnifiedRespondInput] = summon[RW[UnifiedRespondInput]]
     val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
-    val name: ToolName = ToolName("respond")
-    val description: String = """Emit the agent's reply to the user. The `content` field is a tagged union: pick one of
+    override val name: ToolName = ToolName("respond")
+    override val description: String = """Emit the agent's reply to the user. The `content` field is a tagged union: pick one of
         |  - `{"type": "Text", "content": "<markdown>"}` for plain text / markdown replies
         |  - `{"type": "Failure", "reason": "<short>", "recoverable": true|false}` when the task can't be completed
         |  - `{"type": "Field", "label": "<l>", "value": "<v>", "icon": null}` for a single labeled key/value
         |  - `{"type": "Options", "prompt": "<q>", "options": [{"label": "...", "value": "...", "description": null, "exclusive": false}, ...], "allowMultiple": false}` for a structured choice""".stripMargin
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+      discovery = DiscoverySpec(keywords = Set("bench", "respond", "unified"))
+    )
     override def executeResult(input: UnifiedRespondInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
@@ -103,8 +109,14 @@ object RespondUnificationProbe {
     type Output = TextToolOutput
     val inputRW: RW[BaselineRespondInput] = summon[RW[BaselineRespondInput]]
     val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
-    val name: ToolName = ToolName("respond")
-    val description: String = "Emit a plain text / markdown reply to the user."
+    override val name: ToolName = ToolName("respond")
+    override val description: String = "Emit a plain text / markdown reply to the user."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+      discovery = DiscoverySpec(keywords = Set("bench", "respond", "text"))
+    )
     override def executeResult(input: BaselineRespondInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
@@ -114,8 +126,14 @@ object RespondUnificationProbe {
     type Output = TextToolOutput
     val inputRW: RW[BaselineRespondFailureInput] = summon[RW[BaselineRespondFailureInput]]
     val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
-    val name: ToolName = ToolName("respond_failure")
-    val description: String = "Signal that the agent cannot complete the requested task."
+    override val name: ToolName = ToolName("respond_failure")
+    override val description: String = "Signal that the agent cannot complete the requested task."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+      discovery = DiscoverySpec(keywords = Set("bench", "respond", "failure"))
+    )
     override def executeResult(input: BaselineRespondFailureInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
@@ -125,8 +143,14 @@ object RespondUnificationProbe {
     type Output = TextToolOutput
     val inputRW: RW[BaselineRespondFieldInput] = summon[RW[BaselineRespondFieldInput]]
     val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
-    val name: ToolName = ToolName("respond_field")
-    val description: String = "Emit a single labeled key/value field."
+    override val name: ToolName = ToolName("respond_field")
+    override val description: String = "Emit a single labeled key/value field."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+      discovery = DiscoverySpec(keywords = Set("bench", "respond", "field"))
+    )
     override def executeResult(input: BaselineRespondFieldInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
@@ -136,8 +160,14 @@ object RespondUnificationProbe {
     type Output = TextToolOutput
     val inputRW: RW[BaselineRespondOptionsInput] = summon[RW[BaselineRespondOptionsInput]]
     val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
-    val name: ToolName = ToolName("respond_options")
-    val description: String = "Ask the user to pick from a fixed set of choices."
+    override val name: ToolName = ToolName("respond_options")
+    override val description: String = "Ask the user to pick from a fixed set of choices."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+      discovery = DiscoverySpec(keywords = Set("bench", "respond", "options"))
+    )
     override def executeResult(input: BaselineRespondOptionsInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }

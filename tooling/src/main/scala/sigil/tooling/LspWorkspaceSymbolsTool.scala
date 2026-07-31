@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tooling.types.{LspPosition, LspWorkspaceSymbol}
 
 case class LspWorkspaceSymbolsInput(languageId: String,
@@ -17,14 +17,14 @@ case class LspWorkspaceSymbolsInput(languageId: String,
  * into the agent's context, bounded by `maxResults`.
  */
 final class LspWorkspaceSymbolsTool(val manager: LspManager)
-    extends Tool with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+    extends Tool with LspToolSupport {
   type Input  = LspWorkspaceSymbolsInput
   type Output = TextToolOutput
   val inputRW  = summon[RW[LspWorkspaceSymbolsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("lsp_workspace_symbols")
-  val description =
+  override val name = ToolName("lsp_workspace_symbols")
+  override val description =
     """Search for symbols by name across the workspace.
       |
       |`languageId` selects the persisted LspServerConfig.
@@ -34,12 +34,20 @@ final class LspWorkspaceSymbolsTool(val manager: LspManager)
       |
       |Returns one line per hit: `kind name (container) — uri`.""".stripMargin
 
-  override val keywords: Set[String] = Set(
-    "lsp", "workspace", "symbols", "symbol", "find symbol", "search",
-    "class", "method", "function", "definition", "signature", "structure",
-    "examine", "inspect", "analyze", "explore", "browse", "lookup",
-    "code", "codebase", "semantic", "index", "catalog",
-    "scala", "language", "navigate", "project"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "lsp", "workspace", "symbols", "symbol", "find symbol", "search",
+        "class", "method", "function", "definition", "signature", "structure",
+        "examine", "inspect", "analyze", "explore", "browse", "lookup",
+        "code", "codebase", "semantic", "index", "catalog",
+        "scala", "language", "navigate", "project"
+      ),
+      toolchain = Some("lsp")
+    )
   )
 
   override def executeResult(input: LspWorkspaceSymbolsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =

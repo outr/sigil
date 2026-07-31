@@ -3,11 +3,10 @@ package spec
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import lightdb.id.Id
 import rapid.Task
 import sigil.{GlobalSpace, TurnContext}
 import sigil.provider.{ConversationMode, Mode}
-import sigil.tool.{DiscoveryFilter, DiscoveryRequest, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoveryFilter, DiscoveryRequest, DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 
 /**
@@ -35,9 +34,14 @@ class DiscoveryFilterModeAffinitySpec extends AnyWordSpec with Matchers {
     type Output = TextToolOutput
     val inputRW  = summon[RW[StubInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName(n)
-    val description = s"Stub $n"
-    override val modes: Set[Id[Mode]] = Set.empty
+    override val name = ToolName.parse(n).fold(sys.error, identity)
+    override val description = s"Stub $n"
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", n))
+    )
 
     override def executeResult(input: StubInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.text)))
@@ -50,9 +54,14 @@ class DiscoveryFilterModeAffinitySpec extends AnyWordSpec with Matchers {
     type Output = TextToolOutput
     val inputRW  = summon[RW[StubInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName(n)
-    val description = s"Stub $n"
-    override val modes: Set[Id[Mode]] = Set(restrictTo.id)
+    override val name = ToolName.parse(n).fold(sys.error, identity)
+    override val description = s"Stub $n"
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", n), modes = Set(restrictTo.id))
+    )
 
     override def executeResult(input: StubInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.text)))

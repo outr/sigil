@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{Conversation, ConversationView, DiscoveredCapability, TopicEntry, TurnInput}
 import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions, ProviderCall}
-import sigil.tool.{Tool, ToolContext, ToolInput, ToolName, TextToolOutput}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.discovery.CapabilityType
 
 import java.util.concurrent.atomic.AtomicReference
@@ -44,8 +44,14 @@ class PromptToolsConsistencySpec extends AsyncWordSpec with AsyncTaskSpec with M
     type Output = TextToolOutput
     val inputRW  = summon[fabric.rw.RW[StubInput]]
     val outputRW = summon[fabric.rw.RW[TextToolOutput]]
-    val name = ToolName(n)
-    val description = s"stub tool $n"
+    override val name = ToolName.parse(n).fold(sys.error, identity)
+    override val description = s"stub tool $n"
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", n))
+    )
     override def executeOutput(input: StubInput, context: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(s"$n ran"))
   }

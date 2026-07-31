@@ -33,9 +33,17 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
     type Output = TextToolOutput
     val inputRW                                       = summon[RW[RecordConsentInput]]
     val outputRW                                      = summon[RW[TextToolOutput]]
-    val name                                          = sigil.tool.ToolName("load_claude_state")
-    val description                                   = "Stub consent-gated tool — for RecordConsentValidationSpec."
-    override def requiresUserConsent: Boolean         = true
+    override val name = sigil.tool.ToolName("load_claude_state")
+    override val description = "Stub consent-gated tool — for RecordConsentValidationSpec."
+    val spec: sigil.tool.ToolSpec = sigil.tool.ToolSpec(
+      name = name,
+      description = description,
+      profile = sigil.tool.ToolProfile(
+        effect = sigil.tool.Effect.Mutating(sigil.tool.MutationTargeting.none),
+        gates = sigil.tool.ToolGates(consent = Some(sigil.tool.ConsentSpec("Allow this test tool to run?")))
+      ),
+      discovery = sigil.tool.DiscoverySpec(keywords = Set("test", "consent"))
+    )
     override def executeResult(input: RecordConsentInput, ctx: sigil.tool.ToolContext) =
       Task.pure(sigil.tool.ToolResult.success(TextToolOutput("")))
   }
@@ -47,8 +55,14 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
     type Output = TextToolOutput
     val inputRW                                       = summon[RW[RecordConsentInput]]
     val outputRW                                      = summon[RW[TextToolOutput]]
-    val name                                          = sigil.tool.ToolName("read_file")
-    val description                                   = "Stub tool that doesn't need consent."
+    override val name = sigil.tool.ToolName("read_file")
+    override val description = "Stub tool that doesn't need consent."
+    val spec: sigil.tool.ToolSpec = sigil.tool.ToolSpec(
+      name = name,
+      description = description,
+      profile = sigil.tool.ToolProfile(effect = sigil.tool.Effect.Mutating(sigil.tool.MutationTargeting.none)),
+      discovery = sigil.tool.DiscoverySpec(keywords = Set("test", "consent"))
+    )
     override def executeResult(input: RecordConsentInput, ctx: sigil.tool.ToolContext) =
       Task.pure(sigil.tool.ToolResult.success(TextToolOutput("")))
   }

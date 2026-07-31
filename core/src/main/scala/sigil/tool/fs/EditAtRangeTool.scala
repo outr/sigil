@@ -7,7 +7,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.storage.{FileVersion, WriteResult}
 import sigil.tool.model.{EditAtRangeInput, EditAtRangeOutput}
-import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Position-based file edit. Replaces the half-open range
@@ -24,15 +24,13 @@ import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolRe
  * `expectedHash` enables safe-edit: the commit fires only if no
  * other writer has modified the file since the hash was issued.
  */
-final class EditAtRangeTool(context: FileSystemContext)
-  extends Tool with sigil.tool.DestructiveExternalTool {
+final class EditAtRangeTool(context: FileSystemContext) extends Tool {
   type Input  = EditAtRangeInput
   type Output = EditAtRangeOutput
   val inputRW  = summon[RW[EditAtRangeInput]]
   val outputRW = summon[RW[EditAtRangeOutput]]
-  val name = ToolName("edit_at_range")
-  override def mutationTarget(input: EditAtRangeInput): Option[String] = Some(input.path)
-  val description =
+  override val name = ToolName("edit_at_range")
+  override val description =
     """Replace a range of text in a file with new content. The range is specified by
       |(startLine, startChar) and (endLine, endChar) — both 0-indexed, both half-open
       |([start, end)). Position-based edits sidestep the whitespace / line-ending
@@ -52,6 +50,20 @@ final class EditAtRangeTool(context: FileSystemContext)
       |    Pure-insert by setting end == start.
       |
       |Output: `Success(hash?, lineDelta, byteDelta)`.""".stripMargin
+  // #400 — keep the POSITION-specific verbs only. The sweep verbs
+  // (`rewrite`/`patch`/`refactor`/`modify`) floated this point-in-time tool
+  // above the text-anchored `edit_file` for broad-edit intents it's wrong for.
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(
+      effect = Effect.Destructive(
+        target = MutationTargeting.typed[EditAtRangeInput](i => Some(MutationTarget(i.path))),
+        consequence = "DESTRUCTIVE."
+      )
+    ),
+    discovery = DiscoverySpec(keywords = Set("file", "edit", "range", "position", "line", "column", "replace"))
+  )
   override val examples = List(
     ToolExample(
       "Replace a single line",
@@ -69,12 +81,6 @@ final class EditAtRangeTool(context: FileSystemContext)
         newText = "")
     )
   )
-  // #400 — keep the POSITION-specific verbs only. The sweep verbs
-  // (`rewrite`/`patch`/`refactor`/`modify`) floated this point-in-time tool
-  // above the text-anchored `edit_file` for broad-edit intents it's wrong for.
-  override val keywords =
-    Set("file", "edit", "range", "position", "line", "column", "replace")
-
 
   override def executeResult(input: EditAtRangeInput, ctx: ToolContext): Task[ToolResult[EditAtRangeOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {

@@ -5,7 +5,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.{GlobalSpace, SpaceId}
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.{WorkflowStepKind, WorkflowStepSpec, WorkflowTemplate, WorkflowTrigger}
 
 case class CreateWorkflowInput(name: String,
@@ -32,8 +32,8 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
   type Output = TextToolOutput
   val inputRW = summon[RW[CreateWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("create_workflow")
-  val description =
+  override val name = ToolName("create_workflow")
+  override val description =
     """Create a new workflow template.
       |
       |`name` is the template's identifier. `steps` is a flat list of steps; each step has a
@@ -70,7 +70,12 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
       )
     )
   )
-  override val keywords = Set("workflow", "create", "compose", "automation")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("workflow", "create", "compose", "automation"))
+  )
 
   override def executeResult(input: CreateWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     WorkflowStepSpec.lower(input.steps, input.variableDefs.map(_.name).toSet) match {

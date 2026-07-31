@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspHover, LspHoverResult}
 
 case class LspHoverInput(languageId: String,
@@ -24,21 +24,28 @@ case class LspHoverInput(languageId: String,
  * no hover info at that position.
  */
 final class LspHoverTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspHoverInput
   type Output = LspHoverResult
   val inputRW  = summon[RW[LspHoverInput]]
   val outputRW = summon[RW[LspHoverResult]]
 
-  val name = ToolName("lsp_hover")
-  val description =
+  override val name = ToolName("lsp_hover")
+  override val description =
     """Get type signature + documentation at a source position.
       |
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at any character inside the symbol.
       |Returns `Option[{contents, kind, range?}]` — `None` if the server has no hover info there.""".stripMargin
-  override val keywords = Set("lsp", "hover", "type", "type info", "info", "what is", "signature", "docs", "documentation", "explain")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "hover", "type", "type info", "info", "what is", "signature", "docs", "documentation", "explain"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspHoverInput, context: ToolContext): Task[LspHoverResult] =
     withOpenDocumentOrThrow[LspHoverResult](

@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DapStepOutInput(sessionId: String, threadId: Int) extends ToolInput derives RW
 
@@ -17,12 +17,18 @@ final class DapStepOutTool(val manager: DapManager) extends Tool with DapToolSup
   type Output = TextToolOutput
   val inputRW = summon[RW[DapStepOutInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("dap_step_out")
-  val description =
+  override val name = ToolName("dap_step_out")
+  override val description =
     """Run to the end of the current frame and stop in the caller.
       |
       |`sessionId` selects the active session.
       |`threadId` is the thread to step.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "step", "out", "return", "caller"))
+  )
   override val examples = List(
     ToolExample(
       "step out of the current method",

@@ -5,7 +5,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
 case class ListTriggersInput(workflowId: String) extends ToolInput derives RW
@@ -21,15 +21,20 @@ final class ListTriggersTool extends Tool with WorkflowToolSupport {
   type Output = TextToolOutput
   val inputRW  = summon[RW[ListTriggersInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("list_triggers")
-  val description =
+  override val name = ToolName("list_triggers")
+  override val description =
     """List the triggers registered on a workflow template.
       |
       |`workflowId` is the template id. Returns each trigger's index, kind, and typed
       |field values — useful before unregistering a trigger by index, or when reviewing
       |what events fire a workflow.""".stripMargin
   override val examples = List(ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc")))
-  override val keywords = Set("workflow", "trigger", "list")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("workflow", "trigger", "list"))
+  )
 
   override def executeResult(input: ListTriggersInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)

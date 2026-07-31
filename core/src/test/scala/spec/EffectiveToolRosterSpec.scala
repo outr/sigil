@@ -15,7 +15,7 @@ import sigil.provider.{
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.Signal
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult, WireCall}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec, WireCall}
 import spice.http.HttpRequest
 
 /**
@@ -38,8 +38,14 @@ class EffectiveToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     type Output = ReadFileOutput
     val inputRW  = summon[RW[ReadFileInput]]
     val outputRW = summon[RW[ReadFileOutput]]
-    val name        = ToolName("read_file")
-    val description = "Read a file by path."
+    override val name        = ToolName("read_file")
+    override val description = "Read a file by path."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "read_file"))
+    )
     override def executeResult(input: ReadFileInput, context: ToolContext): Task[ToolResult[ReadFileOutput]] =
       Task.pure(ToolResult.Success(ReadFileOutput(s"contents of ${input.path}")))
   }

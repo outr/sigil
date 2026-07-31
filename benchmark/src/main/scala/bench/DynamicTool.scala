@@ -5,7 +5,7 @@ import fabric.define.{DefType, Definition}
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Tool input that carries arbitrary JSON args without a compile-time
@@ -37,9 +37,15 @@ case class DynamicTool(toolName: String,
   val inputRW: RW[DynamicToolInput] = summon[RW[DynamicToolInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName(toolName)
-  val description: String = toolDescription
+  override val name: ToolName = ToolName.parse(toolName).fold(sys.error, identity)
+  override val description: String = toolDescription
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("bench", toolName))
+  )
 
   /** Override the schema's input definition with the hand-built one
     * (the LLM sees the bench-supplied schema; the parser returns raw

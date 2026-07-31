@@ -57,8 +57,14 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     val inputRW  = summon[RW[SearchInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("recent_search_tool")
-    val description = "Synthetic search tool used by RecentToolInvocationsSpec."
+    override val name        = ToolName("recent_search_tool")
+    override val description = "Synthetic search tool used by RecentToolInvocationsSpec."
+    val spec: sigil.tool.ToolSpec = sigil.tool.ToolSpec(
+      name = name,
+      description = description,
+      profile = sigil.tool.ToolProfile(effect = sigil.tool.Effect.Mutating(sigil.tool.MutationTargeting.none)),
+      discovery = sigil.tool.DiscoverySpec(keywords = Set("test", "search"))
+    )
 
     override def executeOutput(input: SearchInput, ctx: ToolContext): Task[TextToolOutput] = Task {
       searchInvocations.incrementAndGet()
@@ -93,7 +99,7 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val now = Timestamp()
       val twentyFive = (1 to 25).toList.map { i =>
         RecentToolInvocation(
-          toolName    = ToolName(s"tool_$i"),
+          toolName    = ToolName.parse(s"tool_$i").fold(sys.error, identity),
           argsHash    = s"hash_$i",
           argsPreview = s"{\"n\":$i}",
           invokedAt   = Timestamp(now.value + i)
@@ -260,7 +266,7 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val secondTarget = RecentToolInvocation(SearchTool.name, targetHash, targetPreview, Timestamp(now))
       val distinctNoise = (1 to TestSigil.recentToolInvocationsLimit).toList.reverse.map { i =>
         RecentToolInvocation(
-          ToolName(s"noise_tool_$i"),
+          ToolName.parse(s"noise_tool_$i").fold(sys.error, identity),
           s"noise_hash_$i",
           s"{\"n\":$i}",
           Timestamp(now - 1_000L * i)

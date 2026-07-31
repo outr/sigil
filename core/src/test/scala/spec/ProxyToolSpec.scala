@@ -10,7 +10,7 @@ import sigil.TurnContext
 import sigil.conversation.Conversation
 import sigil.event.ToolOutcome
 import sigil.signal.ToolDelta
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.tool.proxy.{ProxyTool, ToolProxyTransport}
 
@@ -38,8 +38,14 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     val inputRW  = summon[RW[FakeToolInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("fake_tool")
-    val description = "Fake tool for proxy tests"
+    override val name        = ToolName("fake_tool")
+    override val description = "Fake tool for proxy tests"
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "fake"))
+    )
     override val examples: List[ToolExample] = List(
       ToolExample("doubles its input", FakeToolInput(value = 5))
     )
@@ -49,14 +55,17 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
 
   "ProxyTool" should {
-    "preserve the wrapped tool's name, description, and schema" in rapid.Task {
+    "preserve the wrapped tool's spec, name, description, and schema" in rapid.Task {
       val transport = new RecordingTransport
       val proxy     = new ProxyTool(FakeWrappedTool, transport)
+      proxy.spec shouldBe FakeWrappedTool.spec
       proxy.name shouldBe FakeWrappedTool.name
       proxy.description shouldBe FakeWrappedTool.description
       proxy.schema.input shouldBe FakeWrappedTool.schema.input
       proxy.examples shouldBe FakeWrappedTool.examples
       proxy.modes shouldBe FakeWrappedTool.modes
+      proxy.keywords shouldBe FakeWrappedTool.keywords
+      proxy.kind shouldBe FakeWrappedTool.kind
     }
 
     "route execute through the transport with the input rendered to Json" in {

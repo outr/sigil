@@ -3,7 +3,7 @@ package sigil.tool.random
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.model.{RandomDoubleInput, RandomDoubleOutput}
 
 /**
@@ -17,17 +17,22 @@ case object RandomDoubleTool extends Tool {
   val inputRW  = summon[RW[RandomDoubleInput]]
   val outputRW = summon[RW[RandomDoubleOutput]]
 
-  val name = ToolName("random_double")
-  val description =
+  override val name = ToolName("random_double")
+  override val description =
     """Generate a uniformly random double in `[min, max)` — half-open (max exclusive).
       |
       |Defaults to the unit interval `[0.0, 1.0)`. Optional `seed` for reproducibility.
       |Returns `{value, min, max, seed}`.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(keywords = Set("random", "rand", "double", "float", "decimal", "number", "rng"))
+  )
   override val examples = List(
     ToolExample("unit-interval draw", RandomDoubleInput()),
     ToolExample("ranged seeded draw", RandomDoubleInput(min = -1.0, max = 1.0, seed = Some(7L)))
   )
-  override val keywords = Set("random", "rand", "double", "float", "decimal", "number", "rng")
 
   override def executeOutput(input: RandomDoubleInput, context: ToolContext): Task[RandomDoubleOutput] = Task {
     require(input.min < input.max, s"random_double: min (${input.min}) must be < max (${input.max})")

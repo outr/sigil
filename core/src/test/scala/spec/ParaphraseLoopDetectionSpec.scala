@@ -40,7 +40,7 @@ class ParaphraseLoopDetectionSpec extends AnyWordSpec with Matchers {
 
   private def toolCall(name: String): ContextFrame.ToolCall =
     ContextFrame.ToolCall(
-      toolName      = sigil.tool.ToolName(name),
+      toolName      = sigil.tool.ToolName.parse(name).fold(sys.error, identity),
       argsJson      = "{}",
       callId        = Id[Event](rapid.Unique()),
       participantId = agent,

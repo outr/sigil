@@ -5,7 +5,7 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolGates, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Pin a previously-saved memory so it starts rendering every turn.
@@ -30,8 +30,8 @@ case object PinMemoryTool extends Tool {
   val inputRW: RW[PinMemoryInput]  = summon[RW[PinMemoryInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("pin_memory")
-  val description: String =
+  override val name: ToolName = ToolName("pin_memory")
+  override val description: String =
     """Pin a previously-saved memory so it renders every turn — useful when an existing fact
       |turns out to be a hard rule the agent should always follow ("from now on, always do X
       |whenever Y").
@@ -40,10 +40,16 @@ case object PinMemoryTool extends Tool {
       |- `space` — optional disambiguator when the same key exists in multiple accessible spaces.
       |
       |Reversible via `unpin_memory(key)`.""".stripMargin
-  override val keywords: Set[String] = Set("pin", "promote", "memory", "directive", "always", "permanent")
 
-  override def resultTtl: Option[Int] = Some(0)
-  override val requiresAccessibleSpaces: Boolean = true
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(
+      effect = Effect.Mutating(MutationTargeting.none),
+      gates = ToolGates(requiresAccessibleSpaces = true)
+    ),
+    discovery = DiscoverySpec(keywords = Set("pin", "promote", "memory", "directive", "always", "permanent"))
+  )
 
   override def executeResult(input: PinMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>

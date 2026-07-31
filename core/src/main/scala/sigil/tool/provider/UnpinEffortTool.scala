@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class UnpinEffortInput() extends ToolInput derives RW
 
@@ -18,11 +18,16 @@ case object UnpinEffortTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[UnpinEffortInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("unpin_effort")
-  val description =
+  override val name = ToolName("unpin_effort")
+  override val description =
     """Clear the conversation's pinned reasoning effort. The agent turn reverts to the resolved
       |model's own generation settings. No-op when nothing was pinned.""".stripMargin
-  override val keywords = Set("unpin", "unlock", "clear", "auto", "default", "effort", "reasoning", "thinking")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("unpin", "unlock", "clear", "auto", "default", "effort", "reasoning", "thinking"))
+  )
 
   override def executeResult(input: UnpinEffortInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

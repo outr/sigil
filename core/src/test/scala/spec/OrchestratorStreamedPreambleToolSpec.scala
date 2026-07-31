@@ -14,7 +14,7 @@ import sigil.provider.{
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import spice.http.HttpRequest
 
 /**
@@ -110,8 +110,14 @@ case object StreamProbeTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[StreamProbeInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("stream_probe")
-  val description = "Test probe — returns a distinctive marker proving it executed."
+  override val name = ToolName("stream_probe")
+  override val description = "Test probe — returns a distinctive marker proving it executed."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("test", "probe", "stream"))
+  )
   override def executeResult(input: StreamProbeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.Success(TextToolOutput(Marker)))
 }

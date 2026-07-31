@@ -1,7 +1,7 @@
 package spec
 
 import rapid.Task
-import sigil.tool.{TextToolOutput, ToolContext, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, ToolContext, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.util.concurrent.TimeUnit
 
@@ -10,9 +10,14 @@ import java.util.concurrent.TimeUnit
   * the observed field behavior of a sweep that grinds to completion
   * after the user stopped the agent. The invoke must STILL end settled. */
 case object SlowStubbornTool extends SlowStopToolBase {
-  val name = ToolName("slow_stubborn")
-  val description = "Test-only slow batch tool that ignores Stop and runs to completion."
-  override val keywords: Set[String] = Set("slow", "stubborn", "test")
+  override val name = ToolName("slow_stubborn")
+  override val description = "Test-only slow batch tool that ignores Stop and runs to completion."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("slow", "stubborn", "test"))
+  )
 
   override def executeResult(input: SlowStopInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task {

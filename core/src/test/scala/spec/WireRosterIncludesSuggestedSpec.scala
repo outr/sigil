@@ -14,7 +14,7 @@ import sigil.provider.{
   ProviderEvent, ProviderType, StopReason, ToolPolicy
 }
 import sigil.signal.{EventState, Signal}
-import sigil.tool.{InMemoryToolFinder, TextToolOutput, Tool, ToolContext, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.core.{ChangeModeTool, CoreTools, FindCapabilityTool, RecordConsentTool, RespondOptionsTool, RespondTool}
 import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
 import sigil.tool.model.ResponseContent
@@ -96,8 +96,8 @@ class WireRosterIncludesSuggestedSpec extends AsyncWordSpec with AsyncTaskSpec w
     type Output = TextToolOutput
     val inputRW  = summon[RW[StubInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName(n)
-    val description =
+    override val name = ToolName.parse(n).fold(sys.error, identity)
+    override val description =
       s"Tool $n with a deliberately verbose description to simulate the per-tool token cost of " +
         "real LSP/BSP/Metals tools in production. Each tool contributes roughly 60-80 tokens of " +
         "schema (name, description, parameter envelope). With 30+ such tools in the wire roster, " +
@@ -105,6 +105,12 @@ class WireRosterIncludesSuggestedSpec extends AsyncWordSpec with AsyncTaskSpec w
         "configuration the emergency-shed path was designed to address. The fix under test " +
         "must preserve the agent's discovered tools (grep, dispatch_workers) while shedding the " +
         "unused bulk."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", n))
+    )
     override def executeOutput(input: StubInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput("ok"))
   }

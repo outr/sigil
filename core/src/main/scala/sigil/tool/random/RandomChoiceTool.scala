@@ -3,7 +3,7 @@ package sigil.tool.random
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.model.{RandomChoiceInput, RandomChoiceOutput}
 
 /**
@@ -17,13 +17,19 @@ case object RandomChoiceTool extends Tool {
   val inputRW  = summon[RW[RandomChoiceInput]]
   val outputRW = summon[RW[RandomChoiceOutput]]
 
-  val name = ToolName("random_choice")
-  val description =
+  override val name = ToolName("random_choice")
+  override val description =
     """Pick one element uniformly at random from `items`.
       |
       |`items` must be non-empty. Optional `seed` for reproducibility.
       |Returns `{chosen, index, itemCount, seed}` — `index` lets the caller
       |correlate the pick with parallel arrays / lookup tables.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(keywords = Set("random", "choose", "pick", "select", "sample", "choice"))
+  )
   override val examples = List(
     ToolExample("pick a color", RandomChoiceInput(items = List("red", "green", "blue"))),
     ToolExample(
@@ -31,7 +37,6 @@ case object RandomChoiceTool extends Tool {
       RandomChoiceInput(items = List("alice", "bob", "carol"), seed = Some(99L))
     )
   )
-  override val keywords = Set("random", "choose", "pick", "select", "sample", "choice")
 
   override def executeOutput(input: RandomChoiceInput, context: ToolContext): Task[RandomChoiceOutput] = Task {
     require(input.items.nonEmpty, "random_choice: `items` must be non-empty")

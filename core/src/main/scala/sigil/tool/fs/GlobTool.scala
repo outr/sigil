@@ -12,38 +12,45 @@ import sigil.tool.*
  * files a genuinely large listing). To search within the listing,
  * grep the paths it returned.
  */
-final class GlobTool(context: FileSystemContext) extends Tool with sigil.tool.ReadOnlyExternalTool {
+final class GlobTool(context: FileSystemContext) extends Tool {
   type Input = GlobInput
   type Output = TextToolOutput
   override val examples: List[ToolExample] = List(
     ToolExample("Scala sources under src", GlobInput(basePath = "src", pattern = "**/*.scala")),
     ToolExample("Top-level docs", GlobInput(basePath = ".", pattern = "*.md"))
   )
-  override val keywords: Set[String] = Set(
-    "glob",
-    "find",
-    "list",
-    "files",
-    "pattern",
-    "directory",
-    "tree",
-    "match",
-    "wildcard",
-    "path",
-    "discover",
-    "ls",
-    "look",
-    "browse",
-    "enumerate"
-  )
   val inputRW = summon[RW[GlobInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("glob")
-  val description =
+  override val name = ToolName("glob")
+  override val description =
     "List files under a directory matching a glob pattern (e.g. '**/*.scala'). Returns the matching " +
       "paths, one per line, bounded by `maxResults`."
 
-  override def preferIfNoBetter: Boolean = true
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "glob",
+        "find",
+        "list",
+        "files",
+        "pattern",
+        "directory",
+        "tree",
+        "match",
+        "wildcard",
+        "path",
+        "discover",
+        "ls",
+        "look",
+        "browse",
+        "enumerate"
+      ),
+      preferIfNoBetter = true
+    )
+  )
 
   override def executeResult(input: GlobInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("basePath" -> input.basePath) match {

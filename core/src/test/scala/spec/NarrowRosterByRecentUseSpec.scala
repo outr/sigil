@@ -14,7 +14,7 @@ import sigil.provider.{
   ProviderEvent, ProviderType, StopReason, ToolPolicy
 }
 import sigil.signal.EventState
-import sigil.tool.{InMemoryToolFinder, TextToolOutput, Tool, ToolContext, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.core.{CoreTools, FindCapabilityTool, RespondOptionsTool, RespondTool}
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
@@ -84,8 +84,14 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
     type Output = TextToolOutput
     val inputRW  = summon[RW[NarrowingStubInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName(n)
-    val description = s"Synthetic tool $n."
+    override val name = ToolName.parse(n).fold(sys.error, identity)
+    override val description = s"Synthetic tool $n."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", n))
+    )
     override def executeOutput(input: NarrowingStubInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput("ok"))
   }

@@ -3,7 +3,7 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.io.File
 import java.net.URLClassLoader
@@ -16,8 +16,8 @@ case object LibraryLookupTool extends Tool {
   val inputRW  = summon[RW[LibraryLookupInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("library_lookup")
-  val description =
+  override val name = ToolName("library_lookup")
+  override val description =
     """Fuzzy-resolve an unqualified class name or method reference to its fully-qualified
       |form(s) on the executor's classpath. Use this BEFORE writing code that touches an API
       |you're unsure about — one round-trip beats one failed compile.
@@ -28,8 +28,15 @@ case object LibraryLookupTool extends Tool {
       |
       |Returns up to 25 candidates. After picking the right one, call `class_signatures(fqn)`
       |for the full method/field surface.""".stripMargin
-  override val modes = Set(ScriptAuthoringMode.id)
-  override val keywords = Set("lookup", "find", "symbol", "class", "method", "fqn", "library", "api")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("lookup", "find", "symbol", "class", "method", "fqn", "library", "api"),
+      modes = Set(ScriptAuthoringMode.id)
+    )
+  )
 
   private val MaxCandidates = 25
 

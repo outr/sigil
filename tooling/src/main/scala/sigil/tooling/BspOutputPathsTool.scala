@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspOutputPathItem, BspOutputPathsResult, BspTargetOutputPaths}
 
 import scala.jdk.CollectionConverters.*
@@ -18,20 +18,27 @@ case class BspOutputPathsInput(projectRoot: String,
  * or jar output.
  */
 final class BspOutputPathsTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  with BspToolSupport {
   type Input  = BspOutputPathsInput
   type Output = BspOutputPathsResult
   val inputRW  = summon[RW[BspOutputPathsInput]]
   val outputRW = summon[RW[BspOutputPathsResult]]
 
-  val name = ToolName("bsp_output_paths")
-  val description =
+  override val name = ToolName("bsp_output_paths")
+  override val description =
     """List build output directories / jars for the given targets.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
-  override val keywords = Set("bsp", "output", "output paths", "classpath", "build output")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("bsp", "output", "output paths", "classpath", "build output"),
+      toolchain = Some("bsp")
+    )
+  )
 
   override def executeOutput(input: BspOutputPathsInput,
                              context: ToolContext): Task[BspOutputPathsResult] =

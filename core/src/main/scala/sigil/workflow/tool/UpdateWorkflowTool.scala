@@ -5,7 +5,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.{WorkflowStepSpec, WorkflowTemplate, WorkflowTrigger}
 
 case class UpdateWorkflowInput(workflowId: String,
@@ -33,8 +33,8 @@ final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
   type Output = TextToolOutput
   val inputRW = summon[RW[UpdateWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("update_workflow")
-  val description =
+  override val name = ToolName("update_workflow")
+  override val description =
     """Update a workflow template's fields. Only set fields are overwritten.
       |
       |Useful for incremental editing — e.g. add a step without resending the full step list.
@@ -46,7 +46,12 @@ final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
       UpdateWorkflowInput(workflowId = "wf-abc", enabled = Some(false))
     )
   )
-  override val keywords = Set("workflow", "update", "edit", "modify")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("workflow", "update", "edit", "modify"))
+  )
 
   override def executeResult(input: UpdateWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val knownVariables = input.variableDefs.getOrElse(Nil).map(_.name).toSet

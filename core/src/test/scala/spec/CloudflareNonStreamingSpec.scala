@@ -11,7 +11,7 @@ import sigil.provider.{
   GenerationSettings, ProviderCall, ProviderEvent, StopReason, ToolChoice
 }
 import sigil.provider.wire.OpenAIChatCompletions
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import spec.CloudflareNonStreamingSpec.*
 import sigil.tool.ToolRoster
@@ -115,8 +115,14 @@ object CloudflareNonStreamingSpec {
     type Output = TextToolOutput
     val inputRW  = summon[RW[ListFilesInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName("list_files")
-    val description = "List the project files."
+    override val name = ToolName("list_files")
+    override val description = "List the project files."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "list", "files"))
+    )
     override def executeResult(input: ListFilesInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }

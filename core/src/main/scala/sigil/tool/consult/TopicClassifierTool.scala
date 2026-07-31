@@ -5,7 +5,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{ClassificationWork, GenerationSettings, OutputTokenCap, ReasoningMode, WorkType}
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal-only tool used by [[sigil.Sigil.classifyTopicShift]] to drive
@@ -19,14 +19,20 @@ class TopicClassifierTool(priorLabels: List[String]) extends Tool with Framework
   val inputRW: RW[TopicClassifierInput] = summon[RW[TopicClassifierInput]]
   val outputRW: RW[TextToolOutput]      = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("classify_topic_shift")
-  val description: String =
+  override val name: ToolName = ToolName("classify_topic_shift")
+  override val description: String =
     """Classify the proposed topic relative to the current and prior topics. Pick exactly one:
       |  - "NoChange" — same subject as the Current topic; nothing to relabel.
       |  - "Refine"   — same subject as Current, but a sharper / more specific label.
       |  - <prior label> — same subject as one of the prior topics; the user is returning.
       |  - "New"      — a subject genuinely different from Current and all priors.""".stripMargin
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(kind = ConsultKind)
+  )
 
   /** Categorical decision — routes through the cheap classification tier. */
   override def consultWorkType: WorkType = ClassificationWork

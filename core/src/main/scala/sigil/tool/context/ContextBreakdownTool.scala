@@ -6,7 +6,7 @@ import sigil.tool.ToolContext
 import sigil.conversation.{ContextFrame, ContextMemory}
 import sigil.tokenize.HeuristicTokenizer
 import sigil.tool.model.{ContextBreakdownOutput, ContextSectionBreakdown, ContextSectionKind}
-import sigil.tool.{Tool, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Returns a breakdown of how the current turn's context is being
@@ -26,17 +26,21 @@ case object ContextBreakdownTool extends Tool {
   type Output = ContextBreakdownOutput
   val inputRW  = summon[RW[ContextBreakdownInput]]
   val outputRW = summon[RW[ContextBreakdownOutput]]
-  val name = ToolName("context_breakdown")
-  val description =
+  override val name = ToolName("context_breakdown")
+  override val description =
     """Return a section-by-section breakdown of where your context window is being spent
       |this turn — frames, critical memories, retrieved memories, active skills, etc.
       |Use this when the user asks "what's in your context?" / "why is my context full?".
       |
       |For details on specific pinned items, use the memory-listing and memory-unpinning
       |tools available in this conversation.""".stripMargin
-  override val keywords = Set("context", "breakdown", "tokens", "usage", "share", "where", "why")
 
-  override def resultTtl: Option[Int] = Some(0)
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(keywords = Set("context", "breakdown", "tokens", "usage", "share", "where", "why"))
+  )
 
   override def executeOutput(input: ContextBreakdownInput, context: ToolContext): Task[ContextBreakdownOutput] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>

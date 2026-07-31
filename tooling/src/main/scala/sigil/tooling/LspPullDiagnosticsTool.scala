@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 import scala.jdk.CollectionConverters.*
@@ -27,15 +27,15 @@ case class LspPullDiagnosticsInput(languageId: String,
  * Emits a typed [[LspDiagnosticsResult]].
  */
 final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspPullDiagnosticsInput
   type Output = LspDiagnosticsResult
   val inputRW  = summon[RW[LspPullDiagnosticsInput]]
   val outputRW = summon[RW[LspDiagnosticsResult]]
 
-  val name = ToolName("lsp_pull_diagnostics")
+  override val name = ToolName("lsp_pull_diagnostics")
   override def verification: Boolean = true
-  val description =
+  override val description =
     """Pull diagnostics for a file synchronously (LSP 3.17 pull-model).
       |
       |`languageId` + `filePath` identify the document.
@@ -43,13 +43,20 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
       |diagnostic per line, errors first. A pull answer is authoritative — an empty result genuinely
       |means the file is clean. Servers without pull-model support fall back to a push-snapshot,
       |which is marked as potentially stale.""".stripMargin
-  override val keywords = Set(
-    "lsp", "diagnostics", "errors", "warnings", "problems", "lint",
-    "analyze", "examine", "inspect", "review", "what's broken",
-    "fresh", "sync", "synchronous",
-    "scala", "type", "fix", "code", "language"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "lsp", "diagnostics", "errors", "warnings", "problems", "lint",
+        "analyze", "examine", "inspect", "review", "what's broken",
+        "fresh", "sync", "synchronous",
+        "scala", "type", "fix", "code", "language"
+      ),
+      toolchain = Some("lsp")
+    )
   )
-
 
   override def executeOutput(input: LspPullDiagnosticsInput, context: ToolContext): Task[LspDiagnosticsResult] =
     withOpenDocumentOrThrow[LspDiagnosticsResult](

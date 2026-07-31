@@ -10,7 +10,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.browser.WebBrowserMode
 import sigil.storage.StoredFile
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import scala.collection.mutable
 import scala.jdk.CollectionConverters.*
@@ -32,11 +32,20 @@ final class BrowserTextSearchTool extends Tool {
   val inputRW  = summon[RW[BrowserTextSearchInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("browser_text_search")
-  val description =
+  override val name = ToolName("browser_text_search")
+  override val description =
     """Substring-search the visible text of an HTML file saved earlier (use the `htmlFileId` from `browser_save_html`).
       |Each match returns surrounding context plus the containing element's xpath, so you can pivot to
       |`browser_xpath_query` to extract structure around the hit. Default case-insensitive.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(
+      keywords = Set("browser", "text", "search", "find", "substring", "query"),
+      modes = Set(WebBrowserMode.id)
+    )
+  )
   override val examples = List(
     ToolExample(
       "Find every occurrence of a person's name",
@@ -47,8 +56,6 @@ final class BrowserTextSearchTool extends Tool {
       BrowserTextSearchInput(htmlFileId = "abc123", query = "Section 3.2", contextChars = 200)
     )
   )
-  override val modes = Set(WebBrowserMode.id)
-  override val keywords = Set("browser", "text", "search", "find", "substring", "query")
 
   override def executeResult(input: BrowserTextSearchInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

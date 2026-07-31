@@ -3,7 +3,7 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.lang.reflect.{Constructor, Field, Method, Modifier}
 
@@ -26,8 +26,8 @@ case object ClassSignaturesTool extends Tool {
   val inputRW  = summon[RW[ClassSignaturesInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("class_signatures")
-  val description =
+  override val name = ToolName("class_signatures")
+  override val description =
     """Return the constructors, public methods, and public fields of a known fully-qualified class.
       |Use after `library_lookup` resolves a symbol to its FQN — e.g. lookup `HttpClient` →
       |`spice.http.client.HttpClient`, then `class_signatures("spice.http.client.HttpClient")`
@@ -35,8 +35,15 @@ case object ClassSignaturesTool extends Tool {
       |
       |The trailing `$` for Scala objects is optional. Output is plain text formatted as
       |Scala-style method signatures.""".stripMargin
-  override val modes = Set(ScriptAuthoringMode.id)
-  override val keywords = Set("class", "signature", "method", "introspect", "lookup", "api")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("class", "signature", "method", "introspect", "lookup", "api"),
+      modes = Set(ScriptAuthoringMode.id)
+    )
+  )
 
   override def executeResult(input: ClassSignaturesInput,
                              context: ToolContext): Task[ToolResult[TextToolOutput]] = Task {

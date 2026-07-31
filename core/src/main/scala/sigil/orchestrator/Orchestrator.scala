@@ -10,11 +10,11 @@ import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, ProviderImage, StopReason, XmlToolCallSanitizer}
 import sigil.storage.StoredFileCategory
 import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ThinkingChunk, ToolDelta, XmlToolCallLeak}
-import sigil.tool.core.{CoreTools, FindCapabilityInput, UnknownTool}
+import sigil.tool.core.{CoreTools, FindCapabilityInput, RespondFamilyTool, UnknownTool}
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent}
 import sigil.tool.ToolName
 import sigil.TurnContext
-import sigil.tool.{DecodeError, DecodedCall, JsonInput, RefusalPayload, Tool, ToolInput, ToolPreconditionResult, ToolRoster, WireCall}
+import sigil.tool.{CachedToolRead, DecodeError, DecodedCall, Freshness, JsonInput, RefusalPayload, Tool, ToolInput, ToolPreconditionResult, ToolRoster, WireCall}
 
 /**
  * Stateless, per-invocation bridge between the provider wire stream and the
@@ -44,14 +44,6 @@ import sigil.tool.{DecodeError, DecodedCall, JsonInput, RefusalPayload, Tool, To
  *   - no multi-turn follow-up (StopReason handling stops the stream)
  */
 object Orchestrator {
-
-  /** Names of the framework's terminal user-visible tools. Completion
-    * of any one of these means the agent "spoke" — i.e. produced
-    * something the user (or the orchestrator's silent-turn detector
-    * in [[Sigil.runAgentLoop]]) recognizes as a closing signal for
-    * the turn. Used for bug #46's silent-completion fallback. */
-  val UserVisibleTerminalTools: Set[String] =
-    Set("respond", "respond_options", "no_response")
 
   /** `Event.source` marker on the Tool-role continuation trigger a
     * detached tool's completion publishes. The agent loop's
@@ -535,11 +527,11 @@ object Orchestrator {
         // consistent across the call's lifecycle (Active invoke,
         // Complete settle). The flag isn't load-bearing for any
         // framework-internal logic — it's a hint for client UIs.
-        val isInternal = Orchestrator.UserVisibleTerminalTools.contains(active.toolName)
+        val isInternal = RespondFamilyTool.containsRaw(active.toolName)
         // Sigil bug #204 — emit the deferred ToolInvoke NOW with
         // parsed `input` populated, then the settle delta.
         val deferredInvoke: ToolInvoke = ToolInvoke(
-          toolName       = ToolName(active.toolName),
+          toolName       = ToolName.internal(active.toolName),
           participantId  = caller,
           conversationId = convId,
           topicId        = topicId,
@@ -730,8 +722,7 @@ object Orchestrator {
               // identical-call cap below (which targets REPEATED calls).
               val perResponseCap = sigil.maxToolCallsPerResponse
               val isEssentialTool =
-                Orchestrator.UserVisibleTerminalTools.contains(toolName) ||
-                  toolName == "no_response" || toolName == "stop"
+                RespondFamilyTool.containsRaw(toolName) || toolName == "stop"
               if (perResponseCap > 0 && !isEssentialTool) {
                 if (state.dispatchedActionCount >= perResponseCap) {
                   val body =
@@ -996,20 +987,19 @@ object Orchestrator {
               // Tool-role Failure Message so the agent loop re-triggers
               // and self-corrects instead of aborting.
               val tool: Tool = dispatch.tool
-              // Sigil #411 — turn-scoped read dedup across iterations/retries.
-              // #87 above dedups identical calls within ONE completion
-              // (`state.dispatchedKeys`); a no-tool-call retry / recoverable
-              // provider-error re-iterate re-runs the model in a FRESH State, so
-              // an identical READ would re-execute — a real latency/quota tax on
-              // side-effecting reads (an on-prem RPC, a paid web search). If this
-              // exact (tool, args) key already produced a result THIS turn and
-              // the tool is side-effect-free (`readOnly`), serve the cached
-              // content — exactly like #87's within-completion dupe (inline the
-              // content, no prose directive per #189) — instead of re-running.
-              // WRITES always fall through so a retry can never double-submit;
-              // the prompt-level duplicate detector still teaches the model to
-              // stop re-issuing.
-              if (tool.readOnly) {
+              // Turn-scoped read dedup across iterations/retries, derived
+              // from the tool's declared read Freshness. The within-
+              // completion dedupe above (`state.dispatchedKeys`) covers ONE
+              // completion; a no-tool-call retry / recoverable provider-error
+              // re-iterate re-runs the model in a FRESH State, so an
+              // identical READ would re-execute — a real latency/quota tax
+              // on side-effecting reads (an on-prem RPC, a paid web search).
+              // Pure and Stable reads whose exact (tool, args) key already
+              // produced a result THIS turn are served the cached content;
+              // Volatile reads never cache; writes always fall through so a
+              // retry can never double-submit.
+              val cacheFreshness: Option[Freshness] = tool.freshness.filter(_ != Freshness.Volatile)
+              if (cacheFreshness.isDefined) {
                 request.toolResultCacheRef.get().get(argsKey) match {
                   case Some(cached) =>
                     val cacheMsg = Message(
@@ -1017,7 +1007,7 @@ object Orchestrator {
                       conversationId = convId,
                       topicId        = topicId,
                       role           = MessageRole.Tool,
-                      content        = cached,
+                      content        = cached.content,
                       state          = EventState.Complete,
                       visibility     = MessageVisibility.Agents,
                       origin         = Some(invokeId)
@@ -1028,6 +1018,17 @@ object Orchestrator {
                     ))
                   case None => ()
                 }
+              }
+              // A mutating call invalidates cached Stable reads: entries
+              // whose declared target overlaps the mutation's, and — when
+              // either side declares no target — every Stable entry
+              // (conservative). Pure entries survive any mutation.
+              if (tool.spec.profile.effect.mutates) {
+                val mutTarget = tool.mutationTargetOf(input)
+                request.toolResultCacheRef.updateAndGet(_.filter { case (_, entry) =>
+                  entry.freshness == Freshness.Pure ||
+                    (mutTarget.isDefined && entry.target.isDefined && entry.target != mutTarget)
+                })
               }
               val context = TurnContext(
                 sigil = sigil,
@@ -1063,7 +1064,7 @@ object Orchestrator {
               // (a precondition / consent check in `executeAtomic`) —
               // `tool.execute` itself is total.
               val executed: Stream[Signal] = Stream.force(
-                Task(executeAtomic(tool, input, context, invokeId, currentMessageIdForTool, ToolName(active.toolName))).handleError { err =>
+                Task(executeAtomic(tool, input, context, invokeId, currentMessageIdForTool, ToolName.internal(active.toolName))).handleError { err =>
                   scribe.error(s"Atomic tool '$toolName' threw while building its dispatch", err)
                   Task.pure(Stream.emit[Signal](Message(
                     participantId  = caller,
@@ -1155,14 +1156,18 @@ object Orchestrator {
                       if (rendered.nonEmpty) {
                         val settledContent = Vector(ResponseContent.Text(rendered))
                         state.dispatchedResultContent(invokeId) = settledContent
-                        // Sigil #411 — cache a READ tool's settled result under the
-                        // turn cache so a later iteration's identical call is served
+                        // Cache a cacheable READ's settled result under the turn
+                        // cache so a later iteration's identical call is served
                         // from here instead of re-executing.
-                        if (tool.readOnly) request.toolResultCacheRef.updateAndGet(_ + (argsKey -> settledContent))
+                        cacheFreshness.foreach { f =>
+                          request.toolResultCacheRef.updateAndGet(_ + (argsKey -> CachedToolRead(settledContent, f, None)))
+                        }
                       }
                     case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) =>
                       state.dispatchedResultContent(invokeId) = m.content
-                      if (tool.readOnly) request.toolResultCacheRef.updateAndGet(_ + (argsKey -> m.content)) // Sigil #411
+                      cacheFreshness.foreach { f =>
+                        request.toolResultCacheRef.updateAndGet(_ + (argsKey -> CachedToolRead(m.content, f, None)))
+                      }
                     case _ =>
                   }
                   // `respond` publishes its user-visible Message via
@@ -1790,7 +1795,7 @@ object Orchestrator {
                                        a => s"Tool `${a.toolName}` did not produce a result",
                                      recoverable: Boolean = false): List[Signal] = {
     val signals = state.activeCalls.values.toList.flatMap { active =>
-      val isInternal = Orchestrator.UserVisibleTerminalTools.contains(active.toolName)
+      val isInternal = RespondFamilyTool.containsRaw(active.toolName)
       // Sigil bug #204 — ToolInvoke emission is deferred to
       // `ToolCallComplete` so the normal path can stamp `input`. For
       // active calls that never reached Complete (stream abort,
@@ -1801,7 +1806,7 @@ object Orchestrator {
       // would silently no-op against a non-existent event, and the
       // pairedFailure's `origin` would dangle.
       val synthInvoke: Signal = ToolInvoke(
-        toolName       = ToolName(active.toolName),
+        toolName       = ToolName.internal(active.toolName),
         participantId  = caller,
         conversationId = convId,
         topicId        = topicId,
@@ -2245,10 +2250,11 @@ object Orchestrator {
              |reason="...")` before retrying.""".stripMargin
         Left(refusalSignals(body, context, originatingInvokeId))
       case None =>
+        val question = tool.consentPrompt.map(p => s"""Suggested question: "$p"\n\n""").getOrElse("")
         val body =
           s"""Tool `${tool.name.value}` requires user consent before running.
              |
-             |Ask the user (typically via `respond_options` listing this action), wait for the
+             |${question}Ask the user (typically via `respond_options` listing this action), wait for the
              |reply, then call `record_consent("${tool.name.value}", approved=true, reason="...")`
              |and retry the tool. The framework refuses to dispatch consent-gated tools without
              |a `ToolApproval` record in this conversation.""".stripMargin
@@ -2282,7 +2288,7 @@ object Orchestrator {
     * (precondition-gated) executeAtomic paths share one
     * implementation.
     *
-    * Bug #56 follow-up — when the tool is in [[UserVisibleTerminalTools]]
+    * Bug #56 follow-up — when the tool is in the respond family
     * (the respond family + `no_response`), stamp `internal = true` on
     * any [[ToolDelta]] in the output stream so the result-settle delta
     * matches the input-settle delta the orchestrator already emitted
@@ -2294,7 +2300,7 @@ object Orchestrator {
                          originatingInvokeId: Id[Event],
                          currentMessageId: Option[Id[Event]],
                          invokedName: ToolName): Stream[Signal] = {
-    val toolIsInternal = Orchestrator.UserVisibleTerminalTools.contains(invokedName.value)
+    val toolIsInternal = RespondFamilyTool.contains(invokedName)
     tool.execute(input, context, originatingInvokeId, invokedName, currentMessageId).flatMap {
       case ev: Event =>
         val stamped = if (ev.origin.isDefined) ev else ev.withOrigin(Some(originatingInvokeId))
@@ -2337,7 +2343,7 @@ object Orchestrator {
                                    currentMessageId: Option[Id[Event]],
                                    invokedName: ToolName): Stream[Signal] = {
     val sigil = context.sigil
-    val toolIsInternal = Orchestrator.UserVisibleTerminalTools.contains(invokedName.value)
+    val toolIsInternal = RespondFamilyTool.contains(invokedName)
     val token = new _root_.sigil.CancellationToken(s"tool:${originatingInvokeId.value}")
     val toolCtx = _root_.sigil.tool.ToolContext(
       turn = context.copy(cancellation = Some(token)),

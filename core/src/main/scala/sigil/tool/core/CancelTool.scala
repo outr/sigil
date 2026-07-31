@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.{MessageRole, Stop}
 import sigil.tool.model.CancelInput
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Cancel the current agent turn immediately — equivalent to the
@@ -52,8 +52,8 @@ case object CancelTool extends Tool {
   val inputRW  = summon[RW[CancelInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("cancel")
-  val description =
+  override val name = ToolName("cancel")
+  override val description =
     """Cancel the current agent turn immediately. Use ONLY when:
       |  - The user explicitly halted the conversation (took over via the chat).
       |  - You've encountered an unrecoverable failure and continuing would waste effort.
@@ -66,7 +66,13 @@ case object CancelTool extends Tool {
       |
       |Omit `targetParticipantId` to cancel ALL agents. `force=true` interrupts an
       |in-flight call (use for monitor-agent intercepts).""".stripMargin
-  override val keywords: Set[String] = Set("cancel", "halt", "abort", "user-stop", "interrupt", "stop")
+
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("cancel", "halt", "abort", "user-stop", "interrupt", "stop"))
+  )
 
   /** Patterns that signal the caller meant a turn-flow operation
     * (start something, fetch results, wait, advance to the next

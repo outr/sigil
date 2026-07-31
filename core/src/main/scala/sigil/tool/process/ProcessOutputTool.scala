@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{ProcessOutputInput, ProcessOutputResult, ProcessRunStatus}
-import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Read accumulated stdout/stderr from a registered subprocess.
@@ -19,18 +19,23 @@ final class ProcessOutputTool(registry: ProcessRegistry) extends Tool {
   val inputRW  = summon[RW[ProcessOutputInput]]
   val outputRW = summon[RW[ProcessOutputResult]]
 
-  val name = ToolName("process_output")
-  val description =
+  override val name = ToolName("process_output")
+  override val description =
     """Read new stdout/stderr from a registered subprocess. Returns the new bytes plus a monotonic
       |cursor — pass the previous `nextCursor` to read only new bytes. `dropped: true` means the
       |requested cursor predates the buffer's earliest retained byte (the agent missed some output).
       |Optional `waitForLines` / `waitForPattern` block until a condition or `waitTimeoutMs` expires.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(keywords = Set("process", "output", "stdout", "stderr", "tail", "watch", "stream"))
+  )
   override val examples = List(
     ToolExample("First read on a new handle",                 ProcessOutputInput(handle = "p1")),
     ToolExample("Delta read after the previous cursor",       ProcessOutputInput(handle = "p1", sinceCursor = 4096L)),
     ToolExample("Block up to 5 s for the next 'compiled' line", ProcessOutputInput(handle = "p1", waitForPattern = Some("compiled"), waitTimeoutMs = 5000L))
   )
-  override val keywords = Set("process", "output", "stdout", "stderr", "tail", "watch", "stream")
 
   override def executeResult(input: ProcessOutputInput, ctx: ToolContext): Task[ToolResult[ProcessOutputResult]] =
     if (looksLikePath(input.handle))

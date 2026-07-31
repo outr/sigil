@@ -3,7 +3,7 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.io.{ByteArrayOutputStream, File, InputStream}
 import java.net.URLClassLoader
@@ -32,16 +32,23 @@ case object ReadSourceTool extends Tool {
   val inputRW  = summon[RW[ReadSourceInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("read_source")
-  val description =
+  override val name = ToolName("read_source")
+  override val description =
     """Return the source code for a fully-qualified class. Falls back to `(source not available)`
       |when no `-sources.jar` on the classpath ships the symbol.
       |
       |Use this when [[ClassSignaturesTool]]'s parameter-type listing isn't enough to figure
       |out semantics — e.g. understanding what a builder method actually configures, or how
       |a polymorphic API dispatches.""".stripMargin
-  override val modes = Set(ScriptAuthoringMode.id)
-  override val keywords = Set("source", "code", "read", "scaladoc", "implementation", "introspect")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("source", "code", "read", "scaladoc", "implementation", "introspect"),
+      modes = Set(ScriptAuthoringMode.id)
+    )
+  )
 
   override def executeResult(input: ReadSourceInput,
                              context: ToolContext): Task[ToolResult[TextToolOutput]] = Task {

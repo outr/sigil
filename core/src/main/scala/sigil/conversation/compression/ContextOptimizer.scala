@@ -23,14 +23,14 @@ trait ContextOptimizer {
     *
     * `elideToolNames` is the set of tool names whose ToolCall /
     * ToolResult pairs should be dropped — typically derived by the
-    * curator from each [[sigil.tool.Tool.resultTtl]]. Defaults to
+    * curator from each the tools' declared [[sigil.tool.Freshness]] (Volatile reads elide). Defaults to
     * empty so callers that don't pass a set behave like a pure
     * "consecutive cleanup" pass with no pair-stripping.
     *
     * `currentTurnSource` — when set, marks the participant
     * whose most-recent Text frame begins the *current* agent turn.
     * Implementations MUST NOT elide tool-pair frames that occurred
-    * AFTER that boundary, regardless of `resultTtl`. The agent's
+    * AFTER that boundary, regardless of freshness. The agent's
     * within-turn iteration history (multiple `find_capability` /
     * `change_mode` calls during a single user-driven turn) stays
     * fully visible so the model can recognise it's already tried

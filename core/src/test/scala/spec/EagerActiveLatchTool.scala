@@ -2,7 +2,7 @@ package spec
 
 import fabric.rw.*
 import rapid.Task
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 
 import java.util.concurrent.CountDownLatch
@@ -22,9 +22,14 @@ case object EagerActiveLatchTool extends Tool {
   val inputRW  = summon[RW[EagerActiveLatchInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("eager_active_latch")
-  val description = "Test-only tool that blocks until the spec releases its latch."
-  override val keywords: Set[String] = Set("latch", "test", "blocking")
+  override val name = ToolName("eager_active_latch")
+  override val description = "Test-only tool that blocks until the spec releases its latch."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("latch", "test", "blocking"))
+  )
 
   /** Released by the spec to let a blocked execution finish. Reassigned
     * per scenario via [[reset]]. */

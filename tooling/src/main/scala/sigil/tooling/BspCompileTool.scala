@@ -4,7 +4,7 @@ import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspCompileResult, BspDiagnostic}
 
 case class BspCompileInput(projectRoot: String,
@@ -20,15 +20,15 @@ case class BspCompileInput(projectRoot: String,
  * published.
  */
 final class BspCompileTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  with BspToolSupport {
   type Input  = BspCompileInput
   type Output = BspCompileResult
   val inputRW  = summon[RW[BspCompileInput]]
   val outputRW = summon[RW[BspCompileResult]]
 
-  val name = ToolName("bsp_compile")
+  override val name = ToolName("bsp_compile")
   override def verification: Boolean = true
-  val description =
+  override val description =
     """Compile build targets via the project's BSP server (sbt or Bloop).
       |
       |`projectRoot` selects the persisted BspBuildConfig.
@@ -37,14 +37,21 @@ final class BspCompileTool(val manager: BspManager) extends Tool
       |followed by one diagnostic per line (`path:line:col: error: message`), errors first, grouped
       |by file. On ERROR with no diagnostics, a `cause:` line carries why (an unresolved target, a
       |connection/build-import failure, or the build server's raw error output).""".stripMargin
-  override val keywords = Set(
-    "bsp", "compile", "build", "type-check", "verify",
-    "errors", "warnings", "compile-check", "examine", "inspect",
-    "analyze", "review",
-    "scala", "sbt", "project", "targets", "evaluate", "validate",
-    "rebuild", "diagnostics", "fix"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "bsp", "compile", "build", "type-check", "verify",
+        "errors", "warnings", "compile-check", "examine", "inspect",
+        "analyze", "review",
+        "scala", "sbt", "project", "targets", "evaluate", "validate",
+        "rebuild", "diagnostics", "fix"
+      ),
+      toolchain = Some("bsp")
+    )
   )
-
 
   override def executeOutput(input: BspCompileInput, context: ToolContext): Task[BspCompileResult] =
     withTargets[BspCompileResult](

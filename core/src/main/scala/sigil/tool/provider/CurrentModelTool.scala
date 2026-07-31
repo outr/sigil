@@ -3,7 +3,7 @@ package sigil.tool.provider
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Read-only introspection tool that reports the conversation's
@@ -24,8 +24,8 @@ case object CurrentModelTool extends Tool {
   val inputRW  = summon[RW[CurrentModelInput]]
   val outputRW = summon[RW[CurrentModelOutput]]
 
-  val name = ToolName("current_model")
-  val description =
+  override val name = ToolName("current_model")
+  override val description =
     """Report the model and strategy currently in effect for this conversation.
       |Returns:
       |  - `pinned` — set when a specific model is pinned for this conversation;
@@ -39,9 +39,14 @@ case object CurrentModelTool extends Tool {
       |
       |Use when you need to tell the user which model is in effect, or to resolve
       |"the current model" / "this model" before changing model selection.""".stripMargin
-  override val keywords = Set(
-    "current", "active", "running", "model", "what", "which",
-    "now", "introspect", "in", "use", "this"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set(
+      "current", "active", "running", "model", "what", "which",
+      "now", "introspect", "in", "use", "this"
+    ))
   )
 
   override def executeOutput(input: CurrentModelInput, ctx: ToolContext): Task[CurrentModelOutput] = {

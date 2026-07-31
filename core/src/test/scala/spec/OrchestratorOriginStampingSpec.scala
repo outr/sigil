@@ -13,7 +13,7 @@ import sigil.provider.{
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.tool.model.NoResponseInput
 import spice.http.HttpRequest
@@ -43,8 +43,14 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     type Output = TextToolOutput
     val inputRW  = summon[RW[NoResponseInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("success_origin_test")
-    val description = "Resolves to a typed Success."
+    override val name        = ToolName("success_origin_test")
+    override val description = "Resolves to a typed Success."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "success", "origin"))
+    )
     override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("done")))
   }
@@ -56,8 +62,14 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     type Output = TextToolOutput
     val inputRW  = summon[RW[NoResponseInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("failure_origin_test")
-    val description = "Resolves to a logical Failure."
+    override val name        = ToolName("failure_origin_test")
+    override val description = "Resolves to a logical Failure."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "failure", "origin"))
+    )
     override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.failure("deliberate failure for origin coverage"))
   }

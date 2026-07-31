@@ -6,7 +6,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.browser.{BrowserSigil, BrowserStateDelta}
 import sigil.browser.WebBrowserMode
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import scala.concurrent.duration.*
 
@@ -26,20 +26,27 @@ final class BrowserNavigateTool extends Tool {
   val inputRW  = summon[RW[BrowserNavigateInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("browser_navigate")
-  val description =
+  override val name = ToolName("browser_navigate")
+  override val description =
     """Navigate the headless browser to a URL. Waits for the page's load event, then runs RoboBrowser's
       |shadow-DOM fix so subsequent XPath queries see content inside web components.
       |Returns the final URL and `<title>` so the agent knows what's on screen.
       |Use as the first action in any browser task; follow with `browser_save_html` to persist the page
       |for structural querying via `browser_xpath_query` / `browser_text_search`.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set("browser", "navigate", "open", "goto", "load", "url"),
+      modes = Set(WebBrowserMode.id)
+    )
+  )
   override val examples = List(
     ToolExample("Open a homepage", BrowserNavigateInput(url = "https://example.com/")),
     ToolExample("Open with a longer wait for slow pages",
       BrowserNavigateInput(url = "https://news.example/", waitForLoadSeconds = 30))
   )
-  override val modes = Set(WebBrowserMode.id)
-  override val keywords = Set("browser", "navigate", "open", "goto", "load", "url")
 
   override def executeResult(input: BrowserNavigateInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

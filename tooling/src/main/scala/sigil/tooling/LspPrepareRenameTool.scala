@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspPrepareRenameResult, LspRange}
 
 case class LspPrepareRenameInput(languageId: String,
@@ -19,21 +19,28 @@ case class LspPrepareRenameInput(languageId: String,
  * (whitespace, keywords, etc.).
  */
 final class LspPrepareRenameTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspPrepareRenameInput
   type Output = LspPrepareRenameResult
   val inputRW  = summon[RW[LspPrepareRenameInput]]
   val outputRW = summon[RW[LspPrepareRenameResult]]
 
-  val name = ToolName("lsp_prepare_rename")
-  val description =
+  override val name = ToolName("lsp_prepare_rename")
+  override val description =
     """Check whether a symbol at a position is renameable.
       |
       |`languageId` + `filePath` identify the document.
       |`line` + `character` (0-based) point at the candidate symbol.
       |Returns `Renameable(range)` when yes, `NotRenameable` when no.""".stripMargin
-  override val keywords = Set("lsp", "rename", "refactor", "can rename", "renameable", "prepare")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "rename", "refactor", "can rename", "renameable", "prepare"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspPrepareRenameInput, context: ToolContext): Task[LspPrepareRenameResult] =
     withOpenDocumentOrThrow[LspPrepareRenameResult](

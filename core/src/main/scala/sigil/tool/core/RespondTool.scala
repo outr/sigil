@@ -7,7 +7,7 @@ import sigil.event.{Event, Message, MessageDisposition}
 import sigil.provider.XmlToolCallSanitizer
 import sigil.signal.XmlToolCallLeak
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseDisposition}
-import sigil.tool.{TextToolOutput, ToolContext, ToolName, ToolResult}
+import sigil.tool.{TextToolOutput, ToolContext, ToolName, ToolResult, ToolSpec}
 
 /**
  * The respond tool — every user-facing reply goes through here. The
@@ -35,8 +35,8 @@ case object RespondTool extends RespondFamilyTool {
   val inputRW = summon[RW[RespondInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("respond")
-  val description =
+  override val name = ToolName("respond")
+  override val description =
     """Deliver text to the user. Use ONLY when:
       |  (a) the user is chatting or asking a question you can answer from your own knowledge, OR
       |  (b) you've already executed the requested action via another tool and are reporting the outcome.
@@ -78,6 +78,14 @@ case object RespondTool extends RespondFamilyTool {
       |  message describes what you DID, not what you are about to do: if your `content`
       |  announces work you have not done yet ("Searching…", "Let me start…", "I'll now…"),
       |  `endsTurn` MUST be `false`.""".stripMargin
+
+  val spec: ToolSpec = RespondFamilyTool.spec(
+    name = name,
+    description = description,
+    keywords = Set("respond", "reply", "answer", "message", "tell", "say"),
+    consequence = "ENDS YOUR TURN only when `endsTurn` = true — with `endsTurn` = false the message is " +
+      "delivered and you keep working on the next iteration."
+  )
 
   override def executeResult(input: RespondInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     if (input.endsTurn) context.turn.clearDiscoveredCapabilities()
@@ -182,15 +190,4 @@ case object RespondTool extends RespondFamilyTool {
     emitAncillary.map(_ => ToolResult.Success(TextToolOutput("")))
   }
 
-  /**
-   * Unlike its always-terminal siblings, `respond`'s terminality is
-   * decided by the `endsTurn` flag — the family's unconditional
-   * `**ENDS YOUR TURN.**` headline contradicted the flag and primed
-   * models to fill `endsTurn = true` even when their own content
-   * announced work they hadn't done, settling the turn at iteration 1
-   * with zero work. The headline states the conditional truth instead.
-   */
-  override protected def destructivePrefix: String =
-    "**ENDS YOUR TURN only when `endsTurn` = true — with `endsTurn` = false the message is " +
-      "delivered and you keep working on the next iteration.** "
 }

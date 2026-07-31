@@ -3,7 +3,7 @@ package sigil.metals
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class StartMetalsInput() extends ToolInput derives RW
 
@@ -27,16 +27,23 @@ final class StartMetalsTool extends Tool {
   val inputRW  = summon[RW[StartMetalsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("start_metals")
-  val description =
+  override val name = ToolName("start_metals")
+  override val description =
     """Start the Metals (Scala LSP) MCP server for this conversation's workspace. Once running,
       |Metals' tools (find-symbol, compile, test, etc.) become discoverable via find_capability.
       |Idempotent — calling a second time just keeps the existing subprocess alive.""".stripMargin
   override val examples = List(ToolExample("start metals here", StartMetalsInput()))
-  override val keywords = Set(
-    "metals", "start", "scala", "lsp", "language",
-    "compile", "indexing", "spawn", "boot", "enable",
-    "code", "tooling", "ide"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "metals", "start", "scala", "lsp", "language",
+        "compile", "indexing", "spawn", "boot", "enable",
+        "code", "tooling", "ide"
+      )
+    )
   )
 
   import MetalsToolSupport.*

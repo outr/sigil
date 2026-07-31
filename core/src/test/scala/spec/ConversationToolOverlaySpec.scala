@@ -9,7 +9,7 @@ import sigil.conversation.{Conversation, ConversationToolOverlay}
 import sigil.participant.AgentParticipant
 import sigil.provider.{ConversationMode, ToolPolicy}
 import sigil.role.GeneralistRole
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.TurnContext
 import rapid.Task
@@ -33,8 +33,14 @@ class ConversationToolOverlaySpec extends AsyncWordSpec with AsyncTaskSpec with 
     type Output = TextToolOutput
     val inputRW  = summon[RW[StubInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName("pinned_tool_a")
-    val description = "Stub pinned by overlay"
+    override val name = ToolName("pinned_tool_a")
+    override val description = "Stub pinned by overlay"
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "pinned"))
+    )
 
     override def executeResult(input: StubInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.text)))
@@ -45,8 +51,14 @@ class ConversationToolOverlaySpec extends AsyncWordSpec with AsyncTaskSpec with 
     type Output = TextToolOutput
     val inputRW  = summon[RW[StubInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName("pinned_tool_b")
-    val description = "Stub pinned by overlay"
+    override val name = ToolName("pinned_tool_b")
+    override val description = "Stub pinned by overlay"
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "pinned"))
+    )
 
     override def executeResult(input: StubInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.text)))

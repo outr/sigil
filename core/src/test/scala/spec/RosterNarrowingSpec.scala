@@ -30,7 +30,7 @@ class RosterNarrowingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   TestSigil.initFor(getClass.getSimpleName)
 
   // Synthetic baseline — 10 fictional tools the agent declares.
-  private val baseline: List[ToolName] = (1 to 10).map(i => ToolName(s"app_tool_$i")).toList
+  private val baseline: List[ToolName] = (1 to 10).map(i => ToolName.parse(s"app_tool_$i").fold(sys.error, identity)).toList
 
   /** Standard-policy agent: ToolPolicy.Standard means find_capability
     * stays in the roster (recovery path exists). */

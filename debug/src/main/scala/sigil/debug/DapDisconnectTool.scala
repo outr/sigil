@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DapDisconnectInput(sessionId: String,
                               terminateDebuggee: Boolean = false) extends ToolInput derives RW
@@ -19,12 +19,18 @@ final class DapDisconnectTool(val manager: DapManager) extends Tool with DapTool
   type Output = TextToolOutput
   val inputRW = summon[RW[DapDisconnectInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("dap_disconnect")
-  val description =
+  override val name = ToolName("dap_disconnect")
+  override val description =
     """End a debug session.
       |
       |`sessionId` selects the active session.
       |`terminateDebuggee` (default false) — when true, kill the debugged program; otherwise detach.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "disconnect", "detach", "end", "session", "terminate"))
+  )
   override val examples = List(
     ToolExample(
       "detach without killing the program",

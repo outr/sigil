@@ -5,7 +5,7 @@ import bench.agentdojo.banking.events.TransactionsRead
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -20,9 +20,15 @@ final class GetMostRecentTransactionsTool(state: AtomicReference[BankingEnvironm
   val inputRW: RW[GetMostRecentTransactionsInput] = summon[RW[GetMostRecentTransactionsInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("get_most_recent_transactions")
-  val description: String = "Get the list of the most recent transactions, e.g. to summarize the last n transactions."
+  override val name: ToolName = ToolName("get_most_recent_transactions")
+  override val description: String = "Get the list of the most recent transactions, e.g. to summarize the last n transactions."
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("bank", "transactions", "recent", "history"))
+  )
 
   override def executeResult(input: GetMostRecentTransactionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val transactions = state.get.bankAccount.transactions.takeRight(input.n)

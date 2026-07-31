@@ -46,7 +46,7 @@ class CompactionInvariantsSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   private def toolInvoke(name: String, ts: Long = 1L, originId: Option[Id[Event]] = None): ToolInvoke =
     ToolInvoke(
-      toolName       = ToolName(name),
+      toolName       = ToolName.parse(name).fold(sys.error, identity),
       participantId  = TestAgent,
       conversationId = convId,
       topicId        = TestTopicId,

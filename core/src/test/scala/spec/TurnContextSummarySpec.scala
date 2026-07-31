@@ -10,7 +10,7 @@ import sigil.conversation.{Conversation, TurnInput}
 import sigil.event.ToolInvoke
 import sigil.participant.ParticipantId
 import sigil.signal.{EventState, ToolDelta}
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.event.Event
 
@@ -38,8 +38,14 @@ class TurnContextSummarySpec extends AsyncWordSpec with AsyncTaskSpec with Match
     val inputRW  = summon[RW[SummaryProbeInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("summary_probe")
-    val description = "Drives ctx.setSummary three times across execution."
+    override val name        = ToolName("summary_probe")
+    override val description = "Drives ctx.setSummary three times across execution."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "summary", "probe"))
+    )
 
     override def executeOutput(input: SummaryProbeInput, ctx: ToolContext): Task[TextToolOutput] =
       ctx.setSummary("Searching ...").flatMap { _ =>

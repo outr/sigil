@@ -5,28 +5,32 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitShowInput, GitShowOutput}
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Read-only `git_show` — render a single commit. Returns a typed
  * [[GitShowOutput]] carrying the commit metadata plus its diff as
  * structured hunks (the same shape as `git_diff format = "hunks"`).
  */
-final class GitShowTool(context: FileSystemContext)
-  extends Tool with sigil.tool.ReadOnlyExternalTool {
+final class GitShowTool(context: FileSystemContext) extends Tool {
   type Input  = GitShowInput
   type Output = GitShowOutput
   val inputRW  = summon[RW[GitShowInput]]
   val outputRW = summon[RW[GitShowOutput]]
-  val name = ToolName("git_show")
-  val description =
+  override val name = ToolName("git_show")
+  override val description =
     """Show a single commit's metadata + diff. `sha` accepts any git revision spec (`HEAD`, `HEAD~1`,
       |a short sha, a tag). Returns the commit (sha, author, date, subject, body) plus structured hunks.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("git", "show", "commit", "inspect"))
+  )
   override val examples = List(
     ToolExample("Show HEAD",          GitShowInput(sha = "HEAD")),
     ToolExample("Show a specific sha", GitShowInput(sha = "abc1234"))
   )
-  override val keywords = Set("git", "show", "commit", "inspect")
 
   override def executeOutput(input: GitShowInput, ctx: ToolContext): Task[GitShowOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

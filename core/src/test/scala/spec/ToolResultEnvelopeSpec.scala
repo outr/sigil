@@ -9,7 +9,7 @@ import sigil.conversation.Conversation
 import sigil.event.ToolOutcome
 import sigil.signal.ToolDelta
 import sigil.tool.core.{NoResponseTool, RespondCardTool, RespondCardsTool, RespondOptionsTool, RespondTool}
-import sigil.tool.{TextToolOutput, Tool, ToolFailureException, ToolInput, ToolName, ToolOutput, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolFailureException, ToolInput, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.event.Event
 
@@ -24,10 +24,11 @@ private case class PlainInput() extends ToolInput derives RW
  * the exception message + JSON-serialised input as args); tools
  * needing explicit logical-failure control override `executeResult`.
  *
- * Plus annotation surface: `Tool` exposes `readOnly`, `destructive`,
- * `idempotent`, `openWorld` defaults; the respond-family tools set
- * `destructive = true`; `wireDescription` prefixes destructive tools'
- * descriptions on the wire with `**ENDS YOUR TURN.**`.
+ * Plus annotation surface: a minimal `ToolSpec` derives safe defaults
+ * (`readOnly` / `destructive` / `detachable` all false); the
+ * respond-family tools declare a Destructive effect; `wireDescription`
+ * prefixes destructive tools' descriptions on the wire with
+ * `**ENDS YOUR TURN.**`.
  */
 class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -45,8 +46,14 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     val inputRW  = summon[RW[EchoInput]]
     val outputRW = summon[RW[EchoOutput]]
 
-    val name        = ToolName("legacy_echo")
-    val description = "Echoes the payload."
+    override val name        = ToolName("legacy_echo")
+    override val description = "Echoes the payload."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "echo"))
+    )
 
     override def executeOutput(input: EchoInput, context: ToolContext): Task[EchoOutput] =
       throwOn match {
@@ -63,8 +70,14 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     val inputRW  = summon[RW[EchoInput]]
     val outputRW = summon[RW[EchoOutput]]
 
-    val name        = ToolName("envelope_echo")
-    val description = "Echoes the payload via the envelope."
+    override val name        = ToolName("envelope_echo")
+    override val description = "Echoes the payload via the envelope."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "echo"))
+    )
 
     override def executeResult(input: EchoInput, context: ToolContext): Task[ToolResult[EchoOutput]] =
       if (input.payload.isEmpty)
@@ -184,15 +197,20 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
 
   "Tool annotations" should {
 
-    "default to safe (all false) on the base trait" in {
-      // Drive via an inline ad-hoc tool whose only declaration is the
-      // base trait — every annotation must read as `false` so apps
-      // that don't opt in get no behavior change.
+    "default to safe (all false) with a minimal Mutating spec" in {
+      // Drive via an inline ad-hoc tool whose spec declares nothing
+      // beyond a plain Mutating effect — every derived annotation must
+      // read as `false` so tools that don't opt in get no behavior
+      // change.
       val noop = new sigil.tool.Tool {
         type Input  = PlainInput
         type Output = TextToolOutput
-        override def name = ToolName("plain")
-        override def description = "noop"
+        val spec: ToolSpec = ToolSpec(
+          name = ToolName("plain"),
+          description = "noop",
+          profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+          discovery = DiscoverySpec(keywords = Set("test", "plain"))
+        )
         override def inputRW = summon[RW[PlainInput]]
         override def outputRW = summon[RW[TextToolOutput]]
         override def executeOutput(input: PlainInput, context: ToolContext): rapid.Task[TextToolOutput] =
@@ -200,8 +218,8 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
       }
       noop.readOnly shouldBe false
       noop.destructive shouldBe false
-      noop.idempotent shouldBe false
-      noop.openWorld shouldBe false
+      noop.detachable shouldBe false
+      noop.requiresUserConsent shouldBe false
     }
   }
 
@@ -231,7 +249,7 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
   }
 
   "Filesystem / shell destructive tools" should {
-    "advertise destructive = true via the DestructiveExternalTool mix-in" in {
+    "advertise destructive = true via their Destructive effect" in {
       // BashTool / EditFileTool / WriteFileTool / DeleteFileTool —
       // all real instances need a FileSystemContext arg; instantiate
       // a stub and assert the annotation.
@@ -250,7 +268,7 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
   }
 
   "Read-only filesystem tools" should {
-    "advertise readOnly = true via the ReadOnlyExternalTool mix-in" in {
+    "advertise readOnly = true via their ReadOnly effect" in {
       val ctx = sigil.tool.fs.LocalFileSystemContext()
       List[sigil.tool.Tool](
         new sigil.tool.fs.ReadFileTool(ctx),

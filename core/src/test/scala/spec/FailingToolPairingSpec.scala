@@ -16,7 +16,7 @@ import sigil.provider.{
   Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.{EventState, Signal, ToolDelta}
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.core.{CoreTools, RespondTool}
 import spice.http.HttpRequest
 
@@ -44,9 +44,14 @@ class FailingToolPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     type Output = TextToolOutput
     val inputRW  = summon[RW[ErpInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName("erp_request")
-    val description = "Test-only tool that returns a recoverable failure."
-    override val keywords = Set("erp", "test")
+    override val name = ToolName("erp_request")
+    override val description = "Test-only tool that returns a recoverable failure."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("erp", "test"))
+    )
     override def executeResult(input: ErpInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.failure("ERP request failed: upstream 502"))
   }

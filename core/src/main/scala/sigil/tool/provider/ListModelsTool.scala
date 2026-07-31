@@ -3,7 +3,7 @@ package sigil.tool.provider
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Read-only catalog listing — surfaces every model registered with
@@ -22,8 +22,8 @@ case object ListModelsTool extends Tool {
   val inputRW  = summon[RW[ListModelsInput]]
   val outputRW = summon[RW[ListModelsOutput]]
 
-  val name = ToolName("list_models")
-  val description =
+  override val name = ToolName("list_models")
+  override val description =
     """List models registered with this Sigil instance. Optionally filter by
       |provider (e.g., "openai", "anthropic", "local") or `query` for a
       |substring match against id / name / description.
@@ -35,9 +35,14 @@ case object ListModelsTool extends Tool {
       |Use when the user asks "what models can I pin to?" or to disambiguate
       |a friendly name like "local" or "gpt" against the actual registry
       |before calling pin_model / switch_model.""".stripMargin
-  override val keywords = Set(
-    "list", "models", "available", "provider", "options",
-    "switch", "pin", "alternatives", "what", "which", "catalog"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set(
+      "list", "models", "available", "provider", "options",
+      "switch", "pin", "alternatives", "what", "which", "catalog"
+    ))
   )
 
   override def executeOutput(input: ListModelsInput, ctx: ToolContext): Task[ListModelsOutput] = Task {

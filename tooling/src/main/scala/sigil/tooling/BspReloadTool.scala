@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.BspReloadResult
 
 case class BspReloadInput(projectRoot: String) extends ToolInput derives RW
@@ -15,19 +15,26 @@ case class BspReloadInput(projectRoot: String) extends ToolInput derives RW
  * targets / dependencies.
  */
 final class BspReloadTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  with BspToolSupport {
   type Input  = BspReloadInput
   type Output = BspReloadResult
   val inputRW  = summon[RW[BspReloadInput]]
   val outputRW = summon[RW[BspReloadResult]]
 
-  val name = ToolName("bsp_reload")
-  val description =
+  override val name = ToolName("bsp_reload")
+  override val description =
     """Reload the build server's project model (after build-file edits).
       |
       |`projectRoot` selects the persisted BspBuildConfig.""".stripMargin
-  override val keywords = Set("bsp", "reload", "refresh", "rebuild", "reinitialise", "rescan")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set("bsp", "reload", "refresh", "rebuild", "reinitialise", "rescan"),
+      toolchain = Some("bsp")
+    )
+  )
 
   override def executeOutput(input: BspReloadInput, context: ToolContext): Task[BspReloadResult] =
     withSessionTyped[BspReloadResult](

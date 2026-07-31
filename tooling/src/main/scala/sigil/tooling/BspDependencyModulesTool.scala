@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspDependencyModule, BspDependencyModulesResult, BspTargetDependencyModules}
 
 import java.nio.file.{Files, Paths}
@@ -24,20 +24,27 @@ case class BspDependencyModulesInput(projectRoot: String,
  * for "what version of X does this project pull in?"
  */
 final class BspDependencyModulesTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  with BspToolSupport {
   type Input  = BspDependencyModulesInput
   type Output = BspDependencyModulesResult
   val inputRW  = summon[RW[BspDependencyModulesInput]]
   val outputRW = summon[RW[BspDependencyModulesResult]]
 
-  val name = ToolName("bsp_dependency_modules")
-  val description =
+  override val name = ToolName("bsp_dependency_modules")
+  override val description =
     """List each target's library dependencies as module coordinates (groupId:artifactId, version).
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
-  override val keywords = Set("bsp", "dependencies", "deps", "modules", "library deps")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("bsp", "dependencies", "deps", "modules", "library deps"),
+      toolchain = Some("bsp")
+    )
+  )
 
   override def executeOutput(input: BspDependencyModulesInput,
                              context: ToolContext): Task[BspDependencyModulesResult] = {

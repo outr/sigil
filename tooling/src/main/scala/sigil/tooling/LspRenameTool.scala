@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.LspRenameResult
 
 import scala.jdk.CollectionConverters.*
@@ -26,25 +26,32 @@ case class LspRenameInput(languageId: String,
  * symbol-level refactors.
  */
 final class LspRenameTool(val manager: LspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspRenameInput
   type Output = LspRenameResult
   val inputRW  = summon[RW[LspRenameInput]]
   val outputRW = summon[RW[LspRenameResult]]
 
-  val name = ToolName("lsp_rename")
-  val description =
+  override val name = ToolName("lsp_rename")
+  override val description =
     """Rename a symbol across the workspace.
       |
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point at the symbol to rename.
       |`newName` is the replacement identifier.
       |Returns `Applied(newName, filesChanged)` / `PartialFailure(newName, filesChanged)` / `NoEdits`.""".stripMargin
-  override val keywords = Set(
-    "lsp", "rename", "refactor", "refactoring", "rename symbol", "rename across project",
-    "identifier", "symbol", "change name", "modify name", "replace name", "update name"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Destructive(MutationTargeting.none, "DESTRUCTIVE.")),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "lsp", "rename", "refactor", "refactoring", "rename symbol", "rename across project",
+        "identifier", "symbol", "change name", "modify name", "replace name", "update name"
+      ),
+      toolchain = Some("lsp")
+    )
   )
-
 
   override def executeOutput(input: LspRenameInput, context: ToolContext): Task[LspRenameResult] =
     withOpenDocumentOrThrow[LspRenameResult](

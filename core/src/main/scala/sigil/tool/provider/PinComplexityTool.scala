@@ -6,7 +6,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.ComplexityChange
 import sigil.provider.Complexity
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class PinComplexityInput(tier: String) extends ToolInput derives RW
 
@@ -28,8 +28,8 @@ case object PinComplexityTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[PinComplexityInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("pin_complexity")
-  val description =
+  override val name = ToolName("pin_complexity")
+  override val description =
     """Pin this conversation's routing complexity tier
       |(`low` / `medium` / `high` / `very-high`). Every turn routes
       |to whichever candidate in the strategy chain supports that
@@ -52,9 +52,14 @@ case object PinComplexityTool extends Tool {
     ToolExample("Pin to frontier",        PinComplexityInput("very-high")),
     ToolExample("Local-only with low tier", PinComplexityInput("low"))
   )
-  override val keywords = Set(
-    "pin", "lock", "force", "stick", "fix", "always", "deterministic",
-    "complexity", "tier", "routing", "cost", "ceiling", "level"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set(
+      "pin", "lock", "force", "stick", "fix", "always", "deterministic",
+      "complexity", "tier", "routing", "cost", "ceiling", "level"
+    ))
   )
 
   override def executeResult(input: PinComplexityInput,

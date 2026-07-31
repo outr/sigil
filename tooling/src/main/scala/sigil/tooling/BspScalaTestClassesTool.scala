@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspTargetTestClasses, BspTestClassesResult}
 
 import scala.jdk.CollectionConverters.*
@@ -27,15 +27,22 @@ final class BspScalaTestClassesTool(val manager: BspManager) extends Tool with B
   val inputRW  = summon[RW[BspScalaTestClassesInput]]
   val outputRW = summon[RW[BspTestClassesResult]]
 
-  val name = ToolName("bsp_scala_test_classes")
-  val description =
+  override val name = ToolName("bsp_scala_test_classes")
+  override val description =
     """List discovered Scala test classes for each target.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.
       |Returns each target's test framework + class names.""".stripMargin
-  override val keywords = Set("bsp", "test classes", "tests", "scala", "find tests", "test suite")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("bsp", "test classes", "tests", "scala", "find tests", "test suite"),
+      toolchain = Some("bsp")
+    )
+  )
 
   override def executeOutput(input: BspScalaTestClassesInput,
                              context: ToolContext): Task[BspTestClassesResult] =

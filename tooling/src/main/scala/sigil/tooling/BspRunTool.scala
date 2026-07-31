@@ -4,7 +4,7 @@ import ch.epfl.scala.bsp4j.{BuildTargetIdentifier, StatusCode}
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.BspExecResult
 
 case class BspRunInput(projectRoot: String,
@@ -22,22 +22,29 @@ case class BspRunInput(projectRoot: String,
  * interactive programs, prefer running outside Sigil.
  */
 final class BspRunTool(val manager: BspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with BspToolSupport {
+  with BspToolSupport {
   type Input  = BspRunInput
   type Output = BspExecResult
   val inputRW  = summon[RW[BspRunInput]]
   val outputRW = summon[RW[BspExecResult]]
 
-  val name = ToolName("bsp_run")
-  val description =
+  override val name = ToolName("bsp_run")
+  override val description =
     """Run a single build target via the BSP server (typically a `Main` class).
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`target` is the target URI to run.
       |`arguments` (optional) flows through to the running program.
       |Returns `{status, targetCount: 1, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED`.""".stripMargin
-  override val keywords = Set("bsp", "run", "execute", "main", "launch", "start")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Destructive(MutationTargeting.none, "DESTRUCTIVE.")),
+    discovery = DiscoverySpec(
+      keywords = Set("bsp", "run", "execute", "main", "launch", "start"),
+      toolchain = Some("bsp")
+    )
+  )
 
   override def executeOutput(input: BspRunInput, context: ToolContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](

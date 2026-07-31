@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspFoldingRangeItem, LspFoldingRangeResult}
 
 case class LspFoldingRangeInput(languageId: String,
@@ -16,19 +16,26 @@ case class LspFoldingRangeInput(languageId: String,
  * "what major sections does this file have, and where do they live?"
  */
 final class LspFoldingRangeTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspFoldingRangeInput
   type Output = LspFoldingRangeResult
   val inputRW  = summon[RW[LspFoldingRangeInput]]
   val outputRW = summon[RW[LspFoldingRangeResult]]
-  val name = ToolName("lsp_folding_range")
-  val description =
+  override val name = ToolName("lsp_folding_range")
+  override val description =
     """List foldable regions in a file (class bodies, methods, import blocks, etc.).
       |
       |`languageId` + `filePath` identify the document.
       |Returns each fold's `kind` (`region` / `comment` / `imports`), 1-based start/end lines.""".stripMargin
-  override val keywords = Set("lsp", "fold", "folding", "collapse", "sections", "regions", "code structure")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "fold", "folding", "collapse", "sections", "regions", "code structure"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspFoldingRangeInput, context: ToolContext): Task[LspFoldingRangeResult] =
     withOpenDocumentOrThrow[LspFoldingRangeResult](

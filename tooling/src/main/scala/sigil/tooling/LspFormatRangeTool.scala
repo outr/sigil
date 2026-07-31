@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{FormattingOptions, Position, Range}
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.LspFormatResult
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
@@ -27,21 +27,28 @@ case class LspFormatRangeInput(languageId: String,
  * to disk and notifies the server.
  */
 final class LspFormatRangeTool(val manager: LspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspFormatRangeInput
   type Output = LspFormatResult
   val inputRW  = summon[RW[LspFormatRangeInput]]
   val outputRW = summon[RW[LspFormatResult]]
-  val name = ToolName("lsp_format_range")
-  val description =
+  override val name = ToolName("lsp_format_range")
+  override val description =
     """Format a specific range within a file via the language server.
       |
       |`languageId` + `filePath` identify the document.
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` (0-based) define the range.
       |`tabSize` and `insertSpaces` are passed as FormattingOptions.
       |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin
-  override val keywords = Set("lsp", "format", "format range", "prettify", "indent", "beautify", "selection")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Destructive(MutationTargeting.none, "DESTRUCTIVE.")),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "format", "format range", "prettify", "indent", "beautify", "selection"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspFormatRangeInput, context: ToolContext): Task[LspFormatResult] =
     withOpenDocumentOrThrow[LspFormatResult](

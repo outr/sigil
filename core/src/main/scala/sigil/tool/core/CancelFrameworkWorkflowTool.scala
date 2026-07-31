@@ -3,7 +3,7 @@ package sigil.tool.core
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolOutput}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolProfile, ToolSpec}
 
 case class CancelFrameworkWorkflowInput(workflowId: String,
                                         reason: Option[String] = None) extends ToolInput derives RW
@@ -45,17 +45,24 @@ case object CancelFrameworkWorkflowTool extends Tool {
   type Output = CancelFrameworkWorkflowOutput
   val inputRW  = summon[RW[CancelFrameworkWorkflowInput]]
   val outputRW = summon[RW[CancelFrameworkWorkflowOutput]]
-  val name = ToolName("cancel_framework_workflow")
-  val description =
+  override val name = ToolName("cancel_framework_workflow")
+  override val description =
     """Cancel a framework-internal workflow (pre-flight, compress, frame-load, …) by its
       |workflow id. Cooperative: the workflow body honours the cancellation at its next
       |internal checkpoint, so very short operations may complete before the cancel takes
       |effect. Idempotent.""".stripMargin
+
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("cancel", "framework", "workflow", "abort", "stop", "preflight", "compress"))
+  )
+
   override val examples = List(
     ToolExample("Cancel a slow compress",
       CancelFrameworkWorkflowInput(workflowId = "wf-abc-123", reason = Some("user clicked cancel")))
   )
-  override val keywords = Set("cancel", "framework", "workflow", "abort", "stop", "preflight", "compress")
 
   override def executeOutput(input: CancelFrameworkWorkflowInput,
                              ctx: ToolContext): Task[CancelFrameworkWorkflowOutput] = Task {

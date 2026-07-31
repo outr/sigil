@@ -18,7 +18,7 @@ import sigil.provider.{
   ConversationMode, GenerationSettings, Instructions, Mode, ResolvedReferences
 }
 import sigil.role.Role
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tokenize.{JtokkitTokenizer, Tokenizer}
 
 /**
@@ -92,9 +92,15 @@ object ProfilerHarness {
     val inputRW: RW[DummyInput] = summon[RW[DummyInput]]
     val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
-    val name: ToolName = ToolName(toolName)
-    val description: String = toolDescription
+    override val name: ToolName = ToolName.parse(toolName).fold(sys.error, identity)
+    override val description: String = toolDescription
 
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+      discovery = DiscoverySpec(keywords = Set("bench", toolName))
+    )
 
     override def executeResult(input: DummyInput, context: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
@@ -108,7 +114,7 @@ object ProfilerHarness {
   def toolCallFrame(toolName: String, args: String, participantId: ParticipantId = AgentId): ContextFrame.ToolCall = {
     val callId = Id[Event]()
     ContextFrame.ToolCall(
-      toolName = ToolName(toolName),
+      toolName = ToolName.parse(toolName).fold(sys.error, identity),
       argsJson = args,
       callId = callId,
       participantId = participantId,

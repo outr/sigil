@@ -29,7 +29,7 @@ class ImageEvictionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     else
       ToolCallState.Complete(content = "ok", images = Nil)
     ContextFrame.ToolCall(
-      toolName       = ToolName(name),
+      toolName       = ToolName.parse(name).fold(sys.error, identity),
       argsJson       = "{}",
       callId         = callId,
       participantId  = TestAgent,

@@ -3,7 +3,7 @@ package sigil.mcp
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class ListMcpPromptsInput(server: String) extends ToolInput derives RW
 
@@ -14,8 +14,14 @@ final class ListMcpPromptsTool(manager: McpManager) extends Tool {
   val inputRW  = summon[RW[ListMcpPromptsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("list_mcp_prompts")
-  val description = "List the prompt templates advertised by a registered MCP server, including their argument names."
+  override val name = ToolName("list_mcp_prompts")
+  override val description = "List the prompt templates advertised by a registered MCP server, including their argument names."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("mcp", "prompts", "list", "templates", "server"))
+  )
 
   override def executeResult(input: ListMcpPromptsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     manager.listPrompts(input.server).map { prompts =>

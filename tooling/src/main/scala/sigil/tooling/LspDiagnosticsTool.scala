@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.Diagnostic
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 case class LspDiagnosticsInput(languageId: String,
@@ -24,14 +24,14 @@ case class LspDiagnosticsInput(languageId: String,
      24|  * earlier in the turn pass `0` to read the latest snapshot directly.
      25|  */
 final class LspDiagnosticsTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspDiagnosticsInput
   type Output = LspDiagnosticsResult
   val inputRW  = summon[RW[LspDiagnosticsInput]]
   val outputRW = summon[RW[LspDiagnosticsResult]]
-  val name = ToolName("lsp_diagnostics")
+  override val name = ToolName("lsp_diagnostics")
   override def verification: Boolean = true
-  val description =
+  override val description =
     """Fetch the language server's diagnostics for a file (errors, warnings, hints).
       |
       |`languageId` selects the persisted LspServerConfig (e.g. "scala", "rust", "python").
@@ -44,13 +44,20 @@ final class LspDiagnosticsTool(val manager: LspManager) extends Tool
       |one diagnostic per line, errors first. A "freshness UNKNOWN" verdict means the server did
       |NOT answer for the current text within the wait — treat the file's diagnostic state as
       |unknown; an empty stale snapshot is NOT "no issues".""".stripMargin
-  override val keywords = Set(
-    "lsp", "language", "diagnostics", "errors", "warnings", "problems",
-    "lint", "compile-check", "analyze", "examine", "inspect", "review",
-    "evaluate", "what's broken", "issues", "semantic",
-    "scala", "type", "fix", "code"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "lsp", "language", "diagnostics", "errors", "warnings", "problems",
+        "lint", "compile-check", "analyze", "examine", "inspect", "review",
+        "evaluate", "what's broken", "issues", "semantic",
+        "scala", "type", "fix", "code"
+      ),
+      toolchain = Some("lsp")
+    )
   )
-
 
   override def executeOutput(input: LspDiagnosticsInput, context: ToolContext): Task[LspDiagnosticsResult] =
     withSessionOrThrow[LspDiagnosticsResult](

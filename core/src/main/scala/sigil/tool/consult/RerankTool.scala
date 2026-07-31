@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal tool invoked by [[sigil.vector.LLMReranker]]. Never registered
@@ -17,8 +17,8 @@ case object RerankTool extends Tool with FrameworkConsult {
   val inputRW: RW[RerankInput]     = summon[RW[RerankInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("rerank_candidates")
-  val description: String =
+  override val name: ToolName = ToolName("rerank_candidates")
+  override val description: String =
     """Re-rank a list of candidate snippets by relevance to a query. Return the candidate ids
       |in order from most-relevant to least-relevant.
       |
@@ -27,6 +27,12 @@ case object RerankTool extends Tool with FrameworkConsult {
       |from the output are treated as least-relevant (appended at the end in their original
       |order); ids not in the candidate set are ignored.""".stripMargin
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(kind = ConsultKind)
+  )
 
   /** Relevance scoring — routes through the cheap classification tier. */
   override def consultWorkType: WorkType = ClassificationWork

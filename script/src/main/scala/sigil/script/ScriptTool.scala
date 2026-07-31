@@ -10,7 +10,7 @@ import sigil.SpaceId
 import sigil.tool.ToolContext
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
-import sigil.tool.{JsonInput, Tool, ToolExample, ToolResult, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, JsonInput, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Persisted tool whose execution path is a stored script, created at
@@ -30,8 +30,8 @@ import sigil.tool.{JsonInput, Tool, ToolExample, ToolResult, ToolName}
  * under another space, copy the record (apps wire that via the
  * `scriptToolSpace` hook on [[ScriptSigil]]).
  */
-case class ScriptTool(name: ToolName,
-                      description: String,
+case class ScriptTool(override val name: ToolName,
+                      override val description: String,
                       code: String,
                       parameters: Definition,
                       override val space: SpaceId,
@@ -45,6 +45,11 @@ case class ScriptTool(name: ToolName,
                       override val created: Timestamp = Timestamp(Nowish()),
                       override val modified: Timestamp = Timestamp(Nowish())) extends Tool derives RW {
 
+  /** Derived from the persisted constructor fields, so validation
+    * runs on every load — a legacy row that has drifted out of
+    * validity is repaired with a warn where safe (blank description,
+    * empty keywords) rather than bricking the collection read. */
+  val spec: ToolSpec = ScriptTool.specFor(name, description, space, keywords, modes)
 
   /** Stable id derived from `(name, space)` so `Sigil.createTool`'s
     * upsert overwrites in place when an agent re-creates a tool with
@@ -54,8 +59,6 @@ case class ScriptTool(name: ToolName,
     * fabric's case-class RW serializes only ctor params; on load the
     * body computes the same id from the persisted `(name, space)`. */
   override val _id: Id[Tool] = ScriptTool.id(name, space)
-
-  override def kind: sigil.tool.ToolKind = ScriptKind
 
   type Input  = JsonInput
   type Output = ScriptToolOutput
@@ -107,6 +110,36 @@ case class ScriptTool(name: ToolName,
 }
 
 object ScriptTool {
+
+  /** Build the validated [[ToolSpec]] from persisted fields. Scripts
+    * run arbitrary code, so the effect is conservatively
+    * [[Effect.Mutating]] with unknown targets. Legacy rows with a
+    * blank description or no keywords are repaired with a warn — the
+    * row stays readable; the create path enforces the full contract
+    * for new records. */
+  def specFor(name: ToolName,
+              description: String,
+              space: SpaceId,
+              keywords: Set[String],
+              modes: Set[Id[Mode]]): ToolSpec = {
+    val desc =
+      if (description.isBlank) {
+        scribe.warn(s"Script tool '${name.value}' has a blank persisted description; substituting a stub.")
+        s"User-created script tool `${name.value}`."
+      } else description
+    val kw =
+      if (keywords.nonEmpty) keywords
+      else {
+        scribe.warn(s"Script tool '${name.value}' has no persisted keywords; falling back to its name.")
+        Set(name.value)
+      }
+    ToolSpec(
+      name = name,
+      description = desc,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = kw, space = space, modes = modes, kind = ScriptKind)
+    )
+  }
 
   /** Stable record id derived from `(name, space)` so `Sigil.createTool`'s
     * upsert actually overwrites in place when an agent re-creates a tool

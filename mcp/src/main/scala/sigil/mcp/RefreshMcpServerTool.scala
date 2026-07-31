@@ -3,7 +3,7 @@ package sigil.mcp
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class RefreshMcpServerInput(name: String) extends ToolInput derives RW
 
@@ -14,8 +14,14 @@ final class RefreshMcpServerTool(manager: McpManager) extends Tool {
   val inputRW  = summon[RW[RefreshMcpServerInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("refresh_mcp_server")
-  val description = "Force-refresh the cached tool / resource / prompt list for a registered MCP server, bypassing the standard refresh interval."
+  override val name = ToolName("refresh_mcp_server")
+  override val description = "Force-refresh the cached tool / resource / prompt list for a registered MCP server, bypassing the standard refresh interval."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("mcp", "server", "refresh", "reload", "tools", "cache"))
+  )
 
   override def executeResult(input: RefreshMcpServerInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     manager.refresh(input.name).map { tools =>

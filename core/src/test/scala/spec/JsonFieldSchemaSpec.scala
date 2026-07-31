@@ -11,7 +11,7 @@ import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings
 import sigil.provider.openai.OpenAIProvider
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DefinitionToSchema, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DefinitionToSchema, DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.core.CoreTools
 
 /**
@@ -73,8 +73,14 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
     type Output = TextToolOutput
     val inputRW  = summon[RW[TypedOnlyInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("typed_only_test_tool")
-    val description = "All-typed input — should ship with strict: true."
+    override val name        = ToolName("typed_only_test_tool")
+    override val description = "All-typed input — should ship with strict: true."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "typed_only_test_tool"))
+    )
     override def executeResult(input: TypedOnlyInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
@@ -85,8 +91,14 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
     type Output = TextToolOutput
     val inputRW  = summon[RW[JsonFieldInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("json_field_test_tool")
-    val description = "Has Option[Json] — should ship with strict: false."
+    override val name        = ToolName("json_field_test_tool")
+    override val description = "Has Option[Json] — should ship with strict: false."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "json_field_test_tool"))
+    )
     override def executeResult(input: JsonFieldInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }

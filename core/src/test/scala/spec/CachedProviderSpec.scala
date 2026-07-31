@@ -11,7 +11,7 @@ import sigil.provider.{
   ProviderEvent, ProviderType, StopReason
 }
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.core.RespondTool
 import spice.http.HttpRequest
 
@@ -234,8 +234,14 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     type Output = sigil.tool.TextToolOutput
     val inputRW: fabric.rw.RW[ToolInput] = delegate.inputRW.asInstanceOf[fabric.rw.RW[ToolInput]]
     val outputRW = summon[fabric.rw.RW[sigil.tool.TextToolOutput]]
-    val name: ToolName = delegate.name
-    val description: String = descriptionText
+    override val name: ToolName = delegate.name
+    override val description: String = descriptionText
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "proxy"))
+    )
     override def executeResult(input: ToolInput,
                                context: ToolContext): Task[sigil.tool.ToolResult[sigil.tool.TextToolOutput]] =
       Task.pure(sigil.tool.ToolResult.Success(sigil.tool.TextToolOutput("")))

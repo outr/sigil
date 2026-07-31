@@ -44,7 +44,7 @@ class EventsForSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
                    name: String,
                    topicId: Id[Topic] = TestTopicId): ToolInvoke =
     ToolInvoke(
-      toolName = ToolName(name),
+      toolName = ToolName.parse(name).fold(sys.error, identity),
       participantId = TestUser,
       conversationId = convId,
       topicId = topicId,

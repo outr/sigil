@@ -63,10 +63,10 @@ class VolatileContextTailPlacementSpec extends AnyWordSpec with Matchers {
                        frames: Vector[ContextFrame] = baseFrames): TurnInput = {
     val proj = ParticipantProjection.empty(TestAgent, convId)
       .copy(
-        suggestedTools = suggested.map(ToolName(_)),
+        suggestedTools = suggested.map(s => ToolName.parse(s).fold(sys.error, identity)),
         recentToolInvocations = recent.zipWithIndex.map { case (n, i) =>
           RecentToolInvocation(
-            toolName    = ToolName(n),
+            toolName    = ToolName.parse(n).fold(sys.error, identity),
             argsHash    = s"h-$n-$i",
             argsPreview = s"""{"x":$i}""",
             invokedAt   = Timestamp(System.currentTimeMillis() - 1_000L * (i + 1))

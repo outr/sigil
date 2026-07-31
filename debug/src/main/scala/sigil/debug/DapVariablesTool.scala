@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DapVariablesInput(sessionId: String,
                              variablesReference: Int,
@@ -23,14 +23,20 @@ final class DapVariablesTool(val manager: DapManager) extends Tool with DapToolS
   type Output = DapVariablesOutput
   val inputRW = summon[RW[DapVariablesInput]]
   val outputRW = summon[RW[DapVariablesOutput]]
-  val name = ToolName("dap_variables")
-  val description =
+  override val name = ToolName("dap_variables")
+  override val description =
     """Fetch variables for a scope or structured value's children.
       |
       |`sessionId` selects the active session.
       |`variablesReference` is from a prior `dap_scopes` / `dap_variables` / `dap_evaluate` call.
       |`maxResults` (default 100) caps the response.
       |Each variable shows name, value, type, and a child-reference (if expandable).""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "variables", "locals", "inspect", "values"))
+  )
   override val examples = List(
     ToolExample(
       "fetch locals for a scope",

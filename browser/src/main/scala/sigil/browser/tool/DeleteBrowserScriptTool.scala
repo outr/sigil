@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.browser.BrowserScript
 import sigil.browser.WebBrowserMode
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
@@ -17,11 +17,18 @@ case object DeleteBrowserScriptTool extends Tool {
   val inputRW  = summon[RW[DeleteBrowserScriptInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("delete_browser_script")
-  val description =
+  override val name = ToolName("delete_browser_script")
+  override val description =
     "Delete a stored browser-script tool by name. Caller must have access to the script's space."
-  override val modes = Set(WebBrowserMode.id)
-  override val keywords = Set("delete", "remove", "browser", "script")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set("delete", "remove", "browser", "script"),
+      modes = Set(WebBrowserMode.id)
+    )
+  )
 
   override def executeResult(input: DeleteBrowserScriptInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

@@ -8,7 +8,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.browser.WebBrowserMode
 import sigil.storage.StoredFile
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import scala.jdk.CollectionConverters.*
 
@@ -29,11 +29,20 @@ final class BrowserXPathQueryTool extends Tool {
   val inputRW  = summon[RW[BrowserXPathQueryInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("browser_xpath_query")
-  val description =
+  override val name = ToolName("browser_xpath_query")
+  override val description =
     """Run an XPath query against an HTML file saved earlier (use the `htmlFileId` from `browser_save_html`).
       |Returns matched nodes as `{tag, text, attributes}`. Set `includeOuterHtml=true` only when you need raw markup —
       |it can be large. Use the overview's `headings`, `landmarks`, and `linkClusters` xpaths as starting points.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(
+      keywords = Set("browser", "xpath", "query", "extract", "html", "structure"),
+      modes = Set(WebBrowserMode.id)
+    )
+  )
   override val examples = List(
     ToolExample(
       "Pull all article links from a list",
@@ -44,8 +53,6 @@ final class BrowserXPathQueryTool extends Tool {
       BrowserXPathQueryInput(htmlFileId = "abc123", xpath = "//h1[1]", includeOuterHtml = true)
     )
   )
-  override val modes = Set(WebBrowserMode.id)
-  override val keywords = Set("browser", "xpath", "query", "extract", "html", "structure")
 
   override def executeResult(input: BrowserXPathQueryInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

@@ -42,7 +42,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
   // than relying on appendFor to materialise it.
   private def activeInvoke(name: String): ToolInvoke =
     ToolInvoke(
-      toolName = ToolName(name),
+      toolName = ToolName.parse(name).fold(sys.error, identity),
       participantId = TestAgent,
       conversationId = conversationId,
       topicId = TestTopicId,

@@ -3,7 +3,7 @@ package sigil.mcp
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class RemoveMcpServerInput(name: String) extends ToolInput derives RW
 
@@ -14,8 +14,14 @@ final class RemoveMcpServerTool(manager: McpManager) extends Tool {
   val inputRW  = summon[RW[RemoveMcpServerInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("remove_mcp_server")
-  val description = "Remove a registered MCP server and disconnect any active connection. The persisted config is deleted."
+  override val name = ToolName("remove_mcp_server")
+  override val description = "Remove a registered MCP server and disconnect any active connection. The persisted config is deleted."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("mcp", "server", "remove", "unregister", "delete", "disconnect"))
+  )
 
   override def executeResult(input: RemoveMcpServerInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     manager.removeConfig(input.name).map { _ =>

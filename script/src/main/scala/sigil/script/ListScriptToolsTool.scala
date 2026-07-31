@@ -3,7 +3,7 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * List the script-backed tools visible to the caller. Visibility is
@@ -18,13 +18,20 @@ case object ListScriptToolsTool extends Tool {
   val inputRW  = summon[RW[ListScriptToolsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("list_script_tools")
-  val description =
+  override val name = ToolName("list_script_tools")
+  override val description =
     """Enumerate the script-backed tools the caller can currently see (their own scoped tools
       |plus globally available ones). Optional `nameContains` narrows the listing to tools
       |whose name contains the given substring.""".stripMargin
-  override val modes = Set(ScriptAuthoringMode.id)
-  override val keywords = Set("list", "tools", "script", "enumerate", "available")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("list", "tools", "script", "enumerate", "available"),
+      modes = Set(ScriptAuthoringMode.id)
+    )
+  )
 
   override def executeResult(input: ListScriptToolsInput,
                              context: ToolContext): Task[ToolResult[TextToolOutput]] =

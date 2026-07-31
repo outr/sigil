@@ -52,6 +52,17 @@ class StaticToolSyncUpgrade(staticTools: List[Tool]) extends DatabaseUpgrade {
               Some(t._id)
             case scala.util.Success(_) =>
               None
+            case scala.util.Failure(err) if StaticToolSyncUpgrade.isSpecViolation(err) =>
+              // The row decoded structurally but its derived ToolSpec
+              // failed validation — a legacy record that has drifted
+              // out of validity, NOT an orphan. Surface loudly and
+              // leave in place; deleting would lose user data over a
+              // fixable spec violation.
+              scribe.error(
+                s"static-tool-sync: tool row failed spec validation and was left in place: " +
+                  s"${Option(err.getMessage).getOrElse(err.getClass.getSimpleName)}"
+              )
+              None
             case scala.util.Failure(err) =>
               // Polytype dispatch failed — this row's subtype is no
               // longer registered. Treat as an orphan and pull the
@@ -84,6 +95,20 @@ class StaticToolSyncUpgrade(staticTools: List[Tool]) extends DatabaseUpgrade {
 }
 
 object StaticToolSyncUpgrade {
+
+  /** True when `err` (or any cause in its chain) is a
+    * [[ToolSpecException]] — the row is structurally readable but
+    * violates the spec contract; it must be reported, not reaped. */
+  def isSpecViolation(err: Throwable): Boolean = {
+    var cur: Throwable = err
+    var seen = 0
+    while (cur != null && seen < 10) {
+      if (cur.isInstanceOf[ToolSpecException]) return true
+      cur = cur.getCause
+      seen += 1
+    }
+    false
+  }
 
   /** Recover an orphan tool row's id from its raw JSON when typed
     * decoding fails. Lightdb persists `_id` explicitly; the fallback

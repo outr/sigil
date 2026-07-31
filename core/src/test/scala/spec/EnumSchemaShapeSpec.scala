@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Task
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
-import sigil.tool.{DefinitionToSchema, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DefinitionToSchema, DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import spec.EnumSchemaShapeSpec.*
 import sigil.tool.ToolRoster
@@ -36,8 +36,14 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
     type Output = TextToolOutput
     val inputRW    = summon[RW[ComplexityInput]]
     val outputRW   = summon[RW[TextToolOutput]]
-    val name       = ToolName("complexity_test_tool")
-    val description = "Test tool that takes a singleton-only enum field."
+    override val name       = ToolName("complexity_test_tool")
+    override val description = "Test tool that takes a singleton-only enum field."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "complexity_test_tool"))
+    )
     override def executeResult(input: ComplexityInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.complexity.toString)))
   }
@@ -47,8 +53,14 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
     type Output = TextToolOutput
     val inputRW    = summon[RW[WorkTypeInput]]
     val outputRW   = summon[RW[TextToolOutput]]
-    val name       = ToolName("worktype_test_tool")
-    val description = "Test tool that takes a singleton-only open-PolyType field."
+    override val name       = ToolName("worktype_test_tool")
+    override val description = "Test tool that takes a singleton-only open-PolyType field."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "worktype_test_tool"))
+    )
     override def executeResult(input: WorkTypeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.workType.toString)))
   }

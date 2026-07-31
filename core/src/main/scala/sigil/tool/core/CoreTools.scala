@@ -172,11 +172,5 @@ object CoreTools {
     * pairs each such call with a synthetic empty output to satisfy
     * providers (notably OpenAI Responses) that strictly require every
     * `function_call` to have a matching `function_call_output`. */
-  val atomicContentToolNames: Set[sigil.tool.ToolName] = Set(
-    RespondTool.schema.name,
-    RespondOptionsTool.schema.name,
-    RespondCardTool.schema.name,
-    RespondCardsTool.schema.name,
-    NoResponseTool.schema.name
-  )
+  val atomicContentToolNames: Set[sigil.tool.ToolName] = RespondFamilyTool.names
 }

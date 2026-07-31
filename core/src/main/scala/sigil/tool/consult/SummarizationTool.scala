@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{GenerationSettings, ReasoningMode, SummarizationWork, WorkType}
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal-only tool used by [[sigil.conversation.compression.SummaryOnlyCompressor]]
@@ -16,8 +16,8 @@ case object SummarizationTool extends Tool with FrameworkConsult {
   val inputRW: RW[SummarizationInput] = summon[RW[SummarizationInput]]
   val outputRW: RW[TextToolOutput]    = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("summarize_conversation")
-  val description: String =
+  override val name: ToolName = ToolName("summarize_conversation")
+  override val description: String =
     """Emit the final summary of a conversation excerpt as structured output. The supplied
       |`summary` will replace the excerpt in every subsequent turn — so it must stand on its own
       |without the original text.
@@ -27,6 +27,12 @@ case object SummarizationTool extends Tool with FrameworkConsult {
       |`tokenEstimate` — your best estimate of `summary` length in tokens (~4 chars/token is fine).
       |The framework uses this to budget future turns.""".stripMargin
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(kind = ConsultKind)
+  )
 
   /** Condensing work — routes through the cheap summarization tier. */
   override def consultWorkType: WorkType = SummarizationWork

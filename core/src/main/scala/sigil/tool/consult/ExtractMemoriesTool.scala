@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{GenerationSettings, OutputTokenCap, ReasoningMode, SummarizationWork, WorkType}
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal tool invoked by both
@@ -26,8 +26,8 @@ case object ExtractMemoriesTool extends Tool with FrameworkConsult {
   val inputRW: RW[ExtractMemoriesInput] = summon[RW[ExtractMemoriesInput]]
   val outputRW: RW[TextToolOutput]      = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("extract_memories")
-  val description: String =
+  override val name: ToolName = ToolName("extract_memories")
+  override val description: String =
     """Extract durable facts from a conversation excerpt. Each fact must be self-contained
       |(a reader seeing the fact alone must still be able to act on it).
       |
@@ -60,6 +60,12 @@ case object ExtractMemoriesTool extends Tool with FrameworkConsult {
       |  - intermediate reasoning, small-talk, acknowledgements
       |  - content that belongs in a summary (narrative / ongoing context).""".stripMargin
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(kind = ConsultKind)
+  )
 
   /** Fact extraction is condensing work — routes through the cheap
     * summarization tier. */

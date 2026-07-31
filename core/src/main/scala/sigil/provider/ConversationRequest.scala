@@ -82,22 +82,23 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                  * the model couldn't call what wasn't there. */
                                discoveredCapabilitiesRef: java.util.concurrent.atomic.AtomicReference[Map[String, DiscoveredCapability]] =
                                  new java.util.concurrent.atomic.AtomicReference(Map.empty[String, DiscoveredCapability]),
-                               /** Sigil #411 — TURN-scoped cache of settled read-tool
-                                 * results, keyed by the canonical `(toolName, args)`
-                                 * key the #87 dedupe already computes. Created once per
-                                 * turn in the agent loop and threaded through each
-                                 * iteration's request (like [[discoveredCapabilitiesRef]]),
-                                 * so a retry that re-issues an identical READ call is
-                                 * served from cache instead of re-executing. #87's
-                                 * dedupe is per-completion (`State.dispatchedKeys`), so
-                                 * without this a no-tool-call retry / recoverable
-                                 * provider-error re-iterate re-runs the whole tool batch
-                                 * — a real latency/quota tax on side-effecting reads
-                                 * (an on-prem RPC, a paid web search). ONLY read tools
-                                 * (`Tool.readOnly`) are cached; writes always execute so
-                                 * a retry can't double-submit. */
-                               toolResultCacheRef: java.util.concurrent.atomic.AtomicReference[Map[String, Vector[sigil.tool.model.ResponseContent]]] =
-                                 new java.util.concurrent.atomic.AtomicReference(Map.empty[String, Vector[sigil.tool.model.ResponseContent]]),
+                               /** TURN-scoped cache of settled read-tool results,
+                                 * keyed by the canonical `(toolName, args)` key the
+                                 * within-completion dedupe already computes. Created
+                                 * once per turn in the agent loop and threaded through
+                                 * each iteration's request (like
+                                 * [[discoveredCapabilitiesRef]]), so a retry that
+                                 * re-issues an identical READ call is served from cache
+                                 * instead of re-executing — a real latency/quota tax on
+                                 * side-effecting reads otherwise. Caching derives from
+                                 * the tool's declared [[sigil.tool.Freshness]]: Pure
+                                 * entries persist for the turn, Stable entries are
+                                 * invalidated when a mutating call with an overlapping
+                                 * (or undeclared) [[sigil.tool.MutationTarget]] lands,
+                                 * Volatile reads are never cached. Writes always
+                                 * execute so a retry can't double-submit. */
+                               toolResultCacheRef: java.util.concurrent.atomic.AtomicReference[Map[String, sigil.tool.CachedToolRead]] =
+                                 new java.util.concurrent.atomic.AtomicReference(Map.empty[String, sigil.tool.CachedToolRead]),
                                /** Sigil #304 — turn-start wall-clock threaded through
                                  * from [[sigil.TurnContext.turnStartedAt]] for the
                                  * orchestrator's duplicate-call cap to scope its

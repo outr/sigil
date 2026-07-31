@@ -12,8 +12,7 @@ import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings, Instructions,
   Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{CachedToolRead, DiscoverySpec, Effect, Freshness, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolSpec}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
@@ -36,14 +35,20 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   ToolInput.register(RW.static(PingInput()))
 
   /** Test tool that counts executions and returns a fixed result. `ro` toggles
-    * the `readOnly` (cacheable) flag. */
-  private class CountingTool(val name: ToolName, ro: Boolean, val counter: AtomicInteger) extends Tool {
+    * the read-only (cacheable) effect. */
+  private class CountingTool(override val name: ToolName, ro: Boolean, val counter: AtomicInteger) extends Tool {
     type Input  = PingInput
     type Output = TextToolOutput
     val inputRW  = summon[RW[PingInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val description = "counting test tool"
-    override def readOnly: Boolean = ro
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = "counting test tool",
+      profile = ToolProfile(effect =
+        if (ro) Effect.ReadOnly(Freshness.Stable) else Effect.Mutating(MutationTargeting.none)
+      ),
+      discovery = DiscoverySpec(keywords = Set("test", "counting"))
+    )
     override def executeOutput(input: PingInput, ctx: ToolContext): Task[TextToolOutput] = Task {
       counter.incrementAndGet()
       TextToolOutput("ping-result")
@@ -69,7 +74,7 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   }
 
   private def requestFor(convId: Id[Conversation], tool: Tool,
-                         cacheRef: AtomicReference[Map[String, Vector[ResponseContent]]]): ConversationRequest =
+                         cacheRef: AtomicReference[Map[String, CachedToolRead]]): ConversationRequest =
     ConversationRequest(
       conversationId     = convId,
       model              = TestSigil.testModel(modelId),
@@ -88,7 +93,7 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     "execute a readOnly tool ONCE across two iterations sharing the turn cache" in {
       val counter  = new AtomicInteger(0)
       val tool     = new CountingTool(ToolName("ping_read"), ro = true, counter)
-      val cacheRef = new AtomicReference(Map.empty[String, Vector[ResponseContent]])
+      val cacheRef = new AtomicReference(Map.empty[String, CachedToolRead])
       val convId   = Conversation.id(s"dedup-read-${rapid.Unique()}")
       val conv     = Conversation(topics = TestTopicStack, _id = convId)
       val request  = requestFor(convId, tool, cacheRef)
@@ -104,7 +109,7 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     "execute a WRITE (non-readOnly) tool every iteration — never served from cache" in {
       val counter  = new AtomicInteger(0)
       val tool     = new CountingTool(ToolName("ping_write"), ro = false, counter)
-      val cacheRef = new AtomicReference(Map.empty[String, Vector[ResponseContent]])
+      val cacheRef = new AtomicReference(Map.empty[String, CachedToolRead])
       val convId   = Conversation.id(s"dedup-write-${rapid.Unique()}")
       val conv     = Conversation(topics = TestTopicStack, _id = convId)
       val request  = requestFor(convId, tool, cacheRef)

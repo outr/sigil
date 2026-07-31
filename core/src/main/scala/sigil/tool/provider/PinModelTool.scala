@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class PinModelInput(modelId: String) extends ToolInput derives RW
 
@@ -31,8 +31,8 @@ case object PinModelTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[PinModelInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("pin_model")
-  val description =
+  override val name = ToolName("pin_model")
+  override val description =
     """Pin this conversation's agent turn to one model. Overrides mode strategies and space
       |strategies for the main turn. Stays in effect until `unpin_model` clears it. (Framework
       |auxiliary calls — topic classifier, memory extractor, summarization — stay on the app's
@@ -44,9 +44,14 @@ case object PinModelTool extends Tool {
     ToolExample("Pin to local llama", PinModelInput("local/qwen3.5-9b")),
     ToolExample("Pin to a frontier model", PinModelInput("openai/gpt-5.5"))
   )
-  override val keywords = Set(
-    "pin", "lock", "force", "stick", "fix", "always", "deterministic",
-    "model", "llm", "use"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set(
+      "pin", "lock", "force", "stick", "fix", "always", "deterministic",
+      "model", "llm", "use"
+    ))
   )
 
   override def executeResult(input: PinModelInput,

@@ -105,7 +105,7 @@ object TaskShapeHints {
     ranked.find(toolNames.contains).map { lspName =>
       TaskShapeHint(
         shape       = "semantic_navigation",
-        recommended = ToolName(lspName),
+        recommended = ToolName.internal(lspName),
         context     =
           s"Your query mentions navigation verbs (callers / definitions / references / " +
             s"implementations). `$lspName` reads the language server's type-aware index — more " +

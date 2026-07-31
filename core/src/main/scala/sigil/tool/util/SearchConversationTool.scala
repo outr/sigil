@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.{Event, Message, TopicChange}
 import sigil.tool.model.{ResponseContent, SearchConversationHit, SearchConversationInput, SearchConversationOutput}
-import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Opt-in util-tier tool: retrieves historical events from the persistent
@@ -22,13 +22,13 @@ import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
  *
  * Emits a typed [[SearchConversationOutput]].
  */
-case object SearchConversationTool extends Tool with sigil.tool.ReadOnlyInternalTool {
+case object SearchConversationTool extends Tool {
   type Input  = SearchConversationInput
   type Output = SearchConversationOutput
   val inputRW  = summon[RW[SearchConversationInput]]
   val outputRW = summon[RW[SearchConversationOutput]]
-  val name = ToolName("search_conversation")
-  val description =
+  override val name = ToolName("search_conversation")
+  override val description =
     """Search OR walk the persistent log of a conversation (the caller's own, its parent, or one of
       |its workers) for earlier events.
       |
@@ -60,6 +60,12 @@ case object SearchConversationTool extends Tool with sigil.tool.ReadOnlyInternal
       |`page` — zero-indexed page for walk mode (ignored in search mode).
       |
       |Returns `{query, hits: [{eventId, timestamp, participantId, topicId, eventType, snippet}], count}`.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("search", "conversation", "history", "find", "recall", "walk", "browse", "forensics"))
+  )
   override val examples = List(
     ToolExample(
       "Find earlier exchanges mentioning the Qdrant deployment",
@@ -70,7 +76,6 @@ case object SearchConversationTool extends Tool with sigil.tool.ReadOnlyInternal
       SearchConversationInput(query = "", conversationId = Some(sigil.conversation.Conversation.id("worker-xyz")))
     )
   )
-  override val keywords = Set("search", "conversation", "history", "find", "recall", "walk", "browse", "forensics")
 
   override def executeResult(input: SearchConversationInput,
                              context: ToolContext): Task[ToolResult[SearchConversationOutput]] = {

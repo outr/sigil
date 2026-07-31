@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.Message
 import sigil.signal.EventState
-import sigil.tool.{TextToolOutput, ToolName, ToolResult}
+import sigil.tool.{TextToolOutput, ToolName, ToolResult, ToolSpec}
 import sigil.tool.model.{NoResponseInput, ResponseContent}
 
 case object NoResponseTool extends RespondFamilyTool {
@@ -14,8 +14,8 @@ case object NoResponseTool extends RespondFamilyTool {
   val inputRW  = summon[RW[NoResponseInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("no_response")
-  val description =
+  override val name = ToolName("no_response")
+  override val description =
     """Decline to respond — when the message isn't for you, or no reply is warranted. Cleaner than
       |`respond` with filler like "nothing to add".
       |
@@ -24,6 +24,12 @@ case object NoResponseTool extends RespondFamilyTool {
       |agent"). If you have something to SAY to the user — even a refusal or apology — call
       |`respond` instead; user-directed prose stuffed into `reason` is auto-promoted to a
       |respond and will trigger a warning.""".stripMargin
+
+  val spec: ToolSpec = RespondFamilyTool.spec(
+    name = name,
+    description = description,
+    keywords = Set("silence", "skip", "decline", "no_reply", "ignore")
+  )
 
   override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     input.reason match {

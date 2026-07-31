@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{InlayHint, InlayHintKind, Position, Range}
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspInlayHintItem, LspInlayHintsResult, LspPosition}
 
 import scala.jdk.CollectionConverters.*
@@ -25,22 +25,29 @@ case class LspInlayHintsInput(languageId: String,
  * Default range covers the whole file (`startLine=0, endLine=∞`).
  */
 final class LspInlayHintsTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspInlayHintsInput
   type Output = LspInlayHintsResult
   val inputRW  = summon[RW[LspInlayHintsInput]]
   val outputRW = summon[RW[LspInlayHintsResult]]
 
-  val name = ToolName("lsp_inlay_hints")
-  val description =
+  override val name = ToolName("lsp_inlay_hints")
+  override val description =
     """List inlay hints (inferred types, parameter labels) in a range.
       |
       |`languageId` + `filePath` identify the document.
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` (0-based) bound the range;
       |defaults to the whole file.
       |Each item: `{kind, position, label}` where kind is `type` / `param` / `hint`.""".stripMargin
-  override val keywords = Set("lsp", "inlay", "hints", "type annotation", "parameter hint", "type hint")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "inlay", "hints", "type annotation", "parameter hint", "type hint"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspInlayHintsInput, context: ToolContext): Task[LspInlayHintsResult] =
     withOpenDocumentOrThrow[LspInlayHintsResult](

@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.LspWorkspaceSymbol
 
 import scala.jdk.CollectionConverters.*
@@ -30,14 +30,14 @@ import scala.jdk.CollectionConverters.*
 *
  */
 final class LspRenameSymbolTool(val manager: LspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspRenameSymbolInput
   type Output = LspRenameSymbolOutput
   val inputRW  = summon[RW[LspRenameSymbolInput]]
   val outputRW = summon[RW[LspRenameSymbolOutput]]
 
-  val name = ToolName("lsp_rename_symbol")
-  val description =
+  override val name = ToolName("lsp_rename_symbol")
+  override val description =
     """Rename a symbol across the workspace by name (high-level, no position required).
       |
       |Wraps the lookup + rename dance into one call:
@@ -50,16 +50,23 @@ final class LspRenameSymbolTool(val manager: LspManager) extends Tool
       |Use this when you know the symbol's name but not the file / line / column. For
       |position-driven renames (you already have a cursor location), call the
       |position-based LSP rename tool directly.""".stripMargin
-  override val keywords = Set(
-    "lsp", "rename", "refactor", "symbol", "by name", "high-level",
-    "semantic", "identifier", "across project", "workspace", "change name",
-    // Discoverability: surface via find-and-replace queries when the
-    // intent is a semantic rename, and via navigation queries that
-    // are actually rename intents in disguise.
-    "find", "find symbol", "replace name", "change identifier",
-    "update symbol name", "global rename", "search rename"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Destructive(MutationTargeting.none, "DESTRUCTIVE.")),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "lsp", "rename", "refactor", "symbol", "by name", "high-level",
+        "semantic", "identifier", "across project", "workspace", "change name",
+        // Discoverability: surface via find-and-replace queries when the
+        // intent is a semantic rename, and via navigation queries that
+        // are actually rename intents in disguise.
+        "find", "find symbol", "replace name", "change identifier",
+        "update symbol name", "global rename", "search rename"
+      ),
+      toolchain = Some("lsp")
+    )
   )
-
 
   override def executeOutput(input: LspRenameSymbolInput,
                              context: ToolContext): Task[LspRenameSymbolOutput] = {

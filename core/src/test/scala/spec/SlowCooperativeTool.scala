@@ -1,7 +1,7 @@
 package spec
 
 import rapid.Task
-import sigil.tool.{TextToolOutput, ToolContext, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, ToolContext, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.util.concurrent.TimeUnit
 
@@ -9,9 +9,14 @@ import java.util.concurrent.TimeUnit
   * halves, so a Stop published while it is paused midway cancels the
   * remaining steps with a visible failure. */
 case object SlowCooperativeTool extends SlowStopToolBase {
-  val name = ToolName("slow_cooperative")
-  val description = "Test-only slow batch tool that checkpoints for Stop between steps."
-  override val keywords: Set[String] = Set("slow", "cooperative", "test")
+  override val name = ToolName("slow_cooperative")
+  override val description = "Test-only slow batch tool that checkpoints for Stop between steps."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("slow", "cooperative", "test"))
+  )
 
   override def executeResult(input: SlowStopInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task {

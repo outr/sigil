@@ -3,7 +3,7 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * [[sigil.tool.Tool]] that hands the model's `code` argument to the
@@ -45,8 +45,14 @@ class ExecuteScriptTool(executor: ScriptExecutor,
   val inputRW  = summon[RW[ScriptInput]]
   val outputRW = summon[RW[ScriptToolOutput]]
 
-  override val keywords = Set(
-    "execute", "run", "evaluate", "eval", "script",
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set("execute", "run", "evaluate", "eval", "script"),
+      preferIfNoBetter = true
+    )
   )
   override val examples = List(
     ToolExample(
@@ -75,8 +81,6 @@ class ExecuteScriptTool(executor: ScriptExecutor,
       case Some(surface) => s"${description}\n\n$surface"
       case None          => description
     }
-
-  override def preferIfNoBetter: Boolean = true
 
   override def executeResult(input: ScriptInput,
                              context: ToolContext): Task[ToolResult[ScriptToolOutput]] = {

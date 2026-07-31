@@ -47,7 +47,7 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private def toolInvoke(name: String): ToolInvoke =
     ToolInvoke(
-      toolName       = ToolName(name),
+      toolName       = ToolName.parse(name).fold(sys.error, identity),
       participantId  = TestAgent,
       conversationId = convId,
       topicId        = TestTopicId,
@@ -157,7 +157,7 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       // Distinct increasing timestamps so the claim anchor and the
       // user-task invariant pick out their intended events.
       def t(name: String, ts: Long): ToolInvoke = ToolInvoke(
-        toolName = ToolName(name), participantId = TestAgent, conversationId = convId,
+        toolName = ToolName.parse(name).fold(sys.error, identity), participantId = TestAgent, conversationId = convId,
         topicId = TestTopicId, state = EventState.Complete, timestamp = Timestamp(ts)
       )
       def u(text: String, ts: Long): Message = Message(

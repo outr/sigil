@@ -23,7 +23,7 @@ import sigil.tool.{ToolInput, ToolName, ToolOutput}
  * completes.
  *
  * `internal` flags framework-internal tool calls — currently the
- * `respond` family ([[sigil.orchestrator.Orchestrator.UserVisibleTerminalTools]]).
+ * `respond` family ([[sigil.tool.core.RespondFamilyTool]]).
  * The user-facing speech for these reaches the wire as a `Message` +
  * `MessageDelta`; the chip would render the same content again. Client UIs
  * filter on `internal == true` to suppress the redundant chip. The

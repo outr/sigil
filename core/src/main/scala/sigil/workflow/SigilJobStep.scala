@@ -75,7 +75,7 @@ final case class SigilJobStep(input: JobStepInput,
     * `inputRW`, run `tool.execute` against a synthetic TurnContext,
     * and coalesce the result. */
   private def runTool(host: Sigil, workflow: Workflow, toolName: String): Task[Json] = {
-    host.findTools.byName(ToolName(toolName)).flatMap {
+    host.findTools.byName(ToolName.internal(toolName)).flatMap {
       case None =>
         Task.error(new RuntimeException(s"Workflow step '${input.id}' references unknown tool '$toolName'."))
       case Some(tool) =>
@@ -163,7 +163,7 @@ final case class SigilJobStep(input: JobStepInput,
                 }
                 // Sigil #376 — record the call as one settled ToolInvoke in the
                 // run's sub-conversation so it's openable.
-                persistToolInvocation(host, workflow, ctx, ToolName(toolName), typedInput, settle).map(_ => resultJson)
+                persistToolInvocation(host, workflow, ctx, ToolName.internal(toolName), typedInput, settle).map(_ => resultJson)
               }
             }
         }

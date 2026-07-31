@@ -60,7 +60,7 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
           state = ToolCallState.Complete("- send_slack_message: send")),
         textFrame("got it")
       )
-      // resultTtl=Some(0) tools follow "valid for ONE next turn"
+      // Volatile-read tools follow "valid for ONE next turn"
       // semantics — the LATEST call must survive a curate so the
       // agent can act on freshly-discovered tools. Bug #44 used to
       // strip even the latest pair, trapping the agent in a
@@ -147,7 +147,7 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
    * Post-fix: the optimizer takes a `currentTurnSource` participant.
    * The most-recent Text frame from that participant marks the
    * "current turn started here" boundary. Pairs at or after the
-   * boundary stay regardless of `resultTtl`; only pairs from prior
+   * boundary stay regardless of read freshness; only pairs from prior
    * turns are eligible for the legacy "keep latest per name" elision.
    */
   "StandardContextOptimizer.collapseToolPairs (bug #73 — within-turn preservation)" should {

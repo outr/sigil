@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DapEvaluateInput(sessionId: String,
                             expression: String,
@@ -26,8 +26,8 @@ final class DapEvaluateTool(val manager: DapManager) extends Tool with DapToolSu
   type Output = DapEvaluateOutput
   val inputRW = summon[RW[DapEvaluateInput]]
   val outputRW = summon[RW[DapEvaluateOutput]]
-  val name = ToolName("dap_evaluate")
-  val description =
+  override val name = ToolName("dap_evaluate")
+  override val description =
     """Evaluate an expression in the debugged program's context.
       |
       |`sessionId` selects the active session.
@@ -35,6 +35,12 @@ final class DapEvaluateTool(val manager: DapManager) extends Tool with DapToolSu
       |`frameId` (optional) — if set, evaluate in that frame's scope; otherwise globally.
       |`context` (default "repl") — "repl" / "watch" / "hover" / "variables" formatting hint.
       |Returns the value (with optional child-reference for structured results).""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "evaluate", "expression", "inspect", "repl"))
+  )
   override val examples = List(
     ToolExample(
       "evaluate an expression in a frame",

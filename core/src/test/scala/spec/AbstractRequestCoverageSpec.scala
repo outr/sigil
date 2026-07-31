@@ -258,7 +258,7 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
 
     "include per-participant recentToolInvocations (from projections) in the wire body" in {
       val invocation = sigil.conversation.RecentToolInvocation(
-        toolName    = ToolName("RECENT_TOOL_42"),
+        toolName    = ToolName.parse("RECENT_TOOL_42").fold(sys.error, identity),
         argsHash    = "hash-42",
         argsPreview = "{\"q\":\"42\"}",
         invokedAt   = lightdb.time.Timestamp()

@@ -5,7 +5,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import strider.Workflow
 import strider.step.Step
 
@@ -28,8 +28,8 @@ final class ResumeWorkflowTool extends Tool with WorkflowToolSupport {
   type Output = TextToolOutput
   val inputRW  = summon[RW[ResumeWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("resume_workflow")
-  val description =
+  override val name = ToolName("resume_workflow")
+  override val description =
     """Resume a workflow run paused on an approval / trigger step.
       |
       |`runId` is the run id; `stepId` is the id of the waiting step (visible from
@@ -42,7 +42,12 @@ final class ResumeWorkflowTool extends Tool with WorkflowToolSupport {
       ResumeWorkflowInput(runId = "run-abc", stepId = "review", payload = Some("approve"))
     )
   )
-  override val keywords = Set("workflow", "resume", "approve", "continue")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("workflow", "resume", "approve", "continue"))
+  )
 
   override def executeResult(input: ResumeWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)

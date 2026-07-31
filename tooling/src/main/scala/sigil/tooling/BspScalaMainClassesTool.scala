@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspMainClassEntry, BspMainClassesResult, BspTargetMainClasses}
 
 import scala.jdk.CollectionConverters.*
@@ -23,14 +23,21 @@ final class BspScalaMainClassesTool(val manager: BspManager) extends Tool with B
   val inputRW  = summon[RW[BspScalaMainClassesInput]]
   val outputRW = summon[RW[BspMainClassesResult]]
 
-  val name = ToolName("bsp_scala_main_classes")
-  val description =
+  override val name = ToolName("bsp_scala_main_classes")
+  override val description =
     """List discovered Scala main classes for each target.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
-  override val keywords = Set("bsp", "main classes", "main", "entry points", "scala", "runnable")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("bsp", "main classes", "main", "entry points", "scala", "runnable"),
+      toolchain = Some("bsp")
+    )
+  )
 
   override def executeOutput(input: BspScalaMainClassesInput,
                              context: ToolContext): Task[BspMainClassesResult] =

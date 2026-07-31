@@ -3,12 +3,12 @@ package spec
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.{GlobalSpace, SpaceId, TurnContext}
+import sigil.TurnContext
 import lightdb.id.Id
 import rapid.Task
 import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.tool.ToolRoster
 
@@ -36,9 +36,14 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
     type Output = TextToolOutput
     val inputRW  = summon[RW[Args]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name: ToolName = ToolName("foo")
-    val description: String = "test"
-    override def space: SpaceId = GlobalSpace
+    override val name: ToolName = ToolName("foo")
+    override val description: String = "test"
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "foo"))
+    )
     override def _id: Id[Tool] = Id[Tool](name.value)
     override def executeResult(input: Args, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.value)))

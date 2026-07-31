@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.conversation.ConversationBudget
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 final case class SetBudgetInput(@description("Soft per-turn spend budget in USD — crossing it makes the agent pause, summarize, and ask whether to continue. Omit to leave unchanged.")
                                 turnSoft: Option[BigDecimal] = None,
@@ -30,22 +30,29 @@ case object SetBudgetTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[SetBudgetInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("set_budget")
-  val description =
+  override val name = ToolName("set_budget")
+  override val description =
     """Set or clear this conversation's spend-budget override (USD). Soft budgets make the agent
       |pause at a summary and ask whether to continue; hard ceilings end the turn (per-turn) or
       |block new turns (conversation) until raised. Supplied fields override the application
       |default for THIS conversation; omitted fields are unchanged; `clear = true` removes the
       |whole override. Use when the user says things like "cap this at $5" or "raise the budget
       |to $20".""".stripMargin
+
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set(
+      "budget", "spend", "cost", "cap", "limit", "ceiling", "dollars",
+      "expensive", "afford", "money", "price"
+    ))
+  )
+
   override val examples = List(
     ToolExample("Cap the conversation at $5", SetBudgetInput(conversationHard = Some(BigDecimal(5)))),
     ToolExample("Pause for approval every $2 of turn spend", SetBudgetInput(turnSoft = Some(BigDecimal(2)))),
     ToolExample("Remove the conversation's budget override", SetBudgetInput(clear = true))
-  )
-  override val keywords = Set(
-    "budget", "spend", "cost", "cap", "limit", "ceiling", "dollars",
-    "expensive", "afford", "money", "price"
   )
 
   override def executeResult(input: SetBudgetInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {

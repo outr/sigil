@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.FormattingOptions
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.LspFormatResult
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
@@ -25,13 +25,13 @@ case class LspFormatInput(languageId: String,
  * empty edit list — the file is unchanged.
  */
 final class LspFormatTool(val manager: LspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspFormatInput
   type Output = LspFormatResult
   val inputRW  = summon[RW[LspFormatInput]]
   val outputRW = summon[RW[LspFormatResult]]
-  val name = ToolName("lsp_format")
-  val description =
+  override val name = ToolName("lsp_format")
+  override val description =
     """Format a file via the language server's formatting provider.
       |
       |`languageId` + `filePath` identify the document.
@@ -39,8 +39,15 @@ final class LspFormatTool(val manager: LspManager) extends Tool
       |FormattingOptions to the server; many servers honor only the project's
       |configured formatter and ignore these.
       |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin
-  override val keywords = Set("lsp", "format", "prettify", "indent", "beautify", "reformat", "style")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Destructive(MutationTargeting.none, "DESTRUCTIVE.")),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "format", "prettify", "indent", "beautify", "reformat", "style"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspFormatInput, context: ToolContext): Task[LspFormatResult] =
     withOpenDocumentOrThrow[LspFormatResult](

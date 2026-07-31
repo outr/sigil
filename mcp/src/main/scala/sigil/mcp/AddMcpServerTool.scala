@@ -3,7 +3,7 @@ package sigil.mcp
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class AddMcpServerInput(name: String,
                              command: Option[String] = None,
@@ -25,8 +25,8 @@ final class AddMcpServerTool(manager: McpManager) extends Tool {
   val inputRW  = summon[RW[AddMcpServerInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("add_mcp_server")
-  val description =
+  override val name = ToolName("add_mcp_server")
+  override val description =
     """Register an MCP (Model Context Protocol) server.
       |
       |Use either `command` (+ optional `args`) for stdio transport, or `url` (+ optional `headers`) for HTTP+SSE.
@@ -34,6 +34,12 @@ final class AddMcpServerTool(manager: McpManager) extends Tool {
       |`roots` (optional) lists filesystem workspace roots to advertise to filesystem-aware servers.
       |
       |Persists the config; the server is available across restarts and connects lazily on first use.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("mcp", "server", "add", "register", "connect", "protocol"))
+  )
   override val examples = List(
     ToolExample(
       "stdio fetch server",

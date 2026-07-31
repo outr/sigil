@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DapStepInInput(sessionId: String, threadId: Int) extends ToolInput derives RW
 
@@ -16,12 +16,18 @@ final class DapStepInTool(val manager: DapManager) extends Tool with DapToolSupp
   type Output = TextToolOutput
   val inputRW = summon[RW[DapStepInInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("dap_step_in")
-  val description =
+  override val name = ToolName("dap_step_in")
+  override val description =
     """Step into a nested method call at the current line.
       |
       |`sessionId` selects the active session.
       |`threadId` is the thread to step.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "step", "into", "method", "call"))
+  )
   override val examples = List(
     ToolExample(
       "step into a method",

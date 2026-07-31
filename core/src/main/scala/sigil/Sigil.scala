@@ -1690,7 +1690,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    *
    * Default: [[sigil.conversation.compression.StandardContextCurator]]
    * with all-NoOp components plus the optimizer's pair-stripping
-   * (driven by [[sigil.tool.Tool.resultTtl]]) — runs the cheap
+   * (driven by [[sigil.tool.Freshness.Volatile]] read declarations) — runs the cheap
    * cleanup pass and the budget guard so a single conversation can't
    * blow the model's context window with accumulated `find_capability`
    * / `change_mode` results.
@@ -4500,7 +4500,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // "Suggested tools" prompt section.
         updateProjection(cr.conversationId, cr.participantId) { proj =>
           val toolNames = cr.matches.collect {
-            case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
+            case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName.internal(m.name)
           }
           // Sigil #377 / #383 — ACCUMULATE, never replace. The #301 "bounded
           // replace" caused a discovered tool the agent was using (#377) or
@@ -7142,12 +7142,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                    * `runAgent` call starts with a fresh empty
                                    * map. */
                                  discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]],
-                                 /** Sigil #411 — turn-scoped read-tool result cache
-                                   * (canonical key → content). Created once per
+                                 /** Turn-scoped read-tool result cache
+                                   * (canonical key → cached read). Created once per
                                    * `runAgent` call and threaded through each iteration
                                    * so a retry re-issuing an identical READ is served
                                    * from cache. */
-                                 toolResultCacheRef: AtomicReference[Map[String, Vector[sigil.tool.model.ResponseContent]]],
+                                 toolResultCacheRef: AtomicReference[Map[String, sigil.tool.CachedToolRead]],
                                  /** Sigil #313 — single-shot fire-gate for the
                                    * reactive self-heal. Threaded through every
                                    * recursion so a healed retry that ALSO
@@ -7437,7 +7437,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               val drainTask =
                 interruptible
                 .evalTap {
-                  case ti: ToolInvoke if Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) =>
+                  case ti: ToolInvoke if _root_.sigil.tool.core.RespondFamilyTool.contains(ti.toolName) =>
                     Task {
                       activeUserVisibleInvokes.put(ti._id, ti.toolName.value)
                       // Sigil #275 — respond-family invokes count as "model
@@ -8901,11 +8901,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // forever.
           def isMutation(ti: sigil.event.ToolInvoke): Boolean =
             ti.outcome == sigil.event.ToolOutcome.Success &&
-              !sigil.orchestrator.Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) &&
-              toolsByName.get(ti.toolName.value).exists(_.destructive)
+              !_root_.sigil.tool.core.RespondFamilyTool.contains(ti.toolName) &&
+              toolsByName.get(ti.toolName.value).exists(_.spec.profile.effect.mutates)
           val successfulMutations = windowInvokes.filter(isMutation)
           val targets = successfulMutations.flatMap { ti =>
-            toolsByName.get(ti.toolName.value).flatMap(t => ti.input.flatMap(t.mutationTargetOf))
+            toolsByName.get(ti.toolName.value).flatMap(t => ti.input.flatMap(t.mutationTargetOf)).map(_.value)
           }.toSet
           val verified = windowInvokes.exists(ti =>
             ti.outcome == sigil.event.ToolOutcome.Success &&
@@ -9580,8 +9580,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                  isGreeting: Boolean = false,
                                  discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]] =
                                    new AtomicReference(Map.empty),
-                                 // Sigil #411 — turn-scoped read-tool result cache, threaded onto the TurnContext.
-                                 toolResultCacheRef: AtomicReference[Map[String, Vector[sigil.tool.model.ResponseContent]]] =
+                                 // Turn-scoped read-tool result cache, threaded onto the TurnContext.
+                                 toolResultCacheRef: AtomicReference[Map[String, sigil.tool.CachedToolRead]] =
                                    new AtomicReference(Map.empty),
                                  healedThisTurn: Option[java.util.concurrent.atomic.AtomicBoolean] = None): Task[(TurnContext, Stream[Event])] =
     for {
@@ -9773,7 +9773,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // dispatchers despite the leaf register call succeeding.
       _ = SpaceId.register((RW.static(GlobalSpace) :: spaceIds).distinct*)
       _ = sigil.tool.ToolKind.register(
-            (RW.static(sigil.tool.BuiltinKind) :: toolKindRegistrations).distinct*
+            (RW.static(sigil.tool.BuiltinKind) :: RW.static(sigil.tool.InternalKind) ::
+              RW.static(sigil.tool.consult.ConsultKind) :: toolKindRegistrations).distinct*
           )
       _ = ParticipantId.register((summon[RW[sigil.participant.WorkerParticipantId]] :: participantIds).distinctBy(_.definition.className)*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)

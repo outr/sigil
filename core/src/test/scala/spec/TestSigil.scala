@@ -789,10 +789,15 @@ case object SendSlackMessageTool extends sigil.tool.Tool {
   val inputRW  = summon[RW[SendSlackMessageInput]]
   val outputRW = summon[RW[sigil.tool.TextToolOutput]]
 
-  val name = sigil.tool.ToolName("send_slack_message")
-  val description =
+  override val name = sigil.tool.ToolName("send_slack_message")
+  override val description =
     "Send a message to a Slack channel on behalf of the user. Takes a channel name and the message text."
-  override val keywords = Set("slack", "message", "channel")
+  val spec: sigil.tool.ToolSpec = sigil.tool.ToolSpec(
+    name = name,
+    description = description,
+    profile = sigil.tool.ToolProfile(effect = sigil.tool.Effect.Mutating(sigil.tool.MutationTargeting.none)),
+    discovery = sigil.tool.DiscoverySpec(keywords = Set("slack", "message", "channel"))
+  )
 
   override def executeOutput(input: SendSlackMessageInput, context: ToolContext): rapid.Task[sigil.tool.TextToolOutput] =
     rapid.Task.pure(sigil.tool.TextToolOutput(s"Sent to ${input.channel}: ${input.text}"))

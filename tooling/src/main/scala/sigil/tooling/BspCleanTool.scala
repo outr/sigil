@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.BspCleanResult
 
 case class BspCleanInput(projectRoot: String,
@@ -15,20 +15,27 @@ case class BspCleanInput(projectRoot: String,
  * `targets` cleans every workspace target.
  */
 final class BspCleanTool(val manager: BspManager) extends Tool
-  with sigil.tool.DestructiveExternalTool with BspToolSupport {
+  with BspToolSupport {
   type Input  = BspCleanInput
   type Output = BspCleanResult
   val inputRW  = summon[RW[BspCleanInput]]
   val outputRW = summon[RW[BspCleanResult]]
 
-  val name = ToolName("bsp_clean")
-  val description =
+  override val name = ToolName("bsp_clean")
+  override val description =
     """Clean the build cache for the given targets via the BSP server.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty cleans every workspace target.""".stripMargin
-  override val keywords = Set("bsp", "clean", "clean cache", "clear build", "wipe build", "reset")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Destructive(MutationTargeting.none, "DESTRUCTIVE.")),
+    discovery = DiscoverySpec(
+      keywords = Set("bsp", "clean", "clean cache", "clear build", "wipe build", "reset"),
+      toolchain = Some("bsp")
+    )
+  )
 
   override def executeOutput(input: BspCleanInput, context: ToolContext): Task[BspCleanResult] =
     withTargets[BspCleanResult](

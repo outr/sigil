@@ -23,8 +23,6 @@ import sigil.tool.model.ResponseContent
 trait BspToolSupport extends sigil.tool.Tool {
   protected def manager: BspManager
 
-  override def toolchain: Option[String] = Some("bsp")
-
   /** Guard the BSP tool's input against schema-leaked placeholder
     * values ("projectRoot": "string", etc.) — see
     * [[sigil.tool.PlaceholderInputDetector]]. Returns a placeholder-

@@ -86,7 +86,7 @@ trait WorkflowToolSupport {
     toolSteps.foldLeft(Task.pure(List.empty[String])) { (accTask, step) =>
       accTask.flatMap { acc =>
         val toolName = step.tool.get.trim
-        host.findTools.byName(ToolName(toolName)).map {
+        host.findTools.byName(ToolName.internal(toolName)).map {
           case None => acc
           case Some(tool) =>
             tool.inputDefinition.defType match {

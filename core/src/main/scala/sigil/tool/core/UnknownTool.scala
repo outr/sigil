@@ -32,10 +32,14 @@ case object UnknownTool extends sigil.tool.Tool {
   val inputRW  = summon[RW[JsonInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("_unknown_tool")
-  val description =
-    "Framework-internal sentinel — never advertised to the model. Substituted by the orchestrator when a " +
-      "tool name doesn't resolve, so the call lands a typed Failure the agent can act on instead of aborting the turn."
+  val spec: sigil.tool.ToolSpec = sigil.tool.ToolSpec(
+    name = ToolName.internal("_unknown_tool"),
+    description =
+      "Framework-internal sentinel — never advertised to the model. Substituted by the orchestrator when a " +
+        "tool name doesn't resolve, so the call lands a typed Failure the agent can act on instead of aborting the turn.",
+    profile = sigil.tool.ToolProfile(effect = sigil.tool.Effect.ReadOnly(sigil.tool.Freshness.Volatile)),
+    discovery = sigil.tool.DiscoverySpec(kind = sigil.tool.InternalKind)
+  )
 
   override def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val invokedName = context.toolName.value

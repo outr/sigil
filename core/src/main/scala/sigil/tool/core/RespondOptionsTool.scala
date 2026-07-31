@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.Message
 import sigil.signal.EventState
-import sigil.tool.{TextToolOutput, ToolExample, ToolName, ToolResult}
+import sigil.tool.{TextToolOutput, ToolExample, ToolName, ToolResult, ToolSpec}
 import sigil.tool.model.{RespondOptionsInput, ResponseContent, SelectOption}
 
 /**
@@ -24,8 +24,8 @@ case object RespondOptionsTool extends RespondFamilyTool {
   val inputRW  = summon[RW[RespondOptionsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("respond_options")
-  val description =
+  override val name = ToolName("respond_options")
+  override val description =
     """Ask the user to pick from a closed set of options. Options render as clickable controls
       |(buttons / radio / checkboxes); markdown bullets in `respond.content` do not.
       |
@@ -45,6 +45,12 @@ case object RespondOptionsTool extends RespondFamilyTool {
       |
       |An option with `exclusive = true` (multi-select only) cannot be combined with others (e.g. a
       |"None of these" escape hatch).""".stripMargin
+
+  val spec: ToolSpec = RespondFamilyTool.spec(
+    name = name,
+    description = description,
+    keywords = Set("respond", "options", "choices", "ask", "pick", "select")
+  )
 
   override val examples: List[ToolExample] = List(
     ToolExample(

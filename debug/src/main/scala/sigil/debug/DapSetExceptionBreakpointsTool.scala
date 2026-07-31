@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DapSetExceptionBreakpointsInput(sessionId: String,
                                            filters: List[String]) extends ToolInput derives RW
@@ -22,14 +22,20 @@ final class DapSetExceptionBreakpointsTool(val manager: DapManager) extends Tool
   type Output = TextToolOutput
   val inputRW = summon[RW[DapSetExceptionBreakpointsInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("dap_set_exception_breakpoints")
-  val description =
+  override val name = ToolName("dap_set_exception_breakpoints")
+  override val description =
     """Configure exception breakpoint filters in an active debug session.
       |
       |`sessionId` selects the active session.
       |`filters` is a list of adapter-defined filter ids (e.g. "uncaught", "all", "raised").
       |Empty list disables exception breakpoints.
       |Returns each filter's verified state and any message the adapter reported.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "exception", "breakpoints", "filters", "uncaught"))
+  )
   override val examples = List(
     ToolExample(
       "break on uncaught exceptions",

@@ -5,7 +5,7 @@ import bench.agentdojo.banking.events.MoneyTransferred
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -22,9 +22,15 @@ final class SendMoneyTool(state: AtomicReference[BankingEnvironment]) extends To
   val inputRW: RW[SendMoneyInput] = summon[RW[SendMoneyInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("send_money")
-  val description: String = "Sends a transaction to the recipient."
+  override val name: ToolName = ToolName("send_money")
+  override val description: String = "Sends a transaction to the recipient."
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("bank", "send", "money", "transaction", "transfer"))
+  )
 
   override def executeResult(input: SendMoneyInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     state.updateAndGet { env =>

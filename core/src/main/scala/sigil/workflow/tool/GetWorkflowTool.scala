@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.*
 
 import scala.concurrent.duration.*
@@ -22,14 +22,19 @@ final class GetWorkflowTool extends Tool with WorkflowToolSupport {
   type Output = GetWorkflowOutput
   val inputRW  = summon[RW[GetWorkflowInput]]
   val outputRW = summon[RW[GetWorkflowOutput]]
-  val name = ToolName("get_workflow")
-  val description =
+  override val name = ToolName("get_workflow")
+  override val description =
     """Fetch a workflow template by id.
       |
       |`workflowId` is the template's id. Returns the full template — name, description,
       |step list, triggers, variable defs.""".stripMargin
   override val examples = List(ToolExample("fetch by id", GetWorkflowInput(workflowId = "wf-abc")))
-  override val keywords = Set("workflow", "get", "describe")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("workflow", "get", "describe"))
+  )
 
   /** Internal retry budget for the not-yet-visible window. A template fetched
     * right after `create_workflow` may not be queryable for a few hundred ms;

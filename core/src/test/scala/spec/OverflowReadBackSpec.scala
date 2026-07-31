@@ -12,7 +12,7 @@ import sigil.tool.fs.{LocalFileSystemContext, ReadFileTool, WriteFileTool}
 import sigil.tool.model.{ReadFileInput, ReadFileOutput, WriteFileInput}
 import sigil.tool.process.{ProcessOutputTool, ProcessRegistry}
 import sigil.tool.model.ProcessOutputInput
-import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.nio.file.Files
 import scala.jdk.CollectionConverters.*
@@ -162,8 +162,14 @@ class OverflowReadBackSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     type Output = TextToolOutput
     val inputRW = summon[RW[OverflowDiscoveryInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName("big_discovery")
-    val description = "Emits a large newline-separated path list (discovery-shaped, over the inline cap)."
+    override val name = ToolName("big_discovery")
+    override val description = "Emits a large newline-separated path list (discovery-shaped, over the inline cap)."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "discovery", "overflow"))
+    )
     override def executeResult(input: OverflowDiscoveryInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(bigBody)))
   }

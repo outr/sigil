@@ -6,7 +6,7 @@ import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.storage.{FileVersion, WriteResult}
-import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.model.{EditFileInput, EditFileOutput}
 
 import java.util.regex.Pattern
@@ -29,25 +29,33 @@ import java.util.regex.Pattern
  * Emits a typed [[EditFileOutput]] — agents pattern-match on
  * `Success`, `NotFound`, `NotUnique`, `Stale`, `FileNotFound`.
  */
-final class EditFileTool(context: FileSystemContext)
-  extends Tool with sigil.tool.DestructiveExternalTool {
+final class EditFileTool(context: FileSystemContext) extends Tool {
   type Input  = EditFileInput
   type Output = EditFileOutput
   val inputRW  = summon[RW[EditFileInput]]
   val outputRW = summon[RW[EditFileOutput]]
-  val name = ToolName("edit_file")
-  override def mutationTarget(input: EditFileInput): Option[String] = Some(input.path)
-  val description =
-    """Find and replace text in a file. By default replaces the first occurrence; pass `replaceAll = true`
-      |to replace every occurrence. Use literal strings — they are escaped before matching. The `oldString`
-      |text anchor carries no line number or hash, so it stays valid for repeated edits to one file.
-      |
-      |`expectedHash` guards against a CONCURRENT EXTERNAL writer changing the file between your read and
-      |your edit. It is a single point-in-time snapshot and goes STALE after any edit to the file — including
-      |your own previous edit — so OMIT it when making multiple edits to one file (a sweep): each edit after
-      |the first will fail `Stale`. Pass it only for genuine multi-writer races.
-      |
-      |Output: `Success(replacements, hash?) | NotFound | NotUnique(occurrences) | Stale(currentHash, currentContent) | FileNotFound`.""".stripMargin
+
+  val spec: ToolSpec = ToolSpec(
+    name = ToolName("edit_file"),
+    description =
+      """Find and replace text in a file. By default replaces the first occurrence; pass `replaceAll = true`
+        |to replace every occurrence. Use literal strings — they are escaped before matching. The `oldString`
+        |text anchor carries no line number or hash, so it stays valid for repeated edits to one file.
+        |
+        |`expectedHash` guards against a CONCURRENT EXTERNAL writer changing the file between your read and
+        |your edit. It is a single point-in-time snapshot and goes STALE after any edit to the file — including
+        |your own previous edit — so OMIT it when making multiple edits to one file (a sweep): each edit after
+        |the first will fail `Stale`. Pass it only for genuine multi-writer races.
+        |
+        |Output: `Success(replacements, hash?) | NotFound | NotUnique(occurrences) | Stale(currentHash, currentContent) | FileNotFound`.""".stripMargin,
+    profile = ToolProfile(
+      effect = Effect.Destructive(
+        target = MutationTargeting.typed[EditFileInput](i => Some(MutationTarget(i.path))),
+        consequence = "DESTRUCTIVE."
+      )
+    ),
+    discovery = DiscoverySpec(keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch"))
+  )
   override val examples = List(
     ToolExample("Update a single line", EditFileInput(path = "config.toml", oldString = "log_level = \"info\"", newString = "log_level = \"debug\"")),
     ToolExample("Rename a symbol", EditFileInput(path = "src/main.rs", oldString = "old_name", newString = "new_name", replaceAll = true)),
@@ -60,8 +68,6 @@ final class EditFileTool(context: FileSystemContext)
       EditFileInput(path = "config.toml", oldString = "x = 1", newString = "x = 2", expectedHash = Some("abc123..."))
     )
   )
-  override val keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch")
-
   /** Non-Success EditFileOutputs (NotFound, NotUnique, Stale, FileNotFound)
     * are logical failures of the EDIT operation, not failures of the tool
     * to execute. Surfacing them through `executeResult` lets the

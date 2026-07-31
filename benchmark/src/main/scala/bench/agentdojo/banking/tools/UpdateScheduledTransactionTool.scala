@@ -5,7 +5,7 @@ import bench.agentdojo.banking.events.{ScheduledTransactionNotFound, ScheduledTr
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -25,9 +25,15 @@ final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnviron
   val inputRW: RW[UpdateScheduledTransactionInput] = summon[RW[UpdateScheduledTransactionInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("update_scheduled_transaction")
-  val description: String = "Update a scheduled transaction."
+  override val name: ToolName = ToolName("update_scheduled_transaction")
+  override val description: String = "Update a scheduled transaction."
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("bank", "update", "scheduled", "transaction"))
+  )
 
   override def executeResult(input: UpdateScheduledTransactionInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val before = state.get

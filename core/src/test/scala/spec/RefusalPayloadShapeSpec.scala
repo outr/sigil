@@ -20,8 +20,8 @@ import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.core.{ChangeModeTool, RecordConsentTool, UnknownTool}
 import sigil.tool.model.{ChangeModeInput, RecordConsentInput}
 import sigil.tool.{
-  JsonInput, TextToolOutput, Tool, ToolContext, ToolExample, ToolInput,
-  ToolName, ToolResult
+  DiscoverySpec, Effect, JsonInput, MutationTargeting, TextToolOutput, Tool, ToolContext,
+  ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec
 }
 import spice.http.HttpRequest
 
@@ -53,8 +53,14 @@ class RefusalPayloadShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     type Output = TextToolOutput
     val inputRW  = summon[RW[FanoutInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name = ToolName("fanout_workers")
-    val description = "Fan out a per-item action across a container of items."
+    override val name = ToolName("fanout_workers")
+    override val description = "Fan out a per-item action across a container of items."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "fanout_workers"))
+    )
     override val examples: List[ToolExample] = List(
       ToolExample(
         "kick off a code-review fan-out",

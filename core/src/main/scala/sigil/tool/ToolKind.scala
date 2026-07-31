@@ -21,6 +21,13 @@ trait ToolKind {
   /** Stable string the wire layer uses on the polymorphic discriminator.
     * Must be unique across registered subtypes. */
   def value: String
+
+  /** Whether tools of this kind surface through `find_capability`.
+    * Discoverable kinds must declare non-empty keywords on their
+    * [[DiscoverySpec]] ([[ToolSpec]] enforces it); non-discoverable
+    * kinds ([[InternalKind]], [[sigil.tool.consult.ConsultKind]])
+    * are framework-invoked and exempt. */
+  def discoverable: Boolean = true
 }
 
 object ToolKind extends PolyType[ToolKind]()(using scala.reflect.ClassTag(classOf[ToolKind]))

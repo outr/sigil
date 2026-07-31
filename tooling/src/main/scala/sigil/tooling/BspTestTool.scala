@@ -4,7 +4,7 @@ import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.BspExecResult
 
 case class BspTestInput(projectRoot: String,
@@ -21,26 +21,33 @@ case class BspTestInput(projectRoot: String,
  * "every workspace target that supports test".
  */
 final class BspTestTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  with BspToolSupport {
   type Input  = BspTestInput
   type Output = BspExecResult
   val inputRW  = summon[RW[BspTestInput]]
   val outputRW = summon[RW[BspExecResult]]
 
-  val name = ToolName("bsp_test")
+  override val name = ToolName("bsp_test")
   override def verification: Boolean = true
-  val description =
+  override val description =
     """Run tests for build targets via the BSP server.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty tests every target with the test capability.
       |`arguments` (optional) flows through to the test runner.
       |Returns `{status, targetCount, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED` / `NO_TARGETS`.""".stripMargin
-  override val keywords = Set(
-    "bsp", "test", "run tests", "unit test", "execute tests", "verify",
-    "scala", "sbt", "project", "targets", "validate"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "bsp", "test", "run tests", "unit test", "execute tests", "verify",
+        "scala", "sbt", "project", "targets", "validate"
+      ),
+      toolchain = Some("bsp")
+    )
   )
-
 
   override def executeOutput(input: BspTestInput, context: ToolContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](

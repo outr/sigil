@@ -627,7 +627,7 @@ case class OpenAIProvider(apiKey: String,
         // call — so the chain stays valid. Pure-text / server-tool-only
         // responses chain too. Clear the chain only for the terminal case.
         val endsWithTerminalCall =
-          state.functionCallNames.exists(Orchestrator.UserVisibleTerminalTools.contains)
+          state.functionCallNames.exists(_root_.sigil.tool.core.RespondFamilyTool.containsRaw)
         val responseStateEv: Vector[ProviderEvent] =
           if (state.responseId.isEmpty) Vector.empty
           else if (endsWithTerminalCall)

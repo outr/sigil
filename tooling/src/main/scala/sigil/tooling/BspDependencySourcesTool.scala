@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspDependencySourcesResult, BspTargetDependencySources}
 
 import scala.jdk.CollectionConverters.*
@@ -18,20 +18,27 @@ case class BspDependencySourcesInput(projectRoot: String,
  * source jar" in an IDE.
  */
 final class BspDependencySourcesTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  with BspToolSupport {
   type Input  = BspDependencySourcesInput
   type Output = BspDependencySourcesResult
   val inputRW  = summon[RW[BspDependencySourcesInput]]
   val outputRW = summon[RW[BspDependencySourcesResult]]
 
-  val name = ToolName("bsp_dependency_sources")
-  val description =
+  override val name = ToolName("bsp_dependency_sources")
+  override val description =
     """List the source jars for each target's library dependencies.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
-  override val keywords = Set("bsp", "dependency sources", "library sources", "deps source", "external sources")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("bsp", "dependency sources", "library sources", "deps source", "external sources"),
+      toolchain = Some("bsp")
+    )
+  )
 
   override def executeOutput(input: BspDependencySourcesInput,
                              context: ToolContext): Task[BspDependencySourcesResult] =

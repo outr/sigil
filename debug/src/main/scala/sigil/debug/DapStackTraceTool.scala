@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DapStackTraceInput(sessionId: String,
                               threadId: Int,
@@ -22,14 +22,20 @@ final class DapStackTraceTool(val manager: DapManager) extends Tool with DapTool
   type Output = DapStackTraceOutput
   val inputRW = summon[RW[DapStackTraceInput]]
   val outputRW = summon[RW[DapStackTraceOutput]]
-  val name = ToolName("dap_stack_trace")
-  val description =
+  override val name = ToolName("dap_stack_trace")
+  override val description =
     """Fetch the call stack for a stopped thread.
       |
       |`sessionId` selects the active session.
       |`threadId` is the thread (typically from the latest stopped event).
       |`startFrame` (default 0) and `levels` (default 20) page through deep stacks.
       |Returns each frame's id, name, source path, and line.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "stack", "trace", "frames", "callstack"))
+  )
   override val examples = List(
     ToolExample(
       "fetch the top 20 frames",

@@ -8,7 +8,7 @@ import lightdb.util.Nowish
 import rapid.Task
 import sigil.browser.WebBrowserMode
 import sigil.browser.{BrowserScript, CookieJar}
-import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DefinitionToSchema, DiscoverySpec, Effect, JsonSchemaToDefinition, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
@@ -24,13 +24,20 @@ case object UpdateBrowserScriptTool extends Tool {
   val inputRW  = summon[RW[UpdateBrowserScriptInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("update_browser_script")
-  val description =
+  override val name = ToolName("update_browser_script")
+  override val description =
     """Update an existing browser-script tool's description, parameters, steps, keywords, or
       |cookie-jar reference. Identified by `name`; omitted fields keep their stored value.
       |The tool's space is fixed at creation.""".stripMargin
-  override val modes = Set(WebBrowserMode.id)
-  override val keywords = Set("update", "edit", "modify", "browser", "script")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set("update", "edit", "modify", "browser", "script"),
+      modes = Set(WebBrowserMode.id)
+    )
+  )
 
   override def executeResult(input: UpdateBrowserScriptInput,
                              ctx: ToolContext): Task[ToolResult[TextToolOutput]] =

@@ -43,9 +43,17 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     type Output = TextToolOutput
     val inputRW                                       = summon[RW[RecordConsentInput]]
     val outputRW                                      = summon[RW[TextToolOutput]]
-    val name                                          = ToolName("consent_gated_stub")
-    val description                                   = "Stub tool that requires consent — for RecordConsentPairingSpec."
-    override def requiresUserConsent: Boolean         = true
+    override val name = ToolName("consent_gated_stub")
+    override val description = "Stub tool that requires consent — for RecordConsentPairingSpec."
+    val spec: sigil.tool.ToolSpec = sigil.tool.ToolSpec(
+      name = name,
+      description = description,
+      profile = sigil.tool.ToolProfile(
+        effect = sigil.tool.Effect.Mutating(sigil.tool.MutationTargeting.none),
+        gates = sigil.tool.ToolGates(consent = Some(sigil.tool.ConsentSpec("Allow this test tool to run?")))
+      ),
+      discovery = sigil.tool.DiscoverySpec(keywords = Set("test", "consent"))
+    )
     override def executeResult(input: RecordConsentInput, ctx: sigil.tool.ToolContext) =
       Task.pure(sigil.tool.ToolResult.success(TextToolOutput("")))
   }
@@ -82,7 +90,7 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       } yield {
         val approvals = events.collect { case t: ToolApproval => t }
         approvals should have size 1
-        approvals.head.toolName shouldBe ToolName(testToolName)
+        approvals.head.toolName shouldBe ConsentGatedStub.name
         approvals.head.approved shouldBe true
 
         val settling = events.collect {

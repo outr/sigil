@@ -3,7 +3,7 @@ package sigil.metals
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class StopMetalsInput() extends ToolInput derives RW
 
@@ -22,8 +22,8 @@ final class StopMetalsTool extends Tool {
   val inputRW  = summon[RW[StopMetalsInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("stop_metals")
-  val description =
+  override val name = ToolName("stop_metals")
+  override val description =
     """Stop the Metals (Scala LSP) MCP server for this conversation's workspace.
       |
       |DESTRUCTIVE to in-flight semantic services: all diagnostics, navigation, and any
@@ -36,9 +36,16 @@ final class StopMetalsTool extends Tool {
       |Tears down the subprocess and removes its McpServerConfig.
       |No-op if Metals isn't running for the workspace.""".stripMargin
   override val examples = List(ToolExample("stop metals", StopMetalsInput()))
-  override val keywords = Set(
-    "metals", "stop", "scala", "lsp", "shutdown",
-    "kill", "terminate", "disable", "teardown", "tooling"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "metals", "stop", "scala", "lsp", "shutdown",
+        "kill", "terminate", "disable", "teardown", "tooling"
+      )
+    )
   )
 
   import MetalsToolSupport.*

@@ -55,7 +55,7 @@ class StallDetectorSpec extends AnyWordSpec with Matchers {
                      output: ToolOutput = ToolOutput.Pending,
                      outcome: ToolOutcome = ToolOutcome.Success): ToolInvoke =
     ToolInvoke(
-      toolName       = ToolName(name),
+      toolName       = ToolName.parse(name).fold(sys.error, identity),
       participantId  = StallAgent,
       conversationId = convId,
       topicId        = topicId,

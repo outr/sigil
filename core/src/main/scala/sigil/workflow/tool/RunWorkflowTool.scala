@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.{WorkflowScheduler, WorkflowTemplate}
 
 case class RunWorkflowInput(workflowId: String,
@@ -27,8 +27,8 @@ final class RunWorkflowTool extends Tool with WorkflowToolSupport {
   type Output = TextToolOutput
   val inputRW  = summon[RW[RunWorkflowInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("run_workflow")
-  val description =
+  override val name = ToolName("run_workflow")
+  override val description =
     """Schedule a run of a persisted workflow template.
       |
       |`workflowId` is the template id. `variables` (optional) overrides the template's
@@ -40,7 +40,12 @@ final class RunWorkflowTool extends Tool with WorkflowToolSupport {
       RunWorkflowInput(workflowId = "wf-abc", variables = Map("input" -> "today's events"))
     )
   )
-  override val keywords = Set("workflow", "run", "schedule", "execute", "trigger")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("workflow", "run", "schedule", "execute", "trigger"))
+  )
 
   override def executeResult(input: RunWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)

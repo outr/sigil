@@ -5,7 +5,7 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolGates, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Unpin a memory so it stops rendering every turn. The record stays
@@ -28,18 +28,24 @@ case object UnpinMemoryTool extends Tool {
   val inputRW: RW[UnpinMemoryInput] = summon[RW[UnpinMemoryInput]]
   val outputRW: RW[TextToolOutput]  = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("unpin_memory")
-  val description: String =
+  override val name: ToolName = ToolName("unpin_memory")
+  override val description: String =
     """Unpin a memory so it stops rendering every turn. The record stays on disk —
       |the agent / user can re-pin later. Use this when the user reviews `list_memories(pinned=true)`
       |and decides a directive is no longer applicable.
       |
       |- `key`   — the memory's stable key (preferred) or `_id` value if no key.
       |- `space` — optional disambiguator when the same key is pinned in multiple spaces.""".stripMargin
-  override val keywords: Set[String] = Set("unpin", "remove", "demote", "memory", "directive", "trim")
 
-  override def resultTtl: Option[Int] = Some(0)
-  override val requiresAccessibleSpaces: Boolean = true
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(
+      effect = Effect.Mutating(MutationTargeting.none),
+      gates = ToolGates(requiresAccessibleSpaces = true)
+    ),
+    discovery = DiscoverySpec(keywords = Set("unpin", "remove", "demote", "memory", "directive", "trim"))
+  )
 
   override def executeResult(input: UnpinMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>

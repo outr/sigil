@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.event.CapabilityResults
 import sigil.signal.EventState
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoveryRequest, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{DiscoveryRequest, DiscoverySpec, Effect, Freshness, OutputBounds, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
    * Discovery tool. The agent calls `find_capability` when it needs to
@@ -22,8 +22,8 @@ case object FindCapabilityTool extends Tool {
   val inputRW  = summon[RW[FindCapabilityInput]]
   val outputRW = summon[RW[FindCapabilityOutput]]
 
-  val name = ToolName("find_capability")
-  val description =
+  override val name = ToolName("find_capability")
+  override val description: String =
     """Search the capability catalog for a tool, mode, or skill that fits the user's task.
       |CALL THIS FIRST whenever the user asks for an action and nothing in your current
       |roster obviously covers it — discovery is how you reach the full catalog, which is
@@ -63,25 +63,29 @@ case object FindCapabilityTool extends Tool {
       |because it's more familiar. If a capability you used earlier isn't in your current
       |roster, re-run this search to recover it — that's the intended recovery path.""".stripMargin
 
+  // ReadOnly(Volatile): the roster answer depends on live DB tool
+  // records, the active mode, and per-turn overlays — never cached,
+  // and the curator elides settled result frames (the discovery
+  // results live on in `suggestedTools` / the system prompt, so the
+  // verbose frame is redundant after the turn settles).
+  // SelfBounded: the curated roster is sized to the model window in
+  // `sizeToModel` and must arrive intact — never truncated mid-entry
+  // or spilled to a file.
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(
+      effect = Effect.ReadOnly(Freshness.Volatile),
+      output = OutputBounds.SelfBounded
+    ),
+    discovery = DiscoverySpec(keywords = Set("find", "capability", "discover", "search", "catalog", "tool"))
+  )
+
   override val examples: List[ToolExample] = List(
     ToolExample("Send a message",          FindCapabilityInput("send slack channel message")),
     ToolExample("Pause / wait / sleep",    FindCapabilityInput("sleep wait delay pause")),
     ToolExample("Look up by concept",      FindCapabilityInput("billing invoice payment charge"))
   )
-
-  // The discovery results are delivered into the caller's
-  // ParticipantProjection.suggestedTools and rendered into the
-  // system prompt's "Suggested tools" section — the verbose
-  // ToolResults frame is redundant after the turn settles. Mark
-  // it ephemeral so StandardContextCurator elides the pair from
-  // future turns instead of letting it accumulate to a few
-  // thousand tokens of stale schemas.
-  override def resultTtl: Option[Int] = Some(0)
-
-  // Sigil #347 — the curated roster must arrive intact. It is sized to
-  // the model's context window below; the framework must never truncate
-  // it mid-entry or spill it to a file (the generic overflow path).
-  override def boundsOutputItself: Boolean = true
 
   override def executeResult(input: FindCapabilityInput,
                              context: ToolContext): Task[ToolResult[FindCapabilityOutput]] =
@@ -100,7 +104,7 @@ case object FindCapabilityTool extends Tool {
         // with room to act instead of one that overflows and gets chopped.
         val matches = FindCapabilityTool.sizeToModel(allMatches, context.turn.model.contextLength)
         val toolNames = matches.collect {
-          case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
+          case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName.internal(m.name)
         }
         // Two-layer persistence (sigil #301):
         //   - Per-loop TurnContext cache drives the "Capabilities

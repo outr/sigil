@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{HttpRequestInput, HttpRequestMethod, HttpRequestOutput}
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
 import spice.http.HttpMethod
 import spice.http.content.Content
 import spice.net.{ContentType, URL}
@@ -27,8 +27,8 @@ case object HttpRequestTool extends Tool {
   type Output = HttpRequestOutput
   val inputRW  = summon[RW[HttpRequestInput]]
   val outputRW = summon[RW[HttpRequestOutput]]
-  val name = ToolName("http_request")
-  val description =
+  override val name = ToolName("http_request")
+  override val description =
     """Issue an HTTP request to an arbitrary URL.
       |
       |`url` is the target. `method` is `GET` (default) / `POST` / `PUT` / `PATCH` / `DELETE` /
@@ -40,6 +40,12 @@ case object HttpRequestTool extends Tool {
       |is set in the result.
       |
       |Returns `{status, statusText, headers, body, bodyTruncated, contentType}`.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("http", "request", "api", "rest", "fetch", "curl", "post", "put", "patch", "delete"))
+  )
   override val examples = List(
     ToolExample(
       "GET a JSON endpoint",
@@ -55,7 +61,6 @@ case object HttpRequestTool extends Tool {
       )
     )
   )
-  override val keywords = Set("http", "request", "api", "rest", "fetch", "curl", "post", "put", "patch", "delete")
 
   override def executeOutput(input: HttpRequestInput, context: ToolContext): Task[HttpRequestOutput] = Task.defer {
     val timeout = input.timeoutMs.millis

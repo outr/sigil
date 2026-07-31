@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspLocation, LspLocationsResult}
 
 case class LspImplementationInput(languageId: String,
@@ -21,24 +21,31 @@ case class LspImplementationInput(languageId: String,
  * Emits `LspLocationsResult`; empty when no implementations.
  */
 final class LspImplementationTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspImplementationInput
   type Output = LspLocationsResult
   val inputRW  = summon[RW[LspImplementationInput]]
   val outputRW = summon[RW[LspLocationsResult]]
 
-  val name = ToolName("lsp_implementation")
-  val description =
+  override val name = ToolName("lsp_implementation")
+  override val description =
     """List concrete implementations of an abstract symbol (trait method, interface method, abstract def).
       |
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point at the abstract symbol.
       |Returns `[{uri, filePath, range}]`.""".stripMargin
-  override val keywords = Set(
-    "lsp", "implementation", "implementations", "who implements", "implementors",
-    "concrete", "subclasses", "traits", "interface", "examine", "inspect"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set(
+        "lsp", "implementation", "implementations", "who implements", "implementors",
+        "concrete", "subclasses", "traits", "interface", "examine", "inspect"
+      ),
+      toolchain = Some("lsp")
+    )
   )
-
 
   override def executeOutput(input: LspImplementationInput, context: ToolContext): Task[LspLocationsResult] =
     withOpenDocumentOrThrow[LspLocationsResult](

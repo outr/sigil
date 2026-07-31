@@ -36,7 +36,7 @@ class InternalDiagnosticRenderSpec extends AsyncWordSpec with AsyncTaskSpec with
   private val directive = "You appear blocked — stop gathering and call `respond` now."
 
   private def internalFrame: ContextFrame.ToolCall = ContextFrame.ToolCall(
-    toolName      = ToolName("_stall_detected"),
+    toolName      = ToolName.internal("_stall_detected"),
     argsJson      = "{}",
     callId        = Id[Event]("synth-1"),
     participantId = TestAgent,

@@ -5,7 +5,7 @@ import bench.agentdojo.banking.events.IbanRead
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -19,9 +19,15 @@ final class GetIbanTool(state: AtomicReference[BankingEnvironment]) extends Tool
   val inputRW: RW[GetIbanInput] = summon[RW[GetIbanInput]]
   val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("get_iban")
-  val description: String = "Get the IBAN of the current bank account."
+  override val name: ToolName = ToolName("get_iban")
+  override val description: String = "Get the IBAN of the current bank account."
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("bank", "account", "iban", "get"))
+  )
 
   override def executeResult(input: GetIbanInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val iban = state.get.bankAccount.iban

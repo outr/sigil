@@ -3,7 +3,7 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Remove an existing [[ScriptTool]]. Looks the record up by `name`;
@@ -18,12 +18,19 @@ case object DeleteScriptToolTool extends Tool {
   val inputRW  = summon[RW[DeleteScriptToolInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("delete_script_tool")
-  val description =
+  override val name = ToolName("delete_script_tool")
+  override val description =
     """Remove a previously created script-backed tool. Identified by `name`. Permission is
       |denied if the caller doesn't have access to the tool's space.""".stripMargin
-  override val modes = Set(ScriptAuthoringMode.id)
-  override val keywords = Set("delete", "remove", "tool", "script", "drop")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set("delete", "remove", "tool", "script", "drop"),
+      modes = Set(ScriptAuthoringMode.id)
+    )
+  )
 
   override def executeResult(input: DeleteScriptToolInput,
                              context: ToolContext): Task[ToolResult[TextToolOutput]] =

@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspScalacOptionsResult, BspTargetScalacOptions}
 
 import scala.jdk.CollectionConverters.*
@@ -23,14 +23,21 @@ final class BspScalacOptionsTool(val manager: BspManager) extends Tool with BspT
   val inputRW  = summon[RW[BspScalacOptionsInput]]
   val outputRW = summon[RW[BspScalacOptionsResult]]
 
-  val name = ToolName("bsp_scalac_options")
-  val description =
+  override val name = ToolName("bsp_scalac_options")
+  override val description =
     """List scalac options + classpath for each target.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
-  override val keywords = Set("bsp", "scalac", "scalac options", "compiler options", "compile flags", "scala")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("bsp", "scalac", "scalac options", "compiler options", "compile flags", "scala"),
+      toolchain = Some("bsp")
+    )
+  )
 
   override def executeOutput(input: BspScalacOptionsInput,
                              context: ToolContext): Task[BspScalacOptionsResult] =

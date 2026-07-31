@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.provider.Complexity
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
 
 final case class RequestDeescalationInput(@description("Why the cheaper tier suffices now — e.g. 'the hard restoration is done; remaining work is mechanical error fixes'. Stored for transparency.")
                                           reason: String)
@@ -28,8 +28,8 @@ case object RequestDeescalationTool extends Tool {
   type Output = RequestDeescalationOutput
   val inputRW  = summon[RW[RequestDeescalationInput]]
   val outputRW = summon[RW[RequestDeescalationOutput]]
-  val name = ToolName("request_deescalation")
-  val description =
+  override val name = ToolName("request_deescalation")
+  override val description =
     """Step this turn's complexity tier back DOWN one level so subsequent iterations route to a
       |cheaper model. Use when the hard part of the task is done and the remaining work is
       |mechanical — repetitive edits, running checks, applying a pattern you've already worked
@@ -39,13 +39,20 @@ case object RequestDeescalationTool extends Tool {
       |No-op when the turn hasn't been escalated: this unwinds `request_escalation` (and
       |automatic escalations), never below the turn's classified base tier. Every new user
       |message re-classifies from scratch anyway — this tool is for stepping down MID-turn.""".stripMargin
+
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("deescalate", "de-escalate", "tier", "complexity", "cheaper model", "step down", "cost"))
+  )
+
   override val examples = List(
     ToolExample(
       "Step down after the hard phase completes",
       RequestDeescalationInput(reason = "definitions restored from git history; remaining work is fixing mechanical compile errors")
     )
   )
-  override val keywords = Set("deescalate", "de-escalate", "tier", "complexity", "cheaper model", "step down", "cost")
 
   override def executeResult(input: RequestDeescalationInput,
                              context: ToolContext): Task[ToolResult[RequestDeescalationOutput]] =

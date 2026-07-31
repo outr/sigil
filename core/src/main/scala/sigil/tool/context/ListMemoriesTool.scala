@@ -6,7 +6,7 @@ import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
 import sigil.tokenize.HeuristicTokenizer
 import sigil.tool.model.{ListMemoriesOutput, MemoryListEntry, MemoryListPage}
-import sigil.tool.{Tool, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolGates, ToolName, ToolProfile, ToolSpec}
 
 /**
  * General memory-listing tool. Surfaces every memory the caller's
@@ -38,8 +38,8 @@ case object ListMemoriesTool extends Tool {
   type Output = ListMemoriesOutput
   val inputRW  = summon[RW[ListMemoriesInput]]
   val outputRW = summon[RW[ListMemoriesOutput]]
-  val name = ToolName("list_memories")
-  val description =
+  override val name = ToolName("list_memories")
+  override val description =
     """List memories you can see — pinned and unpinned — with filters and pagination.
       |
       |- `spaces` — optional filter; empty = every space your chain can access.
@@ -54,10 +54,16 @@ case object ListMemoriesTool extends Tool {
       |`pinned`. Use the lookup tool to pull a memory's full fact; use the
       |memory-pinning / unpinning / moving / forgetting tools to act on individual
       |entries.""".stripMargin
-  override val keywords = Set("list", "memories", "browse", "recall", "review", "all", "show")
 
-  override def resultTtl: Option[Int] = Some(0)
-  override val requiresAccessibleSpaces: Boolean = true
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(
+      effect = Effect.ReadOnly(Freshness.Volatile),
+      gates = ToolGates(requiresAccessibleSpaces = true)
+    ),
+    discovery = DiscoverySpec(keywords = Set("list", "memories", "browse", "recall", "review", "all", "show"))
+  )
 
   /** Server-side page-size clamp — defends against the agent passing
     * an enormous `limit` and dumping the entire memory store into

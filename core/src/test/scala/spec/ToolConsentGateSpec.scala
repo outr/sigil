@@ -9,7 +9,7 @@ import sigil.conversation.{Conversation, TopicEntry, TurnInput}
 import sigil.event.{Event, Message, MessageRole, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.{InMemoryToolFinder, TextToolOutput, ToolInput, ToolName}
+import sigil.tool.{ConsentSpec, DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting, TextToolOutput, ToolGates, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.tool.core.RecordConsentTool
 import sigil.tool.model.{RecordConsentInput, ResponseContent}
@@ -49,9 +49,17 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     val inputRW  = summon[RW[GatedInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("gated_demo_tool")
-    val description = "A consent-gated demo tool used by the spec."
-    override def requiresUserConsent: Boolean = true
+    override val name        = ToolName("gated_demo_tool")
+    override val description = "A consent-gated demo tool used by the spec."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(
+        effect = Effect.Mutating(MutationTargeting.none),
+        gates = ToolGates(consent = Some(ConsentSpec("Allow this test tool to run?")))
+      ),
+      discovery = DiscoverySpec(keywords = Set("test", "gated"))
+    )
 
     override def executeOutput(input: GatedInput, ctx: ToolContext): Task[TextToolOutput] = Task {
       invocations.incrementAndGet()
@@ -68,8 +76,14 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     val inputRW  = summon[RW[FreeInput]]
     val outputRW = summon[RW[TextToolOutput]]
 
-    val name        = ToolName("free_demo_tool")
-    val description = "A no-consent demo tool — should always dispatch."
+    override val name        = ToolName("free_demo_tool")
+    override val description = "A no-consent demo tool — should always dispatch."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "free"))
+    )
 
     override def executeOutput(input: FreeInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(s"free ran with ${input.payload}"))

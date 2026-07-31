@@ -76,7 +76,7 @@ class CreateScriptToolImmediateInvocationSpec extends AsyncWordSpec with AsyncTa
         val mine = overlays.filter(_.source == s"create_script_tool:$toolName")
         mine should have size 1
         mine.head.policy match {
-          case ToolPolicy.Active(names) => names should contain (ToolName(toolName))
+          case ToolPolicy.Active(names) => names should contain (ToolName.parse(toolName).fold(sys.error, identity))
           case other                    => fail(s"expected Active(...) overlay, got: $other")
         }
       }

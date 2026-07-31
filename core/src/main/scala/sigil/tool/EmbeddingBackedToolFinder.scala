@@ -73,7 +73,7 @@ final class EmbeddingBackedToolFinder(sigil: Sigil,
           // Hydrate hits via the fallback's byName, then post-filter by
           // mode/space affinity so we keep DiscoveryFilter's existing
           // semantics. Vector ranking decides the order.
-          Task.sequence(names.map(n => fallback.byName(ToolName(n))))
+          Task.sequence(names.map(n => fallback.byName(ToolName.internal(n))))
             .map { resolved =>
               resolved.flatten
                 .filter(t => DiscoveryFilter.matches(t, request))

@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DapPauseInput(sessionId: String, threadId: Int) extends ToolInput derives RW
 
@@ -16,12 +16,18 @@ final class DapPauseTool(val manager: DapManager) extends Tool with DapToolSuppo
   type Output = TextToolOutput
   val inputRW = summon[RW[DapPauseInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("dap_pause")
-  val description =
+  override val name = ToolName("dap_pause")
+  override val description =
     """Pause a running thread.
       |
       |`sessionId` selects the active session.
       |`threadId` is the thread to pause.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "pause", "suspend", "thread", "interrupt"))
+  )
   override val examples = List(
     ToolExample(
       "pause a thread",

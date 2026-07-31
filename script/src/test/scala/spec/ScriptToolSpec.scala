@@ -131,7 +131,7 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   "ScriptTool round-trip" should {
     "persist via Sigil.createTool and read back as a ScriptTool" in {
       val tool = ScriptTool(
-        name        = ToolName("rt-add"),
+        name        = ToolName.parse("rt-add").fold(sys.error, identity),
         description = "Returns x + 1.",
         code        = "args(\"x\").asInt + 1",
         parameters  = sigil.tool.JsonSchemaToDefinition(obj(
@@ -147,7 +147,7 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         loaded shouldBe defined
         loaded.get shouldBe a[ScriptTool]
         val s = loaded.get.asInstanceOf[ScriptTool]
-        s.name shouldBe ToolName("rt-add")
+        s.name shouldBe ToolName.parse("rt-add").fold(sys.error, identity)
         s.code shouldBe "args(\"x\").asInt + 1"
         s.space shouldBe GlobalSpace
       }

@@ -10,7 +10,7 @@ import sigil.{GlobalSpace, SpaceId}
 import sigil.tool.ToolContext
 import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.provider.Mode
-import sigil.tool.{ImageToolOutput, JsonInput, JsonSchemaToDefinition, TextToolOutput, Tool, ToolExample, ToolName, ToolOutput, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, ImageToolOutput, JsonInput, JsonSchemaToDefinition, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
 
 import java.util.Base64
 
@@ -38,16 +38,11 @@ final class McpTool(manager: McpManager,
   val inputRW  = summon[RW[JsonInput]]
   val outputRW = summon[RW[ToolOutput]]
 
-  override val name: ToolName = ToolName(serverConfig.prefix.getOrElse("") + definition.name)
-  override val description: String = definition.description.getOrElse("")
+  val spec: ToolSpec = McpTool.specFor(serverConfig, definition)
 
   override def inputDefinition: Definition =
     JsonSchemaToDefinition(definition.inputSchema)
 
-  override def kind: sigil.tool.ToolKind = McpKind
-  override val modes: Set[Id[Mode]] = Set.empty
-  override val space: SpaceId = serverConfig.space
-  override val keywords: Set[String] = Set("mcp", serverConfig.name)
   override val examples: List[ToolExample] = Nil
   override val createdBy: Option[ParticipantId] = None
   override val _id: Id[Tool] = Id(name.value)
@@ -125,5 +120,46 @@ final class McpTool(manager: McpManager,
         if (mime.startsWith("image/")) r.get("blob").map(_.asString).map(_ -> mime) else None
       }
     } else None
+  }
+}
+
+object McpTool {
+
+  /** Build the validated [[ToolSpec]] from the server-advertised
+    * definition. The display name (server prefix + tool name) is
+    * validated against the provider grammar; characters providers
+    * reject are replaced with `_` (with a warn) so one oddly-named
+    * server tool can't break the whole server's roster. A missing
+    * description gets a synthesized stub. MCP declares no effect
+    * metadata, so the effect is conservatively [[Effect.Mutating]]
+    * with unknown targets. */
+  def specFor(serverConfig: McpServerConfig, definition: McpToolDefinition): ToolSpec = {
+    val rawName = serverConfig.prefix.getOrElse("") + definition.name
+    val name = ToolName.parse(rawName).getOrElse {
+      val sanitized = rawName.replaceAll("[^a-zA-Z0-9_-]", "_").take(64)
+      scribe.warn(s"MCP tool name '$rawName' is outside the provider grammar; sanitized to '$sanitized'.")
+      ToolName.parse(sanitized).fold(
+        err => throw new IllegalArgumentException(s"MCP tool name '$rawName' cannot be sanitized: $err"),
+        identity
+      )
+    }
+    val description = definition.description.filterNot(_.isBlank).getOrElse(
+      s"MCP tool `${definition.name}` from server `${serverConfig.name}`."
+    ) match {
+      case d if d.length > ToolSpec.DescriptionBudget =>
+        scribe.warn(s"MCP tool '$rawName' description is ${d.length} chars; truncating to the ${ToolSpec.DescriptionBudget}-char wire budget.")
+        d.take(ToolSpec.DescriptionBudget)
+      case d => d
+    }
+    ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(
+        keywords = Set("mcp", serverConfig.name),
+        space = serverConfig.space,
+        kind = McpKind
+      )
+    )
   }
 }

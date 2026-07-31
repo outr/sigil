@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.BspInverseSourcesResult
 
 import java.io.File
@@ -18,20 +18,27 @@ case class BspInverseSourcesInput(projectRoot: String,
  * pick up this change?"
  */
 final class BspInverseSourcesTool(val manager: BspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  with BspToolSupport {
   type Input  = BspInverseSourcesInput
   type Output = BspInverseSourcesResult
   val inputRW  = summon[RW[BspInverseSourcesInput]]
   val outputRW = summon[RW[BspInverseSourcesResult]]
 
-  val name = ToolName("bsp_inverse_sources")
-  val description =
+  override val name = ToolName("bsp_inverse_sources")
+  override val description =
     """For a source file, return the build targets that own it.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`filePath` is the absolute source path.""".stripMargin
-  override val keywords = Set("bsp", "inverse sources", "target for file", "which target", "owning target")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("bsp", "inverse sources", "target for file", "which target", "owning target"),
+      toolchain = Some("bsp")
+    )
+  )
 
   override def executeOutput(input: BspInverseSourcesInput,
                              context: ToolContext): Task[BspInverseSourcesResult] =

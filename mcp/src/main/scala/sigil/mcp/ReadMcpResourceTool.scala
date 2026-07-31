@@ -6,7 +6,7 @@ import fabric.io.JsonFormatter
 import rapid.Task
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
-import sigil.tool.{ImageToolOutput, TextToolOutput, Tool, ToolInput, ToolName, ToolOutput, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, ImageToolOutput, TextToolOutput, Tool, ToolInput, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
 
 import java.util.Base64
 
@@ -27,10 +27,16 @@ final class ReadMcpResourceTool(manager: McpManager) extends Tool {
   val inputRW  = summon[RW[ReadMcpResourceInput]]
   val outputRW = summon[RW[ToolOutput]]
 
-  val name = ToolName("read_mcp_resource")
-  val description =
+  override val name = ToolName("read_mcp_resource")
+  override val description =
     """Fetch the contents of a resource from a registered MCP server. The server identifies the resource by URI;
       |use list_mcp_servers + (server-specific) discovery to learn what URIs are available.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("mcp", "resource", "read", "fetch", "uri", "contents"))
+  )
 
   override def executeResult(input: ReadMcpResourceInput, context: ToolContext): Task[ToolResult[ToolOutput]] =
     manager.readResource(input.server, input.uri).flatMap { result =>

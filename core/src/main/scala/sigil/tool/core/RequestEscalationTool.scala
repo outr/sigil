@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.Complexity
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
 
 final case class RequestEscalationInput(@description("Why escalation is needed — e.g. 'task spans 4 files; current model keeps producing inconsistent edits'. Stored on the conversation for transparency; rendered on the next checkpoint.")
                                         reason: String)
@@ -20,8 +20,8 @@ case object RequestEscalationTool extends Tool {
   type Output = RequestEscalationOutput
   val inputRW  = summon[RW[RequestEscalationInput]]
   val outputRW = summon[RW[RequestEscalationOutput]]
-  val name = ToolName("request_escalation")
-  val description =
+  override val name = ToolName("request_escalation")
+  override val description =
     """Escalate this turn's complexity tier so subsequent iterations route to a more capable
       |model. Use when you realize the task is harder than the classifier's initial assessment —
       |e.g. a question that looked simple has cross-file implications, or your initial reasoning
@@ -35,13 +35,20 @@ case object RequestEscalationTool extends Tool {
       |Don't escalate just because a tool returned empty results — that's gathering progress,
       |not complexity. Escalate when the SHAPE of the answer needs more reasoning than you
       |have headroom for.""".stripMargin
+
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("escalate", "tier", "complexity", "harder", "smarter model", "frontier"))
+  )
+
   override val examples = List(
     ToolExample(
       "Realize mid-turn the task is harder than expected",
       RequestEscalationInput(reason = "task touches 4 files; current edits keep contradicting each other")
     )
   )
-  override val keywords = Set("escalate", "tier", "complexity", "harder", "smarter model", "frontier")
 
   override def executeResult(input: RequestEscalationInput,
                              context: ToolContext): Task[ToolResult[RequestEscalationOutput]] =

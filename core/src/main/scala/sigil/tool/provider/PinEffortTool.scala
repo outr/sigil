@@ -5,7 +5,7 @@ import lightdb.time.Timestamp
 import rapid.Task
 import sigil.provider.Effort
 import sigil.tool.ToolContext
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class PinEffortInput(level: String) extends ToolInput derives RW
 
@@ -30,8 +30,8 @@ case object PinEffortTool extends Tool {
   type Output = TextToolOutput
   val inputRW  = summon[RW[PinEffortInput]]
   val outputRW = summon[RW[TextToolOutput]]
-  val name = ToolName("pin_effort")
-  val description =
+  override val name = ToolName("pin_effort")
+  override val description =
     """Pin this conversation's reasoning effort (`low` / `medium` / `high` / `max`). Every agent
       |turn applies that effort and forces reasoning on, regardless of the deployment's default.
       |Stays in effect until `unpin_effort` clears it.
@@ -44,9 +44,14 @@ case object PinEffortTool extends Tool {
     ToolExample("Maximum deliberation", PinEffortInput("max")),
     ToolExample("Keep it quick", PinEffortInput("low"))
   )
-  override val keywords = Set(
-    "pin", "lock", "force", "always", "effort", "reasoning", "thinking",
-    "think", "depth", "deliberation", "budget", "harder", "quality"
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set(
+      "pin", "lock", "force", "always", "effort", "reasoning", "thinking",
+      "think", "depth", "deliberation", "budget", "harder", "quality"
+    ))
   )
 
   override def executeResult(input: PinEffortInput,

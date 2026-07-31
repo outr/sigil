@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{WebFetchInput, WebFetchOutput}
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
 import spice.http.client.HttpClient
 import spice.net.URL
 
@@ -16,22 +16,26 @@ import scala.concurrent.duration.*
  * Result is truncated to `maxLength` (default 100 KB) and emitted as
  * a typed [[WebFetchOutput]].
  */
-final class WebFetchTool(timeout: FiniteDuration = 30.seconds)
-  extends Tool with sigil.tool.NetworkReadOnlyTool {
+final class WebFetchTool(timeout: FiniteDuration = 30.seconds) extends Tool {
   type Input  = WebFetchInput
   type Output = WebFetchOutput
   val inputRW  = summon[RW[WebFetchInput]]
   val outputRW = summon[RW[WebFetchOutput]]
-  val name = ToolName("web_fetch")
-  val description =
+  override val name = ToolName("web_fetch")
+  override val description =
     """Fetch the contents of a URL via HTTP GET. HTML responses are converted to a markdown-ish rendering;
       |other content types are returned verbatim. Use `maxLength` to cap response size (default 100 KB).
       |Returns the fetched content with its content type, HTTP status code, and a truncation flag.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("web", "fetch", "http", "url", "download", "page", "browse"))
+  )
   override val examples = List(
     ToolExample("Read a documentation page", WebFetchInput(url = "https://example.com/docs/intro")),
     ToolExample("Fetch a small JSON endpoint", WebFetchInput(url = "https://api.example.com/status", maxLength = Some(8192)))
   )
-  override val keywords = Set("web", "fetch", "http", "url", "download", "page", "browse")
 
   override def executeOutput(input: WebFetchInput, ctx: ToolContext): Task[WebFetchOutput] =
     HttpClient

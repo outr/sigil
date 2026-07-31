@@ -20,8 +20,6 @@ import java.nio.file.{Files, Paths}
 trait LspToolSupport extends sigil.tool.Tool {
   protected def manager: LspManager
 
-  override def toolchain: Option[String] = Some("lsp")
-
   /** Guard the LSP tool's input against schema-leaked placeholder
     * values ("filePath": "string", etc.) — see
     * [[sigil.tool.PlaceholderInputDetector]]. Returns a placeholder-

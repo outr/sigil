@@ -7,7 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.script.ScriptTools
-import sigil.tool.{InMemoryToolFinder, Tool, ToolContext, ToolExample, ToolInput, ToolName, ToolOutput}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, InMemoryToolFinder, Tool, ToolContext, ToolExample, ToolInput, ToolName, ToolOutput, ToolProfile, ToolSpec}
 import sigil.event.Event
 
 class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
@@ -104,8 +104,14 @@ case object EchoTool extends Tool {
   val inputRW  = summon[RW[EchoInput]]
   val outputRW = summon[RW[EchoOutput]]
 
-  val name        = ToolName("echo")
-  val description = "Echo the input text back with its length."
+  override val name        = ToolName("echo")
+  override val description = "Echo the input text back with its length."
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Pure)),
+    discovery = DiscoverySpec(keywords = Set("echo", "test"))
+  )
   override val examples: List[ToolExample] = List(ToolExample("echo a string", EchoInput("hello")))
 
   override def executeOutput(input: EchoInput, ctx: ToolContext): Task[EchoOutput] =

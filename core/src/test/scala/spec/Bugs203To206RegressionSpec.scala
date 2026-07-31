@@ -44,7 +44,7 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
                                  toolName: String,
                                  typed: Option[sigil.tool.ToolOutput] = None): Task[Unit] = {
     val invoke = ToolInvoke(
-      toolName       = ToolName(toolName),
+      toolName       = ToolName.parse(toolName).fold(sys.error, identity),
       participantId  = TestAgent,
       conversationId = convId,
       topicId        = TestTopicEntry.id,

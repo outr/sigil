@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
-import sigil.{GlobalSpace, SpaceId, TurnContext}
+import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message, ToolInvoke}
@@ -14,7 +14,7 @@ import sigil.provider.{
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.{EventState, Signal, ToolDelta}
-import sigil.tool.{JsonInput, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, JsonInput, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.tool.core.{NoResponseTool, RespondTool}
 import sigil.tool.model.NoResponseInput
@@ -43,9 +43,14 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
     type Output = TextToolOutput
     val inputRW  = summon[RW[NoResponseInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name: ToolName = ToolName("throw_atomic")
-    val description: String = "Always throws on execute."
-    override def space: SpaceId = GlobalSpace
+    override val name: ToolName = ToolName("throw_atomic")
+    override val description: String = "Always throws on execute."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "throw"))
+    )
     override def _id: Id[Tool] = Id[Tool](name.value)
     override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.error(new RuntimeException("synthetic atomic-tool failure"))

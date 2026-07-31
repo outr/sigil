@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{MarkupContent, SignatureHelp, SignatureInformation}
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspSignature, LspSignatureHelpResult, LspSignatureParam}
 
 import scala.jdk.CollectionConverters.*
@@ -24,14 +24,14 @@ case class LspSignatureHelpInput(languageId: String,
  * a method whose signature isn't obvious from context.
  */
 final class LspSignatureHelpTool(val manager: LspManager) extends Tool
-  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with LspToolSupport {
   type Input  = LspSignatureHelpInput
   type Output = LspSignatureHelpResult
   val inputRW  = summon[RW[LspSignatureHelpInput]]
   val outputRW = summon[RW[LspSignatureHelpResult]]
 
-  val name = ToolName("lsp_signature_help")
-  val description =
+  override val name = ToolName("lsp_signature_help")
+  override val description =
     """Get function-call signature help at a position.
       |
       |`languageId` selects the persisted LspServerConfig.
@@ -39,8 +39,15 @@ final class LspSignatureHelpTool(val manager: LspManager) extends Tool
       |inside the parens of a function call).
       |Returns `{signatures: [{label, documentation, parameters}], activeSignature, activeParameter}`.
       |`activeParameter` is `-1` when no parameter is active or signatures is empty.""".stripMargin
-  override val keywords = Set("lsp", "signature", "parameters", "args", "arguments", "what does take", "function signature")
-
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(
+      keywords = Set("lsp", "signature", "parameters", "args", "arguments", "what does take", "function signature"),
+      toolchain = Some("lsp")
+    )
+  )
 
   override def executeOutput(input: LspSignatureHelpInput, context: ToolContext): Task[LspSignatureHelpResult] =
     withOpenDocumentOrThrow[LspSignatureHelpResult](

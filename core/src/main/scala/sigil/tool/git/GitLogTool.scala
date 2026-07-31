@@ -5,30 +5,34 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitLogInput, GitLogOutput}
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Read-only `git_log` — runs `git log` with a record-separator
  * pretty-format so subjects / bodies containing newlines or pipes
  * survive parsing. Returns a typed [[GitLogOutput]].
  */
-final class GitLogTool(context: FileSystemContext)
-  extends Tool with sigil.tool.ReadOnlyExternalTool {
+final class GitLogTool(context: FileSystemContext) extends Tool {
   type Input  = GitLogInput
   type Output = GitLogOutput
   val inputRW  = summon[RW[GitLogInput]]
   val outputRW = summon[RW[GitLogOutput]]
-  val name = ToolName("git_log")
-  val description =
+  override val name = ToolName("git_log")
+  override val description =
     """Recent commit history. Optional `path` filters to commits touching that path; `since` accepts any
       |git-date expression (`"2 weeks ago"`, `"2026-04-01"`); `limit` defaults to 20. Set `includeBody`
       |to true for the full commit body. Returns a list of commits (sha, author, date, subject, body?).""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("git", "log", "history", "commits", "blame"))
+  )
   override val examples = List(
     ToolExample("20 most recent commits",    GitLogInput()),
     ToolExample("Last 5 commits on a path",  GitLogInput(path = Some("src/main"), limit = Some(5))),
     ToolExample("Commits since last Friday", GitLogInput(since = Some("last friday"), includeBody = true))
   )
-  override val keywords = Set("git", "log", "history", "commits", "blame")
 
   override def executeOutput(input: GitLogInput, ctx: ToolContext): Task[GitLogOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

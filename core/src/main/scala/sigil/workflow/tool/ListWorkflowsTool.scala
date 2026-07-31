@@ -3,7 +3,7 @@ package sigil.workflow.tool
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class ListWorkflowsInput(tag: Option[String] = None) extends ToolInput derives RW
 
@@ -17,8 +17,8 @@ final class ListWorkflowsTool extends Tool with WorkflowToolSupport {
   type Output = ListWorkflowsOutput
   val inputRW  = summon[RW[ListWorkflowsInput]]
   val outputRW = summon[RW[ListWorkflowsOutput]]
-  val name = ToolName("list_workflows")
-  val description =
+  override val name = ToolName("list_workflows")
+  override val description =
     """List the workflow templates visible to the caller (filtered by accessible spaces).
       |
       |`tag` (optional) restricts the result to templates carrying that tag.
@@ -27,7 +27,12 @@ final class ListWorkflowsTool extends Tool with WorkflowToolSupport {
     ToolExample("list every visible workflow", ListWorkflowsInput()),
     ToolExample("filter by tag", ListWorkflowsInput(tag = Some("nightly")))
   )
-  override val keywords = Set("workflow", "list", "find")
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("workflow", "list", "find"))
+  )
 
   override def executeResult(input: ListWorkflowsInput, ctx: ToolContext): Task[ToolResult[ListWorkflowsOutput]] =
     workflowHost(ctx) match {

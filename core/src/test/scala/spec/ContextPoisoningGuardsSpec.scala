@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
-import sigil.{GlobalSpace, SpaceId, TurnContext}
+import sigil.TurnContext
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolOutcome}
@@ -14,7 +14,7 @@ import sigil.provider.{
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.{EventState, Signal, ToolDelta}
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.tool.core.NoResponseTool
 import sigil.tool.model.{NoResponseInput, ResponseContent}
@@ -51,9 +51,14 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
     type Output = TextToolOutput
     val inputRW  = summon[RW[EchoInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name: ToolName = toolName
-    val description: String = "Echo input"
-    override def space: SpaceId = GlobalSpace
+    override val name: ToolName = toolName
+    override val description: String = "Echo input"
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "echo"))
+    )
     override def _id: Id[Tool] = Id[Tool](name.value)
     override def executeResult(input: EchoInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(s"echoed: ${input.text}")))

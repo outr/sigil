@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{AnalysisWork, GenerationSettings, OutputTokenCap, ReasoningMode, WorkType}
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal-only tool the framework forces the planner model to call
@@ -20,8 +20,8 @@ case object PlannerVerdictTool extends Tool with FrameworkConsult {
   val inputRW: RW[PlannerVerdictInput] = summon[RW[PlannerVerdictInput]]
   val outputRW: RW[TextToolOutput]     = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("planner_verdict")
-  val description: String =
+  override val name: ToolName = ToolName("planner_verdict")
+  override val description: String =
     """Deliver your planning-tier verdict on the executor's trajectory against the plan.
       |
       |Set `verdict` to "on_track" when the window's work is converging on the plan's done
@@ -34,6 +34,13 @@ case object PlannerVerdictTool extends Tool with FrameworkConsult {
       |`currentPhase`) must be fully populated on your first review and on "replan";
       |otherwise echo the current plan, refreshing `currentPhase` to where the work
       |stands now.""".stripMargin
+
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(kind = ConsultKind)
+  )
 
   /** Strategic oversight — the model is fixed by `Sigil.plannerModelId`,
     * so this WorkType is declarative only (no routing happens). */

@@ -6,8 +6,8 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Task
 import sigil.tool.{
-  DefinitionToSchema, InputNormalizer, TextToolOutput, Tool, ToolContext,
-  ToolInput, ToolName, ToolResult, WireSurface
+  DefinitionToSchema, DiscoverySpec, Effect, InputNormalizer, MutationTargeting, TextToolOutput,
+  Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec, WireSurface
 }
 
 import spec.WireSurfaceSpec.*
@@ -225,8 +225,14 @@ object WireSurfaceSpec {
     type Output = TextToolOutput
     val inputRW  = summon[RW[ExampleInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("wire_surface_example_tool")
-    val description = "Test tool for WireSurfaceSpec — decode round-trip via Tool.wireSurface."
+    override val name        = ToolName("wire_surface_example_tool")
+    override val description = "Test tool for WireSurfaceSpec — decode round-trip via Tool.wireSurface."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("test", "wire_surface_example_tool"))
+    )
     override def executeResult(input: ExampleInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.label)))
   }

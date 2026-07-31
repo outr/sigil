@@ -7,7 +7,7 @@ import sigil.conversation.{ContextFrame, ContextSummary, Conversation, ToolCallS
 import sigil.event.{Event, Message}
 import sigil.tool.ToolContext
 import sigil.tool.model.ResponseContent
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Reload content that context virtualization (#316) elided to save
@@ -32,8 +32,8 @@ case object ReloadContentTool extends Tool {
   val inputRW  = summon[RW[ReloadContentInput]]
   val outputRW = summon[RW[TextToolOutput]]
 
-  val name = ToolName("reload_content")
-  val description =
+  override val name = ToolName("reload_content")
+  override val description =
     """Reload full content that was elided from your context to save budget.
       |
       |When an entry shows a `[… reload_content("<id>")]` marker, call this with that id:
@@ -42,7 +42,13 @@ case object ReloadContentTool extends Tool {
       |    snippet + its id); drill into one with `reload_content("<eventId>")`
       |
       |A large reload is written to a file you can read or search.""".stripMargin
-  override val keywords = Set("reload", "expand", "content", "elided", "restore", "full", "rehydrate")
+
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(keywords = Set("reload", "expand", "content", "elided", "restore", "full", "rehydrate"))
+  )
 
   override def executeResult(input: ReloadContentInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val targetConvId  = input.conversationId.getOrElse(ctx.conversation.id)

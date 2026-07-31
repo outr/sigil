@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.GlobalSpace
 import sigil.conversation.Conversation
-import sigil.tool.{DiscoveryRequest, InMemoryToolFinder, TextToolOutput, Tool, ToolFinder, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoveryRequest, DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting, TextToolOutput, Tool, ToolFinder, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.ToolContext
 import sigil.TurnContext
 
@@ -34,10 +34,14 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
     type Output = TextToolOutput
     val inputRW  = summon[RW[GenericInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("grep_like")
-    val description = "Search files by regex."
-    override val keywords: Set[String] = Set("grep", "search", "regex", "find", "match", "lines")
-    override def preferIfNoBetter: Boolean = true
+    override val name        = ToolName("grep_like")
+    override val description = "Search files by regex."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("grep", "search", "regex", "find", "match", "lines"), preferIfNoBetter = true)
+    )
     override def executeResult(input: GenericInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
@@ -47,10 +51,14 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
     type Output = TextToolOutput
     val inputRW  = summon[RW[GenericInput]]
     val outputRW = summon[RW[TextToolOutput]]
-    val name        = ToolName("read_file_like")
-    val description = "Read a file's contents."
-    override val keywords: Set[String] = Set("read", "file", "open", "load")
-    override def preferIfNoBetter: Boolean = true
+    override val name        = ToolName("read_file_like")
+    override val description = "Read a file's contents."
+    val spec: ToolSpec = ToolSpec(
+      name = name,
+      description = description,
+      profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+      discovery = DiscoverySpec(keywords = Set("read", "file", "open", "load"), preferIfNoBetter = true)
+    )
     override def executeResult(input: GenericInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }

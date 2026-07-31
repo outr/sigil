@@ -10,7 +10,7 @@ import sigil.participant.{AgentParticipant, DefaultAgentParticipant, WorkerParti
 import sigil.provider.ToolPolicy
 import sigil.signal.EventState
 import sigil.tool.model.{DelegateTaskInput, ResponseContent}
-import sigil.tool.{RefusalPayload, Tool, ToolContext, ToolExample, ToolName, ToolOutput, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, RefusalPayload, Tool, ToolContext, ToolExample, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
 
 /** Typed result of [[DelegateTaskTool]] — the handle the caller uses to
   * track / drill into the spawned worker. `taskId` is the worker agent's
@@ -52,8 +52,8 @@ case object DelegateTaskTool extends Tool {
   type Output = DelegateTaskOutput
   val inputRW  = summon[RW[DelegateTaskInput]]
   val outputRW = summon[RW[DelegateTaskOutput]]
-  val name = ToolName("delegate_task")
-  val description =
+  override val name = ToolName("delegate_task")
+  override val description =
     """Spawn a worker agent for long-running or specialized work. The worker runs as a real agent in
       |its own sub-conversation linked to this one; you stay in that sub-conversation as its supervisor
       |(its "user") — you task it, answer its questions, and decide what to surface back here. Requires
@@ -63,6 +63,12 @@ case object DelegateTaskTool extends Tool {
       |the framework reply + capability-discovery essentials it always has). Returns the worker's id +
       |sub-conversation id.
       |Use for "research X", "build Y", "analyze Z" — anything you'd rather hand off than answer inline.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(keywords = Set("delegate", "worker", "spawn", "task", "research", "background", "subagent"))
+  )
   override val examples = List(
     ToolExample(
       "Delegate a research task",
@@ -74,7 +80,6 @@ case object DelegateTaskTool extends Tool {
       )
     )
   )
-  override val keywords = Set("delegate", "worker", "spawn", "task", "research", "background", "subagent")
 
   override def executeResult(input: DelegateTaskInput, ctx: ToolContext): Task[ToolResult[DelegateTaskOutput]] =
     // Sigil #348 — structural depth cap. The doer framing on the worker
@@ -140,7 +145,7 @@ case object DelegateTaskTool extends Tool {
     }
 
     val workerId   = WorkerParticipantId(s"${role.name}-${rapid.Unique()}")
-    val workerTools = input.toolNames.map(ToolName(_))
+    val workerTools = input.toolNames.map(ToolName.internal)
     val brief       = composeBrief(input)
     // #355 — the worker inherits the spawning conversation's mode by default
     // (a coding supervisor yields a coding worker, with its skill/roster), and

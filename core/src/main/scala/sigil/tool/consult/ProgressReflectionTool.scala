@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{ClassificationWork, GenerationSettings, OutputTokenCap, ReasoningMode, WorkType}
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal-only tool the framework forces the agent to call as
@@ -20,8 +20,8 @@ case object ProgressReflectionTool extends Tool with FrameworkConsult {
   val inputRW: RW[ProgressReflectionInput] = summon[RW[ProgressReflectionInput]]
   val outputRW: RW[TextToolOutput]         = summon[RW[TextToolOutput]]
 
-  val name: ToolName = ToolName("report_progress")
-  val description: String =
+  override val name: ToolName = ToolName("report_progress")
+  override val description: String =
     """Report your progress checkpoint relative to the prior status anchor in the system prompt.
       |
       |Pick a `currentStatus` (one line summary of where things stand RIGHT NOW), set
@@ -34,6 +34,12 @@ case object ProgressReflectionTool extends Tool with FrameworkConsult {
       |Be honest — if your status looks identical to the prior status or you're cycling through
       |the same searches, say so (`meaningfulProgress = false`) so the framework can intervene.""".stripMargin
 
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
+    discovery = DiscoverySpec(kind = ConsultKind)
+  )
 
   /** Quick self-assessment — routes through the cheap classification tier. */
   override def consultWorkType: WorkType = ClassificationWork

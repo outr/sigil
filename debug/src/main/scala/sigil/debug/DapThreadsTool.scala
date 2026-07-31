@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class DapThreadsInput(sessionId: String) extends ToolInput derives RW
 
@@ -17,12 +17,18 @@ final class DapThreadsTool(val manager: DapManager) extends Tool with DapToolSup
   type Output = DapThreadsOutput
   val inputRW = summon[RW[DapThreadsInput]]
   val outputRW = summon[RW[DapThreadsOutput]]
-  val name = ToolName("dap_threads")
-  val description =
+  override val name = ToolName("dap_threads")
+  override val description =
     """List active threads in the debugged program.
       |
       |`sessionId` selects the active session.
       |Returns each thread's id and name.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(keywords = Set("debug", "dap", "threads", "thread", "list", "debugger"))
+  )
   override val examples = List(
     ToolExample(
       "list threads",

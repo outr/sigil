@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.FileSystemContext
 import sigil.tool.model.{CpuStats, DiskStats, LoadAverage, MemoryStats, SystemStatsInput, SystemStatsOutput}
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Report basic host resource usage (CPU, memory, disk, load
@@ -20,19 +20,24 @@ import sigil.tool.{Tool, ToolExample, ToolName}
  * Diagnostic-only. Apps that want deeper observability should
  * surface metrics via their own provider.
  */
-final class SystemStatsTool(context: FileSystemContext)
-  extends Tool with sigil.tool.ReadOnlyExternalTool {
+final class SystemStatsTool(context: FileSystemContext) extends Tool {
   type Input  = SystemStatsInput
   type Output = SystemStatsOutput
   val inputRW  = summon[RW[SystemStatsInput]]
   val outputRW = summon[RW[SystemStatsOutput]]
-  val name = ToolName("system_stats")
-  val description = "Report system resource usage — CPU usage, memory, disk free, load average — by parsing standard Linux shell utilities."
+  override val name = ToolName("system_stats")
+  override val description = "Report system resource usage — CPU usage, memory, disk free, load average — by parsing standard Linux shell utilities."
+  // Volatile: live CPU / memory / disk readings change between calls.
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+    discovery = DiscoverySpec(keywords = Set("system", "stats", "cpu", "memory", "disk", "load", "uptime"))
+  )
   override val examples = List(
     ToolExample("Default — everything", SystemStatsInput()),
     ToolExample("Only memory", SystemStatsInput(includeCpu = false, includeDisk = false, includeLoadAvg = false))
   )
-  override val keywords = Set("system", "stats", "cpu", "memory", "disk", "load", "uptime")
 
   override def executeOutput(input: SystemStatsInput, ctx: ToolContext): Task[SystemStatsOutput] = {
     val parts = List(
