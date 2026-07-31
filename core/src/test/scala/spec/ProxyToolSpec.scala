@@ -11,16 +11,22 @@ import sigil.conversation.Conversation
 import sigil.event.ToolOutcome
 import sigil.signal.ToolDelta
 import sigil.tool.{
+  ConsentSpec,
   DiscoverySpec,
   Effect,
+  Execution,
   MutationTargeting,
+  ProgressContract,
   Resolution,
   TextToolOutput,
   Tool,
   ToolExample,
+  ToolGates,
   ToolIO,
   ToolInput,
   ToolName,
+  ToolPrecondition,
+  ToolPreconditionResult,
   ToolProfile,
   ToolResult,
   ToolSpec
@@ -68,6 +74,52 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       Task.pure(TextToolOutput(s"local: ${input.value * 2}"))
   }
 
+  private object OfflineDaemonPrecondition extends ToolPrecondition {
+    val name: String = "remote-daemon"
+    override def check(context: TurnContext): Task[ToolPreconditionResult] =
+      Task.pure(ToolPreconditionResult.Unsatisfied("the remote daemon is offline", suggestedFix = Some("start_daemon")))
+  }
+
+  /** Consent-gated, destructive, detachable, preconditioned — the full
+    * capability profile a proxy must forward by construction. */
+  private case object GuardedWrappedTool extends Tool {
+    type Input = FakeToolInput
+    type Output = TextToolOutput
+    val io: ToolIO[FakeToolInput, TextToolOutput] = ToolIO.derived[FakeToolInput, TextToolOutput]
+    val spec: ToolSpec = ToolSpec(
+      name = ToolName("guarded_fake_tool"),
+      description = "Consent-gated destructive fake tool for proxy tests",
+      profile = ToolProfile(
+        effect = Effect.Destructive(MutationTargeting.none, "Permanently deletes the remote record."),
+        gates = ToolGates(consent = Some(ConsentSpec("Really delete the remote record?"))),
+        execution = Execution.Detachable(
+          keepRunningOnStop = false,
+          progress = ProgressContract("reports deletion progress via ctx.reportProgress")
+        )
+      ),
+      discovery = DiscoverySpec(keywords = Set("test", "guarded"))
+    )
+    protected def resolve: Resolution[Input, Output] =
+      Resolution.Simple((_, _) => Task.pure(TextToolOutput("local guarded run")))
+  }
+
+  private case object PreconditionedWrappedTool extends Tool {
+    type Input = FakeToolInput
+    type Output = TextToolOutput
+    val io: ToolIO[FakeToolInput, TextToolOutput] = ToolIO.derived[FakeToolInput, TextToolOutput]
+    val spec: ToolSpec = ToolSpec(
+      name = ToolName("preconditioned_fake_tool"),
+      description = "Fake tool with a permanently-unsatisfied precondition for proxy tests",
+      profile = ToolProfile(
+        effect = Effect.Mutating(MutationTargeting.none),
+        gates = ToolGates(preconditions = List(OfflineDaemonPrecondition))
+      ),
+      discovery = DiscoverySpec(keywords = Set("test", "preconditioned"))
+    )
+    protected def resolve: Resolution[Input, Output] =
+      Resolution.Simple((_, _) => Task.pure(TextToolOutput("local preconditioned run")))
+  }
+
   "ProxyTool" should {
     "preserve the wrapped tool's spec, name, description, and schema" in rapid.Task {
       val transport = new RecordingTransport
@@ -113,6 +165,44 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       proxy.execute(FakeToolInput(value = 1), ctx, Event.id()).toList.map { _ =>
         val (capturedName, _, _) = transport.lastCall.get()
         capturedName shouldBe FakeWrappedTool.name
+      }
+    }
+
+    "forward the full capability profile through the decorator — consent, destructive warning, preconditions, detachability" in rapid.Task {
+      val proxy = new ProxyTool(GuardedWrappedTool, new RecordingTransport)
+      proxy.requiresUserConsent shouldBe true
+      proxy.consentPrompt shouldBe Some("Really delete the remote record?")
+      proxy.destructive shouldBe true
+      proxy.wireDescription(sigil.provider.ConversationMode, TestSigil) should
+        startWith("**Permanently deletes the remote record.**")
+      proxy.detachable shouldBe true
+      proxy.detachedKeepRunningOnStop shouldBe false
+
+      val preconditioned = new ProxyTool(PreconditionedWrappedTool, new RecordingTransport)
+      preconditioned.preconditions shouldBe List(OfflineDaemonPrecondition)
+    }
+
+    "hold a proxied call at the consent gate — the transport never fires without a recorded approval" in {
+      val transport = new RecordingTransport
+      val proxy = new ProxyTool(GuardedWrappedTool, transport)
+      val ctx = makeContext()
+      proxy.execute(FakeToolInput(value = 3), ctx, Event.id()).toList.map { events =>
+        withClue(s"transport dispatched despite the unconsented gate; events: $events: ") {
+          transport.callCount.get() shouldBe 0
+        }
+        events should not be empty
+      }
+    }
+
+    "hold a proxied call at an unsatisfied precondition — the transport never fires" in {
+      val transport = new RecordingTransport
+      val proxy = new ProxyTool(PreconditionedWrappedTool, transport)
+      val ctx = makeContext()
+      proxy.execute(FakeToolInput(value = 3), ctx, Event.id()).toList.map { events =>
+        withClue(s"transport dispatched despite the unsatisfied precondition; events: $events: ") {
+          transport.callCount.get() shouldBe 0
+        }
+        events should not be empty
       }
     }
   }
