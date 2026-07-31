@@ -309,153 +309,69 @@ object FrameBuilder {
   }
 
   /**
-   * Append frames for a newly-Complete event to an existing frame vector.
-   * The return value is the updated vector.
+   * Fold a newly-Complete event into an existing frame vector — the
+   * single event→frame rule set.
    *
-   * Legacy convenience wrapper around [[computeFrame]]. New code should query `Event.contextFrame` directly.
-    */
+   * Per-event frame shape comes from [[computeFrame]], so the fold path
+   * and the live settle path cannot disagree about what an event
+   * projects to. This function adds only what needs surrounding
+   * context: folding a Tool-role result into its parent
+   * `ContextFrame.ToolCall`, which the live path does separately in
+   * `Sigil.attachContextFrameOnSettle` against the persisted invoke.
+   * The fold predicate mirrors that path's — settle a call whose frame
+   * is still `Active` OR whose result is still pending.
+   */
   def appendFor(existing: Vector[ContextFrame], event: Event): Vector[ContextFrame] = {
     if (event.state != EventState.Complete) return existing
 
-    // Tool-result rendering takes precedence over the per-subclass match
-    // — any event whose role is MessageRole.Tool is paired against the
-    // most-recent unresolved ToolInvoke and rendered to JSON via
-    // [[stripEventBoilerplate]] (framework metadata fields removed so
-    // the model sees only the typed payload).
     if (event.role == MessageRole.Tool) {
-      // Tool-result rendering: for typed Events (ChangeMode, ToolResults,
-      // etc.) strip framework boilerplate and render the JSON of the
-      // remaining typed fields. For `Message`, the typed fields are the
-      // wrapper itself (`content: Vector[ResponseContent]` etc.) — the
-      // agent wants just the text the tool wrote, not the Message
-      // record. Extract the text directly so models see a clean tool
-      // result instead of doubly-wrapped JSON.
-      val (content, images) = toolResultPayload(event)
-      //
-      // A `MessageRole.Tool` event with `origin = None` is a
-      // programmer error — the framework throws rather than rendering
-      // a degraded "additional tool output" placeholder. Tool authors
-      // emit Tool-role events from `executeResult` (where the
-      // orchestrator stamps origin automatically); slash-command /
-      // workflow / programmatic dispatch sites set `origin` at the
-      // emission point. Anything else is a category error caught at
-      // publish time.
-      val callId = event.origin.getOrElse {
-        throw new IllegalStateException(
-          s"FrameBuilder: ${event.getClass.getSimpleName} has role=MessageRole.Tool but no `origin` " +
-            s"set. Every Tool-role event MUST carry `origin` pointing to its parent ToolInvoke. " +
-            s"Event id=${event._id.value}; participantId=${event.participantId.value}."
-        )
+      event.origin match {
+        case Some(callId) =>
+          // Tool-result rendering: for typed Events strip framework
+          // boilerplate and render the JSON of the remaining typed
+          // fields. For `Message` the typed fields are the wrapper
+          // itself, so the text is extracted directly and the model
+          // sees a clean result rather than doubly-wrapped JSON.
+          val (content, images) = toolResultPayload(event)
+          val matchingIdx = existing.indexWhere {
+            case tc: ContextFrame.ToolCall
+                if tc.callId == callId && (tc.state == ToolCallState.Active || tc.resultPending) => true
+            case _ => false
+          }
+          if (matchingIdx >= 0) {
+            val tc = existing(matchingIdx).asInstanceOf[ContextFrame.ToolCall]
+            return existing.updated(
+              matchingIdx,
+              tc.copy(state = ToolCallState.Complete(content, images), resultPending = false)
+            )
+          }
+          // No matching open ToolCall — orphan result. Surface as a
+          // synthetic agents-only Text frame so the data doesn't vanish
+          // silently; the live publish path's invariant gate prevents
+          // this for fresh events, so it covers replay scenarios.
+          return existing :+ ContextFrame.Text(
+            content       = s"[framework: orphan tool result for callId=${callId.value} — content: $content]",
+            participantId = event.participantId,
+            sourceEventId = event._id,
+            visibility    = sigil.event.MessageVisibility.Agents
+          )
+        case None =>
+          // Malformed Tool-role event. `computeFrame` degrades rather
+          // than throwing so a single bad event can't wedge the
+          // conversation; the fold path matches it.
+          return computeFrame(event).fold(existing)(existing :+ _)
       }
-      // Sigil #261 — unified ToolCall(state) frame model: fold this
-      // Tool-role result into the matching ToolCall frame in
-      // `existing` rather than appending a separate ToolResult frame.
-      val matchingIdx = existing.indexWhere {
-        case tc: ContextFrame.ToolCall if tc.callId == callId && tc.state == ToolCallState.Active => true
-        case _ => false
-      }
-      if (matchingIdx >= 0) {
-        val tc = existing(matchingIdx).asInstanceOf[ContextFrame.ToolCall]
-        return existing.updated(
-          matchingIdx,
-          tc.copy(state = ToolCallState.Complete(content, images), resultPending = false)
-        )
-      }
-      // No matching Active ToolCall in `existing` — orphan result.
-      // Surface as a synthetic agents-only Text frame so the data
-      // doesn't vanish silently; live publish path's invariant gate
-      // already prevents this in fresh events, so this fallback only
-      // covers legacy / replay scenarios.
-      return existing :+ ContextFrame.Text(
-        content       = s"[framework: orphan tool result for callId=${callId.value} — content: $content]",
-        participantId = event.participantId,
-        sourceEventId = event._id,
-        visibility    = sigil.event.MessageVisibility.Agents
-      )
     }
 
-    event match {
-      case m: Message =>
-        existing :+ ContextFrame.Text(
-          content = renderMessageText(m),
-          participantId = m.participantId,
-          sourceEventId = m._id,
-          visibility = m.visibility
-        )
-
-      case ti: ToolInvoke =>
-        val argsJson = ti.input
-          .map(i => JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(i))))
-          .getOrElse("{}")
-        val callState =
-          if (ti.state == EventState.Complete) {
-            val (content, images) = toolInvokePayload(ti)
-            ToolCallState.Complete(content, images)
-          } else ToolCallState.Active
-        existing :+ ContextFrame.ToolCall(
-          toolName = ti.toolName,
-          argsJson = argsJson,
-          callId = ti._id,
-          participantId = ti.participantId,
-          sourceEventId = ti._id,
-          visibility = ti.visibility,
-          wireCallId = ti.callId,
-          internal = ti.internal,
-          state = callState,
-          resultPending = ti.state == EventState.Complete && ti.outcome == ToolOutcome.Pending
-        )
-
-      case mc: ModeChange =>
-        existing :+ ContextFrame.System(
-          content = s"Mode changed to ${mc.mode}${mc.reason.map(r => s" ($r)").getOrElse("")}.",
-          sourceEventId = mc._id,
-          visibility = mc.visibility
-        )
-
-      case _: TopicChange => existing
-
-      case r: Reasoning =>
-        // Provider-internal reasoning items — surfaced as a frame so
-        // the originating agent's prompt-build picks them up and the
-        // OpenAIProvider can replay them in the next request's input
-        // array. Visibility carries through from the event; other
-        // viewers (other agents, human user UIs) filter the frame
-        existing :+ ContextFrame.Reasoning(
-          providerItemId = r.providerItemId,
-          summary = r.summary,
-          encryptedContent = r.encryptedContent,
-          participantId = r.participantId,
-          sourceEventId = r._id,
-          visibility = r.visibility
-        )
-
-      case _: AgentState | _: Stop =>
-        existing
-
-      case _: sigil.event.ControlPlaneEvent =>
-        // Status / lifecycle / wire-only signals (workflow run events,
-        // etc.) — flow through `publish` for broadcast + persistence
-        // but stay out of the conversation projection.
-        existing
-
-      case other =>
-        // Unknown Event type — fail loud so gaps are caught. Adding a new
-        // Event requires making a deliberate decision here: emit a frame,
-        // or extend `ControlPlaneEvent` to opt out of the view.
-        throw new RuntimeException(
-          s"FrameBuilder: Event ${other.getClass.getSimpleName} has no frame rule. " +
-            s"Add a case here to either emit a frame or extend ControlPlaneEvent."
-        )
-    }
+    computeFrame(event).fold(existing)(existing :+ _)
   }
 
   /**
    * Fold a chronologically-sorted sequence of events into a fresh frame
-   * vector. Used by `Sigil.rebuildView` for recovery / migration.
+   * vector — recovery, migration, and bulk import.
    */
   def build(events: Iterable[Event]): Vector[ContextFrame] =
     events.foldLeft(Vector.empty[ContextFrame])((acc, e) => appendFor(acc, e))
-
 
   private def renderMessageText(m: Message): String = renderContentText(m.content)
 

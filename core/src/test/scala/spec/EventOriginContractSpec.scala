@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.{ConversationView, ContextFrame, Conversation, FrameBuilder, ToolCallState}
-import sigil.event.{Event, Message, MessageRole, ToolInvoke}
+import sigil.event.{Event, Message, MessageRole, MessageVisibility, ToolInvoke}
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.model.ResponseContent
@@ -73,19 +73,21 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
   // ---- the invariant: Tool-role events MUST carry origin ----
 
   "Event.origin invariant — MessageRole.Tool" should {
-    "throw when a Tool-role event reaches FrameBuilder with no origin" in {
-      // Bug #69 — the framework's "Tool-role events MUST have origin"
-      // contract is enforced by FrameBuilder, the single rendering
-      // boundary every Tool event must cross. A missing origin is
-      // a programmer error and surfaces as a clear exception, not
-      // as a degraded "additional tool output" frame.
+    "surface a Tool-role event with no origin as an agents-only frame" in {
+      // The framework's "Tool-role events MUST have origin" contract is
+      // enforced at FrameBuilder, the single rendering boundary every
+      // Tool event crosses. A missing origin is a programmer error, but
+      // it degrades rather than throwing: one malformed event must not
+      // be able to wedge a whole conversation. The event is surfaced as
+      // a synthetic agents-only frame (and logged) so the data is
+      // visible without reaching a user.
       val invoke = activeInvoke("guarded")
       val orphan = toolMessage("oops, no origin", origin = None)
-      val ex = intercept[IllegalStateException] {
-        FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), orphan)
-      }
-      ex.getMessage should include ("origin")
-      ex.getMessage should include ("Tool-role")
+      val frames = FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), orphan)
+      val degraded = frames.collect { case t: ContextFrame.Text => t }
+      degraded should have size 1
+      degraded.head.content should include (orphan._id.value)
+      degraded.head.visibility shouldBe MessageVisibility.Agents
     }
 
     "fold into the parent ToolCall's state when origin is set on a Message" in {

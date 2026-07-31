@@ -3407,9 +3407,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           m.origin.foreach { invokeId =>
             framedMap.get(invokeId).foreach { ti =>
               ti.contextFrame match {
-                case Some(tc: ContextFrame.ToolCall) if tc.state == ToolCallState.Active =>
+                // Same predicate the live settle path uses: fold when the
+                // frame is still Active OR the result is still pending. A
+                // settled invoke whose result hasn't landed yet inlines a
+                // Complete placeholder frame with `resultPending`, so an
+                // Active-only test never matched and imported tool results
+                // never folded into their calls.
+                case Some(tc: ContextFrame.ToolCall) if tc.state == ToolCallState.Active || tc.resultPending =>
                   val (content, images) = FrameBuilder.toolResultPayload(m)
-                  val updated = tc.copy(state = ToolCallState.Complete(content, images))
+                  val updated = tc.copy(state = ToolCallState.Complete(content, images), resultPending = false)
                   framedMap(invokeId) = ti.withContextFrame(Some(updated))
                 case _ =>
               }
