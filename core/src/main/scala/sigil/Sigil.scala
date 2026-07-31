@@ -27,7 +27,7 @@ import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
 import sigil.event.{AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
 import sigil.role.Role
-import sigil.orchestrator.Orchestrator
+import sigil.orchestrator.{BudgetScope, Directive, Orchestrator}
 import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
@@ -7470,7 +7470,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                       if (!ti.internal) iterationHadToolCall.set(true)
                       ()
                     }
-                  case ti: ToolInvoke if ti.toolName.value == "_refusal_challenge"
+                  case ti: ToolInvoke if ti.toolName.value == Directive.RefusalChallengeName
                                       || ti.toolName.value == Orchestrator.TurnDecisionToolName =>
                     Task { frameworkRequestedContinue.set(true); () }
                   case ti: ToolInvoke if !ti.internal =>
@@ -7732,10 +7732,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 // turn (fresh budget, fresh classification).
                 evaluateBudgetGate(conv, claimed).flatMap {
                   case Some(directive) if directive.hard =>
-                    publishInternalDirective(agent, conv, "_budget_ceiling", directive.text)
+                    publishInternalDirective(agent, conv, directive.directive)
                       .map(_ => recurseForced(ForcedSynthesisReason.BudgetCeiling))
                   case Some(directive) =>
-                    publishInternalDirective(agent, conv, "_budget_checkin", directive.text)
+                    publishInternalDirective(agent, conv, directive.directive)
                       .map(_ =>
                         maybeIntraTurnCompact(agent, convId, claimed)
                           .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
@@ -7761,16 +7761,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                     // then force ONE more iteration so the agent decides what to
                     // do — continue, or ask the user ITSELF via `respond` /
                     // `respond_options`. The directive is tailored per case:
-                    val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
-                      .invoke("_stall_detected", agent.id, convId, conv.currentTopicId)
-                    val directiveContent =
+                    val stallDirective: Directive =
                       if (intervention.askingUser && isDirectedWorkerConversation(conv))
                         // Worker: can't ask the human directly — report up to
                         // the supervisor, who decides whether to escalate.
-                        Vector(_root_.sigil.tool.model.ResponseContent.Text(
-                          "You can't ask the user directly from here — your supervisor owns this task. " +
-                            "Stop gathering and call `respond` now to report what you've found and what you're blocked on."
-                        ))
+                        Directive.StallAskSupervisor
                       else if (intervention.askingUser)
                         // Main conversation: leave the decision AND the
                         // user-facing wording to the agent. The framework no
@@ -7778,12 +7773,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                         // Note the false-positive guard: if the agent's recent
                         // tool calls actually completed (e.g. externalized image
                         // results), it can just continue.
-                        Vector(_root_.sigil.tool.model.ResponseContent.Text(
-                          "You appear blocked waiting on input. First check whether your recent tool calls actually " +
-                            "completed (their results may be large and externalized rather than inline) — if so, just " +
-                            "continue. If you genuinely need the user, ask them directly NOW via `respond_options` " +
-                            "(clickable choices, preferred) or `respond`, phrasing the question yourself."
-                        ))
+                        Directive.StallAskUser
+                      else Directive.ProgressCheckpoint(body = "", stuckOn = None)
+                    val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
+                      .invoke(stallDirective, agent.id, convId, conv.currentTopicId)
+                    // The non-asking case adopts the intervention's own
+                    // already-rendered body so its identity survives.
+                    val directiveContent =
+                      if (intervention.askingUser)
+                        Vector(_root_.sigil.tool.model.ResponseContent.Text(stallDirective.render))
                       else intervention.message.content
                     val taggedDirective = intervention.message.copy(
                       role       = MessageRole.Tool,
@@ -7867,17 +7865,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // carry origin" invariant. Marked `internal = true` so
               // client UIs filter it out of the user-facing chip
               // stream — this is framework-internal model nudging.
+              val capDirective = Directive.CapReached(maxAgentIterations)
               val capInvoke = sigil.orchestrator.SyntheticDiagnostic
-                .invoke("_cap_reached", agent.id, convId, conv.currentTopicId)
+                .invoke(capDirective, agent.id, convId, conv.currentTopicId)
               val capDiagnostic = Message(
                 participantId  = agent.id,
                 conversationId = convId,
                 topicId        = conv.currentTopicId,
-                content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(
-                  s"You've reached the iteration cap ($maxAgentIterations turns) for this user request. " +
-                    "Synthesize a response NOW from what you've gathered so far — call `respond` with " +
-                    "your findings. Do not call any more discovery / read / search tools."
-                )),
+                content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(capDirective.render)),
                 state          = EventState.Complete,
                 role           = MessageRole.Tool,
                 visibility     = MessageVisibility.Agents,
@@ -8110,7 +8105,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   /** A budget-gate verdict: `hard = true` forces terminal synthesis;
     * `hard = false` is the cooperative check-in. `text` is the
     * Tool-role directive the agent reads. */
-  private final case class BudgetDirective(hard: Boolean, text: String)
+  private final case class BudgetDirective(hard: Boolean, directive: Directive)
 
   /** Evaluate the spend budgets at an iteration boundary. Hard
     * ceilings (turn, then conversation) win; soft crossings fire
@@ -8122,35 +8117,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       val budgets  = effectiveBudgetsFor(conv)
       val turnCost = entry.turnCost
       val convCost = entry.conversationCostAtClaim + turnCost
-      def fmt(v: BigDecimal): String = f"$$${v}%.2f"
-      val spendLine =
-        s"This turn has spent ${fmt(turnCost)}; the conversation total is ${fmt(convCost)}."
-      def checkinText(scope: String, limit: BigDecimal): String =
-        s"[spend check-in — internal, not a user message] $spendLine That crosses the $scope soft budget " +
-          s"(${fmt(limit)}). Summarize where you are and what remains, then ask the user via `respond_options` " +
-          "whether to continue and at what scope — do not keep working until they answer. If the remaining " +
-          "work is mechanical, call `request_deescalation` before continuing so it runs on a cheaper tier."
       val turnHard = budgets.turnHard.filter(turnCost >= _).map(limit => BudgetDirective(hard = true,
-        s"[spend ceiling — internal, not a user message] $spendLine That crosses the hard per-turn ceiling " +
-          s"(${fmt(limit)}). Call `respond` NOW with an honest report: what you accomplished, what remains, " +
-          "and what was spent. Do not start further work."))
+        Directive.BudgetCeiling(turnCost, convCost, BudgetScope.PerTurn, limit)))
       val convHard = budgets.conversationHard.filter(convCost >= _).map(limit => BudgetDirective(hard = true,
-        s"[spend ceiling — internal, not a user message] $spendLine That crosses the hard conversation ceiling " +
-          s"(${fmt(limit)}). Call `respond` NOW with an honest report: what you accomplished, what remains, " +
-          "and what was spent. Do not start further work."))
-      def softFor(limit: BigDecimal, scope: String, latch: java.util.concurrent.atomic.AtomicBoolean,
+        Directive.BudgetCeiling(turnCost, convCost, BudgetScope.Conversation, limit)))
+      def softFor(limit: BigDecimal, scope: BudgetScope, latch: java.util.concurrent.atomic.AtomicBoolean,
                   crossed: Boolean): Option[BudgetDirective] =
-        if (crossed && latch.compareAndSet(false, true)) Some(BudgetDirective(hard = false, checkinText(scope, limit)))
+        if (crossed && latch.compareAndSet(false, true))
+          Some(BudgetDirective(hard = false, Directive.BudgetCheckin(turnCost, convCost, scope, limit)))
         else None
       val headroom = entry.budgetCheckinRequested.compareAndSet(true, false)
       val turnSoft = budgets.turnSoft.flatMap(limit =>
-        softFor(limit, "per-turn", entry.turnSoftFired, crossed = turnCost >= limit || (headroom && turnCost > 0)))
+        softFor(limit, BudgetScope.PerTurn, entry.turnSoftFired,
+          crossed = turnCost >= limit || (headroom && turnCost > 0)))
       val convSoft = budgets.conversationSoft.flatMap(limit =>
         // Conversation-soft fires on the CROSSING (this turn pushed the
         // total over), not on every turn that starts already above it —
         // the user's continuing messages after a check-in are the
         // approval.
-        softFor(limit, "conversation", entry.conversationSoftFired,
+        softFor(limit, BudgetScope.Conversation, entry.conversationSoftFired,
           crossed = entry.conversationCostAtClaim < limit && convCost >= limit))
       val directive = turnHard.orElse(convHard).orElse(turnSoft).orElse(convSoft)
       // With the planner tier enabled, a soft check-in is also an
@@ -8172,10 +8157,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * planner checkpoint (`_plan` / `_planner_correction`). */
   private final def publishInternalDirective(agent: AgentParticipant,
                                              conv: Conversation,
-                                             invokeName: String,
+                                             d: sigil.orchestrator.Directive): Task[Unit] =
+    publishInternalDirective(agent, conv, d, d.render)
+
+  /** Publish a directive whose prose was authored elsewhere (the
+    * checkpoint path adopts an intervention's own message content).
+    * The synthetic invoke still carries the typed payload. */
+  private final def publishInternalDirective(agent: AgentParticipant,
+                                             conv: Conversation,
+                                             d: sigil.orchestrator.Directive,
                                              text: String): Task[Unit] = {
     val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
-      .invoke(invokeName, agent.id, conv._id, conv.currentTopicId)
+      .invoke(d, agent.id, conv._id, conv.currentTopicId)
     val directive = Message(
       participantId  = agent.id,
       conversationId = conv._id,
@@ -8761,7 +8754,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val publishPlanTask = returnedPlan match {
       case Some(plan) if replan || state.plan.isEmpty =>
         state.plan = Some(plan)
-        publishInternalDirective(agent, conv, "_plan", renderPlanDirective(plan))
+        publishInternalDirective(agent, conv, Directive.Plan(plan))
       case _ =>
         state.plan = state.plan.map(p => p.copy(currentPhase = returnedPhase.orElse(p.currentPhase)))
         Task.unit
@@ -8771,10 +8764,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       .getOrElse("Re-read the plan and realign your next actions with its objective and done criteria.")
     val correctionTask =
       if (deviating)
-        publishInternalDirective(agent, conv, "_planner_correction",
-          "[planner correction — internal, not a user message; do NOT reply to or acknowledge this in chat]\n" +
-            correction + " Adjust your approach now and continue the task. Do not apologize for or narrate " +
-            "this correction to the user; just do the work.")
+        publishInternalDirective(agent, conv, Directive.PlannerCorrection(correction))
       else Task.unit
     val status =
       if (deviating) s"Planner: deviating — $correction"
@@ -8825,14 +8815,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   /** Render the `_plan` directive the executor reads: the plan
     * artifact as an internal Tool-role message. */
-  private def renderPlanDirective(plan: TurnPlan): String = {
-    val constraints =
-      if (plan.constraints.isEmpty) ""
-      else plan.constraints.map(c => s"  - $c").mkString("\nConstraints:\n", "\n", "")
-    val phase = plan.currentPhase.map(p => s"\nCurrent phase: $p").getOrElse("")
-    "[plan — internal, not a user message; do NOT reply to or acknowledge this in chat]\n" +
-      s"Objective: ${plan.objective}$constraints\nDone when: ${plan.doneCriteria}$phase"
-  }
+  private def renderPlanDirective(plan: TurnPlan): String = Directive.Plan(plan).render
 
   /** Stitch the planner consult's user prompt: the user task, the held
     * plan, the window's activity, turn spend, and the anomaly reason
@@ -9038,13 +9021,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * there is nothing for the model to answer in chat. The genuine
     * ask-the-user checkpoint (`shouldAskUser`) keeps its first-person
     * user-facing wording; only the directive path is reframed. */
-  private def checkpointDirective(body: String, stuckOn: Option[String]): String = {
-    val hint = stuckOn.map(s => s" You are stuck on: $s.").getOrElse("")
-    "[progress checkpoint — internal, not a user message; do NOT reply to or acknowledge this in chat]\n" +
-      body.trim + hint +
-      " Change your approach now and continue the task. Do not apologize for or narrate this correction " +
-      "to the user; just do the work."
-  }
+  private def checkpointDirective(body: String, stuckOn: Option[String]): String =
+    Directive.ProgressCheckpoint(body, stuckOn).render
 
   private final def evaluateStall(convId: Id[Conversation],
                                   agentId: ParticipantId): Task[sigil.conversation.compression.StallDetector.Signal] =

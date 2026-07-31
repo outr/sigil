@@ -33,7 +33,8 @@ object SyntheticDiagnostic {
   def invoke(name: String,
              caller: ParticipantId,
              convId: Id[Conversation],
-             topicId: Id[Topic]): ToolInvoke = {
+             topicId: Id[Topic],
+             input: Option[sigil.tool.ToolInput] = None): ToolInvoke = {
     val syntheticInvokeId = Event.id()
     ToolInvoke(
       toolName       = ToolName.internal(name),
@@ -42,9 +43,30 @@ object SyntheticDiagnostic {
       topicId        = topicId,
       _id            = syntheticInvokeId,
       state          = EventState.Complete,
-      internal       = true
+      internal       = true,
+      input          = input
     )
   }
+
+  /** Mint the synthetic invoke for a typed [[Directive]] — the wire
+    * name comes from the directive and the typed payload rides along
+    * as a [[sigil.tool.DirectiveInput]]. */
+  def invoke(directive: Directive,
+             caller: ParticipantId,
+             convId: Id[Conversation],
+             topicId: Id[Topic]): ToolInvoke =
+    invoke(directive.wireName, caller, convId, topicId,
+      Some(sigil.tool.DirectiveInput(directive)))
+
+  /** Build the (synthetic-invoke, paired Tool-role Message) pair for a
+    * typed [[Directive]]: name, prose, and typed payload all sourced
+    * from the one ADT. */
+  def apply(directive: Directive,
+            caller: ParticipantId,
+            convId: Id[Conversation],
+            topicId: Id[Topic],
+            disposition: MessageDisposition): List[Signal] =
+    build(invoke(directive, caller, convId, topicId), directive.render, disposition)
 
   /** Build the (synthetic-invoke, paired Tool-role Message) signal pair.
     * The Message carries `MessageVisibility.Agents` so the diagnostic
@@ -56,22 +78,32 @@ object SyntheticDiagnostic {
             convId: Id[Conversation],
             topicId: Id[Topic],
             reason: String,
-            disposition: MessageDisposition = MessageDisposition.Success): List[Signal] = {
-    // Sigil #341 — make the invoke SELF-DESCRIBING: stamp the reason onto
-    // its own `outcome` + `summary`. The diagnostic's whole job is to hand
-    // the agent its `reason`, but that lived solely in the paired Tool-role
-    // Message — and on the orchestrator's execute-stream emit path that
-    // Message wasn't reaching the agent's frame, so the invoke rendered as
-    // a content-free `(pending)` and stranded the agent. `FrameBuilder`
-    // pairs the Message into the invoke's frame when present and otherwise
-    // falls back to `toolInvokePayload` (the invoke's own outcome/summary),
-    // so carrying the reason here means the guidance always reaches the
-    // frame regardless of whether the paired Message does.
+            disposition: MessageDisposition = MessageDisposition.Success): List[Signal] =
+    build(invoke(name, caller, convId, topicId), reason, disposition)
+
+  /** Pair a minted synthetic invoke with its Tool-role Message.
+    *
+    * Sigil #341 — the invoke is made SELF-DESCRIBING by stamping the
+    * reason onto its own `outcome` + `summary`. The diagnostic's whole
+    * job is to hand the agent its `reason`, but that lived solely in
+    * the paired Message — and on the orchestrator's execute-stream emit
+    * path that Message wasn't reaching the agent's frame, so the invoke
+    * rendered as a content-free `(pending)` and stranded the agent.
+    * `FrameBuilder` pairs the Message into the invoke's frame when
+    * present and otherwise falls back to the invoke's own
+    * outcome/summary, so carrying the reason here means the guidance
+    * always reaches the frame. */
+  private def build(syntheticInvokeBase: ToolInvoke,
+                    reason: String,
+                    disposition: MessageDisposition): List[Signal] = {
     val outcome = disposition match {
       case f: MessageDisposition.Failure => ToolOutcome.Failure(reason, f.recoverable)
       case _                             => ToolOutcome.Success
     }
-    val syntheticInvoke = invoke(name, caller, convId, topicId).copy(outcome = outcome, summary = reason)
+    val syntheticInvoke = syntheticInvokeBase.copy(outcome = outcome, summary = reason)
+    val caller = syntheticInvoke.participantId
+    val convId = syntheticInvoke.conversationId
+    val topicId = syntheticInvoke.topicId
     val diagnostic = Message(
       participantId  = caller,
       conversationId = convId,

@@ -635,11 +635,11 @@ object Orchestrator {
                       firstLeakedExcerpt = firstExcerpt
                     )).handleError(_ => rapid.Task.unit).startUnit()
                     SyntheticDiagnostic(
-                      name    = XmlToolCallSanitizer.SyntheticInvokeName,
-                      caller  = caller,
-                      convId  = convId,
-                      topicId = conversation.currentTopicId,
-                      reason  = XmlToolCallSanitizer.interventionDirective(firstExcerpt)
+                      directive   = Directive.XmlToolCallLeak(firstExcerpt),
+                      caller      = caller,
+                      convId      = convId,
+                      topicId     = conversation.currentTopicId,
+                      disposition = MessageDisposition.Success
                     )
                   } else Nil
                 val parsed = MarkdownContentParser.parse(sanitized.content)
@@ -1489,8 +1489,10 @@ object Orchestrator {
               case Some(hit) =>
                 scribe.warn(s"orchestrator: degenerate generation detected (${hit.occurrences}/${hit.totalSentences} sentences " +
                   s"= ${math.round(hit.share * 100)}% repetition) in conversation $convId — emitting Failure diagnostic")
-                SyntheticDiagnostic("_degenerate_generation", caller, convId, topicId,
-                  reason      = hit.renderDiagnostic(text.length),
+                SyntheticDiagnostic(
+                  Directive.DegenerateGeneration(hit.repeatedSentence, hit.occurrences,
+                    hit.totalSentences, hit.share, text.length),
+                  caller, convId, topicId,
                   disposition = MessageDisposition.Failure(recoverable = true))
               case None => Nil
             }
@@ -1540,16 +1542,8 @@ object Orchestrator {
           stopReason == StopReason.Complete && Provider.rejectsForcedToolChoice(request.modelId)
         val plainTextDiagnostic: List[Signal] =
           if (state.plainTextBuffer.nonEmpty && !state.sawAnyToolCall && !autoAnsweredPlainText) {
-            val droppedText = state.plainTextBuffer.toString
-            val snippet = if (droppedText.length <= 200) droppedText else droppedText.take(200) + "…"
-            val reason =
-              "Your previous reply was plain text and was dropped — every reply must be a " +
-                "tool call. Wrap your answer in one of the respond-family tools " +
-                "(`respond`, `respond_options`, `no_response`) appropriate to your situation. " +
-                "When a tool result IS the " +
-                s"user-facing answer, call `respond` with that content. Dropped text was: $snippet"
-            SyntheticDiagnostic("_plain_text_reply", caller, convId, topicId,
-              reason      = reason,
+            SyntheticDiagnostic(Directive.PlainTextReply(state.plainTextBuffer.toString),
+              caller, convId, topicId,
               disposition = MessageDisposition.Failure(recoverable = true))
           } else Nil
         // A naked-text terminal (`end_turn` → StopReason.Complete with
@@ -1690,7 +1684,8 @@ object Orchestrator {
         val (preludeSignals, originId) = errorOrigin match {
           case Some(parent) => (Nil, parent)
           case None =>
-            val syntheticInvoke = SyntheticDiagnostic.invoke("_provider_error", caller, convId, topicId)
+            val syntheticInvoke =
+              SyntheticDiagnostic.invoke(Directive.ProviderError(safeMsg), caller, convId, topicId)
             (List[Signal](syntheticInvoke), syntheticInvoke._id)
         }
         // Sigil #265 — emit the provider-error pairing as a settling
@@ -1702,7 +1697,7 @@ object Orchestrator {
         // errors are typically retryable (transient backend hiccup,
         // args malformed, etc.); a fatal provider failure has its own
         // escalation path through `ProviderStrategy`.
-        val reason = s"Provider error: $safeMsg"
+        val reason = Directive.ProviderError(safeMsg).render
         val errorResult: Signal = ToolDelta(
           target         = originId,
           conversationId = convId,
@@ -1939,7 +1934,7 @@ object Orchestrator {
           case _                                                        => false
         }
         val alreadyChallenged = tail.exists {
-          case ti: ToolInvoke if ti.toolName.value == "_refusal_challenge" => true
+          case ti: ToolInvoke if ti.toolName.value == Directive.RefusalChallengeName => true
           case _                                                           => false
         }
         if (discoveryAttempted || alreadyChallenged) None
@@ -1956,15 +1951,7 @@ object Orchestrator {
   private def buildRefusalChallengeSignals(caller: ParticipantId,
                                            convId: lightdb.id.Id[Conversation],
                                            topicId: lightdb.id.Id[Topic]): List[Signal] = {
-    val reason =
-      "Your previous `respond` refused the user without first calling `find_capability` (see the " +
-        "system prompt — a refusal not preceded by `find_capability` is a bug). The tool catalog " +
-        "likely contains capabilities you haven't discovered. Call `find_capability` with keywords " +
-        "describing what the user asked, review the matches, then decide whether to refuse based on " +
-        "what discovery actually returns. If no relevant capability surfaces, refuse with the " +
-        "specifics of what you searched and what wasn't there."
-    SyntheticDiagnostic("_refusal_challenge", caller, convId, topicId,
-      reason      = reason,
+    SyntheticDiagnostic(Directive.RefusalChallenge, caller, convId, topicId,
       disposition = MessageDisposition.Failure(recoverable = true))
   }
 
@@ -2043,28 +2030,7 @@ object Orchestrator {
     // The Nth bare narration is STRONGER evidence of an announce-then-
     // stall than the first — the agent answered the prior challenge
     // with more prose. Escalate the directive instead of repeating it.
-    val escalation =
-      if (priorChallenges <= 0) ""
-      else s"You have now produced ${priorChallenges + 1} plain-prose replies in a row without acting — " +
-        "you announced work and did not do it. Do NOT narrate again. "
-    val reason = droppedText match {
-      case Some(text) =>
-        val snippet = if (text.length <= 200) text else text.take(200) + "…"
-        escalation +
-          "Your previous reply was plain prose and was dropped — prose carries no explicit turn decision " +
-          "(`respond`'s required `endsTurn`). Decide now: if the work for this turn is complete, call " +
-          "`respond` with your answer and `endsTurn = true`. If your reply announced further steps, execute " +
-          s"them now with tool calls instead of stopping. Dropped text was: $snippet"
-      case None =>
-        escalation +
-          "Your previous reply was plain prose, which carries no explicit turn decision (`respond`'s required " +
-          "`endsTurn`). The message HAS been delivered to the user — do not repeat it. Decide now: if the " +
-          "work for this turn is complete and that message was your full answer, call `no_response` to end " +
-          "the turn. If your reply announced further steps, execute them now with tool calls instead of " +
-          "stopping. If you still owe the user a final answer, call `respond` with `endsTurn = true`."
-    }
-    SyntheticDiagnostic(TurnDecisionToolName, caller, convId, topicId,
-      reason      = reason,
+    SyntheticDiagnostic(Directive.TurnDecisionRequired(droppedText, priorChallenges), caller, convId, topicId,
       disposition = MessageDisposition.Failure(recoverable = true))
   }
 
@@ -2103,7 +2069,7 @@ object Orchestrator {
       else {
         val tail = convEvents.drop(lastUserIdx + 1)
         val alreadyIntercepted = tail.exists {
-          case ti: ToolInvoke if ti.toolName.value == "_repeated_query_intercept" => true
+          case ti: ToolInvoke if ti.toolName.value == Directive.RepeatedQueryInterceptName => true
           case _                                                                  => false
         }
         if (alreadyIntercepted) None
@@ -2133,15 +2099,7 @@ object Orchestrator {
                                         convId: lightdb.id.Id[Conversation],
                                         topicId: lightdb.id.Id[Topic],
                                         normalizedKeywords: String): List[Signal] = {
-    val reason =
-      s"You already called `find_capability` with keywords `$normalizedKeywords` earlier this " +
-        "turn. The ranker is deterministic — the same keywords will return the same hits. " +
-        "Either pick a different tool from the prior results (review the previous " +
-        "`find_capability` result Message in your context), or call `find_capability` again " +
-        "with DIFFERENT keywords that describe the action shape more specifically. Repeating " +
-        "the same search will not produce a different answer."
-    SyntheticDiagnostic("_repeated_query_intercept", caller, convId, topicId,
-      reason      = reason,
+    SyntheticDiagnostic(Directive.RepeatedQueryIntercept(normalizedKeywords), caller, convId, topicId,
       disposition = MessageDisposition.Failure(recoverable = true))
   }
 

@@ -108,6 +108,10 @@ object CoreTools {
     * itself isn't in the roster. */
   val inputRWs: List[RW[? <: ToolInput]] =
     List(
+      // No `Tool` behind it — the framework's internal directive channel
+      // stamps this on its synthetic invokes so the typed payload
+      // round-trips alongside the prose the model reads.
+      summon[RW[sigil.tool.DirectiveInput]],
       summon[RW[RespondInput]],
       summon[RW[RespondCardInput]],
       summon[RW[RespondCardsInput]],
