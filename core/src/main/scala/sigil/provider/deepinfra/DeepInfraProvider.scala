@@ -52,12 +52,12 @@ case class DeepInfraProvider(apiKey: String,
     providerNamespace = DeepInfra.Provider,
     providerName = "DeepInfra",
     path = "/v1/openai/chat/completions",
-    // Sigil bug #173 — DeepInfra accepts `strict: true` (HTTP 200)
-    // but doesn't enforce it (verified against Kimi-K2.5 wire logs
-    // where the model emitted JSON arrays despite per-tool strict).
-    // The shaping still happens (strictModeCapable = true → closed-
-    // object schema for the validator), but we don't pretend the
-    // backend honors the flag — strip it from the wire body.
+    // DeepInfra accepts `strict: true` (HTTP 200) but doesn't enforce
+    // it (verified against Kimi-K2.5 wire logs where the model emitted
+    // JSON arrays despite per-tool strict). The strict dialect still
+    // shapes the schema (closed-object form for the validator), but we
+    // don't pretend the backend honors the flag — strip it from the
+    // wire body via honorsStrict.
     schemaDialect = SchemaDialect.OpenAIStrict,
     honorsStrict = false,
     // Sigil bug #173 — DeepInfra's documented `tool_choice` set is

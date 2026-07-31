@@ -82,10 +82,7 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
   override def staticTools: List[Tool] =
     CoreTools.all.toList ++ BrowserCoreTools.all
 
-  override val findTools: ToolFinder = {
-    val inputs = staticTools.map(_.inputRW).distinctBy(_.definition.className)
-    sigil.tool.DbToolFinder(this, inputs)
-  }
+  override val findTools: ToolFinder = sigil.tool.DbToolFinder(this)
 
   // Mutable provider hook — specs install a real provider via setProvider.
   private val providerRef: AtomicReference[() => Task[Provider]] =

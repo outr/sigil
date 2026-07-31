@@ -71,6 +71,11 @@ class RefusalPayloadShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   case class FanoutRole(name: String, workType: String) extends ToolInput derives RW
   case class FanoutInput(role: FanoutRole, complexity: String) extends ToolInput derives RW
 
+  // A tool that reaches a wire roster must have its input registered in
+  // the polymorphic RW[ToolInput] — the boot completeness pass enforces
+  // this for real rosters; spec-local fixtures register explicitly.
+  sigil.tool.ToolInput.register(summon[fabric.rw.RW[FanoutInput]])
+
   case object FanoutTool extends Tool {
     type Input = FanoutInput
     type Output = TextToolOutput

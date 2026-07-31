@@ -15,22 +15,12 @@ import fabric.*
  * `pattern` for llama.cpp lets the model emit content that violates
  * the pattern, only caught post-decode).
  *
- * Use the right per-provider helper at the call site:
- *
- *   - [[forOpenAIStrict]]  — OpenAI Responses with `strict: true`
- *                            (and DeepSeek, which mirrors OpenAI's
- *                             strict-mode dialect via [[forDeepSeek]]).
- *   - [[forGemini]]        — Gemini function calling (rejects
- *                            `additionalProperties` and the
- *                            unsupported keywords).
- *   - [[forAnthropic]]     — Anthropic (no strict-mode equivalent;
- *                            keep the schema clean of grammar-only
- *                            keywords for hygiene).
- *
- * llama.cpp's chat-completions endpoint translates the FULL schema
- * (including `pattern` / `format` / numeric bounds) into a GBNF
- * grammar — pass `DefinitionToSchema(input)` directly without any
- * helper from this object.
+ * These are the building blocks behind [[SchemaDialect]] — the
+ * per-provider dialect objects ([[SchemaDialect.OpenAIStrict]],
+ * [[SchemaDialect.Gemini]], [[SchemaDialect.Anthropic]],
+ * [[SchemaDialect.Identity]]) own transform selection; call sites go
+ * through the provider's declared dialect rather than picking a
+ * helper here by convention.
  */
 object StrictSchema {
 
