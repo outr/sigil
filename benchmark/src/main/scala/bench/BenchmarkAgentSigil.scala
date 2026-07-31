@@ -69,16 +69,15 @@ final class BenchmarkAgentSigil(viewer: ParticipantId,
     * `maxAgentIterations`). */
   private val coreFinder: ToolFinder = InMemoryToolFinder(CoreTools.all.toList)
 
-  /** Active finder. The wrapper always reports the union of
-    * `toolInputs` and core-tool input RWs as its `toolInputRWs` (so
-    * Sigil's init-time `ToolInput.register` call sees every benchmark
-    * input type plus the essentials), and forwards `apply` / `byName`
-    * to a fall-through chain: scenario finder first, then
-    * [[coreFinder]]. The scenario can shadow a core tool by emitting
-    * the same name, but in practice they don't overlap. */
+  /** Active finder. The wrapper always reports the union of the
+    * core-tool IO contributions (so Sigil's init-time registration
+    * sees the essentials' codecs — benchmark input types ride
+    * `toolInputRegistrations`), and forwards `apply` / `byName` to a
+    * fall-through chain: scenario finder first, then [[coreFinder]].
+    * The scenario can shadow a core tool by emitting the same name,
+    * but in practice they don't overlap. */
   override def findTools: ToolFinder = new ToolFinder {
-    override val toolInputRWs: List[RW[? <: ToolInput]] =
-      (toolInputs ++ coreFinder.toolInputRWs).distinctBy(_.definition.className)
+    override val toolIO: List[sigil.tool.ToolIO[?, ?]] = coreFinder.toolIO
     override def apply(request: DiscoveryRequest) =
       toolFinderRef.get().apply(request).flatMap(scenario =>
         coreFinder.apply(request).map(core =>

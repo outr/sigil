@@ -543,22 +543,34 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    *   override def staticTools: List[Tool] = super.staticTools ++ List(MyTool, OtherTool)
    * }}}
    *
-   * NOTE: this method is invoked MORE THAN ONCE during startup —
-   * once for input-RW gathering and again when registering the
-   * polymorphic `Tool` RW. Any value an override constructs inline
-   * gets re-built each call, so tools that hold mutable state
-   * (e.g. [[sigil.tool.process.ProcessRegistry]]) must be hoisted
-   * to a `lazy val` (or `val`) on the Sigil subclass and referenced
-   * from the override:
+   * The framework reads this override ONCE and memoizes the result
+   * ([[resolvedStaticTools]]) — every consumer (registration, sync
+   * upgrade, suggestion cascade) sees the same instances, so tools
+   * that hold mutable state (e.g.
+   * [[sigil.tool.process.ProcessRegistry]]) behave even when
+   * constructed inline. The boot completeness pass re-invokes the
+   * override once and warns loudly if the second read is structurally
+   * different — hoist conditional construction to a stable value:
    * {{{
    *   private lazy val processRegistry = new ProcessRegistry()
    *   override def staticTools: List[Tool] =
    *     super.staticTools ++ AllShippedTools(fs, MySpace, Some(processRegistry))
    * }}}
-   * Otherwise the second invocation hands tools a fresh registry
-   * and handles minted via the first call's tools become unfindable.
    */
   def staticTools: List[sigil.tool.Tool] = sigil.tool.core.CoreTools.all.toList
+
+  private val staticToolsMemo =
+    new java.util.concurrent.atomic.AtomicReference[Option[List[sigil.tool.Tool]]](None)
+
+  /** Memoized first read of [[staticTools]] — the framework's single
+    * access path to the static roster. */
+  final def resolvedStaticTools: List[sigil.tool.Tool] = staticToolsMemo.get() match {
+    case Some(list) => list
+    case None =>
+      val fresh = staticTools
+      if (staticToolsMemo.compareAndSet(None, Some(fresh))) fresh
+      else staticToolsMemo.get().get
+  }
 
   /**
    * App-provided `Tool` subtypes that support runtime instance
@@ -1665,11 +1677,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         case _ => routedModelFor(workType, chain, fallback, estimatedInputTokens, reservedOutputTokens, complexity)
       }
 
-  private final lazy val defaultFindTools: sigil.tool.ToolFinder = {
-    val staticInputs = staticTools.map(_.inputRW).distinctBy(_.definition.className)
-    val allInputs = (staticInputs ++ toolInputRegistrations).distinctBy(_.definition.className)
-    sigil.tool.DbToolFinder(this, allInputs)
-  }
+  private final lazy val defaultFindTools: sigil.tool.ToolFinder = sigil.tool.DbToolFinder(this)
 
   // -- context curation --
 
@@ -4453,7 +4461,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // discoveries or pagination navigators; the overlay still
         // single-turn-decays at agent-loop release.
         val nextTools: List[sigil.tool.ToolName] =
-          staticTools.find(_.name == ti.toolName).map(_.suggestedNextTools).getOrElse(Nil)
+          resolvedStaticTools.find(_.name == ti.toolName).map(_.suggestedNextTools).getOrElse(Nil)
         // Record the invocation in the rolling-window cache with a
         // canonical args hash + short preview so the prompt renderer
         // can dedupe by (toolName, argsHash) and warn when the same
@@ -9726,22 +9734,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // first, then `WorkflowStepInput` (which references it), so the leaf-poly
       // ordering #18 guards against is preserved here too.
       _ <- mixinPolymorphicRegistrations
-      // Bug #53 — `toolInputRegistrations` is the mixin extension
-      // point for non-static tools whose `inputRW` isn't reachable
-      // through the static-roster scan (notably `JsonInput`, used by
-      // `ScriptTool` and `McpTool`). Without including it here,
-      // `ScriptSigil` / `McpSigil` apps would crash at the first
-      // runtime tool's `ToolInvoke` persistence with `Type not found
-      // [JsonInput]`.
-      _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs ++ toolInputRegistrations).distinctBy(_.definition.className)*)
+      // Input AND output poly-RWs derive symmetrically from the same
+      // sources: the memoized static roster's ToolIO, the finder's
+      // declared IO contribution (an app override of `findTools`
+      // contributes its codecs by construction instead of silently
+      // disabling the static channel), and the explicit registration
+      // lists for runtime-created records (`ScriptTool` / dynamic
+      // tools whose classes have no static instance).
+      registeredToolIO = resolvedStaticTools.map(_.io) ++ findTools.toolIO
+      staticInputRWs = registeredToolIO.map(_.inputRW.asInstanceOf[RW[? <: sigil.tool.ToolInput]])
+      _ = ToolInput.register((CoreTools.inputRWs ++ staticInputRWs ++ toolInputRegistrations).distinctBy(_.definition.className)*)
       // Sigil #265 — `ToolOutput` is a polymorphic discriminator on
-      // `ToolInvoke.output` (the field that replaces the pre-#265
-      // separate `ToolResults` event). Register the framework-shipped
-      // `Pending` / `Progress` cases, every `staticTools` output RW
-      // (auto-discovery — each `Tool` carries `outputRW`), and any
+      // `ToolInvoke.output`. Register the framework-shipped `Pending` /
+      // `Progress` cases, every registered ToolIO's output RW, and any
       // app-defined output subtypes so `ToolInvoke` RW round-trips
       // cleanly through persistence and the wire.
-      staticOutputRWs = staticTools.map(_.outputRW.asInstanceOf[RW[? <: sigil.tool.ToolOutput]])
+      staticOutputRWs = registeredToolIO.map(_.outputRW.asInstanceOf[RW[? <: sigil.tool.ToolOutput]])
       // A tool whose `Output` is the open `ToolOutput` itself (e.g. an
       // MCP tool that returns text OR an image) carries the base
       // PolyType RW as its `outputRW`. Registering that base RW would
@@ -9766,9 +9774,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           )
       // Aggregates after leaves + mixins.
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
-      _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
+      _ = sigil.tool.Tool.register((resolvedStaticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
       _ = sigil.skill.Skill.register((staticSkills.map(s => RW.static(s)) ++ skillRegistrations).distinct*)
       _ = Signal.register((allEventRWs ++ allDeltaRWs ++ allNoticeRWs ++ signalRegistrations)*)
+      // Boot completeness — every registered tool's probe input/output
+      // must round-trip through the polymorphic RWs, names must be
+      // roster-wide unique, and suggested-next references must
+      // resolve. Needs only the tool list + the registrations above,
+      // so codegen-only flows (no DB) run it too. Also re-invokes the
+      // staticTools override once to enforce the memoized-value
+      // contract with a loud warning on drift.
+      _ = sigil.tool.BootCompletenessCheck.run(resolvedStaticTools, staticTools)
     } yield ()
   }.singleton
 
@@ -9825,7 +9841,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // Runs after the ContextFrame migration so a dead-ToolResult
           // frame on a ToolInvoke row is already nulled.
           new sigil.upgrade.ToolOutputReconcileUpgrade,
-          new sigil.tool.StaticToolSyncUpgrade(staticTools),
+          new sigil.tool.StaticToolSyncUpgrade(resolvedStaticTools),
           new sigil.skill.StaticSkillSyncUpgrade(staticSkills)
         )
       )

@@ -41,7 +41,11 @@ object TestMcpSigil extends Sigil with McpSigil {
   override protected def spaceIds: List[RW[? <: SpaceId]] = Nil
   override protected def participants: List[RW[? <: Participant]] = Nil
 
-  override val findTools: ToolFinder = InMemoryToolFinder(Nil)
+  // Compose the MCP finder the way a real app does — its `toolIO`
+  // contribution is what registers `JsonInput` (and the open ToolOutput
+  // codec) into the polymorphic RWs at init, now that the mixin-level
+  // double registration is gone.
+  override def findTools: ToolFinder = mcpToolFinder
   override def staticTools: List[Tool] = Nil
 
   override def curate(conversationId: lightdb.id.Id[sigil.conversation.Conversation],

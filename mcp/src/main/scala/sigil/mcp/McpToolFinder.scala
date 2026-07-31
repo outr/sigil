@@ -1,8 +1,8 @@
 package sigil.mcp
 
-import fabric.rw.RW
+import fabric.define.{DefType, Definition}
 import rapid.Task
-import sigil.tool.{DiscoveryFilter, DiscoveryRequest, JsonInput, Tool, ToolFinder, ToolInput, ToolName}
+import sigil.tool.{DiscoveryFilter, DiscoveryRequest, JsonInput, Tool, ToolFinder, ToolIO, ToolName, ToolOutput}
 
 /**
  * [[ToolFinder]] surfacing every MCP-advertised tool across all
@@ -12,9 +12,11 @@ import sigil.tool.{DiscoveryFilter, DiscoveryRequest, JsonInput, Tool, ToolFinde
  */
 final class McpToolFinder(manager: McpManager) extends ToolFinder {
 
-  /** All MCP tools surface via [[JsonInput]] — the only ToolInput
-    * subclass the finder produces. */
-  override def toolInputRWs: List[RW[? <: ToolInput]] = List(summon[RW[JsonInput]])
+  /** All MCP tools surface via [[JsonInput]] and the open
+    * [[ToolOutput]] (a server result may be text OR an image) — one
+    * representative IO covers the codecs this finder's tools use. */
+  override val toolIO: List[ToolIO[?, ?]] =
+    List(ToolIO.dynamicAs[ToolOutput](Definition(DefType.Json)))
 
   override def byName(name: ToolName): Task[Option[Tool]] =
     manager.allToolsByDisplayName.map { all =>

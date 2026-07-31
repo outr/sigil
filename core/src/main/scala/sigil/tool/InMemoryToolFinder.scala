@@ -1,6 +1,5 @@
 package sigil.tool
 
-import fabric.rw.RW
 import rapid.Task
 
 /**
@@ -13,8 +12,7 @@ import rapid.Task
  */
 case class InMemoryToolFinder(tools: List[Tool]) extends ToolFinder {
 
-  override val toolInputRWs: List[RW[? <: ToolInput]] =
-    tools.map(_.inputRW).distinctBy(_.definition.className)
+  override val toolIO: List[ToolIO[?, ?]] = tools.map(_.io)
 
   override def apply(request: DiscoveryRequest): Task[List[Tool]] = Task {
     tools

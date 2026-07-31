@@ -81,7 +81,7 @@ class OpenAICallIdRoundtripSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       currentTopic       = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(1000)),
       chain              = List(TestUser, TestAgent),
-      // FindCapability is already registered via CoreTools.toolInputRWs,
+      // FindCapability is already registered via CoreTools.inputRWs,
       // so its input RW round-trips through fabric's PolyType. The
       // model is heavily nudged to call it by the standard system
       // prompt (discovery-first).

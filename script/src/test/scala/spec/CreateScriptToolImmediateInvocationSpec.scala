@@ -30,10 +30,7 @@ class CreateScriptToolImmediateInvocationSpec extends AsyncWordSpec with AsyncTa
   // discoverable via findCapabilities. The default InMemoryToolFinder
   // returns Nil and the ranking-side tests would never see the
   // just-created tool.
-  TestScriptSigil.setToolFinder(sigil.tool.DbToolFinder(
-    sigil          = TestScriptSigil,
-    toolInputRWs   = Nil
-  ))
+  TestScriptSigil.setToolFinder(sigil.tool.DbToolFinder(sigil = TestScriptSigil))
 
   private val convId = Conversation.id(s"create-script-${rapid.Unique()}")
   private val topic = Topic(

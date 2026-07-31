@@ -17,7 +17,7 @@ import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
  * Verifies that [[TestSigil.instance]] registers core Signal and ToolInput
  * subtypes correctly — i.e., that polymorphic round-trip through the wire
  * format actually works for everything sigil ships and for app-supplied
- * Input types surfaced through `ToolFinder.toolInputRWs`.
+ * Input types surfaced through the static roster and `ToolFinder.toolIO`.
  *
  * If these pass, a real production app can rely on `Sigil.instance` being
  * the one place to wire registration; if they fail, downstream serialization
@@ -165,7 +165,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       restored.asInstanceOf[ChangeModeInput].mode shouldBe "coding"
     }
 
-    "round-trip a SendSlackMessageInput (app-supplied via ToolFinder.toolInputRWs)" in {
+    "round-trip a SendSlackMessageInput (app-supplied via the static roster)" in {
       val original: ToolInput = SendSlackMessageInput("#engineering", "deploy done")
       val restored = roundTripToolInput(original)
       restored shouldBe a[SendSlackMessageInput]

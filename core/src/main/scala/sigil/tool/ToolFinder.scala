@@ -1,6 +1,5 @@
 package sigil.tool
 
-import fabric.rw.RW
 import rapid.Task
 
 /**
@@ -13,10 +12,14 @@ import rapid.Task
  * reference semantics live in [[DiscoveryFilter]].
  */
 trait ToolFinder {
-  /** Polymorphic-RW registrations for every [[ToolInput]] subclass the
-    * finder's tools may emit. Sigil registers these into the
-    * `ToolInput` poly at init. */
-  def toolInputRWs: List[RW[? <: ToolInput]]
+  /** Wire-shape contributions for the tools this finder may surface —
+    * each [[ToolIO]] carries the input AND output codec registered
+    * into the polymorphic `ToolInput` / `ToolOutput` RWs at init. A
+    * finder override contributes its codecs by construction; the
+    * static roster's codecs are derived independently at the
+    * registration site, so overriding the finder can never silently
+    * drop them. */
+  def toolIO: List[ToolIO[?, ?]]
 
   /** Find tools matching a discovery request: keyword + mode + space
     * filters, scored. */

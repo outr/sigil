@@ -1,6 +1,5 @@
 package sigil.tool
 
-import fabric.rw.RW
 import lightdb.Sort
 import lightdb.filter.*
 import rapid.Task
@@ -13,11 +12,11 @@ import sigil.Sigil
  * filtered through [[DiscoveryFilter.passesAffinity]] for the active
  * mode + caller's accessible spaces.
  *
- * `toolInputRWs` is computed once at construction time from the set of
- * tool subtypes the app registered with `Sigil.staticTools` /
- * `Sigil.toolRegistrations` — these are the inputs LLM tool calls may
- * deserialize as. Apps with marketplace-loaded tool classes should
- * augment this list.
+ * The static roster's codecs are registered from `Sigil.staticTools`
+ * directly and dynamic-record codecs ride `toolRegistrations` /
+ * `toolInputRegistrations`, so this finder contributes none of its
+ * own. Apps surfacing marketplace-loaded tool classes through a
+ * DB-backed finder pass their [[ToolIO]]s via `extraIO`.
  *
  * @param maxResults cap on returned results (default 10). The BM25 ranking
  *                   is what makes this cap useful — without it, every
@@ -25,8 +24,10 @@ import sigil.Sigil
  *                   come back, defeating the point of `find_capability`.
  */
 case class DbToolFinder(sigil: Sigil,
-                        override val toolInputRWs: List[RW[? <: ToolInput]],
+                        extraIO: List[ToolIO[?, ?]] = Nil,
                         maxResults: Int = 10) extends ToolFinder {
+
+  override def toolIO: List[ToolIO[?, ?]] = extraIO
 
   override def apply(request: DiscoveryRequest): Task[List[Tool]] = {
     val tokens = request.keywords.toLowerCase.split("\\s+").filter(_.nonEmpty).toList

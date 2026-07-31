@@ -71,8 +71,7 @@ final class LspFindReferencesTool(val manager: LspManager) extends Tool with Lsp
         "code",
         "navigate"
       ),
-      toolchain = Some("lsp"),
-      suggestedNextTools = List(ToolName("dispatch_workers"))
+      toolchain = Some("lsp")
     )
   )
 

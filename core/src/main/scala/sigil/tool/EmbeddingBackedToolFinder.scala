@@ -1,6 +1,5 @@
 package sigil.tool
 
-import fabric.rw.RW
 import rapid.Task
 import sigil.Sigil
 import sigil.embedding.EmbeddingProvider
@@ -29,9 +28,11 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint}
  * installs, MCP discovery) call `indexTool`.
  */
 final class EmbeddingBackedToolFinder(sigil: Sigil,
-                                      override val toolInputRWs: List[RW[? <: ToolInput]],
+                                      extraIO: List[ToolIO[?, ?]],
                                       fallback: ToolFinder)
   extends ToolFinder {
+
+  override def toolIO: List[ToolIO[?, ?]] = extraIO ::: fallback.toolIO
 
   private val embedding: EmbeddingProvider = sigil.embeddingProvider
   private val vectors: VectorIndex = sigil.vectorIndex
@@ -90,10 +91,10 @@ object EmbeddingBackedToolFinder {
 
   /** Convenience: wrap a [[DbToolFinder]] with embedding-backed
     * discovery when vectors are wired. */
-  def overDb(sigil: Sigil, toolInputRWs: List[RW[? <: ToolInput]]): EmbeddingBackedToolFinder =
+  def overDb(sigil: Sigil, extraIO: List[ToolIO[?, ?]] = Nil): EmbeddingBackedToolFinder =
     new EmbeddingBackedToolFinder(
       sigil = sigil,
-      toolInputRWs = toolInputRWs,
-      fallback = DbToolFinder(sigil, toolInputRWs)
+      extraIO = extraIO,
+      fallback = DbToolFinder(sigil, extraIO)
     )
 }
