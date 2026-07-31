@@ -102,7 +102,8 @@ case object FindCapabilityTool extends Tool {
         // window (count + rendered-bytes budget), trimming lowest-scored
         // matches first, so a small-context model gets a roster that fits
         // with room to act instead of one that overflows and gets chopped.
-        val matches = FindCapabilityTool.sizeToModel(allMatches, context.turn.model.contextLength)
+        val matches = FindCapabilityTool.sizeToModel(allMatches, context.turn.model.contextLength,
+          context.sigil.modelProfileFor(context.turn.model))
         val toolNames = matches.collect {
           case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName.internal(m.name)
         }
@@ -139,16 +140,24 @@ case object FindCapabilityTool extends Tool {
       }
     }
 
-  /** Sigil #347 — trim a score-sorted match list to what the running
-    * model's context window can hold with room to act: a rendered-bytes
-    * budget (~15% of the window at ~4 chars/token) and a count cap that
-    * scales with the window (3 on a tiny model, up to 25 on a large
-    * one). Lowest-scored matches are dropped first; at least one match
-    * always survives. The input must already be sorted by score desc. */
+  /** Trim a score-sorted match list to what the running model can hold
+    * with room to act: a rendered-bytes budget (~15% of the window at
+    * ~4 chars/token) and a count cap that scales with the window (3 on
+    * a tiny model, up to 25 on a large one).
+    *
+    * The window used is `min(contextComfort, contextLength)` — a model
+    * with a large window it doesn't use well is sized to the part it
+    * does. Weak selectors additionally take their tier's roster count
+    * ceiling, since a long list costs them accuracy regardless of
+    * whether it fits. Lowest-scored matches drop first; at least one
+    * match always survives. Input must be sorted by score desc. */
   private[core] def sizeToModel(matches: List[sigil.tool.discovery.CapabilityMatch],
-                                contextLength: Long): List[sigil.tool.discovery.CapabilityMatch] = {
-    val budgetChars = math.max(1500, (contextLength.toDouble * 4.0 * 0.15).toInt)
-    val maxCount    = math.max(3, math.min(25, (contextLength / 8000L).toInt))
+                                contextLength: Long,
+                                profile: sigil.provider.ModelProfile): List[sigil.tool.discovery.CapabilityMatch] = {
+    val window      = math.min(profile.contextComfort.toLong, contextLength)
+    val budgetChars = math.max(1500, (window.toDouble * 4.0 * 0.15).toInt)
+    val windowCount = math.max(3, math.min(25, (window / 8000L).toInt))
+    val maxCount    = profile.instructionTier.rosterCountCeiling.fold(windowCount)(math.min(windowCount, _))
     val out = scala.collection.mutable.ListBuffer.empty[sigil.tool.discovery.CapabilityMatch]
     var used = 0
     var stopped = false

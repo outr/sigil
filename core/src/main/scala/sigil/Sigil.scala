@@ -34,6 +34,7 @@ import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentPart
 import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
+import sigil.provider.{InstructionTier, ModelProfile, PromptShape, Reliability}
 import sigil.service.Service
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
@@ -6873,6 +6874,39 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * periodic tick — anomaly- and first-plan-driven only. */
   protected def plannerCadence: Int = 24
 
+  /** What a model is behaviorally capable of. The framework's default
+    * treats every model as frontier-tier and comfortable across its
+    * whole window, so an app that doesn't override this sees no
+    * behavior change at all. Apps override to declare their weaker
+    * models — the checkpoint cadence, planner arming, discovery roster
+    * ceiling, and prompt verbosity all read the result. */
+  def modelProfileFor(model: Model): ModelProfile = ModelProfile.default(model)
+
+  /** The profile for a model id, falling back to the frontier default
+    * when the id isn't registered. */
+  final def modelProfileForId(modelId: Id[Model]): ModelProfile =
+    cache.find(modelId).map(modelProfileFor).getOrElse(
+      ModelProfile(InstructionTier.Frontier, Reliability.Solid, Int.MaxValue,
+        needsOversight = false, promptShape = PromptShape.Full))
+
+  /** [[progressCheckpointInterval]] tightened for the running model's
+    * instruction tier. Frontier / Capable models run the configured
+    * cadence unchanged; weaker tiers are reviewed proportionally more
+    * often, floored at every other iteration. Disabled (0) stays
+    * disabled. */
+  final def effectiveProgressCheckpointInterval(modelId: Id[Model]): Int = {
+    val configured = progressCheckpointInterval
+    if (configured <= 0) configured
+    else math.max(2, configured / modelProfileForId(modelId).instructionTier.cadenceTightening)
+  }
+
+  /** [[plannerCadence]] tightened the same way. */
+  final def effectivePlannerCadence(modelId: Id[Model]): Int = {
+    val configured = plannerCadence
+    if (configured <= 0) configured
+    else math.max(2, configured / modelProfileForId(modelId).instructionTier.cadenceTightening)
+  }
+
   /** Sigil #413 — how many context-overflow recoveries a single turn may
     * spend before the overflow surfaces as a clean terminal failure. Each
     * recovery re-runs the failed iteration with an emergency refit to
@@ -7696,7 +7730,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                   // checkpoint everywhere and instead redirect an `askingUser`
                   // intervention to a supervisor handoff inside a worker (the
                   // branch below).
-                  if (progressCheckpointInterval > 0 && nextIteration % progressCheckpointInterval == 0)
+                  val checkpointInterval = effectiveProgressCheckpointInterval(agent.modelId)
+                  if (checkpointInterval > 0 && nextIteration % checkpointInterval == 0)
                     runProgressCheckpoint(agent, convId, claimed, nextIteration)
                   else
                     // Off-interval iterations skip the LLM reflection but still
@@ -8404,7 +8439,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                           convId: Id[Conversation],
                                           claimed: AgentState,
                                           iteration: Int): Task[Option[CheckpointIntervention]] = Task.defer {
-    if (progressCheckpointInterval <= 0) Task.pure(None)
+    if (effectiveProgressCheckpointInterval(agent.modelId) <= 0) Task.pure(None)
     else if (plannerModelId.isDefined) runPlannerCheckpoint(agent, convId, claimed, iteration, plannerModelId.get)
     else {
       val state = checkpointStates.computeIfAbsent(claimed._id,
@@ -8666,7 +8701,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           else None
         val anomalyReason = stallReason.orElse(churnReason)
         anomalyReason.foreach(_ => state.plannerAnomalyPending = true)
-        val cadenceDue = plannerCadence > 0 && iteration - state.lastPlannerIteration >= plannerCadence
+        val cadence = effectivePlannerCadence(agent.modelId)
+        val cadenceDue = cadence > 0 && iteration - state.lastPlannerIteration >= cadence
+        // An executor declared as needing oversight treats every cadence
+        // tick as armed: the review runs with full anomaly framing rather
+        // than the sparse, anomaly-only path a frontier executor gets.
+        if (cadenceDue && modelProfileForId(agent.modelId).needsOversight)
+          state.plannerAnomalyPending = true
         if (!state.plannerAnomalyPending && state.plan.isDefined && !cadenceDue) Task.pure(None)
         else withDB(_.conversations.transaction(_.get(convId))).flatMap {
           case None => Task.pure(None)

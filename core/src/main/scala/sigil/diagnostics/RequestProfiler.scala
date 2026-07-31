@@ -2,7 +2,7 @@ package sigil.diagnostics
 
 import sigil.Sigil
 import sigil.conversation.ContextFrame
-import sigil.provider.{ContextSection, ContextSections, ConversationRequest, ResolvedReferences, SectionContext}
+import sigil.provider.{ContextSection, ContextSections, ConversationRequest, PromptShape, ResolvedReferences, SectionContext}
 import sigil.tokenize.Tokenizer
 import sigil.tool.Tool
 
@@ -31,7 +31,7 @@ object RequestProfiler {
               sigil: Sigil,
               sections: List[ContextSection] = ContextSections.all): RequestProfile = {
     val raw = profileWith(request, resolved, tokenizer, t => t.descriptionFor(request.currentMode, sigil),
-      sigil.discoveredCapabilitiesPromptCap, sections)
+      sigil.discoveredCapabilitiesPromptCap, sections, sigil.modelProfileFor(request.model).promptShape)
     val contextLength = sigil.cache.find(request.modelId).map(_.contextLength.toInt).getOrElse(0)
     val cfg = InsightGenerator.InsightConfig(contextLength = contextLength)
     val insights = InsightGenerator.insights(
@@ -54,7 +54,8 @@ object RequestProfiler {
                   tokenizer: Tokenizer,
                   descriptionFor: Tool => String,
                   discoveredCapabilitiesPromptCap: Int = 25,
-                  sectionList: List[ContextSection] = ContextSections.all): RequestProfile = {
+                  sectionList: List[ContextSection] = ContextSections.all,
+                  promptShape: PromptShape = PromptShape.Full): RequestProfile = {
     val turn = request.turnInput
 
     val sections = scala.collection.mutable.Map.empty[ProfileSection, Int]
@@ -63,7 +64,8 @@ object RequestProfiler {
 
     // System-prompt sections: counted from the renderer's own
     // functions, so the accounting is the wire's by construction.
-    val sectionContext = SectionContext(request, resolved, discoveredCapabilitiesPromptCap)
+    val sectionContext = SectionContext(request, resolved, discoveredCapabilitiesPromptCap,
+      promptShape = promptShape)
     sectionList.foreach(s => s.render(sectionContext).foreach(add(s.id, _)))
 
     // Frames (the message array) — wire-level, outside the section list.

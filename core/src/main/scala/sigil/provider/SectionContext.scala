@@ -4,6 +4,8 @@ import sigil.conversation.TurnInput
 import sigil.participant.ParticipantId
 import sigil.tool.ToolName
 
+import scala.util.chaining.scalaUtilChainingOps
+
 /**
  * Everything a [[ContextSection]]'s renderer needs, plus the derived
  * values several sections share.
@@ -16,7 +18,13 @@ import sigil.tool.ToolName
 case class SectionContext(request: ConversationRequest,
                           resolved: ResolvedReferences,
                           discoveredCapabilitiesPromptCap: Int,
-                          now: Long = System.currentTimeMillis()) {
+                          now: Long = System.currentTimeMillis(),
+                          promptShape: PromptShape = PromptShape.Full) {
+
+  /** Apply the prompt shape's per-section entry cap to a list-shaped
+    * section. `Full` caps nothing. */
+  def capped[A](entries: List[A]): List[A] =
+    promptShape.entryCap.fold(entries)(entries.take)
 
   def turn: TurnInput = request.turnInput
 
@@ -54,14 +62,14 @@ case class SectionContext(request: ConversationRequest,
       .take(Provider.RecentToolsPromptCap)
 
   lazy val duplicateGroups: List[((ToolName, String), List[sigil.conversation.RecentToolInvocation])] =
-    recentInvocations
+    capped(recentInvocations
       .groupBy(inv => (inv.toolName, inv.argsHash))
       .collect { case (key, occurrences) if occurrences.size > 1 => key -> occurrences }
       .toList
-      .sortBy(-_._2.maxBy(_.invokedAt.value).invokedAt.value)
+      .sortBy(-_._2.maxBy(_.invokedAt.value).invokedAt.value))
 
   lazy val suggestedTools: List[ToolName] =
-    chain.flatMap(id => turn.projectionFor(id).suggestedTools).distinct.filter(wireToolNames.contains)
+    capped(chain.flatMap(id => turn.projectionFor(id).suggestedTools).distinct.filter(wireToolNames.contains))
 
   lazy val discovered: List[(String, List[ToolName])] =
     request.discoveredCapabilities.toList
@@ -69,6 +77,7 @@ case class SectionContext(request: ConversationRequest,
       .take(discoveredCapabilitiesPromptCap)
       .map { case (query, dc) => (query, dc.matches.filter(wireToolNames.contains)) }
       .filter { case (_, matches) => matches.nonEmpty }
+      .pipe(capped)
 
   lazy val perParticipantExtras: List[(ParticipantId, (sigil.conversation.ContextKey, String))] =
     chain.flatMap(id => turn.projectionFor(id).extraContext.map(id -> _))

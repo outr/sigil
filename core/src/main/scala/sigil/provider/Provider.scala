@@ -1414,7 +1414,8 @@ trait Provider extends Service with ModelResolver {
     val ctx = SectionContext(
       request = c,
       resolved = resolved,
-      discoveredCapabilitiesPromptCap = sigil.discoveredCapabilitiesPromptCap
+      discoveredCapabilitiesPromptCap = sigil.discoveredCapabilitiesPromptCap,
+      promptShape = sigil.modelProfileFor(c.model).promptShape
     )
     val sections = contextSections
 
