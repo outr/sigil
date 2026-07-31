@@ -38,7 +38,12 @@ import sigil.tool.{
 case object CreateBrowserScriptTool extends Tool {
   type Input = CreateBrowserScriptInput
   type Output = TextToolOutput
-  val io: ToolIO[CreateBrowserScriptInput, TextToolOutput] = ToolIO.derived[CreateBrowserScriptInput, TextToolOutput]
+  // `steps` is a deliberately polymorphic action catalog (each step
+  // variant mirrors a primitive `browser_*` tool's args), so the
+  // schema is kept via the checked `withSchema` decision.
+  val io: ToolIO[CreateBrowserScriptInput, TextToolOutput] = ToolIO.withSchema[CreateBrowserScriptInput, TextToolOutput](
+    summon[fabric.rw.RW[CreateBrowserScriptInput]].definition
+  )
 
   override val name = ToolName("create_browser_script")
   override val description =
