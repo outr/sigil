@@ -55,6 +55,10 @@ final class CachedProvider(underlying: Provider,
     * otherwise. */
   override def tokenizer: Tokenizer = HeuristicTokenizer
 
+  /** The cache key must hash the same dialected schema the underlying
+    * provider ships, so replay and live recordings agree. */
+  override def schemaDialect: SchemaDialect = underlying.schemaDialect
+
   override def id: Id[Service] = underlying.id
 
   override def name: String = underlying.name
@@ -81,7 +85,11 @@ final class CachedProvider(underlying: Provider,
     }
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
-    val keyHash = RequestCacheKey.canonical(input).sha256
+    val keyHash = RequestCacheKey.canonical(
+      input,
+      schemaDialect,
+      t => ToolDescriptionRenderer.render(t, input.currentMode, sigilRef)
+    ).sha256
     mode match {
       case CacheMode.ReplayOnly =>
         readCache(keyHash) match {

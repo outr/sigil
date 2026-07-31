@@ -7,7 +7,7 @@ import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
 import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome}
 import sigil.participant.ParticipantId
-import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, ProviderImage, StopReason, XmlToolCallSanitizer}
+import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, ProviderImage, SchemaDialect, StopReason, XmlToolCallSanitizer}
 import sigil.storage.StoredFileCategory
 import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ThinkingChunk, ToolDelta, XmlToolCallLeak}
 import sigil.tool.core.{CoreTools, FindCapabilityInput, RespondFamilyTool, UnknownTool}
@@ -105,7 +105,7 @@ object Orchestrator {
     // [[sigil.provider.ProviderCall.roster]], so both ends of the
     // dispatch agree on what's in scope by construction.
     val roster: ToolRoster = request.roster
-    val state = new State()
+    val state = new State(provider.schemaDialect)
     val convId = request.conversationId
 
     // Capture the most recent throwable observed in this stream's
@@ -212,7 +212,7 @@ object Orchestrator {
     * which is `activeCalls.lastOption.map(_._2)`). */
   private final case class ActiveCall(toolName: String, invokeId: lightdb.id.Id[Event])
 
-  private final class State {
+  private final class State(val dialect: SchemaDialect = SchemaDialect.Identity) {
     /** Tool calls in flight, keyed by the provider's `CallId`. OpenAI
       * (and Anthropic with `parallel_tool_use: true`) interleave
       * deltas for multiple calls inside one turn; the orchestrator
@@ -467,7 +467,7 @@ object Orchestrator {
         // gets: the in-flight invoke settles as an orphan with the
         // diagnostic and a paired Tool-role Failure re-triggers the agent.
         translate(
-          ProviderEvent.Error(malformedArgsRefusal(roster, malformedName, decodeError, malformedRawArgs)),
+          ProviderEvent.Error(malformedArgsRefusal(roster, malformedName, decodeError, malformedRawArgs, state.dialect)),
           sigil, request, conversation, roster, state
         )
 
@@ -489,7 +489,7 @@ object Orchestrator {
             // A rebind can surface Malformed for a replayed stream whose
             // args no longer decode; route it like the direct case.
             return translate(
-              ProviderEvent.Error(malformedArgsRefusal(roster, m.name, m.error, m.rawArgs)),
+              ProviderEvent.Error(malformedArgsRefusal(roster, m.name, m.error, m.rawArgs, state.dialect)),
               sigil, request, conversation, roster, state
             )
         }
@@ -2109,8 +2109,9 @@ object Orchestrator {
   private def malformedArgsRefusal(roster: ToolRoster,
                                    name: String,
                                    error: DecodeError,
-                                   rawArgs: fabric.Json): String =
-    RefusalPayload.malformedArgs(roster.resolve(name), name, error, rawArgs)
+                                   rawArgs: fabric.Json,
+                                   dialect: SchemaDialect): String =
+    RefusalPayload.malformedArgs(roster.resolve(name), name, error, rawArgs, dialect)
 
   /** Public alias for [[executeAtomic]] — exposes the consent +
     * precondition gates the agent loop runs before dispatching a

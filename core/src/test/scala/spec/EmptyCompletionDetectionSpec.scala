@@ -24,7 +24,7 @@ class EmptyCompletionDetectionSpec extends AnyWordSpec with Matchers {
   private val cfg = Config(
     providerNamespace = "test",
     providerName      = "Test",
-    strictModeCapable = true,
+    schemaDialect = sigil.provider.SchemaDialect.OpenAIStrict,
     honorsStrict      = true,
     forcedCallShape   = ForcedCallShape.ToolChoice,
     emptyBudgetBurnThrows = true

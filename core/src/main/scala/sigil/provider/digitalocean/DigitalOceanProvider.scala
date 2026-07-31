@@ -40,11 +40,12 @@ case class DigitalOceanProvider(apiKey: String,
   override def `type`: ProviderType = ProviderType.DigitalOcean
   override val providerKey: String = DigitalOcean.Provider
   override protected def sigil: Sigil = sigilRef
+  override def schemaDialect: SchemaDialect = wireConfig.schemaDialect
 
-  private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
+  private[digitalocean] val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
      providerNamespace = DigitalOcean.Provider,
      providerName = "DigitalOcean",
-     strictModeCapable = true,
+     schemaDialect = SchemaDialect.OpenAIStrict,
      multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
      emptyBudgetBurnThrows = true,
     preprocess = { call =>

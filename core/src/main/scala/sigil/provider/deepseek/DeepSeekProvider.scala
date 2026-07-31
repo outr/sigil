@@ -27,11 +27,12 @@ case class DeepSeekProvider(apiKey: String,
   override def `type`: ProviderType = ProviderType.DeepSeek
   override val providerKey: String = DeepSeek.Provider
   override protected def sigil: Sigil = sigilRef
+  override def schemaDialect: SchemaDialect = wireConfig.schemaDialect
 
-  private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
+  private[deepseek] val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = DeepSeek.Provider,
     providerName = "DeepSeek",
-    strictModeCapable = true,
+    schemaDialect = SchemaDialect.OpenAIStrict,
     reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
     // #360 — reasoning models pause between the reasoning and answer
     // phases; extend the idle timeout for reasoning requests so a

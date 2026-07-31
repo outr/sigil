@@ -12,9 +12,10 @@ import sigil.provider.{
   ProviderCall,
   ProviderMessage,
   ReasoningMode,
+  SchemaDialect,
   ToolChoice
 }
-import sigil.tool.{DefinitionToSchema, Tool}
+import sigil.tool.Tool
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -33,8 +34,11 @@ import java.security.MessageDigest
  *
  * IN the key: model id, system prompt, full message contents (text,
  * images, reasoning summaries), tool roster (sorted by name; full
- * name + description + JSON schema), built-in tool flags (sorted),
- * tool-choice mode, generation settings, current mode discriminator.
+ * name + mode-rendered wire description + DIALECTED JSON schema +
+ * dialect discriminator — the same objects the wire ships, so two
+ * turns differing only by dialect or active mode stop hashing
+ * identically), built-in tool flags (sorted), tool-choice mode,
+ * generation settings, current mode discriminator.
  *
  * NOT in the key: per-call uuids (tool-call ids, message ids),
  * wall-clock timestamps, OpenAI Responses' server-side
@@ -58,13 +62,20 @@ case class RequestCacheKey(canonical: Json) {
 object RequestCacheKey {
 
   /** Canonicalize a [[ProviderCall]] into a deterministic JSON shape
-    * suitable for hashing. */
-  def canonical(call: ProviderCall): RequestCacheKey = {
+    * suitable for hashing. `dialect` is the serving provider's
+    * [[SchemaDialect]] and `describe` the mode-rendered wire
+    * description (typically
+    * `ToolDescriptionRenderer.render(_, call.currentMode, sigil)`) —
+    * both participate in the key so the canonical form matches the
+    * bytes the wire actually ships. */
+  def canonical(call: ProviderCall,
+                dialect: SchemaDialect,
+                describe: Tool => String): RequestCacheKey = {
     val payload = obj(
       "model"              -> str(stripProviderPrefix(call.modelId.value)),
       "system"             -> str(call.systemCombined),
       "messages"           -> arr(call.messages.toList.map(canonicalizeMessage)*),
-      "tools"              -> arr(call.tools.sortBy(_.name.value).toList.map(canonicalizeTool)*),
+      "tools"              -> arr(call.tools.sortBy(_.name.value).toList.map(canonicalizeTool(_, dialect, describe))*),
       "builtInTools"       -> arr(call.builtInTools.toList.map(_.toString).sorted.map(str)*),
       "toolChoice"         -> canonicalizeToolChoice(call.toolChoice),
       "generationSettings" -> canonicalizeGenerationSettings(call.generationSettings),
@@ -142,10 +153,11 @@ object RequestCacheKey {
       )
   }
 
-  private def canonicalizeTool(tool: Tool): Json = obj(
+  private def canonicalizeTool(tool: Tool, dialect: SchemaDialect, describe: Tool => String): Json = obj(
     "name"        -> str(tool.name.value),
-    "description" -> str(tool.description),
-    "schema"      -> DefinitionToSchema(tool.inputDefinition)
+    "description" -> str(describe(tool)),
+    "dialect"     -> str(dialect.name),
+    "schema"      -> dialect(tool)
   )
 
   private def canonicalizeToolChoice(choice: ToolChoice): Json = choice match {

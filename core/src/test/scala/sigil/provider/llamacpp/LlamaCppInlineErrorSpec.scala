@@ -26,7 +26,7 @@ class LlamaCppInlineErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   private val cfg: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace    = LlamaCpp.Provider,
     providerName         = "LlamaCpp",
-    nonStrictSchemaTransform = identity,
+    schemaDialect = sigil.provider.SchemaDialect.Identity,
     inlineErrorThrows    = true
   )
 

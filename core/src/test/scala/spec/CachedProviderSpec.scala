@@ -123,8 +123,10 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         ),
         sigil.provider.ProviderMessage.ToolResult(toolCallId = "id-zzz-999", content = "ok")
       ))
+      val dialect = sigil.provider.SchemaDialect.Identity
       Task.pure(
-        RequestCacheKey.canonical(callA).sha256 shouldBe RequestCacheKey.canonical(callB).sha256
+        RequestCacheKey.canonical(callA, dialect, _.description).sha256 shouldBe
+          RequestCacheKey.canonical(callB, dialect, _.description).sha256
       )
     }
 

@@ -78,6 +78,7 @@ case class OpenAIProvider(apiKey: String,
   override def `type`: ProviderType = providerType
   override val providerKey: String = providerNamespace
   override protected def sigil: Sigil = sigilRef
+  override def schemaDialect: SchemaDialect = SchemaDialect.OpenAIStrict
 
   /** Strip the provider's namespace prefix from a Sigil-shaped model id
     * (`<provider>/<model>` → `<model>`). Uses `providerNamespace` so a
@@ -406,23 +407,16 @@ case class OpenAIProvider(apiKey: String,
   private def renderTools(input: ProviderCall): Vector[Json] = {
     val functionTools = input.tools.map { t =>
       val s = t.schema
-      val canBeStrict = !DefinitionToSchema.containsJson(s.input)
-      val baseSchema = DefinitionToSchema(s.input)
-      val parameters =
-        if (canBeStrict) StrictSchema.forOpenAIStrict(baseSchema)
-        else StrictSchema.stripUnsupportedKeys(baseSchema)
       obj(
         "type"        -> str("function"),
         "name"        -> str(s.name.value),
         "description" -> str(ToolDescriptionRenderer.render(t, input.currentMode, sigil)),
         // Strict mode enables grammar-constrained decoding — the model
-        // can't emit malformed args. Requires a schema dialect with
-        // every property `required` (optionals widened to nullable),
-        // `additionalProperties: false` everywhere, and no `pattern` /
-        // `format` / numeric-bound keywords. `StrictSchema` rewrites
-        // sigil's standard schema into that shape.
-        "strict"      -> bool(canBeStrict),
-        "parameters"  -> parameters
+        // can't emit malformed args. [[SchemaDialect.OpenAIStrict]]
+        // rewrites sigil's canonical schema into the closed-object
+        // strict shape (with the open-JSON opt-out inside the dialect).
+        "strict"      -> bool(schemaDialect.strictForTool(t)),
+        "parameters"  -> schemaDialect(t)
       )
     }
     val builtIn = input.builtInTools.iterator.flatMap(renderBuiltIn).toVector

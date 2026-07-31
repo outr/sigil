@@ -133,6 +133,14 @@ trait Provider extends Service with ModelResolver {
     * [[sigil.tokenize.JtokkitTokenizer.OpenAIChatGpt]]). */
   def tokenizer: Tokenizer = HeuristicTokenizer
 
+  /** This provider's tool-argument schema dialect — the single
+    * canonical→wire rewrite. The dialected schema is the shared object
+    * consumed by the wire renderer, the token estimator, the
+    * request-cache key, and refusal bodies. Every shipped provider
+    * overrides; the [[SchemaDialect.Identity]] default sends the
+    * canonical schema verbatim. */
+  def schemaDialect: SchemaDialect = SchemaDialect.Identity
+
   /** Proactive [[RateLimiter]] consulted before each outgoing request.
    * The framework's `apply` awaits [[RateLimiter.acquire]] before
    * dispatching to [[call]]. Apps wire concrete observers separately:
@@ -732,7 +740,7 @@ trait Provider extends Service with ModelResolver {
     tok.count(call.system) +
       tok.count(call.systemVolatile) +
       call.messages.iterator.map(estimateMessage(_, tok)).sum +
-      estimateRoster(call.roster, tok)
+      estimateRoster(call.roster, tok, call.currentMode)
   }
 
   /** Best-effort token count for a single [[ProviderMessage]] as it
@@ -772,22 +780,20 @@ trait Provider extends Service with ModelResolver {
       summaryTokens + cotTokens + 4
   }
 
-  protected def estimateRoster(roster: ToolRoster, tok: Tokenizer): Int =
-    roster.tools.iterator.map(estimateToolBytes(_, tok)).sum
+  protected def estimateRoster(roster: ToolRoster, tok: Tokenizer, mode: Mode = ConversationMode): Int =
+    roster.tools.iterator.map(estimateToolBytes(_, tok, mode)).sum
 
-  /** Per-tool wire-shape estimate. Default counts name + description +
-    * the JSON-formatted parameter schema. Override for providers with
-    * extra per-tool metadata (Anthropic's `cache_control`, OpenAI's
-    * `strict` flag, etc.) — the framework's default already counts
-    * the schema body which is the dominant cost.
-    *
-*     * This optimization reduces the per-tool HTTP cost from 3 to 1 — material when the agent has a dozen tools. */
-  protected def estimateToolBytes(tool: Tool, tok: Tokenizer): Int = {
+  /** Per-tool wire-shape estimate: name + the mode-rendered wire
+    * description + the JSON-formatted DIALECTED parameter schema —
+    * the same [[schemaDialect]]-shaped object the wire request ships,
+    * so strict backends (whose dialect widens optionals and inflates
+    * `required` arrays) don't systematically undercount. One tokenizer
+    * call per tool (concat-then-count) — material when the tokenizer
+    * is an HTTP round-trip. */
+  protected def estimateToolBytes(tool: Tool, tok: Tokenizer, mode: Mode = ConversationMode): Int = {
     val name        = tool.schema.name.value
-    val description = tool.descriptionFor(ConversationMode, sigil)
-    val schemaJson  = fabric.io.JsonFormatter.Compact(
-      _root_.sigil.tool.DefinitionToSchema(tool.schema.input)
-    )
+    val description = ToolDescriptionRenderer.render(tool, mode, sigil)
+    val schemaJson  = fabric.io.JsonFormatter.Compact(schemaDialect(tool))
     // Wrapper overhead: `{"type":"function","name":"...","description":"...","parameters":{...}}`
     // — keys + braces + colons. ~10 tokens depending on tokenizer.
     val wrapper     = 12

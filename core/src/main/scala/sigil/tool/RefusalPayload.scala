@@ -3,6 +3,7 @@ package sigil.tool
 import fabric.Json
 import fabric.define.Definition
 import fabric.io.{JsonFormatter, JsonParser}
+import sigil.provider.SchemaDialect
 
 /**
  * Builds enriched [[ToolResult.Failure]] payloads for refusal paths so the
@@ -27,15 +28,20 @@ import fabric.io.{JsonFormatter, JsonParser}
  * that tool's schema + example so the agent's next iteration can call the
  * intended tool directly.
  *
- * Schema and example are read from `tool.wireSurface` — one source for
- * both the wire shape the LLM sees and the example the refusal body
- * shows the agent.
+ * Schema and example are read from `tool.wireSurface`, projected
+ * through the serving provider's [[SchemaDialect]] where the caller
+ * has one (the orchestrator's arg-decode path) — the refusal shows the
+ * schema the model was actually sent, not the canonical one with
+ * constraints its grammar never saw. Callers without provider context
+ * (tool-side logical refusals) use the [[SchemaDialect.Identity]]
+ * default, which is the canonical schema.
  */
 object RefusalPayload {
 
-  /** Render the tool's input schema as pretty JSON for inline display. */
-  def schemaJson(tool: Tool): String =
-    JsonFormatter.Default(tool.wireSurface.schema)
+  /** Render the tool's input schema as the serving dialect shaped it,
+    * pretty-printed for inline display. */
+  def schemaJson(tool: Tool, dialect: SchemaDialect = SchemaDialect.Identity): String =
+    JsonFormatter.Default(dialect(tool))
 
   /** Render a worked example invocation as JSON. Prefers an authored
     * example from [[Tool.examples]]; falls back to a synthesised
@@ -62,8 +68,9 @@ object RefusalPayload {
   def schemaMismatch(tool: Tool,
                      rule: String,
                      hint: Option[String] = None,
-                     sentArgs: Option[String] = None): ToolResult.Failure = {
-    val body = buildBody(rule, tool, hint)
+                     sentArgs: Option[String] = None,
+                     dialect: SchemaDialect = SchemaDialect.Identity): ToolResult.Failure = {
+    val body = buildBody(rule, tool, hint, dialect)
     ToolResult.Failure(message = body, hint = None, args = sentArgs)
   }
 
@@ -74,7 +81,8 @@ object RefusalPayload {
   def unknownTool(invokedName: String,
                   offered: Iterable[Tool],
                   sentArgs: Option[String] = None,
-                  carrier: Option[Tool] = None): ToolResult.Failure = {
+                  carrier: Option[Tool] = None,
+                  dialect: SchemaDialect = SchemaDialect.Identity): ToolResult.Failure = {
     val closest = closestMatch(invokedName, offered)
     val lead =
       s"Unknown tool '$invokedName'. The framework didn't dispatch this call because the name isn't " +
@@ -82,7 +90,7 @@ object RefusalPayload {
     val suggestion = closest match {
       case Some(t) =>
         s"\n\nClosest match in the offered roster: `${t.name.value}` — ${t.description}\n\n" +
-          s"Schema for `${t.name.value}`:\n${schemaJson(t)}\n\n" +
+          s"Schema for `${t.name.value}`:\n${schemaJson(t, dialect)}\n\n" +
           s"Example call for `${t.name.value}`:\n${exampleJson(t)}\n\n" +
           "If your intent was something else, call `find_capability` to discover the correct tool."
       case None =>
@@ -91,7 +99,7 @@ object RefusalPayload {
     }
     val carrierBlock = carrier match {
       case Some(t) =>
-        s"\n\nSchema for `${t.name.value}` (the tool you called):\n${schemaJson(t)}\n\n" +
+        s"\n\nSchema for `${t.name.value}` (the tool you called):\n${schemaJson(t, dialect)}\n\n" +
           s"Example call for `${t.name.value}`:\n${exampleJson(t)}"
       case None => ""
     }
@@ -145,8 +153,11 @@ object RefusalPayload {
   /** Enrich an existing free-form rule (e.g. the
     * [[sigil.provider.ToolCallAccumulator]]'s validator-error string) by
     * appending the tool's schema + example. */
-  def enrichRule(tool: Tool, rule: String, sentArgs: Option[String] = None): String =
-    buildBody(rule, tool, hint = None) + sentArgs.map(a => s"\n\nYou sent:\n$a").getOrElse("")
+  def enrichRule(tool: Tool,
+                 rule: String,
+                 sentArgs: Option[String] = None,
+                 dialect: SchemaDialect = SchemaDialect.Identity): String =
+    buildBody(rule, tool, hint = None, dialect) + sentArgs.map(a => s"\n\nYou sent:\n$a").getOrElse("")
 
   /** Render the refusal for a call whose args failed to parse or decode
     * (the `WireCall.Malformed` shape). A pure materialise failure
@@ -155,7 +166,11 @@ object RefusalPayload {
     * read as "violated schema constraints". The model's args ride the
     * body verbatim. `tool` is the resolved carrier when available so
     * the schema + example are appended. */
-  def malformedArgs(tool: Option[Tool], name: String, error: DecodeError, rawArgs: Json): String = {
+  def malformedArgs(tool: Option[Tool],
+                    name: String,
+                    error: DecodeError,
+                    rawArgs: Json,
+                    dialect: SchemaDialect = SchemaDialect.Identity): String = {
     val argsText = rawArgs match {
       case fabric.Str(s, _) => s
       case other            => fabric.io.JsonFormatter.Compact(other)
@@ -170,15 +185,15 @@ object RefusalPayload {
       if (pureMaterialise) Some(s"$rawSnippet$truncated")
       else Some(renderSentArgs(argsText))
     tool match {
-      case Some(t) => enrichRule(t, rule, sentArgs)
+      case Some(t) => enrichRule(t, rule, sentArgs, dialect)
       case None    => rule + sentArgs.map(a => s"\n\nYou sent:\n$a").getOrElse("")
     }
   }
 
-  private def buildBody(rule: String, tool: Tool, hint: Option[String]): String = {
+  private def buildBody(rule: String, tool: Tool, hint: Option[String], dialect: SchemaDialect): String = {
     val hintBlock = hint.map(h => s"\n\n$h").getOrElse("")
     s"$rule$hintBlock\n\n" +
-      s"Schema for `${tool.name.value}`:\n${schemaJson(tool)}\n\n" +
+      s"Schema for `${tool.name.value}`:\n${schemaJson(tool, dialect)}\n\n" +
       s"Example call for `${tool.name.value}`:\n${exampleJson(tool)}"
   }
 

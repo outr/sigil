@@ -69,6 +69,7 @@ case class GoogleProvider(apiKey: String,
   override def `type`: ProviderType = ProviderType.Google
   override val providerKey: String = Google.Provider
   override protected def sigil: Sigil = sigilRef
+  override def schemaDialect: SchemaDialect = SchemaDialect.Gemini
 
   /** Per-provider-instance registry of live `cachedContents`
     * resources, keyed by stable-prefix hash. Survives across turns for
@@ -390,7 +391,7 @@ case class GoogleProvider(apiKey: String,
     obj(
       "name"        -> str(s.name.value),
       "description" -> str(ToolDescriptionRenderer.render(t, mode, sigil)),
-      "parameters"  -> StrictSchema.forGemini(DefinitionToSchema(s.input))
+      "parameters"  -> schemaDialect(t)
     )
   }
 
@@ -402,7 +403,7 @@ case class GoogleProvider(apiKey: String,
 
   // ---- response parsing ----
 
-  private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
+  private[google] def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
     SSELineParser.dispatch(line)(
       onData = json => parseChunk(json, state),
       onDone = state.flushDone()
@@ -512,7 +513,7 @@ case class GoogleProvider(apiKey: String,
       CacheKeys.Google
     )
 
-  final private class StreamState(val acc: ToolCallAccumulator) {
+  final private[google] class StreamState(val acc: ToolCallAccumulator) {
     val textCallId: CallId = CallId("g-text")
     var textBlockOpen: Boolean = false
     var nextFunctionIndex: Int = 0

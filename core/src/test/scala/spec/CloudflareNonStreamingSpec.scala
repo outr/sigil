@@ -44,7 +44,7 @@ class CloudflareNonStreamingSpec extends AnyWordSpec with Matchers {
   private val cfg: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = "cloudflare",
     providerName = "Cloudflare",
-    nonStrictSchemaTransform = identity
+    schemaDialect = sigil.provider.SchemaDialect.Identity
   )
 
   private val model = TestSigil.testModel(Model.id("cloudflare", "@cf/openai/gpt-oss-120b"))

@@ -31,6 +31,7 @@ case class LlamaCppProvider(url: URL,
   override val providerKey: String = LlamaCpp.Provider
 
   override protected def sigil: Sigil = sigilRef
+  override def schemaDialect: SchemaDialect = wireConfig.schemaDialect
 
   /** Backend-exact tokenizer via llama.cpp's `POST /tokenize`. Falls
     * back to the heuristic on transient failures so a degraded backend
@@ -88,10 +89,10 @@ case class LlamaCppProvider(url: URL,
     * The full JSON-Schema (with `pattern` / `format` / numeric bounds)
     * passes through unchanged — llama.cpp's chat-completions endpoint
     * translates it into a GBNF grammar at generation time. */
-  private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
+  private[llamacpp] val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = LlamaCpp.Provider,
     providerName = "LlamaCpp",
-    nonStrictSchemaTransform = identity,
+    schemaDialect = SchemaDialect.Identity,
     reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ChatTemplateEnableThinking,
     // #360 — a local thinking model (Qwen3) can reason for a while on a
     // hard problem; extend the idle timeout for reasoning requests so the

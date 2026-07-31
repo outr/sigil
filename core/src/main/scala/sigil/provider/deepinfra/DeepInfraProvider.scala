@@ -46,8 +46,9 @@ case class DeepInfraProvider(apiKey: String,
   override def `type`: ProviderType = ProviderType.DeepInfra
   override val providerKey: String = DeepInfra.Provider
   override protected def sigil: Sigil = sigilRef
+  override def schemaDialect: SchemaDialect = wireConfig.schemaDialect
 
-  private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
+  private[deepinfra] val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = DeepInfra.Provider,
     providerName = "DeepInfra",
     path = "/v1/openai/chat/completions",
@@ -57,7 +58,7 @@ case class DeepInfraProvider(apiKey: String,
     // The shaping still happens (strictModeCapable = true → closed-
     // object schema for the validator), but we don't pretend the
     // backend honors the flag — strip it from the wire body.
-    strictModeCapable = true,
+    schemaDialect = SchemaDialect.OpenAIStrict,
     honorsStrict = false,
     // Sigil bug #173 — DeepInfra's documented `tool_choice` set is
     // {"auto", "none"}; "required" and the function-form aren't in

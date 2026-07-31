@@ -58,6 +58,7 @@ case class AnthropicProvider(apiKey: String,
   override def `type`: ProviderType = ProviderType.Anthropic
   override val providerKey: String = Anthropic.Provider
   override protected def sigil: Sigil = sigilRef
+  override def schemaDialect: SchemaDialect = SchemaDialect.Anthropic
 
   /** Sigil #400 — Anthropic drops the per-edge image limit from 8000 px to
     * 2000 px for "many-image" requests (more than ~20 images) and rejects the
@@ -470,7 +471,7 @@ case class AnthropicProvider(apiKey: String,
       Vector[(String, Json)](
         "name"         -> str(s.name.value),
         "description"  -> str(ToolDescriptionRenderer.render(t, input.currentMode, sigil)),
-        "input_schema" -> StrictSchema.forAnthropic(DefinitionToSchema(s.input))
+        "input_schema" -> schemaDialect(t)
       )
     }
     val builtIn = input.builtInTools.iterator.flatMap(renderBuiltIn).map(_.asObj.value.toVector).toVector

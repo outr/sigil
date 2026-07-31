@@ -110,6 +110,7 @@ case class OpenRouterProvider(apiKey: String,
   override def `type`: ProviderType = ProviderType.OpenRouter
   override val providerKey: String = OpenRouter.Provider
   override protected def sigil: Sigil = sigilRef
+  override def schemaDialect: SchemaDialect = wireConfig.schemaDialect
 
   /** OpenRouter is a meta-gateway — its catalog (populated by
     * [[sigil.controller.OpenRouter.refreshModels]]) stores models
@@ -129,7 +130,7 @@ case class OpenRouterProvider(apiKey: String,
     xTitle.fold(withReferer)(t => withReferer.withHeader("X-Title", t))
   }
 
-  private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
+  private[openrouter] val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = OpenRouter.Provider,
     providerName = "OpenRouter",
     // OpenRouter's chat-completions endpoint sits under `/api/v1/...`
@@ -138,7 +139,7 @@ case class OpenRouterProvider(apiKey: String,
     // OpenRouter accepts and (via gateway shimming) enforces
     // per-function `strict: true` — keep both Sigil-side reshaping
     // and the wire flag on.
-    strictModeCapable = true,
+    schemaDialect = SchemaDialect.OpenAIStrict,
     honorsStrict = true,
     // OpenRouter honors `tool_choice: "required"` and the
     // function-form directly — no response_format substitution.

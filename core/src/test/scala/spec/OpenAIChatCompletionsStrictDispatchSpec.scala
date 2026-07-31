@@ -6,7 +6,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.db.Model
-import sigil.provider.{ConversationMode, GenerationSettings, ProviderCall, ProviderMessage, StrictSchema, ToolChoice}
+import sigil.provider.{ConversationMode, GenerationSettings, ProviderCall, ProviderMessage, SchemaDialect, ToolChoice}
 import sigil.provider.wire.OpenAIChatCompletions
 import sigil.tool.ToolContext
 import sigil.tool.{
@@ -23,26 +23,25 @@ import sigil.tool.{
   ToolResult,
   ToolSpec
 }
-import sigil.tool.model.RespondInput
 import rapid.Task
 import sigil.tool.ToolRoster
 
 /**
- * Coverage for `OpenAIChatCompletions.renderTools` per-tool strict-mode
+ * Coverage for `OpenAIChatCompletions.renderTools` per-tool dialect
  * dispatch. Three rules to enforce:
  *
- *   1. `strictModeCapable = true` + strict-compatible tool → emits
- *      `strict: true` and a `StrictSchema.forOpenAIStrict`-shaped
- *      schema (every property required, `additionalProperties: false`,
- *      no `pattern` / numeric-bound keywords).
- *   2. `strictModeCapable = true` + tool with `DefType.Json` somewhere
- *      → omits `strict`, falls back to `nonStrictSchemaTransform`.
- *      Bug #64 — strict mode is mutually exclusive with any-JSON-value
- *      fields because strict requires every "object"-typed branch to
- *      declare its own closed `properties` + `additionalProperties:
- *      false`.
- *   3. `strictModeCapable = false` → never emits `strict`, regardless
- *      of the tool's input shape.
+ *   1. [[SchemaDialect.OpenAIStrict]] + strict-compatible tool → emits
+ *      `strict: true` and a strict-shaped schema (every property
+ *      required, `additionalProperties: false`, no `pattern` /
+ *      numeric-bound keywords).
+ *   2. [[SchemaDialect.OpenAIStrict]] + tool with `DefType.Json`
+ *      somewhere → omits `strict`, falls back to the lenient shape
+ *      INSIDE the dialect. Strict mode is mutually exclusive with
+ *      any-JSON-value fields because strict requires every
+ *      "object"-typed branch to declare its own closed `properties` +
+ *      `additionalProperties: false`.
+ *   3. A non-strict dialect → never emits `strict`, regardless of the
+ *      tool's input shape, and ships the dialect's transform verbatim.
  */
 class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers {
 
@@ -78,6 +77,15 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
+  /** Marker dialect standing in for an app-custom transform — proves
+    * the renderer ships the dialect's output verbatim and never bolts
+    * strict-mode reshaping on after. */
+  private final class MarkerDialect(marker: String) extends SchemaDialect {
+    val name: String = "marker"
+    def transform(canonical: Json, containsOpenJson: Boolean): Json =
+      fabric.obj("type" -> fabric.str(marker))
+  }
+
   private val call: ProviderCall = ProviderCall(
     model = TestSigil.testModel(Model.id("test", "tools-dispatch-model")),
     system = "test system",
@@ -95,12 +103,12 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
       .getOrElse(throw new AssertionError(s"tool '$name' not in rendered output"))
   }
 
-  "strictModeCapable = true" should {
+  "SchemaDialect.OpenAIStrict" should {
 
     val cfg = OpenAIChatCompletions.Config(
       providerNamespace = "test",
       providerName = "Test",
-      strictModeCapable = true
+      schemaDialect = SchemaDialect.OpenAIStrict
     )
 
     "emit strict:true on a strict-compatible tool" in {
@@ -108,7 +116,7 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
       rendered("function")("strict").asBoolean shouldBe true
     }
 
-    "emit a forOpenAIStrict-shaped schema on a strict-compatible tool" in {
+    "emit a strict-shaped schema on a strict-compatible tool" in {
       val rendered = renderToolByName(cfg, "respond")
       val params = rendered("function")("parameters")
       // Every property in the strict-shaped schema must be required.
@@ -127,26 +135,22 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
       fn.contains("strict") shouldBe false
     }
 
-    "fall back to nonStrictSchemaTransform on a Json-rooted tool" in {
-      // Custom marker transform — assert the renderer ran the fallback,
-      // not forOpenAIStrict, on the Json-rooted tool.
-      val marker = "__nonstrict_marker__"
-      val markerCfg = cfg.copy(
-        nonStrictSchemaTransform = _ => fabric.obj("type" -> fabric.str(marker))
-      )
-      val rendered = renderToolByName(markerCfg, "test_json_tool")
-      rendered("function")("parameters")("type").asString shouldBe marker
-      // The strict-compatible tool should NOT be marked — it stays on the strict path.
-      renderToolByName(markerCfg, "respond")("function")("parameters")("type").asString shouldNot be(marker)
+    "ship the wire schema the dialect produced for both branches" in {
+      // The Json-rooted tool takes the lenient branch inside the
+      // dialect; the strict-compatible tool takes the strict branch —
+      // both must match the dialect's own output exactly.
+      renderToolByName(cfg, "test_json_tool")("function")("parameters") shouldBe
+        SchemaDialect.OpenAIStrict(JsonyTool)
+      renderToolByName(cfg, "respond")("function")("parameters") shouldBe
+        SchemaDialect.OpenAIStrict(typedTool)
     }
   }
 
-  "strictModeCapable = false" should {
+  "a non-strict dialect" should {
 
     val cfg = OpenAIChatCompletions.Config(
       providerNamespace = "test",
-      providerName = "Test",
-      strictModeCapable = false
+      providerName = "Test"
     )
 
     "never emit strict, even on a strict-compatible tool" in {
@@ -155,21 +159,20 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
       fn.contains("strict") shouldBe false
     }
 
-    "apply nonStrictSchemaTransform to every tool" in {
+    "apply the dialect transform to every tool" in {
       val marker = "__nonstrict_only__"
-      val markerCfg = cfg.copy(
-        nonStrictSchemaTransform = _ => fabric.obj("type" -> fabric.str(marker))
-      )
+      val markerCfg = cfg.copy(schemaDialect = new MarkerDialect(marker))
       renderToolByName(markerCfg, "respond")("function")("parameters")("type").asString shouldBe marker
       renderToolByName(markerCfg, "test_json_tool")("function")("parameters")("type").asString shouldBe marker
     }
 
-    "preserve the schema returned by nonStrictSchemaTransform verbatim" in {
-      // The function's schema body is exactly what the configured transform
-      // produced — no strict-mode reshaping bolted on after.
-      val sentinel = fabric.obj("type" -> fabric.str("__nonstrict_only__"))
-      val sentinelCfg = cfg.copy(nonStrictSchemaTransform = _ => sentinel)
-      renderToolByName(sentinelCfg, "respond")("function")("parameters") shouldBe sentinel
+    "preserve the schema returned by the dialect verbatim" in {
+      // The function's schema body is exactly what the configured
+      // dialect produced — no strict-mode reshaping bolted on after.
+      val marker = "__nonstrict_only__"
+      val markerCfg = cfg.copy(schemaDialect = new MarkerDialect(marker))
+      renderToolByName(markerCfg, "respond")("function")("parameters") shouldBe
+        fabric.obj("type" -> fabric.str(marker))
     }
   }
 

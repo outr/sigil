@@ -36,15 +36,16 @@ case class CloudflareProvider(apiToken: String,
   override def `type`: ProviderType = ProviderType.Cloudflare
   override val providerKey: String = Cloudflare.Provider
   override protected def sigil: Sigil = sigilRef
+  override def schemaDialect: SchemaDialect = wireConfig.schemaDialect
 
-  private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
+  private[cloudflare] val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = Cloudflare.Provider,
     providerName      = "Cloudflare",
     path              = s"/client/v4/accounts/$accountId/ai/v1/chat/completions",
     // Cloudflare's OpenAI-compat layer documents structured outputs
     // (`response_format`, strict JSON schema). Strict shaping engages
     // by default; live tests will tell us if it's honored end-to-end.
-    strictModeCapable = true,
+    schemaDialect = SchemaDialect.OpenAIStrict,
     // Native canonical `reasoning_effort` — the framework translates
     // ReasoningMode (Auto/On/Off) + optional Effort into the wire field.
     // Native canonical `reasoning_effort` — the framework translates

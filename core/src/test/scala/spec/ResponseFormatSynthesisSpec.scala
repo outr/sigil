@@ -34,7 +34,7 @@ class ResponseFormatSynthesisSpec extends AnyWordSpec with Matchers {
   private val cfg: Config = Config(
     providerNamespace = "test",
     providerName      = "Test",
-    strictModeCapable = true,
+    schemaDialect = sigil.provider.SchemaDialect.OpenAIStrict,
     honorsStrict      = false,
     forcedCallShape   = ForcedCallShape.ResponseFormatJsonSchema
   )

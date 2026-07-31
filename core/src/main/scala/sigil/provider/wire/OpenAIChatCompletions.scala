@@ -94,31 +94,17 @@ object OpenAIChatCompletions {
     /** Endpoint path. Defaults to `/v1/chat/completions`. */
     path: String = "/v1/chat/completions",
 
-    /** Backend supports OpenAI-style `strict: true` on tool functions —
-      * the wire flag that engages grammar-constrained decoding. When
-      * true, [[renderTools]] dispatches per-tool: tools whose schema
-      * is strict-compatible (no `DefType.Json` anywhere in the tree —
-      * applied to their parameters. Tools that can't be strict (Json
-      * applied to their parameters. Tools that can't be strict (Json
-      * fields are incompatible with strict mode's closed-object
-      * requirement) fall through to [[nonStrictSchemaTransform]] and
-      * omit the `strict` flag.
-      *
-      * Engaged for OpenAI-compatible backends that honour strict
-      * mode (DeepSeek, DeepInfra, DigitalOcean, …); off for llama.cpp
-      * (its GBNF translator handles the full schema and doesn't need
-      * the strict flag). OpenAI's own strict-mode path lives on the
-      * Responses wire, not this one. */
-    strictModeCapable: Boolean = false,
-
-    /** Schema transform applied to each tool's JSON schema when strict
-      * mode is NOT engaged (either [[strictModeCapable]] is false OR
-      * the tool's input schema contains a `DefType.Json` and can't be
-      * strict). Default [[StrictSchema.stripUnsupportedKeys]] drops
-      * `pattern` / `format` / numeric bounds that some validators
-      * reject. Pass [[identity]] for backends that handle the full
-      * schema (llama.cpp's GBNF translation). */
-    nonStrictSchemaTransform: Json => Json = StrictSchema.stripUnsupportedKeys,
+    /** The backend's tool-argument schema dialect — the single
+      * canonical→wire rewrite, applied per-tool by [[renderTools]] and
+      * the response_format builders. [[SchemaDialect.OpenAIStrict]]
+      * engages grammar-constrained decoding (with the open-JSON
+      * opt-out inside the dialect) for backends that honour strict
+      * mode (DeepSeek, DeepInfra, DigitalOcean, …);
+      * [[SchemaDialect.Identity]] ships the full schema for llama.cpp
+      * (its GBNF translator consumes `pattern` / `format` / numeric
+      * bounds directly); the [[SchemaDialect.Anthropic]] default
+      * strips grammar-only keywords without engaging strict. */
+    schemaDialect: SchemaDialect = SchemaDialect.Anthropic,
 
     /** Forwarding policy for `GenerationSettings.effort`. */
     reasoningPolicy: ReasoningPolicy = ReasoningPolicy.None,
@@ -200,7 +186,7 @@ object OpenAIChatCompletions {
 
     /** When `false`, the per-function `"strict": true` flag is OMITTED
       * from the wire — strict-mode schema reshaping via
-      * [[strictModeCapable]] still happens (so we ship a closed-object
+      * [[schemaDialect]] still happens (so we ship a closed-object
       * schema that's safe for the validator regardless), but we don't
       * SEND the flag that asks the backend to grammar-constrain.
       *
@@ -209,11 +195,9 @@ object OpenAIChatCompletions {
       * nor `tool_choice: "required"` per their docs — verified
       * against captured wire logs where Kimi-K2.5 emitted JSON
       * arrays despite `strict: true` on every function). Distinct
-      * from [[strictModeCapable]] which is Sigil-side ("should we
+      * from [[schemaDialect]] which is Sigil-side ("how do we
       * reshape the schema?"); this is provider-side ("should we
-      * send the flag?"). For honest providers both stay `true`.
-      *
-      */
+      * send the flag?"). For honest providers this stays `true`. */
     honorsStrict: Boolean = true,
 
     /** Shape Sigil uses to express forced-call semantics on the
@@ -569,12 +553,12 @@ object OpenAIChatCompletions {
       case (ToolChoice.Required, ForcedCallShape.ResponseFormatJsonSchema) =>
         Vector(
           "tools"           -> arr(toolsArr*),
-          "response_format" -> buildRequiredMetaResponseFormat(input)
+          "response_format" -> buildRequiredMetaResponseFormat(input, config.schemaDialect)
         )
       case (ToolChoice.Specific(name), ForcedCallShape.ResponseFormatJsonSchema) =>
         Vector(
           "tools"           -> arr(toolsArr*),
-          "response_format" -> buildSpecificResponseFormat(input, name)
+          "response_format" -> buildSpecificResponseFormat(input, name, config.schemaDialect)
         )
 
       case (ToolChoice.Required, ForcedCallShape.ToolChoice) =>
@@ -639,28 +623,28 @@ object OpenAIChatCompletions {
     obj((baseFields ++ toolFields ++ reasoningFields ++ generationFields ++ extraFields)*)
   }
 
-  private def buildSpecificResponseFormat(input: ProviderCall, name: sigil.tool.ToolName): Json = {
+  private def buildSpecificResponseFormat(input: ProviderCall, name: sigil.tool.ToolName, dialect: SchemaDialect): Json = {
     val tool = input.tools.find(_.schema.name == name)
       .getOrElse(throw new IllegalStateException(
         s"ToolChoice.Specific(${name.value}) names a tool not in input.tools — wire layer can't synthesize response_format."
       ))
-    val toolSchema = DefinitionToSchema(tool.schema.input)
-    val strictShape = StrictSchema.forOpenAIStrict(toolSchema)
     obj(
       "type" -> str("json_schema"),
       "json_schema" -> obj(
         "name"   -> str(name.value),
-        "strict" -> bool(true),
-        "schema" -> strictShape
+        "strict" -> bool(dialect.strictForTool(tool)),
+        "schema" -> dialect(tool)
       )
     )
   }
 
-  private def buildRequiredMetaResponseFormat(input: ProviderCall): Json = {
+  private def buildRequiredMetaResponseFormat(input: ProviderCall, dialect: SchemaDialect): Json = {
     val names = input.tools.map(_.schema.name.value)
-    val argSchemas = input.tools.map { t =>
-      StrictSchema.forOpenAIStrict(DefinitionToSchema(t.schema.input))
-    }
+    // The meta-schema can only be strict when EVERY member schema can —
+    // a single open-JSON tool poisons the closed-object requirement for
+    // the whole `arguments` union.
+    val allStrict = input.tools.forall(dialect.strictForTool)
+    val argSchemas = input.tools.map(dialect(_))
     val argumentsSchema =
       if (argSchemas.size == 1) argSchemas.head
       else obj("oneOf" -> arr(argSchemas*))
@@ -668,7 +652,7 @@ object OpenAIChatCompletions {
       "type" -> str("json_schema"),
       "json_schema" -> obj(
         "name"   -> str("sigil_tool_call"),
-        "strict" -> bool(true),
+        "strict" -> bool(allStrict),
         "schema" -> obj(
           "type" -> str("object"),
           "properties" -> obj(
@@ -685,20 +669,16 @@ object OpenAIChatCompletions {
     )
   }
 
-   /** Render the wire `tools` array. Per-tool dispatch on strict-mode */
+  /** Render the wire `tools` array — per-tool dialect dispatch. */
   def renderTools(input: ProviderCall, sigil: Sigil, config: Config): Vector[Json] =
     input.tools.map { t =>
       val s = t.schema
-      val canBeStrict = config.strictModeCapable && !DefinitionToSchema.containsJson(s.input)
-      val baseSchema = DefinitionToSchema(s.input)
-      val parameters =
-        if (canBeStrict) StrictSchema.forOpenAIStrict(baseSchema)
-        else config.nonStrictSchemaTransform(baseSchema)
+      val strict = config.schemaDialect.strictForTool(t)
       val fnFields = Vector[(String, Json)](
         "name"        -> str(s.name.value),
         "description" -> str(ToolDescriptionRenderer.render(t, input.currentMode, sigil)),
-        "parameters"  -> parameters
-      ) ++ (if (canBeStrict && config.honorsStrict) Vector("strict" -> bool(true)) else Vector.empty)
+        "parameters"  -> config.schemaDialect(t)
+      ) ++ (if (strict && config.honorsStrict) Vector("strict" -> bool(true)) else Vector.empty)
       obj(
         "type"     -> str("function"),
         "function" -> obj(fnFields*)

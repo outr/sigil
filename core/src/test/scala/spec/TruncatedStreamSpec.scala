@@ -29,7 +29,7 @@ class TruncatedStreamSpec extends AnyWordSpec with Matchers {
   private val cfg: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace        = "cloudflare",
     providerName             = "Cloudflare",
-    nonStrictSchemaTransform = identity,
+    schemaDialect = sigil.provider.SchemaDialect.Identity,
     emptyBudgetBurnThrows    = true
   )
 
