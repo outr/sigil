@@ -63,11 +63,28 @@ final class CachedProvider(underlying: Provider,
 
   override def currentState: ServiceState = underlying.currentState
 
+  /** Read a cached response, treating an unreadable entry (a fixture
+    * recorded under an older serialization of [[ProviderEvent]], a
+    * truncated file) as a miss rather than a failure. A stale cache
+    * must never poison a live call — in `RecordOrReplay` the miss
+    * falls through to a fresh recording that overwrites the stale
+    * file; in `ReplayOnly` it surfaces as the standard
+    * [[MissingCacheException]] pointing at re-recording. */
+  private def readCache(keyHash: String): Option[CachedResponse] =
+    try cacheStore.read(keyHash)
+    catch {
+      case t: Throwable =>
+        scribe.warn(
+          s"CachedProvider: cached response $keyHash is unreadable (${t.getClass.getSimpleName}: ${t.getMessage}) — " +
+            "treating as a cache miss; the entry likely predates a ProviderEvent serialization change and needs re-recording")
+        None
+    }
+
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val keyHash = RequestCacheKey.canonical(input).sha256
     mode match {
       case CacheMode.ReplayOnly =>
-        cacheStore.read(keyHash) match {
+        readCache(keyHash) match {
           case Some(cached) =>
             scribe.debug(s"CachedProvider(replay-only): hit $keyHash (${cached.events.size} events)")
             Stream.emits(cached.events)
@@ -79,7 +96,7 @@ final class CachedProvider(underlying: Provider,
         }
 
       case CacheMode.RecordOrReplay =>
-        cacheStore.read(keyHash) match {
+        readCache(keyHash) match {
           case Some(cached) =>
             scribe.debug(s"CachedProvider(record-or-replay): hit $keyHash (${cached.events.size} events)")
             Stream.emits(cached.events)

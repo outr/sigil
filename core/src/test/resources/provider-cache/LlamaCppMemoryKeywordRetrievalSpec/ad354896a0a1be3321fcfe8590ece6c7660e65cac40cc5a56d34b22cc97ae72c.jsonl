@@ -1,5 +1,5 @@
-{"requestHash":"ad354896a0a1be3321fcfe8590ece6c7660e65cac40cc5a56d34b22cc97ae72c","recordedAt":1779154977125}
-{"callId":"4d5adf21d","toolName":"classify_memory","type":"ToolCallStart"}
-{"callId":"4d5adf21d","input":{"keywords":["scalafmt","version","3.8.6","code-format","formatter","scala"],"permanence":"Once","space":"project","ambiguityReason":null,"type":"ClassifyMemoryInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":1005,"completionTokens":77,"totalTokens":1082,"isEstimated":false},"type":"Usage"}
-{"stopReason":"ToolCall","type":"Done"}
+{"requestHash":"ad354896a0a1be3321fcfe8590ece6c7660e65cac40cc5a56d34b22cc97ae72c","recordedAt":1785524577539}
+{"callId":"5b03a9b4a","toolName":"classify_memory","type":"ProviderEvent.ToolCallStart"}
+{"callId":"5b03a9b4a","call":{"type":"decoded","name":"classify_memory","args":{"keywords":["scalafmt","version","3.8.6","code-format","formatter","scala"],"permanence":"Permanence.Once","space":"project","ambiguityReason":null}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":1005,"completionTokens":77,"totalTokens":1082,"isEstimated":false,"cacheReadTokens":871,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

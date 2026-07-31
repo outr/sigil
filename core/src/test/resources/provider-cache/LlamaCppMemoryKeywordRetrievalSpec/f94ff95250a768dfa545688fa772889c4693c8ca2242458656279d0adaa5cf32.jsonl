@@ -1,5 +1,5 @@
-{"requestHash":"f94ff95250a768dfa545688fa772889c4693c8ca2242458656279d0adaa5cf32","recordedAt":1779154961995}
-{"callId":"ee21c2785","toolName":"classify_memory","type":"ToolCallStart"}
-{"callId":"ee21c2785","input":{"keywords":["project-codename","Atlas","project-name","identifier","naming"],"permanence":"Once","space":"project","ambiguityReason":null,"type":"ClassifyMemoryInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":997,"completionTokens":98,"totalTokens":1095,"isEstimated":false},"type":"Usage"}
-{"stopReason":"ToolCall","type":"Done"}
+{"requestHash":"f94ff95250a768dfa545688fa772889c4693c8ca2242458656279d0adaa5cf32","recordedAt":1785524572310}
+{"callId":"670a0e6cb","toolName":"classify_memory","type":"ProviderEvent.ToolCallStart"}
+{"callId":"670a0e6cb","call":{"type":"decoded","name":"classify_memory","args":{"keywords":["project-codename","Atlas","project-name","identifier","naming"],"permanence":"Permanence.Once","space":"project","ambiguityReason":null}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":997,"completionTokens":98,"totalTokens":1095,"isEstimated":false,"cacheReadTokens":871,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

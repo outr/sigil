@@ -347,10 +347,12 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     // Live-LLM coverage of the topic-trigger path. The system prompt shows
     // `Current topic: "New Conversation"` (the bootstrap label). The LLM
     // emits a respond tool call carrying topicLabel + topicSummary +
-    // markdown content. The classifier reliably picks `New` on
-    // bootstrap (probe-confirmed) — assert the orchestrator fires a
-    // Switch with a label other than the default.
-    "fire a TopicChange(Switch) when the LLM gets a clear subject on a fresh conversation" in {
+    // markdown content. The classifier prompt biases the conversation's
+    // first concrete subject toward Refine (relabel the placeholder seed
+    // in place — a Rename) rather than New (mint a second topic); both
+    // kinds are structurally valid, so assert the invariants of
+    // whichever fired.
+    "fire a TopicChange when the LLM gets a clear subject on a fresh conversation" in {
       val prompt =
         "I want to talk about the history of the Roman Empire. Give me a brief two-sentence overview " +
           "of its founding."
@@ -387,14 +389,18 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         }
         pulseIdx should be < settleIdx
 
-        // Bootstrap = Switch: LLM correctly picked `Change` (verified by
-        // probe). The event is a Switch pointing at a fresh Topic.
-        val switchKind = tc.kind match {
-          case s: TopicChangeKind.Switch => s
-          case other => fail(s"expected Switch on bootstrap, got: $other")
+        // Bootstrap: Refine relabels the placeholder seed in place
+        // (Rename keeping the seed's Topic id); New mints a fresh Topic
+        // (Switch pointing back at the seed). Framework invariants hold
+        // for whichever the classifier picked.
+        tc.kind match {
+          case TopicChangeKind.Rename(prev) =>
+            prev shouldBe Topic.DefaultLabel
+            tc.topicId shouldBe initialTopic._id
+          case TopicChangeKind.Switch(prev) =>
+            prev shouldBe initialTopic._id
+            tc.topicId should not be initialTopic._id
         }
-        switchKind.previousTopicId shouldBe initialTopic._id
-        tc.topicId should not be initialTopic._id
       }
     }
 

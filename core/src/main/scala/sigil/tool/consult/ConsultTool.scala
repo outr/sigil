@@ -118,7 +118,11 @@ case object ConsultTool extends Tool {
                                GenerationSettings.classifierDefault): Task[Option[I]] =
     invokeRich[I](sigil, modelId, chain, systemPrompt, userPrompt, tool, generationSettings).map {
       case ConsultOutcome.Parsed(v) => Some(v)
-      case _                        => None
+      case ConsultOutcome.Failed(t) =>
+        scribe.warn(
+          s"consult '${tool.name.value}' on model '${modelId.value}' failed (${t.getClass.getSimpleName}: ${t.getMessage}) — returning no result")
+        None
+      case _ => None
     }
 
   /**
