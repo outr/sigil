@@ -66,14 +66,13 @@ class CheckpointNoneFailsafeSpec extends AsyncWordSpec with AsyncTaskSpec with M
         else if (input.toolChoice == ToolChoice.Specific(RespondTool.schema.name))
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId,
-              RespondInput(topicLabel = "Done", topicSummary = "stopping", content = "Stopping — I was looping.", endsTurn = true)),
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Done", topicSummary = "stopping", content = "Stopping — I was looping.", endsTurn = true)),
             ProviderEvent.Done(StopReason.Complete)
           )
         else
           List(
             ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
+            ProviderEvent.toolCall(callId, ChangeModeTool)(ChangeModeInput(mode = "coding")),
             ProviderEvent.Done(StopReason.ToolCall)
           )
       Stream.emits(emits)

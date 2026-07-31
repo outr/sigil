@@ -63,8 +63,7 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
           val callId = CallId("respond-forced")
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId,
-              RespondInput(topicLabel = "Test", topicSummary = "Forced reply", content = "Forced reply.", endsTurn = true)),
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Test", topicSummary = "Forced reply", content = "Forced reply.", endsTurn = true)),
             ProviderEvent.Done(StopReason.Complete)
           ))
       }

@@ -70,9 +70,9 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val payload = CountingInput("hedged")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(CallId("call-1"), CountingTool.name.value),
-        ProviderEvent.ToolCallComplete(CallId("call-1"), payload),
+        ProviderEvent.toolCall(CallId("call-1"), CountingTool)(payload),
         ProviderEvent.ToolCallStart(CallId("call-2"), CountingTool.name.value),
-        ProviderEvent.ToolCallComplete(CallId("call-2"), payload),
+        ProviderEvent.toolCall(CallId("call-2"), CountingTool)(payload),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }

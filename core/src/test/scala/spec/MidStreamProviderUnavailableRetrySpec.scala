@@ -18,6 +18,7 @@ import sigil.provider.wire.OpenAIChatCompletions.{Config, StreamState}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong, AtomicReference}
+import sigil.tool.ToolRoster
 
 /**
  * Coverage for the mid-stream `provider_unavailable` recovery flow.
@@ -145,7 +146,7 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
         model            = TestSigil.testModel(modelId),
         system             = "s",
         messages           = Vector.empty,
-        tools              = Vector.empty,
+        roster = ToolRoster(Vector.empty),
         builtInTools       = Set.empty,
         toolChoice         = _root_.sigil.provider.ToolChoice.None,
         generationSettings = GenerationSettings()
@@ -170,7 +171,7 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
     "keepalive-only past the keepalive budget raises a retryable upstream_silent exception" in {
       val now = new AtomicLong(0L)
       val state = new StreamState(
-        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        acc                             = new ToolCallAccumulator(ToolRoster.empty, providerKey = "openrouter"),
         nowNanos                        = () => now.get(),
         streamingKeepaliveOnlyTimeoutMs = 30000L
       )
@@ -201,7 +202,7 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
       // (those budgets belong to the timer watchdog, which every
       // arriving line RESETS).
       val state = new StreamState(
-        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        acc                             = new ToolCallAccumulator(ToolRoster.empty, providerKey = "openrouter"),
         nowNanos                        = () => now.get(),
         streamingSilenceTimeoutMs       = 30000L,
         streamingDeadOnArrivalTimeoutMs = 10000L,
@@ -220,7 +221,7 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
     "meaningful chunks bump the keepalive anchor so legitimate slow generations don't false-fire" in {
       val now = new AtomicLong(0L)
       val state = new StreamState(
-        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        acc                             = new ToolCallAccumulator(ToolRoster.empty, providerKey = "openrouter"),
         nowNanos                        = () => now.get(),
         streamingKeepaliveOnlyTimeoutMs = 30000L
       )
@@ -244,7 +245,7 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
     "a data chunk arriving after a long keepalive-only wait is parsed, never killed for the wait that preceded it" in {
       val now = new AtomicLong(0L)
       val state = new StreamState(
-        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        acc                             = new ToolCallAccumulator(ToolRoster.empty, providerKey = "openrouter"),
         nowNanos                        = () => now.get(),
         streamingKeepaliveOnlyTimeoutMs = 30000L
       )

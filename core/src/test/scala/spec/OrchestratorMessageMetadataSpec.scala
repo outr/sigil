@@ -54,10 +54,7 @@ class OrchestratorMessageMetadataSpec extends AsyncWordSpec with AsyncTaskSpec w
       val callId = CallId("respond-only")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(
-          callId,
-          RespondInput(topicLabel = "Test", topicSummary = "Bug 55 repro", content = "Hi.", endsTurn = true)
-        ),
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Test", topicSummary = "Bug 55 repro", content = "Hi.", endsTurn = true)),
         ProviderEvent.Usage(TokenUsage(promptTokens = 4622, completionTokens = 46, totalTokens = 4668)),
         ProviderEvent.Done(StopReason.Complete)
       ))

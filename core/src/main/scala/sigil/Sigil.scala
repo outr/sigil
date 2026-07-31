@@ -9201,8 +9201,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         val evidence = strategy.detect(thrown)
         val errorEvidence = sigil.event.ErrorEvidence.of(thrown)
         val correlation: String = healCorrelationId.updateAndGet { current =>
-          current.orElse(Some(TurnContext.freshCorrelationId()))
-        }.getOrElse(TurnContext.freshCorrelationId())
+          current.orElse(Some(rapid.Unique().take(8)))
+        }.getOrElse(rapid.Unique().take(8))
         // Always publish CorruptionDetected — both Recover and Strict
         // paths record the corruption. Strict refuses the heal but
         // the durable trail must show the failure was seen.

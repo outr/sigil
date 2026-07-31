@@ -10,6 +10,7 @@ import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tool.ToolContext
+import sigil.tool.ToolRoster
 
 /**
  * Regression for Sigil audit H8 — `ToolCallAccumulator.observeHeader`
@@ -43,7 +44,7 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
       Task.pure(ToolResult.Success(TextToolOutput(input.value)))
   }
 
-  private def newAcc: ToolCallAccumulator = new ToolCallAccumulator(Vector(Foo))
+  private def newAcc: ToolCallAccumulator = new ToolCallAccumulator(ToolRoster(Vector(Foo)))
 
   "Bug audit H8 — split tool-call header chunks" should {
 
@@ -79,8 +80,10 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
       val events = acc.complete()
       val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
       completes should have size 1
-      completes.head.input shouldBe a [Args]
-      completes.head.input.asInstanceOf[Args].value shouldBe "hello"
+      completes.head.call.inputFor(Foo) match {
+        case Some(args) => args.value shouldBe "hello"
+        case None       => fail(s"expected a decoded Foo call, got ${completes.head.call}")
+      }
     }
 
     "still work when both fields arrive in the same chunk (back-compat with start)" in {

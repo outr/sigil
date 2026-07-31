@@ -85,7 +85,7 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   /** Calls the given fixture tool once, then answers every later call
     * with a terminal respond. */
-  private final class ToolThenRespondProvider(toolName: String) extends Provider {
+  private final class ToolThenRespondProvider(tool: SlowStopToolBase) extends Provider {
     val calls = new atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -96,15 +96,15 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       if (calls.incrementAndGet() == 1) {
         val cid = CallId(s"tool-${rapid.Unique()}")
         Stream.emits(List[ProviderEvent](
-          ProviderEvent.ToolCallStart(cid, toolName),
-          ProviderEvent.ToolCallComplete(cid, SlowStopInput()),
+          ProviderEvent.ToolCallStart(cid, tool.name.value),
+          ProviderEvent.toolCall(cid, tool)(SlowStopInput()),
           ProviderEvent.Done(StopReason.Complete)
         ))
       } else {
         val cid = CallId(s"respond-${rapid.Unique()}")
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(cid, RespondInput(
+          ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
             topicLabel   = TestTopicEntry.label,
             topicSummary = TestTopicEntry.summary,
             content      = "Acknowledged.",
@@ -129,7 +129,7 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     TestSigil.setMemoryExtractor(NoExtraction)
     tool.reset()
     TestSigil.toolDetachThresholdOverride.set(Some(thresholdMs))
-    val provider = new ToolThenRespondProvider(tool.name.value)
+    val provider = new ToolThenRespondProvider(tool)
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"detached-${rapid.Unique()}")
     val conv   = Conversation(topics = TestTopicStack, participants = List(makeAgent(tool.name)), _id = convId)
@@ -366,21 +366,21 @@ class DetachedToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           val cid = CallId(s"sweep-${rapid.Unique()}")
           Stream.emits(List[ProviderEvent](
             ProviderEvent.ToolCallStart(cid, sweep.name.value),
-            ProviderEvent.ToolCallComplete(cid, SlowStopInput()),
+            ProviderEvent.toolCall(cid, sweep)(SlowStopInput()),
             ProviderEvent.Done(StopReason.Complete)
           ))
         case 3 =>
           val cid = CallId(s"slow-${rapid.Unique()}")
           Stream.emits(List[ProviderEvent](
             ProviderEvent.ToolCallStart(cid, slow.name.value),
-            ProviderEvent.ToolCallComplete(cid, SlowStopInput()),
+            ProviderEvent.toolCall(cid, slow)(SlowStopInput()),
             ProviderEvent.Done(StopReason.Complete)
           ))
         case _ =>
           val cid = CallId(s"respond-${rapid.Unique()}")
           Stream.emits(List[ProviderEvent](
             ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(cid, RespondInput(
+            ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
               topicLabel   = TestTopicEntry.label,
               topicSummary = TestTopicEntry.summary,
               content      = "Done for now.",

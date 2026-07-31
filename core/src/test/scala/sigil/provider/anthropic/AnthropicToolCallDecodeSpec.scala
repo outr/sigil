@@ -7,6 +7,7 @@ import sigil.tool.core.NoResponseTool
 import sigil.tool.model.NoResponseInput
 import spec.TestSigil
 import spice.net.url
+import sigil.tool.ToolRoster
 
 /**
  * Canned-SSE decode coverage for [[AnthropicProvider]]'s streaming
@@ -31,7 +32,7 @@ class AnthropicToolCallDecodeSpec extends AnyWordSpec with Matchers {
     * a fresh state, collecting every emitted ProviderEvent. */
   private def decode(lines: List[String]): Vector[ProviderEvent] = {
     val state = new provider.StreamState(
-      new ToolCallAccumulator(Vector(NoResponseTool), providerKey = "anthropic")
+      new ToolCallAccumulator(ToolRoster(Vector(NoResponseTool)), providerKey = "anthropic")
     )
     lines.toVector.flatMap(l => provider.parseLine(l, state))
   }
@@ -55,7 +56,7 @@ class AnthropicToolCallDecodeSpec extends AnyWordSpec with Matchers {
       }
       // The call decoded to the typed input — no args means the
       // zero-/all-default input, never a parse failure.
-      val inputs = events.collect { case ProviderEvent.ToolCallComplete(_, in) => in }
+      val inputs = events.flatMap { case ProviderEvent.ToolCallComplete(_, wc) => wc.inputFor(NoResponseTool); case _ => None }
       inputs shouldBe Vector(NoResponseInput())
     }
 
@@ -70,7 +71,7 @@ class AnthropicToolCallDecodeSpec extends AnyWordSpec with Matchers {
       ))
 
       events.collect { case e: ProviderEvent.Error => e } shouldBe empty
-      val inputs = events.collect { case ProviderEvent.ToolCallComplete(_, in) => in }
+      val inputs = events.flatMap { case ProviderEvent.ToolCallComplete(_, wc) => wc.inputFor(NoResponseTool); case _ => None }
       inputs shouldBe Vector(NoResponseInput(Some("all done")))
     }
 
@@ -119,7 +120,7 @@ class AnthropicToolCallDecodeSpec extends AnyWordSpec with Matchers {
       ))
 
       events.collect { case e: ProviderEvent.Error => e } shouldBe empty
-      val inputs = events.collect { case ProviderEvent.ToolCallComplete(_, in) => in }
+      val inputs = events.flatMap { case ProviderEvent.ToolCallComplete(_, wc) => wc.inputFor(NoResponseTool); case _ => None }
       inputs shouldBe Vector(NoResponseInput())
     }
   }

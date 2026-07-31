@@ -6,6 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.{ProviderEvent, ProviderStreamException, ToolCallAccumulator}
 import sigil.provider.wire.OpenAIChatCompletions
 import sigil.provider.wire.OpenAIChatCompletions.{Config, ForcedCallShape, StreamState}
+import sigil.tool.ToolRoster
 
 /**
  * Coverage for a degenerate provider stream: the model burns
@@ -30,7 +31,7 @@ class EmptyCompletionDetectionSpec extends AnyWordSpec with Matchers {
   )
 
   private def runChunks(rawChunks: List[String]): Either[ProviderStreamException, Vector[ProviderEvent]] = {
-    val state = new StreamState(new ToolCallAccumulator(Vector.empty, providerKey = "test"))
+    val state = new StreamState(new ToolCallAccumulator(ToolRoster.empty, providerKey = "test"))
     val out = Vector.newBuilder[ProviderEvent]
     try {
       rawChunks.foreach { c => out ++= OpenAIChatCompletions.parseChunk(JsonParser(c), state, cfg) }
@@ -84,7 +85,7 @@ class EmptyCompletionDetectionSpec extends AnyWordSpec with Matchers {
     }
 
     "NOT throw when emptyBudgetBurnThrows is disabled" in {
-      val state = new StreamState(new ToolCallAccumulator(Vector.empty, providerKey = "test"))
+      val state = new StreamState(new ToolCallAccumulator(ToolRoster.empty, providerKey = "test"))
       val cfgOff = cfg.copy(emptyBudgetBurnThrows = false)
       val out = Vector.newBuilder[ProviderEvent]
       out ++= OpenAIChatCompletions.parseChunk(

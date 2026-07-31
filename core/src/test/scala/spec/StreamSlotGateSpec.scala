@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
+import sigil.tool.ToolRoster
 
 /**
  * The live-stream slot gate (`Provider.gateStreamingCalls`). A backend
@@ -69,7 +70,7 @@ class StreamSlotGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     model = TestSigil.testModel(modelId),
     system = tag,
     messages = Vector.empty,
-    tools = Vector.empty,
+    roster = ToolRoster(Vector.empty),
     builtInTools = Set.empty,
     toolChoice = ToolChoice.Auto,
     generationSettings = GenerationSettings(),

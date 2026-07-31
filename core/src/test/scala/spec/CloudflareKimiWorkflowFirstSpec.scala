@@ -13,6 +13,7 @@ import sigil.workflow.WorkflowStepKind
 import sigil.workflow.tool.{CreateWorkflowInput, CreateWorkflowTool}
 
 import scala.concurrent.duration.*
+import sigil.tool.ToolRoster
 
 /**
  * Live proof of the #373 fix: a Job's `arguments` is a STRUCTURED OBJECT, so a
@@ -126,7 +127,7 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
           model = model,
           system = system,
           messages = messages,
-          tools = Vector(new CreateWorkflowTool),
+          roster = ToolRoster(Vector(new CreateWorkflowTool)),
           builtInTools = Set.empty,
           toolChoice = ToolChoice.Required,
           generationSettings = GenerationSettings(maxOutputTokens = Some(16000), temperature = Some(0.0), reasoningMode = ReasoningMode.Auto)
@@ -136,7 +137,7 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
             Task(cancel(s"Cloudflare Workers AI unavailable (throttle/timeout) — skipping live spec. (${Option(t.getMessage).getOrElse(t.toString)})"))
           else Task.error(t)
         }.map { events =>
-          events.collectFirst { case ProviderEvent.ToolCallComplete(_, in: CreateWorkflowInput) => in }
+          events.flatMap { case ProviderEvent.ToolCallComplete(_, wc) => wc.decodedInput; case _ => None }.collectFirst { case in: CreateWorkflowInput => in }
             .getOrElse(throw new RuntimeException(s"Kimi did not call create_workflow. Events: $events"))
         }
       }

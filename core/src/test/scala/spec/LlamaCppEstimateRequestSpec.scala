@@ -8,6 +8,7 @@ import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.provider.{ProviderCall, ProviderMessage, ToolChoice, ToolCallMessage, ConversationMode}
 import sigil.provider.GenerationSettings
 import spice.net.url
+import sigil.tool.ToolRoster
 
 /**
  * Coverage for sigil bug #46 — `LlamaCppProvider.estimateRequest`
@@ -44,7 +45,7 @@ class LlamaCppEstimateRequestSpec extends AnyWordSpec with Matchers {
       ),
       ProviderMessage.ToolResult(toolCallId = "call-1", content = "4")
     ),
-    tools = Vector.empty,
+    roster = ToolRoster(Vector.empty),
     builtInTools = Set.empty,
     toolChoice = ToolChoice.None,
     generationSettings = GenerationSettings(),

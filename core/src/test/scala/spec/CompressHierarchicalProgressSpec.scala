@@ -16,6 +16,7 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import scala.collection.mutable
+import sigil.tool.consult.SummarizationTool
 
 /**
  * Regression for sigil bug #145 — `compressHierarchical` ran leaf
@@ -101,7 +102,7 @@ class CompressHierarchicalProgressSpec extends AsyncWordSpec with AsyncTaskSpec 
         val callId = CallId(rapid.Unique())
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(callId, "summarize_conversation"),
-          ProviderEvent.ToolCallComplete(callId, SummarizationInput("canned summary", tokenEstimate = 5)),
+          ProviderEvent.toolCall(callId, SummarizationTool)(SummarizationInput("canned summary", tokenEstimate = 5)),
           ProviderEvent.Done(StopReason.ToolCall)
         ))
       }

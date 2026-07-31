@@ -84,7 +84,6 @@ case class TurnContext(sigil: Sigil,
                          * without inflating dedupe counts. `None` when no
                          * agent loop drives the turn. */
                        turnStartedAt: Option[Timestamp] = None,
-                       correlationId: String = TurnContext.freshCorrelationId(),
                        isGreeting: Boolean = false,
                        /** When `true`, the framework forces
                          * the provider's `tool_choice` to `respond` for this
@@ -210,20 +209,4 @@ case class TurnContext(sigil: Sigil,
     * traceable in-loop signal. */
   def clearDiscoveredCapabilities(): Unit =
     discoveredCapabilitiesRef.set(Map.empty)
-}
-
-object TurnContext {
-  /** Generate a fresh correlation id for a turn that didn't inherit one
-   * from an upstream context (HTTP request, queued job, etc.). The id
-   * is opaque short-form — 8 chars sliced from `rapid.Unique()`; apps
-   * that wire scribe MDC integration can read
-   * [[TurnContext.correlationId]] and stamp it on every log line
-   * emitted during the turn.
-   *
-   * Apps fronting Sigil with their own ingress (HTTP server, message
-   * bus) should construct `TurnContext` with a `correlationId`
-   * derived from the inbound request id so the entire flow — wire
-   * call → orchestrator → tool execution → settled effects — shares
-   * one trace id. */
-  def freshCorrelationId(): String = rapid.Unique().take(8)
 }

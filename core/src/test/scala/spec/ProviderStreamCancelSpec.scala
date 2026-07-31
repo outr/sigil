@@ -15,6 +15,7 @@ import spice.http.client.StreamHandle
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import scala.concurrent.duration.*
+import sigil.tool.ToolRoster
 
 /**
  * Coverage for true mid-stream HTTP abort on `Stop`. A streaming
@@ -67,7 +68,7 @@ class ProviderStreamCancelSpec
       model            = TestSigil.testModel(Model.id("test", "stream-cancel")),
       system             = "",
       messages           = Vector.empty,
-      tools              = Vector.empty,
+      roster = ToolRoster(Vector.empty),
       builtInTools       = Set.empty,
       toolChoice         = ToolChoice.Auto,
       generationSettings = GenerationSettings(),

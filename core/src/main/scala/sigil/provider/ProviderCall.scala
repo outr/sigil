@@ -4,7 +4,7 @@ import lightdb.id.Id
 import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.tool.{Tool, ToolInput}
+import sigil.tool.{Tool, ToolRoster}
 
 /**
  * The format-neutral internal representation a [[Provider]]'s `call`
@@ -24,7 +24,10 @@ import sigil.tool.{Tool, ToolInput}
  *                           framework-neutral [[ProviderMessage]] form;
  *                           empty for a OneShot whose user prompt is the
  *                           only payload (already in messages)
- * @param tools              the tools to advertise to the model
+ * @param roster             the tools to advertise to the model, as the
+ *                           request's single name→tool resolution source —
+ *                           the streaming accumulator, token estimator, and
+ *                           request-cache key all read this one instance
  * @param builtInTools       provider-managed tools the model can use
  *                           server-side without a client round-trip
  *                           (web search, image generation, etc.).
@@ -41,7 +44,7 @@ case class ProviderCall(/** Sigil #277 — required Model record. Wire
                         model: Model,
                         system: String,
                         messages: Vector[ProviderMessage],
-                        tools: Vector[Tool],
+                        roster: ToolRoster,
                         builtInTools: Set[BuiltInTool],
                         toolChoice: ToolChoice,
                         generationSettings: GenerationSettings,
@@ -104,6 +107,9 @@ case class ProviderCall(/** Sigil #277 — required Model record. Wire
     * they just need the id for the wire `model` field; per-model facts
     * read directly off [[model]]. */
   def modelId: lightdb.id.Id[Model] = model._id
+
+  /** Convenience — the roster's tool list, in advertisement order. */
+  def tools: Vector[Tool] = roster.tools
 
   /** Single-string form (stable + volatile) for providers whose
     * system channel is not part of a cacheable prefix (OpenAI

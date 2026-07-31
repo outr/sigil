@@ -62,7 +62,7 @@ class OrchestratorRepeatedQuerySpec extends AsyncWordSpec with AsyncTaskSpec wit
     val cid = CallId(s"find-$callIdx")
     List(
       ProviderEvent.ToolCallStart(cid, FindCapabilityTool.schema.name.value),
-      ProviderEvent.ToolCallComplete(cid, FindCapabilityInput(keywords = keywords)),
+      ProviderEvent.toolCall(cid, FindCapabilityTool)(FindCapabilityInput(keywords = keywords)),
       ProviderEvent.Done(StopReason.ToolCall)
     )
   }
@@ -71,7 +71,7 @@ class OrchestratorRepeatedQuerySpec extends AsyncWordSpec with AsyncTaskSpec wit
     val cid = CallId(s"respond-$callIdx")
     List(
       ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-      ProviderEvent.ToolCallComplete(cid, RespondInput(
+      ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
         topicLabel   = "Done",
         topicSummary = "Repeated-query spec terminator.",
         content      = "Stopping after the framework's intercept guidance.",

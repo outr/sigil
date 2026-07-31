@@ -10,6 +10,7 @@ import sigil.db.Model
 import sigil.provider.cloudflare.{Cloudflare, CloudflareProvider}
 import sigil.provider.{CallId => _, _}
 import sigil.tool.core.RespondTool
+import sigil.tool.ToolRoster
 
 /**
  * Sigil #333 — the Cloudflare chat call must send the *bare* Workers AI
@@ -37,7 +38,7 @@ class CloudflareWireModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         model              = model,
         system             = "s",
         messages           = Vector(ProviderMessage.User(Vector(MessageContent.Text("hi")))),
-        tools              = Vector(RespondTool),
+        roster = ToolRoster(Vector(RespondTool)),
         builtInTools       = Set.empty,
         toolChoice         = ToolChoice.Required,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))

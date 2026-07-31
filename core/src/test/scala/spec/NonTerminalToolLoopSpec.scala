@@ -82,7 +82,7 @@ class NonTerminalToolLoopSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val id = CallId(s"non-terminal-$n")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(id, ChangeModeTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(id, ChangeModeInput(mode = "coding")),
+        ProviderEvent.toolCall(id, ChangeModeTool)(ChangeModeInput(mode = "coding")),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }

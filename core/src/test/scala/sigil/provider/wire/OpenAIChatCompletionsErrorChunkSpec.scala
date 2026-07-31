@@ -5,6 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.provider.{ProviderStreamException, ToolCallAccumulator}
+import sigil.tool.ToolRoster
 
 /**
  * Regression for sigil bug #193 — OpenAI-compatible upstream gateways
@@ -34,7 +35,7 @@ import sigil.provider.{ProviderStreamException, ToolCallAccumulator}
 class OpenAIChatCompletionsErrorChunkSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   spec.TestSigil.initFor(getClass.getSimpleName)
 
-  private def freshState = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(Vector.empty))
+  private def freshState = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(ToolRoster.empty))
 
   "OpenAIChatCompletions.parseChunk on a mid-stream error chunk (sigil bug #193)" should {
 

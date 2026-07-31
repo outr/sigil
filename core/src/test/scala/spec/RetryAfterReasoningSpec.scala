@@ -14,6 +14,7 @@ import sigil.tool.model.NoResponseInput
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
+import sigil.tool.core.NoResponseTool
 
 /**
  * Reasoning is transient — a stream that fails after only emitting
@@ -102,7 +103,7 @@ class RetryAfterReasoningSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     Stream.emits[ProviderEvent](List(
       ProviderEvent.ThinkingDelta("thinking..."),
       ProviderEvent.ToolCallStart(CallId("call_abc"), "no_response"),
-      ProviderEvent.ToolCallComplete(CallId("call_abc"), NoResponseInput())
+      ProviderEvent.toolCall(CallId("call_abc"), NoResponseTool)(NoResponseInput())
     )) ++ Stream.emit(()).evalMap[ProviderEvent](_ => Task.error(upstreamSilent(upstream)))
 
   private def reasoningItemThenSilent(upstream: String): Stream[ProviderEvent] =

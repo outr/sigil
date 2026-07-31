@@ -110,7 +110,7 @@ case class OpenAIProvider(apiKey: String,
       .flatMap(chunk => OpenAIBatch.submitChunk(chunk.toList, apiKey, baseUrl))
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
-    val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = "openai"))
+    val state = new StreamState(new ToolCallAccumulator(input.roster, providerKey = "openai"))
     // `priorMessageCount` for the NEXT turn is recorded as the PMs we'd
     // already covered when this turn STARTED (= input.messages.size at
     // call-entry). Server-emitted output items (function_call,

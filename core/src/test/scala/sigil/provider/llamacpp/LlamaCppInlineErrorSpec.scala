@@ -6,6 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.provider.{ProviderStreamException, ToolCallAccumulator}
 import sigil.provider.wire.OpenAIChatCompletions
+import sigil.tool.ToolRoster
 
 /**
  * Coverage for Bug #8 — when `/v1/chat/completions` returns HTTP 200
@@ -31,7 +32,7 @@ class LlamaCppInlineErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   /** Build a fresh state + parse one SSE data line carrying `json`. */
   private def parse(json: Json): Vector[sigil.provider.ProviderEvent] = {
-    val state = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(Vector.empty))
+    val state = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(ToolRoster.empty))
     OpenAIChatCompletions.parseLine("data: " + fabric.io.JsonFormatter.Compact(json), state, cfg)
   }
 

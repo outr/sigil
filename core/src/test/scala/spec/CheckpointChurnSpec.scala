@@ -20,6 +20,8 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic
 import scala.concurrent.duration.*
+import sigil.tool.consult.ProgressReflectionTool
+import spec.MutatingSpecTool
 
 /**
  * The mutation veto (#423) needs a verification condition: mutation ≠
@@ -75,7 +77,7 @@ class CheckpointChurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         if (input.tools.exists(_.name.value == "report_progress")) {
           List(
             ProviderEvent.ToolCallStart(callId, "report_progress"),
-            ProviderEvent.ToolCallComplete(callId, _root_.sigil.tool.consult.ProgressReflectionInput(
+            ProviderEvent.toolCall(callId, ProgressReflectionTool)(_root_.sigil.tool.consult.ProgressReflectionInput(
               currentStatus      = s"Successfully applied edits, continuing (${rapid.Unique()}).",
               meaningfulProgress = true,
               remainingSteps     = "keep going",
@@ -88,7 +90,7 @@ class CheckpointChurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           case ToolChoice.Specific(name) if name == RespondTool.schema.name =>
             List(
               ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-              ProviderEvent.ToolCallComplete(callId, RespondInput(
+              ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
                 topicLabel = "Ceiling", topicSummary = "cap synthesis",
                 content = "Synthesised at the iteration ceiling.", endsTurn = true)),
               ProviderEvent.Done(StopReason.Complete)
@@ -98,13 +100,13 @@ class CheckpointChurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
             if (verifyToo && n % 2 == 0)
               List(
                 ProviderEvent.ToolCallStart(callId, VerifyingSpecTool.name.value),
-                ProviderEvent.ToolCallComplete(callId, VerifyingSpecInput(scope = s"check-$n")),
+                ProviderEvent.toolCall(callId, VerifyingSpecTool)(VerifyingSpecInput(scope = s"check-$n")),
                 ProviderEvent.Done(StopReason.ToolCall)
               )
             else
               List(
                 ProviderEvent.ToolCallStart(callId, MutatingSpecTool.name.value),
-                ProviderEvent.ToolCallComplete(callId, MutatingSpecInput(
+                ProviderEvent.toolCall(callId, MutatingSpecTool)(MutatingSpecInput(
                   step = s"attempt-$n-${rapid.Unique()}",
                   target = Some("src/StandardBlockExtractor.scala"))),
                 ProviderEvent.Done(StopReason.ToolCall)

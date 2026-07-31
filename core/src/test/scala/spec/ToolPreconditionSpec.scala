@@ -75,7 +75,7 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       Task.pure(ToolResult.Success(TextToolOutput("SHOULD_NOT_RUN")))
   }
 
-  private class StubProvider(toolName: String, callIdValue: String) extends Provider {
+  private class StubProvider(tool: Tool { type Input = NoResponseInput }, callIdValue: String) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -84,8 +84,8 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val cid = CallId(callIdValue)
       Stream.emits(List(
-        ProviderEvent.ToolCallStart(cid, toolName),
-        ProviderEvent.ToolCallComplete(cid, NoResponseInput()),
+        ProviderEvent.ToolCallStart(cid, tool.name.value),
+        ProviderEvent.toolCall(cid, tool)(NoResponseInput()),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
@@ -113,7 +113,7 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   "Orchestrator + Tool.preconditions" should {
     "let a tool run when all preconditions return Satisfied" in {
-      runWith(new StubProvider(SatisfiedTool.name.value, "ok-call"), Vector(SatisfiedTool), "ok").map { signals =>
+      runWith(new StubProvider(SatisfiedTool, "ok-call"), Vector(SatisfiedTool), "ok").map { signals =>
         // A satisfied tool runs and settles its ToolInvoke via a
         // ToolDelta carrying the typed payload — no precondition-
         // blocked Failure Message.
@@ -128,7 +128,7 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
 
     "block tool execution when any precondition returns Unsatisfied — body not invoked" in {
-      runWith(new StubProvider(BlockedTool.name.value, "block-call"), Vector(BlockedTool), "block").map { signals =>
+      runWith(new StubProvider(BlockedTool, "block-call"), Vector(BlockedTool), "block").map { signals =>
         val toolMsgs = signals.collect { case m: Message if m.role == MessageRole.Tool => m }
         toolMsgs should have size 1
         // BlockedTool's `execute` would emit `Text("SHOULD_NOT_RUN")` — verify it didn't run.
@@ -141,7 +141,7 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
 
     "emit a Failure-disposition Message describing the blocked precondition + suggestedFix" in {
-      runWith(new StubProvider(BlockedTool.name.value, "block-fail-call"), Vector(BlockedTool), "block-fail").map { signals =>
+      runWith(new StubProvider(BlockedTool, "block-fail-call"), Vector(BlockedTool), "block-fail").map { signals =>
         val toolMsgs = signals.collect { case m: Message if m.role == MessageRole.Tool => m }
         toolMsgs.head.isFailure shouldBe true
         val body = toolMsgs.head.failureReason.getOrElse("")
@@ -156,7 +156,7 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
 
     "stamp the originating ToolInvoke id on the blocked Message (frame-pairing invariant)" in {
-      runWith(new StubProvider(BlockedTool.name.value, "block-stamp-call"), Vector(BlockedTool), "block-stamp").map { signals =>
+      runWith(new StubProvider(BlockedTool, "block-stamp-call"), Vector(BlockedTool), "block-stamp").map { signals =>
         val invokes = signals.collect { case ti: ToolInvoke => ti }
         invokes should have size 1
         val invokeId = invokes.head._id

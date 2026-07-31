@@ -14,6 +14,7 @@ import sigil.workflow.{WorkflowStepKind, WorkflowStepSpec}
 import sigil.workflow.tool.{CreateWorkflowInput, CreateWorkflowTool}
 
 import scala.concurrent.duration.*
+import sigil.tool.ToolRoster
 
 /**
  * Head-to-head: which Cloudflare Workers AI model can author a known-shape
@@ -136,7 +137,7 @@ class CloudflareWorkflowAuthoringComparisonSpec extends AsyncWordSpec with Async
       model = model,
       system = system,
       messages = Vector(ProviderMessage.User(Vector(MessageContent.Text(task)))),
-      tools = Vector(new CreateWorkflowTool),
+      roster = ToolRoster(Vector(new CreateWorkflowTool)),
       builtInTools = Set.empty,
       toolChoice = ToolChoice.Required,
       // No fixed temperature so natural run-to-run variance shows in the
@@ -144,7 +145,7 @@ class CloudflareWorkflowAuthoringComparisonSpec extends AsyncWordSpec with Async
       generationSettings = GenerationSettings(maxOutputTokens = Some(16000), reasoningMode = ReasoningMode.Auto)
     )
     provider.call(pc).toList.map { events =>
-      events.collectFirst { case ProviderEvent.ToolCallComplete(_, in: CreateWorkflowInput) => in }
+      events.flatMap { case ProviderEvent.ToolCallComplete(_, wc) => wc.decodedInput; case _ => None }.collectFirst { case in: CreateWorkflowInput => in }
         .map(score)
         .getOrElse(s"no create_workflow call. events=${events.map(_.getClass.getSimpleName).distinct.mkString(",")}")
     }.handleError { t =>

@@ -85,7 +85,7 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           )
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId, payload),
+        ProviderEvent.toolCall(callId, RespondTool)(payload),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
@@ -105,7 +105,7 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val callId = CallId(s"call-$n")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId, RespondInput(
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
           topicLabel   = s"Status $n",
           topicSummary = "Status pulse.",
           content      = s"Step $n…",
@@ -207,7 +207,7 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           val callId = CallId("only-call")
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, RespondInput(
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
               topicLabel   = "Done",
               topicSummary = "Direct reply.",
               content      = "Hi.",

@@ -19,6 +19,7 @@ import sigil.tool.core.CoreTools
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tool.ToolContext
 import spice.http.HttpRequest
+import sigil.tool.WireCall
 
 /**
  * Conversation-corruption resistance regression — every persisted
@@ -117,7 +118,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map(_ => conv)
   }
 
-  private final class SingleToolCallProvider(toolName: String, input: ToolInput) extends Provider {
+  private final class SingleToolCallProvider(toolName: String, wireCall: WireCall) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -125,7 +126,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       Task.error(new UnsupportedOperationException("no wire"))
     override def call(in: ProviderCall): Stream[ProviderEvent] = Stream.emits(List(
       ProviderEvent.ToolCallStart(CallId("adv-1"), toolName),
-      ProviderEvent.ToolCallComplete(CallId("adv-1"), input),
+      ProviderEvent.ToolCallComplete(CallId("adv-1"), wireCall),
       ProviderEvent.Done(StopReason.ToolCall)
     ))
   }
@@ -181,7 +182,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         conv <- seedConversation(convId)
         evs  <- runAndReadEvents(
-                  new SingleToolCallProvider(SilentTool.name.value, AdversarialInput()),
+                  new SingleToolCallProvider(SilentTool.name.value, WireCall.decoded(SilentTool)(AdversarialInput())),
                   convId, conv, buildRequest(convId, Vector(SilentTool))
                 )
       } yield assertInvariantHolds(evs)
@@ -192,7 +193,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         conv <- seedConversation(convId)
         evs  <- runAndReadEvents(
-                  new SingleToolCallProvider(SyncThrowTool.name.value, AnotherInput()),
+                  new SingleToolCallProvider(SyncThrowTool.name.value, WireCall.decoded(SyncThrowTool)(AnotherInput())),
                   convId, conv, buildRequest(convId, Vector(SyncThrowTool))
                 )
       } yield assertInvariantHolds(evs)
@@ -203,7 +204,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         conv <- seedConversation(convId)
         evs  <- runAndReadEvents(
-                  new SingleToolCallProvider(MidStreamErrorTool.name.value, ThirdInput()),
+                  new SingleToolCallProvider(MidStreamErrorTool.name.value, WireCall.decoded(MidStreamErrorTool)(ThirdInput())),
                   convId, conv, buildRequest(convId, Vector(MidStreamErrorTool))
                 )
       } yield assertInvariantHolds(evs)

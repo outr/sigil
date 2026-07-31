@@ -54,10 +54,7 @@ class ThinkingChunkEmissionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val thinking = reasoningChunks.map(t => ProviderEvent.ThinkingDelta(t): ProviderEvent)
       val toolFlow: List[ProviderEvent] = List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(
-          callId,
-          RespondInput(topicLabel = "Greeting", topicSummary = "User greeted the agent", content = "Hi there!", endsTurn = true)
-        ),
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Greeting", topicSummary = "User greeted the agent", content = "Hi there!", endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       )
       Stream.emits(thinking ::: toolFlow)

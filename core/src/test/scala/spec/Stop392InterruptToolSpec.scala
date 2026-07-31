@@ -64,7 +64,7 @@ class Stop392InterruptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       Task.error(new UnsupportedOperationException("no wire"))
     override def call(in: ProviderCall): Stream[ProviderEvent] = Stream.emits(List(
       ProviderEvent.ToolCallStart(CallId("slow-1"), SlowBlockingTool.name.value),
-      ProviderEvent.ToolCallComplete(CallId("slow-1"), SlowInput()),
+      ProviderEvent.toolCall(CallId("slow-1"), SlowBlockingTool)(SlowInput()),
       ProviderEvent.Done(StopReason.ToolCall)
     ))
   }

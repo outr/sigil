@@ -10,8 +10,6 @@ import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, StopReason}
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
-import scala.reflect.ClassTag
-
 /**
  * One-shot LLM consultation. Two surfaces on the same object:
  *
@@ -83,33 +81,34 @@ case object ConsultTool extends Tool {
   /**
    * Framework-facing typed consult. Builds a one-shot provider request
    * forced to invoke `tool` (`tool_choice = "required"`), drains the
-   * result, and returns the parsed input cast to `I` (or `None` if the
-   * model didn't produce a tool call of the expected type).
+   * result, and returns the parsed input as the PASSED tool's `Input` —
+   * the result type is path-dependent on `tool`, so a mismatched type
+   * parameter is a compile error rather than a permanent `None`.
    */
-  def invoke[I <: ToolInput: ClassTag](sigil: Sigil,
-                                       modelId: Id[Model],
-                                       chain: List[ParticipantId],
-                                       systemPrompt: String,
-                                       userPrompt: String,
-                                       tool: Tool,
-                                       // A bounded `maxOutputTokens` is mandatory:
-                                       // thinking-mode models (qwen via llama.cpp,
-                                       // DeepSeek-R1, …) burn unbounded
-                                       // `reasoning_content` tokens before the
-                                       // structured tool_call lands — an unbounded
-                                       // classifier consult can run for minutes,
-                                       // emit tens of thousands of reasoning tokens,
-                                       // and hit `finish_reason: length` with zero
-                                       // tool_calls. Default is
-                                       // [[GenerationSettings.classifierDefault]]
-                                       // (bounded output + reasoning off). Framework-
-                                       // internal consults declare a per-shape tight
-                                       // cap via [[FrameworkConsult.consultSettings]]
-                                       // — pass [[settingsFor]] (or use
-                                       // [[invokeRouted]]) to apply it. Callers that
-                                       // need long-form generation override per call.
-                                       generationSettings: GenerationSettings =
-                                         GenerationSettings.classifierDefault): Task[Option[I]] =
+  def invoke[I <: ToolInput](sigil: Sigil,
+                             modelId: Id[Model],
+                             chain: List[ParticipantId],
+                             systemPrompt: String,
+                             userPrompt: String,
+                             tool: Tool { type Input = I },
+                             // A bounded `maxOutputTokens` is mandatory:
+                             // thinking-mode models (qwen via llama.cpp,
+                             // DeepSeek-R1, …) burn unbounded
+                             // `reasoning_content` tokens before the
+                             // structured tool_call lands — an unbounded
+                             // classifier consult can run for minutes,
+                             // emit tens of thousands of reasoning tokens,
+                             // and hit `finish_reason: length` with zero
+                             // tool_calls. Default is
+                             // [[GenerationSettings.classifierDefault]]
+                             // (bounded output + reasoning off). Framework-
+                             // internal consults declare a per-shape tight
+                             // cap via [[FrameworkConsult.consultSettings]]
+                             // — pass [[settingsFor]] (or use
+                             // [[invokeRouted]]) to apply it. Callers that
+                             // need long-form generation override per call.
+                             generationSettings: GenerationSettings =
+                               GenerationSettings.classifierDefault): Task[Option[I]] =
     invokeRich[I](sigil, modelId, chain, systemPrompt, userPrompt, tool, generationSettings).map {
       case ConsultOutcome.Parsed(v) => Some(v)
       case _                        => None
@@ -136,15 +135,14 @@ case object ConsultTool extends Tool {
    * this variant so they can surface a `FrameworkWorkflowNotice` on
    * `Truncated` / `Failed` rather than absorbing the gap.
    */
-  def invokeRich[I <: ToolInput: ClassTag](sigil: Sigil,
-                                           modelId: Id[Model],
-                                           chain: List[ParticipantId],
-                                           systemPrompt: String,
-                                           userPrompt: String,
-                                           tool: Tool,
-                                           generationSettings: GenerationSettings =
-                                             GenerationSettings.classifierDefault): Task[ConsultOutcome[I]] = {
-    val ct = summon[ClassTag[I]]
+  def invokeRich[I <: ToolInput](sigil: Sigil,
+                                 modelId: Id[Model],
+                                 chain: List[ParticipantId],
+                                 systemPrompt: String,
+                                 userPrompt: String,
+                                 tool: Tool { type Input = I },
+                                 generationSettings: GenerationSettings =
+                                   GenerationSettings.classifierDefault): Task[ConsultOutcome[I]] = {
     // Wrap the full chain (including model resolution and request
     // construction) so any throwable surfaces as `ConsultOutcome.Failed`
     // rather than escaping to the caller. `Task(...)` defers the
@@ -163,10 +161,13 @@ case object ConsultTool extends Tool {
         chain = chain
       )
       provider(request).toList.map { events =>
-        val parsed = events.collectFirst {
-          case ProviderEvent.ToolCallComplete(_, p) if ct.runtimeClass.isInstance(p) =>
-            p.asInstanceOf[I]
-        }
+        // `WireCall.inputFor` returns the typed input only for the passed
+        // tool's own calls — reference identity for a live-decoded call,
+        // name + surface decode for a replayed fixture stream.
+        val parsed: Option[I] = events.iterator.flatMap {
+          case ProviderEvent.ToolCallComplete(_, wc) => wc.inputFor(tool)
+          case _                                     => None
+        }.nextOption()
         parsed match {
           case Some(v) => ConsultOutcome.Parsed(v)
           case None =>
@@ -222,13 +223,13 @@ case object ConsultTool extends Tool {
    * the consult tool's own declaration, so no call site re-specifies
    * either.
    */
-  def invokeRouted[I <: ToolInput: ClassTag](sigil: Sigil,
-                                             tool: Tool & FrameworkConsult,
-                                             chain: List[ParticipantId],
-                                             fallbackModelId: Id[Model],
-                                             systemPrompt: String,
-                                             userPrompt: String,
-                                             generationSettings: Option[GenerationSettings] = None): Task[Option[I]] =
+  def invokeRouted[I <: ToolInput](sigil: Sigil,
+                                   tool: (Tool { type Input = I }) & FrameworkConsult,
+                                   chain: List[ParticipantId],
+                                   fallbackModelId: Id[Model],
+                                   systemPrompt: String,
+                                   userPrompt: String,
+                                   generationSettings: Option[GenerationSettings] = None): Task[Option[I]] =
     sigil.routedModelFor(tool.consultWorkType, chain, fallbackModelId).flatMap { modelId =>
       invoke[I](sigil, modelId, chain, systemPrompt, userPrompt, tool,
         generationSettings.getOrElse(settingsFor(tool)))

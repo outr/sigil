@@ -74,7 +74,7 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       Stream.emits(List(
         ProviderEvent.TextDelta("(narrating)"),
         ProviderEvent.ToolCallStart(cid, NoResponseTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(cid, NoResponseInput()),
+        ProviderEvent.toolCall(cid, NoResponseTool)(NoResponseInput()),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

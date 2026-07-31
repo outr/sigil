@@ -7,6 +7,7 @@ import rapid.Task
 import sigil.Sigil
 import sigil.db.Model
 import sigil.provider.{OneShotRequest, ProviderEvent}
+import sigil.tool.WireCall
 
 import java.io.File
 import scala.io.{Codec, Source}
@@ -196,9 +197,14 @@ object BFCLBench {
                              groundTruthOpt: Option[Json]): (Either[Throwable, Boolean], Option[(String, Json)]) = {
     try {
       val events = sigil.resolveProviderModel(request.modelId).provider.apply(request).toList.sync()
-      val toolCall = events.collectFirst {
-        case ProviderEvent.ToolCallComplete(_, input: DynamicToolInput) => input
-      }
+      val toolCall = events.collectFirst(Function.unlift {
+        case ProviderEvent.ToolCallComplete(_, WireCall.Decoded(call)) =>
+          call.input match {
+            case d: DynamicToolInput => Some(d)
+            case _                   => None
+          }
+        case _ => None
+      })
       // Which tool name did sigil route to — helpful when we see
       // funny arg mismatches.
       val observedName = events.collectFirst {
@@ -214,7 +220,7 @@ object BFCLBench {
           case None =>
             val summary = events.collect {
               case ProviderEvent.ToolCallStart(_, name) => s"ToolCallStart($name)"
-              case ProviderEvent.ToolCallComplete(_, input) => s"ToolCallComplete(${input.getClass.getSimpleName})"
+              case ProviderEvent.ToolCallComplete(_, wc) => s"ToolCallComplete(${wc.toolName})"
               case ProviderEvent.ContentBlockDelta(_, t) if t.nonEmpty => s"ContentBlockDelta(${t.take(80)})"
               case ProviderEvent.TextDelta(t) if t.nonEmpty => s"TextDelta(${t.take(80)})"
               case ProviderEvent.Error(msg) => s"Error($msg)"

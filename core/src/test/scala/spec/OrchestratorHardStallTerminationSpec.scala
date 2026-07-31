@@ -20,6 +20,8 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
+import sigil.tool.core.RespondTool
+import spec.GetMagicNumberTool
 
 /**
  * Regression coverage for the model-independent hard-stall terminal.
@@ -69,7 +71,7 @@ class OrchestratorHardStallTerminationSpec extends AsyncWordSpec with AsyncTaskS
       if (!canCallMagic)
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, "respond"),
-          ProviderEvent.ToolCallComplete(callId, RespondInput(
+          ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
             topicLabel   = "Wrapping up",
             topicSummary = "Summarising what was gathered",
             content      = "Here's what I found.",
@@ -80,7 +82,7 @@ class OrchestratorHardStallTerminationSpec extends AsyncWordSpec with AsyncTaskS
       else
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, "get_magic_number"),
-          ProviderEvent.ToolCallComplete(callId, GetMagicNumberInput()),
+          ProviderEvent.toolCall(callId, GetMagicNumberTool)(GetMagicNumberInput()),
           ProviderEvent.Done(StopReason.Complete)
         ))
     }

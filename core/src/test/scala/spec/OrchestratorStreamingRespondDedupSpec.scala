@@ -19,6 +19,7 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
+import sigil.tool.core.RespondTool
 
 /**
  * Regression coverage for the streaming-respond duplicate-delivery gap.
@@ -63,7 +64,7 @@ class OrchestratorStreamingRespondDedupSpec extends AsyncWordSpec with AsyncTask
         ProviderEvent.ToolCallStart(callId, "respond"),
         ProviderEvent.ContentBlockStart(callId, "Markdown", None),
         ProviderEvent.ContentBlockDelta(callId, RepeatedContent),
-        ProviderEvent.ToolCallComplete(callId, RespondInput(
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
           topicLabel   = "Connect Project",
           topicSummary = "Connecting the user's project",
           content      = RepeatedContent,

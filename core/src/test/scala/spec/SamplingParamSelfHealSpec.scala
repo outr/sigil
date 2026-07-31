@@ -59,10 +59,7 @@ class SamplingParamSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         val cid = CallId(s"respond-${temperatures.size()}")
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(
-            cid,
-            RespondInput(topicLabel = "T", topicSummary = "s", content = "ok", endsTurn = true)
-          ),
+          ProviderEvent.toolCall(cid, RespondTool)(RespondInput(topicLabel = "T", topicSummary = "s", content = "ok", endsTurn = true)),
           ProviderEvent.Done(StopReason.Complete)
         ))
       }

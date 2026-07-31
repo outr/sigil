@@ -10,11 +10,11 @@ import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, ProviderImage, StopReason, XmlToolCallSanitizer}
 import sigil.storage.StoredFileCategory
 import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ThinkingChunk, ToolDelta, XmlToolCallLeak}
-import sigil.tool.core.{CoreTools, FindCapabilityInput}
+import sigil.tool.core.{CoreTools, FindCapabilityInput, UnknownTool}
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent}
 import sigil.tool.ToolName
 import sigil.TurnContext
-import sigil.tool.{Tool, ToolInput, ToolPreconditionResult}
+import sigil.tool.{DecodeError, DecodedCall, JsonInput, RefusalPayload, Tool, ToolInput, ToolPreconditionResult, ToolRoster, WireCall}
 
 /**
  * Stateless, per-invocation bridge between the provider wire stream and the
@@ -108,19 +108,11 @@ object Orchestrator {
     // dropped every field not on the request, breaking apps that
     // pattern-match on `SpaceId` inside a tool.
     //
-    // Keyed by wire-level string so the provider's `activeToolName`
-    // lookup stays a plain String comparison (the provider reports
-    // tool names via the raw JSON wire).
-    // Sigil #274 — derive the dispatch roster from
-    // [[ConversationRequest.effectiveTools]], the SAME source the wire
-    // path uses ([[Provider.translateConversationCore]]). Without this,
-    // forced-synthesis recovery's stripped wire roster + the unfiltered
-    // orchestrator roster drift: the model could call an out-of-roster
-    // tool, the accumulator's parser would emit `JsonInput` (no schema
-    // to validate against), the orchestrator's `toolsByName` would find
-    // the real typed tool, and dispatch would `asInstanceOf` the
-    // JsonInput to the tool's typed `Input` → ClassCastException.
-    val toolsByName: Map[String, Tool] = request.effectiveTools.map(t => t.schema.name.value -> t).toMap
+    // Dispatch resolves against [[ConversationRequest.roster]] — the
+    // SAME instance the wire path hands the streaming accumulator via
+    // [[sigil.provider.ProviderCall.roster]], so both ends of the
+    // dispatch agree on what's in scope by construction.
+    val roster: ToolRoster = request.roster
     val state = new State()
     val convId = request.conversationId
 
@@ -194,7 +186,7 @@ object Orchestrator {
     }
 
     provider(request)
-      .flatMap(pe => translate(pe, sigil, request, conversation, toolsByName, state))
+      .flatMap(pe => translate(pe, sigil, request, conversation, roster, state))
       .map { signal => trackOpenEvent(state, signal); signal }
       .onErrorFinalize { t =>
         // Outer-level errors land here. Capture for the guarantee
@@ -360,7 +352,7 @@ object Orchestrator {
                         sigil: Sigil,
                         request: ConversationRequest,
                         conversation: Conversation,
-                        toolsByName: Map[String, Tool],
+                        roster: ToolRoster,
                         state: State): Stream[Signal] = {
     val caller = request.chain.lastOption.getOrElse {
       throw new IllegalStateException("ProviderRequest.chain is empty; orchestrator needs at least one participant.")
@@ -370,7 +362,7 @@ object Orchestrator {
     // Sigil #397 — whether discovery is in this turn's roster. Under
     // ToolPolicy.ActiveOnly/None/Exclusive it isn't, so corrective copy must
     // not name a `find_capability` the model can't call.
-    val findCapabilityAvailable: Boolean = toolsByName.contains("find_capability")
+    val findCapabilityAvailable: Boolean = roster.contains("find_capability")
     // Resolve once per turn — cheap registry lookup, used at every
     // Message-creation site below so clients render a UI-friendly
     // label without maintaining their own model cache.
@@ -461,7 +453,7 @@ object Orchestrator {
         )
         Stream.emits(createMessageSignal.toList ::: List(delta))
 
-      case ProviderEvent.ToolCallComplete(callId, input) if state.completedCallIds.contains(callId) =>
+      case ProviderEvent.ToolCallComplete(callId, _) if state.completedCallIds.contains(callId) =>
         // Safety net for unknown future provider variance. The known
         // split-finish case (OpenRouter+Chutes+Kimi per #228) is now
         // suppressed at the wire-decoder layer where the context is
@@ -477,31 +469,51 @@ object Orchestrator {
         )
         Stream.empty
 
-      case ProviderEvent.ToolCallComplete(callId, input) =>
+      case ProviderEvent.ToolCallComplete(callId, WireCall.Malformed(malformedName, decodeError, malformedRawArgs)) =>
+        // The resolved tool's args failed to parse or decode. Route the
+        // enriched refusal through the same handling a provider `Error`
+        // gets: the in-flight invoke settles as an orphan with the
+        // diagnostic and a paired Tool-role Failure re-triggers the agent.
+        translate(
+          ProviderEvent.Error(malformedArgsRefusal(roster, malformedName, decodeError, malformedRawArgs)),
+          sigil, request, conversation, roster, state
+        )
+
+      case ProviderEvent.ToolCallComplete(callId, wire) =>
         state.completedCallIds += callId
-        // Sigil bug #176 — some OpenAI-compat backends (observed:
-        // OpenRouter passing through Kimi-K2.5, also kindred to
-        // bug #163's DeepInfra streaming variance) ship a tool-call
-        // shape that doesn't trigger `ToolCallStart` upstream — either
-        // the leading `id`+`name` chunk is missing, or its keys arrive
-        // in a shape the accumulator's predicate doesn't recognize.
-        // The previous IllegalStateException tore down the whole agent
-        // loop on the first such request. Recover by synthesizing the
-        // ActiveCall + ToolInvoke event in-line: the typed `input`
-        // carries enough info — its runtime class maps deterministically
-        // to one of `request.tools` (each tool's input type is unique
-        // by construction), and we mint a fresh invokeId here.
+        // Rebind restores the tool binding for calls whose decode context
+        // differed from this dispatch's roster — replayed fixture streams
+        // (serialization cannot carry the live tool reference) and wire
+        // rosters narrowed by emergency shedding.
+        val dispatch: DecodedCall = wire.rebind(roster) match {
+          case WireCall.Decoded(c) => c
+          case WireCall.Unresolved(_, rawArgs) =>
+            // Name didn't resolve — dispatch through the UnknownTool
+            // sentinel so the call lands the same paired Tool-role
+            // Failure shape as any other tool failure, with the model's
+            // args preserved on the invoke and in the refusal body.
+            DecodedCall(UnknownTool)(JsonInput(rawArgs))
+          case m: WireCall.Malformed =>
+            // A rebind can surface Malformed for a replayed stream whose
+            // args no longer decode; route it like the direct case.
+            return translate(
+              ProviderEvent.Error(malformedArgsRefusal(roster, m.name, m.error, m.rawArgs)),
+              sigil, request, conversation, roster, state
+            )
+        }
+        val input: ToolInput = dispatch.input
+        // Some OpenAI-compat backends ship a tool-call shape that doesn't
+        // trigger `ToolCallStart` upstream — either the leading `id`+`name`
+        // chunk is missing, or its keys arrive in a shape the accumulator's
+        // predicate doesn't recognize. Recover by synthesizing the
+        // ActiveCall in-line; the WireCall carries the wire-level name.
         if (!state.activeCalls.contains(callId)) {
-          val toolName = request.tools.iterator.collectFirst {
-            case t if t.inputRW.definition.className.contains(input.getClass.getName) => t.schema.name.value
-          }.getOrElse("(unknown)")
           val invokeId = Event.id()
-          state.activeCalls(callId) = ActiveCall(toolName, invokeId)
+          state.activeCalls(callId) = ActiveCall(wire.toolName, invokeId)
           state.sawAnyToolCall = true
           scribe.warn(
             s"Synthesizing ActiveCall entry for orphan ToolCallComplete(callId=${callId.value}, " +
-              s"tool=$toolName) — provider didn't emit a recognizable ToolCallStart upstream. " +
-              "See sigil bug #176."
+              s"tool=${wire.toolName}) — provider didn't emit a recognizable ToolCallStart upstream."
           )
         }
         val active = state.activeCalls.remove(callId).getOrElse {
@@ -975,15 +987,15 @@ object Orchestrator {
               // [[ToolInvoke]]. The call/result pairing invariant holds
               // by construction; no synth / drain-and-guarantee
               // apparatus is needed.
-              // Sigil #271 — `toolsByName` falls back to the framework's
-              // [[sigil.tool.core.UnknownTool]] sentinel for names the model
-              // hallucinated. UnknownTool's executeResult emits the paired
-              // Tool-role Failure Message (visibility = Agents, origin =
-              // invokeId) and returns ToolResult.Failure, so the agent loop
-              // re-triggers and self-corrects instead of aborting with
-              // AgentRunawayException. Same shape as any other tool failure
-              // — the dispatch path has one branch, not two.
-              val tool: Tool = toolsByName.getOrElse(active.toolName, _root_.sigil.tool.core.UnknownTool)
+              //
+              // The tool comes packed with its typed input on the
+              // [[DecodedCall]] the accumulator produced — no name
+              // re-lookup, no fallback. Hallucinated names arrived as
+              // `WireCall.Unresolved` and were bound to the UnknownTool
+              // sentinel above, whose executeResult emits the paired
+              // Tool-role Failure Message so the agent loop re-triggers
+              // and self-corrects instead of aborting.
+              val tool: Tool = dispatch.tool
               // Sigil #411 — turn-scoped read dedup across iterations/retries.
               // #87 above dedups identical calls within ONE completion
               // (`state.dispatchedKeys`); a no-tool-call retry / recoverable
@@ -2128,6 +2140,14 @@ object Orchestrator {
       disposition = MessageDisposition.Failure(recoverable = true))
   }
 
+
+  /** Render the enriched refusal for a [[WireCall.Malformed]] — the
+    * resolved tool's args failed to parse or decode. */
+  private def malformedArgsRefusal(roster: ToolRoster,
+                                   name: String,
+                                   error: DecodeError,
+                                   rawArgs: fabric.Json): String =
+    RefusalPayload.malformedArgs(roster.resolve(name), name, error, rawArgs)
 
   /** Public alias for [[executeAtomic]] — exposes the consent +
     * precondition gates the agent loop runs before dispatching a

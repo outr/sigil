@@ -8,6 +8,7 @@ import sigil.provider.wire.OpenAIChatCompletions
 import sigil.provider.wire.OpenAIChatCompletions.{Config, ForcedCallShape, ResponseFormatMode, StreamState}
 import sigil.tool.ToolName
 import sigil.tool.core.{FindCapabilityTool, RespondTool}
+import sigil.tool.ToolRoster
 
 /**
  * Regression for sigil bug #173 part B — stream-side synthesis of
@@ -49,7 +50,7 @@ class ResponseFormatSynthesisSpec extends AnyWordSpec with Matchers {
     JsonParser(s"""{"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}""")
 
   private def runStream(mode: ResponseFormatMode, contentParts: List[String], tools: Vector[sigil.tool.Tool]): Vector[ProviderEvent] = {
-    val acc = new ToolCallAccumulator(tools, providerKey = "test")
+    val acc = new ToolCallAccumulator(ToolRoster(tools), providerKey = "test")
     val state = new StreamState(acc, Some(mode))
     val events = Vector.newBuilder[ProviderEvent]
     contentParts.foreach { p => events ++= OpenAIChatCompletions.parseChunk(contentChunk(p), state, cfg) }
@@ -82,8 +83,7 @@ class ResponseFormatSynthesisSpec extends AnyWordSpec with Matchers {
       val events = runStream(mode, List(args), tools)
       val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
       completes should have size 1
-      completes.head.input shouldBe a [sigil.tool.model.RespondInput]
-      val ri = completes.head.input.asInstanceOf[sigil.tool.model.RespondInput]
+      val ri = completes.head.call.inputFor(RespondTool).getOrElse(fail(s"expected a decoded respond call, got ${completes.head.call}"))
       ri.topicLabel shouldBe "hi"
       ri.content shouldBe "Hello"
     }
@@ -106,13 +106,13 @@ class ResponseFormatSynthesisSpec extends AnyWordSpec with Matchers {
       val events = runStream(mode, List(meta), tools)
       val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
       completes should have size 1
-      completes.head.input shouldBe a [sigil.tool.core.FindCapabilityInput]
-      completes.head.input.asInstanceOf[sigil.tool.core.FindCapabilityInput].keywords shouldBe "sleep wait delay"
+      val fc = completes.head.call.inputFor(FindCapabilityTool).getOrElse(fail(s"expected a decoded find_capability call, got ${completes.head.call}"))
+      fc.keywords shouldBe "sleep wait delay"
     }
 
     "throw ProviderStreamException when content lacks tool_name" in {
       val malformed = """{"arguments":{"keywords":"x"}}"""  // missing tool_name
-      val acc = new ToolCallAccumulator(tools, providerKey = "test")
+      val acc = new ToolCallAccumulator(ToolRoster(tools), providerKey = "test")
       val state = new StreamState(acc, Some(mode))
       OpenAIChatCompletions.parseChunk(contentChunk(malformed), state, cfg)
       val ex = intercept[sigil.provider.ProviderStreamException] {

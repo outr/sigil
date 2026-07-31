@@ -14,6 +14,7 @@ import sigil.tool.ToolContext
 import sigil.tool.{JsonInput, TextToolOutput, Tool, ToolName, ToolResult}
 import sigil.tool.model.RespondInput
 import rapid.Task
+import sigil.tool.ToolRoster
 
 /**
  * Coverage for `OpenAIChatCompletions.renderTools` per-tool strict-mode
@@ -59,7 +60,7 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
     model           = TestSigil.testModel(Model.id("test", "tools-dispatch-model")),
     system            = "test system",
     messages          = Vector(ProviderMessage.User(Vector(sigil.provider.MessageContent.Text("hi")))),
-    tools             = Vector(typedTool, JsonyTool),
+    roster = ToolRoster(Vector(typedTool, JsonyTool)),
     builtInTools      = Set.empty,
     toolChoice        = ToolChoice.Auto,
     generationSettings = GenerationSettings(),

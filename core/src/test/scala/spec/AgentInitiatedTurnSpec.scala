@@ -17,6 +17,7 @@ import sigil.tool.core.CoreTools
 import spice.http.HttpRequest
 
 import scala.concurrent.duration.*
+import sigil.tool.core.RespondTool
 
 /**
  * Coverage for sigil bug #132 — agent-initiated turns (greeting,
@@ -46,13 +47,10 @@ class AgentInitiatedTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       captured = Some(input.messages)
       Stream.emits(List(
         ProviderEvent.ToolCallStart(CallId("c-1"), "respond"),
-        ProviderEvent.ToolCallComplete(
-          CallId("c-1"),
-          _root_.sigil.tool.model.RespondInput(
+        ProviderEvent.toolCall(CallId("c-1"), RespondTool)(_root_.sigil.tool.model.RespondInput(
             topicLabel = "Greet", topicSummary = "agent-initiated test",
             content = "hi", endsTurn = true
-          )
-        ),
+          )),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

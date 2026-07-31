@@ -61,15 +61,12 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         val cid = CallId(s"respond-$n")
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(
-            cid,
-            RespondInput(
+          ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
               topicLabel    = "T",
               topicSummary  = "summary",
               content       = "ok",
               endsTurn      = true
-            )
-          ),
+            )),
           ProviderEvent.Done(StopReason.Complete)
         ))
       }

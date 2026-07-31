@@ -132,8 +132,7 @@ class WireRosterIncludesSuggestedSpec extends AsyncWordSpec with AsyncTaskSpec w
       val cid = CallId("clean-respond")
       Stream.emits(List[ProviderEvent](
         ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(
-          cid,
+        ProviderEvent.toolCall(cid, RespondTool)(
           _root_.sigil.tool.model.RespondInput(
             topicLabel   = "T",
             topicSummary = "test",

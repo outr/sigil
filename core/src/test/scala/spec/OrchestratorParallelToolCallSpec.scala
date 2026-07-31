@@ -66,8 +66,8 @@ class OrchestratorParallelToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callA, NoResponseTool.schema.name.value),
         ProviderEvent.ToolCallStart(callB, NoResponseTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callA, NoResponseInput(reason = Some("a"))),
-        ProviderEvent.ToolCallComplete(callB, NoResponseInput(reason = Some("b"))),
+        ProviderEvent.toolCall(callA, NoResponseTool)(NoResponseInput(reason = Some("a"))),
+        ProviderEvent.toolCall(callB, NoResponseTool)(NoResponseInput(reason = Some("b"))),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

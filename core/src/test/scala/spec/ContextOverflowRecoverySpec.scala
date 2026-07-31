@@ -18,6 +18,7 @@ import sigil.tool.model.{RespondInput, ResponseContent}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
+import sigil.tool.core.RespondTool
 
 /**
  * Regression for sigil #413 — a provider 400 for a request over the model's
@@ -56,7 +57,7 @@ class ContextOverflowRecoverySpec extends AsyncWordSpec with AsyncTaskSpec with 
         val cid = CallId(s"respond-${rapid.Unique()}")
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, "respond"),
-          ProviderEvent.ToolCallComplete(cid, RespondInput(
+          ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
             topicLabel   = TestTopicEntry.label,
             topicSummary = TestTopicEntry.summary,
             content      = "Recovered and finished the work.",

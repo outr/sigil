@@ -13,6 +13,7 @@ import sigil.provider.{
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
+import sigil.tool.ToolRoster
 
 /**
  * Coverage for [[LoadBalancedProvider]]. Two paths matter:
@@ -65,7 +66,7 @@ class LoadBalancedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     model = TestSigil.testModel(Model.id("test", "model")),
     system = "",
     messages = Vector.empty,
-    tools = Vector.empty,
+    roster = ToolRoster(Vector.empty),
     builtInTools = Set.empty,
     toolChoice = ToolChoice.None,
     generationSettings = GenerationSettings()

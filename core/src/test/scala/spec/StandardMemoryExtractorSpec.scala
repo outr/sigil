@@ -11,6 +11,7 @@ import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopPro
 import sigil.provider.{CallId, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
 import sigil.tool.consult.{ExtractedMemory, ExtractMemoriesInput}
 import spice.http.HttpRequest
+import sigil.tool.consult.ExtractMemoriesTool
 
 /**
  * Mechanical coverage for [[StandardMemoryExtractor]] against a
@@ -63,7 +64,7 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
           val callId = CallId("extract-keys")
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, toolName),
-            ProviderEvent.ToolCallComplete(callId, ExtractMemoriesInput(memories)),
+            ProviderEvent.toolCall(callId, ExtractMemoriesTool)(ExtractMemoriesInput(memories)),
             ProviderEvent.Done(StopReason.ToolCall)
           ))
         case other =>

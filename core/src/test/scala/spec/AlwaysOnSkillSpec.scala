@@ -148,7 +148,7 @@ class AlwaysOnSkillSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           val cid = CallId(s"respond-${rapid.Unique()}")
           Stream.emits(List[ProviderEvent](
             ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(cid, RespondInput(
+            ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
               topicLabel   = TestTopicEntry.label,
               topicSummary = TestTopicEntry.summary,
               content      = "Understood.",

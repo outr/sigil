@@ -45,7 +45,7 @@ class AgentLoopWorkflowLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec wi
       val cid = CallId(s"resp-${rapid.Unique()}")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(cid, RespondInput(
+        ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
           topicLabel   = "Reply",
           topicSummary = "agent loop lifecycle reply",
           content      = "Done.",

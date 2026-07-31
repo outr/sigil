@@ -20,6 +20,7 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.concurrent.duration.DurationInt
+import sigil.tool.core.ChangeModeTool
 
 /**
  * End-to-end regression for the cost-notice chain on agent turns —
@@ -133,17 +134,14 @@ class AtomicRespondCostNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with 
           Task.error(new UnsupportedOperationException("no wire"))
         override def call(input: ProviderCall): Stream[ProviderEvent] = Stream.emits(List(
           ProviderEvent.ToolCallStart(CallId("respond-1"), RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(
-            CallId("respond-1"),
-            RespondInput(
+          ProviderEvent.toolCall(CallId("respond-1"), RespondTool)(RespondInput(
               topicLabel   = "Greeting",
               topicSummary = "Hello world",
               content      = "Hello.",
               disposition  = ResponseDisposition.Success,
               endsTurn     = true,
               keywords     = Nil
-            )
-          ),
+            )),
           ProviderEvent.Done(StopReason.Complete),
           ProviderEvent.Usage(TokenUsage(promptTokens = 1000, completionTokens = 500, totalTokens = 1500))
         ))
@@ -184,10 +182,7 @@ class AtomicRespondCostNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with 
           Task.error(new UnsupportedOperationException("no wire"))
         override def call(input: ProviderCall): Stream[ProviderEvent] = Stream.emits(List(
           ProviderEvent.ToolCallStart(CallId("change-mode-1"), "change_mode"),
-          ProviderEvent.ToolCallComplete(
-            CallId("change-mode-1"),
-            ChangeModeInput(mode = "coding")
-          ),
+          ProviderEvent.toolCall(CallId("change-mode-1"), ChangeModeTool)(ChangeModeInput(mode = "coding")),
           ProviderEvent.Done(StopReason.ToolCall),
           ProviderEvent.Usage(TokenUsage(promptTokens = 2000, completionTokens = 25, totalTokens = 2025))
         ))

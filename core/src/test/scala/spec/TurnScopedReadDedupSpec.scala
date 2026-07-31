@@ -52,7 +52,7 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   /** Emits one call to `toolName` with the SAME `PingInput` — so two runs share
     * a canonical args key. */
-  private class PingProvider(toolName: String) extends Provider {
+  private class PingProvider(tool: CountingTool) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -61,8 +61,8 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val cid = CallId(s"c-${rapid.Unique()}")
       Stream.emits(List(
-        ProviderEvent.ToolCallStart(cid, toolName),
-        ProviderEvent.ToolCallComplete(cid, PingInput()),
+        ProviderEvent.ToolCallStart(cid, tool.name.value),
+        ProviderEvent.toolCall(cid, tool)(PingInput()),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }
@@ -94,8 +94,8 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val request  = requestFor(convId, tool, cacheRef)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _ <- Orchestrator.process(TestSigil, new PingProvider("ping_read"), request, conv).toList
-        _ <- Orchestrator.process(TestSigil, new PingProvider("ping_read"), request, conv).toList
+        _ <- Orchestrator.process(TestSigil, new PingProvider(tool), request, conv).toList
+        _ <- Orchestrator.process(TestSigil, new PingProvider(tool), request, conv).toList
       } yield withClue(s"cache keys=${cacheRef.get().keys}: ") {
         counter.get() shouldBe 1 // second iteration served from cache
       }
@@ -110,8 +110,8 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val request  = requestFor(convId, tool, cacheRef)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _ <- Orchestrator.process(TestSigil, new PingProvider("ping_write"), request, conv).toList
-        _ <- Orchestrator.process(TestSigil, new PingProvider("ping_write"), request, conv).toList
+        _ <- Orchestrator.process(TestSigil, new PingProvider(tool), request, conv).toList
+        _ <- Orchestrator.process(TestSigil, new PingProvider(tool), request, conv).toList
       } yield counter.get() shouldBe 2 // writes always execute — no double-submit hazard from cache
     }
   }

@@ -20,6 +20,7 @@ import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondInput}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic
+import sigil.tool.consult.ProgressReflectionTool
 
 /**
  * Sigil #379 — a stall/progress-checkpoint intervention is a
@@ -74,31 +75,25 @@ class StallInterventionContinuesSpec extends AsyncWordSpec with AsyncTaskSpec wi
         if (isReflectorCall)
           List(
             ProviderEvent.ToolCallStart(callId, "report_progress"),
-            ProviderEvent.ToolCallComplete(
-              callId,
-              _root_.sigil.tool.consult.ProgressReflectionInput(
+            ProviderEvent.toolCall(callId, ProgressReflectionTool)(_root_.sigil.tool.consult.ProgressReflectionInput(
                 currentStatus      = "still looping on change_mode",
                 meaningfulProgress = false,
                 remainingSteps     = "wrap up and respond",
                 stuckOn            = Some("looping"),
                 shouldAskUser      = false
-              )
-            ),
+              )),
             ProviderEvent.Done(StopReason.Complete)
           )
         else input.toolChoice match {
           case ToolChoice.Specific(name) if name == RespondTool.schema.name =>
             List(
               ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-              ProviderEvent.ToolCallComplete(
-                callId,
-                RespondInput(
+              ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
                   topicLabel   = "Cap-synth",
                   topicSummary = "forced-synthesis at the ceiling",
                   content      = "Synthesised at the iteration ceiling.",
                   endsTurn     = true
-                )
-              ),
+                )),
               ProviderEvent.Done(StopReason.Complete)
             )
           case _ =>
@@ -109,7 +104,7 @@ class StallInterventionContinuesSpec extends AsyncWordSpec with AsyncTaskSpec wi
               // false) WITHOUT an identical-call streak — so the HARD-stall
               // (terminal) path never fires and we exercise the #379 continue
               // path, not the genuine-runaway force path.
-              ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding", reason = Some(s"step-${rapid.Unique()}"))),
+              ProviderEvent.toolCall(callId, ChangeModeTool)(ChangeModeInput(mode = "coding", reason = Some(s"step-${rapid.Unique()}"))),
               ProviderEvent.Done(StopReason.ToolCall)
             )
         }

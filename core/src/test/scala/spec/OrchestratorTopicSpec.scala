@@ -14,6 +14,7 @@ import sigil.tool.core.RespondTool
 import sigil.tool.consult.TopicClassifierInput
 import sigil.tool.model.{RespondInput}
 import spice.http.HttpRequest
+import sigil.tool.consult.TopicClassifierTool
 
 /**
  * Verifies the orchestrator's two-step topic-resolution flow end-to-end
@@ -58,7 +59,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           val callId = CallId("stub-classify")
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, "classify_topic_shift"),
-            ProviderEvent.ToolCallComplete(callId, TopicClassifierInput(kind)),
+            ProviderEvent.toolCall(callId, new TopicClassifierTool(Nil))(TopicClassifierInput(kind)),
             ProviderEvent.Done(StopReason.ToolCall)
           ))
         case None =>
@@ -69,7 +70,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
           ProviderEvent.ContentBlockStart(callId, "Markdown", None),
           ProviderEvent.ContentBlockDelta(callId, "scripted content"),
-          ProviderEvent.ToolCallComplete(callId, this.input),
+          ProviderEvent.toolCall(callId, RespondTool)(this.input),
           ProviderEvent.Done(StopReason.ToolCall)
         ))
       }

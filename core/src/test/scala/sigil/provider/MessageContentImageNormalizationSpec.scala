@@ -7,6 +7,7 @@ import sigil.GlobalSpace
 import sigil.db.Model
 import spec.TestSigil
 import spice.http.HttpRequest
+import sigil.tool.ToolRoster
 
 /**
  * `normalizeStoredImages` must materialize internally-stored images
@@ -37,7 +38,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
       model = TestSigil.testModel(Model.id("test", "vision-model")),
       system = "",
       messages = Vector(ProviderMessage.User(content.toVector)),
-      tools = Vector.empty,
+      roster = ToolRoster(Vector.empty),
       builtInTools = Set.empty,
       toolChoice = ToolChoice.Auto,
       generationSettings = GenerationSettings()

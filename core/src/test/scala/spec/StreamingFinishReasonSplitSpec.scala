@@ -6,6 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.{ProviderEvent, ToolCallAccumulator}
 import sigil.provider.wire.OpenAIChatCompletions
 import sigil.provider.wire.OpenAIChatCompletions.{Config, StreamState}
+import sigil.tool.ToolRoster
 
 /**
  * Sigil bug #228 — OpenAI-compatible proxies (observed: OpenRouter
@@ -38,7 +39,7 @@ class StreamingFinishReasonSplitSpec extends AnyWordSpec with Matchers {
   )
 
   private def freshState(): StreamState =
-    new StreamState(new ToolCallAccumulator(Vector.empty))
+    new StreamState(new ToolCallAccumulator(ToolRoster.empty))
 
   /** Single SSE chunk announcing a tool_calls header. The accumulator
     * picks up the call id + name so a later `acc.complete()` has

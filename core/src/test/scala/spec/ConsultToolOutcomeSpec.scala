@@ -77,7 +77,7 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "apply bounded maxOutputTokens + reasoningMode.Off by default when caller omits generationSettings" in {
       val provider = new ScriptedProvider(List(
         ProviderEvent.ToolCallStart(CallId("p1"), ProbeTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(CallId("p1"), ProbeInput("ok")),
+        ProviderEvent.toolCall(CallId("p1"), ProbeTool)(ProbeInput("ok")),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
       withProvider(provider) {
@@ -115,7 +115,7 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "return Parsed when the model emits the expected tool_call" in {
       val provider = new ScriptedProvider(List(
         ProviderEvent.ToolCallStart(CallId("p1"), ProbeTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(CallId("p1"), ProbeInput("yes")),
+        ProviderEvent.toolCall(CallId("p1"), ProbeTool)(ProbeInput("yes")),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
       withProvider(provider) {

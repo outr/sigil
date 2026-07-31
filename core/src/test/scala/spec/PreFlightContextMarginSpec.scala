@@ -11,6 +11,7 @@ import sigil.provider.{
   RequestOverBudgetException, ToolChoice
 }
 import spice.http.HttpRequest
+import sigil.tool.ToolRoster
 
 /**
  * Sigil #301 — `preFlightGate` must apply a safety margin to
@@ -94,7 +95,7 @@ class PreFlightContextMarginSpec extends AsyncWordSpec with AsyncTaskSpec with M
       model              = m,
       system             = system,
       messages           = messages,
-      tools              = Vector.empty,
+      roster = ToolRoster(Vector.empty),
       builtInTools       = Set.empty,
       toolChoice         = ToolChoice.None,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),

@@ -176,7 +176,7 @@ class ConsecutiveAssistantsMergeSpec extends AsyncWordSpec with AsyncTaskSpec wi
       }
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId, payload),
+        ProviderEvent.toolCall(callId, RespondTool)(payload),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

@@ -43,10 +43,7 @@ class RouteResolvedSignalSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       Task.error(new UnsupportedOperationException("no wire"))
     override def call(input: ProviderCall): Stream[ProviderEvent] = Stream.emits(List(
       ProviderEvent.ToolCallStart(CallId(s"r-${rapid.Unique()}"), RespondTool.schema.name.value),
-      ProviderEvent.ToolCallComplete(
-        CallId(s"r-${rapid.Unique()}"),
-        RespondInput(topicLabel = "RR", topicSummary = "spec", content = "ok", endsTurn = true)
-      ),
+      ProviderEvent.toolCall(CallId(s"r-${rapid.Unique()}"), RespondTool)(RespondInput(topicLabel = "RR", topicSummary = "spec", content = "ok", endsTurn = true)),
       ProviderEvent.Done(StopReason.Complete)
     ))
   }

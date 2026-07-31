@@ -68,7 +68,7 @@ class ConsultLargeShapeSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           val callId = CallId("large-shape")
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, toolName),
-            ProviderEvent.ToolCallComplete(callId, SummarizationInput(summary, tokenEstimate = summary.length / 4)),
+            ProviderEvent.toolCall(callId, SummarizationTool)(SummarizationInput(summary, tokenEstimate = summary.length / 4)),
             ProviderEvent.Done(StopReason.ToolCall)
           ))
         case other =>

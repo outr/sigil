@@ -12,6 +12,7 @@ import sigil.tool.consult.TopicClassifierInput
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
+import sigil.tool.consult.TopicClassifierTool
 
 /**
  * A label proposed before any user input reaches the context
@@ -53,7 +54,7 @@ class BootstrapTopicShiftSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val callId = CallId(s"classify-${rapid.Unique()}")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, "classify_topic_shift"),
-        ProviderEvent.ToolCallComplete(callId, TopicClassifierInput(kind = scriptedKind)),
+        ProviderEvent.toolCall(callId, new TopicClassifierTool(Nil))(TopicClassifierInput(kind = scriptedKind)),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

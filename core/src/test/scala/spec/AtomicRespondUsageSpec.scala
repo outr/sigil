@@ -50,17 +50,14 @@ class AtomicRespondUsageSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val callId = CallId("respond-atomic")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(
-          callId,
-          RespondInput(
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
             topicLabel    = "Greeting",
             topicSummary  = "Hello world",
             content       = "Hello, world.",
             disposition   = ResponseDisposition.Success,
             endsTurn      = true,
             keywords      = Nil
-          )
-        ),
+          )),
         ProviderEvent.Done(StopReason.Complete),
         ProviderEvent.Usage(TokenUsage(promptTokens = 100, completionTokens = 20, totalTokens = 120))
       ))

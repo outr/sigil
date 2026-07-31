@@ -52,7 +52,7 @@ class RosterSchemaSizeSpec extends AnyWordSpec with Matchers {
     override def call(input: ProviderCall): Stream[_root_.sigil.provider.ProviderEvent] = Stream.empty
     override def httpRequestFor(input: ProviderCall): Task[spice.http.HttpRequest] =
       Task.error(new RuntimeException("not implemented"))
-    def public(tools: Vector[_root_.sigil.tool.Tool], tok: Tokenizer): Int = estimateRoster(tools, tok)
+    def public(tools: Vector[_root_.sigil.tool.Tool], tok: Tokenizer): Int = estimateRoster(_root_.sigil.tool.ToolRoster(tools), tok)
   }
 
   "Provider.estimateRoster" should {

@@ -15,6 +15,7 @@ import sigil.provider.cloudflare.CloudflareProvider
 import sigil.tool.Tool
 import sigil.tool.core.{FindCapabilityTool, NoResponseTool, RespondTool}
 import sigil.tool.model.RespondInput
+import sigil.tool.ToolRoster
 
 /**
  * Live reliability characterization for Kimi-K2.6 hosted on Cloudflare
@@ -88,7 +89,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     model      = TestSigil.testModel(modelId),
     system       = system,
     messages     = Vector(ProviderMessage.User(Vector(MessageContent.Text(userMessage)))),
-    tools        = tools,
+    roster = ToolRoster(tools),
     builtInTools = Set.empty,
     toolChoice   = toolChoice,
     generationSettings = GenerationSettings(
@@ -267,7 +268,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           ProviderMessage.Assistant(content = "Got it — blue is a great color!", toolCalls = Nil),
           ProviderMessage.User(Vector(MessageContent.Text("What did I just tell you my favorite color was?")))
         ),
-        tools        = Vector(RespondTool),
+        roster = ToolRoster(Vector(RespondTool)),
         builtInTools = Set.empty,
         toolChoice   = ToolChoice.Required,
         generationSettings = GenerationSettings(

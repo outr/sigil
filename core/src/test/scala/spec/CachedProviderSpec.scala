@@ -16,6 +16,7 @@ import sigil.tool.core.RespondTool
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
+import sigil.tool.ToolRoster
 
 /**
  * Verifies [[CachedProvider]] record / replay semantics and the
@@ -108,7 +109,7 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           ),
           sigil.provider.ProviderMessage.ToolResult(toolCallId = "id-abc-123", content = "ok")
         ),
-        tools = Vector.empty,
+        roster = ToolRoster(Vector.empty),
         builtInTools = Set.empty,
         toolChoice = sigil.provider.ToolChoice.Auto,
         generationSettings = GenerationSettings(temperature = Some(0.0))

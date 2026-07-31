@@ -5,6 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.provider.ToolCallAccumulator
+import sigil.tool.ToolRoster
 
 /**
  * Coverage for sigil bug #163 — DeepInfra streams `tool_calls: null`
@@ -23,7 +24,7 @@ class OpenAIChatCompletionsNullToolCallsSpec extends AsyncWordSpec with AsyncTas
     providerName      = "Test"
   )
 
-  private def freshState = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(Vector.empty))
+  private def freshState = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(ToolRoster.empty))
 
   "OpenAIChatCompletions.parseChunk (Bug #163)" should {
 

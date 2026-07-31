@@ -23,6 +23,8 @@ import spice.http.HttpRequest
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import sigil.tool.consult.SummarizationTool
+import spec.GetMagicNumberTool
 
 /**
  * The Summaries stream must not thrash the prompt cache or grow
@@ -79,13 +81,13 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         if (n < 3)
           List(
             ProviderEvent.ToolCallStart(callId, GetMagicNumberTool.name.value),
-            ProviderEvent.ToolCallComplete(callId, GetMagicNumberInput()),
+            ProviderEvent.toolCall(callId, GetMagicNumberTool)(GetMagicNumberInput()),
             ProviderEvent.Done(StopReason.ToolCall)
           )
         else
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, RespondInput(
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
               topicLabel   = TestTopicEntry.label,
               topicSummary = TestTopicEntry.summary,
               content      = "Done.",
@@ -202,7 +204,7 @@ class SummaryCacheStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val callId = CallId(s"sum-${rapid.Unique()}")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, "summarize_conversation"),
-        ProviderEvent.ToolCallComplete(callId, SummarizationInput(s"Rolling summary v$n.", tokenEstimate = 10)),
+        ProviderEvent.toolCall(callId, SummarizationTool)(SummarizationInput(s"Rolling summary v$n.", tokenEstimate = 10)),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }

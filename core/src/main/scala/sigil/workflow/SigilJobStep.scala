@@ -125,15 +125,16 @@ final case class SigilJobStep(input: JobStepInput,
         // tool wants rather than handing it a bare `Str` ("Expected JSON object
         // but got Str") — the "leaf decides the call, tool applies it" recipe.
         val coerced: Json = SigilJobStep.coerceStringArgs(argsJson)
-        val parsed: Either[Throwable, Any] = scala.util.Try(tool.inputRW.write(coerced)).toEither
+        // `tool.inputRW` is path-dependently typed as RW[tool.Input], so the
+        // decoded value IS the tool's input — no cast.
+        val parsed: Either[Throwable, tool.Input] = scala.util.Try(tool.inputRW.write(coerced)).toEither
         parsed match {
           case Left(err) =>
             Task.error(new RuntimeException(
               s"Workflow step '${input.id}' failed to parse arguments for '$toolName': ${err.getMessage}"
             ))
-          case Right(decoded) =>
+          case Right(typedInput) =>
             SyntheticTurnContext.build(host, workflow).flatMap { ctx =>
-              val typedInput = decoded.asInstanceOf[ToolInput]
               tool.execute(typedInput, ctx, Event.id()).toList.flatMap { signals =>
                 // #354 — a tool's real result rides the settling `ToolDelta`'s `output` (the typed
                 // `ToolOutput`); `ToolResults` was folded into the invoke (#265), so tools like

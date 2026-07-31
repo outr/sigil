@@ -19,6 +19,7 @@ import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolR
 import java.nio.file.{Files, Path}
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import sigil.tool.ToolRoster
 
 /**
  * AGENTIC coding eval (real coding, not a one-shot puzzle): each model
@@ -196,22 +197,22 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       if (iter >= maxIters) Task.pure(s"(hit ${maxIters}-iteration cap)")
       else {
         val pc = ProviderCall(
-          model = model, system = system, messages = messages, tools = toolList.toVector,
+          model = model, system = system, messages = messages, roster = ToolRoster(toolList.toVector),
           builtInTools = Set.empty, toolChoice = ToolChoice.Auto,
           generationSettings = GenerationSettings(maxOutputTokens = Some(16000), reasoningMode = ReasoningMode.Off)
         )
         provider.call(pc).toList.flatMap { events =>
           val text = events.collect { case ProviderEvent.TextDelta(t) => t; case ProviderEvent.ContentBlockDelta(_, t) => t }.mkString
           val names = events.collect { case ProviderEvent.ToolCallStart(CallId(id), n) => id -> n }.toMap
-          val calls = events.collect { case ProviderEvent.ToolCallComplete(CallId(id), in) => (id, names.getOrElse(id, ""), in) }
+          val calls = events.collect { case ProviderEvent.ToolCallComplete(CallId(id), wc) => (id, names.getOrElse(id, wc.toolName), wc) }
           scala.util.Try(java.nio.file.Files.writeString(
             java.nio.file.Path.of(s"/tmp/ag-${model._id.value.replaceAll("[^A-Za-z0-9]", "_")}-i$iter.txt"),
             s"events=${events.map(_.getClass.getSimpleName).distinct.mkString(",")}\ncalls=[${calls.map(_._2).mkString(",")}]\n---TEXT(${text.length})---\n${text.take(1500)}"))
           if (calls.isEmpty) Task.pure(s"(agent stopped after $iter iterations without passing)")
           else {
-            val toolCallMsgs = calls.map { case (id, n, in) => ToolCallMessage(id, n, byName.get(n).map(_.argsJson(in)).getOrElse("{}")) }
-            val results = calls.map { case (id, n, in) =>
-              val out = byName.get(n).map(_.run(in)).getOrElse(s"(unknown tool: $n)")
+            val toolCallMsgs = calls.map { case (id, n, wc) => ToolCallMessage(id, n, wc.decodedInput.flatMap(in => byName.get(n).map(_.argsJson(in))).getOrElse("{}")) }
+            val results = calls.map { case (id, n, wc) =>
+              val out = wc.decodedInput.flatMap(in => byName.get(n).map(_.run(in))).getOrElse(s"(unknown tool: $n)")
               ProviderMessage.ToolResult(id, out)
             }
             val next = messages ++ Vector(ProviderMessage.Assistant(text, toolCallMsgs)) ++ results

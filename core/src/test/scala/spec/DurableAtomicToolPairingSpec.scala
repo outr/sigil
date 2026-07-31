@@ -64,7 +64,7 @@ class DurableAtomicToolPairingSpec extends AsyncWordSpec with AsyncTaskSpec with
       )
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, "respond"),
-        ProviderEvent.ToolCallComplete(cid, respondInput),
+        ProviderEvent.toolCall(cid, RespondTool)(respondInput),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

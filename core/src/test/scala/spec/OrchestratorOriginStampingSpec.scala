@@ -62,7 +62,7 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
       Task.pure(ToolResult.failure("deliberate failure for origin coverage"))
   }
 
-  private class StubProvider(toolName: String, callIdValue: String) extends Provider {
+  private class StubProvider(tool: Tool { type Input = NoResponseInput }, callIdValue: String) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -71,8 +71,8 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val cid = CallId(callIdValue)
       Stream.emits(List(
-        ProviderEvent.ToolCallStart(cid, toolName),
-        ProviderEvent.ToolCallComplete(cid, NoResponseInput()),
+        ProviderEvent.ToolCallStart(cid, tool.name.value),
+        ProviderEvent.toolCall(cid, tool)(NoResponseInput()),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
@@ -102,7 +102,7 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
 
     "settle the dispatching ToolInvoke via a ToolDelta(target = invokeId, outcome = Success)" in {
       runWith(
-        provider = new StubProvider(SuccessTool.name.value, "success-call"),
+        provider = new StubProvider(SuccessTool, "success-call"),
         tools    = Vector(SuccessTool),
         suffix   = "success"
       ).map { signals =>
@@ -119,7 +119,7 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
 
     "settle the dispatching ToolInvoke via a ToolDelta(target = invokeId, outcome = Failure) when the tool resolves to a logical Failure" in {
       runWith(
-        provider = new StubProvider(FailureTool.name.value, "failure-call"),
+        provider = new StubProvider(FailureTool, "failure-call"),
         tools    = Vector(FailureTool),
         suffix   = "failure"
       ).map { signals =>

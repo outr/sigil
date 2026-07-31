@@ -89,7 +89,7 @@ case class AnthropicProvider(apiKey: String,
       .flatMap(chunk => AnthropicBatch.submitChunk(chunk.toList, apiKey, baseUrl, authMode))
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
-    val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = "anthropic"))
+    val state = new StreamState(new ToolCallAccumulator(input.roster, providerKey = "anthropic"))
     Stream.force(
       for {
         raw         <- httpRequestFor(input)

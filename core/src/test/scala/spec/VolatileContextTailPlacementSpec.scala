@@ -15,6 +15,7 @@ import sigil.provider.openai.OpenAIProvider
 import sigil.provider.wire.OpenAIChatCompletions
 import sigil.tool.ToolName
 import sigil.tool.core.CoreTools
+import sigil.tool.ToolRoster
 
 /**
  * Prompt caches (Anthropic `cache_control`, Gemini implicit + explicit
@@ -189,7 +190,7 @@ class VolatileContextTailPlacementSpec extends AnyWordSpec with Matchers {
         model              = TestSigil.testModel(anthropicModelId),
         system             = "stable system prompt",
         messages           = Vector(ProviderMessage.User("hello")),
-        tools              = Vector.empty,
+        roster = ToolRoster(Vector.empty),
         builtInTools       = Set.empty,
         toolChoice         = sigil.provider.ToolChoice.Auto,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50)),

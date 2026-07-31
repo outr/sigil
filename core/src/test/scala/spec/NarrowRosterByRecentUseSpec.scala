@@ -79,7 +79,7 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   ToolInput.register(summon[RW[NarrowingStubInput]])
 
-  private def stubTool(n: String): Tool = new Tool {
+  private def stubTool(n: String): Tool { type Input = NarrowingStubInput } = new Tool {
     type Input  = NarrowingStubInput
     type Output = TextToolOutput
     val inputRW  = summon[RW[NarrowingStubInput]]
@@ -91,8 +91,8 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
   }
 
   private val BaselineSize = 10
-  private val Baseline: List[Tool] = (1 to BaselineSize).toList.map(i => stubTool(s"app_tool_$i"))
-  private val UsedTool: Tool = Baseline(2)  // app_tool_3
+  private val Baseline: List[Tool { type Input = NarrowingStubInput }] = (1 to BaselineSize).toList.map(i => stubTool(s"app_tool_$i"))
+  private val UsedTool: Tool { type Input = NarrowingStubInput } = Baseline(2) // app_tool_3
 
   /** Scripts the Shopkeeper pattern — a single-iteration turn that
     * emits both a non-terminal tool call AND a terminal respond in
@@ -114,10 +114,11 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val respondCid = CallId(s"call-$n-respond")
       Stream.emits(List[ProviderEvent](
         ProviderEvent.ToolCallStart(toolCid, UsedTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(toolCid, NarrowingStubInput(s"args-$n")),
+        ProviderEvent.toolCall(toolCid, UsedTool)(NarrowingStubInput(s"args-$n")),
         ProviderEvent.ToolCallStart(respondCid, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(
+        ProviderEvent.toolCall(
           respondCid,
+          _root_.sigil.tool.core.RespondTool)(
           _root_.sigil.tool.model.RespondInput(
             topicLabel   = "T",
             topicSummary = "test",

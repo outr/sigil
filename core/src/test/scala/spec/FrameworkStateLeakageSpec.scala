@@ -73,7 +73,7 @@ class FrameworkStateLeakageSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val request = buildRequest(convId)
       val provider = new FixedProvider(List(
         ProviderEvent.ToolCallStart(CallId("change-mode-1"), "change_mode"),
-        ProviderEvent.ToolCallComplete(CallId("change-mode-1"), ChangeModeInput(mode = "coding")),
+        ProviderEvent.toolCall(CallId("change-mode-1"), ChangeModeTool)(ChangeModeInput(mode = "coding")),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
       for {
@@ -96,8 +96,8 @@ class FrameworkStateLeakageSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val request = buildRequest(convId)
       val provider = new FixedProvider(List(
         ProviderEvent.ToolCallStart(CallId("change-mode-dup"), "change_mode"),
-        ProviderEvent.ToolCallComplete(CallId("change-mode-dup"), ChangeModeInput(mode = "coding")),
-        ProviderEvent.ToolCallComplete(CallId("change-mode-dup"), ChangeModeInput(mode = "coding")),
+        ProviderEvent.toolCall(CallId("change-mode-dup"), ChangeModeTool)(ChangeModeInput(mode = "coding")),
+        ProviderEvent.toolCall(CallId("change-mode-dup"), ChangeModeTool)(ChangeModeInput(mode = "coding")),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
       for {
@@ -126,9 +126,9 @@ class FrameworkStateLeakageSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val request = buildRequest(convId)
       val provider = new FixedProvider(List(
         ProviderEvent.ToolCallStart(CallId("change-mode-a"), "change_mode"),
-        ProviderEvent.ToolCallComplete(CallId("change-mode-a"), ChangeModeInput(mode = "coding")),
+        ProviderEvent.toolCall(CallId("change-mode-a"), ChangeModeTool)(ChangeModeInput(mode = "coding")),
         ProviderEvent.ToolCallStart(CallId("change-mode-b"), "change_mode"),
-        ProviderEvent.ToolCallComplete(CallId("change-mode-b"), ChangeModeInput(mode = "coding")),
+        ProviderEvent.toolCall(CallId("change-mode-b"), ChangeModeTool)(ChangeModeInput(mode = "coding")),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
       for {

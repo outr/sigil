@@ -5,6 +5,8 @@ import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
 import sigil.tool.core.RespondOptionsTool
 import sigil.tool.model.RespondOptionsInput
+import sigil.tool.ToolRoster
+import sigil.tool.WireCall
 
 /**
  * Sigil #408 — a weak model can emit mechanically-recoverable malformed tool
@@ -20,7 +22,7 @@ class MalformedToolArgsRepairSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private def run(args: String): Vector[ProviderEvent] = {
-    val acc = new ToolCallAccumulator(Vector(RespondOptionsTool), providerKey = "test")
+    val acc = new ToolCallAccumulator(ToolRoster(Vector(RespondOptionsTool)), providerKey = "test")
     acc.start(0, CallId("c1"), "respond_options")
     acc.appendArgs(0, args)
     acc.complete()
@@ -33,7 +35,7 @@ class MalformedToolArgsRepairSpec extends AnyWordSpec with Matchers {
       val events = run(args)
       withClue(s"events=${events.map(_.getClass.getSimpleName)}\n") {
         events.collect { case e: ProviderEvent.Error => e } shouldBe empty
-        events.collectFirst { case c: ProviderEvent.ToolCallComplete => c.input } match {
+        events.collectFirst { case ProviderEvent.ToolCallComplete(_, WireCall.Decoded(c)) => c.input } match {
           case Some(in: RespondOptionsInput) => in.options.map(_.value) shouldBe List("a", "b")
           case other                         => fail(s"expected RespondOptionsInput, got $other")
         }
@@ -42,7 +44,7 @@ class MalformedToolArgsRepairSpec extends AnyWordSpec with Matchers {
 
     "strip a trailing comma before a close" in {
       val args = """{"prompt":"pick","allowMultiple":false,"options":[{"label":"a","value":"a"},]}"""
-      run(args).collectFirst { case c: ProviderEvent.ToolCallComplete => c.input } match {
+      run(args).collectFirst { case ProviderEvent.ToolCallComplete(_, WireCall.Decoded(c)) => c.input } match {
         case Some(in: RespondOptionsInput) => in.options.map(_.value) shouldBe List("a")
         case other                         => fail(s"expected RespondOptionsInput, got $other")
       }
@@ -52,18 +54,21 @@ class MalformedToolArgsRepairSpec extends AnyWordSpec with Matchers {
       // `{{item}}`-style template text must survive verbatim — repair is
       // structural only, never inside a string.
       val args = """{"prompt":"use {{item}} here","allowMultiple":false,"options":[{"label":"a","value":"a"}]}"""
-      run(args).collectFirst { case c: ProviderEvent.ToolCallComplete => c.input } match {
+      run(args).collectFirst { case ProviderEvent.ToolCallComplete(_, WireCall.Decoded(c)) => c.input } match {
         case Some(in: RespondOptionsInput) => in.prompt shouldBe "use {{item}} here"
         case other                         => fail(s"expected RespondOptionsInput, got $other")
       }
     }
 
-    "still surface a hard error for genuinely-unrecoverable args (repair is bounded)" in {
+    "still surface a hard failure for genuinely-unrecoverable args (repair is bounded)" in {
       // Missing comma + missing close — no mechanical rule recovers this.
+      // Surfaces as a Malformed WireCall preserving the raw text verbatim.
       val args = """{"prompt":"pick","allowMultiple":false,"options":[{"label":"a" "value":"a"}"""
       val events = run(args)
-      events.collect { case e: ProviderEvent.Error => e } should not be empty
-      events.collectFirst { case c: ProviderEvent.ToolCallComplete => c } shouldBe None
+      val malformed = events.collect { case ProviderEvent.ToolCallComplete(_, m: WireCall.Malformed) => m }
+      malformed should not be empty
+      malformed.head.rawArgs shouldBe fabric.Str(args)
+      events.collectFirst { case ProviderEvent.ToolCallComplete(_, d: WireCall.Decoded) => d } shouldBe None
     }
   }
 }

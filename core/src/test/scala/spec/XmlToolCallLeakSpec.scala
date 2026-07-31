@@ -262,10 +262,7 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val cid = CallId("respond-clean")
       Stream.emits(List[ProviderEvent](
         ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(
-          cid,
-          RespondInput(topicLabel = "T", topicSummary = "summary", content = "ok", endsTurn = true)
-        ),
+        ProviderEvent.toolCall(cid, RespondTool)(RespondInput(topicLabel = "T", topicSummary = "summary", content = "ok", endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
@@ -285,16 +282,13 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val cid = CallId("respond-leak")
       Stream.emits(List[ProviderEvent](
         ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(
-          cid,
-          RespondInput(
+        ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
             topicLabel   = "Project Connection",
             topicSummary = "Connecting the Sigil project workspace",
             content      =
               "I'll help you connect.\n\n<tool_call>\n<function=find_capability>\n<parameter=keywords>\nbind workspace set project root\n</parameter>\n</function>\n</tool_call>",
             endsTurn     = true
-          )
-        ),
+          )),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

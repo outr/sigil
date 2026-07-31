@@ -54,7 +54,7 @@ class EstimateToolBytesCallCountSpec extends AnyWordSpec with Matchers {
     override def httpRequestFor(input: ProviderCall): Task[spice.http.HttpRequest] =
       Task.error(new RuntimeException("not implemented"))
     def estimateRosterPub(tools: Vector[_root_.sigil.tool.Tool], tok: Tokenizer): Int =
-      estimateRoster(tools, tok)
+      estimateRoster(_root_.sigil.tool.ToolRoster(tools), tok)
   }
 
   "Provider.estimateToolBytes" should {

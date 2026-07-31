@@ -22,6 +22,7 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic
 import scala.concurrent.duration.*
+import sigil.tool.consult.ProgressReflectionTool
 
 /**
  * The progress checkpoint judges the window since the PRIOR
@@ -222,7 +223,7 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
           reflectorCalls.incrementAndGet()
           List(
             ProviderEvent.ToolCallStart(callId, "report_progress"),
-            ProviderEvent.ToolCallComplete(callId, _root_.sigil.tool.consult.ProgressReflectionInput(
+            ProviderEvent.toolCall(callId, ProgressReflectionTool)(_root_.sigil.tool.consult.ProgressReflectionInput(
               currentStatus      = "Task completed: references removed, final response delivered to user.",
               meaningfulProgress = false,
               remainingSteps     = "",
@@ -235,7 +236,7 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
           case ToolChoice.Specific(name) if name == RespondTool.schema.name =>
             List(
               ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-              ProviderEvent.ToolCallComplete(callId, RespondInput(
+              ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
                 topicLabel = "Ceiling", topicSummary = "cap synthesis",
                 content = "Synthesised at the iteration ceiling.", endsTurn = true)),
               ProviderEvent.Done(StopReason.Complete)
@@ -243,7 +244,7 @@ class CheckpointWindowProgressSpec extends AsyncWordSpec with AsyncTaskSpec with
           case _ =>
             List(
               ProviderEvent.ToolCallStart(callId, MutatingSpecTool.name.value),
-              ProviderEvent.ToolCallComplete(callId, MutatingSpecInput(step = s"repair-${rapid.Unique()}")),
+              ProviderEvent.toolCall(callId, MutatingSpecTool)(MutatingSpecInput(step = s"repair-${rapid.Unique()}")),
               ProviderEvent.Done(StopReason.ToolCall)
             )
         }

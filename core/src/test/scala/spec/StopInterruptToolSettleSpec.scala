@@ -17,6 +17,7 @@ import sigil.signal.{EventState, Signal}
 import sigil.tool.core.CoreTools
 import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
 import spice.http.HttpRequest
+import sigil.tool.WireCall
 
 /**
  * Regression for the Stop-leaves-tool-running-forever bug surfaced by
@@ -86,7 +87,7 @@ class StopInterruptToolSettleSpec extends AsyncWordSpec with AsyncTaskSpec with 
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map(_ => conv)
   }
 
-  private final class SingleToolCallProvider(toolName: String, input: ToolInput) extends Provider {
+  private final class SingleToolCallProvider(toolName: String, wireCall: WireCall) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -94,7 +95,7 @@ class StopInterruptToolSettleSpec extends AsyncWordSpec with AsyncTaskSpec with 
       Task.error(new UnsupportedOperationException("no wire"))
     override def call(in: ProviderCall): Stream[ProviderEvent] = Stream.emits(List(
       ProviderEvent.ToolCallStart(CallId("shot-1"), toolName),
-      ProviderEvent.ToolCallComplete(CallId("shot-1"), input),
+      ProviderEvent.ToolCallComplete(CallId("shot-1"), wireCall),
       ProviderEvent.Done(StopReason.ToolCall)
     ))
   }
@@ -107,7 +108,7 @@ class StopInterruptToolSettleSpec extends AsyncWordSpec with AsyncTaskSpec with 
                                conv: Conversation,
                                request: ConversationRequest): Task[List[Event]] =
     for {
-      _   <- Orchestrator.process(TestSigil, new SingleToolCallProvider(SlowScreenshotTool.name.value, SlowInput()), request, conv)
+      _   <- Orchestrator.process(TestSigil, new SingleToolCallProvider(SlowScreenshotTool.name.value, WireCall.decoded(SlowScreenshotTool)(SlowInput())), request, conv)
                .takeWhile(_ => !forceFlag.get())
                .evalTap { s =>
                  // Publish the element, then — the instant the invoke

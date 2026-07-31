@@ -6,6 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
 import sigil.tool.core.RespondTool
 import sigil.tool.model.{ResponseDisposition, RespondInput}
+import sigil.tool.ToolRoster
 
 /**
  * Production-path guard for the `respond` tool's `disposition` field — the
@@ -29,7 +30,7 @@ class RespondDispositionWireDecodeSpec extends AnyWordSpec with Matchers {
 
   /** Drive args through the provider accumulator; return the terminal event. */
   private def accumulate(args: String): ProviderEvent = {
-    val acc = new ToolCallAccumulator(Vector(RespondTool), providerKey = "test")
+    val acc = new ToolCallAccumulator(ToolRoster(Vector(RespondTool)), providerKey = "test")
     acc.start(0, CallId("call-0"), RespondTool.schema.name.value)
     acc.appendArgs(0, args)
     acc.complete().last
@@ -37,7 +38,8 @@ class RespondDispositionWireDecodeSpec extends AnyWordSpec with Matchers {
 
   private def decoded(args: String): RespondInput =
     accumulate(args) match {
-      case ProviderEvent.ToolCallComplete(_, in: RespondInput) => in
+      case ProviderEvent.ToolCallComplete(_, wc) =>
+        wc.inputFor(RespondTool).getOrElse(fail(s"expected a decoded respond call; got $wc"))
       case other => fail(s"expected ToolCallComplete(RespondInput); got $other")
     }
 

@@ -21,6 +21,7 @@ import spice.http.HttpRequest
 import java.util.concurrent.{ConcurrentLinkedQueue, atomic}
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import sigil.tool.core.ChangeModeTool
 
 /**
  * Coverage for sigil bug #54 — the agent loop emits a per-iteration
@@ -65,17 +66,14 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
           // iteration via TriggerFilter on ModeChange).
           List(
             ProviderEvent.ToolCallStart(callId, "change_mode"),
-            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
+            ProviderEvent.toolCall(callId, ChangeModeTool)(ChangeModeInput(mode = "coding")),
             ProviderEvent.Done(StopReason.ToolCall)
           )
         else
           // Iteration 2: respond (terminal).
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(
-              callId,
-              RespondInput(topicLabel = "Test", topicSummary = "Iteration boundary repro", content = "Hi.", endsTurn = true)
-            ),
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Test", topicSummary = "Iteration boundary repro", content = "Hi.", endsTurn = true)),
             ProviderEvent.Done(StopReason.Complete)
           )
       Stream.emits(events)

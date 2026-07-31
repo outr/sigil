@@ -3,7 +3,7 @@ package sigil.provider
 import fabric.Obj
 import fabric.io.JsonFormatter
 import fabric.rw.*
-import sigil.tool.ToolInput
+import sigil.tool.{DecodedCall, Tool, WireCall}
 
 /**
  * Events emitted by a provider during a streaming LLM response.
@@ -18,7 +18,7 @@ import sigil.tool.ToolInput
 enum ProviderEvent derives RW {
   case TextDelta(text: String)
   case ToolCallStart(callId: CallId, toolName: String)
-  case ToolCallComplete(callId: CallId, input: ToolInput)
+  case ToolCallComplete(callId: CallId, call: WireCall)
   case ContentBlockStart(callId: CallId, blockType: String, arg: Option[String])
   case ContentBlockDelta(callId: CallId, text: String)
   case ThinkingDelta(text: String)
@@ -70,7 +70,7 @@ enum ProviderEvent derives RW {
     this match {
       case TextDelta(text) => s"TextDelta($text)"
       case ToolCallStart(_, toolName) => s"ToolCallStart($toolName)"
-      case ToolCallComplete(_, input) => s"ToolCallComplete($input)"
+      case ToolCallComplete(_, call) => s"ToolCallComplete(${call.toolName})"
       case ContentBlockStart(_, t, a) => s"ContentBlockStart($t${a.fold("")(v => s" $v")})"
       case ContentBlockDelta(_, t) => s"ContentBlockDelta($t)"
       case ThinkingDelta(text) => s"ThinkingDelta($text)"
@@ -84,4 +84,11 @@ enum ProviderEvent derives RW {
       case ReasoningItem(id, summary, _) => s"ReasoningItem($id, summaryLines=${summary.size})"
       case ResponseStateCaptured(id, count) => s"ResponseStateCaptured(${id.getOrElse("<invalidated>")}, count=$count)"
     }
+}
+
+object ProviderEvent {
+  /** Typed [[ToolCallComplete]] construction — packs tool + input into a
+    * [[WireCall.Decoded]] so the pairing holds by construction. */
+  def toolCall(callId: CallId, t: Tool)(i: t.Input): ProviderEvent =
+    ToolCallComplete(callId, WireCall.Decoded(DecodedCall(t)(i)))
 }

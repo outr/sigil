@@ -13,6 +13,8 @@ import sigil.provider.{CallId, Provider, ProviderCall, ProviderEvent, ProviderTy
 import sigil.tool.consult.{ExtractMemoriesInput, ExtractedMemory, SummarizationInput}
 
 import java.util.concurrent.atomic.AtomicReference
+import sigil.tool.consult.ExtractMemoriesTool
+import sigil.tool.consult.SummarizationTool
 
 /**
  * Regression for sigil bug #148 — `summarize` / `extractAndPersist`
@@ -94,14 +96,14 @@ class CompressorOutputCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
           val memories = facts.map(f => ExtractedMemory(content = f, label = ""))
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, toolName),
-            ProviderEvent.ToolCallComplete(callId, ExtractMemoriesInput(memories)),
+            ProviderEvent.toolCall(callId, ExtractMemoriesTool)(ExtractMemoriesInput(memories)),
             ProviderEvent.Done(StopReason.ToolCall)
           ))
         case "summarize_conversation" =>
           val callId = CallId("summarize")
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, toolName),
-            ProviderEvent.ToolCallComplete(callId, SummarizationInput(summary, tokenEstimate = 10)),
+            ProviderEvent.toolCall(callId, SummarizationTool)(SummarizationInput(summary, tokenEstimate = 10)),
             ProviderEvent.Done(StopReason.ToolCall)
           ))
         case other =>

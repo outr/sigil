@@ -9,6 +9,7 @@ import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
 import sigil.tool.{DefinitionToSchema, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
 
 import spec.EnumSchemaShapeSpec.*
+import sigil.tool.ToolRoster
 
 /**
  * Acceptance for the singleton-only sealed-hierarchy schema shape — every
@@ -54,7 +55,7 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
 
   /** Drive args through the same accumulator the providers use; return the terminal event. */
   private def accumulate(tool: Tool, args: String): ProviderEvent = {
-    val acc = new ToolCallAccumulator(Vector(tool), providerKey = "test")
+    val acc = new ToolCallAccumulator(ToolRoster(Vector(tool)), providerKey = "test")
     acc.start(0, CallId("call-0"), tool.schema.name.value)
     acc.appendArgs(0, args)
     acc.complete().last
@@ -99,16 +100,16 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
   "(3) tool input decoder accepts bare leaf forms" should {
     "decode complexity = \"Medium\" into TestComplexity.Medium" in {
       accumulate(ComplexityTool, """{"complexity": "Medium"}""") match {
-        case ProviderEvent.ToolCallComplete(_, input: ComplexityInput) =>
-          input.complexity shouldBe TestComplexity.Medium
+        case ProviderEvent.ToolCallComplete(_, wc) =>
+          wc.inputFor(ComplexityTool).map(_.complexity) shouldBe Some(TestComplexity.Medium)
         case other => fail(s"expected ToolCallComplete(ComplexityInput); got $other")
       }
     }
 
     "decode workType = \"AnalysisWork\" into AnalysisWork (the bare-string form a model emits)" in {
       accumulate(WorkTypeTool, """{"workType": "AnalysisWork"}""") match {
-        case ProviderEvent.ToolCallComplete(_, input: WorkTypeInput) =>
-          input.workType shouldBe AnalysisWork
+        case ProviderEvent.ToolCallComplete(_, wc) =>
+          wc.inputFor(WorkTypeTool).map(_.workType) shouldBe Some(AnalysisWork)
         case other => fail(s"expected ToolCallComplete(WorkTypeInput); got $other")
       }
     }
@@ -117,16 +118,16 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
   "(4) tool input decoder still accepts the prefixed form for backwards compatibility" should {
     "decode complexity = \"TestComplexity.Medium\" (fabric parent-prefix form)" in {
       accumulate(ComplexityTool, """{"complexity": "TestComplexity.Medium"}""") match {
-        case ProviderEvent.ToolCallComplete(_, input: ComplexityInput) =>
-          input.complexity shouldBe TestComplexity.Medium
+        case ProviderEvent.ToolCallComplete(_, wc) =>
+          wc.inputFor(ComplexityTool).map(_.complexity) shouldBe Some(TestComplexity.Medium)
         case other => fail(s"expected ToolCallComplete(ComplexityInput); got $other")
       }
     }
 
     "decode workType = {\"type\": \"AnalysisWork\"} (fabric Obj form for in-flight clients)" in {
       accumulate(WorkTypeTool, """{"workType": {"type": "AnalysisWork"}}""") match {
-        case ProviderEvent.ToolCallComplete(_, input: WorkTypeInput) =>
-          input.workType shouldBe AnalysisWork
+        case ProviderEvent.ToolCallComplete(_, wc) =>
+          wc.inputFor(WorkTypeTool).map(_.workType) shouldBe Some(AnalysisWork)
         case other => fail(s"expected ToolCallComplete(WorkTypeInput); got $other")
       }
     }
@@ -138,7 +139,8 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
       // No `_provider_error` should surface; the orchestrator should see a typed input.
       val terminal = accumulate(WorkTypeTool, """{"workType": "AnalysisWork", "label": "scoping"}""")
       terminal shouldBe a [ProviderEvent.ToolCallComplete]
-      val ProviderEvent.ToolCallComplete(_, input: WorkTypeInput) = terminal: @unchecked
+      val ProviderEvent.ToolCallComplete(_, wc) = terminal: @unchecked
+      val input = wc.inputFor(WorkTypeTool).getOrElse(fail(s"expected a decoded WorkTypeTool call; got $wc"))
       input.workType shouldBe AnalysisWork
       input.label    shouldBe "scoping"
     }

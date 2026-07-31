@@ -9,6 +9,7 @@ import sigil.provider.{
   GenerationSettings, ProviderCall, ProviderStreamException, ReasoningMode, ToolCallAccumulator, ToolChoice
 }
 import sigil.provider.wire.OpenAIChatCompletions
+import sigil.tool.ToolRoster
 
 /**
  * Sigil #360 — a chat-completions stream that closes mid-flight with no
@@ -33,7 +34,7 @@ class TruncatedStreamSpec extends AnyWordSpec with Matchers {
   )
 
   private def freshState(): OpenAIChatCompletions.StreamState =
-    new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(Vector.empty))
+    new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(ToolRoster.empty))
 
   private def feed(state: OpenAIChatCompletions.StreamState, json: Json): Unit =
     OpenAIChatCompletions.parseLine("data: " + JsonFormatter.Compact(json), state, cfg)
@@ -79,7 +80,7 @@ class TruncatedStreamSpec extends AnyWordSpec with Matchers {
 
     "stay silent for providers that don't opt into empty-turn throws" in {
       val lenientCfg = cfg.copy(emptyBudgetBurnThrows = false)
-      val state = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(Vector.empty))
+      val state = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(ToolRoster.empty))
       OpenAIChatCompletions.parseLine("data: " + JsonFormatter.Compact(reasoningChunk), state, lenientCfg)
       noException should be thrownBy state.closeStream(lenientCfg)
     }
@@ -92,7 +93,7 @@ class TruncatedStreamSpec extends AnyWordSpec with Matchers {
         model              = model,
         system             = "",
         messages           = Vector.empty,
-        tools              = Vector.empty,
+        roster = ToolRoster(Vector.empty),
         builtInTools       = Set.empty,
         toolChoice         = ToolChoice.None,
         generationSettings = GenerationSettings(reasoningMode = mode)

@@ -297,7 +297,7 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val cid = CallId(callIdValue)
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, SearchTool.name.value),
-        ProviderEvent.ToolCallComplete(cid, payload),
+        ProviderEvent.toolCall(cid, SearchTool)(payload),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

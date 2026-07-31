@@ -10,6 +10,7 @@ import sigil.provider.{
   ProviderRequest, ProviderType, RequestExceedsRateLimitException, RequestOverBudgetException
 }
 import spice.http.HttpRequest
+import sigil.tool.ToolRoster
 
 /**
  * Regression for sigil bug #283 — pre-flight rate-limit guard refuses
@@ -98,7 +99,7 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       model              = model,
       system             = system,
       messages           = messages,
-      tools              = tools,
+      roster = ToolRoster(tools),
       builtInTools       = Set.empty,
       toolChoice         = sigil.provider.ToolChoice.None,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),

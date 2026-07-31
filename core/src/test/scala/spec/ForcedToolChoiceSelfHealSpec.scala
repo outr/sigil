@@ -65,10 +65,7 @@ class ForcedToolChoiceSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with
         val cid = CallId(s"respond-${choices.size()}")
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(
-            cid,
-            RespondInput(topicLabel = "T", topicSummary = "s", content = "ok", endsTurn = true)
-          ),
+          ProviderEvent.toolCall(cid, RespondTool)(RespondInput(topicLabel = "T", topicSummary = "s", content = "ok", endsTurn = true)),
           ProviderEvent.Done(StopReason.Complete)
         ))
       }

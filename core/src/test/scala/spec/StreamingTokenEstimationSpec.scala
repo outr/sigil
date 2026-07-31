@@ -6,6 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.{ProviderEvent, ToolCallAccumulator}
 import sigil.provider.wire.OpenAIChatCompletions
 import sigil.provider.wire.OpenAIChatCompletions.{Config, StreamState}
+import sigil.tool.ToolRoster
 
 /**
  * The OpenAI-compatible SSE wire decoder accumulates streamed
@@ -39,7 +40,7 @@ class StreamingTokenEstimationSpec extends AnyWordSpec with Matchers {
   }
 
   private def freshState(clock: MutableClock = new MutableClock()): StreamState =
-    new StreamState(new ToolCallAccumulator(Vector.empty), nowNanos = () => clock.nowNanos())
+    new StreamState(new ToolCallAccumulator(ToolRoster.empty), nowNanos = () => clock.nowNanos())
 
   private def contentChunk(text: String): fabric.Json =
     JsonParser(s"""{"choices":[{"index":0,"delta":{"content":${fabric.io.JsonFormatter.Compact(fabric.str(text))}}}]}""")

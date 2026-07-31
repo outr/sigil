@@ -10,7 +10,7 @@ import sigil.provider.{
 }
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.tool.model.SelectOption
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult, WireCall}
 
 /**
  * Empirical probe for the `respond_*` unification design decision.
@@ -282,11 +282,11 @@ object RespondUnificationProbe {
     )
     val events: List[ProviderEvent] = scala.util.Try(provider(request).toList.sync()).getOrElse(Nil)
     val toolCall: Option[(String, ToolInput)] = events.collectFirst {
-      case ProviderEvent.ToolCallComplete(_, input) =>
+      case ProviderEvent.ToolCallComplete(_, WireCall.Decoded(call)) =>
         val toolName = events.collectFirst {
           case ProviderEvent.ToolCallStart(_, n) => n
         }.getOrElse("<unknown>")
-        (toolName, input)
+        (toolName, call.input)
     }
     toolCall match {
       case None =>

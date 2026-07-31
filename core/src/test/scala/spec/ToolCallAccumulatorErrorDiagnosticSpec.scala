@@ -12,6 +12,7 @@ import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tool.ToolContext
+import sigil.tool.ToolRoster
 
 /**
  * Regression coverage for bug #72 — when `tool.inputRW.write(json)`
@@ -89,15 +90,17 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
   // -- helpers --
 
   private def runComplete(tool: Tool, args: String): Vector[ProviderEvent] = {
-    val acc = new ToolCallAccumulator(Vector(tool))
+    val acc = new ToolCallAccumulator(ToolRoster(Vector(tool)))
     acc.start(0, CallId("call-test"), tool.name.value)
     acc.appendArgs(0, args)
     acc.complete()
   }
 
   private def errorMessage(events: Vector[ProviderEvent]): String =
-    events.collectFirst { case ProviderEvent.Error(msg) => msg }
-      .getOrElse(fail(s"expected a ProviderEvent.Error, got: $events"))
+    events.collectFirst {
+      case ProviderEvent.ToolCallComplete(_, sigil.tool.WireCall.Malformed(name, error, rawArgs)) =>
+        sigil.tool.RefusalPayload.malformedArgs(None, name, error, rawArgs)
+    }.getOrElse(fail(s"expected a Malformed ToolCallComplete, got: $events"))
 
   // -- tests --
 

@@ -77,7 +77,7 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val callId = CallId(s"stubborn-$n")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
+        ProviderEvent.toolCall(callId, ChangeModeTool)(ChangeModeInput(mode = "coding")),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }

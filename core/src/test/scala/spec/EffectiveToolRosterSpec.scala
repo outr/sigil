@@ -15,22 +15,17 @@ import sigil.provider.{
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.Signal
-import sigil.tool.{JsonInput, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
+import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult, WireCall}
 import spice.http.HttpRequest
 
 /**
- * Sigil bug #274 — the orchestrator's `toolsByName` and the accumulator's
- * `tools` must agree on what's in scope, otherwise the model can emit a
- * `tool_use` for a tool the accumulator's parser doesn't know (so it falls
- * back to `JsonInput`), the orchestrator's `toolsByName` finds the real
- * typed tool, and dispatch `asInstanceOf`s the JsonInput to the tool's
- * typed `Input` → ClassCastException.
- *
- * The fix routes both consumers through [[ConversationRequest.effectiveTools]],
- * which applies the forced-synthesis filter. Out-of-roster calls now land
- * on [[sigil.tool.core.UnknownTool]] — same shape as a genuinely-unknown
- * tool name — with a recoverable Tool-role Failure Message paired to the
- * invoke so the agent retries with a respond on the next iteration.
+ * The accumulator and the orchestrator resolve tool names against ONE
+ * roster — [[ConversationRequest.roster]], threaded into the wire path as
+ * the same instance via [[sigil.provider.ProviderCall.roster]]. An
+ * out-of-roster call arrives as `WireCall.Unresolved` and lands on
+ * [[sigil.tool.core.UnknownTool]] — a recoverable Tool-role Failure
+ * Message paired to the invoke — while an in-roster Unresolved (replayed
+ * fixture, shed wire roster) rebinds to the real tool and executes.
  */
 class EffectiveToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -51,10 +46,9 @@ class EffectiveToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider that emits a typed `read_file` call with a `JsonInput`
-    * payload — simulates the accumulator's `case None =>` path (sigil
-    * #271) when the model invokes a tool the wire-sent roster doesn't
-    * include but the framework otherwise knows about. */
+  /** Provider that emits a `read_file` call the accumulator could not
+    * resolve — the `WireCall.Unresolved` shape a wire roster narrowed by
+    * forced synthesis produces when the model calls outside it. */
   private class OutOfRosterProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -65,16 +59,15 @@ class EffectiveToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val cid = CallId("c-out-of-roster")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, "read_file"),
-        ProviderEvent.ToolCallComplete(cid, JsonInput(fabric.obj("path" -> fabric.str("sections/main.liquid")))),
+        ProviderEvent.ToolCallComplete(cid,
+          WireCall.Unresolved("read_file", fabric.obj("path" -> fabric.str("sections/main.liquid")))),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }
   }
 
-  private def runWith(forceSynth: Boolean): Task[List[Signal]] = {
-    val convId = Conversation.id(s"effective-roster-force")
-    val conv = Conversation(topics = TestTopicStack, _id = convId)
-    val request = ConversationRequest(
+  private def requestFor(convId: Id[sigil.conversation.Conversation], forceSynth: Boolean): ConversationRequest =
+    ConversationRequest(
       conversationId         = convId,
       model                = TestSigil.testModel(modelId),
       instructions           = Instructions(),
@@ -87,6 +80,11 @@ class EffectiveToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       tools                  = Vector(ReadFileTool),
       forceResponseSynthesis = forceSynth
     )
+
+  private def runWith(forceSynth: Boolean, suffix: String): Task[List[Signal]] = {
+    val convId = Conversation.id(s"effective-roster-$suffix")
+    val conv = Conversation(topics = TestTopicStack, _id = convId)
+    val request = requestFor(convId, forceSynth)
     for {
       _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, new OutOfRosterProvider, request, conv).toList
@@ -96,12 +94,11 @@ class EffectiveToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   "Effective tool roster (sigil #274)" should {
 
     "dispatch to UnknownTool when forced-synthesis strips the wire roster" in {
-      // With forced-synthesis, the wire roster is the respond family
-      // only. `read_file` is out-of-scope; the orchestrator's
-      // `toolsByName` (sourced from `request.effectiveTools`) doesn't
-      // contain it; the JsonInput-bearing ToolCallComplete routes to
-      // UnknownTool, which emits a paired Tool-role Failure Message.
-      runWith(forceSynth = true).map { signals =>
+      // With forced-synthesis, the effective roster is the respond family
+      // only. `read_file` is out-of-scope; the Unresolved call cannot
+      // rebind against `request.roster` and routes to UnknownTool, which
+      // emits a paired Tool-role Failure Message.
+      runWith(forceSynth = true, "force").map { signals =>
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
         }
@@ -111,6 +108,36 @@ class EffectiveToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         msg.failureReason.getOrElse("") should include ("Unknown tool")
         msg.failureReason.getOrElse("") should include ("read_file")
         msg.origin shouldBe defined
+      }
+    }
+
+    "rebind an Unresolved call through the request roster when the tool is in scope" in {
+      // Without forced synthesis `read_file` IS in `request.roster`; the
+      // same Unresolved call rebinds to the real tool, decodes, and
+      // executes — the accumulator and orchestrator resolve against one
+      // roster, so a decodable name can never fall through to the
+      // unknown-tool refusal.
+      runWith(forceSynth = false, "rebind").map { signals =>
+        val settles = signals.collect {
+          case d: sigil.signal.ToolDelta if d.outcome.contains(sigil.event.ToolOutcome.Success) => d
+        }
+        settles should not be empty
+        signals.collect { case m: Message if m.role == MessageRole.Tool => m } shouldBe empty
+      }
+    }
+
+    "hand the accumulator's ProviderCall the same roster instance the orchestrator dispatches against" in {
+      import sigil.testkit.MockProvider
+      val convId = Conversation.id("effective-roster-instance")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
+      val request = requestFor(convId, forceSynth = true)
+      val mock = MockProvider(TestSigil, responses = List(MockProvider.Script.text("ok")))
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- Orchestrator.process(TestSigil, mock, request, conv).toList
+      } yield {
+        val call = mock.lastCall.getOrElse(fail("MockProvider captured no call"))
+        (call.roster eq request.roster) shouldBe true
       }
     }
   }

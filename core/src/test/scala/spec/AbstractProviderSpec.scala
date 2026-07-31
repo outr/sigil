@@ -8,7 +8,7 @@ import sigil.conversation.{ContextFrame, Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.Message
 import sigil.provider.{ConversationRequest, Effort, GenerationSettings, Instructions, Mode, ConversationMode, Provider, ProviderEvent, StopReason}
-import sigil.tool.core.{ChangeModeTool, CoreTools, FindCapabilityInput, RespondTool}
+import sigil.tool.core.{ChangeModeTool, CoreTools, FindCapabilityInput, FindCapabilityTool, RespondOptionsTool, RespondTool}
 import sigil.tool.{Tool, ToolInput}
 import sigil.tool.model.{ChangeModeInput, RespondInput, RespondOptionsInput, ResponseContent}
 
@@ -68,13 +68,21 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     p(request).toList
   }
 
+
+  /** Typed inputs of `t`'s decoded calls, in stream order. */
+  private def inputsFor(events: List[ProviderEvent], t: sigil.tool.Tool): List[t.Input] =
+    events.flatMap {
+      case ProviderEvent.ToolCallComplete(_, wc) => wc.inputFor(t)
+      case _                                     => None
+    }
+
   getClass.getSimpleName should {
     "perform a round-trip request via the respond tool" in
       request("What is 2+2? Respond with just the number.").map { events =>
         val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
         start.map(_.toolName) shouldBe Some(RespondTool.schema.name.value)
 
-        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondInput) => i }
+        val complete = inputsFor(events, RespondTool).headOption
         complete should not be empty
         complete.get.content should include("4")
         complete.get.topicLabel.trim should not be empty
@@ -90,7 +98,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       request(
         "I need to pick a backend language for a new web service. Ask me which of Python, Node.js, or Go I want."
       ).map { events =>
-        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondOptionsInput) => i }
+        val complete = inputsFor(events, RespondOptionsTool).headOption
         complete should not be empty
         complete.get.allowMultiple should be(false)
         complete.get.options.size should be(3)
@@ -99,7 +107,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       request(
         "I want to enable notifications. Ask me which of email, SMS, or push I want — multiple selections are allowed. Also include a None option that cannot be combined with the others."
       ).map { events =>
-        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondOptionsInput) => i }
+        val complete = inputsFor(events, RespondOptionsTool).headOption
         complete should not be empty
         complete.get.allowMultiple should be(true)
         complete.get.options.exists(_.exclusive) should be(true)
@@ -119,11 +127,11 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         // seeking at all.
         toolName should (be(Some("find_capability")) or be(Some(ChangeModeTool.schema.name.value)))
         if (toolName.contains("find_capability")) {
-          val input = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: FindCapabilityInput) => i }
+          val input = inputsFor(events, FindCapabilityTool).headOption
           input should not be empty
           input.get.keywords should (include("slack") or include("post") or include("message"))
         } else {
-          val input = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: ChangeModeInput) => i }
+          val input = inputsFor(events, ChangeModeTool).headOption
           input should not be empty
         }
       }
@@ -139,9 +147,8 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         // zero work behind the announcement.
         val announceHead =
           "(?i)^\\s*(searching|scanning|looking|checking|starting|working on|let me (?:search|check|start|look|scan|compile)|i'?ll (?:now|start|begin|search|scan|compile)|i will (?:now|start|begin|search|scan|compile))".r
-        val announcedTerminals = events.collect {
-          case ProviderEvent.ToolCallComplete(_, i: RespondInput)
-            if i.endsTurn && announceHead.findFirstIn(i.content).isDefined => i.content.take(120)
+        val announcedTerminals = inputsFor(events, RespondTool).collect {
+          case i if i.endsTurn && announceHead.findFirstIn(i.content).isDefined => i.content.take(120)
         }
         withClue(s"announce-shaped respond(s) ended the turn: $announcedTerminals: ") {
           announcedTerminals shouldBe empty
@@ -152,9 +159,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
         start.map(_.toolName) shouldBe Some(ChangeModeTool.schema.name.value)
 
-        val input = events.collectFirst {
-          case ProviderEvent.ToolCallComplete(_, i: ChangeModeInput) => i
-        }
+        val input = inputsFor(events, ChangeModeTool).headOption
         input.map(_.mode) shouldBe Some(TestCodingMode.name)
 
         events.last shouldBe a[ProviderEvent.Done]

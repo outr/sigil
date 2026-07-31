@@ -17,9 +17,10 @@ import sigil.provider.{
 import sigil.signal.Signal
 import sigil.signal.ToolDelta
 import sigil.event.ToolOutcome
-import sigil.tool.{JsonInput, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tool.ToolContext
 import spice.http.HttpRequest
+import sigil.tool.WireCall
 
 /**
  * Coverage for the call ↔ output pairing invariant — every dispatched
@@ -62,12 +63,11 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
   private val modelId: Id[Model] = Model.id("test", "model")
 
   /** Provider that emits ToolCallComplete for whatever toolName the
-    * test asks for. `inputForCall` lets each scenario inject the matching
-    * input shape — `JsonInput(Obj.empty)` for unknown names (what the
-    * real accumulator produces after sigil #271) or a typed input that
-    * matches a registered tool's `Input` type for the silent-failure
-    * scenario. */
-  private class FakeProvider(toolName: String, inputForCall: ToolInput) extends Provider {
+    * test asks for. `wireCall` lets each scenario inject the matching
+    * resolution shape — `WireCall.Unresolved` for unknown names (what the
+    * real accumulator produces) or a decoded call for a registered tool
+    * in the silent-failure scenario. */
+  private class FakeProvider(toolName: String, wireCall: WireCall) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -77,7 +77,7 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
       val cid = CallId("c1")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, toolName),
-        ProviderEvent.ToolCallComplete(cid, inputForCall),
+        ProviderEvent.ToolCallComplete(cid, wireCall),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }
@@ -107,7 +107,7 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
   "Orchestrator for an unknown tool name (sigil #167 / #271)" should {
 
     "emit a Tool-role Failure Message paired to the invoke via UnknownTool" in {
-      runWith(new FakeProvider("not_a_real_tool", JsonInput(fabric.Obj.empty)),
+      runWith(new FakeProvider("not_a_real_tool", WireCall.Unresolved("not_a_real_tool", fabric.Obj.empty)),
               tools = Vector.empty, "unknown").map { signals =>
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
@@ -125,7 +125,7 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
   "Orchestrator for a registered tool that returns a logical failure" should {
 
     "settle the invoke with a ToolDelta carrying outcome = Failure" in {
-      runWith(new FakeProvider("silent_tool", EmptyToolInput()),
+      runWith(new FakeProvider("silent_tool", WireCall.decoded(SilentTool)(EmptyToolInput())),
               tools = Vector(SilentTool), "silent").map { signals =>
         val failureDeltas = signals.collect {
           case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d

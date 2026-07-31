@@ -4,7 +4,7 @@ import fabric.rw.*
 import fabric.io.JsonParser
 import sigil.tool.core.RespondTool
 import sigil.tool.model.JsonStringFieldExtractor
-import sigil.tool.{DecodeError, RefusalPayload, Tool, ToolInput, WireSurface}
+import sigil.tool.{DecodeError, DecodedCall, DecodeViolation, ToolRoster, WireCall}
 
 import scala.collection.mutable
 
@@ -21,21 +21,20 @@ import scala.collection.mutable
  *   - [[ProviderEvent.ToolCallComplete]] for each accumulated call when
  *     [[complete]] is invoked, with fully-parsed, typed inputs
  *
- * The accumulator is constructed with the set of tools available on the
- * originating request. On completion, each call's tool name is used to look
- * up the matching tool and deserialize the accumulated JSON args using that
- * tool's specific [[sigil.tool.Tool.inputRW]] — dispatch by name, not by a
- * discriminator injected into the args.
+ * The accumulator is constructed with the originating request's
+ * [[sigil.tool.ToolRoster]] — the same instance the orchestrator dispatches
+ * against. On completion, each call's tool name resolves through the roster
+ * FIRST, the accumulated JSON args decode through THAT tool's
+ * [[sigil.tool.WireSurface]], and the emitted `ToolCallComplete` carries the
+ * resolution as a [[sigil.tool.WireCall]] — the tool + typed input packed
+ * together, or an honest `Unresolved` / `Malformed` preserving the args.
  *
  * Each provider's stream parser is responsible for translating upstream events
  * into calls to [[start]], [[appendArgs]], and at stream end [[complete]].
  */
-final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
+final class ToolCallAccumulator(roster: ToolRoster = ToolRoster.empty,
                                 providerKey: String = "unknown") {
   private val calls = mutable.LinkedHashMap.empty[Int, CallState]
-  // Keyed by the wire-level tool name string so provider events (which
-  // carry `toolName: String`) can look up without converting.
-  private val toolsByName: Map[String, Tool] = tools.map(t => t.schema.name.value -> t).toMap
 
   /**
    * Declare a new tool call at the given stream index. Emits `ToolCallStart`.
@@ -129,38 +128,38 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
   /**
    * Called at stream termination (e.g., when `finish_reason` indicates a tool
    * call completed). Emits a trailing flush of streamed content for any
-   * processors, then a `ToolCallComplete` for each accumulated call with
-   * fully-parsed, typed arguments. If the tool is unknown or args fail to
-   * parse, an `Error` event is emitted instead.
+   * processors, then a `ToolCallComplete` for each accumulated call carrying
+   * a [[sigil.tool.WireCall]]: `Decoded` when the name resolved and the args
+   * decoded, `Malformed` when the resolved tool's args failed to parse or
+   * decode, `Unresolved` when the name isn't in the roster — always
+   * preserving the model's args.
    */
   def complete(): Vector[ProviderEvent] = {
     val streamFlush = calls.values.toVector.flatMap(_.processor.fold(Vector.empty[ProviderEvent])(_.finish()))
     val completes = calls.values.toVector.flatMap { s =>
-      toolsByName.get(s.toolName) match {
+      val argsText = s.buf.toString
+      roster.resolve(s.toolName) match {
         case Some(tool) =>
-          // Sigil #260 — a tool call that streamed no argument JSON
-          // leaves the buffer empty. A zero-parameter tool has
-          // nothing to emit, and Anthropic sends the `tool_use` with
-          // no `input_json_delta` events at all (OpenAI sends the
-          // literal `"{}"`, which is why it escaped this). An empty
-          // buffer parsed by `JsonParser` yields `Json.Null`, which
-          // cannot decode into the typed input — a no-args call has
-          // empty-OBJECT arguments, not null. Normalise it to `{}`.
-          val argsText = s.buf.toString
+          // A tool call that streamed no argument JSON leaves the buffer
+          // empty. A zero-parameter tool has nothing to emit, and Anthropic
+          // sends the `tool_use` with no `input_json_delta` events at all
+          // (OpenAI sends the literal `"{}"`). An empty buffer parsed by
+          // `JsonParser` yields `Json.Null`, which cannot decode into the
+          // typed input — a no-args call has empty-OBJECT arguments, not
+          // null. Normalise it to `{}`.
           val rawJsonOpt: Either[Throwable, fabric.Json] =
             if (argsText.trim.isEmpty) Right(fabric.Obj.empty)
             else
               try Right(JsonParser(argsText))
               catch {
                 case t: Throwable =>
-                  // Sigil #408 — before hard-failing, try a bounded mechanical
-                  // repair of common model JSON slips (doubled `{{`, trailing
-                  // comma). Adopt it ONLY if the repaired text re-parses; the
-                  // result then flows through the SAME decode branch below, so
-                  // #171 (array-when-object) and full validation still apply and
-                  // a still-invalid shape surfaces the enriched diagnostic. Keep
-                  // the original error otherwise, so the diagnostic reflects what
-                  // the model actually sent.
+                  // Before hard-failing, try a bounded mechanical repair of
+                  // common model JSON slips (doubled `{{`, trailing comma).
+                  // Adopt it ONLY if the repaired text re-parses; the result
+                  // then flows through the SAME decode branch below, so the
+                  // array-when-object check and full validation still apply.
+                  // Keep the original error otherwise, so the diagnostic
+                  // reflects what the model actually sent.
                   ToolCallAccumulator.repairMalformedJson(argsText)
                     .flatMap(r => try Some(JsonParser(r)) catch { case _: Throwable => None })
                     .toRight(t)
@@ -168,29 +167,28 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
 
           rawJsonOpt match {
             case Left(parseErr) =>
-              // JsonParser failed. Surface a typed diagnostic via the
-              // same enriched-rule path the violation flow uses.
+              // JsonParser failed — surface as `Malformed` carrying a
+              // synthesized root-level violation plus the raw text verbatim.
               val errorClass = parseErr.getClass.getSimpleName
               val errorMessage = Option(parseErr.getMessage).filter(_.nonEmpty).getOrElse("(no message)")
               val schemaSummary = ToolCallAccumulator.summarizeSchema(tool.inputRW.definition)
-              val rawSnippet = argsText.take(500)
-              val truncated = if (s.buf.length > 500) " (truncated)" else ""
-              val rule = s"Failed to parse args for tool ${s.toolName}: " +
-                s"$errorClass: $errorMessage. " +
-                s"Expected shape: $schemaSummary."
-              val sentArgs = Some(s"$rawSnippet$truncated")
-              Vector(ProviderEvent.Error(RefusalPayload.enrichRule(tool, rule, sentArgs)))
+              val violation = DecodeViolation(Nil, s"$errorClass: $errorMessage. Expected shape: $schemaSummary")
+              val raw = fabric.Str(argsText)
+              Vector(ProviderEvent.ToolCallComplete(
+                s.callId,
+                WireCall.Malformed(s.toolName, DecodeError(List(violation), raw), raw)
+              ))
 
-           case Right(rawJson) =>
+            case Right(rawJson) =>
               val schemaWantsObj = tool.inputRW.definition.defType match {
                 case _: fabric.define.DefType.Obj => true
-                case _                             => false
+                case _                            => false
               }
               if (rawJson.isArr && schemaWantsObj) {
                 throw new ProviderStreamException(
                   providerKey = providerKey,
                   code = 200,
-                  typ  = "malformed_tool_args",
+                  typ = "malformed_tool_args",
                   message_ = s"Model emitted a JSON array as `${s.toolName}` arguments " +
                     s"(${s.buf.length} chars) when the schema requires an object. " +
                     "Typically an upstream instruction-following degeneration: " +
@@ -200,56 +198,27 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
                 )
               }
 
-              // Sigil #277 phase — decode through the consolidated
-              // `WireSurface[Input]`. The surface runs normalize →
-              // validate → materialise in one pass, collects every
-              // violation, and the resulting `DecodeError.render`
-              // string is what the agent reads in the enriched
-              // refusal body. The validator's multi-field surfacing
-              // (one round-trip, every failed field shown) is what
-              // closes the historical "agent fumbles one field per
-              // turn" loop.
+              // Decode through the consolidated `WireSurface[Input]`. The
+              // surface runs normalize → validate → materialise in one pass
+              // and collects every violation, so the agent reads every
+              // failed field at once in the refusal body.
               tool.wireSurface.decode(rawJson) match {
-                case Right(input: ToolInput @unchecked) =>
-                  Vector(ProviderEvent.ToolCallComplete(s.callId, input))
-                case Left(error: DecodeError) =>
-                  // When the validator pre-pass found no field-scoped
-                  // constraint violations and the failure is purely a
-                  // materialise-throw (type-shape mismatch, missing
-                  // required field — those don't fire on the constraints
-                  // walker), keep the historical "Failed to parse args"
-                  // phrasing the agent loop recognises. Mixed cases
-                  // (any field-scoped constraint violation present)
-                  // route through the "violated schema constraints"
-                  // path the multi-violation refusal expects.
-                  val rawSnippet = argsText.take(500)
-                  val truncated = if (argsText.length > 500) " (truncated)" else ""
-                  val pureMaterialise = error.violations.forall(_.path.isEmpty)
-                  val rule =
-                    if (pureMaterialise)
-                      s"Failed to parse args for tool ${s.toolName}: ${error.render}."
-                    else
-                      s"Args for tool ${s.toolName} violated schema constraints: ${error.render}"
-                  val sentArgs =
-                    if (pureMaterialise) Some(s"$rawSnippet$truncated")
-                    else Some(RefusalPayload.renderSentArgs(argsText))
-                  Vector(ProviderEvent.Error(RefusalPayload.enrichRule(tool, rule, sentArgs)))
+                case Right(input) =>
+                  Vector(ProviderEvent.ToolCallComplete(s.callId, WireCall.Decoded(DecodedCall(tool)(input))))
+                case Left(error) =>
+                  Vector(ProviderEvent.ToolCallComplete(s.callId, WireCall.Malformed(s.toolName, error, rawJson)))
               }
           }
         case None =>
-          // Sigil #271 — don't short-circuit with a ProviderEvent.Error.
-          // Emit a normal ToolCallComplete carrying the raw args as a
-          // JsonInput so the orchestrator's dispatch path runs uniformly.
-          // `UnknownTool` is substituted for the missing name downstream
-          // (`Orchestrator` falls back via `toolsByName.getOrElse(name,
-          // UnknownTool)`), and its `executeResult` emits a paired
-          // Tool-role Failure Message — same shape as any other tool
-          // failure, so the agent loop re-triggers and self-corrects
-          // instead of aborting with AgentRunawayException.
-          val rawJson = scala.util
-            .Try(JsonParser(s.buf.toString))
-            .getOrElse(fabric.Obj.empty)
-          Vector(ProviderEvent.ToolCallComplete(s.callId, sigil.tool.JsonInput(rawJson)))
+          // Unknown tool name — preserve the model's args verbatim: parsed
+          // JSON when parseable, the raw text as a `Str` otherwise. The
+          // orchestrator's `Unresolved` handling emits the paired refusal.
+          val raw: fabric.Json =
+            if (argsText.trim.isEmpty) fabric.Obj.empty
+            else
+              try JsonParser(argsText)
+              catch { case _: Throwable => fabric.Str(argsText) }
+          Vector(ProviderEvent.ToolCallComplete(s.callId, WireCall.Unresolved(s.toolName, raw)))
       }
     }
    // Sigil audit H8 — any pending headers still partial at stream

@@ -48,7 +48,7 @@ class StopInflightToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   /** Calls the given fixture tool once, then answers any later call with
     * a terminal respond (topic fast-path). */
-  private final class ToolThenRespondProvider(toolName: String) extends Provider {
+  private final class ToolThenRespondProvider(tool: SlowStopToolBase) extends Provider {
     private val calls = new java.util.concurrent.atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -59,15 +59,15 @@ class StopInflightToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       if (calls.incrementAndGet() == 1) {
         val cid = CallId(s"tool-${rapid.Unique()}")
         Stream.emits(List[ProviderEvent](
-          ProviderEvent.ToolCallStart(cid, toolName),
-          ProviderEvent.ToolCallComplete(cid, SlowStopInput()),
+          ProviderEvent.ToolCallStart(cid, tool.name.value),
+          ProviderEvent.toolCall(cid, tool)(SlowStopInput()),
           ProviderEvent.Done(StopReason.Complete)
         ))
       } else {
         val cid = CallId(s"respond-${rapid.Unique()}")
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(cid, RespondInput(
+          ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
             topicLabel   = "Sweep done",
             topicSummary = "slow tool finished, replying",
             content      = "Wrapped up.",
@@ -93,7 +93,7 @@ class StopInflightToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     // `setProvider` takes its Task by name and re-evaluates it on every
     // model resolve — hoist the instance so the call counter survives
     // across the turn's iterations.
-    val provider = new ToolThenRespondProvider(tool.name.value)
+    val provider = new ToolThenRespondProvider(tool)
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"stop-inflight-${rapid.Unique()}")
     val conv   = Conversation(topics = TestTopicStack, participants = List(makeAgent(tool.name)), _id = convId)

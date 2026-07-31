@@ -19,6 +19,7 @@ import sigil.tool.model.{RespondInput, ResponseContent}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
+import sigil.tool.core.RespondTool
 
 /**
  * Naked-text terminal handling. A plain-prose `end_turn` with no tool call
@@ -108,7 +109,7 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         val cid = CallId(s"respond-${rapid.Unique()}")
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, "respond"),
-          ProviderEvent.ToolCallComplete(cid, RespondInput(
+          ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
             // Matches the active TestTopicEntry so `resolveTopicShift`
             // takes the same-topic fast path — this fake provider can't
             // answer a TopicClassifier consult.

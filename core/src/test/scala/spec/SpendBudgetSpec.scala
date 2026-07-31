@@ -23,6 +23,7 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
+import spec.GetMagicNumberTool
 
 /**
  * Spend budgets: cost is a first-class failure dimension — a
@@ -113,7 +114,7 @@ class SpendBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         if (forced || n > respondAfter)
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, RespondInput(
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
               topicLabel   = TestTopicEntry.label,
               topicSummary = TestTopicEntry.summary,
               content      = s"Wrap-up after $n calls.",
@@ -125,7 +126,7 @@ class SpendBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         else
           List(
             ProviderEvent.ToolCallStart(callId, GetMagicNumberTool.name.value),
-            ProviderEvent.ToolCallComplete(callId, GetMagicNumberInput()),
+            ProviderEvent.toolCall(callId, GetMagicNumberTool)(GetMagicNumberInput()),
             ProviderEvent.Usage(TokenUsage(1000000, 100, 1000100)),
             ProviderEvent.Done(StopReason.ToolCall)
           )

@@ -69,7 +69,7 @@ class StreamingFinishReasonSplitOrchestratorSpec extends AsyncWordSpec with Asyn
       Task.error(new UnsupportedOperationException("no wire"))
 
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
-      val state = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(input.tools))
+      val state = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(input.roster))
       val all = splitFinishLines.iterator
         .flatMap(line => OpenAIChatCompletions.parseLine(line, state, cfg))
         .toList

@@ -69,20 +69,14 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         if (n == 1)
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(
-              callId,
-              RespondInput(topicLabel = "Project", topicSummary = "Project readiness",
-                content = "> [!Field]\n> Project Ready: true", endsTurn = true)
-            ),
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Project", topicSummary = "Project readiness",
+                content = "> [!Field]\n> Project Ready: true", endsTurn = true)),
             ProviderEvent.Done(StopReason.Complete)
           )
         else
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(
-              callId,
-              RespondInput(topicLabel = "Overview", topicSummary = "Project overview", content = "Here's an overview.", endsTurn = true)
-            ),
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Overview", topicSummary = "Project overview", content = "Here's an overview.", endsTurn = true)),
             ProviderEvent.Done(StopReason.Complete)
           )
       Stream.emits(events)

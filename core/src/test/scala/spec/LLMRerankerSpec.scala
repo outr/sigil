@@ -10,6 +10,7 @@ import sigil.provider.{CallId, Provider, ProviderCall, ProviderEvent, ProviderTy
 import sigil.tool.consult.RerankInput
 import sigil.vector.{HybridSearch, LLMReranker, VectorSearchResult}
 import spice.http.HttpRequest
+import sigil.tool.consult.RerankTool
 
 /**
  * Coverage for [[LLMReranker]] against a stub provider that returns
@@ -57,7 +58,7 @@ class LLMRerankerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val callId = CallId("rerank")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, "rerank_candidates"),
-        ProviderEvent.ToolCallComplete(callId, RerankInput(orderedIds)),
+        ProviderEvent.toolCall(callId, RerankTool)(RerankInput(orderedIds)),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }

@@ -19,8 +19,8 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * Constructed by the framework at tool dispatch ([[Tool.execute]]); not built
  * by callers. The underlying [[TurnContext]] is exposed via [[turn]] for the
- * less-common turn-scope fields (`turnInput`, `routedModelId`,
- * `correlationId`, the `discoveredCapabilities` cache).
+ * less-common turn-scope fields (`turnInput`, `routedModelId`, the
+ * `discoveredCapabilities` cache).
  *
  * @param turn             the broader turn-scope context this dispatch belongs
  *                         to. Tool bodies reach through for less-common fields.

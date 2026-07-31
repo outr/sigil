@@ -12,7 +12,7 @@ import sigil.participant.ParticipantId
 import sigil.service.{Service, ServiceKind, ServiceState}
 import sigil.signal.WireRequestProfile
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
-import sigil.tool.Tool
+import sigil.tool.{Tool, ToolRoster}
 import sigil.tool.core.{CoreTools, RespondTool}
 import sigil.tool.core.CoreTools.atomicContentToolNames
 import sigil.render.MarkdownRenderer
@@ -732,7 +732,7 @@ trait Provider extends Service with ModelResolver {
     tok.count(call.system) +
       tok.count(call.systemVolatile) +
       call.messages.iterator.map(estimateMessage(_, tok)).sum +
-      estimateRoster(call.tools, tok)
+      estimateRoster(call.roster, tok)
   }
 
   /** Best-effort token count for a single [[ProviderMessage]] as it
@@ -772,8 +772,8 @@ trait Provider extends Service with ModelResolver {
       summaryTokens + cotTokens + 4
   }
 
-  protected def estimateRoster(tools: Vector[Tool], tok: Tokenizer): Int =
-    tools.iterator.map(estimateToolBytes(_, tok)).sum
+  protected def estimateRoster(roster: ToolRoster, tok: Tokenizer): Int =
+    roster.tools.iterator.map(estimateToolBytes(_, tok)).sum
 
   /** Per-tool wire-shape estimate. Default counts name + description +
     * the JSON-formatted parameter schema. Override for providers with
@@ -826,7 +826,7 @@ trait Provider extends Service with ModelResolver {
       essentials.contains(n.value) || initial.preservedToolNames.contains(n)
     if (estimateOf(current) > limit && current.tools.exists(t => !keep(t.schema.name))) {
       val trimmed = current.tools.filter(t => keep(t.schema.name))
-      current = current.copy(tools = trimmed)
+      current = current.copy(roster = ToolRoster(trimmed))
     }
 
     // Stage 5 — drop oldest messages until fits. Critical memories
@@ -1038,7 +1038,7 @@ trait Provider extends Service with ModelResolver {
         system = renderedSystem.stable,
         systemVolatile = renderedSystem.volatile,
         messages = messages,
-        tools = effectiveTools,
+        roster = c.roster,
         // Sigil #375 — built-in/server tools (web_search, …) bypass the
         // `effectiveTools` roster filter, so on a forced-synthesis turn
         // they'd reappear as a non-terminal escape hatch on the very
@@ -1118,7 +1118,7 @@ trait Provider extends Service with ModelResolver {
       model = s.model,
       system = s.systemPrompt,
       messages = Vector(userMessage),
-      tools = s.tools,
+      roster = ToolRoster(s.tools),
       builtInTools = s.builtInTools,
       toolChoice = toolChoice,
       generationSettings = s.generationSettings

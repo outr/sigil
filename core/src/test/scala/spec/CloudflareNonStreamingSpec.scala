@@ -14,6 +14,7 @@ import sigil.provider.wire.OpenAIChatCompletions
 import sigil.tool.{TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolResult}
 
 import spec.CloudflareNonStreamingSpec.*
+import sigil.tool.ToolRoster
 
 /**
  * Non-streaming transport (the `Config.streaming` toggle). Cloudflare's
@@ -41,7 +42,7 @@ class CloudflareNonStreamingSpec extends AnyWordSpec with Matchers {
       model              = model,
       system             = "be a coding agent",
       messages           = Vector.empty,
-      tools              = Vector(ListFilesTool),
+      roster = ToolRoster(Vector(ListFilesTool)),
       builtInTools       = Set.empty,
       toolChoice         = ToolChoice.Auto,
       generationSettings = gen
@@ -98,7 +99,7 @@ class CloudflareNonStreamingSpec extends AnyWordSpec with Matchers {
 
       events.collectFirst { case ProviderEvent.ThinkingDelta(t) => t } shouldBe Some("We need to call list_files.")
       events.collectFirst { case ProviderEvent.ToolCallStart(_, n) => n } shouldBe Some("list_files")
-      events.collectFirst { case ProviderEvent.ToolCallComplete(_, in: ListFilesInput) => in } shouldBe Some(ListFilesInput())
+      events.flatMap { case ProviderEvent.ToolCallComplete(_, wc) => wc.decodedInput; case _ => None }.collectFirst { case in: ListFilesInput => in } shouldBe Some(ListFilesInput())
       events.exists { case _: ProviderEvent.Usage => true; case _ => false } shouldBe true
       events.collectFirst { case ProviderEvent.Done(sr) => sr } shouldBe Some(StopReason.ToolCall)
     }

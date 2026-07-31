@@ -50,7 +50,7 @@ class OrchestratorStreamedPreambleToolSpec extends AsyncWordSpec with AsyncTaskS
         ProviderEvent.ContentBlockStart(textCid, "text", None),
         ProviderEvent.ContentBlockDelta(textCid, "Let me run the probe to check."),
         ProviderEvent.ToolCallStart(toolCid, StreamProbeTool.name.value),
-        ProviderEvent.ToolCallComplete(toolCid, StreamProbeInput()),
+        ProviderEvent.toolCall(toolCid, StreamProbeTool)(StreamProbeInput()),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }

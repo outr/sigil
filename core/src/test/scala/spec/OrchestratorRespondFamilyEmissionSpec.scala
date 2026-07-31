@@ -17,6 +17,7 @@ import sigil.tool.ToolName
 import sigil.tool.core.{NoResponseTool, RespondTool}
 import sigil.tool.model.{NoResponseInput, RespondInput}
 import spice.http.HttpRequest
+import sigil.tool.core.FindCapabilityTool
 
 /**
  * Regression for bug #56 — `respond` / `respond_options` /
@@ -49,10 +50,7 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
         ProviderEvent.ContentBlockStart(callId, "Text", arg = None),
         ProviderEvent.ContentBlockDelta(callId, "Hello, world."),
-        ProviderEvent.ToolCallComplete(
-          callId,
-          RespondInput(topicLabel = "Greeting", topicSummary = "A friendly hello", content = "Hello, world.", endsTurn = true)
-        ),
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Greeting", topicSummary = "A friendly hello", content = "Hello, world.", endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
@@ -71,7 +69,7 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
       val callId = CallId("noresp-call")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, NoResponseTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId, NoResponseInput()),
+        ProviderEvent.toolCall(callId, NoResponseTool)(NoResponseInput()),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
@@ -160,10 +158,7 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
       val callId = CallId("fc-call")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, "find_capability"),
-        ProviderEvent.ToolCallComplete(
-          callId,
-          _root_.sigil.tool.core.FindCapabilityInput(keywords = "test")
-        ),
+        ProviderEvent.toolCall(callId, FindCapabilityTool)(_root_.sigil.tool.core.FindCapabilityInput(keywords = "test")),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

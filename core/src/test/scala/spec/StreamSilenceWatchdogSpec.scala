@@ -10,6 +10,7 @@ import sigil.provider.wire.OpenAIChatCompletions.{Config, StreamState}
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.duration.*
+import sigil.tool.ToolRoster
 
 /**
  * The timer-enforced true-line-silence watchdog. The lazy per-line
@@ -28,7 +29,7 @@ class StreamSilenceWatchdogSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def newState(silenceMs: Long = 0L, doaMs: Long = 0L, keepaliveMs: Long = 0L): StreamState =
     new StreamState(
-      acc = new ToolCallAccumulator(Vector.empty, providerKey = "test"),
+      acc = new ToolCallAccumulator(ToolRoster.empty, providerKey = "test"),
       streamingSilenceTimeoutMs = silenceMs,
       streamingDeadOnArrivalTimeoutMs = doaMs,
       streamingKeepaliveOnlyTimeoutMs = keepaliveMs

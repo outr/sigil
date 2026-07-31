@@ -16,6 +16,7 @@ import sigil.provider.{
 import sigil.tool.consult.{ExtractMemoriesInput, ExtractedMemory}
 import sigil.{GlobalSpace, SpaceId}
 import spice.http.HttpRequest
+import sigil.tool.consult.ExtractMemoriesTool
 
 /**
  * Regression for sigil bug #195 (extractor half) — the per-turn
@@ -50,7 +51,7 @@ class ExtractorModeAffinitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val payload = ExtractMemoriesInput(memories)
       Stream.emits(List(
         ProviderEvent.ToolCallStart(CallId("extract-1"), "extract_memories"),
-        ProviderEvent.ToolCallComplete(CallId("extract-1"), payload),
+        ProviderEvent.toolCall(CallId("extract-1"), ExtractMemoriesTool)(payload),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }

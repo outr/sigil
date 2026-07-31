@@ -267,7 +267,7 @@ private object NoOpStubProvider extends Provider {
     val callId = _root_.sigil.provider.CallId(s"noop-call-${callCount.get()}")
     Stream.emits(List(
       ProviderEvent.ToolCallStart(callId, _root_.sigil.tool.core.RespondTool.schema.name.value),
-      ProviderEvent.ToolCallComplete(callId, _root_.sigil.tool.model.RespondInput(
+      ProviderEvent.toolCall(callId, _root_.sigil.tool.core.RespondTool)(_root_.sigil.tool.model.RespondInput(
         topicLabel = "Greeting", topicSummary = "Greeting", content = "Hi.", endsTurn = true
       )),
       ProviderEvent.Done(StopReason.Complete)

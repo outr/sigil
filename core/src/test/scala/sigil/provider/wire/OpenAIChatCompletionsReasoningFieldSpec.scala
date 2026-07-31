@@ -5,6 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.provider.{ProviderEvent, ToolCallAccumulator}
+import sigil.tool.ToolRoster
 
 /**
  * Regression for sigil bug #192 — OpenRouter (and likely other
@@ -34,7 +35,7 @@ class OpenAIChatCompletionsReasoningFieldSpec extends AsyncWordSpec with AsyncTa
     providerName      = "Test"
   )
 
-  private def freshState = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(Vector.empty))
+  private def freshState = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(ToolRoster.empty))
 
   "OpenAIChatCompletions.parseChunk (sigil bug #192)" should {
 

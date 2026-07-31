@@ -42,9 +42,17 @@ case object UnknownTool extends sigil.tool.Tool {
     // The refusal carries the closest-name match from the offered roster
     // plus that match's schema + example so the agent can retry against
     // a real tool on its next iteration without re-running discovery.
+    // The model's args are preserved verbatim in the refusal body so the
+    // agent can carry them over to the corrected call.
+    val sentArgs: Option[String] = input.json match {
+      case fabric.Obj(map) if map.isEmpty => None
+      case fabric.Str(s, _)               => Some(s)
+      case other                          => Some(fabric.io.JsonFormatter.Default(other))
+    }
     val failure = RefusalPayload.unknownTool(
       invokedName = invokedName,
-      offered     = context.turn.offeredTools
+      offered     = context.turn.offeredTools,
+      sentArgs    = sentArgs
     )
     context.emit(Message(
       participantId  = context.caller,

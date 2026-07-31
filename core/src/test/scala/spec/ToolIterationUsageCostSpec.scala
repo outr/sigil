@@ -21,6 +21,7 @@ import spice.http.HttpRequest
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import spec.GetMagicNumberTool
 
 /**
  * Per-iteration usage on tool-calling iterations must survive to both
@@ -100,14 +101,14 @@ class ToolIterationUsageCostSpec extends AsyncWordSpec with AsyncTaskSpec with M
         if (calls.incrementAndGet() == 1)
           List(
             ProviderEvent.ToolCallStart(callId, GetMagicNumberTool.name.value),
-            ProviderEvent.ToolCallComplete(callId, GetMagicNumberInput()),
+            ProviderEvent.toolCall(callId, GetMagicNumberTool)(GetMagicNumberInput()),
             ProviderEvent.Usage(TokenUsage(1000, 50, 1050)),
             ProviderEvent.Done(StopReason.ToolCall)
           )
         else
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, RespondInput(
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
               topicLabel   = TestTopicEntry.label,
               topicSummary = TestTopicEntry.summary,
               content      = "The magic number is 42.",

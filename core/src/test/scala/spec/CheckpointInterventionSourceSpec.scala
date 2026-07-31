@@ -21,6 +21,7 @@ import spice.http.HttpRequest
 import java.util.concurrent.{ConcurrentLinkedQueue, atomic}
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import sigil.tool.consult.ProgressReflectionTool
 
 /**
  * Regression for sigil bug #353 (which supersedes #284's askingUser
@@ -61,7 +62,7 @@ class CheckpointInterventionSourceSpec extends AsyncWordSpec with AsyncTaskSpec 
         val callId = CallId("consult-call")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, "report_progress"),
-          ProviderEvent.ToolCallComplete(callId, ProgressReflectionInput(
+          ProviderEvent.toolCall(callId, ProgressReflectionTool)(ProgressReflectionInput(
             currentStatus      = "stuck on the bsp_list_targets loop",
             meaningfulProgress = false,
             remainingSteps     = "ask user for clarification",
@@ -74,7 +75,7 @@ class CheckpointInterventionSourceSpec extends AsyncWordSpec with AsyncTaskSpec 
         val callId = CallId(s"agent-call-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, FindCapabilityTool.name.value),
-          ProviderEvent.ToolCallComplete(callId, FindCapabilityInput(keywords = "sleep wait delay")),
+          ProviderEvent.toolCall(callId, FindCapabilityTool)(FindCapabilityInput(keywords = "sleep wait delay")),
           ProviderEvent.Done(StopReason.ToolCall)
         ))
       }

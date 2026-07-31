@@ -16,6 +16,7 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicReference
 import scala.concurrent.duration.*
+import sigil.tool.consult.TopicClassifierTool
 
 /**
  * Coverage for sigil bug #89 — generic / catch-all topic labels
@@ -53,7 +54,7 @@ class ReservedTopicLabelsSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val callId = CallId("classifier-call")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, "classify_topic_shift"),
-        ProviderEvent.ToolCallComplete(callId, TopicClassifierInput(kind = scriptedKind)),
+        ProviderEvent.toolCall(callId, new TopicClassifierTool(Nil))(TopicClassifierInput(kind = scriptedKind)),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

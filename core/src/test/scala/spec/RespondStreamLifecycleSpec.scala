@@ -7,6 +7,7 @@ import sigil.provider.{ProviderEvent, ToolCallAccumulator}
 import sigil.provider.wire.OpenAIChatCompletions
 import sigil.provider.wire.OpenAIChatCompletions.{Config, ForcedCallShape, StreamState}
 import sigil.tool.core.CoreTools
+import sigil.tool.ToolRoster
 
 /**
  * Regression for Sigil bug #179 — when the wire delivers a streamed
@@ -32,7 +33,7 @@ class RespondStreamLifecycleSpec extends AnyWordSpec with Matchers {
   private val tools = CoreTools.all.toVector
 
   private def runWire(rawChunks: List[String]): Vector[ProviderEvent] = {
-    val state = new StreamState(new ToolCallAccumulator(tools, providerKey = "test"))
+    val state = new StreamState(new ToolCallAccumulator(ToolRoster(tools), providerKey = "test"))
     val out = Vector.newBuilder[ProviderEvent]
     rawChunks.foreach { c => out ++= OpenAIChatCompletions.parseChunk(JsonParser(c), state, cfg) }
     out ++= state.flushDone(cfg)

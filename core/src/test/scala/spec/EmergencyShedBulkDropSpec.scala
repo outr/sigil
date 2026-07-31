@@ -15,6 +15,7 @@ import sigil.tool.core.RespondTool
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
+import sigil.tool.ToolRoster
 
 /**
  * Coverage for sigil bug #59 — `Provider.emergencyShed`'s
@@ -107,7 +108,7 @@ class EmergencyShedBulkDropSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         model            = TestSigil.testModel(testModel._id),
         system             = "",
         messages           = msgs,
-        tools              = Vector.empty,
+        roster = ToolRoster(Vector.empty),
         builtInTools       = Set.empty,
         toolChoice         = sigil.provider.ToolChoice.None,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
@@ -135,7 +136,7 @@ class EmergencyShedBulkDropSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         model            = TestSigil.testModel(testModel._id),
         system             = "",
         messages           = Vector(ProviderMessage.User("xxxxx")),  // 5 tokens
-        tools              = Vector.empty,
+        roster = ToolRoster(Vector.empty),
         builtInTools       = Set.empty,
         toolChoice         = sigil.provider.ToolChoice.None,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),

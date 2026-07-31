@@ -61,10 +61,7 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val cid = CallId(s"r-${rapid.Unique()}")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(
-          cid,
-          RespondInput(topicLabel = "T", topicSummary = "spec", content = "ok", endsTurn = true)
-        ),
+        ProviderEvent.toolCall(cid, RespondTool)(RespondInput(topicLabel = "T", topicSummary = "spec", content = "ok", endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

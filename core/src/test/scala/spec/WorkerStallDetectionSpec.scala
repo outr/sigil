@@ -21,6 +21,7 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic
 import scala.concurrent.duration.*
+import sigil.tool.consult.ProgressReflectionTool
 
 /**
  * Sigil #332 — #330 over-corrected. It fixed a real misfire (the LLM
@@ -75,36 +76,30 @@ class WorkerStallDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         if (isReflector)
           List(
             ProviderEvent.ToolCallStart(callId, "report_progress"),
-            ProviderEvent.ToolCallComplete(
-              callId,
-              _root_.sigil.tool.consult.ProgressReflectionInput(
+            ProviderEvent.toolCall(callId, ProgressReflectionTool)(_root_.sigil.tool.consult.ProgressReflectionInput(
                 currentStatus      = "still looping on change_mode",
                 meaningfulProgress = false,
                 remainingSteps     = "wrap up",
                 stuckOn            = Some("looping"),
                 shouldAskUser      = askUser
-              )
-            ),
+              )),
             ProviderEvent.Done(StopReason.Complete)
           )
         else if (!isWorker || input.toolChoice == ToolChoice.Specific(RespondTool.schema.name))
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(
-              callId,
-              RespondInput(
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
                 topicLabel   = "Handoff",
                 topicSummary = "report after stall",
                 content      = "Reporting what I found and where I'm blocked.",
                 endsTurn     = true
-              )
-            ),
+              )),
             ProviderEvent.Done(StopReason.Complete)
           )
         else
           List(
             ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
+            ProviderEvent.toolCall(callId, ChangeModeTool)(ChangeModeInput(mode = "coding")),
             ProviderEvent.Done(StopReason.ToolCall)
           )
       Stream.emits(emits)

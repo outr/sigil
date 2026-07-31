@@ -89,7 +89,7 @@ case class GoogleProvider(apiKey: String,
       .flatMap(chunk => GoogleBatch.submitChunk(chunk.toList, apiKey, baseUrl))
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
-    val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = Google.Provider))
+    val state = new StreamState(new ToolCallAccumulator(input.roster, providerKey = Google.Provider))
     Stream.force(
       for {
         raw         <- httpRequestFor(input)

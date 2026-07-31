@@ -79,8 +79,7 @@ class AgentBenchHarnessSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
       ProviderEvent.ContentBlockStart(cid, "Text", arg = None),
       ProviderEvent.ContentBlockDelta(cid, content),
-      ProviderEvent.ToolCallComplete(cid,
-        RespondInput(topicLabel = TestTopicEntry.label, topicSummary = TestTopicEntry.summary, content = content, endsTurn = true)),
+      ProviderEvent.toolCall(cid, RespondTool)(RespondInput(topicLabel = TestTopicEntry.label, topicSummary = TestTopicEntry.summary, content = content, endsTurn = true)),
       ProviderEvent.Done(StopReason.Complete)
     )
   }
@@ -93,7 +92,7 @@ class AgentBenchHarnessSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     val cid = CallId(callIdValue)
     List(
       ProviderEvent.ToolCallStart(cid, ChangeModeTool.schema.name.value),
-      ProviderEvent.ToolCallComplete(cid, ChangeModeInput(mode = modeName)),
+      ProviderEvent.toolCall(cid, ChangeModeTool)(ChangeModeInput(mode = modeName)),
       ProviderEvent.Done(StopReason.ToolCall)
     )
   }

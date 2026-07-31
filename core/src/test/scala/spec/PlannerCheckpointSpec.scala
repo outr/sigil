@@ -21,6 +21,8 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
+import sigil.tool.consult.PlannerVerdictTool
+import sigil.tool.consult.ProgressReflectionTool
 
 /**
  * Planner-tier checkpoint: when `plannerModelId` is set, the
@@ -95,7 +97,7 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val callId = CallId(s"call-${rapid.Unique()}")
       def respond(n: Int): List[ProviderEvent] = List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId, RespondInput(
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
           topicLabel   = TestTopicEntry.label,
           topicSummary = TestTopicEntry.summary,
           content      = s"Task complete after $n calls.",
@@ -109,14 +111,14 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           val v = verdicts.lift(n - 1).getOrElse(verdicts.last)
           List(
             ProviderEvent.ToolCallStart(callId, "planner_verdict"),
-            ProviderEvent.ToolCallComplete(callId, v),
+            ProviderEvent.toolCall(callId, PlannerVerdictTool)(v),
             ProviderEvent.Done(StopReason.Complete)
           )
         } else if (input.tools.exists(_.name.value == "report_progress")) {
           reflectorCalls.incrementAndGet()
           List(
             ProviderEvent.ToolCallStart(callId, "report_progress"),
-            ProviderEvent.ToolCallComplete(callId, ProgressReflectionInput(
+            ProviderEvent.toolCall(callId, ProgressReflectionTool)(ProgressReflectionInput(
               currentStatus      = s"working (${rapid.Unique()})",
               meaningfulProgress = true,
               remainingSteps     = "keep going",
@@ -134,7 +136,7 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
               case MainShape.DistinctMutations =>
                 List(
                   ProviderEvent.ToolCallStart(callId, MutatingSpecTool.name.value),
-                  ProviderEvent.ToolCallComplete(callId, MutatingSpecInput(
+                  ProviderEvent.toolCall(callId, MutatingSpecTool)(MutatingSpecInput(
                     step = s"step-$n-${rapid.Unique()}",
                     target = Some(s"src/File$n.scala"))),
                   ProviderEvent.Done(StopReason.ToolCall)
@@ -142,7 +144,7 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
               case MainShape.IdenticalReads =>
                 List(
                   ProviderEvent.ToolCallStart(callId, GetMagicNumberTool.name.value),
-                  ProviderEvent.ToolCallComplete(callId, GetMagicNumberInput()),
+                  ProviderEvent.toolCall(callId, GetMagicNumberTool)(GetMagicNumberInput()),
                   ProviderEvent.Done(StopReason.ToolCall)
                 )
             }

@@ -13,6 +13,7 @@ import spice.net.*
 import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
+import sigil.tool.ToolRoster
 
 /**
  * Offline coverage for Gemini explicit `cachedContents` context
@@ -86,7 +87,7 @@ class GeminiContextCacheSpec extends AnyWordSpec with Matchers with BeforeAndAft
       model = TestSigil.testModel(modelId),
       system = system,
       messages = Vector(ProviderMessage.User(Vector(MessageContent.Text("hello")))),
-      tools = Vector.empty,
+      roster = ToolRoster(Vector.empty),
       builtInTools = Set.empty,
       toolChoice = ToolChoice.Auto,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50))

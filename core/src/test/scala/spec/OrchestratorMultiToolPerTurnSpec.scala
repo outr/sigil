@@ -65,9 +65,9 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
       val callB = CallId("call-b")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callA, NoResponseTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callA, NoResponseInput()),
+        ProviderEvent.toolCall(callA, ThrowingTool)(NoResponseInput()),
         ProviderEvent.ToolCallStart(callB, ThrowingTool.name.value),
-        ProviderEvent.ToolCallComplete(callB, NoResponseInput()),
+        ProviderEvent.toolCall(callB, ThrowingTool)(NoResponseInput()),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

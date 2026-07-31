@@ -6,6 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.{ProviderEvent, ProviderStreamException, ToolCallAccumulator}
 import sigil.provider.wire.OpenAIChatCompletions
 import sigil.provider.wire.OpenAIChatCompletions.{Config, ForcedCallShape, StreamState}
+import sigil.tool.ToolRoster
 
 /**
  * Regression for Sigil audit H3 — `delta.refusal` surfacing on OpenAI's
@@ -39,7 +40,7 @@ class RefusalDeltaSpec extends AnyWordSpec with Matchers {
     JsonParser(s"""{"choices":[{"finish_reason":"$reason","delta":{}}]}""")
 
   private def runUntilFlush(chunks: List[fabric.Json]): Vector[ProviderEvent] = {
-    val state = new StreamState(new ToolCallAccumulator(Vector.empty, providerKey = "test"))
+    val state = new StreamState(new ToolCallAccumulator(ToolRoster.empty, providerKey = "test"))
     val events = Vector.newBuilder[ProviderEvent]
     chunks.foreach { ch => events ++= OpenAIChatCompletions.parseChunk(ch, state, cfg) }
     events ++= state.flushDone(cfg)
@@ -73,7 +74,7 @@ class RefusalDeltaSpec extends AnyWordSpec with Matchers {
     }
 
     "ignore null refusal fields (no throw)" in {
-      val state = new StreamState(new ToolCallAccumulator(Vector.empty, providerKey = "test"))
+      val state = new StreamState(new ToolCallAccumulator(ToolRoster.empty, providerKey = "test"))
       val nullRefusalChunk = JsonParser("""{"choices":[{"delta":{"refusal":null}}]}""")
       OpenAIChatCompletions.parseChunk(nullRefusalChunk, state, cfg)
       OpenAIChatCompletions.parseChunk(contentChunk("hi"), state, cfg)
@@ -82,7 +83,7 @@ class RefusalDeltaSpec extends AnyWordSpec with Matchers {
     }
 
     "ignore empty-string refusal fields (no throw)" in {
-      val state = new StreamState(new ToolCallAccumulator(Vector.empty, providerKey = "test"))
+      val state = new StreamState(new ToolCallAccumulator(ToolRoster.empty, providerKey = "test"))
       OpenAIChatCompletions.parseChunk(refusalChunk(""), state, cfg)
       OpenAIChatCompletions.parseChunk(contentChunk("hi"), state, cfg)
       OpenAIChatCompletions.parseChunk(finishChunk("stop"), state, cfg)

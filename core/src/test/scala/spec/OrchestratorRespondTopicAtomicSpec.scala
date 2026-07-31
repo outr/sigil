@@ -53,15 +53,12 @@ class OrchestratorRespondTopicAtomicSpec extends AsyncWordSpec with AsyncTaskSpe
       val callId = CallId(s"call-${rapid.Unique()}")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(
-          callId,
-          RespondInput(
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
             topicLabel   = topicLabel,
             topicSummary = topicSummary,
             content      = content,
             endsTurn     = true
-          )
-        ),
+          )),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

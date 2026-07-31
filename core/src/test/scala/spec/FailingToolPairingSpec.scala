@@ -60,7 +60,7 @@ class FailingToolPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     override def call(input: ProviderCall): Stream[ProviderEvent] =
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, "erp_request"),
-        ProviderEvent.ToolCallComplete(callId, ErpInput()),
+        ProviderEvent.toolCall(callId, ErpTool)(ErpInput()),
         ProviderEvent.Done(StopReason.Complete)
       ))
   }

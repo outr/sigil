@@ -87,16 +87,13 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
           // Forced-synthesis turn — comply with the family pin.
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(
-              callId,
-              RespondInput(topicLabel = "Cap", topicSummary = "cap-hit synth", content = "synthesized from gathered context", endsTurn = true)
-            ),
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Cap", topicSummary = "cap-hit synth", content = "synthesized from gathered context", endsTurn = true)),
             ProviderEvent.Done(StopReason.Complete)
           )
         } else {
           List(
             ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
+            ProviderEvent.toolCall(callId, ChangeModeTool)(ChangeModeInput(mode = "coding")),
             ProviderEvent.Done(StopReason.ToolCall)
           )
         }
@@ -119,7 +116,7 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
       val callId = CallId(s"stubborn-$n")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
+        ProviderEvent.toolCall(callId, ChangeModeTool)(ChangeModeInput(mode = "coding")),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }

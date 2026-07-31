@@ -5,7 +5,7 @@ import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.db.Model
 import sigil.provider.*
-import sigil.tool.ToolInput
+import sigil.tool.Tool
 import spice.http.HttpRequest
 
 import java.util.concurrent.{ConcurrentLinkedQueue, CopyOnWriteArrayList}
@@ -114,13 +114,11 @@ object MockProvider {
       Script(segments.map(ProviderEvent.TextDelta.apply).toList :+ ProviderEvent.Done(StopReason.Complete))
 
     /** Tool-call response: a ToolCallStart + ToolCallComplete + Done(ToolCall). */
-    def toolCall(callId: CallId,
-                 toolName: String,
-                 input: ToolInput,
-                 stopReason: StopReason = StopReason.ToolCall): Script =
+    def toolCall(callId: CallId, tool: Tool)(input: tool.Input,
+                                             stopReason: StopReason = StopReason.ToolCall): Script =
       Script(List(
-        ProviderEvent.ToolCallStart(callId, toolName),
-        ProviderEvent.ToolCallComplete(callId, input),
+        ProviderEvent.ToolCallStart(callId, tool.name.value),
+        ProviderEvent.toolCall(callId, tool)(input),
         ProviderEvent.Done(stopReason)
       ))
 

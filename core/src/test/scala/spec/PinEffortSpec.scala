@@ -21,6 +21,7 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
+import sigil.tool.core.RespondTool
 
 /**
  * Coverage for conversation-level reasoning-effort pinning (sigil #412).
@@ -78,7 +79,7 @@ class PinEffortSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val cid = CallId(s"respond-${rapid.Unique()}")
       Stream.emits(List[ProviderEvent](
         ProviderEvent.ToolCallStart(cid, "respond"),
-        ProviderEvent.ToolCallComplete(cid, RespondInput(
+        ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
           topicLabel   = TestTopicEntry.label,
           topicSummary = TestTopicEntry.summary,
           content      = "Done.",

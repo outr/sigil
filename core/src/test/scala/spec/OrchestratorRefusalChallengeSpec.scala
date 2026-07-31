@@ -47,10 +47,7 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
       val callId = CallId(s"call-${rapid.Unique()}")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(
-          callId,
-          RespondInput(topicLabel = "Refusal", topicSummary = "challenge spec", content = content, endsTurn = true)
-        ),
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Refusal", topicSummary = "challenge spec", content = content, endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
@@ -72,16 +69,13 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
       if (n == 1) {
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, FindCapabilityTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(callId, FindCapabilityInput(keywords = "switch model change provider")),
+          ProviderEvent.toolCall(callId, FindCapabilityTool)(FindCapabilityInput(keywords = "switch model change provider")),
           ProviderEvent.Done(StopReason.ToolCall)
         ))
       } else {
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(
-            callId,
-            RespondInput(topicLabel = "After Discovery", topicSummary = "informed refusal", content = refusalContent, endsTurn = true)
-          ),
+          ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "After Discovery", topicSummary = "informed refusal", content = refusalContent, endsTurn = true)),
           ProviderEvent.Done(StopReason.Complete)
         ))
       }
@@ -104,10 +98,7 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
       val callId = CallId(s"refuse-$n-${rapid.Unique()}")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(
-          callId,
-          RespondInput(topicLabel = "Refusal", topicSummary = "stubborn refusal", content = content, endsTurn = true)
-        ),
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Refusal", topicSummary = "stubborn refusal", content = content, endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

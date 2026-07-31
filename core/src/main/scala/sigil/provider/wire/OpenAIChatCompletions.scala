@@ -371,7 +371,7 @@ object OpenAIChatCompletions {
     val resolvedDoaMs = config.streamingDeadOnArrivalTimeoutMs.getOrElse(sigil.streamingDeadOnArrivalTimeoutMs)
     val resolvedKeepaliveMs = config.streamingKeepaliveOnlyTimeoutMs.getOrElse(sigil.streamingKeepaliveOnlyTimeoutMs)
     val state = new StreamState(
-      acc = new ToolCallAccumulator(input.tools, providerKey = config.providerName),
+      acc = new ToolCallAccumulator(input.roster, providerKey = config.providerName),
       responseFormatMode = rfMode,
       streamingSilenceTimeoutMs = resolvedSilenceMs,
       streamingDeadOnArrivalTimeoutMs = resolvedDoaMs,
@@ -487,7 +487,7 @@ object OpenAIChatCompletions {
       }
     }
     val state = new StreamState(
-      acc = new ToolCallAccumulator(input.tools, providerKey = config.providerName),
+      acc = new ToolCallAccumulator(input.roster, providerKey = config.providerName),
       responseFormatMode = rfMode,
       streamingSilenceTimeoutMs = 0L,
       streamingDeadOnArrivalTimeoutMs = 0L

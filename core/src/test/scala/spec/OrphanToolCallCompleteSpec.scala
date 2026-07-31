@@ -45,7 +45,7 @@ class OrphanToolCallCompleteSpec extends AsyncWordSpec with AsyncTaskSpec with M
       Task.error(new UnsupportedOperationException("no wire"))
     override def call(input: ProviderCall): Stream[ProviderEvent] = Stream.emits(List(
       // No ToolCallStart — that's the bug shape.
-      ProviderEvent.ToolCallComplete(CallId("functions.no_response:24"), NoResponseInput()),
+      ProviderEvent.toolCall(CallId("functions.no_response:24"), NoResponseTool)(NoResponseInput()),
       ProviderEvent.Done(StopReason.Complete)
     ))
   }

@@ -13,6 +13,7 @@ import sigil.provider.{
 import sigil.script.ScalaScriptExecutor
 
 import scala.concurrent.duration.*
+import sigil.tool.ToolRoster
 
 /**
  * Coding head-to-head (HARD discriminator): cheap Cloudflare models
@@ -133,7 +134,7 @@ class CodingHeadToHeadSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       model = model,
       system = "You are a precise Scala engineer. Follow the spec exactly.",
       messages = Vector(ProviderMessage.User(Vector(MessageContent.Text(taskPrompt)))),
-      tools = Vector.empty,
+      roster = ToolRoster(Vector.empty),
       builtInTools = Set.empty,
       toolChoice = ToolChoice.None,
       // No temperature: Opus 4.8/4.7 reject sampling params (400).

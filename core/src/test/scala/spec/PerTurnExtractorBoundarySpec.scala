@@ -23,6 +23,7 @@ import spice.http.HttpRequest
 import java.util.concurrent.{ConcurrentLinkedQueue, atomic}
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import sigil.tool.core.ChangeModeTool
 
 /**
  * Regression for sigil bug #149 — the per-turn memory extractor
@@ -83,16 +84,13 @@ class PerTurnExtractorBoundarySpec extends AsyncWordSpec with AsyncTaskSpec with
         if (n == 1)
           List(
             ProviderEvent.ToolCallStart(callId, "change_mode"),
-            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
+            ProviderEvent.toolCall(callId, ChangeModeTool)(ChangeModeInput(mode = "coding")),
             ProviderEvent.Done(StopReason.ToolCall)
           )
         else
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(
-              callId,
-              RespondInput(topicLabel = "Test", topicSummary = "Per-turn extractor", content = "Reply", endsTurn = true)
-            ),
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Test", topicSummary = "Per-turn extractor", content = "Reply", endsTurn = true)),
             ProviderEvent.Done(StopReason.Complete)
           )
       Stream.emits(events)

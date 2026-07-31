@@ -78,7 +78,7 @@ class ConcurrentTurnSerializationSpec extends AsyncWordSpec with AsyncTaskSpec w
         }.flatMap(_ => Task.sleep(holdMs.millis)).map { _ =>
           Stream.emits(List[ProviderEvent](
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, RespondInput(
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
               topicLabel   = TestTopicEntry.label,
               topicSummary = TestTopicEntry.summary,
               content      = s"Reply $n",

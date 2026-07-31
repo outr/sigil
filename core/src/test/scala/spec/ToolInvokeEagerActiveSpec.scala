@@ -19,6 +19,7 @@ import spice.http.HttpRequest
 import java.util.concurrent.{ConcurrentLinkedQueue, TimeUnit, atomic}
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import spec.EagerActiveLatchTool
 
 /**
  * Coverage for Sigil #317 — `ToolInvoke(Active)` must broadcast to live
@@ -66,14 +67,14 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         val cid = CallId(s"latch-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(cid, EagerActiveLatchTool.name.value),
-          ProviderEvent.ToolCallComplete(cid, EagerActiveLatchInput()),
+          ProviderEvent.toolCall(cid, EagerActiveLatchTool)(EagerActiveLatchInput()),
           ProviderEvent.Done(StopReason.Complete)
         ))
       } else {
         val cid = CallId(s"respond-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(cid, RespondInput(
+          ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
             topicLabel   = "Latch done",
             topicSummary = "tool released, replying",
             content      = "All done.",

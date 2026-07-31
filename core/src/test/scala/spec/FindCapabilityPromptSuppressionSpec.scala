@@ -112,8 +112,7 @@ class FindCapabilityPromptSuppressionSpec extends AsyncWordSpec with AsyncTaskSp
       val callId = CallId(s"call-${rapid.Unique()}")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId,
-          RespondInput(topicLabel = "Refusal", topicSummary = "no discovery",
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Refusal", topicSummary = "no discovery",
             content = "I can't switch to GPT-5.5 — that's beyond what I do.", endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       ))

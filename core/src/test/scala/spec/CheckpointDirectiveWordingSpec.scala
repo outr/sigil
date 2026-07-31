@@ -21,6 +21,8 @@ import spice.http.HttpRequest
 import java.util.concurrent.{ConcurrentLinkedQueue, atomic}
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import sigil.tool.consult.ProgressReflectionTool
+import sigil.tool.core.RespondTool
 
 /**
  * Regression for sigil #412 (re-file) — a checkpoint DIRECTIVE nudge (the
@@ -69,7 +71,7 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
         val callId = CallId(s"consult-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, "report_progress"),
-          ProviderEvent.ToolCallComplete(callId, ProgressReflectionInput(
+          ProviderEvent.toolCall(callId, ProgressReflectionTool)(ProgressReflectionInput(
             currentStatus      = "still reading files, no edits yet",
             meaningfulProgress = false,
             remainingSteps     = "keep going",
@@ -83,7 +85,7 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
         val callId = CallId(s"respond-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, "respond"),
-          ProviderEvent.ToolCallComplete(callId, RespondInput(
+          ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
             topicLabel   = TestTopicEntry.label,
             topicSummary = TestTopicEntry.summary,
             content      = "Wrapping up.",
@@ -95,7 +97,7 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
         val callId = CallId(s"agent-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, FindCapabilityTool.name.value),
-          ProviderEvent.ToolCallComplete(callId, FindCapabilityInput(keywords = s"topic-${counter.incrementAndGet()}")),
+          ProviderEvent.toolCall(callId, FindCapabilityTool)(FindCapabilityInput(keywords = s"topic-${counter.incrementAndGet()}")),
           ProviderEvent.Done(StopReason.ToolCall)
         ))
       }

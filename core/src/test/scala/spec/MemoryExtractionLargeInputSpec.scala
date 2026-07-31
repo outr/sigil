@@ -13,6 +13,7 @@ import sigil.tool.consult.{ExtractMemoriesInput, ExtractedMemory}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicReference
+import sigil.tool.consult.ExtractMemoriesTool
 
 /**
  * Regression for sigil bug #303 — `StandardMemoryExtractor` previously
@@ -94,7 +95,7 @@ class MemoryExtractionLargeInputSpec extends AsyncWordSpec with AsyncTaskSpec wi
           val memories = List(ExtractedMemory(content = "Fact.", label = "Label"))
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, toolName),
-            ProviderEvent.ToolCallComplete(callId, ExtractMemoriesInput(memories)),
+            ProviderEvent.toolCall(callId, ExtractMemoriesTool)(ExtractMemoriesInput(memories)),
             ProviderEvent.Done(StopReason.ToolCall)
           ))
         case other =>

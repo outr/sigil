@@ -129,15 +129,12 @@ class ConversationSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val cid = CallId(s"healed-success-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(
-            cid,
-            RespondInput(
+          ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
               topicLabel   = "Healed reply",
               topicSummary = "post-heal retry succeeded",
               content      = "Resumed after self-heal.",
               endsTurn     = true
-            )
-          ),
+            )),
           ProviderEvent.Done(StopReason.Complete)
         ))
       }

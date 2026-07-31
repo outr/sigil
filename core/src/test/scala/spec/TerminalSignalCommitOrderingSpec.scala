@@ -19,6 +19,7 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicReference
 import scala.concurrent.duration.*
+import sigil.tool.core.RespondTool
 
 /**
  * Regression for the terminal-signal commit-ordering guarantee:
@@ -143,7 +144,7 @@ private object Bug255StubProvider extends Provider {
       val callId = CallId("bug255-respond")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, "respond"),
-        ProviderEvent.ToolCallComplete(callId, RespondInput(
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
           topicLabel = "Reply", topicSummary = "Reply", content = "bug255-reply", endsTurn = true
         )),
         ProviderEvent.Done(StopReason.Complete)

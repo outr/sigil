@@ -53,7 +53,7 @@ class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val cid = CallId(s"fc-${rapid.Unique()}")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, FindCapabilityTool.name.value),
-        ProviderEvent.ToolCallComplete(cid, FindCapabilityInput(keywords = keywords)),
+        ProviderEvent.toolCall(cid, FindCapabilityTool)(FindCapabilityInput(keywords = keywords)),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }

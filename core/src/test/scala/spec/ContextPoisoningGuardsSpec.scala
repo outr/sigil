@@ -61,7 +61,7 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   /** Provider that emits TWO identical tool calls back-to-back so
     * the dedup path fires for the second one. */
-  private class TwoIdenticalCallsProvider extends Provider {
+  private class TwoIdenticalCallsProvider(echoTool: EchoTool) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -73,9 +73,9 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val args = EchoInput("hello")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callA, "echo"),
-        ProviderEvent.ToolCallComplete(callA, args),
+        ProviderEvent.toolCall(callA, echoTool)(args),
         ProviderEvent.ToolCallStart(callB, "echo"),
-        ProviderEvent.ToolCallComplete(callB, args),
+        ProviderEvent.toolCall(callB, echoTool)(args),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
@@ -101,7 +101,7 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
       )
       for {
         _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        signals <- Orchestrator.process(TestSigil, new TwoIdenticalCallsProvider, request, conv).toList
+        signals <- Orchestrator.process(TestSigil, new TwoIdenticalCallsProvider(echoTool), request, conv).toList
       } yield {
         val invokes = signals.collect { case t: ToolInvoke => t }
         invokes should have size 2

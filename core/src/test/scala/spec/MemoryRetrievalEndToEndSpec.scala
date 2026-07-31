@@ -11,7 +11,7 @@ import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopPro
 import sigil.event.Event
 import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, ProviderEvent}
 import sigil.provider.llamacpp.LlamaCppProvider
-import sigil.tool.core.CoreTools
+import sigil.tool.core.{CoreTools, RespondTool}
 import sigil.tool.model.RespondInput
 import sigil.vector.InMemoryVectorIndex
 
@@ -154,9 +154,10 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
         // `respond` content (a Field callout, if used, is inline markdown
         // in that same content post-fold).
         provider(request).toList.map { events =>
-          val respondText = events.collectFirst {
-            case ProviderEvent.ToolCallComplete(_, r: RespondInput) => r.content
-          }
+          val respondText = events.flatMap {
+            case ProviderEvent.ToolCallComplete(_, wc) => wc.inputFor(RespondTool).map(_.content)
+            case _                                     => None
+          }.headOption
           val replyText = respondText.toList.mkString(" ")
           val toolsSeen = events.collect { case s: ProviderEvent.ToolCallStart => s.toolName }.toSet
           withClue(s"tools observed: ${toolsSeen.mkString(",")}; reply text: $replyText") {

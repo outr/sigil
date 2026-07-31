@@ -59,7 +59,7 @@ class OrchestratorToolFanoutCapSpec extends AsyncWordSpec with AsyncTaskSpec wit
         val cid = CallId(s"call-$i")
         List(
           ProviderEvent.ToolCallStart(cid, "probe"),
-          ProviderEvent.ToolCallComplete(cid, ProbeInput(i))
+          ProviderEvent.toolCall(cid, ProbeTool)(ProbeInput(i))
         )
       }
       Stream.emits(calls :+ ProviderEvent.Done(StopReason.Complete))

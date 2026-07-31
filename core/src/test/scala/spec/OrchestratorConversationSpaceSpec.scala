@@ -73,7 +73,7 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
       val cid = CallId("capture-call")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, "capture"),
-        ProviderEvent.ToolCallComplete(cid, CaptureInput()),
+        ProviderEvent.toolCall(cid, CaptureTool)(CaptureInput()),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

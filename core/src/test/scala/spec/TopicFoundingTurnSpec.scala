@@ -20,6 +20,7 @@ import sigil.tool.model.{RespondInput, ResponseContent}
 import spice.http.HttpRequest
 
 import scala.concurrent.duration.*
+import sigil.tool.consult.TopicClassifierTool
 
 /**
  * A topic switch lands at the END of its turn — the classifier only
@@ -69,14 +70,14 @@ class TopicFoundingTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         val callId = CallId(s"classify-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, "classify_topic_shift"),
-          ProviderEvent.ToolCallComplete(callId, TopicClassifierInput(kind = classifierKind)),
+          ProviderEvent.toolCall(callId, new TopicClassifierTool(Nil))(TopicClassifierInput(kind = classifierKind)),
           ProviderEvent.Done(StopReason.ToolCall)
         ))
       } else {
         val callId = CallId(s"respond-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(callId, RespondInput(
+          ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
             topicLabel   = proposedLabel,
             topicSummary = s"$proposedLabel summary",
             content      = "On it.",

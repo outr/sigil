@@ -5,7 +5,7 @@ import lightdb.time.Timestamp
 import sigil.conversation.{Conversation, DiscoveredCapability, TopicEntry, TurnInput}
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.tool.{Tool, ToolInput}
+import sigil.tool.{Tool, ToolRoster}
 
 /**
  * A conversation-aware provider request — agent turns build these. Carries
@@ -135,4 +135,11 @@ case class ConversationRequest(conversationId: Id[Conversation],
       val respondFamily = sigil.tool.core.CoreTools.atomicContentToolNames
       tools.filter(t => respondFamily.contains(t.schema.name))
     } else tools
+
+  /** The request's single name→tool resolution source, built once from
+    * [[effectiveTools]]. The wire path passes this same instance into the
+    * [[ProviderCall]] (so the streaming accumulator resolves against it)
+    * and the orchestrator dispatches against it — both ends of the
+    * dispatch see one roster by construction. */
+  lazy val roster: ToolRoster = ToolRoster(effectiveTools)
 }

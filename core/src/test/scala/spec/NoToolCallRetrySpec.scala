@@ -78,10 +78,7 @@ class NoToolCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         val callId = CallId(s"retry-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-          ProviderEvent.ToolCallComplete(
-            callId,
-            RespondInput(topicLabel = "Done", topicSummary = "recovered", content = "all set", endsTurn = true)
-          ),
+          ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Done", topicSummary = "recovered", content = "all set", endsTurn = true)),
           ProviderEvent.Done(StopReason.Complete)
         ))
       }

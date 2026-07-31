@@ -20,6 +20,7 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
+import sigil.tool.core.RespondTool
 
 /**
  * Regression for sigil #415 — the user's Stop must halt the agent, including
@@ -59,7 +60,7 @@ class StopContractSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val cid = CallId(s"respond-${rapid.Unique()}")
       Stream.emits(List[ProviderEvent](
         ProviderEvent.ToolCallStart(cid, "respond"),
-        ProviderEvent.ToolCallComplete(cid, RespondInput(
+        ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
           topicLabel   = TestTopicEntry.label,
           topicSummary = TestTopicEntry.summary,
           content      = "Resumed after the stop.",
