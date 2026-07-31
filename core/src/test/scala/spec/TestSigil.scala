@@ -539,6 +539,20 @@ object TestSigil extends Sigil {
   def setProgressCheckpointInterval(n: Int): Unit = progressCheckpointIntervalRef.set(Some(n))
 
   /**
+   * Per-test iteration-boundary governor roster. Specs registering a
+   * custom [[sigil.governor.TurnGovernor]] prepend or append it here;
+   * `resetTurnGovernors` reverts to the framework defaults (budget,
+   * then progress).
+   */
+  private val turnGovernorsRef =
+    new java.util.concurrent.atomic.AtomicReference[Option[List[sigil.governor.TurnGovernor]]](None)
+  override def turnGovernors: List[sigil.governor.TurnGovernor] =
+    turnGovernorsRef.get().getOrElse(super.turnGovernors)
+  def defaultTurnGovernors: List[sigil.governor.TurnGovernor] = super.turnGovernors
+  def setTurnGovernors(governors: List[sigil.governor.TurnGovernor]): Unit = turnGovernorsRef.set(Some(governors))
+  def resetTurnGovernors(): Unit = turnGovernorsRef.set(None)
+
+  /**
    * Per-test planner-tier override — specs exercising the planner
    * checkpoint set the oversight model id here; `None` (the framework
    * default) keeps the executor self-reflection path.

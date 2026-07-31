@@ -17,6 +17,8 @@ import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
+import sigil.governor.{BudgetDirective, BudgetGovernor, CheckpointIntervention, GovernorContext}
+import sigil.governor.{GovernorVote, ProgressGovernor, TurnGovernor}
 import sigil.transport.SignalTransport
 
 import java.nio.file.Path
@@ -6946,6 +6948,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * chance first. 0 disables. */
   protected def hardStallIdenticalCallLimit: Int = 6
 
+  private lazy val budgetGovernor: BudgetGovernor = new BudgetGovernor(this)
+  private lazy val progressGovernor: ProgressGovernor = new ProgressGovernor(this)
+
+  /** The guards consulted at every agent-loop iteration boundary, in
+    * precedence order — the first non-[[GovernorVote.Proceed]] vote wins
+    * and later governors are not evaluated at that boundary.
+    *
+    * The default order puts the spend budget ahead of the progress
+    * checkpoint: a dollar-a-minute turn must not wait for a checkpoint
+    * interval, and the checkpoint's LLM reflection must not be paid for
+    * at a boundary the budget gate already claimed.
+    *
+    * Apps override to append their own guards, drop a built-in, or
+    * reorder. The iteration cap and the orchestrator's mid-stream
+    * intercepts are NOT governors — see [[TurnGovernor]] for why. */
+  protected def turnGovernors: List[TurnGovernor] = List(budgetGovernor, progressGovernor)
+
   /** Sigil #257 / #273 — how many times the agent loop retries with the
     * FULL tool roster when a turn emits ZERO `tool_use` blocks (genuine
     * empty response) before falling back to the respond-only forced
@@ -7707,188 +7726,51 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 conversationId = convId,
                 activity = Some(AgentActivity.Thinking)
               )).flatMap { _ =>
-                // Run the progress checkpoint at the boundary if this
-                // is a checkpoint iteration. The helper returns
-                // Some(message) when the agent reports being stuck
-                // for `consecutiveNoProgressLimit` consecutive
-                // checkpoints OR when it explicitly asks the user
-                // for guidance — in either case we publish the
-                // synthetic respond and end the loop instead of
-                // recursing.
                 val nextIteration = iteration + 1
-                val checkpointTask: Task[Option[CheckpointIntervention]] =
-                  // The checkpoint runs in every conversation, workers
-                  // included (#332, amending #330). It bundles two
-                  // mechanisms: a mechanical stall detector
-                  // (repeated-identical-call / no-progress streak) that is
-                  // universally useful, and an LLM self-assessment that can
-                  // ask the user. #330 was right that the user-facing
-                  // *escalation* misfires in a worker — the supervisor owns
-                  // asking the human — but it suppressed the whole
-                  // checkpoint, disabling stall detection and letting a
-                  // grinding worker flail to the iteration cap. So we run the
-                  // checkpoint everywhere and instead redirect an `askingUser`
-                  // intervention to a supervisor handoff inside a worker (the
-                  // branch below).
-                  val checkpointInterval = effectiveProgressCheckpointInterval(agent.modelId)
-                  if (checkpointInterval > 0 && nextIteration % checkpointInterval == 0)
-                    runProgressCheckpoint(agent, convId, claimed, nextIteration)
-                  else
-                    // Off-interval iterations skip the LLM reflection but still
-                    // run the cheap, model-independent hard-stall check at every
-                    // boundary: a model re-emitting the same call past
-                    // `hardStallIdenticalCallLimit` has ignored every cooperative
-                    // guard, so surface it as an intervention (the handler below
-                    // forces synthesis) instead of letting it grind to
-                    // `maxAgentIterations` and throw.
-                    evaluateHardStall(convId, agent.id).map(_.map(reason =>
-                      CheckpointIntervention(
-                        message = Message(
-                          participantId  = agent.id,
-                          conversationId = convId,
-                          topicId        = conv.currentTopicId,
-                          content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(
-                            checkpointDirective(reason, None))),
-                          state          = EventState.Complete,
-                          role           = MessageRole.Standard
-                        ),
-                        askingUser = false,
-                        // Sigil #379 — the HARD stall (an identical-call streak
-                        // past `hardStallIdenticalCallLimit` that ignored every
-                        // cooperative checkpoint nudge) is a genuine runaway:
-                        // force a terminal synthesis early rather than grind to
-                        // `maxAgentIterations`. The cooperative checkpoint path
-                        // (`runProgressCheckpoint`) leaves this false so it just
-                        // nudges-and-continues.
-                        terminal = true
-                      )))
-                // Spend-budget gate — evaluated at EVERY boundary (a
-                // dollar-a-minute turn must not wait for a checkpoint
-                // interval). The hard ceiling preempts everything: one
-                // forced wrap-up iteration reporting spend and state.
-                // The soft check-in is a one-shot cooperative nudge on
-                // the same Tool-role channel as stall directives; the
-                // agent summarizes and asks the user via
-                // `respond_options`, and the continuation is a fresh
-                // turn (fresh budget, fresh classification).
-                evaluateBudgetGate(conv, claimed).flatMap {
-                  case Some(directive) if directive.hard =>
-                    publishInternalDirective(agent, conv, directive.directive)
-                      .map(_ => recurseForced(ForcedSynthesisReason.BudgetCeiling))
-                  case Some(directive) =>
-                    publishInternalDirective(agent, conv, directive.directive)
-                      .map(_ =>
-                        maybeIntraTurnCompact(agent, convId, claimed)
-                          .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
-                            userVisibleSeen = userVisibleSeen,
-                            turnExtractorFired = turnExtractorFired,
-                            failurePublished = failurePublished,
-                            discoveredCapabilitiesRef = discoveredCapabilitiesRef,
-                            toolResultCacheRef = toolResultCacheRef,
-                            healedThisTurn = healedThisTurn,
-                            healCorrelationId = healCorrelationId,
-                            overflowCompactions = overflowCompactions)))
-                  case None => checkpointTask.flatMap {
-                  case Some(intervention) =>
-                    // Bug #133 / #332 / #353 — a checkpoint intervention
-                    // (stall streak OR "needs user input") ALWAYS routes the
-                    // directive to the AGENT, never a framework-authored
-                    // user-facing Message in the agent's voice followed by an
-                    // idle dead-end (#353: the old `askingUser` main-conversation
-                    // arm did exactly that — the user saw "I need clarification"
-                    // they couldn't act on, and control never returned to the
-                    // agent). Publish the directive as Tool-role (Agents
-                    // visibility) under a synthetic `_stall_detected` invoke,
-                    // then force ONE more iteration so the agent decides what to
-                    // do — continue, or ask the user ITSELF via `respond` /
-                    // `respond_options`. The directive is tailored per case:
-                    val stallDirective: Directive =
-                      if (intervention.askingUser && isDirectedWorkerConversation(conv))
-                        // Worker: can't ask the human directly — report up to
-                        // the supervisor, who decides whether to escalate.
-                        Directive.StallAskSupervisor
-                      else if (intervention.askingUser)
-                        // Main conversation: leave the decision AND the
-                        // user-facing wording to the agent. The framework no
-                        // longer impersonates the agent toward the user (#353).
-                        // Note the false-positive guard: if the agent's recent
-                        // tool calls actually completed (e.g. externalized image
-                        // results), it can just continue.
-                        Directive.StallAskUser
-                      else Directive.ProgressCheckpoint(body = "", stuckOn = None)
-                    val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
-                      .invoke(stallDirective, agent.id, convId, conv.currentTopicId)
-                    // The non-asking case adopts the intervention's own
-                    // already-rendered body so its identity survives.
-                    val directiveContent =
-                      if (intervention.askingUser)
-                        Vector(_root_.sigil.tool.model.ResponseContent.Text(stallDirective.render))
-                      else intervention.message.content
-                    val taggedDirective = intervention.message.copy(
-                      role       = MessageRole.Tool,
-                      visibility = MessageVisibility.Agents,
-                      origin     = Some(syntheticInvoke._id),
-                      content    = directiveContent
-                    )
-                    publish(syntheticInvoke)
-                      .flatMap(_ => publish(taggedDirective))
-                      .map(_ =>
-                        if (intervention.terminal || isDirectedWorkerConversation(conv))
-                          // Sigil #379 — force a terminal synthesis early when:
-                          //   - HARD stall: an identical-call streak past
-                          //     `hardStallIdenticalCallLimit` that ignored every
-                          //     cooperative nudge — a genuine runaway, don't grind
-                          //     to the cap; OR
-                          //   - a directed WORKER: it can't ask the user, so a
-                          //     stall escalates by reporting to its supervisor
-                          //     (who decides how to proceed) rather than flailing
-                          //     silently in a sub-conversation.
-                          recurseForced(ForcedSynthesisReason.StallIntervention)
-                        else
-                          // Sigil #379 — for the main agent a cooperative
-                          // checkpoint directive is a NON-TERMINAL nudge: publish
-                          // it, then let the agent continue with its FULL roster
-                          // so it reflects and either changes approach or asks the
-                          // user ITSELF via respond_options. Previously this forced
-                          // a terminal respond (recurseForced), which (post-#375)
-                          // pinned tool_choice to `respond` — blocking
-                          // respond_options — and, on an `endsTurn:false` reply,
-                          // wedged the turn so the stall counters never cleared and
-                          // every "continue" re-fired the stale stall. Forced
-                          // synthesis now fires only on a hard stall, in a worker,
-                          // or at the maxAgentIterations ceiling, so a cooperative
-                          // main-agent stall no longer guillotines legitimate
-                          // long-running work.
-                          maybeIntraTurnCompact(agent, convId, claimed)
-                            .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
-                              userVisibleSeen = userVisibleSeen,
-                              turnExtractorFired = turnExtractorFired,
-                              failurePublished = failurePublished,
-                              discoveredCapabilitiesRef = discoveredCapabilitiesRef,
-                              toolResultCacheRef = toolResultCacheRef,
-                              healedThisTurn = healedThisTurn,
-                              healCorrelationId = healCorrelationId,
-                              overflowCompactions = overflowCompactions)))
-                  case None =>
-                    // Sigil #285 — consult the intra-turn compactor
-                    // before the next iteration. When budget pressure
-                    // or a natural boundary fires, the framework folds
-                    // older this-turn events into a ContextSummary so
-                    // the next iteration's wire prompt is smaller. The
-                    // helper is a no-op when no compaction is needed.
-                    Task.pure(
-                      maybeIntraTurnCompact(agent, convId, claimed)
-                        .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
-                          userVisibleSeen = userVisibleSeen,
-                          turnExtractorFired = turnExtractorFired,
-                          failurePublished = failurePublished,
-                          discoveredCapabilitiesRef = discoveredCapabilitiesRef,
-                          toolResultCacheRef = toolResultCacheRef,
-                          healedThisTurn = healedThisTurn,
-                          healCorrelationId = healCorrelationId,
-                          overflowCompactions = overflowCompactions))
-                    )
+                val governorContext = GovernorContext(
+                  agent              = agent,
+                  conversation       = conv,
+                  claimed            = claimed,
+                  iteration          = iteration,
+                  nextIteration      = nextIteration,
+                  modelProfile       = modelProfileForId(agent.modelId),
+                  checkpointInterval = effectiveProgressCheckpointInterval(agent.modelId),
+                  plannerCadence     = effectivePlannerCadence(agent.modelId)
+                )
+                // Sigil #285 — the normal continuation consults the
+                // intra-turn compactor before the next iteration. When
+                // budget pressure or a natural boundary fires, the
+                // framework folds older this-turn events into a
+                // ContextSummary so the next iteration's wire prompt is
+                // smaller. The helper is a no-op when no compaction is
+                // needed.
+                def continueLoop: Task[Unit] =
+                  maybeIntraTurnCompact(agent, convId, claimed)
+                    .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
+                      userVisibleSeen = userVisibleSeen,
+                      turnExtractorFired = turnExtractorFired,
+                      failurePublished = failurePublished,
+                      discoveredCapabilitiesRef = discoveredCapabilitiesRef,
+                      toolResultCacheRef = toolResultCacheRef,
+                      healedThisTurn = healedThisTurn,
+                      healCorrelationId = healCorrelationId,
+                      overflowCompactions = overflowCompactions))
+                // Fold the boundary guards in list order; the first
+                // non-Proceed vote wins and later governors don't run at
+                // this boundary. Laziness is load-bearing — the progress
+                // governor's checkpoint (an LLM round-trip) must not fire
+                // at a boundary the budget gate already claimed.
+                def foldGovernors(remaining: List[TurnGovernor]): Task[GovernorVote] = remaining match {
+                  case Nil => Task.pure(GovernorVote.Proceed)
+                  case governor :: rest => governor.evaluate(governorContext).flatMap {
+                    case GovernorVote.Proceed => foldGovernors(rest)
+                    case vote                 => Task.pure(vote)
+                  }
                 }
+                foldGovernors(turnGovernors).flatMap {
+                  case GovernorVote.Proceed => Task.pure(continueLoop)
+                  case GovernorVote.Intervene(publishDirective, forceSynthesis) =>
+                    publishDirective.map(_ => forceSynthesis.fold(continueLoop)(recurseForced))
                 }
               }
             case true if !forceResponseSynthesis =>
@@ -8143,17 +8025,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * misattributing to "hit maxAgentIterations". Reason carries the
     * trigger condition (`CapHit` / `NoToolCall` / `StallIntervention`);
     * `iteration` is the actual loop counter at throw time. */
-  /** A budget-gate verdict: `hard = true` forces terminal synthesis;
-    * `hard = false` is the cooperative check-in. `text` is the
-    * Tool-role directive the agent reads. */
-  private final case class BudgetDirective(hard: Boolean, directive: Directive)
-
   /** Evaluate the spend budgets at an iteration boundary. Hard
     * ceilings (turn, then conversation) win; soft crossings fire
     * once per claim per scope; the escalation-headroom flag forces
     * the soft check-in early. `None` = under budget (or budgets
     * unset) — zero behavior change. */
-  private final def evaluateBudgetGate(conv: Conversation, claimed: AgentState): Task[Option[BudgetDirective]] = Task {
+  private[sigil] final def evaluateBudgetGate(conv: Conversation, claimed: AgentState): Task[Option[BudgetDirective]] = Task {
     Option(activeClaims.get(claimed._id)).flatMap { entry =>
       val budgets  = effectiveBudgetsFor(conv)
       val turnCost = entry.turnCost
@@ -8196,18 +8073,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * Agents-visibility Message the agent reads next iteration. Used by
     * the budget gate (`_budget_ceiling` / `_budget_checkin`) and the
     * planner checkpoint (`_plan` / `_planner_correction`). */
-  private final def publishInternalDirective(agent: AgentParticipant,
-                                             conv: Conversation,
-                                             d: sigil.orchestrator.Directive): Task[Unit] =
+  private[sigil] final def publishInternalDirective(agent: AgentParticipant,
+                                                    conv: Conversation,
+                                                    d: sigil.orchestrator.Directive): Task[Unit] =
     publishInternalDirective(agent, conv, d, d.render)
 
   /** Publish a directive whose prose was authored elsewhere (the
     * checkpoint path adopts an intervention's own message content).
     * The synthetic invoke still carries the typed payload. */
-  private final def publishInternalDirective(agent: AgentParticipant,
-                                             conv: Conversation,
-                                             d: sigil.orchestrator.Directive,
-                                             text: String): Task[Unit] = {
+  private[sigil] final def publishInternalDirective(agent: AgentParticipant,
+                                                    conv: Conversation,
+                                                    d: sigil.orchestrator.Directive,
+                                                    text: String): Task[Unit] = {
     val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
       .invoke(d, agent.id, conv._id, conv.currentTopicId)
     val directive = Message(
@@ -8335,30 +8212,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         }
     }
 
-  /** Outcome of a progress checkpoint dispatch. `None` means continue
-    * the agent loop normally; `Some(message)` means terminate the loop
-    * after publishing this respond Message (the framework intervened
-    * because the agent reported being stuck or asked the user for
-    * guidance). */
-  /** Bug #133 — outcome envelope for a checkpoint's intervention.
-    * Distinguishes the two recoverable shapes the framework can hit:
-    *
-    *   - [[CheckpointIntervention]] with `askingUser = false` — stall
-    *     detector trip, no-progress streak, or any other "agent should
-    *     now do something different" case. The intervention text is
-    *     a directive to the AGENT. Caller publishes as Tool-role +
-    *     runs one forced-synthesis iteration so the agent actually
-    *     gets to act on the guidance (parallel to #125's cap-hit).
-    *   - [[CheckpointIntervention]] with `askingUser = true` — the
-    *     reflector self-reported `shouldAskUser`. Genuine "I need
-    *     user input to proceed" — caller publishes user-visible and
-    *     releases the claim.
-    *
-    * The previous return shape (`Option[Message]`) collapsed both
-    * cases into one path and unconditionally terminated the loop;
-    * the agent never got to act on stall directives. */
-  private final case class CheckpointIntervention(message: Message, askingUser: Boolean, terminal: Boolean = false)
-
   /** Sigil #285 — consult [[intraTurnCompactor]] at an iteration
     * boundary and, if it fires, run [[intraTurnCompressor.compressCovering]]
     * to fold this turn's eligible events into a [[ContextSummary]]
@@ -8435,10 +8288,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     case other => other.toString
   }
 
-  private final def runProgressCheckpoint(agent: AgentParticipant,
-                                          convId: Id[Conversation],
-                                          claimed: AgentState,
-                                          iteration: Int): Task[Option[CheckpointIntervention]] = Task.defer {
+  private[sigil] final def runProgressCheckpoint(agent: AgentParticipant,
+                                                 convId: Id[Conversation],
+                                                 claimed: AgentState,
+                                                 iteration: Int): Task[Option[CheckpointIntervention]] = Task.defer {
     if (effectiveProgressCheckpointInterval(agent.modelId) <= 0) Task.pure(None)
     else if (plannerModelId.isDefined) runPlannerCheckpoint(agent, convId, claimed, iteration, plannerModelId.get)
     else {
@@ -9046,8 +8899,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * that every cooperative guard has been ignored and the turn must be force-
     * ended rather than ground to [[maxAgentIterations]]. Cheap (one event
     * read, no LLM), so it can run at every iteration boundary. */
-  private final def evaluateHardStall(convId: Id[Conversation],
-                                      agentId: ParticipantId): Task[Option[String]] =
+  private[sigil] final def evaluateHardStall(convId: Id[Conversation],
+                                             agentId: ParticipantId): Task[Option[String]] =
     if (hardStallIdenticalCallLimit <= 0) Task.pure(None)
     else loadStallRecords(convId, agentId).map { records =>
       sigil.conversation.compression.StallDetector
@@ -9068,7 +8921,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * there is nothing for the model to answer in chat. The genuine
     * ask-the-user checkpoint (`shouldAskUser`) keeps its first-person
     * user-facing wording; only the directive path is reframed. */
-  private def checkpointDirective(body: String, stuckOn: Option[String]): String =
+  private[sigil] def checkpointDirective(body: String, stuckOn: Option[String]): String =
     Directive.ProgressCheckpoint(body, stuckOn).render
 
   private final def evaluateStall(convId: Id[Conversation],
