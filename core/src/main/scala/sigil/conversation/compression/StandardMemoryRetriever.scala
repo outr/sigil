@@ -1,12 +1,13 @@
 package sigil.conversation.compression
 
-import lightdb.Sort
 import lightdb.filter.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.{GlobalSpace, Sigil, SpaceId}
 import sigil.conversation.{ContextFrame, ContextMemory, Conversation, MemoryStatus}
+import sigil.conversation.compression.retrieval.{BudgetStage, FuseStage, GateStage, MemoryReranker, MemoryRetrievalContext,
+  MemoryRetrievalStage, MemoryRetrievalState, RecallStage, RecordStage, RerankStage}
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
 
@@ -19,17 +20,15 @@ import sigil.provider.Mode
  *     section, so always-applies rules don't depend on the LLM's query
  *     phrasing.
  *
- *   - `memories`: top-K most relevant non-pinned memories, ranked by
- *     a hybrid Lucene + vector retrieval. The query signal is built
- *     from the active topic's `label` + `summary` + the conversation's
- *     `currentKeywords` (set by the agent's last `respond` call) plus
- *     the most recent non-agent message (default fallback). Vector
- *     search uses [[Sigil.searchMemories]] (requires
- *     [[Sigil.embeddingProvider]] + [[Sigil.vectorIndex]] both
- *     non-NoOp); Lucene uses the [[ContextMemory.searchText]] index
- *     directly. The two ranked lists are combined via Reciprocal Rank
- *     Fusion so a memory that's strong on either signal surfaces, with
- *     memories strong on both ranking highest.
+ *   - `memories`: top-K most relevant non-pinned memories, produced by
+ *     the declared retrieval pipeline
+ *     ([[sigil.conversation.compression.retrieval.MemoryRetrievalStage]]):
+ *     Recall (lexical ∥ vector, space-pushed-down) → Gate (recallable +
+ *     mode affinity) → Fuse (confidence-weighted RRF × recency ×
+ *     reinforcement) → Rerank (optional) → Budget (count + token cap)
+ *     → Record (access marking). The query signal is built from the
+ *     active topic's `label` + `summary` + the conversation's
+ *     `currentKeywords` plus the most recent non-agent message.
  *
  * Pinned memories are excluded from `memories` so they never double-
  * render — they already appear in the Pinned section.
@@ -50,6 +49,23 @@ import sigil.provider.Mode
  *   - [[rrfK]]: RRF smoothing constant (default 60, the standard).
  *     Higher means rankings further down still contribute meaningfully;
  *     lower emphasises top-of-list.
+ *   - [[recencyWeight]] / [[reinforcementWeight]] /
+ *     [[recencyHalfLifeMs]]: the Fuse stage's bounded tiebreak terms
+ *     (see [[retrieval.FuseStage]]). Both weights at `0.0` reproduce
+ *     pure confidence-weighted RRF ordering exactly.
+ *   - [[reranker]]: optional Rerank stage backend (default `None` —
+ *     the stage is an identity pass). Wire
+ *     [[retrieval.LLMMemoryReranker]] with a configured model to
+ *     opt in.
+ *   - [[tokenBudget]]: optional cap on the retrieved bucket's rendered
+ *     token cost, applied best-first after the count cap.
+ *   - [[recordAccess]]: whether the Record stage batch-bumps
+ *     `accessCount` / `lastAccessedAt` on surfaced memories
+ *     (fire-and-forget; default on).
+ *   - [[pipeline]]: full stage-list replacement. `None` (default)
+ *     derives the standard six stages from the knobs above via
+ *     [[StandardMemoryRetriever.defaultStages]]; apps that swap a
+ *     stage start from that helper and replace the entry.
  */
 case class StandardMemoryRetriever(limit: Int = 5,
                                    queryFrom: Option[StandardMemoryRetriever.QueryBuilder] = None,
@@ -70,13 +86,37 @@ case class StandardMemoryRetriever(limit: Int = 5,
                                    lexicalWeight: Double = 2.0,
                                    /** Per-signal weight on the vector leg of RRF.
                                      * Default 1.0. Pair with `lexicalWeight`. */
-                                   vectorWeight: Double = 1.0) extends MemoryRetriever {
+                                   vectorWeight: Double = 1.0,
+                                   recencyWeight: Double = FuseStage.DefaultRecencyWeight,
+                                   reinforcementWeight: Double = FuseStage.DefaultReinforcementWeight,
+                                   recencyHalfLifeMs: Long = FuseStage.DefaultRecencyHalfLifeMs,
+                                   reranker: Option[MemoryReranker] = None,
+                                   tokenBudget: Option[Int] = None,
+                                   recordAccess: Boolean = true,
+                                   pipeline: Option[List[MemoryRetrievalStage]] = None) extends MemoryRetriever {
 
   override def retrieve(sigil: Sigil,
                         conversationId: Id[Conversation],
                         frames: Vector[ContextFrame],
                         chain: List[ParticipantId]): Task[MemoryRetrievalResult] =
     sigil.cachedMemoryRetrieve(conversationId, computeFresh(sigil, conversationId, frames, chain))
+
+  /** The stage list the pipeline runs — [[pipeline]] when supplied,
+    * otherwise the standard six derived from this retriever's knobs. */
+  def stages: List[MemoryRetrievalStage] = pipeline.getOrElse(
+    StandardMemoryRetriever.defaultStages(
+      limit = limit,
+      rrfK = rrfK,
+      lexicalWeight = lexicalWeight,
+      vectorWeight = vectorWeight,
+      recencyWeight = recencyWeight,
+      reinforcementWeight = reinforcementWeight,
+      recencyHalfLifeMs = recencyHalfLifeMs,
+      reranker = reranker,
+      tokenBudget = tokenBudget,
+      recordAccess = recordAccess
+    )
+  )
 
   /** The uncached retrieval path — runs once per (conversation,
     * cache lifetime) under [[Sigil.cachedMemoryRetrieve]]. */
@@ -91,7 +131,23 @@ case class StandardMemoryRetriever(limit: Int = 5,
       criticals    <- if (includePinned) loadPinned(sigil, spaces, currentMode, now) else Task.pure(Vector.empty)
       regular      <- buildQuery(sigil, conversationId, frames, chain).flatMap {
         case None        => Task.pure(Vector.empty)
-        case Some(query) => hybridSearch(sigil, query, spaces, currentMode, now).map(_.filterNot(criticals.toSet.contains))
+        case Some(query) =>
+          val ctx = MemoryRetrievalContext(
+            sigil = sigil,
+            conversationId = conversationId,
+            query = query,
+            spaces = spaces,
+            currentMode = currentMode,
+            now = now,
+            limit = limit,
+            candidatePool = math.max(limit * 4, 10),
+            exclude = criticals.toSet
+          )
+          stages
+            .foldLeft(Task.pure(MemoryRetrievalState())) { (acc, stage) =>
+              acc.flatMap(state => stage.run(state, ctx))
+            }
+            .map(_.ranked.map(_._id))
       }
     } yield MemoryRetrievalResult(memories = regular, criticalMemories = criticals)
   }
@@ -146,89 +202,6 @@ case class StandardMemoryRetriever(limit: Int = 5,
         }
     }
 
-  /** Run vector + Lucene retrieval in parallel, fuse via RRF. Both
-    * legs pass through the shared recall gate
-    * ([[ContextMemory.isRecallable]] — current version, `Approved`,
-    * unexpired) plus the per-turn mode-affinity check, and drop pinned
-    * memories (those render in the Pinned section already; topical
-    * retrieval mustn't double-render). The Lucene leg pushes spaces,
-    * `pinned == false`, and `status == Approved` into the index; the
-    * vector leg pushes spaces down via [[Sigil.searchMemories]] and
-    * filters pinned post-fetch since the vector payload doesn't carry
-    * pinned status. */
-  private def hybridSearch(sigil: Sigil,
-                           query: String,
-                           spaces: Set[SpaceId],
-                           currentMode: Option[Id[Mode]],
-                           now: Timestamp): Task[Vector[Id[ContextMemory]]] = {
-    val candidatePool = math.max(limit * 4, 10)
-    for {
-      vectorHits <- sigil.searchMemories(query, spaces, candidatePool)
-      lexicalHits <- luceneHits(sigil, query, spaces, candidatePool)
-    } yield {
-      val vectorIds  = vectorHits.iterator
-        .filterNot(_.pinned)
-        .filter(_.isRecallable(now))
-        .filter(matchesCurrentMode(_, currentMode))
-        .map(_._id).toList
-      val lexicalIds = lexicalHits.iterator
-        .filter(_.isRecallable(now))
-        .filter(matchesCurrentMode(_, currentMode))
-        .map(_._id).toList
-      // Confidence shapes the fused score: a 0.5-confidence memory's
-      // RRF contributions count for half a 1.0-confidence peer's, so
-      // ties break toward higher-confidence facts. Default 1.0 (the
-      // norm) means apps that don't write confidence get RRF-only
-      // ranking — backward-compatible.
-      val confidenceById: Map[Id[ContextMemory], Double] =
-        (vectorHits.iterator ++ lexicalHits.iterator).map(m => m._id -> m.confidence).toMap
-      val weight: Id[ContextMemory] => Double = id => confidenceById.getOrElse(id, 1.0)
-      // Per-signal weights — lexical defaults heavier than vector so a
-      // noisy hash embedding can't override a clear BM25 keyword match
-      // on small candidate pools. Apps with high-quality semantic
-      // embeddings pass `lexicalWeight = vectorWeight = 1.0` for
-      // traditional RRF.
-      StandardMemoryRetriever
-        .rrfFuse(List((lexicalIds, lexicalWeight), (vectorIds, vectorWeight)), rrfK, weight)
-        .take(limit)
-        .toVector
-    }
-  }
-
-  /** Lucene BM25 query over `ContextMemory.searchText`. Splits `query`
-    * into whitespace tokens and OR-matches; result order is BM25
-    * relevance. Spaces, `pinned == false`, and `status == Approved`
-    * are compiled into the index query — the space scope applies
-    * inside the candidate cut, so a large multi-tenant store can't
-    * crowd in-space matches out of the pool. Pinned memories are
-    * excluded because they render in the Pinned section already. */
-  private def luceneHits(sigil: Sigil,
-                         query: String,
-                         spaces: Set[SpaceId],
-                         candidatePool: Int): Task[List[ContextMemory]] = {
-    val tokens = query.toLowerCase.split("\\s+").iterator.map(_.trim).filter(_.nonEmpty).toList
-    if (tokens.isEmpty || spaces.isEmpty) Task.pure(Nil)
-    else sigil.withDB(_.memories.transaction { tx =>
-      tx.query
-        .filter { _ =>
-          val clauses = tokens.map { kw =>
-            FilterClause(ContextMemory.searchText.exactly(kw), Condition.Should, None)
-          }
-          val spaceClauses = spaces.toList.map { space =>
-            FilterClause(ContextMemory.spaceIdValue === space.value, Condition.Should, None)
-          }
-          Filter.Multi(minShould = 1, filters = clauses) &&
-            Filter.Multi(minShould = 1, filters = spaceClauses) &&
-            (ContextMemory.pinned === false) &&
-            (ContextMemory.statusName === MemoryStatus.Approved.toString)
-        }
-        .scored
-        .sort(Sort.BestMatch())
-        .limit(candidatePool)
-        .toList
-    })
-  }
-
   /** Load every pinned memory in the supplied spaces. Pushes the
     * filter into Lucene via the indexed `pinned` boolean, the
     * `statusName` projection, and the `spaceIdValue` string
@@ -267,6 +240,35 @@ object StandardMemoryRetriever {
     * participant chain. Returning `None` or an empty string skips
     * the retrieval call for this turn. */
   type QueryBuilder = (Vector[ContextFrame], List[ParticipantId]) => Option[String]
+
+  /** The standard six-stage pipeline, assembled from the retriever's
+    * knobs. Apps that want to swap one stage build on this — replace
+    * the entry and pass the list as
+    * `StandardMemoryRetriever(pipeline = Some(...))`. */
+  def defaultStages(limit: Int = 5,
+                    rrfK: Int = 60,
+                    lexicalWeight: Double = 2.0,
+                    vectorWeight: Double = 1.0,
+                    recencyWeight: Double = FuseStage.DefaultRecencyWeight,
+                    reinforcementWeight: Double = FuseStage.DefaultReinforcementWeight,
+                    recencyHalfLifeMs: Long = FuseStage.DefaultRecencyHalfLifeMs,
+                    reranker: Option[MemoryReranker] = None,
+                    tokenBudget: Option[Int] = None,
+                    recordAccess: Boolean = true): List[MemoryRetrievalStage] = List(
+    RecallStage(),
+    GateStage(),
+    FuseStage(
+      rrfK = rrfK,
+      lexicalWeight = lexicalWeight,
+      vectorWeight = vectorWeight,
+      recencyWeight = recencyWeight,
+      reinforcementWeight = reinforcementWeight,
+      recencyHalfLifeMs = recencyHalfLifeMs
+    ),
+    RerankStage(reranker),
+    BudgetStage(limit = limit, tokenBudget = tokenBudget),
+    RecordStage(recordAccess)
+  )
 
   /** Memory is expired (and should be skipped on retrieval) when its
     * `expiresAt` field is set and not in the future. Records with

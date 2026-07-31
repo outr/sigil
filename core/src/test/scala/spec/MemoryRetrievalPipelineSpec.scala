@@ -1,0 +1,220 @@
+package spec
+
+import lightdb.id.Id
+import lightdb.time.Timestamp
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AsyncWordSpec
+import rapid.{AsyncTaskSpec, Task}
+import sigil.Sigil
+import sigil.conversation.{ContextFrame, ContextMemory, Conversation, ConversationView, MemorySource}
+import sigil.conversation.compression.StandardMemoryRetriever
+import sigil.conversation.compression.retrieval.{BudgetStage, FuseStage, MemoryReranker, MemoryRetrievalContext, MemoryRetrievalState,
+  RerankStage}
+import sigil.event.Event
+import sigil.vector.InMemoryVectorIndex
+
+import scala.concurrent.duration.*
+
+/**
+ * Coverage for the declared retrieval pipeline's new stages:
+ *
+ *   - Fuse — recency breaks exact RRF ties toward the fresher record,
+ *     reinforcement gives a bounded (never dominating) boost, and
+ *     weights-zero reproduces the legacy confidence-weighted RRF
+ *     ordering exactly.
+ *   - Rerank — a stubbed [[MemoryReranker]] reorders; `None` is an
+ *     identity pass.
+ *   - Budget — the optional token cap keeps a best-first prefix.
+ *   - Record — an end-to-end retrieve bumps `accessCount` /
+ *     `lastAccessedAt` on the surfaced memories.
+ */
+class MemoryRetrievalPipelineSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
+  TestSigil.initFor(getClass.getSimpleName)
+
+  private val now = Timestamp()
+
+  private def ctx(sigil: Sigil = TestSigil): MemoryRetrievalContext = MemoryRetrievalContext(
+    sigil = sigil,
+    conversationId = Conversation.id(s"pipe-${rapid.Unique()}"),
+    query = "test query",
+    spaces = Set(MemoryTestSpace),
+    currentMode = None,
+    now = now,
+    limit = 5,
+    candidatePool = 10
+  )
+
+  private def mem(fact: String,
+                  created: Timestamp = now,
+                  modified: Timestamp = now,
+                  accessCount: Int = 0,
+                  confidence: Double = 1.0): ContextMemory = ContextMemory(
+    fact = fact,
+    label = fact.take(24),
+    summary = fact,
+    source = MemorySource.Explicit,
+    spaceId = MemoryTestSpace,
+    confidence = confidence,
+    accessCount = accessCount,
+    created = created,
+    modified = modified
+  )
+
+  "FuseStage" should {
+    "break an exact RRF tie toward the fresher memory" in {
+      val stale = mem("stale fact", created = Timestamp(now.value - 30 * 24 * 60 * 60 * 1000L),
+        modified = Timestamp(now.value - 30 * 24 * 60 * 60 * 1000L))
+      val fresh = mem("fresh fact")
+      // Symmetric leg weights, each memory rank 1 in exactly one leg —
+      // identical base scores. The stale record accumulates first, so
+      // weights-zero (stable sort) keeps it first; default weights let
+      // recency break the tie toward the fresher record.
+      val state = MemoryRetrievalState(lexical = Vector(stale), vectorHits = Vector(fresh))
+      val tied = FuseStage(lexicalWeight = 1.0, vectorWeight = 1.0, recencyWeight = 0.0, reinforcementWeight = 0.0)
+      val boosted = FuseStage(lexicalWeight = 1.0, vectorWeight = 1.0)
+      for {
+        zero <- tied.run(state, ctx())
+        defaulted <- boosted.run(state, ctx())
+      } yield {
+        zero.ranked.map(_.fact) should be(Vector("stale fact", "fresh fact"))
+        defaulted.ranked.map(_.fact) should be(Vector("fresh fact", "stale fact"))
+      }
+    }
+
+    "give a frequently-accessed memory a bounded boost that cannot dominate" in {
+      val cold = mem("cold rank one")
+      val hot = mem("hot rank four", accessCount = 1_000_000)
+      val filler1 = mem("filler two")
+      val filler2 = mem("filler three")
+      // Same leg, ranks 1 / 2 / 3 / 4. The hot record's saturated
+      // reinforcement term (< reinforcementWeight) cannot close a
+      // three-rank base-score gap, so rank 1 stays first.
+      val state = MemoryRetrievalState(lexical = Vector(cold, filler1, filler2, hot))
+      FuseStage().run(state, ctx()).map { fused =>
+        fused.ranked.head.fact should be("cold rank one")
+        // But the bounded boost DOES lift the hot record over its
+        // immediate (equally stale, unaccessed) predecessor.
+        fused.ranked.indexWhere(_.fact == "hot rank four") should be < 3
+      }
+    }
+
+    "reproduce the legacy confidence-weighted RRF ordering exactly at weights zero" in {
+      val a = mem("alpha", confidence = 0.6)
+      val b = mem("bravo")
+      val c = mem("charlie", confidence = 0.9)
+      val d = mem("delta")
+      val lexical = Vector(a, b, c)
+      val vector = Vector(c, d, a)
+      val confidenceOf: Map[Id[ContextMemory], Double] =
+        List(a, b, c, d).map(m => m._id -> m.confidence).toMap
+      val legacy = StandardMemoryRetriever.rrfFuse(
+        List((lexical.map(_._id).toList, 2.0), (vector.map(_._id).toList, 1.0)),
+        60,
+        (id: Id[ContextMemory]) => confidenceOf(id)
+      )
+      val stage = FuseStage(recencyWeight = 0.0, reinforcementWeight = 0.0)
+      stage.run(MemoryRetrievalState(lexical = lexical, vectorHits = vector), ctx()).map { fused =>
+        fused.ranked.map(_._id).toList should be(legacy)
+      }
+    }
+  }
+
+  "RerankStage" should {
+    val ranked = Vector(mem("first"), mem("second"), mem("third"))
+    val state = MemoryRetrievalState(ranked = ranked)
+
+    "apply a stub reranker's ordering" in {
+      val reversing = new MemoryReranker {
+        override def rerank(sigil: Sigil, query: String, memories: Vector[ContextMemory]): Task[Vector[ContextMemory]] =
+          Task.pure(memories.reverse)
+      }
+      RerankStage(Some(reversing)).run(state, ctx()).map { out =>
+        out.ranked.map(_.fact) should be(Vector("third", "second", "first"))
+      }
+    }
+
+    "pass through unchanged when no reranker is configured" in {
+      RerankStage(None).run(state, ctx()).map { out =>
+        out.ranked.map(_.fact) should be(Vector("first", "second", "third"))
+      }
+    }
+
+    "keep the fused order when the reranker fails" in {
+      val failing = new MemoryReranker {
+        override def rerank(sigil: Sigil, query: String, memories: Vector[ContextMemory]): Task[Vector[ContextMemory]] =
+          Task.error(new RuntimeException("boom"))
+      }
+      RerankStage(Some(failing)).run(state, ctx()).map { out =>
+        out.ranked.map(_.fact) should be(Vector("first", "second", "third"))
+      }
+    }
+  }
+
+  "BudgetStage" should {
+    "keep the best-first prefix that fits the token budget" in {
+      // HeuristicTokenizer ≈ 2/7 tokens per char: 70 chars ≈ 20 tokens.
+      val big1 = mem("a" * 70)
+      val big2 = mem("b" * 70)
+      val big3 = mem("c" * 70)
+      val state = MemoryRetrievalState(ranked = Vector(big1, big2, big3))
+      BudgetStage(limit = 10, tokenBudget = Some(45)).run(state, ctx()).map { out =>
+        out.ranked.map(_._id) should be(Vector(big1._id, big2._id))
+      }
+    }
+
+    "always keep the top-ranked memory even when it alone exceeds the budget" in {
+      val huge = mem("z" * 700)
+      val small = mem("tiny")
+      val state = MemoryRetrievalState(ranked = Vector(huge, small))
+      BudgetStage(limit = 10, tokenBudget = Some(10)).run(state, ctx()).map { out =>
+        out.ranked.map(_._id) should be(Vector(huge._id))
+      }
+    }
+
+    "apply only the count cap when no token budget is set" in {
+      val entries = Vector(mem("one"), mem("two"), mem("three"))
+      BudgetStage(limit = 2).run(MemoryRetrievalState(ranked = entries), ctx()).map { out =>
+        out.ranked.map(_._id) should be(entries.take(2).map(_._id))
+      }
+    }
+  }
+
+  "Record stage (end-to-end retrieve)" should {
+    "bump accessCount and lastAccessedAt on surfaced memories" in {
+      TestSigil.reset()
+      TestSigil.setEmbeddingProvider(TestHashEmbeddingProvider)
+      TestSigil.setVectorIndex(new InMemoryVectorIndex)
+      TestSigil.setAccessibleSpaces(_ => Task.pure(Set(MemoryTestSpace)))
+      TestSigil.withDB(_.memories.transaction { tx =>
+        tx.list.flatMap(rows => Task.sequence(rows.map(r => tx.delete(r._id))).unit)
+      }).sync()
+
+      val stored = TestSigil.persistMemory(mem("The user's favorite color is blue.")).sync()
+      val convId = Conversation.id(s"record-${rapid.Unique()}")
+      val view = ConversationView(
+        conversationId = convId,
+        frames = Vector(ContextFrame.Text("What is my favorite color?", TestUser, Id[Event](s"q-${rapid.Unique()}")))
+      )
+      val retriever = StandardMemoryRetriever(limit = 3)
+
+      def awaitBump(remaining: Int): Task[Int] =
+        TestSigil.withDB(_.memories.transaction(_.get(stored._id))).flatMap {
+          case Some(m) if m.accessCount > 0 => Task.pure(m.accessCount)
+          case _ if remaining <= 0          => Task.pure(0)
+          case _                            => Task.sleep(100.millis).flatMap(_ => awaitBump(remaining - 1))
+        }
+
+      for {
+        result <- retriever.retrieve(TestSigil, convId, view.frames, List(TestUser, TestAgent))
+        count <- awaitBump(remaining = 50)
+      } yield {
+        result.memories should contain(stored._id)
+        count should be(1)
+      }
+    }
+  }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
+}
