@@ -5,14 +5,13 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.Message
 import sigil.signal.EventState
-import sigil.tool.{TextToolOutput, ToolName, ToolResult, ToolSpec}
+import sigil.tool.{Resolution, TextToolOutput, ToolIO, ToolName, ToolResult, ToolSpec}
 import sigil.tool.model.{NoResponseInput, ResponseContent}
 
 case object NoResponseTool extends RespondFamilyTool {
   type Input  = NoResponseInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[NoResponseInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[NoResponseInput, TextToolOutput] = ToolIO.derived[NoResponseInput, TextToolOutput]
 
   override val name = ToolName("no_response")
   override val description =
@@ -31,7 +30,9 @@ case object NoResponseTool extends RespondFamilyTool {
     keywords = Set("silence", "skip", "decline", "no_reply", "ignore")
   )
 
-  override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     input.reason match {
       case Some(reason) if isUserDirectedProse(reason) =>
         scribe.warn(s"NoResponseTool: auto-promoting prose-shaped reason to a respond Message — " +

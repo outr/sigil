@@ -3,12 +3,23 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
-case class DapEvaluateInput(sessionId: String,
-                            expression: String,
-                            frameId: Option[Int] = None,
-                            context: String = "repl") extends ToolInput derives RW
+case class DapEvaluateInput(sessionId: String, expression: String, frameId: Option[Int] = None, context: String = "repl") extends ToolInput
+  derives RW
 
 /**
  * Evaluate an expression in the debugged program's context. The
@@ -24,8 +35,12 @@ case class DapEvaluateInput(sessionId: String,
 final class DapEvaluateTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapEvaluateInput
   type Output = DapEvaluateOutput
-  val inputRW = summon[RW[DapEvaluateInput]]
-  val outputRW = summon[RW[DapEvaluateOutput]]
+  val io: ToolIO[DapEvaluateInput, DapEvaluateOutput] = ToolIO.derived[DapEvaluateInput, DapEvaluateOutput].withExamples(
+    ToolExample(
+      "evaluate an expression in a frame",
+      DapEvaluateInput(sessionId = "demo-session", expression = "myList.size", frameId = Some(1000))
+    )
+  )
   override val name = ToolName("dap_evaluate")
   override val description =
     """Evaluate an expression in the debugged program's context.
@@ -41,20 +56,17 @@ final class DapEvaluateTool(val manager: DapManager) extends Tool with DapToolSu
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "evaluate", "expression", "inspect", "repl"))
   )
-  override val examples = List(
-    ToolExample(
-      "evaluate an expression in a frame",
-      DapEvaluateInput(sessionId = "demo-session", expression = "myList.size", frameId = Some(1000))
-    )
-  )
 
-  override def executeResult(input: DapEvaluateInput, context: ToolContext): Task[ToolResult[DapEvaluateOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapEvaluateInput, context: ToolContext): Task[ToolResult[DapEvaluateOutput]] =
     withSession(input.sessionId, context) { session =>
       session.evaluate(input.expression, input.frameId, input.context).map { resp =>
         ToolResult.success(DapEvaluateOutput(
           result = resp.getResult,
           `type` = Option(resp.getType),
-          variablesReference = resp.getVariablesReference
+          variablesReference =
+            resp.getVariablesReference
         ))
       }
     }

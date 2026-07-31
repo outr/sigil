@@ -5,7 +5,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
 case class RegisterTriggerInput(workflowId: String,
@@ -23,16 +23,14 @@ case class RegisterTriggerInput(workflowId: String,
 final class RegisterTriggerTool extends Tool with WorkflowToolSupport {
   type Input  = RegisterTriggerInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RegisterTriggerInput]]
-  val outputRW = summon[RW[TextToolOutput]]
-  override val name = ToolName("register_trigger")
-  override val description =
-    """Add a typed WorkflowTrigger to a workflow template.
-      |
-      |`workflowId` is the template id. `trigger` is the typed trigger shape — pick
-      |from the available subtypes (ConversationMessageTrigger, TimeTrigger, WebhookTrigger,
-      |WorkflowEventTrigger, plus app-defined ones).""".stripMargin
-  override val examples = List(
+  // `trigger` is a rich union whose variants require payload fields —
+  // ordinarily the ergonomics lint rejects that shape, but the trigger
+  // catalog is a deliberately polymorphic, app-extensible surface
+  // (downstream apps register their own trigger subclasses), so the
+  // schema is kept via the checked `withSchema` decision.
+  val io: ToolIO[RegisterTriggerInput, TextToolOutput] = ToolIO.withSchema[RegisterTriggerInput, TextToolOutput](
+    summon[fabric.rw.RW[RegisterTriggerInput]].definition
+  ).withExamples(
     ToolExample(
       "fire on a daily 9am cron",
       RegisterTriggerInput(
@@ -41,6 +39,13 @@ final class RegisterTriggerTool extends Tool with WorkflowToolSupport {
       )
     )
   )
+  override val name = ToolName("register_trigger")
+  override val description =
+    """Add a typed WorkflowTrigger to a workflow template.
+      |
+      |`workflowId` is the template id. `trigger` is the typed trigger shape — pick
+      |from the available subtypes (ConversationMessageTrigger, TimeTrigger, WebhookTrigger,
+      |WorkflowEventTrigger, plus app-defined ones).""".stripMargin
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -48,7 +53,9 @@ final class RegisterTriggerTool extends Tool with WorkflowToolSupport {
     discovery = DiscoverySpec(keywords = Set("workflow", "trigger", "schedule", "register"))
   )
 
-  override def executeResult(input: RegisterTriggerInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: RegisterTriggerInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))

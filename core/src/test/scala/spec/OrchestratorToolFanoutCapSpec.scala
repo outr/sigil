@@ -11,22 +11,45 @@ import sigil.db.Model
 import sigil.event.{Message, MessageDisposition, MessageRole, ToolInvoke}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
-  CallId, ConversationMode, ConversationRequest, GenerationSettings, Instructions,
-  Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
+  CallId,
+  ConversationMode,
+  ConversationRequest,
+  GenerationSettings,
+  Instructions,
+  Provider,
+  ProviderCall,
+  ProviderEvent,
+  ProviderType,
+  StopReason
 }
 import sigil.signal.{EventState, Signal}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import spice.http.HttpRequest
 
-/** A trivial action tool taking a distinct arg, so N calls aren't collapsed
-  * by the identical-call dedupe. */
+/**
+ * A trivial action tool taking a distinct arg, so N calls aren't collapsed
+ * by the identical-call dedupe.
+ */
 case class ProbeInput(n: Int) extends ToolInput derives RW
 
 case object ProbeTool extends Tool {
-  type Input  = ProbeInput
+  type Input = ProbeInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ProbeInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ProbeInput, TextToolOutput] = ToolIO.derived[ProbeInput, TextToolOutput]
   override val name = ToolName("probe")
   override val description = "A trivial probe tool."
   val spec: ToolSpec = ToolSpec(
@@ -35,7 +58,9 @@ case object ProbeTool extends Tool {
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("test", "probe"))
   )
-  override def executeResult(input: ProbeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ProbeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.Success(TextToolOutput(s"probe-${input.n}")))
 }
 
@@ -77,36 +102,36 @@ class OrchestratorToolFanoutCapSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val convId = Conversation.id(s"fanout-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = ConversationRequest(
-        conversationId     = convId,
-        model              = TestSigil.testModel(modelId),
-        instructions       = Instructions(),
-        turnInput          = TurnInput(conversationId = convId),
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
+        conversationId = convId,
+        model = TestSigil.testModel(modelId),
+        instructions = Instructions(),
+        turnInput = TurnInput(conversationId = convId),
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
         generationSettings = GenerationSettings(),
-        tools              = Vector(ProbeTool),
-        chain              = List(TestUser, TestAgent)
+        tools = Vector(ProbeTool),
+        chain = List(TestUser, TestAgent)
       )
       Orchestrator.process(TestSigil, new FanoutProvider, request, conv).toList.map { signals =>
         val invokes = signals.collect { case t: ToolInvoke => t }
         val executed = signals.collect {
           case d: sigil.signal.ToolDelta
-            if d.state.contains(EventState.Complete)
-              && d.output.exists(_.isInstanceOf[TextToolOutput]) => d
+              if d.state.contains(EventState.Complete)
+                && d.output.exists(_.isInstanceOf[TextToolOutput]) => d
         }
         val refusals = signals.collect {
           case m: Message
-            if m.role == MessageRole.Tool
-              && m.disposition.isInstanceOf[MessageDisposition.Failure]
-              && m.content.exists {
-                   case sigil.tool.model.ResponseContent.Text(t) => t.contains("more than")
-                   case _ => false
-                 } => m
+              if m.role == MessageRole.Tool
+                && m.disposition.isInstanceOf[MessageDisposition.Failure]
+                && m.content.exists {
+                  case sigil.tool.model.ResponseContent.Text(t) => t.contains("more than")
+                  case _ => false
+                } => m
         }
         withClue(s"cap=$cap total=$total invokes=${invokes.size} executed=${executed.size} refusals=${refusals.size}: ") {
-          invokes.size shouldBe total           // every call gets an invoke
-          executed.size shouldBe cap             // exactly the cap's worth run
-          refusals.size shouldBe (total - cap)   // the excess is refused with a note
+          invokes.size shouldBe total // every call gets an invoke
+          executed.size shouldBe cap // exactly the cap's worth run
+          refusals.size shouldBe (total - cap) // the excess is refused with a note
         }
       }
     }

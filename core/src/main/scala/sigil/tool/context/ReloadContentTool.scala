@@ -7,7 +7,7 @@ import sigil.conversation.{ContextFrame, ContextSummary, Conversation, ToolCallS
 import sigil.event.{Event, Message}
 import sigil.tool.ToolContext
 import sigil.tool.model.ResponseContent
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Reload content that context virtualization (#316) elided to save
@@ -29,8 +29,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolN
 case object ReloadContentTool extends Tool {
   type Input  = ReloadContentInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ReloadContentInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ReloadContentInput, TextToolOutput] = ToolIO.derived[ReloadContentInput, TextToolOutput]
 
   override val name = ToolName("reload_content")
   override val description =
@@ -50,7 +49,9 @@ case object ReloadContentTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("reload", "expand", "content", "elided", "restore", "full", "rehydrate"))
   )
 
-  override def executeResult(input: ReloadContentInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ReloadContentInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val targetConvId  = input.conversationId.getOrElse(ctx.conversation.id)
     val currentConvId = ctx.conversation.id
     ctx.sigil.canReadConversation(currentConvId, targetConvId).flatMap {

@@ -3,11 +3,23 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
-case class DapSetBreakpointsInput(sessionId: String,
-                                  filePath: String,
-                                  lines: List[Int]) extends ToolInput derives RW
+case class DapSetBreakpointsInput(sessionId: String, filePath: String, lines: List[Int]) extends ToolInput derives RW
 
 /**
  * Replace the breakpoints set on a source file. Per the DAP
@@ -19,8 +31,12 @@ case class DapSetBreakpointsInput(sessionId: String,
 final class DapSetBreakpointsTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapSetBreakpointsInput
   type Output = TextToolOutput
-  val inputRW = summon[RW[DapSetBreakpointsInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DapSetBreakpointsInput, TextToolOutput] = ToolIO.derived[DapSetBreakpointsInput, TextToolOutput].withExamples(
+    ToolExample(
+      "set two breakpoints",
+      DapSetBreakpointsInput(sessionId = "demo-session", filePath = "/abs/path/Foo.scala", lines = List(15, 32))
+    )
+  )
   override val name = ToolName("dap_set_breakpoints")
   override val description =
     """Set source breakpoints for a file in an active debug session (replaces any prior set).
@@ -35,14 +51,10 @@ final class DapSetBreakpointsTool(val manager: DapManager) extends Tool with Dap
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "breakpoints", "breakpoint", "set", "source", "line"))
   )
-  override val examples = List(
-    ToolExample(
-      "set two breakpoints",
-      DapSetBreakpointsInput(sessionId = "demo-session", filePath = "/abs/path/Foo.scala", lines = List(15, 32))
-    )
-  )
 
-  override def executeResult(input: DapSetBreakpointsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapSetBreakpointsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.setBreakpoints(input.filePath, input.lines).map { bps =>
         val text =

@@ -5,7 +5,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.WorkflowTemplate
 
 case class UnregisterTriggerInput(workflowId: String,
@@ -25,17 +25,15 @@ case class UnregisterTriggerInput(workflowId: String,
 final class UnregisterTriggerTool extends Tool with WorkflowToolSupport {
   type Input  = UnregisterTriggerInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[UnregisterTriggerInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[UnregisterTriggerInput, TextToolOutput] = ToolIO.derived[UnregisterTriggerInput, TextToolOutput].withExamples(
+    ToolExample("remove the first trigger", UnregisterTriggerInput(workflowId = "wf-abc", index = 0))
+  )
   override val name = ToolName("unregister_trigger")
   override val description =
     """Remove a trigger from a workflow template by its 0-based index.
       |
       |`workflowId` is the template id; `index` is the position in the template's
       |`triggers` list. Out-of-bounds indices are a clear error.""".stripMargin
-  override val examples = List(
-    ToolExample("remove the first trigger", UnregisterTriggerInput(workflowId = "wf-abc", index = 0))
-  )
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -43,7 +41,9 @@ final class UnregisterTriggerTool extends Tool with WorkflowToolSupport {
     discovery = DiscoverySpec(keywords = Set("workflow", "trigger", "remove", "unregister"))
   )
 
-  override def executeResult(input: UnregisterTriggerInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: UnregisterTriggerInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))

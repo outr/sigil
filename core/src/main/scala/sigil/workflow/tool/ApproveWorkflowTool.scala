@@ -5,7 +5,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import strider.Workflow
 import strider.step.Step
 
@@ -32,8 +32,12 @@ case class ApproveWorkflowInput(runId: String,
 final class ApproveWorkflowTool extends Tool with WorkflowToolSupport {
   type Input  = ApproveWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ApproveWorkflowInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ApproveWorkflowInput, TextToolOutput] = ToolIO.derived[ApproveWorkflowInput, TextToolOutput].withExamples(
+    ToolExample("Approve a pending review",
+      ApproveWorkflowInput(runId = "run-abc", stepId = "review")),
+    ToolExample("Approve with a reason note",
+      ApproveWorkflowInput(runId = "run-abc", stepId = "review", comment = Some("looks correct after manual check")))
+  )
   override val name = ToolName("approve_workflow")
   override val description =
     """Approve a workflow run paused on an approval step.
@@ -41,12 +45,6 @@ final class ApproveWorkflowTool extends Tool with WorkflowToolSupport {
       |`runId` is the run id; `stepId` is the id of the waiting approval step (visible
       |from the workflow's lifecycle Events). `comment` is optional free-form text —
       |passed through as the resume payload so the workflow's branching can match on it.""".stripMargin
-  override val examples = List(
-    ToolExample("Approve a pending review",
-      ApproveWorkflowInput(runId = "run-abc", stepId = "review")),
-    ToolExample("Approve with a reason note",
-      ApproveWorkflowInput(runId = "run-abc", stepId = "review", comment = Some("looks correct after manual check")))
-  )
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -54,7 +52,9 @@ final class ApproveWorkflowTool extends Tool with WorkflowToolSupport {
     discovery = DiscoverySpec(keywords = Set("workflow", "approve", "ok", "yes", "continue"))
   )
 
-  override def executeResult(input: ApproveWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ApproveWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     val payload: Json = input.comment.filter(_.nonEmpty).fold[Json](str("approve"))(c => str(s"approve: $c"))
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {

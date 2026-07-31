@@ -8,7 +8,20 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ProviderStreamException, ToolCallAccumulator}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.ToolContext
 import sigil.tool.{ToolRoster, WireCall}
 
@@ -33,10 +46,9 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
   case class RespondLike(topicLabel: String, content: String) extends ToolInput derives RW
 
   private object RespondTool extends Tool {
-    type Input  = RespondLike
+    type Input = RespondLike
     type Output = TextToolOutput
-    val inputRW  = summon[RW[RespondLike]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[RespondLike, TextToolOutput] = ToolIO.derived[RespondLike, TextToolOutput]
     override val name: ToolName = ToolName("respond")
     override val description: String = "Object-rooted respond schema."
     val spec: ToolSpec = ToolSpec(
@@ -46,7 +58,9 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
       discovery = DiscoverySpec(keywords = Set("test", "respond"))
     )
     override def _id: Id[Tool] = Id[Tool](name.value)
-    override def executeResult(input: RespondLike, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: RespondLike, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.content)))
   }
 
@@ -65,7 +79,7 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
       ex.providerKey shouldBe "deepinfra"
       ex.code shouldBe 200
       ex.typ shouldBe "malformed_tool_args"
-      ex.getMessage should (include ("JSON array") and include ("respond"))
+      ex.getMessage should (include("JSON array") and include("respond"))
     }
 
     "carry the provider key so error attribution survives the throw" in {
@@ -80,7 +94,7 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
       // fields, type mismatch) — should NOT be classified as degenerate.
       // Surfaces as a Malformed WireCall carrying the structured diagnostic.
       val acc = new ToolCallAccumulator(ToolRoster(Vector(RespondTool)), providerKey = "deepinfra")
-      feed(acc, """{"topicLabel":42,"content":[]}""")  // wrong field types
+      feed(acc, """{"topicLabel":42,"content":[]}""") // wrong field types
       val events = acc.complete()
       // No exception thrown; classified as a regular decode failure.
       val malformed = events.collect { case ProviderEvent.ToolCallComplete(_, m: WireCall.Malformed) => m }
@@ -102,7 +116,7 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
       feed(acc, """{"topicLabel":"A","content":"hello"}""")
       val events = acc.complete()
       events.collectFirst { case _: ProviderEvent.ToolCallComplete => true }.isDefined shouldBe true
-      events.collectFirst { case _: ProviderEvent.Error           => true }.isDefined shouldBe false
+      events.collectFirst { case _: ProviderEvent.Error => true }.isDefined shouldBe false
     }
   }
 }

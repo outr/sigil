@@ -3,13 +3,12 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspOutputPathItem, BspOutputPathsResult, BspTargetOutputPaths}
 
 import scala.jdk.CollectionConverters.*
 
-case class BspOutputPathsInput(projectRoot: String,
-                               targets: List[String] = Nil) extends ToolInput derives RW
+case class BspOutputPathsInput(projectRoot: String, targets: List[String] = Nil) extends ToolInput derives RW
 
 /**
  * List the build output directories (compiled classes, packaged
@@ -17,12 +16,10 @@ case class BspOutputPathsInput(projectRoot: String,
  * artifacts directly when a downstream tool needs the classpath
  * or jar output.
  */
-final class BspOutputPathsTool(val manager: BspManager) extends Tool
-  with BspToolSupport {
-  type Input  = BspOutputPathsInput
+final class BspOutputPathsTool(val manager: BspManager) extends Tool with BspToolSupport {
+  type Input = BspOutputPathsInput
   type Output = BspOutputPathsResult
-  val inputRW  = summon[RW[BspOutputPathsInput]]
-  val outputRW = summon[RW[BspOutputPathsResult]]
+  val io: ToolIO[BspOutputPathsInput, BspOutputPathsResult] = ToolIO.derived[BspOutputPathsInput, BspOutputPathsResult]
 
   override val name = ToolName("bsp_output_paths")
   override val description =
@@ -40,10 +37,13 @@ final class BspOutputPathsTool(val manager: BspManager) extends Tool
     )
   )
 
-  override def executeOutput(input: BspOutputPathsInput,
-                             context: ToolContext): Task[BspOutputPathsResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: BspOutputPathsInput, context: ToolContext): Task[BspOutputPathsResult] =
     withTargets[BspOutputPathsResult](
-      input.projectRoot, context, input.targets,
+      input.projectRoot,
+      context,
+      input.targets,
       onError = msg => BspOutputPathsResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspOutputPathsResult(input.projectRoot, Nil)
     ) { (session, targets) =>

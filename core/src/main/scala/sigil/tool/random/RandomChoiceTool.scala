@@ -3,7 +3,7 @@ package sigil.tool.random
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.model.{RandomChoiceInput, RandomChoiceOutput}
 
 /**
@@ -14,8 +14,13 @@ import sigil.tool.model.{RandomChoiceInput, RandomChoiceOutput}
 case object RandomChoiceTool extends Tool {
   type Input  = RandomChoiceInput
   type Output = RandomChoiceOutput
-  val inputRW  = summon[RW[RandomChoiceInput]]
-  val outputRW = summon[RW[RandomChoiceOutput]]
+  val io: ToolIO[RandomChoiceInput, RandomChoiceOutput] = ToolIO.derived[RandomChoiceInput, RandomChoiceOutput].withExamples(
+    ToolExample("pick a color", RandomChoiceInput(items = List("red", "green", "blue"))),
+    ToolExample(
+      "seeded pick — reproducible",
+      RandomChoiceInput(items = List("alice", "bob", "carol"), seed = Some(99L))
+    )
+  )
 
   override val name = ToolName("random_choice")
   override val description =
@@ -30,15 +35,10 @@ case object RandomChoiceTool extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("random", "choose", "pick", "select", "sample", "choice"))
   )
-  override val examples = List(
-    ToolExample("pick a color", RandomChoiceInput(items = List("red", "green", "blue"))),
-    ToolExample(
-      "seeded pick — reproducible",
-      RandomChoiceInput(items = List("alice", "bob", "carol"), seed = Some(99L))
-    )
-  )
 
-  override def executeOutput(input: RandomChoiceInput, context: ToolContext): Task[RandomChoiceOutput] = Task {
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: RandomChoiceInput, context: ToolContext): Task[RandomChoiceOutput] = Task {
     require(input.items.nonEmpty, "random_choice: `items` must be non-empty")
     val rng   = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)
     val index = rng.nextInt(input.items.size)

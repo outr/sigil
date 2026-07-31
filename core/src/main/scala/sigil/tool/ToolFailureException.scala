@@ -9,9 +9,9 @@ package sigil.tool
  *
  * Carries the originating tool's name + the structured failure
  * fields so the propagated error is debuggable and machine-readable.
- * Distinct from a thrown exception inside an `executeOutput` body —
- * those auto-convert to `ToolResult.Failure(message = e.getMessage)`
- * via [[Tool.executeResult]]'s default wrap. This exception is the
+ * Distinct from a thrown exception inside a [[Resolution.Simple]]
+ * body — those auto-convert to `ToolResult.Failure(message =
+ * e.getMessage)` by [[ToolExecutor]]. This exception is the
  * *re-raised* form of an already-structured Failure.
  */
 final class ToolFailureException(val toolName: ToolName,

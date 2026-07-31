@@ -5,7 +5,20 @@ import bench.agentdojo.banking.events.{ScheduledTransactionNotFound, ScheduledTr
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -17,13 +30,14 @@ final case class UpdateScheduledTransactionInput(@description("ID of the transac
                                                  @description("Is the transaction recurring (optional)") recurring: Option[Boolean] = None)
   extends ToolInput derives RW
 
-/** `update_scheduled_transaction` — patch a scheduled transaction by id. */
+/**
+ * `update_scheduled_transaction` — patch a scheduled transaction by id.
+ */
 final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = UpdateScheduledTransactionInput
   type Output = TextToolOutput
 
-  val inputRW: RW[UpdateScheduledTransactionInput] = summon[RW[UpdateScheduledTransactionInput]]
-  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+  val io: ToolIO[UpdateScheduledTransactionInput, TextToolOutput] = ToolIO.derived[UpdateScheduledTransactionInput, TextToolOutput]
 
   override val name: ToolName = ToolName("update_scheduled_transaction")
   override val description: String = "Update a scheduled transaction."
@@ -35,7 +49,9 @@ final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnviron
     discovery = DiscoverySpec(keywords = Set("bank", "update", "scheduled", "transaction"))
   )
 
-  override def executeResult(input: UpdateScheduledTransactionInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: UpdateScheduledTransactionInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val before = state.get
     val matched = before.bankAccount.scheduledTransactions.exists(_.id == input.id)
     if (!matched) {
@@ -43,7 +59,8 @@ final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnviron
         transactionId = input.id,
         participantId = context.caller,
         conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId
+        topicId =
+          context.conversation.currentTopicId
       )).map(_ => ToolResult.failure(s"No scheduled transaction with id ${input.id}."))
     } else {
       state.updateAndGet { env =>
@@ -64,7 +81,8 @@ final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnviron
         transactionId = input.id,
         participantId = context.caller,
         conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId
+        topicId =
+          context.conversation.currentTopicId
       )).map(_ => ToolResult.Success(TextToolOutput(s"Updated scheduled transaction ${input.id}.")))
     }
   }

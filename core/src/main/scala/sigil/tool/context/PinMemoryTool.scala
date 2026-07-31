@@ -5,7 +5,7 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolGates, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolGates, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Pin a previously-saved memory so it starts rendering every turn.
@@ -27,8 +27,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Too
 case object PinMemoryTool extends Tool {
   type Input  = PinMemoryInput
   type Output = TextToolOutput
-  val inputRW: RW[PinMemoryInput]  = summon[RW[PinMemoryInput]]
-  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+  val io: ToolIO[PinMemoryInput, TextToolOutput] = ToolIO.derived[PinMemoryInput, TextToolOutput]
 
   override val name: ToolName = ToolName("pin_memory")
   override val description: String =
@@ -51,7 +50,9 @@ case object PinMemoryTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("pin", "promote", "memory", "directive", "always", "permanent"))
   )
 
-  override def executeResult(input: PinMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: PinMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       val effective = input.space.map(s => Set(s).intersect(accessible)).getOrElse(accessible)
       if (effective.isEmpty)

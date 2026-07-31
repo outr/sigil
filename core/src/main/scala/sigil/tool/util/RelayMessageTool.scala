@@ -6,7 +6,7 @@ import sigil.event.{Message, MessageRole}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
 import sigil.tool.model.{RelayMessageInput, ResponseContent}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Opt-in util-tier tool: the cross-conversation *write* half (sigil
@@ -31,8 +31,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Too
 case object RelayMessageTool extends Tool {
   type Input  = RelayMessageInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RelayMessageInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[RelayMessageInput, TextToolOutput] = ToolIO.derived[RelayMessageInput, TextToolOutput]
   override val name = ToolName("relay_message")
   override val description =
     """Post a message into ANOTHER conversation you are a participant of — the cross-conversation
@@ -59,7 +58,9 @@ case object RelayMessageTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("relay", "bridge", "forward", "cross-conversation", "parent", "worker", "surface"))
   )
 
-  override def executeResult(input: RelayMessageInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: RelayMessageInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.withDB(_.conversations.transaction(_.get(input.conversationId))).flatMap {
       case None =>
         Task.pure(ToolResult.failure(

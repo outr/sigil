@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.storage.FileVersion
 import sigil.tool.model.{ReadFileInput, ReadFileOutput}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, OutputBounds, PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, OutputBounds, PlaceholderInputDetector, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Read a file from the [[FileSystemContext]]. Optional offset/limit
@@ -19,8 +19,11 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, OutputBounds, PlaceholderIn
 final class ReadFileTool(context: FileSystemContext) extends Tool {
   type Input  = ReadFileInput
   type Output = ReadFileOutput
-  val inputRW  = summon[RW[ReadFileInput]]
-  val outputRW = summon[RW[ReadFileOutput]]
+  val io: ToolIO[ReadFileInput, ReadFileOutput] = ToolIO.derived[ReadFileInput, ReadFileOutput].withExamples(
+    ToolExample("Read entire file", ReadFileInput(path = "README.md")),
+    ToolExample("Read first 100 lines", ReadFileInput(path = "data.log", limit = Some(100))),
+    ToolExample("Read lines 200-300", ReadFileInput(path = "data.log", offset = Some(200), limit = Some(100)))
+  )
   override val name = ToolName("read_file")
   override val description =
     """Read the contents of a file. Use `offset` (0-indexed line) and `limit` to read a window of large files.
@@ -45,13 +48,10 @@ final class ReadFileTool(context: FileSystemContext) extends Tool {
     )
   )
 
-  override val examples = List(
-    ToolExample("Read entire file", ReadFileInput(path = "README.md")),
-    ToolExample("Read first 100 lines", ReadFileInput(path = "data.log", limit = Some(100))),
-    ToolExample("Read lines 200-300", ReadFileInput(path = "data.log", offset = Some(200), limit = Some(100)))
-  )
 
-  override def executeResult(input: ReadFileInput, ctx: ToolContext): Task[ToolResult[ReadFileOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ReadFileInput, ctx: ToolContext): Task[ToolResult[ReadFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        =>

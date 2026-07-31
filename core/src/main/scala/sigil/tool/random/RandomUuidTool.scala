@@ -3,7 +3,7 @@ package sigil.tool.random
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.model.{RandomUuidInput, RandomUuidOutput}
 
 /**
@@ -18,8 +18,9 @@ import sigil.tool.model.{RandomUuidInput, RandomUuidOutput}
 case object RandomUuidTool extends Tool {
   type Input  = RandomUuidInput
   type Output = RandomUuidOutput
-  val inputRW  = summon[RW[RandomUuidInput]]
-  val outputRW = summon[RW[RandomUuidOutput]]
+  val io: ToolIO[RandomUuidInput, RandomUuidOutput] = ToolIO.derived[RandomUuidInput, RandomUuidOutput].withExamples(
+ToolExample("fresh uuid", RandomUuidInput())
+  )
 
   override val name = ToolName("random_uuid")
   override val description = "Generate a v4 (random) UUID. Returns `{uuid}`."
@@ -29,8 +30,9 @@ case object RandomUuidTool extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("uuid", "guid", "random", "id", "identifier", "token"))
   )
-  override val examples = List(ToolExample("fresh uuid", RandomUuidInput()))
 
-  override def executeOutput(input: RandomUuidInput, context: ToolContext): Task[RandomUuidOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: RandomUuidInput, context: ToolContext): Task[RandomUuidOutput] =
     Task(RandomUuidOutput(uuid = java.util.UUID.randomUUID().toString))
 }

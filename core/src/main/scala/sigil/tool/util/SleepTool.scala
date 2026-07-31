@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.SleepInput
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import scala.concurrent.duration.DurationLong
 
@@ -15,8 +15,10 @@ import scala.concurrent.duration.DurationLong
 case object SleepTool extends Tool {
   type Input  = SleepInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[SleepInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[SleepInput, TextToolOutput] = ToolIO.derived[SleepInput, TextToolOutput].withExamples(
+    ToolExample("Brief pause (500 ms)", SleepInput(500)),
+    ToolExample("Back-off before retry (2 seconds)", SleepInput(2000))
+  )
   override val name = ToolName("sleep")
   override val description =
     """Pause for the given number of milliseconds. Use when you need to wait — between polling attempts,
@@ -31,13 +33,11 @@ case object SleepTool extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("sleep", "wait", "delay", "pause"))
   )
-  override val examples = List(
-    ToolExample("Brief pause (500 ms)", SleepInput(500)),
-    ToolExample("Back-off before retry (2 seconds)", SleepInput(2000))
-  )
 
-  override def executeResult(input: SleepInput,
-                             context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: SleepInput,
+                            context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.sleep(input.millis.millis).map { _ =>
       ToolResult.Success(TextToolOutput(s"Paused for ${input.millis} ms."))
     }

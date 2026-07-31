@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{HttpRequestInput, HttpRequestMethod, HttpRequestOutput}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 import spice.http.HttpMethod
 import spice.http.content.Content
 import spice.net.{ContentType, URL}
@@ -25,8 +25,21 @@ import scala.concurrent.duration.*
 case object HttpRequestTool extends Tool {
   type Input  = HttpRequestInput
   type Output = HttpRequestOutput
-  val inputRW  = summon[RW[HttpRequestInput]]
-  val outputRW = summon[RW[HttpRequestOutput]]
+  val io: ToolIO[HttpRequestInput, HttpRequestOutput] = ToolIO.derived[HttpRequestInput, HttpRequestOutput].withExamples(
+    ToolExample(
+      "GET a JSON endpoint",
+      HttpRequestInput(url = "https://api.example.com/v1/status")
+    ),
+    ToolExample(
+      "POST a JSON body",
+      HttpRequestInput(
+        url     = "https://api.example.com/v1/items",
+        method  = HttpRequestMethod.Post,
+        headers = Map("Authorization" -> "Bearer ..."),
+        body    = Some("""{"name":"thing"}""")
+      )
+    )
+  )
   override val name = ToolName("http_request")
   override val description =
     """Issue an HTTP request to an arbitrary URL.
@@ -46,23 +59,10 @@ case object HttpRequestTool extends Tool {
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("http", "request", "api", "rest", "fetch", "curl", "post", "put", "patch", "delete"))
   )
-  override val examples = List(
-    ToolExample(
-      "GET a JSON endpoint",
-      HttpRequestInput(url = "https://api.example.com/v1/status")
-    ),
-    ToolExample(
-      "POST a JSON body",
-      HttpRequestInput(
-        url     = "https://api.example.com/v1/items",
-        method  = HttpRequestMethod.Post,
-        headers = Map("Authorization" -> "Bearer ..."),
-        body    = Some("""{"name":"thing"}""")
-      )
-    )
-  )
 
-  override def executeOutput(input: HttpRequestInput, context: ToolContext): Task[HttpRequestOutput] = Task.defer {
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: HttpRequestInput, context: ToolContext): Task[HttpRequestOutput] = Task.defer {
     val timeout = input.timeoutMs.millis
     val parsedUrl = URL.parse(input.url)
     val httpMethod = methodFor(input.method)

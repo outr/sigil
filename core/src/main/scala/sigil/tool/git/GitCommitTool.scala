@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitCommitInput, GitCommitOutput}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * `git_commit` — stage `paths` (or every tracked change when
@@ -17,8 +17,10 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, 
 final class GitCommitTool(context: FileSystemContext) extends Tool {
   type Input  = GitCommitInput
   type Output = GitCommitOutput
-  val inputRW  = summon[RW[GitCommitInput]]
-  val outputRW = summon[RW[GitCommitOutput]]
+  val io: ToolIO[GitCommitInput, GitCommitOutput] = ToolIO.derived[GitCommitInput, GitCommitOutput].withExamples(
+    ToolExample("Commit all tracked changes", GitCommitInput(message = "Fix typo")),
+    ToolExample("Commit specific paths",      GitCommitInput(message = "Add config", paths = Some(List("config/app.yaml"))))
+  )
   override val name = ToolName("git_commit")
   override val description =
     """Stage `paths` (or all tracked changes when omitted) and create a commit. Returns the new
@@ -30,12 +32,10 @@ final class GitCommitTool(context: FileSystemContext) extends Tool {
     profile = ToolProfile(effect = Effect.Destructive(target = MutationTargeting.none, consequence = "DESTRUCTIVE.")),
     discovery = DiscoverySpec(keywords = Set("git", "commit", "save", "checkpoint"))
   )
-  override val examples = List(
-    ToolExample("Commit all tracked changes", GitCommitInput(message = "Fix typo")),
-    ToolExample("Commit specific paths",      GitCommitInput(message = "Add config", paths = Some(List("config/app.yaml"))))
-  )
 
-  override def executeOutput(input: GitCommitInput, ctx: ToolContext): Task[GitCommitOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: GitCommitInput, ctx: ToolContext): Task[GitCommitOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val pathsToStage = input.paths.getOrElse(Nil)
       val addCmd = pathsToStage match {

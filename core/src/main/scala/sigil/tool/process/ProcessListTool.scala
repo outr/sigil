@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{ProcessListEntry, ProcessListInput, ProcessListOutput, ProcessListScope}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * List registered subprocesses. `scope = "current"` (default)
@@ -14,8 +14,10 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName
 final class ProcessListTool(registry: ProcessRegistry) extends Tool {
   type Input  = ProcessListInput
   type Output = ProcessListOutput
-  val inputRW  = summon[RW[ProcessListInput]]
-  val outputRW = summon[RW[ProcessListOutput]]
+  val io: ToolIO[ProcessListInput, ProcessListOutput] = ToolIO.derived[ProcessListInput, ProcessListOutput].withExamples(
+    ToolExample("Processes spawned by this conversation", ProcessListInput()),
+    ToolExample("Every registered process",                ProcessListInput(scope = ProcessListScope.All))
+  )
 
   override val name = ToolName("process_list")
   override val description =
@@ -28,12 +30,10 @@ final class ProcessListTool(registry: ProcessRegistry) extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("process", "list", "running", "background"))
   )
-  override val examples = List(
-    ToolExample("Processes spawned by this conversation", ProcessListInput()),
-    ToolExample("Every registered process",                ProcessListInput(scope = ProcessListScope.All))
-  )
 
-  override def executeOutput(input: ProcessListInput, ctx: ToolContext): Task[ProcessListOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: ProcessListInput, ctx: ToolContext): Task[ProcessListOutput] =
     registry.list(filterByConversation = input.scope match {
       case ProcessListScope.All     => None
       case ProcessListScope.Current => Some(ctx.conversation.id)

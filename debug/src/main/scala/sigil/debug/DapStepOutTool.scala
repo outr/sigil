@@ -3,7 +3,21 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 case class DapStepOutInput(sessionId: String, threadId: Int) extends ToolInput derives RW
 
@@ -15,8 +29,12 @@ case class DapStepOutInput(sessionId: String, threadId: Int) extends ToolInput d
 final class DapStepOutTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapStepOutInput
   type Output = TextToolOutput
-  val inputRW = summon[RW[DapStepOutInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DapStepOutInput, TextToolOutput] = ToolIO.derived[DapStepOutInput, TextToolOutput].withExamples(
+    ToolExample(
+      "step out of the current method",
+      DapStepOutInput(sessionId = "demo-session", threadId = 1)
+    )
+  )
   override val name = ToolName("dap_step_out")
   override val description =
     """Run to the end of the current frame and stop in the caller.
@@ -29,14 +47,10 @@ final class DapStepOutTool(val manager: DapManager) extends Tool with DapToolSup
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "step", "out", "return", "caller"))
   )
-  override val examples = List(
-    ToolExample(
-      "step out of the current method",
-      DapStepOutInput(sessionId = "demo-session", threadId = 1)
-    )
-  )
 
-  override def executeResult(input: DapStepOutInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapStepOutInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.stepOut(input.threadId).map(_ =>
         ToolResult.success(TextToolOutput(s"Stepped out on thread ${input.threadId}.")))

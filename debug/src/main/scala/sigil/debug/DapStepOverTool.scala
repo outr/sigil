@@ -3,7 +3,21 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 case class DapStepOverInput(sessionId: String, threadId: Int) extends ToolInput derives RW
 
@@ -14,8 +28,12 @@ case class DapStepOverInput(sessionId: String, threadId: Int) extends ToolInput 
 final class DapStepOverTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapStepOverInput
   type Output = TextToolOutput
-  val inputRW = summon[RW[DapStepOverInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DapStepOverInput, TextToolOutput] = ToolIO.derived[DapStepOverInput, TextToolOutput].withExamples(
+    ToolExample(
+      "step over the next line",
+      DapStepOverInput(sessionId = "demo-session", threadId = 1)
+    )
+  )
   override val name = ToolName("dap_step_over")
   override val description =
     """Step over the next statement in the current frame (don't enter nested calls).
@@ -28,14 +46,10 @@ final class DapStepOverTool(val manager: DapManager) extends Tool with DapToolSu
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "step", "over", "next", "statement"))
   )
-  override val examples = List(
-    ToolExample(
-      "step over the next line",
-      DapStepOverInput(sessionId = "demo-session", threadId = 1)
-    )
-  )
 
-  override def executeResult(input: DapStepOverInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapStepOverInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.next(input.threadId).map(_ =>
         ToolResult.success(TextToolOutput(s"Stepped over on thread ${input.threadId}.")))

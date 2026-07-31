@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.FileSystemContext
 import sigil.tool.model.{CpuStats, DiskStats, LoadAverage, MemoryStats, SystemStatsInput, SystemStatsOutput}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Report basic host resource usage (CPU, memory, disk, load
@@ -23,8 +23,10 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName
 final class SystemStatsTool(context: FileSystemContext) extends Tool {
   type Input  = SystemStatsInput
   type Output = SystemStatsOutput
-  val inputRW  = summon[RW[SystemStatsInput]]
-  val outputRW = summon[RW[SystemStatsOutput]]
+  val io: ToolIO[SystemStatsInput, SystemStatsOutput] = ToolIO.derived[SystemStatsInput, SystemStatsOutput].withExamples(
+    ToolExample("Default — everything", SystemStatsInput()),
+    ToolExample("Only memory", SystemStatsInput(includeCpu = false, includeDisk = false, includeLoadAvg = false))
+  )
   override val name = ToolName("system_stats")
   override val description = "Report system resource usage — CPU usage, memory, disk free, load average — by parsing standard Linux shell utilities."
   // Volatile: live CPU / memory / disk readings change between calls.
@@ -34,12 +36,10 @@ final class SystemStatsTool(context: FileSystemContext) extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("system", "stats", "cpu", "memory", "disk", "load", "uptime"))
   )
-  override val examples = List(
-    ToolExample("Default — everything", SystemStatsInput()),
-    ToolExample("Only memory", SystemStatsInput(includeCpu = false, includeDisk = false, includeLoadAvg = false))
-  )
 
-  override def executeOutput(input: SystemStatsInput, ctx: ToolContext): Task[SystemStatsOutput] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: SystemStatsInput, ctx: ToolContext): Task[SystemStatsOutput] = {
     val parts = List(
       if (input.includeCpu) Some("top -bn1 | head -5") else None,
       if (input.includeMemory) Some("free -m") else None,

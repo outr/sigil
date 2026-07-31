@@ -11,7 +11,22 @@ import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings
 import sigil.provider.openai.OpenAIProvider
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DefinitionToSchema, DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DefinitionToSchema,
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.core.CoreTools
 
 /**
@@ -33,12 +48,12 @@ import sigil.tool.core.CoreTools
  */
 class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
 
-  /** Test fixture mirroring the kind of tool input that triggered the
-    * bug downstream — `Option[Json]` for an opaque value the agent
-    * supplies, plus a non-optional `Json` field for completeness. */
-  case class JsonFieldInput(name: String,
-                            defaultValue: Option[Json] = None,
-                            metadata: Json = obj()) extends ToolInput derives RW
+  /**
+   * Test fixture mirroring the kind of tool input that triggered the
+   * bug downstream — `Option[Json]` for an opaque value the agent
+   * supplies, plus a non-optional `Json` field for completeness.
+   */
+  case class JsonFieldInput(name: String, defaultValue: Option[Json] = None, metadata: Json = obj()) extends ToolInput derives RW
 
   private val schema: Json = DefinitionToSchema(summon[RW[JsonFieldInput]].definition)
 
@@ -63,17 +78,16 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
     }
   }
 
-  /** Tools with no `Json` fields — should keep strict mode. */
-  case class TypedOnlyInput(name: String,
-                            count: Int = 0,
-                            enabled: Boolean = true) extends ToolInput derives RW
+  /**
+   * Tools with no `Json` fields — should keep strict mode.
+   */
+  case class TypedOnlyInput(name: String, count: Int = 0, enabled: Boolean = true) extends ToolInput derives RW
 
   private object TypedOnlyTool extends Tool {
-    type Input  = TypedOnlyInput
+    type Input = TypedOnlyInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[TypedOnlyInput]]
-    val outputRW = summon[RW[TextToolOutput]]
-    override val name        = ToolName("typed_only_test_tool")
+    val io: ToolIO[TypedOnlyInput, TextToolOutput] = ToolIO.derived[TypedOnlyInput, TextToolOutput]
+    override val name = ToolName("typed_only_test_tool")
     override val description = "All-typed input — should ship with strict: true."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -81,17 +95,20 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "typed_only_test_tool"))
     )
-    override def executeResult(input: TypedOnlyInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: TypedOnlyInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
-  /** Tool with an `Option[Json]` field — should drop to strict: false. */
+  /**
+   * Tool with an `Option[Json]` field — should drop to strict: false.
+   */
   private object JsonFieldTool extends Tool {
-    type Input  = JsonFieldInput
+    type Input = JsonFieldInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[JsonFieldInput]]
-    val outputRW = summon[RW[TextToolOutput]]
-    override val name        = ToolName("json_field_test_tool")
+    val io: ToolIO[JsonFieldInput, TextToolOutput] = ToolIO.derived[JsonFieldInput, TextToolOutput]
+    override val name = ToolName("json_field_test_tool")
     override val description = "Has Option[Json] — should ship with strict: false."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -99,15 +116,19 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "json_field_test_tool"))
     )
-    override def executeResult(input: JsonFieldInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: JsonFieldInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Build the OpenAI request body with `tools = [tool]` and read back
-    * the rendered tool's `strict` flag. Lets us assert the
-    * `containsJson` gate is wired into the provider's render path. */
+  /**
+   * Build the OpenAI request body with `tools = [tool]` and read back
+   * the rendered tool's `strict` flag. Lets us assert the
+   * `containsJson` gate is wired into the provider's render path.
+   */
   private def strictFlagFor(tool: Tool): Boolean = {
     val provider = OpenAIProvider(apiKey = "sk-test", sigilRef = TestSigil)
     val req: ProviderRequest = ConversationRequest(

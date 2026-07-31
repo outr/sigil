@@ -5,7 +5,7 @@ import fabric.rw.*
 import fabric.{arr, obj, str}
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /** List provider strategies visible to the caller in the
   * conversation's space, including a marker for the currently-
@@ -16,8 +16,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolN
 case object ListProviderStrategiesTool extends Tool {
   type Input  = ListProviderStrategiesInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ListProviderStrategiesInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ListProviderStrategiesInput, TextToolOutput] = ToolIO.derived[ListProviderStrategiesInput, TextToolOutput]
   override val name = ToolName("list_provider_strategies")
   override val description =
     "List provider strategies saved under the current conversation's space, " +
@@ -29,8 +28,10 @@ case object ListProviderStrategiesTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("list", "provider", "strategy", "strategies", "models"))
   )
 
-  override def executeResult(input: ListProviderStrategiesInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ListProviderStrategiesInput,
+                            ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       records  <- ctx.sigil.listProviderStrategies(ctx.conversation.space, ctx.chain)
       assigned <- ctx.sigil.assignedProviderStrategy(ctx.conversation.space)

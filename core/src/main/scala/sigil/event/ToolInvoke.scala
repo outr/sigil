@@ -105,6 +105,13 @@ case class ToolInvoke(toolName: ToolName,
                         * invokes whose background fiber died with the
                         * process. */
                       detached: Boolean = false,
+                      /** Set when the settled result's rendered form exceeded
+                        * the inline threshold and was bounded for the
+                        * model-facing channel. `output` stays the real typed
+                        * value; `summary` carries the bounded head the model
+                        * reads; the pointer names the overflow file (when a
+                        * workspace was bound) plus size stats. */
+                      overflow: Option[sigil.tool.OverflowPointer] = None,
                       override val origin: Option[Id[Event]] = None,
                       override val source: Option[String] = None,
                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,

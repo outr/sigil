@@ -3,7 +3,19 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 /**
  * Remove an existing [[ScriptTool]]. Looks the record up by `name`;
@@ -13,10 +25,9 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Too
  * deleted there's nothing to act on.
  */
 case object DeleteScriptToolTool extends Tool {
-  type Input  = DeleteScriptToolInput
+  type Input = DeleteScriptToolInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[DeleteScriptToolInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DeleteScriptToolInput, TextToolOutput] = ToolIO.derived[DeleteScriptToolInput, TextToolOutput]
 
   override val name = ToolName("delete_script_tool")
   override val description =
@@ -32,8 +43,9 @@ case object DeleteScriptToolTool extends Tool {
     )
   )
 
-  override def executeResult(input: DeleteScriptToolInput,
-                             context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DeleteScriptToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       context.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {

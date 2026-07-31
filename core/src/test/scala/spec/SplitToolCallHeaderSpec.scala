@@ -8,7 +8,20 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.ToolContext
 import sigil.tool.ToolRoster
 
@@ -32,10 +45,9 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
   case class Args(value: String) extends ToolInput derives RW
 
   private object Foo extends Tool {
-    type Input  = Args
+    type Input = Args
     type Output = TextToolOutput
-    val inputRW  = summon[RW[Args]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[Args, TextToolOutput] = ToolIO.derived[Args, TextToolOutput]
     override val name: ToolName = ToolName("foo")
     override val description: String = "test"
     val spec: ToolSpec = ToolSpec(
@@ -45,7 +57,9 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
       discovery = DiscoverySpec(keywords = Set("test", "foo"))
     )
     override def _id: Id[Tool] = Id[Tool](name.value)
-    override def executeResult(input: Args, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: Args, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.value)))
   }
 
@@ -79,15 +93,15 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
     "buffer arguments that arrive before the header is complete" in {
       val acc = newAcc
       acc.observeHeader(0, Some(CallId("call_x")), None)
-      acc.appendArgs(0, """{"value":""")     // arg fragment 1, before name
-      acc.appendArgs(0, """"hello"}""")      // arg fragment 2, still no name
-      acc.observeHeader(0, None, Some("foo"))  // name arrives last
+      acc.appendArgs(0, """{"value":""") // arg fragment 1, before name
+      acc.appendArgs(0, """"hello"}""") // arg fragment 2, still no name
+      acc.observeHeader(0, None, Some("foo")) // name arrives last
       val events = acc.complete()
       val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
       completes should have size 1
       completes.head.call.inputFor(Foo) match {
         case Some(args) => args.value shouldBe "hello"
-        case None       => fail(s"expected a decoded Foo call, got ${completes.head.call}")
+        case None => fail(s"expected a decoded Foo call, got ${completes.head.call}")
       }
     }
 
@@ -107,11 +121,11 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
 
     "surface a diagnostic Error when the stream closes with a partial header" in {
       val acc = newAcc
-      acc.observeHeader(0, Some(CallId("call_x")), None)  // name never arrives
+      acc.observeHeader(0, Some(CallId("call_x")), None) // name never arrives
       val events = acc.complete()
       val errors = events.collect { case e: ProviderEvent.Error => e }
       errors should have size 1
-      errors.head.message should include ("incomplete at stream close")
+      errors.head.message should include("incomplete at stream close")
     }
   }
 }

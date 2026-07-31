@@ -3,7 +3,21 @@ package sigil.metals
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 case class StartMetalsInput() extends ToolInput derives RW
 
@@ -22,33 +36,45 @@ case class StartMetalsInput() extends ToolInput derives RW
  * the next `find_capability` keyed against whatever it needs.
  */
 final class StartMetalsTool extends Tool {
-  type Input  = StartMetalsInput
+  type Input = StartMetalsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[StartMetalsInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[StartMetalsInput, TextToolOutput] = ToolIO.derived[StartMetalsInput, TextToolOutput].withExamples(
+    ToolExample("start metals here", StartMetalsInput())
+  )
 
   override val name = ToolName("start_metals")
   override val description =
     """Start the Metals (Scala LSP) MCP server for this conversation's workspace. Once running,
       |Metals' tools (find-symbol, compile, test, etc.) become discoverable via find_capability.
       |Idempotent — calling a second time just keeps the existing subprocess alive.""".stripMargin
-  override val examples = List(ToolExample("start metals here", StartMetalsInput()))
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(
       keywords = Set(
-        "metals", "start", "scala", "lsp", "language",
-        "compile", "indexing", "spawn", "boot", "enable",
-        "code", "tooling", "ide"
+        "metals",
+        "start",
+        "scala",
+        "lsp",
+        "language",
+        "compile",
+        "indexing",
+        "spawn",
+        "boot",
+        "enable",
+        "code",
+        "tooling",
+        "ide"
       )
     )
   )
 
   import MetalsToolSupport.*
 
-  override def executeResult(input: StartMetalsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: StartMetalsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val sigil = context.sigil
     workspaceFor(sigil, context).flatMap {
       case Left(msg) =>
@@ -71,47 +97,50 @@ final class StartMetalsTool extends Tool {
             // 1-3 second window before Metals' first
             // `metals/status` notification arrives.
             context.reportProgress(s"Spawning Metals for ${workspace.getFileName}…").flatMap { _ =>
-            mm.ensureRunning(workspace, onLogLine = Some(onLogLine), onStatus = Some(onStatus)).flatMap { name =>
-              val lspConfigWrite = metalsHost(sigil).map(_.writeLspServerConfigForMetals(workspace))
-                .getOrElse(Task.unit)
-                .handleError { t =>
-                  Task(scribe.warn(s"start_metals: LspServerConfig upsert for 'scala' failed: ${t.getMessage}"))
+              mm.ensureRunning(workspace, onLogLine = Some(onLogLine), onStatus = Some(onStatus)).flatMap { name =>
+                val lspConfigWrite = metalsHost(sigil).map(_.writeLspServerConfigForMetals(workspace))
+                  .getOrElse(Task.unit)
+                  .handleError { t =>
+                    Task(scribe.warn(s"start_metals: LspServerConfig upsert for 'scala' failed: ${t.getMessage}"))
+                  }
+                // Make the LSP/BSP/metals_* tool family DISCOVERABLE for
+                // this conversation — surfaced by `find_capability` on
+                // intent, NOT pinned into the per-turn roster. Pinning all
+                // ~41 (the earlier `Active` policy) defeated the lean-roster
+                // design, bloated every request, and on reasoning models
+                // over some gateways the oversized tool payload tipped the
+                // stream into truncation. Discovery-only keeps the roster at
+                // the 4-tool baseline; the agent pays one `find_capability`
+                // hop before first use of a family. `stop_metals` removes
+                // the overlay.
+                val overlayInstall = sigil.addConversationToolOverlay(
+                  _root_.sigil.conversation.ConversationToolOverlay(
+                    conversationId = context.conversation.id,
+                    source = MetalsBoostedToolNames.OverlaySource,
+                    policy = _root_.sigil.provider.ToolPolicy.Discoverable(MetalsBoostedToolNames.all)
+                  )
+                ).handleError { t =>
+                  Task(scribe.warn(s"start_metals: ConversationToolOverlay install failed: ${t.getMessage}"))
                 }
-              // Make the LSP/BSP/metals_* tool family DISCOVERABLE for
-              // this conversation — surfaced by `find_capability` on
-              // intent, NOT pinned into the per-turn roster. Pinning all
-              // ~41 (the earlier `Active` policy) defeated the lean-roster
-              // design, bloated every request, and on reasoning models
-              // over some gateways the oversized tool payload tipped the
-              // stream into truncation. Discovery-only keeps the roster at
-              // the 4-tool baseline; the agent pays one `find_capability`
-              // hop before first use of a family. `stop_metals` removes
-              // the overlay.
-              val overlayInstall = sigil.addConversationToolOverlay(
-                _root_.sigil.conversation.ConversationToolOverlay(
-                  conversationId = context.conversation.id,
-                  source         = MetalsBoostedToolNames.OverlaySource,
-                  policy         = _root_.sigil.provider.ToolPolicy.Discoverable(MetalsBoostedToolNames.all)
-                )
-              ).handleError { t =>
-                Task(scribe.warn(s"start_metals: ConversationToolOverlay install failed: ${t.getMessage}"))
+                lspConfigWrite
+                  .flatMap(_ => overlayInstall)
+                  .map(_ =>
+                    ToolResult.Success(TextToolOutput(
+                      s"Metals running for $workspace (server name: $name)"
+                    )))
+              }.handleError { t =>
+                Task.pure(ToolResult.failure(s"start_metals failed: ${t.getMessage}"))
               }
-              lspConfigWrite
-                .flatMap(_ => overlayInstall)
-                .map(_ => ToolResult.Success(TextToolOutput(
-                  s"Metals running for $workspace (server name: $name)"
-                )))
-            }.handleError { t =>
-              Task.pure(ToolResult.failure(s"start_metals failed: ${t.getMessage}"))
-            }
             }
         }
     }
   }
 
-  /** Returns the [[MetalsSigil]] handle when the host mixes it in. */
+  /**
+   * Returns the [[MetalsSigil]] handle when the host mixes it in.
+   */
   private def metalsHost(host: _root_.sigil.Sigil): Option[MetalsSigil] = host match {
     case ms: MetalsSigil => Some(ms)
-    case _               => None
+    case _ => None
   }
 }

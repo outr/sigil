@@ -5,19 +5,33 @@ import bench.agentdojo.banking.events.ScheduledTransactionsRead
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import java.util.concurrent.atomic.AtomicReference
 
 final case class GetScheduledTransactionsInput() extends ToolInput derives RW
 
-/** `get_scheduled_transactions` — return the scheduled-transaction list. */
+/**
+ * `get_scheduled_transactions` — return the scheduled-transaction list.
+ */
 final class GetScheduledTransactionsTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = GetScheduledTransactionsInput
   type Output = TextToolOutput
 
-  val inputRW: RW[GetScheduledTransactionsInput] = summon[RW[GetScheduledTransactionsInput]]
-  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+  val io: ToolIO[GetScheduledTransactionsInput, TextToolOutput] = ToolIO.derived[GetScheduledTransactionsInput, TextToolOutput]
 
   override val name: ToolName = ToolName("get_scheduled_transactions")
   override val description: String = "Get the list of scheduled transactions."
@@ -29,13 +43,16 @@ final class GetScheduledTransactionsTool(state: AtomicReference[BankingEnvironme
     discovery = DiscoverySpec(keywords = Set("bank", "transactions", "scheduled", "list"))
   )
 
-  override def executeResult(input: GetScheduledTransactionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: GetScheduledTransactionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val transactions = state.get.bankAccount.scheduledTransactions
     context.emit(ScheduledTransactionsRead(
       transactions = transactions,
       participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId
+      topicId =
+        context.conversation.currentTopicId
     )).map(_ => ToolResult.Success(TextToolOutput(s"${transactions.size} scheduled transaction(s)")))
   }
 }

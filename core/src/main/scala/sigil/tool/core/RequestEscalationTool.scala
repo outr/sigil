@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.Complexity
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
 
 final case class RequestEscalationInput(@description("Why escalation is needed — e.g. 'task spans 4 files; current model keeps producing inconsistent edits'. Stored on the conversation for transparency; rendered on the next checkpoint.")
                                         reason: String)
@@ -18,8 +18,12 @@ final case class RequestEscalationOutput(@description("The new complexity tier a
 case object RequestEscalationTool extends Tool {
   type Input  = RequestEscalationInput
   type Output = RequestEscalationOutput
-  val inputRW  = summon[RW[RequestEscalationInput]]
-  val outputRW = summon[RW[RequestEscalationOutput]]
+  val io: ToolIO[RequestEscalationInput, RequestEscalationOutput] = ToolIO.derived[RequestEscalationInput, RequestEscalationOutput].withExamples(
+    ToolExample(
+      "Realize mid-turn the task is harder than expected",
+      RequestEscalationInput(reason = "task touches 4 files; current edits keep contradicting each other")
+    )
+  )
   override val name = ToolName("request_escalation")
   override val description =
     """Escalate this turn's complexity tier so subsequent iterations route to a more capable
@@ -43,15 +47,11 @@ case object RequestEscalationTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("escalate", "tier", "complexity", "harder", "smarter model", "frontier"))
   )
 
-  override val examples = List(
-    ToolExample(
-      "Realize mid-turn the task is harder than expected",
-      RequestEscalationInput(reason = "task touches 4 files; current edits keep contradicting each other")
-    )
-  )
 
-  override def executeResult(input: RequestEscalationInput,
-                             context: ToolContext): Task[ToolResult[RequestEscalationOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: RequestEscalationInput,
+                            context: ToolContext): Task[ToolResult[RequestEscalationOutput]] =
     context.sigil.requestEscalation(context.conversation._id, input.reason).map {
       case (newTier, true)  => ToolResult.success(RequestEscalationOutput(tier = newTier, bumped = true))
       case (newTier, false) => ToolResult.success(RequestEscalationOutput(tier = newTier, bumped = false))

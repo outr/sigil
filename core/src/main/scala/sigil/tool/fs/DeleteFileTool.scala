@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{DeleteFileInput, DeleteFileOutput}
-import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, PlaceholderInputDetector, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Delete a file. Emits a typed [[DeleteFileOutput]] reporting
@@ -14,8 +14,9 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, Pla
 final class DeleteFileTool(context: FileSystemContext) extends Tool {
   type Input  = DeleteFileInput
   type Output = DeleteFileOutput
-  val inputRW  = summon[RW[DeleteFileInput]]
-  val outputRW = summon[RW[DeleteFileOutput]]
+  val io: ToolIO[DeleteFileInput, DeleteFileOutput] = ToolIO.derived[DeleteFileInput, DeleteFileOutput].withExamples(
+    ToolExample("Remove a temp file", DeleteFileInput(path = "/tmp/scratch.txt"))
+  )
   override val name        = ToolName("delete_file")
   override val description = "Delete a file. Returns `{deleted: Boolean}` — true when the file existed and was removed; false when it did not exist."
   val spec: ToolSpec = ToolSpec(
@@ -29,11 +30,10 @@ final class DeleteFileTool(context: FileSystemContext) extends Tool {
     ),
     discovery = DiscoverySpec(keywords = Set("file", "delete", "remove", "rm", "unlink"))
   )
-  override val examples = List(
-    ToolExample("Remove a temp file", DeleteFileInput(path = "/tmp/scratch.txt"))
-  )
 
-  override def executeResult(input: DeleteFileInput, ctx: ToolContext): Task[ToolResult[DeleteFileOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DeleteFileInput, ctx: ToolContext): Task[ToolResult[DeleteFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None =>

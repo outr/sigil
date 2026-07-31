@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitStatusInput, GitStatusOutput}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Read-only `git_status` — runs `git status --porcelain=v1
@@ -16,8 +16,10 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName
 final class GitStatusTool(context: FileSystemContext) extends Tool {
   type Input  = GitStatusInput
   type Output = GitStatusOutput
-  val inputRW  = summon[RW[GitStatusInput]]
-  val outputRW = summon[RW[GitStatusOutput]]
+  val io: ToolIO[GitStatusInput, GitStatusOutput] = ToolIO.derived[GitStatusInput, GitStatusOutput].withExamples(
+    ToolExample("Status of the conversation workspace", GitStatusInput()),
+    ToolExample("Status of a specific repo", GitStatusInput(workingDir = Some("/abs/path/to/repo")))
+  )
   override val name = ToolName("git_status")
   override val description =
     """Show working-tree status as a branch summary plus a list of changed entries.
@@ -29,12 +31,10 @@ final class GitStatusTool(context: FileSystemContext) extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(keywords = Set("git", "status", "changes", "diff", "porcelain", "uncommitted"))
   )
-  override val examples = List(
-    ToolExample("Status of the conversation workspace", GitStatusInput()),
-    ToolExample("Status of a specific repo", GitStatusInput(workingDir = Some("/abs/path/to/repo")))
-  )
 
-  override def executeOutput(input: GitStatusInput, ctx: ToolContext): Task[GitStatusOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: GitStatusInput, ctx: ToolContext): Task[GitStatusOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       context.executeCommand("git status --porcelain=v1 --branch", dir).map { r =>
         if (r.exitCode != 0) GitStatusOutput.Failed(r.stderr, r.exitCode)

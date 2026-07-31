@@ -3,7 +3,21 @@ package sigil.mcp
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 case class AddMcpServerInput(name: String,
                              command: Option[String] = None,
@@ -11,7 +25,8 @@ case class AddMcpServerInput(name: String,
                              url: Option[String] = None,
                              prefix: Option[String] = None,
                              headers: Map[String, String] = Map.empty,
-                             roots: List[String] = Nil) extends ToolInput derives RW
+                             roots: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Register an MCP server. `command` (with optional `args`) selects
@@ -20,10 +35,18 @@ case class AddMcpServerInput(name: String,
  * is available across restarts; first call lazily connects.
  */
 final class AddMcpServerTool(manager: McpManager) extends Tool {
-  type Input  = AddMcpServerInput
+  type Input = AddMcpServerInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[AddMcpServerInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[AddMcpServerInput, TextToolOutput] = ToolIO.derived[AddMcpServerInput, TextToolOutput].withExamples(
+    ToolExample(
+      "stdio fetch server",
+      AddMcpServerInput(name = "fetch", command = Some("mcp-server-fetch"), prefix = Some("fetch_"))
+    ),
+    ToolExample(
+      "remote HTTP+SSE server with auth",
+      AddMcpServerInput(name = "github", url = Some("https://mcp.example.com"), headers = Map("Authorization" -> "Bearer ..."))
+    )
+  )
 
   override val name = ToolName("add_mcp_server")
   override val description =
@@ -40,26 +63,18 @@ final class AddMcpServerTool(manager: McpManager) extends Tool {
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("mcp", "server", "add", "register", "connect", "protocol"))
   )
-  override val examples = List(
-    ToolExample(
-      "stdio fetch server",
-      AddMcpServerInput(name = "fetch", command = Some("mcp-server-fetch"), prefix = Some("fetch_"))
-    ),
-    ToolExample(
-      "remote HTTP+SSE server with auth",
-      AddMcpServerInput(name = "github", url = Some("https://mcp.example.com"), headers = Map("Authorization" -> "Bearer ..."))
-    )
-  )
 
   import spice.net.{TLDValidation, URL}
 
-  override def executeResult(input: AddMcpServerInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: AddMcpServerInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val transport = (input.command, input.url) match {
       case (Some(cmd), _) => Right(McpTransport.Stdio(cmd, input.args))
       case (_, Some(urlStr)) =>
         URL.get(urlStr, tldValidation = TLDValidation.Off) match {
           case Right(u) => Right(McpTransport.HttpSse(u, input.headers))
-          case Left(e)  => Left(s"Invalid url '$urlStr': $e")
+          case Left(e) => Left(s"Invalid url '$urlStr': $e")
         }
       case _ => Left("Either `command` or `url` must be provided.")
     }

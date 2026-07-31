@@ -1,12 +1,11 @@
 package sigil.tool.proxy
 
-import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.participant.ParticipantId
-import sigil.tool.{Tool, ToolExample, ToolResult, ToolSchema, ToolSpec}
+import sigil.tool.{Resolution, Tool, ToolIO, ToolResult, ToolSpec}
 
 /**
  * Wraps an existing [[Tool]] so its execution is dispatched through
@@ -39,28 +38,27 @@ class ProxyTool(val wrapped: Tool, transport: ToolProxyTransport) extends Tool {
   type Input  = wrapped.Input
   type Output = wrapped.Output
 
-  def inputRW: RW[Input]   = wrapped.inputRW
-  def outputRW: RW[Output] = wrapped.outputRW
-
   /** Capabilities forwarded by construction — the proxy carries the
     * wrapped tool's whole spec (effect, gates, execution, discovery),
     * so a consent gate or destructive warning can never be dropped by
     * proxying. */
   val spec: ToolSpec = wrapped.spec
 
-  override def inputDefinition: fabric.define.Definition = wrapped.inputDefinition
-  override def outputDefinition: Option[fabric.define.Definition] = wrapped.outputDefinition
-  override def examples: List[ToolExample]      = wrapped.examples
+  /** Wire shape forwarded by construction — schema, codecs, and
+    * examples are the wrapped tool's own. */
+  def io: ToolIO[Input, Output] = wrapped.io
+
   override def createdBy: Option[ParticipantId] = wrapped.createdBy
   override def _id: Id[Tool]                    = wrapped._id
   override def created: Timestamp               = wrapped.created
   override def modified: Timestamp              = wrapped.modified
-  override lazy val schema: ToolSchema          = wrapped.schema
 
-  override def executeResult(input: Input, context: ToolContext): Task[ToolResult[Output]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(dispatchRemote)
+
+  private def dispatchRemote(input: Input, context: ToolContext): Task[ToolResult[Output]] = {
     val rendered = inputRW.read(input)
     transport.dispatch(wrapped.name, rendered, context).map {
-      case ToolResult.Success(json)   => ToolResult.Success(outputRW.write(json))
+      case ToolResult.Success(json)    => ToolResult.Success(outputRW.write(json))
       case failure: ToolResult.Failure => failure
     }
   }

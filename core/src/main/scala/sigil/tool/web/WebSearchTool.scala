@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{WebSearchInput, WebSearchOutput, WebSearchResult}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Search the web via the configured [[SearchProvider]] (Tavily,
@@ -14,8 +14,10 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName
 final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10) extends Tool {
   type Input  = WebSearchInput
   type Output = WebSearchOutput
-  val inputRW  = summon[RW[WebSearchInput]]
-  val outputRW = summon[RW[WebSearchOutput]]
+  val io: ToolIO[WebSearchInput, WebSearchOutput] = ToolIO.derived[WebSearchInput, WebSearchOutput].withExamples(
+    ToolExample("General lookup", WebSearchInput(query = "Scala 3 enums tutorial")),
+    ToolExample("Top 5 only", WebSearchInput(query = "weather Tokyo today", maxResults = Some(5)))
+  )
   override val name = ToolName("web_search")
   override val description =
     """Search the web for `query`. Returns up to `maxResults` results (default 10) — each carrying title,
@@ -26,12 +28,10 @@ final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10)
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(keywords = Set("web", "search", "google", "find", "lookup", "query", "internet"))
   )
-  override val examples = List(
-    ToolExample("General lookup", WebSearchInput(query = "Scala 3 enums tutorial")),
-    ToolExample("Top 5 only", WebSearchInput(query = "weather Tokyo today", maxResults = Some(5)))
-  )
 
-  override def executeOutput(input: WebSearchInput, ctx: ToolContext): Task[WebSearchOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: WebSearchInput, ctx: ToolContext): Task[WebSearchOutput] =
     provider.search(input.query, input.maxResults.getOrElse(defaultMaxResults)).map { results =>
       val items = results.toList.map { r =>
         WebSearchResult(

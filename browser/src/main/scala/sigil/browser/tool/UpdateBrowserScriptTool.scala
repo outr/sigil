@@ -8,7 +8,21 @@ import lightdb.util.Nowish
 import rapid.Task
 import sigil.browser.WebBrowserMode
 import sigil.browser.{BrowserScript, CookieJar}
-import sigil.tool.{DefinitionToSchema, DiscoverySpec, Effect, JsonSchemaToDefinition, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DefinitionToSchema,
+  DiscoverySpec,
+  Effect,
+  JsonSchemaToDefinition,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
@@ -19,10 +33,9 @@ import sigil.tool.ToolContext
  * copy the script via `create_browser_script`.
  */
 case object UpdateBrowserScriptTool extends Tool {
-  type Input  = UpdateBrowserScriptInput
+  type Input = UpdateBrowserScriptInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[UpdateBrowserScriptInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[UpdateBrowserScriptInput, TextToolOutput] = ToolIO.derived[UpdateBrowserScriptInput, TextToolOutput]
 
   override val name = ToolName("update_browser_script")
   override val description =
@@ -39,8 +52,9 @@ case object UpdateBrowserScriptTool extends Tool {
     )
   )
 
-  override def executeResult(input: UpdateBrowserScriptInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: UpdateBrowserScriptInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.accessibleSpaces(ctx.chain).flatMap { accessible =>
       ctx.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {
@@ -53,11 +67,11 @@ case object UpdateBrowserScriptTool extends Tool {
             else {
               val updated = existing.copy(
                 description = input.description.getOrElse(existing.description),
-                parameters  = input.parameters.fold(existing.parameters)(JsonSchemaToDefinition.apply),
-                steps       = input.steps.getOrElse(existing.steps),
-                keywords    = input.keywords.getOrElse(existing.keywords),
+                parameters = input.parameters.fold(existing.parameters)(JsonSchemaToDefinition.apply),
+                steps = input.steps.getOrElse(existing.steps),
+                keywords = input.keywords.getOrElse(existing.keywords),
                 cookieJarId = input.cookieJarId.map(s => Id[CookieJar](s)).orElse(existing.cookieJarId),
-                modified    = Timestamp(Nowish())
+                modified = Timestamp(Nowish())
               )
               tx.upsert(updated).map { stored =>
                 val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
@@ -75,6 +89,7 @@ case object UpdateBrowserScriptTool extends Tool {
               s"Tool '${input.name}' exists but is not a browser script."))
         }
       })
-    }.handleError(t => Task.pure(ToolResult.failure(
-      s"Failed to update browser script: ${t.getMessage}")))
+    }.handleError(t =>
+      Task.pure(ToolResult.failure(
+        s"Failed to update browser script: ${t.getMessage}")))
 }

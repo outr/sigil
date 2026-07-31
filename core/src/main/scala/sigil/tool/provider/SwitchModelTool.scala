@@ -6,7 +6,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.db.Model
 import sigil.provider.{ModelCandidate, ProviderStrategyRecord}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Switch the conversation's active provider strategy. Disambiguates
@@ -34,8 +34,11 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Too
 case object SwitchModelTool extends Tool {
   type Input  = SwitchModelInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[SwitchModelInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[SwitchModelInput, TextToolOutput] = ToolIO.derived[SwitchModelInput, TextToolOutput].withExamples(
+    ToolExample("Switch to a specific model", SwitchModelInput("anthropic/claude-opus-4-7")),
+    ToolExample("Use a saved strategy by label", SwitchModelInput("Balanced")),
+    ToolExample("Revert to default", SwitchModelInput("auto"))
+  )
   override val name = ToolName("switch_model")
   override val description =
     """Switch the AI model or provider strategy used for this conversation. Accepts:
@@ -46,11 +49,6 @@ case object SwitchModelTool extends Tool {
       |
       |Ambiguous matches return a disambiguation list; surface the choices to the user via
       |a structured-options reply.""".stripMargin
-  override val examples = List(
-    ToolExample("Switch to a specific model", SwitchModelInput("anthropic/claude-opus-4-7")),
-    ToolExample("Use a saved strategy by label", SwitchModelInput("Balanced")),
-    ToolExample("Revert to default", SwitchModelInput("auto"))
-  )
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -58,8 +56,10 @@ case object SwitchModelTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("switch", "model", "strategy", "provider", "change", "use", "auto", "default"))
   )
 
-  override def executeResult(input: SwitchModelInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: SwitchModelInput,
+                            ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     handle(input.query.trim, ctx)
 
   private def handle(rawQuery: String, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {

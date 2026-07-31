@@ -6,7 +6,22 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Task
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
-import sigil.tool.{DefinitionToSchema, DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DefinitionToSchema,
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import spec.EnumSchemaShapeSpec.*
 import sigil.tool.ToolRoster
@@ -27,16 +42,17 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private val complexitySchema: Json = DefinitionToSchema(summon[RW[ComplexityInput]].definition)
-  private val workTypeSchema: Json   = DefinitionToSchema(summon[RW[WorkTypeInput]].definition)
-  private val shapeSchema: Json      = DefinitionToSchema(summon[RW[ShapeInput]].definition)
+  private val workTypeSchema: Json = DefinitionToSchema(summon[RW[WorkTypeInput]].definition)
+  private val shapeSchema: Json = DefinitionToSchema(summon[RW[ShapeInput]].definition)
 
-  /** Minimal test tool — only the schema and inputRW matter for the dispatch checks. */
+  /**
+   * Minimal test tool — only the schema and inputRW matter for the dispatch checks.
+   */
   private object ComplexityTool extends Tool {
-    type Input  = ComplexityInput
+    type Input = ComplexityInput
     type Output = TextToolOutput
-    val inputRW    = summon[RW[ComplexityInput]]
-    val outputRW   = summon[RW[TextToolOutput]]
-    override val name       = ToolName("complexity_test_tool")
+    val io: ToolIO[ComplexityInput, TextToolOutput] = ToolIO.derived[ComplexityInput, TextToolOutput]
+    override val name = ToolName("complexity_test_tool")
     override val description = "Test tool that takes a singleton-only enum field."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -44,16 +60,17 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "complexity_test_tool"))
     )
-    override def executeResult(input: ComplexityInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: ComplexityInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.complexity.toString)))
   }
 
   private object WorkTypeTool extends Tool {
-    type Input  = WorkTypeInput
+    type Input = WorkTypeInput
     type Output = TextToolOutput
-    val inputRW    = summon[RW[WorkTypeInput]]
-    val outputRW   = summon[RW[TextToolOutput]]
-    override val name       = ToolName("worktype_test_tool")
+    val io: ToolIO[WorkTypeInput, TextToolOutput] = ToolIO.derived[WorkTypeInput, TextToolOutput]
+    override val name = ToolName("worktype_test_tool")
     override val description = "Test tool that takes a singleton-only open-PolyType field."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -61,11 +78,15 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "worktype_test_tool"))
     )
-    override def executeResult(input: WorkTypeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: WorkTypeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.workType.toString)))
   }
 
-  /** Drive args through the same accumulator the providers use; return the terminal event. */
+  /**
+   * Drive args through the same accumulator the providers use; return the terminal event.
+   */
   private def accumulate(tool: Tool, args: String): ProviderEvent = {
     val acc = new ToolCallAccumulator(ToolRoster(Vector(tool)), providerKey = "test")
     acc.start(0, CallId("call-0"), tool.schema.name.value)
@@ -105,7 +126,7 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
         b("properties")("type")("const").asString -> b
       }.toMap
       byDiscriminator.keySet shouldBe Set("Square", "Triangle", "Hexagon")
-      byDiscriminator("Square")("properties").asObj.value.keySet should contain ("side")
+      byDiscriminator("Square")("properties").asObj.value.keySet should contain("side")
     }
   }
 
@@ -150,11 +171,11 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
       // Stub for the Sage L196 wire signature: model emits the bare leaf as the field's value.
       // No `_provider_error` should surface; the orchestrator should see a typed input.
       val terminal = accumulate(WorkTypeTool, """{"workType": "AnalysisWork", "label": "scoping"}""")
-      terminal shouldBe a [ProviderEvent.ToolCallComplete]
+      terminal shouldBe a[ProviderEvent.ToolCallComplete]
       val ProviderEvent.ToolCallComplete(_, wc) = terminal: @unchecked
       val input = wc.inputFor(WorkTypeTool).getOrElse(fail(s"expected a decoded WorkTypeTool call; got $wc"))
       input.workType shouldBe AnalysisWork
-      input.label    shouldBe "scoping"
+      input.label shouldBe "scoping"
     }
   }
 
@@ -165,12 +186,16 @@ class EnumSchemaShapeSpec extends AnyWordSpec with Matchers {
 
 object EnumSchemaShapeSpec {
 
-  /** Scala 3 enum with parameterless cases — mirrors `sigil.provider.Complexity`. */
+  /**
+   * Scala 3 enum with parameterless cases — mirrors `sigil.provider.Complexity`.
+   */
   enum TestComplexity derives RW {
     case Low, Medium, High, VeryHigh
   }
 
-  /** Open `PolyType` whose subtypes are all `case object` — mirrors `sigil.provider.WorkType`. */
+  /**
+   * Open `PolyType` whose subtypes are all `case object` — mirrors `sigil.provider.WorkType`.
+   */
   sealed trait TestWorkType
   case object CodingWork extends TestWorkType
   case object AnalysisWork extends TestWorkType
@@ -183,7 +208,9 @@ object EnumSchemaShapeSpec {
     )
   }
 
-  /** Mixed hierarchy — one subtype carries fields. Must keep `oneOf`-over-objects. */
+  /**
+   * Mixed hierarchy — one subtype carries fields. Must keep `oneOf`-over-objects.
+   */
   sealed trait TestShape derives RW
   case class Square(side: Int) extends TestShape
   case object Triangle extends TestShape

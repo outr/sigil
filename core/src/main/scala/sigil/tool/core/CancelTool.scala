@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.{MessageRole, Stop}
 import sigil.tool.model.CancelInput
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Cancel the current agent turn immediately — equivalent to the
@@ -49,8 +49,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Too
 case object CancelTool extends Tool {
   type Input  = CancelInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[CancelInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[CancelInput, TextToolOutput] = ToolIO.derived[CancelInput, TextToolOutput]
 
   override val name = ToolName("cancel")
   override val description =
@@ -103,7 +102,9 @@ case object CancelTool extends Tool {
       case (name, pat) if pat.findFirstIn(reason).isDefined => name
     }
 
-  override def executeResult(input: CancelInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: CancelInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val reasonText = input.reason.getOrElse("")
     detectTransition(reasonText) match {
       case Some(matchedPattern) =>

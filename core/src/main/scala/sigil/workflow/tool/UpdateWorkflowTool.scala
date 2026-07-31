@@ -5,7 +5,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.{WorkflowStepSpec, WorkflowTemplate, WorkflowTrigger}
 
 case class UpdateWorkflowInput(workflowId: String,
@@ -31,8 +31,12 @@ case class UpdateWorkflowInput(workflowId: String,
 final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
   type Input = UpdateWorkflowInput
   type Output = TextToolOutput
-  val inputRW = summon[RW[UpdateWorkflowInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[UpdateWorkflowInput, TextToolOutput] = ToolIO.derived[UpdateWorkflowInput, TextToolOutput].withExamples(
+    ToolExample(
+      "disable a workflow",
+      UpdateWorkflowInput(workflowId = "wf-abc", enabled = Some(false))
+    )
+  )
   override val name = ToolName("update_workflow")
   override val description =
     """Update a workflow template's fields. Only set fields are overwritten.
@@ -40,12 +44,6 @@ final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
       |Useful for incremental editing — e.g. add a step without resending the full step list.
       |For step-list edits, fetch the current template first, modify, then pass the full
       |updated list here.""".stripMargin
-  override val examples = List(
-    ToolExample(
-      "disable a workflow",
-      UpdateWorkflowInput(workflowId = "wf-abc", enabled = Some(false))
-    )
-  )
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -53,7 +51,9 @@ final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
     discovery = DiscoverySpec(keywords = Set("workflow", "update", "edit", "modify"))
   )
 
-  override def executeResult(input: UpdateWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: UpdateWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val knownVariables = input.variableDefs.getOrElse(Nil).map(_.name).toSet
     val loweredSteps: Either[List[String], Option[List[sigil.workflow.WorkflowStepInput]]] =
       input.steps match {

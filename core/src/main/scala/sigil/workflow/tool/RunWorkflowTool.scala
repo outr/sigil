@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.{WorkflowScheduler, WorkflowTemplate}
 
 case class RunWorkflowInput(workflowId: String,
@@ -25,8 +25,12 @@ case class RunWorkflowInput(workflowId: String,
 final class RunWorkflowTool extends Tool with WorkflowToolSupport {
   type Input  = RunWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RunWorkflowInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[RunWorkflowInput, TextToolOutput] = ToolIO.derived[RunWorkflowInput, TextToolOutput].withExamples(
+    ToolExample(
+      "run a template with one input",
+      RunWorkflowInput(workflowId = "wf-abc", variables = Map("input" -> "today's events"))
+    )
+  )
   override val name = ToolName("run_workflow")
   override val description =
     """Schedule a run of a persisted workflow template.
@@ -34,12 +38,6 @@ final class RunWorkflowTool extends Tool with WorkflowToolSupport {
       |`workflowId` is the template id. `variables` (optional) overrides the template's
       |variable defaults — pass any inputs the workflow's `variableDefs` declare.
       |Returns the run id for cancel / resume / inspection.""".stripMargin
-  override val examples = List(
-    ToolExample(
-      "run a template with one input",
-      RunWorkflowInput(workflowId = "wf-abc", variables = Map("input" -> "today's events"))
-    )
-  )
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -47,7 +45,9 @@ final class RunWorkflowTool extends Tool with WorkflowToolSupport {
     discovery = DiscoverySpec(keywords = Set("workflow", "run", "schedule", "execute", "trigger"))
   )
 
-  override def executeResult(input: RunWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: RunWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))

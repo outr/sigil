@@ -2,7 +2,21 @@ package spec
 
 import fabric.rw.*
 import rapid.Task
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 final case class VerifyingSpecInput(scope: String) extends ToolInput derives RW
 
@@ -13,10 +27,9 @@ final case class VerifyingSpecInput(scope: String) extends ToolInput derives RW
  * churn chain.
  */
 case object VerifyingSpecTool extends Tool {
-  type Input  = VerifyingSpecInput
+  type Input = VerifyingSpecInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[VerifyingSpecInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[VerifyingSpecInput, TextToolOutput] = ToolIO.derived[VerifyingSpecInput, TextToolOutput]
   override val name = ToolName("verify_spec_state")
   override val description = "Test-only verification tool; checks the named scope."
   val spec: ToolSpec = ToolSpec(
@@ -27,6 +40,8 @@ case object VerifyingSpecTool extends Tool {
   )
   override def verification: Boolean = true
 
-  override def executeResult(input: VerifyingSpecInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: VerifyingSpecInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.Success(TextToolOutput(s"verified ${input.scope}: OK")))
 }

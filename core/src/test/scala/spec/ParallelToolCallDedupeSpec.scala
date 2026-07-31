@@ -11,12 +11,32 @@ import sigil.db.Model
 import sigil.event.{Message, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
-  CallId, ConversationMode, ConversationRequest, GenerationSettings,
-  Instructions, Provider, ProviderCall, ProviderEvent, ProviderType,
+  CallId,
+  ConversationMode,
+  ConversationRequest,
+  GenerationSettings,
+  Instructions,
+  Provider,
+  ProviderCall,
+  ProviderEvent,
+  ProviderType,
   StopReason
 }
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.ToolContext
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
@@ -42,11 +62,10 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
   private val invocations = new AtomicInteger(0)
 
   case object CountingTool extends Tool {
-    type Input  = CountingInput
+    type Input = CountingInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[CountingInput]]
-    val outputRW = summon[RW[TextToolOutput]]
-    override val name        = ToolName("counting_tool")
+    val io: ToolIO[CountingInput, TextToolOutput] = ToolIO.derived[CountingInput, TextToolOutput]
+    override val name = ToolName("counting_tool")
     override val description = "Records every execution."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -55,7 +74,9 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
       discovery = DiscoverySpec(keywords = Set("test", "counting"))
     )
 
-    override def executeResult(input: CountingInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: CountingInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task {
         invocations.incrementAndGet()
         ToolResult.Success(TextToolOutput(s"ran with ${input.payload}"))
@@ -64,8 +85,10 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   ToolInput.register(RW.static(CountingInput("")))
 
-  /** Provider that emits the same (toolName, args) twice in a
-    * single completion — simulating parallel hedging. */
+  /**
+   * Provider that emits the same (toolName, args) twice in a
+   * single completion — simulating parallel hedging.
+   */
   private class DuplicateCallProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -86,15 +109,15 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private def buildRequest(convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(Model.id("test", "dedupe-spec-model")),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(Model.id("test", "dedupe-spec-model")),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = Vector(CountingTool),
-      chain              = List(TestUser, TestAgent)
+      tools = Vector(CountingTool),
+      chain = List(TestUser, TestAgent)
     )
 
   "Orchestrator parallel-call dedupe (#87)" should {
@@ -106,7 +129,7 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = buildRequest(convId)
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
       } yield {
         // Underlying execution ran exactly once.

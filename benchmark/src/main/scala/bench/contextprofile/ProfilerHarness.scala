@@ -3,8 +3,15 @@ package bench.contextprofile
 import fabric.rw.*
 import lightdb.id.Id
 import sigil.conversation.{
-  ContextFrame, ContextMemory, ContextSummary, Conversation,
-  ParticipantProjection, ToolCallState, TopicEntry, Topic, TurnInput
+  ContextFrame,
+  ContextMemory,
+  ContextSummary,
+  Conversation,
+  ParticipantProjection,
+  ToolCallState,
+  TopicEntry,
+  Topic,
+  TurnInput
 }
 import lightdb.time.Timestamp
 import sigil.GlobalSpace
@@ -14,11 +21,22 @@ import sigil.diagnostics.{RequestProfile, RequestProfileReport, RequestProfiler}
 import sigil.event.Event
 import sigil.information.InformationSummary
 import sigil.participant.{AgentParticipantId, ParticipantId}
-import sigil.provider.{
-  ConversationMode, GenerationSettings, Instructions, Mode, ResolvedReferences
-}
+import sigil.provider.{ConversationMode, GenerationSettings, Instructions, Mode, ResolvedReferences}
 import sigil.role.Role
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tokenize.{JtokkitTokenizer, Tokenizer}
 
 /**
@@ -34,24 +52,28 @@ import sigil.tokenize.{JtokkitTokenizer, Tokenizer}
  */
 object ProfilerHarness {
 
-  /** Default tokenizer for benches: jtokkit cl100k_base — accurate for
-    * OpenAI ChatGPT-class models and a fair approximation elsewhere. */
+  /**
+   * Default tokenizer for benches: jtokkit cl100k_base — accurate for
+   * OpenAI ChatGPT-class models and a fair approximation elsewhere.
+   */
   val tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
   // ---- well-known synthetic identities ----
 
-  case object UserId extends ParticipantId      { override val value: String = "bench-user" }
+  case object UserId extends ParticipantId { override val value: String = "bench-user" }
   case object AgentId extends AgentParticipantId { override val value: String = "bench-agent" }
 
   val ConvId: Id[Conversation] = Conversation.id("bench-conv")
-  val TopicId: Id[Topic]       = Id("bench-topic")
+  val TopicId: Id[Topic] = Id("bench-topic")
 
   val DefaultTopic: TopicEntry = TopicEntry(TopicId, "Bench Topic", "Synthetic conversation for context profiling.")
 
-  /** Synthetic Model record used by harness fixtures.
-    * Carries OpenAI gpt-4o defaults (context length / pricing) so any
-    * profiler heuristic that reads model facts gets representative
-    * numbers without booting a Sigil instance. */
+  /**
+   * Synthetic Model record used by harness fixtures.
+   * Carries OpenAI gpt-4o defaults (context length / pricing) so any
+   * profiler heuristic that reads model facts gets representative
+   * numbers without booting a Sigil instance.
+   */
   val BenchModel: Model = {
     val now = Timestamp()
     Model(
@@ -79,18 +101,21 @@ object ProfilerHarness {
     )
   }
 
-  /** A fully-typed dummy ToolInput used by synthetic tools below. */
+  /**
+   * A fully-typed dummy ToolInput used by synthetic tools below.
+   */
   case class DummyInput(value: String = "") extends ToolInput derives RW
 
-  /** Synthetic Tool with caller-supplied name + description. Static
-    * description (no `descriptionFor` override), so the profiler
-    * doesn't need a Sigil reference for these. */
+  /**
+   * Synthetic Tool with caller-supplied name + description. Static
+   * description (no `descriptionFor` override), so the profiler
+   * doesn't need a Sigil reference for these.
+   */
   class FakeTool(toolName: String, toolDescription: String) extends Tool {
     type Input = DummyInput
     type Output = TextToolOutput
 
-    val inputRW: RW[DummyInput] = summon[RW[DummyInput]]
-    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+    val io: ToolIO[DummyInput, TextToolOutput] = ToolIO.derived[DummyInput, TextToolOutput]
 
     override val name: ToolName = ToolName.parse(toolName).fold(sys.error, identity)
     override val description: String = toolDescription
@@ -102,7 +127,9 @@ object ProfilerHarness {
       discovery = DiscoverySpec(keywords = Set("bench", toolName))
     )
 
-    override def executeResult(input: DummyInput, context: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: DummyInput, context: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
@@ -122,9 +149,11 @@ object ProfilerHarness {
     )
   }
 
-  /** Helper builds a fresh ToolCall in the completed state for profiling
-    * fixtures (state carries the result inline, replacing the prior
-    * separate ToolResult frame). */
+  /**
+   * Helper builds a fresh ToolCall in the completed state for profiling
+   * fixtures (state carries the result inline, replacing the prior
+   * separate ToolResult frame).
+   */
   def completedToolCallFrame(call: ContextFrame.ToolCall, content: String): ContextFrame.ToolCall =
     call.copy(state = ToolCallState.Complete(content))
 
@@ -167,8 +196,7 @@ object ProfilerHarness {
                    roles: List[Role] = Nil,
                    information: Vector[InformationSummary] = Vector.empty,
                    extra: Map[sigil.conversation.ContextKey, String] = Map.empty,
-                   chain: List[ParticipantId] = List(UserId, AgentId)
-                  ): sigil.provider.ConversationRequest = {
+                   chain: List[ParticipantId] = List(UserId, AgentId)): sigil.provider.ConversationRequest = {
     val turn = TurnInput(
       conversationId = ConvId,
       frames = frames,
@@ -194,9 +222,11 @@ object ProfilerHarness {
     )
   }
 
-  /** Resolve memory/summary id buckets directly from the records (no
-    * DB lookup). For benches that synthesize records, this is the
-    * right abstraction. */
+  /**
+   * Resolve memory/summary id buckets directly from the records (no
+   * DB lookup). For benches that synthesize records, this is the
+   * right abstraction.
+   */
   def resolved(critical: Vector[ContextMemory] = Vector.empty,
                retrieved: Vector[ContextMemory] = Vector.empty,
                summaries: Vector[ContextSummary] = Vector.empty): ResolvedReferences =
@@ -208,8 +238,7 @@ object ProfilerHarness {
 
   // ---- profile + report ----
 
-  def profile(request: sigil.provider.ConversationRequest,
-              refs: ResolvedReferences = resolved()): RequestProfile =
+  def profile(request: sigil.provider.ConversationRequest, refs: ResolvedReferences = resolved()): RequestProfile =
     RequestProfiler.profileWith(request, refs, tokenizer, _.description)
 
   def writeReport(name: String, title: String, profiles: Seq[RequestProfile]): Unit = {

@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.WorkspacePathResolver
 import sigil.tool.model.{ProcessSpawnInput, ProcessSpawnOutput}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Spawn a subprocess and return a handle for later
@@ -17,8 +17,11 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, 
 final class ProcessSpawnTool(registry: ProcessRegistry) extends Tool {
   type Input  = ProcessSpawnInput
   type Output = ProcessSpawnOutput
-  val inputRW  = summon[RW[ProcessSpawnInput]]
-  val outputRW = summon[RW[ProcessSpawnOutput]]
+  val io: ToolIO[ProcessSpawnInput, ProcessSpawnOutput] = ToolIO.derived[ProcessSpawnInput, ProcessSpawnOutput].withExamples(
+    ToolExample("Start tsc --watch",   ProcessSpawnInput(command = "tsc --watch --noEmit")),
+    ToolExample("Start a dev server",   ProcessSpawnInput(command = "npm run dev")),
+    ToolExample("Tail a log",           ProcessSpawnInput(command = "tail -F app.log"))
+  )
 
   override val name = ToolName("process_spawn")
   override val description =
@@ -33,13 +36,10 @@ final class ProcessSpawnTool(registry: ProcessRegistry) extends Tool {
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("process", "spawn", "background", "watch", "tail", "stream", "subprocess"))
   )
-  override val examples = List(
-    ToolExample("Start tsc --watch",   ProcessSpawnInput(command = "tsc --watch --noEmit")),
-    ToolExample("Start a dev server",   ProcessSpawnInput(command = "npm run dev")),
-    ToolExample("Tail a log",           ProcessSpawnInput(command = "tail -F app.log"))
-  )
 
-  override def executeOutput(input: ProcessSpawnInput, ctx: ToolContext): Task[ProcessSpawnOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: ProcessSpawnInput, ctx: ToolContext): Task[ProcessSpawnOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       registry.spawn(
         command        = input.command,

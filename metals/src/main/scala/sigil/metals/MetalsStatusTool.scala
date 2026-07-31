@@ -3,7 +3,20 @@ package sigil.metals
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 case class MetalsStatusInput() extends ToolInput derives RW
 
@@ -17,10 +30,9 @@ case class MetalsStatusInput() extends ToolInput derives RW
  * chip per workspace.
  */
 final class MetalsStatusTool extends Tool {
-  type Input  = MetalsStatusInput
+  type Input = MetalsStatusInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[MetalsStatusInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[MetalsStatusInput, TextToolOutput] = ToolIO.derived[MetalsStatusInput, TextToolOutput]
 
   override val name = ToolName("metals_status")
   override val description =
@@ -33,15 +45,25 @@ final class MetalsStatusTool extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(
       keywords = Set(
-        "metals", "status", "health", "indexing", "ready",
-        "scala", "compile", "subprocess", "running", "lsp"
+        "metals",
+        "status",
+        "health",
+        "indexing",
+        "ready",
+        "scala",
+        "compile",
+        "subprocess",
+        "running",
+        "lsp"
       )
     )
   )
 
   import MetalsToolSupport.*
 
-  override def executeResult(input: MetalsStatusInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: MetalsStatusInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val sigil = context.sigil
     manager(sigil) match {
       case None =>
@@ -59,10 +81,10 @@ final class MetalsStatusTool extends Tool {
   }
 
   private def render(s: MetalsManager.WorkspaceStatus): String = {
-    val now    = System.currentTimeMillis()
+    val now = System.currentTimeMillis()
     val idleMs = now - s.lastUsedMs
-    val ep     = s.endpoint.getOrElse("(starting…)")
-    val alive  = if (s.alive) "alive" else "DEAD"
+    val ep = s.endpoint.getOrElse("(starting…)")
+    val alive = if (s.alive) "alive" else "DEAD"
     s"- ${s.workspaceKey}: ${s.workspace} → $ep [$alive, idle ${idleMs}ms]"
   }
 }

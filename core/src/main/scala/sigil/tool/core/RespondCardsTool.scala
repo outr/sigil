@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.Message
 import sigil.signal.EventState
-import sigil.tool.{TextToolOutput, ToolName, ToolResult, ToolSpec}
+import sigil.tool.{Resolution, TextToolOutput, ToolIO, ToolName, ToolResult, ToolSpec}
 import sigil.tool.model.RespondCardsInput
 
 /**
@@ -21,8 +21,7 @@ import sigil.tool.model.RespondCardsInput
 case object RespondCardsTool extends RespondFamilyTool {
   type Input  = RespondCardsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RespondCardsInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[RespondCardsInput, TextToolOutput] = ToolIO.derived[RespondCardsInput, TextToolOutput]
 
   override val name = ToolName("respond_cards")
   override val description =
@@ -40,7 +39,9 @@ case object RespondCardsTool extends RespondFamilyTool {
     keywords = Set("respond", "reply", "cards", "dashboard", "tiles", "results")
   )
 
-  override def executeResult(input: RespondCardsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: RespondCardsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.emit(Message(
       participantId = context.caller,
       conversationId = context.conversation.id,

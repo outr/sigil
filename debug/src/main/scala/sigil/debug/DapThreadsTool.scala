@@ -3,7 +3,20 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 case class DapThreadsInput(sessionId: String) extends ToolInput derives RW
 
@@ -15,8 +28,12 @@ case class DapThreadsInput(sessionId: String) extends ToolInput derives RW
 final class DapThreadsTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapThreadsInput
   type Output = DapThreadsOutput
-  val inputRW = summon[RW[DapThreadsInput]]
-  val outputRW = summon[RW[DapThreadsOutput]]
+  val io: ToolIO[DapThreadsInput, DapThreadsOutput] = ToolIO.derived[DapThreadsInput, DapThreadsOutput].withExamples(
+    ToolExample(
+      "list threads",
+      DapThreadsInput(sessionId = "demo-session")
+    )
+  )
   override val name = ToolName("dap_threads")
   override val description =
     """List active threads in the debugged program.
@@ -29,14 +46,10 @@ final class DapThreadsTool(val manager: DapManager) extends Tool with DapToolSup
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "threads", "thread", "list", "debugger"))
   )
-  override val examples = List(
-    ToolExample(
-      "list threads",
-      DapThreadsInput(sessionId = "demo-session")
-    )
-  )
 
-  override def executeResult(input: DapThreadsInput, context: ToolContext): Task[ToolResult[DapThreadsOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapThreadsInput, context: ToolContext): Task[ToolResult[DapThreadsOutput]] =
     withSession(input.sessionId, context) { session =>
       session.threads.map { threads =>
         ToolResult.success(DapThreadsOutput(

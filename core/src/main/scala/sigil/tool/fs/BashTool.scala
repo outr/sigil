@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.BashInput
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, PlaceholderInputDetector, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, PlaceholderInputDetector, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Execute a shell command via the [[FileSystemContext]]. Returns the
@@ -19,8 +19,10 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, PlaceholderInputDet
 final class BashTool(context: FileSystemContext) extends Tool {
   type Input  = BashInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[BashInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[BashInput, TextToolOutput] = ToolIO.derived[BashInput, TextToolOutput].withExamples(
+    ToolExample("List a directory", BashInput(command = "ls -la /tmp")),
+    ToolExample("Run a build with custom timeout", BashInput(command = "cargo build --release", timeoutMs = Some(600000L)))
+  )
 
   override val name = ToolName("bash")
   override val description =
@@ -41,12 +43,10 @@ final class BashTool(context: FileSystemContext) extends Tool {
     )
   )
 
-  override val examples: List[ToolExample] = List(
-    ToolExample("List a directory", BashInput(command = "ls -la /tmp")),
-    ToolExample("Run a build with custom timeout", BashInput(command = "cargo build --release", timeoutMs = Some(600000L)))
-  )
 
-  override def executeResult(input: BashInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: BashInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("command" -> input.command) match {
       case Some(reason) => Task.pure(ToolResult.failure(reason))
       case None =>

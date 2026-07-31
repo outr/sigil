@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.SpaceId
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Forget (mark rejected, or hard-delete by key) a previously stored
@@ -26,8 +26,12 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Too
 case object ForgetMemoryTool extends Tool {
   type Input  = ForgetMemoryInput
   type Output = TextToolOutput
-  val inputRW: RW[ForgetMemoryInput] = summon[RW[ForgetMemoryInput]]
-  val outputRW: RW[TextToolOutput]   = summon[RW[TextToolOutput]]
+  val io: ToolIO[ForgetMemoryInput, TextToolOutput] = ToolIO.derived[ForgetMemoryInput, TextToolOutput].withExamples(
+    ToolExample("Reject a single auto-extracted memory",
+      ForgetMemoryInput(memoryId = Some(lightdb.id.Id("mem-12345")))),
+    ToolExample("Hard-delete every version of a keyed memory",
+      ForgetMemoryInput(key = Some("user.units")))
+  )
 
   override val name: ToolName = ToolName("forget_memory")
   override val description: String =
@@ -43,14 +47,10 @@ case object ForgetMemoryTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("memory", "forget", "delete", "remove"))
   )
 
-  override val examples: List[ToolExample] = List(
-    ToolExample("Reject a single auto-extracted memory",
-      ForgetMemoryInput(memoryId = Some(lightdb.id.Id("mem-12345")))),
-    ToolExample("Hard-delete every version of a keyed memory",
-      ForgetMemoryInput(key = Some("user.units")))
-  )
 
-  override def executeResult(input: ForgetMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ForgetMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     (input.memoryId, input.key) match {
       case (Some(_), Some(_)) =>
         Task.pure(ToolResult.failure(

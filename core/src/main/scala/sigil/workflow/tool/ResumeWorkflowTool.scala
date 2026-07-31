@@ -5,7 +5,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import strider.Workflow
 import strider.step.Step
 
@@ -26,8 +26,12 @@ case class ResumeWorkflowInput(runId: String,
 final class ResumeWorkflowTool extends Tool with WorkflowToolSupport {
   type Input  = ResumeWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ResumeWorkflowInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ResumeWorkflowInput, TextToolOutput] = ToolIO.derived[ResumeWorkflowInput, TextToolOutput].withExamples(
+    ToolExample(
+      "approve a pending approval",
+      ResumeWorkflowInput(runId = "run-abc", stepId = "review", payload = Some("approve"))
+    )
+  )
   override val name = ToolName("resume_workflow")
   override val description =
     """Resume a workflow run paused on an approval / trigger step.
@@ -36,12 +40,6 @@ final class ResumeWorkflowTool extends Tool with WorkflowToolSupport {
       |the workflow's lifecycle Events).
       |`payload` (optional) is the chosen value — for approval steps, one of the
       |configured options.""".stripMargin
-  override val examples = List(
-    ToolExample(
-      "approve a pending approval",
-      ResumeWorkflowInput(runId = "run-abc", stepId = "review", payload = Some("approve"))
-    )
-  )
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -49,7 +47,9 @@ final class ResumeWorkflowTool extends Tool with WorkflowToolSupport {
     discovery = DiscoverySpec(keywords = Set("workflow", "resume", "approve", "continue"))
   )
 
-  override def executeResult(input: ResumeWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ResumeWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {
       case None => Task.pure(ToolResult.failure(s"Workflow run '${input.runId}' not found."))

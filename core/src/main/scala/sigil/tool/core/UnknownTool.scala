@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.event.{Message, MessageDisposition, MessageRole, MessageVisibility}
 import sigil.signal.EventState
-import sigil.tool.{JsonInput, RefusalPayload, TextToolOutput, ToolContext, ToolName, ToolResult}
+import sigil.tool.{JsonInput, RefusalPayload, Resolution, TextToolOutput, ToolContext, ToolIO, ToolName, ToolResult}
 import sigil.tool.model.ResponseContent
 
 /**
@@ -29,8 +29,7 @@ case object UnknownTool extends sigil.tool.Tool {
   type Input  = JsonInput
   type Output = TextToolOutput
 
-  val inputRW  = summon[RW[JsonInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[JsonInput, TextToolOutput] = ToolIO.derived[JsonInput, TextToolOutput]
 
   val spec: sigil.tool.ToolSpec = sigil.tool.ToolSpec(
     name = ToolName.internal("_unknown_tool"),
@@ -41,7 +40,9 @@ case object UnknownTool extends sigil.tool.Tool {
     discovery = sigil.tool.DiscoverySpec(kind = sigil.tool.InternalKind)
   )
 
-  override def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val invokedName = context.toolName.value
     // The refusal carries the closest-name match from the offered roster
     // plus that match's schema + example so the agent can retry against

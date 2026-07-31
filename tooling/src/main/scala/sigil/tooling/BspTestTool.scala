@@ -4,12 +4,10 @@ import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.BspExecResult
 
-case class BspTestInput(projectRoot: String,
-                        targets: List[String] = Nil,
-                        arguments: List[String] = Nil) extends ToolInput derives RW
+case class BspTestInput(projectRoot: String, targets: List[String] = Nil, arguments: List[String] = Nil) extends ToolInput derives RW
 
 /**
  * Run tests for the given build targets via the BSP server. Captures
@@ -20,12 +18,10 @@ case class BspTestInput(projectRoot: String,
  * like `-z 'substring of test name'`, etc.). Empty `targets` means
  * "every workspace target that supports test".
  */
-final class BspTestTool(val manager: BspManager) extends Tool
-  with BspToolSupport {
-  type Input  = BspTestInput
+final class BspTestTool(val manager: BspManager) extends Tool with BspToolSupport {
+  type Input = BspTestInput
   type Output = BspExecResult
-  val inputRW  = summon[RW[BspTestInput]]
-  val outputRW = summon[RW[BspExecResult]]
+  val io: ToolIO[BspTestInput, BspExecResult] = ToolIO.derived[BspTestInput, BspExecResult]
 
   override val name = ToolName("bsp_test")
   override def verification: Boolean = true
@@ -42,16 +38,28 @@ final class BspTestTool(val manager: BspManager) extends Tool
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(
       keywords = Set(
-        "bsp", "test", "run tests", "unit test", "execute tests", "verify",
-        "scala", "sbt", "project", "targets", "validate"
+        "bsp",
+        "test",
+        "run tests",
+        "unit test",
+        "execute tests",
+        "verify",
+        "scala",
+        "sbt",
+        "project",
+        "targets",
+        "validate"
       ),
       toolchain = Some("bsp")
     )
   )
 
-  override def executeOutput(input: BspTestInput, context: ToolContext): Task[BspExecResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: BspTestInput, context: ToolContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](
-      input.projectRoot, context,
+      input.projectRoot,
+      context,
       onError = msg => BspExecResult(input.projectRoot, "ERROR", 0, "", msg)
     ) { session =>
       // Filter to test-capable targets so empty input doesn't expand
@@ -70,36 +78,38 @@ final class BspTestTool(val manager: BspManager) extends Tool
           session.client.drainLogs()
           session.test(resolved, input.arguments).map { result =>
             val status = result.getStatusCode match {
-              case StatusCode.OK        => "OK"
-              case StatusCode.ERROR     => "ERROR"
+              case StatusCode.OK => "OK"
+              case StatusCode.ERROR => "ERROR"
               case StatusCode.CANCELLED => "CANCELLED"
             }
             val (out, err) = session.client.drainRunOutput()
             BspExecResult(
               projectRoot = input.projectRoot,
-              status      = status,
+              status = status,
               targetCount = resolved.size,
-              stdout      = mergeDetail(out.mkString, session),
-              stderr      = err.mkString
+              stdout = mergeDetail(out.mkString, session),
+              stderr = err.mkString
             )
           }.handleError { t =>
             val (out, err) = session.client.drainRunOutput()
             Task.pure(BspExecResult(
               projectRoot = input.projectRoot,
-              status      = "ERROR",
+              status = "ERROR",
               targetCount = resolved.size,
-              stdout      = mergeDetail(out.mkString, session),
-              stderr      = (err.mkString + "\nBSP test dispatch failed: " + t.getMessage).trim
+              stdout = mergeDetail(out.mkString, session),
+              stderr = (err.mkString + "\nBSP test dispatch failed: " + t.getMessage).trim
             ))
           }
         }
       }
     }
 
-  /** sbt-bsp reports which suite / test failed and the assertion text
-    * via `onBuildLogMessage` (the client's `logs` queue), separate from
-    * the program's run stdout/stderr. Append that detail so the agent
-    * sees the failure cause, not just the ERROR verdict. */
+  /**
+   * sbt-bsp reports which suite / test failed and the assertion text
+   * via `onBuildLogMessage` (the client's `logs` queue), separate from
+   * the program's run stdout/stderr. Append that detail so the agent
+   * sees the failure cause, not just the ERROR verdict.
+   */
   private def mergeDetail(runOut: String, session: BspSession): String = {
     val detail = session.client.drainLogs().flatMap(l => Option(l.getMessage)).map(_.trim).filter(_.nonEmpty)
     (List(runOut).filter(_.nonEmpty) ++ detail).mkString("\n")

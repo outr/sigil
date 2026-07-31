@@ -3,7 +3,21 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 case class DapPauseInput(sessionId: String, threadId: Int) extends ToolInput derives RW
 
@@ -14,8 +28,12 @@ case class DapPauseInput(sessionId: String, threadId: Int) extends ToolInput der
 final class DapPauseTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapPauseInput
   type Output = TextToolOutput
-  val inputRW = summon[RW[DapPauseInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DapPauseInput, TextToolOutput] = ToolIO.derived[DapPauseInput, TextToolOutput].withExamples(
+    ToolExample(
+      "pause a thread",
+      DapPauseInput(sessionId = "demo-session", threadId = 1)
+    )
+  )
   override val name = ToolName("dap_pause")
   override val description =
     """Pause a running thread.
@@ -28,14 +46,10 @@ final class DapPauseTool(val manager: DapManager) extends Tool with DapToolSuppo
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "pause", "suspend", "thread", "interrupt"))
   )
-  override val examples = List(
-    ToolExample(
-      "pause a thread",
-      DapPauseInput(sessionId = "demo-session", threadId = 1)
-    )
-  )
 
-  override def executeResult(input: DapPauseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapPauseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.pause(input.threadId).map(_ =>
         ToolResult.success(TextToolOutput(s"Pause requested on thread ${input.threadId}.")))

@@ -51,20 +51,12 @@ trait WireSurface[T] {
 
 object WireSurface {
 
-  /** Build a surface from a tool. Reads [[Tool.inputDefinition]] and
-    * [[Tool.inputRW]]; biases the example payload to the tool's first
-    * authored [[ToolExample]] when present. */
-  def fromTool(tool: Tool): WireSurface[tool.Input] =
-    new Impl[tool.Input](
-      definition       = tool.inputDefinition,
-      rw               = tool.inputRW,
-      authoredExample  = tool.examples.headOption.map(_.input.asInstanceOf[tool.Input])
-    )
-
-  /** Build a surface from a raw `Definition` + `RW`. Used by codegen,
+  /** Build a surface from a raw `Definition` + `RW`, biasing the
+    * example payload to `authoredExample` when present (a [[ToolIO]]'s
+    * first validated example). Used by [[ToolIO.surface]], codegen,
     * tests, and any caller without a surrounding `Tool`. */
-  def fromDefinition[T](definition: Definition, rw: RW[T]): WireSurface[T] =
-    new Impl[T](definition, rw, authoredExample = None)
+  def fromDefinition[T](definition: Definition, rw: RW[T], authoredExample: Option[T] = None): WireSurface[T] =
+    new Impl[T](definition, rw, authoredExample)
 
   // ---- Definition walkers — single source of truth -------------------
 
@@ -407,12 +399,12 @@ object WireSurface {
                               authoredExample: Option[T]) extends WireSurface[T] {
     lazy val schema: fabric.Json = emitSchema(definition)
 
+    // Authored examples are validated at ToolIO construction, so the
+    // read cannot fail for static tools; synthesis remains only for
+    // the dynamic path (no example authored).
     lazy val example: fabric.Json = authoredExample match {
-      case Some(t) =>
-        try rw.read(t)
-        catch { case _: Throwable => synthesizeExample(definition) }
-      case None =>
-        synthesizeExample(definition)
+      case Some(t) => rw.read(t)
+      case None    => synthesizeExample(definition)
     }
 
     def normalize(raw: fabric.Json): fabric.Json =
@@ -420,23 +412,18 @@ object WireSurface {
 
     def decode(raw: fabric.Json): Either[DecodeError, T] = {
       val normalised = normalize(raw)
-      val violations = ToolInputValidator
-        .validate(normalised, definition)
-        .map(DecodeViolation.parse)
-      if (violations.nonEmpty) {
-        // Try materialise too — if it ALSO throws, fold the throw into
-        // the violations list so the agent sees both the constraint
-        // problems and the structural problem at once.
-        val materializeErr =
-          try { rw.write(normalised); None }
-          catch { case t: Throwable => Some(materializeViolation(t)) }
-        Left(DecodeError(violations ++ materializeErr.toList, raw))
-      } else
+      val violations = ToolInputValidator.validate(normalised, definition)
+      // Materialise exactly once; the result is reused whichever way
+      // the violation check goes, so the agent sees constraint AND
+      // structural problems from one pass.
+      val materialised: Either[DecodeViolation, T] =
         try Right(rw.write(normalised))
-        catch {
-          case t: Throwable =>
-            Left(DecodeError(List(materializeViolation(t)), raw))
-        }
+        catch { case t: Throwable => Left(materializeViolation(t)) }
+      (violations, materialised) match {
+        case (Nil, Right(value)) => Right(value)
+        case (vs, Left(mv))      => Left(DecodeError(vs :+ mv, raw))
+        case (vs, Right(_))      => Left(DecodeError(vs, raw))
+      }
     }
 
     private def materializeViolation(t: Throwable): DecodeViolation = {
@@ -444,7 +431,8 @@ object WireSurface {
       val errorMessage = Option(t.getMessage).filter(_.nonEmpty).getOrElse("(no message)")
       DecodeViolation(
         path   = Nil,
-        reason = s"$errorClass: $errorMessage. Expected shape: ${summarizeShape(definition)}"
+        reason = s"$errorClass: $errorMessage. Expected shape: ${summarizeShape(definition)}",
+        kind   = ViolationKind.Structural
       )
     }
   }

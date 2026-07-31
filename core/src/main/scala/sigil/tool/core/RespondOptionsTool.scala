@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.Message
 import sigil.signal.EventState
-import sigil.tool.{TextToolOutput, ToolExample, ToolName, ToolResult, ToolSpec}
+import sigil.tool.{Resolution, TextToolOutput, ToolExample, ToolIO, ToolName, ToolResult, ToolSpec}
 import sigil.tool.model.{RespondOptionsInput, ResponseContent, SelectOption}
 
 /**
@@ -21,8 +21,28 @@ import sigil.tool.model.{RespondOptionsInput, ResponseContent, SelectOption}
 case object RespondOptionsTool extends RespondFamilyTool {
   type Input  = RespondOptionsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RespondOptionsInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[RespondOptionsInput, TextToolOutput] = ToolIO.derived[RespondOptionsInput, TextToolOutput].withExamples(
+    ToolExample(
+      "single-select — forced choice between mutually-exclusive options",
+      RespondOptionsInput(
+        prompt        = "Should I commit this change?",
+        options       = List(SelectOption("Yes", "yes"), SelectOption("No", "no")),
+        allowMultiple = false
+      )
+    ),
+    ToolExample(
+      "multi-select — independent choices the user can pick in any combination",
+      RespondOptionsInput(
+        prompt        = "Which integrations should I enable?",
+        options       = List(
+          SelectOption("Slack", "slack"),
+          SelectOption("Email", "email"),
+          SelectOption("Discord", "discord")
+        ),
+        allowMultiple = true
+      )
+    )
+  )
 
   override val name = ToolName("respond_options")
   override val description =
@@ -52,30 +72,10 @@ case object RespondOptionsTool extends RespondFamilyTool {
     keywords = Set("respond", "options", "choices", "ask", "pick", "select")
   )
 
-  override val examples: List[ToolExample] = List(
-    ToolExample(
-      "single-select — forced choice between mutually-exclusive options",
-      RespondOptionsInput(
-        prompt        = "Should I commit this change?",
-        options       = List(SelectOption("Yes", "yes"), SelectOption("No", "no")),
-        allowMultiple = false
-      )
-    ),
-    ToolExample(
-      "multi-select — independent choices the user can pick in any combination",
-      RespondOptionsInput(
-        prompt        = "Which integrations should I enable?",
-        options       = List(
-          SelectOption("Slack", "slack"),
-          SelectOption("Email", "email"),
-          SelectOption("Discord", "discord")
-        ),
-        allowMultiple = true
-      )
-    )
-  )
 
-  override def executeResult(input: RespondOptionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: RespondOptionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val block = ResponseContent.Options(
       prompt = input.prompt,
       options = input.options,

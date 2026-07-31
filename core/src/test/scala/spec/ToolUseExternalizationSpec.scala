@@ -9,7 +9,21 @@ import sigil.conversation.compression.StandardContextCurator
 import sigil.conversation.{Conversation, ToolCallState, Topic, TopicEntry}
 import sigil.event.{ToolInvoke, ToolOutcome}
 import sigil.signal.EventState
-import sigil.tool.{DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  InMemoryToolFinder,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolSpec
+}
 
 /**
  * Regression for sigil bug #288 — agent-emitted tool_use content
@@ -21,13 +35,14 @@ import sigil.tool.{DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting,
 class ToolUseExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Synthetic tool that opts `content` in for externalization. */
+  /**
+   * Synthetic tool that opts `content` in for externalization.
+   */
   private case class WriteFileInput(path: String, content: String) extends ToolInput derives RW
   private case object SyntheticWriteFileTool extends Tool {
-    type Input  = WriteFileInput
+    type Input = WriteFileInput
     type Output = TextToolOutput
-    val inputRW: RW[WriteFileInput]   = summon[RW[WriteFileInput]]
-    val outputRW: RW[TextToolOutput]  = summon[RW[TextToolOutput]]
+    val io: ToolIO[WriteFileInput, TextToolOutput] = ToolIO.derived[WriteFileInput, TextToolOutput]
     override val name = ToolName("synthetic_write_file")
     override val description = "Synthetic test tool that opts `content` in for externalization."
     val spec: ToolSpec = ToolSpec(
@@ -37,7 +52,9 @@ class ToolUseExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec with M
       discovery = DiscoverySpec(keywords = Set("test", "write", "externalization"))
     )
     override val externalizableInputFields: Set[String] = Set("content")
-    override def executeOutput(input: WriteFileInput, context: ToolContext): Task[TextToolOutput] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+    private def executeOutput(input: WriteFileInput, context: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(s"wrote ${input.content.length} chars to ${input.path}"))
   }
 
@@ -53,21 +70,21 @@ class ToolUseExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec with M
       ))
       val rewritten = StandardContextCurator.rewriteOversizedFields(
         argsJson = argsJson,
-        fields   = Set("content"),
+        fields = Set("content"),
         threshold = 1024L
       )
       rewritten should not equal argsJson
       // Parse-back assertions — the result is still well-formed JSON.
       val parsed = fabric.io.JsonParser(rewritten).asObj.value
       parsed("path").asString shouldBe "sections/page.liquid"
-      parsed("content").asString should include ("externalized")
-      parsed("content").asString should include ("10000")
+      parsed("content").asString should include("externalized")
+      parsed("content").asString should include("10000")
       parsed("content").asString.length should be < largeContent.length
     }
 
     "leave fields not in the opt-in set untouched" in Task {
       val argsJson = fabric.io.JsonFormatter.Compact(fabric.obj(
-        "path" -> fabric.str("x" * 10_000),  // 10K path — over threshold but NOT in opt-in set
+        "path" -> fabric.str("x" * 10_000), // 10K path — over threshold but NOT in opt-in set
         "content" -> fabric.str("small")
       ))
       val rewritten = StandardContextCurator.rewriteOversizedFields(
@@ -75,7 +92,7 @@ class ToolUseExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec with M
         fields = Set("content"),
         threshold = 1024L
       )
-      rewritten shouldBe argsJson  // identity preserved
+      rewritten shouldBe argsJson // identity preserved
     }
 
     "leave under-threshold values untouched even when the field is opt-in" in Task {
@@ -116,10 +133,9 @@ class ToolUseExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec with M
   "Tool.externalizableInputFields hook" should {
     "default to empty (apps opt fields in per-tool)" in Task {
       val tool = new Tool {
-        type Input  = WriteFileInput
+        type Input = WriteFileInput
         type Output = TextToolOutput
-        val inputRW: RW[WriteFileInput] = summon[RW[WriteFileInput]]
-        val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+        val io: ToolIO[WriteFileInput, TextToolOutput] = ToolIO.derived[WriteFileInput, TextToolOutput]
         override val name = ToolName("nothing_externalized")
         override val description = "Test-only tool that externalizes nothing."
         val spec: ToolSpec = ToolSpec(
@@ -128,7 +144,9 @@ class ToolUseExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec with M
           profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
           discovery = DiscoverySpec(keywords = Set("test", "externalization"))
         )
-        override def executeOutput(input: WriteFileInput, context: ToolContext): Task[TextToolOutput] =
+        protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+        private def executeOutput(input: WriteFileInput, context: ToolContext): Task[TextToolOutput] =
           Task.pure(TextToolOutput(""))
       }
       tool.externalizableInputFields shouldBe Set.empty

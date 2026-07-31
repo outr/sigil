@@ -6,7 +6,7 @@ import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
 import sigil.tokenize.HeuristicTokenizer
 import sigil.tool.model.{ListMemoriesOutput, MemoryListEntry, MemoryListPage}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolGates, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolGates, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * General memory-listing tool. Surfaces every memory the caller's
@@ -36,8 +36,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolGates, ToolName, 
 case object ListMemoriesTool extends Tool {
   type Input  = ListMemoriesInput
   type Output = ListMemoriesOutput
-  val inputRW  = summon[RW[ListMemoriesInput]]
-  val outputRW = summon[RW[ListMemoriesOutput]]
+  val io: ToolIO[ListMemoriesInput, ListMemoriesOutput] = ToolIO.derived[ListMemoriesInput, ListMemoriesOutput]
   override val name = ToolName("list_memories")
   override val description =
     """List memories you can see — pinned and unpinned — with filters and pagination.
@@ -70,7 +69,9 @@ case object ListMemoriesTool extends Tool {
     * the next turn's prompt. */
   private val MaxPageSize: Int = 100
 
-  override def executeOutput(input: ListMemoriesInput, context: ToolContext): Task[ListMemoriesOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: ListMemoriesInput, context: ToolContext): Task[ListMemoriesOutput] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       val effective = if (input.spaces.nonEmpty) input.spaces.intersect(accessible) else accessible
       if (effective.isEmpty)

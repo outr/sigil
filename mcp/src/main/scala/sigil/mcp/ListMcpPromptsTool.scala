@@ -3,16 +3,30 @@ package sigil.mcp
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 case class ListMcpPromptsInput(server: String) extends ToolInput derives RW
 
-/** List the prompt templates advertised by a registered MCP server. */
+/**
+ * List the prompt templates advertised by a registered MCP server.
+ */
 final class ListMcpPromptsTool(manager: McpManager) extends Tool {
-  type Input  = ListMcpPromptsInput
+  type Input = ListMcpPromptsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ListMcpPromptsInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ListMcpPromptsInput, TextToolOutput] = ToolIO.derived[ListMcpPromptsInput, TextToolOutput]
 
   override val name = ToolName("list_mcp_prompts")
   override val description = "List the prompt templates advertised by a registered MCP server, including their argument names."
@@ -23,11 +37,14 @@ final class ListMcpPromptsTool(manager: McpManager) extends Tool {
     discovery = DiscoverySpec(keywords = Set("mcp", "prompts", "list", "templates", "server"))
   )
 
-  override def executeResult(input: ListMcpPromptsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ListMcpPromptsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     manager.listPrompts(input.server).map { prompts =>
       val text = if (prompts.isEmpty) "(no prompts advertised)"
       else prompts.map { p =>
-        val args = if (p.arguments.isEmpty) "" else p.arguments.map { a =>
+        val args = if (p.arguments.isEmpty) ""
+        else p.arguments.map { a =>
           val req = if (a.required) "*" else ""
           s"${a.name}$req"
         }.mkString("(", ", ", ")")

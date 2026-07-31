@@ -11,13 +11,34 @@ import sigil.db.Model
 import sigil.event.{Message, MessageDisposition, MessageRole}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
-  CallId, ConversationMode, ConversationRequest, GenerationSettings,
-  Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
+  CallId,
+  ConversationMode,
+  ConversationRequest,
+  GenerationSettings,
+  Instructions,
+  Provider,
+  ProviderCall,
+  ProviderEvent,
+  ProviderType,
+  StopReason
 }
 import sigil.signal.Signal
 import sigil.signal.ToolDelta
 import sigil.event.ToolOutcome
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.ToolContext
 import spice.http.HttpRequest
 import sigil.tool.WireCall
@@ -45,16 +66,17 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   case class EmptyToolInput() extends ToolInput derives RW
 
-  /** Tool whose resolution is a logical failure — simulates a tool
-    * that ran but couldn't produce a useful result. The framework
-    * builds the paired Tool-role Failure Message from the returned
-    * [[ToolResult.Failure]]. */
+  /**
+   * Tool whose resolution is a logical failure — simulates a tool
+   * that ran but couldn't produce a useful result. The framework
+   * builds the paired Tool-role Failure Message from the returned
+   * [[ToolResult.Failure]].
+   */
   private object SilentTool extends Tool {
-    type Input  = EmptyToolInput
+    type Input = EmptyToolInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[EmptyToolInput]]
-    val outputRW = summon[RW[TextToolOutput]]
-    override val name        = ToolName("silent_tool")
+    val io: ToolIO[EmptyToolInput, TextToolOutput] = ToolIO.derived[EmptyToolInput, TextToolOutput]
+    override val name = ToolName("silent_tool")
     override val description = "Returns nothing useful."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -62,17 +84,21 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "silent"))
     )
-    override def executeResult(input: EmptyToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: EmptyToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.failure("Tool 'silent_tool' failed internally — it produced no usable result."))
   }
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider that emits ToolCallComplete for whatever toolName the
-    * test asks for. `wireCall` lets each scenario inject the matching
-    * resolution shape — `WireCall.Unresolved` for unknown names (what the
-    * real accumulator produces) or a decoded call for a registered tool
-    * in the silent-failure scenario. */
+  /**
+   * Provider that emits ToolCallComplete for whatever toolName the
+   * test asks for. `wireCall` lets each scenario inject the matching
+   * resolution shape — `WireCall.Unresolved` for unknown names (what the
+   * real accumulator produces) or a decoded call for a registered tool
+   * in the silent-failure scenario.
+   */
   private class FakeProvider(toolName: String, wireCall: WireCall) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -93,61 +119,63 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
     val convId = Conversation.id(s"unpaired-$suffix")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50)),
-      chain              = List(TestUser, TestAgent),
-      tools              = tools
+      chain = List(TestUser, TestAgent),
+      tools = tools
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator for an unknown tool name (sigil #167 / #271)" should {
 
-    "emit a Tool-role Failure Message paired to the invoke via UnknownTool" in {
-      runWith(new FakeProvider("not_a_real_tool", WireCall.Unresolved("not_a_real_tool", fabric.Obj.empty)),
-              tools = Vector.empty, "unknown").map { signals =>
+    "emit a Tool-role Failure Message paired to the invoke via UnknownTool" in
+      runWith(
+        new FakeProvider("not_a_real_tool", WireCall.Unresolved("not_a_real_tool", fabric.Obj.empty)),
+        tools = Vector.empty,
+        "unknown").map { signals =>
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
         }
         toolMessages should have size 1
         val msg = toolMessages.head
-        msg.disposition shouldBe a [MessageDisposition.Failure]
-        msg.failureReason.getOrElse("") should include ("Unknown tool")
-        msg.failureReason.getOrElse("") should include ("not_a_real_tool")
+        msg.disposition shouldBe a[MessageDisposition.Failure]
+        msg.failureReason.getOrElse("") should include("Unknown tool")
+        msg.failureReason.getOrElse("") should include("not_a_real_tool")
         msg.origin shouldBe defined
       }
-    }
   }
 
   "Orchestrator for a registered tool that returns a logical failure" should {
 
-    "settle the invoke with a ToolDelta carrying outcome = Failure" in {
-      runWith(new FakeProvider("silent_tool", WireCall.decoded(SilentTool)(EmptyToolInput())),
-              tools = Vector(SilentTool), "silent").map { signals =>
-        val failureDeltas = signals.collect {
-          case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
-        }
-        failureDeltas should not be empty
-        val reason = failureDeltas.head.outcome.collect {
-          case f: ToolOutcome.Failure => f.reason
-        }.getOrElse("")
-        reason should include ("failed internally")
-        reason should include ("silent_tool")
+    "settle the invoke with a ToolDelta carrying outcome = Failure" in
+      runWith(new FakeProvider("silent_tool", WireCall.decoded(SilentTool)(EmptyToolInput())), tools = Vector(SilentTool), "silent").map {
+        signals =>
+          val failureDeltas = signals.collect {
+            case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
+          }
+          failureDeltas should not be empty
+          val reason = failureDeltas.head.outcome.collect {
+            case f: ToolOutcome.Failure => f.reason
+          }.getOrElse("")
+          reason should include("failed internally")
+          reason should include("silent_tool")
       }
-    }
   }
 
-  /** Provider that opens a tool call then mid-stream errors out — the
-    * shape parse failures (sigil #272) and pre-flight errors take. */
+  /**
+   * Provider that opens a tool call then mid-stream errors out — the
+   * shape parse failures (sigil #272) and pre-flight errors take.
+   */
   private class ErrorProvider(toolName: String, errorMsg: String) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -166,7 +194,7 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   "Orchestrator on a ProviderEvent.Error mid-tool-call (sigil #273)" should {
 
-    "emit a paired Tool-role Failure Message so the agent loop re-triggers" in {
+    "emit a paired Tool-role Failure Message so the agent loop re-triggers" in
       // Pre-fix the Error branch settled the orphan invoke with a
       // ToolDelta but emitted no Tool-role event. `TriggerFilter` re-
       // fires on `role == MessageRole.Tool`, so the agent loop saw no
@@ -175,20 +203,20 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
       // nothing about the failure. The fix pairs the orphan settle
       // with a Tool-role Failure Message carrying the diagnostic so
       // the model reads it next turn and self-corrects.
-      runWith(new ErrorProvider("create_page",
-                                "Failed to parse args for tool create_page: bad shape"),
-              tools = Vector.empty, "parsefail").map { signals =>
+      runWith(
+        new ErrorProvider("create_page", "Failed to parse args for tool create_page: bad shape"),
+        tools = Vector.empty,
+        "parsefail").map { signals =>
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
         }
         toolMessages should have size 1
         val msg = toolMessages.head
-        msg.disposition shouldBe a [MessageDisposition.Failure]
-        msg.failureReason.getOrElse("") should include ("Provider error")
-        msg.failureReason.getOrElse("") should include ("Failed to parse args")
+        msg.disposition shouldBe a[MessageDisposition.Failure]
+        msg.failureReason.getOrElse("") should include("Provider error")
+        msg.failureReason.getOrElse("") should include("Failed to parse args")
         msg.origin shouldBe defined
       }
-    }
   }
 
   "tear down" should {

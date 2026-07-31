@@ -9,11 +9,31 @@ import sigil.db.Model
 import sigil.event.{ToolInvoke, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
-  CallId, ConversationMode, ConversationRequest, GenerationSettings,
-  Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
+  CallId,
+  ConversationMode,
+  ConversationRequest,
+  GenerationSettings,
+  Instructions,
+  Provider,
+  ProviderCall,
+  ProviderEvent,
+  ProviderType,
+  StopReason
 }
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.ToolContext
 import sigil.tool.model.NoResponseInput
 import spice.http.HttpRequest
@@ -36,14 +56,15 @@ import fabric.rw.*
 class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Tool that resolves to a typed `Success` — the framework builds a
-    * `ToolResults` event paired to the dispatching ToolInvoke. */
+  /**
+   * Tool that resolves to a typed `Success` — the framework builds a
+   * `ToolResults` event paired to the dispatching ToolInvoke.
+   */
   private object SuccessTool extends Tool {
-    type Input  = NoResponseInput
+    type Input = NoResponseInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[NoResponseInput]]
-    val outputRW = summon[RW[TextToolOutput]]
-    override val name        = ToolName("success_origin_test")
+    val io: ToolIO[NoResponseInput, TextToolOutput] = ToolIO.derived[NoResponseInput, TextToolOutput]
+    override val name = ToolName("success_origin_test")
     override val description = "Resolves to a typed Success."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -51,18 +72,21 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "success", "origin"))
     )
-    override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("done")))
   }
 
-  /** Tool that resolves to a logical `Failure` — the framework builds
-    * a Tool-role Failure Message paired to the dispatching ToolInvoke. */
+  /**
+   * Tool that resolves to a logical `Failure` — the framework builds
+   * a Tool-role Failure Message paired to the dispatching ToolInvoke.
+   */
   private object FailureTool extends Tool {
-    type Input  = NoResponseInput
+    type Input = NoResponseInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[NoResponseInput]]
-    val outputRW = summon[RW[TextToolOutput]]
-    override val name        = ToolName("failure_origin_test")
+    val io: ToolIO[NoResponseInput, TextToolOutput] = ToolIO.derived[NoResponseInput, TextToolOutput]
+    override val name = ToolName("failure_origin_test")
     override val description = "Resolves to a logical Failure."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -70,7 +94,9 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "failure", "origin"))
     )
-    override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.failure("deliberate failure for origin coverage"))
   }
 
@@ -94,29 +120,29 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     val convId = Conversation.id(s"origin-stamp-$suffix")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(Model.id("test", "model")),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(ConversationView(conversationId = convId)),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(Model.id("test", "model")),
+      instructions = Instructions(),
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = tools
+      chain = List(TestUser, TestAgent),
+      tools = tools
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator.executeAtomic pairing (sigil #265 — tool transaction collapses onto its ToolInvoke)" should {
 
-    "settle the dispatching ToolInvoke via a ToolDelta(target = invokeId, outcome = Success)" in {
+    "settle the dispatching ToolInvoke via a ToolDelta(target = invokeId, outcome = Success)" in
       runWith(
         provider = new StubProvider(SuccessTool, "success-call"),
-        tools    = Vector(SuccessTool),
-        suffix   = "success"
+        tools = Vector(SuccessTool),
+        suffix = "success"
       ).map { signals =>
         val invokes = signals.collect { case ti: ToolInvoke => ti }
         invokes should have size 1
@@ -127,21 +153,21 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
         }
         deltas should have size 1
       }
-    }
 
-    "settle the dispatching ToolInvoke via a ToolDelta(target = invokeId, outcome = Failure) when the tool resolves to a logical Failure" in {
+    "settle the dispatching ToolInvoke via a ToolDelta(target = invokeId, outcome = Failure) when the tool resolves to a logical Failure" in
       runWith(
         provider = new StubProvider(FailureTool, "failure-call"),
-        tools    = Vector(FailureTool),
-        suffix   = "failure"
+        tools = Vector(FailureTool),
+        suffix = "failure"
       ).map { signals =>
         val invokes = signals.collect { case ti: ToolInvoke => ti }
         invokes should have size 1
         val invokeId = invokes.head._id
 
         val deltas = signals.collect {
-          case d: ToolDelta if d.target == invokeId &&
-            d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
+          case d: ToolDelta
+              if d.target == invokeId &&
+                d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
         }
         deltas should have size 1
         val reason = deltas.head.outcome.collect {
@@ -149,7 +175,6 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
         }.getOrElse("")
         reason should include("deliberate failure")
       }
-    }
   }
 
   "tear down" should {

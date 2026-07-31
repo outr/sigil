@@ -4,6 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.model.GlobInput
 import sigil.tool.*
+import sigil.tool.{Resolution, ToolIO}
 
 /**
  * List files under `basePath` matching a glob pattern. Returns the
@@ -15,12 +16,10 @@ import sigil.tool.*
 final class GlobTool(context: FileSystemContext) extends Tool {
   type Input = GlobInput
   type Output = TextToolOutput
-  override val examples: List[ToolExample] = List(
+  val io: ToolIO[GlobInput, TextToolOutput] = ToolIO.derived[GlobInput, TextToolOutput].withExamples(
     ToolExample("Scala sources under src", GlobInput(basePath = "src", pattern = "**/*.scala")),
     ToolExample("Top-level docs", GlobInput(basePath = ".", pattern = "*.md"))
   )
-  val inputRW = summon[RW[GlobInput]]
-  val outputRW = summon[RW[TextToolOutput]]
   override val name = ToolName("glob")
   override val description =
     "List files under a directory matching a glob pattern (e.g. '**/*.scala'). Returns the matching " +
@@ -52,7 +51,9 @@ final class GlobTool(context: FileSystemContext) extends Tool {
     )
   )
 
-  override def executeResult(input: GlobInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: GlobInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("basePath" -> input.basePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(reason))
       case None =>

@@ -8,7 +8,7 @@ import sigil.tool.ToolContext
 import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, StopReason}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * One-shot LLM consultation. Two surfaces on the same object:
@@ -24,8 +24,16 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolE
 case object ConsultTool extends Tool {
   type Input  = ConsultInput
   type Output = TextToolOutput
-  val inputRW: RW[ConsultInput]    = summon[RW[ConsultInput]]
-  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+  val io: ToolIO[ConsultInput, TextToolOutput] = ToolIO.derived[ConsultInput, TextToolOutput].withExamples(
+    ToolExample(
+      "Ask a stronger model for a focused legal interpretation",
+      ConsultInput(
+        modelId = Id("anthropic/claude-opus-4-7"),
+        systemPrompt = "You are a careful legal reasoner. Quote relevant clauses verbatim.",
+        userPrompt = "Given this contract clause, does it permit unilateral termination? <clause text>"
+      )
+    )
+  )
 
   override val name: ToolName = ToolName("consult")
   override val description: String =
@@ -54,19 +62,11 @@ case object ConsultTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("consult", "model", "ask", "delegate", "question", "opinion", "llm"))
   )
 
-  override val examples: List[ToolExample] = List(
-    ToolExample(
-      "Ask a stronger model for a focused legal interpretation",
-      ConsultInput(
-        modelId = Id("anthropic/claude-opus-4-7"),
-        systemPrompt = "You are a careful legal reasoner. Quote relevant clauses verbatim.",
-        userPrompt = "Given this contract clause, does it permit unilateral termination? <clause text>"
-      )
-    )
-  )
 
 
-  override def executeResult(input: ConsultInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ConsultInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task(context.sigil.resolveProviderModel(input.modelId)).flatMap { pm =>
       // Resolve the requested model id to BOTH provider and registered
       // record at the boundary (`Task(...)` defers the unregistered-id

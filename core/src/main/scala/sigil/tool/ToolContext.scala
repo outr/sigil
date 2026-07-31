@@ -11,13 +11,13 @@ import sigil.signal.{ToolDelta, ToolProgress}
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Per-dispatch context handed to a tool's `executeResult` / `executeOutput`
- * body. Narrower than [[TurnContext]] — exposes only what tool code legitimately
+ * Per-dispatch context handed to a tool's [[Resolution]] body. Narrower
+ * than [[TurnContext]] — exposes only what tool code legitimately
  * needs, with the tool-only side-channel methods ([[emit]], [[reportProgress]],
  * [[toolLog]], [[setSummary]]) guaranteed by construction to have an
  * [[invokeId]] to pair against. No silent no-ops.
  *
- * Constructed by the framework at tool dispatch ([[Tool.execute]]); not built
+ * Constructed by the framework at tool dispatch ([[ToolExecutor]]); not built
  * by callers. The underlying [[TurnContext]] is exposed via [[turn]] for the
  * less-common turn-scope fields (`turnInput`, `routedModelId`, the
  * `discoveredCapabilities` cache).
@@ -43,7 +43,9 @@ final case class ToolContext(turn: TurnContext,
                              toolName: ToolName,
                              currentMessageId: Option[Id[Event]] = None,
                              private val emittedEventsRef: AtomicReference[Vector[Event]] =
-                               new AtomicReference(Vector.empty[Event])) {
+                               new AtomicReference(Vector.empty[Event]),
+                             private val emissionsClosed: java.util.concurrent.atomic.AtomicBoolean =
+                               new java.util.concurrent.atomic.AtomicBoolean(false)) {
 
   // ---- pass-throughs for fields every tool body reads ----
 
@@ -146,19 +148,39 @@ final case class ToolContext(turn: TurnContext,
    * reply `Message` and `TopicChange`s. Those go through `emit`.
    *
    * `emit` does NOT publish — it buffers the event onto this context.
-   * [[Tool.execute]] drains the buffer into the tool's result stream
+   * [[ToolExecutor]] drains the buffer into the tool's result stream
    * (ancillary events first, then the framework-built result event), so
    * every caller sees one ordered stream and there is exactly one publish
    * path.
+   *
+   * The buffer CLOSES when the tool's resolution settles: a late `emit`
+   * (typically a fiber the body leaked) raises [[LateEmissionException]]
+   * loudly — logged and surfaced to the emitting task — instead of
+   * silently dropping the event.
    */
   def emit(event: Event): rapid.Task[Unit] =
-    rapid.Task {
-      val _ = emittedEventsRef.updateAndGet(_ :+ event)
-      ()
+    rapid.Task.defer {
+      if (emissionsClosed.get()) {
+        val err = new LateEmissionException(toolName, invokeId)
+        scribe.error(err.getMessage, err)
+        rapid.Task.error(err)
+      } else {
+        val _ = emittedEventsRef.updateAndGet(_ :+ event)
+        rapid.Task.unit
+      }
     }
 
-  /** Snapshot of the ancillary durable events this tool emitted via [[emit]],
-    * in emission order. Read by [[Tool.execute]] after `executeResult`
-    * resolves so the framework can drain the buffer into its result stream. */
+  /** Snapshot of the ancillary durable events this tool has emitted via
+    * [[emit]] and not yet drained, in emission order. */
   def emittedEvents: List[Event] = emittedEventsRef.get().toList
+
+  /** Atomically remove and return the pending emitted events. The single
+    * drain implementation [[ToolExecutor]] uses on every path — inline
+    * settle, detach-time flush, and post-detach completion — so an event
+    * is delivered exactly once regardless of when it was emitted. */
+  private[sigil] def drainEmitted(): List[Event] = emittedEventsRef.getAndSet(Vector.empty).toList
+
+  /** Close the emission buffer — called by [[ToolExecutor]] when the
+    * tool's resolution settles. Subsequent [[emit]] calls raise. */
+  private[sigil] def closeEmissions(): Unit = emissionsClosed.set(true)
 }

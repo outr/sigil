@@ -4,11 +4,10 @@ import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspCompileResult, BspDiagnostic}
 
-case class BspCompileInput(projectRoot: String,
-                           targets: List[String] = Nil) extends ToolInput derives RW
+case class BspCompileInput(projectRoot: String, targets: List[String] = Nil) extends ToolInput derives RW
 
 /**
  * Compile build targets via the project's BSP server (sbt or Bloop).
@@ -19,12 +18,10 @@ case class BspCompileInput(projectRoot: String,
  * ERROR / CANCELLED / NO_TARGETS) and any diagnostics the server
  * published.
  */
-final class BspCompileTool(val manager: BspManager) extends Tool
-  with BspToolSupport {
-  type Input  = BspCompileInput
+final class BspCompileTool(val manager: BspManager) extends Tool with BspToolSupport {
+  type Input = BspCompileInput
   type Output = BspCompileResult
-  val inputRW  = summon[RW[BspCompileInput]]
-  val outputRW = summon[RW[BspCompileResult]]
+  val io: ToolIO[BspCompileInput, BspCompileResult] = ToolIO.derived[BspCompileInput, BspCompileResult]
 
   override val name = ToolName("bsp_compile")
   override def verification: Boolean = true
@@ -43,34 +40,54 @@ final class BspCompileTool(val manager: BspManager) extends Tool
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(
       keywords = Set(
-        "bsp", "compile", "build", "type-check", "verify",
-        "errors", "warnings", "compile-check", "examine", "inspect",
-        "analyze", "review",
-        "scala", "sbt", "project", "targets", "evaluate", "validate",
-        "rebuild", "diagnostics", "fix"
+        "bsp",
+        "compile",
+        "build",
+        "type-check",
+        "verify",
+        "errors",
+        "warnings",
+        "compile-check",
+        "examine",
+        "inspect",
+        "analyze",
+        "review",
+        "scala",
+        "sbt",
+        "project",
+        "targets",
+        "evaluate",
+        "validate",
+        "rebuild",
+        "diagnostics",
+        "fix"
       ),
       toolchain = Some("bsp")
     )
   )
 
-  override def executeOutput(input: BspCompileInput, context: ToolContext): Task[BspCompileResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: BspCompileInput, context: ToolContext): Task[BspCompileResult] =
     withTargets[BspCompileResult](
-      input.projectRoot, context, input.targets,
+      input.projectRoot,
+      context,
+      input.targets,
       // A request-level failure (session acquire, build import, an
       // unresolved target URI) carries its reason — a bare ERROR with
       // empty diagnostics leaves the agent blind and thrashing.
       onError = reason => BspCompileResult(input.projectRoot, "ERROR", 0, Nil, cause = Some(reason)),
       emptyResult = BspCompileResult(
         projectRoot = input.projectRoot,
-        status      = "NO_TARGETS",
+        status = "NO_TARGETS",
         targetCount = 0,
         diagnostics = Nil
       )
     ) { (session, targets) =>
       session.compile(targets).map { result =>
         val status = result.getStatusCode match {
-          case StatusCode.OK        => "OK"
-          case StatusCode.ERROR     => "ERROR"
+          case StatusCode.OK => "OK"
+          case StatusCode.ERROR => "ERROR"
           case StatusCode.CANCELLED => "CANCELLED"
         }
         BspCompileTool.buildResult(input.projectRoot, status, targets.size, session.client, requestFailure = None)
@@ -95,7 +112,10 @@ final class BspCompileTool(val manager: BspManager) extends Tool
           case _ => s"BSP error: ${t.getMessage}"
         }
         Task(BspCompileTool.buildResult(
-          input.projectRoot, "ERROR", targets.size, session.client,
+          input.projectRoot,
+          "ERROR",
+          targets.size,
+          session.client,
           requestFailure = Some(failure)))
       }
     }
@@ -103,28 +123,34 @@ final class BspCompileTool(val manager: BspManager) extends Tool
 
 object BspCompileTool {
 
-  /** Bounded tail of the rendered log text kept when it stands in for
-    * missing diagnostics. */
+  /**
+   * Bounded tail of the rendered log text kept when it stands in for
+   * missing diagnostics.
+   */
   private val CauseMaxChars = 4000
 
-  /** Fallback guidance when a failed compile produced neither
-    * diagnostics nor useful log output — tells the agent to stop
-    * retrying blind and use the build tool directly. */
+  /**
+   * Fallback guidance when a failed compile produced neither
+   * diagnostics nor useful log output — tells the agent to stop
+   * retrying blind and use the build tool directly.
+   */
   private val NoDiagnosticsHint =
     "the BSP server published no diagnostics — run the build tool directly (e.g. `sbt compile`) for details"
 
-  /** Assemble the tool's result from the recording client's accumulated
-    * state. Shared by the normal-return path and the failed-request
-    * path so the two can't drift: `build/publishDiagnostics`
-    * notifications land in the client as the server emits them, so
-    * per-file diagnostics survive even when the compile request itself
-    * completes exceptionally. Drains the call's log messages either way
-    * (fresh slate for the next call) and surfaces them only when an
-    * ERROR carries no structured diagnostics; when neither diagnostics
-    * nor logs exist, the cause carries [[NoDiagnosticsHint]].
-    * `requestFailure` (the failed request's own reason) is always kept
-    * — alongside diagnostics when they landed, prefixing the fallback
-    * text when they didn't. */
+  /**
+   * Assemble the tool's result from the recording client's accumulated
+   * state. Shared by the normal-return path and the failed-request
+   * path so the two can't drift: `build/publishDiagnostics`
+   * notifications land in the client as the server emits them, so
+   * per-file diagnostics survive even when the compile request itself
+   * completes exceptionally. Drains the call's log messages either way
+   * (fresh slate for the next call) and surfaces them only when an
+   * ERROR carries no structured diagnostics; when neither diagnostics
+   * nor logs exist, the cause carries [[NoDiagnosticsHint]].
+   * `requestFailure` (the failed request's own reason) is always kept
+   * — alongside diagnostics when they landed, prefixing the fallback
+   * text when they didn't.
+   */
   def buildResult(projectRoot: String,
                   status: String,
                   targetCount: Int,
@@ -144,25 +170,27 @@ object BspCompileTool {
       else None
     val cause = (requestFailure, fallback) match {
       case (Some(rf), Some(fb)) => Some(s"$rf; $fb")
-      case (Some(rf), None)     => Some(rf)
-      case (None, fb)           => fb
+      case (Some(rf), None) => Some(rf)
+      case (None, fb) => fb
     }
     BspCompileResult(
       projectRoot = projectRoot,
-      status      = status,
+      status = status,
       targetCount = targetCount,
       diagnostics = typedDiags,
-      cause       = cause
+      cause = cause
     )
   }
 
-  /** Build the `cause` fallback from the build server's log messages
-    * when a failed compile published no structured diagnostics.
-    * Error-severity lines are preferred (the compiler's actual error
-    * text); when none carry error severity the full log tail is used.
-    * Bounded to the last [[CauseMaxChars]] characters. Returns `None`
-    * when the server logged nothing — the status alone is all the
-    * information that exists. */
+  /**
+   * Build the `cause` fallback from the build server's log messages
+   * when a failed compile published no structured diagnostics.
+   * Error-severity lines are preferred (the compiler's actual error
+   * text); when none carry error severity the full log tail is used.
+   * Bounded to the last [[CauseMaxChars]] characters. Returns `None`
+   * when the server logged nothing — the status alone is all the
+   * information that exists.
+   */
   def errorCauseFromLogs(logs: List[ch.epfl.scala.bsp4j.LogMessageParams]): Option[String] = {
     val messages = logs.flatMap(l => Option(l.getMessage)).filter(_.trim.nonEmpty)
     if (messages.isEmpty) None

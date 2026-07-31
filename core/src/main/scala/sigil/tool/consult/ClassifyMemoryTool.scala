@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{ClassificationWork, GenerationSettings, OutputTokenCap, ReasoningMode, WorkType}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal-only one-shot tool. Invoked by [[sigil.Sigil.persistMemory]]
@@ -18,8 +18,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolN
 case object ClassifyMemoryTool extends Tool with FrameworkConsult {
   type Input  = ClassifyMemoryInput
   type Output = TextToolOutput
-  val inputRW: RW[ClassifyMemoryInput] = summon[RW[ClassifyMemoryInput]]
-  val outputRW: RW[TextToolOutput]     = summon[RW[TextToolOutput]]
+  val io: ToolIO[ClassifyMemoryInput, TextToolOutput] = ToolIO.derived[ClassifyMemoryInput, TextToolOutput]
 
   override val name: ToolName = ToolName("classify_memory")
   override val description: String =
@@ -72,6 +71,8 @@ case object ClassifyMemoryTool extends Tool with FrameworkConsult {
 
   /** Never executed — the framework reads the typed input directly via
     * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
-  override def executeResult(input: ClassifyMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ClassifyMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

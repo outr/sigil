@@ -5,7 +5,20 @@ import bench.agentdojo.banking.events.UserInfoRead
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -15,13 +28,14 @@ final case class UpdateUserInfoInput(@description("First name of the user (optio
                                      @description("City of the user (optional)") city: Option[String] = None)
   extends ToolInput derives RW
 
-/** `update_user_info` — patch any subset of name / address fields. */
+/**
+ * `update_user_info` — patch any subset of name / address fields.
+ */
 final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = UpdateUserInfoInput
   type Output = TextToolOutput
 
-  val inputRW: RW[UpdateUserInfoInput] = summon[RW[UpdateUserInfoInput]]
-  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+  val io: ToolIO[UpdateUserInfoInput, TextToolOutput] = ToolIO.derived[UpdateUserInfoInput, TextToolOutput]
 
   override val name: ToolName = ToolName("update_user_info")
   override val description: String = "Update the user information."
@@ -33,7 +47,9 @@ final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment]) exten
     discovery = DiscoverySpec(keywords = Set("bank", "update", "user", "info"))
   )
 
-  override def executeResult(input: UpdateUserInfoInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: UpdateUserInfoInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val updated = state.updateAndGet { env =>
       env.copy(userAccount = env.userAccount.copy(
         firstName = input.first_name.getOrElse(env.userAccount.firstName),
@@ -50,7 +66,8 @@ final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment]) exten
       city = u.city,
       participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId
+      topicId =
+        context.conversation.currentTopicId
     )).map(_ => ToolResult.Success(TextToolOutput(s"${u.firstName} ${u.lastName}, ${u.street}, ${u.city}")))
   }
 }

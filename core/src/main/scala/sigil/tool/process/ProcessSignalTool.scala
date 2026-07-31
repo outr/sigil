@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{ProcessSignalInput, ProcessSignalOutput}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Send a signal to a registered subprocess. Default `terminate`
@@ -15,8 +15,10 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, 
 final class ProcessSignalTool(registry: ProcessRegistry) extends Tool {
   type Input  = ProcessSignalInput
   type Output = ProcessSignalOutput
-  val inputRW  = summon[RW[ProcessSignalInput]]
-  val outputRW = summon[RW[ProcessSignalOutput]]
+  val io: ToolIO[ProcessSignalInput, ProcessSignalOutput] = ToolIO.derived[ProcessSignalInput, ProcessSignalOutput].withExamples(
+    ToolExample("Terminate gracefully",  ProcessSignalInput(handle = "p1")),
+    ToolExample("Force-kill a hung proc", ProcessSignalInput(handle = "p1", signal = sigil.tool.model.ProcessSignal.Kill))
+  )
 
   override val name = ToolName("process_signal")
   override val description =
@@ -29,12 +31,10 @@ final class ProcessSignalTool(registry: ProcessRegistry) extends Tool {
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("process", "signal", "terminate", "kill", "stop"))
   )
-  override val examples = List(
-    ToolExample("Terminate gracefully",  ProcessSignalInput(handle = "p1")),
-    ToolExample("Force-kill a hung proc", ProcessSignalInput(handle = "p1", signal = sigil.tool.model.ProcessSignal.Kill))
-  )
 
-  override def executeResult(input: ProcessSignalInput, ctx: ToolContext): Task[ToolResult[ProcessSignalOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ProcessSignalInput, ctx: ToolContext): Task[ToolResult[ProcessSignalOutput]] =
     registry.signal(input.handle, input.signal).map {
       case true =>
         ToolResult.success(ProcessSignalOutput(handle = input.handle, signal = input.signal, delivered = true))

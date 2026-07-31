@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.*
 
 import scala.concurrent.duration.*
@@ -20,15 +20,15 @@ case class GetWorkflowInput(workflowId: String) extends ToolInput derives RW
 final class GetWorkflowTool extends Tool with WorkflowToolSupport {
   type Input  = GetWorkflowInput
   type Output = GetWorkflowOutput
-  val inputRW  = summon[RW[GetWorkflowInput]]
-  val outputRW = summon[RW[GetWorkflowOutput]]
+  val io: ToolIO[GetWorkflowInput, GetWorkflowOutput] = ToolIO.derived[GetWorkflowInput, GetWorkflowOutput].withExamples(
+ToolExample("fetch by id", GetWorkflowInput(workflowId = "wf-abc"))
+  )
   override val name = ToolName("get_workflow")
   override val description =
     """Fetch a workflow template by id.
       |
       |`workflowId` is the template's id. Returns the full template — name, description,
       |step list, triggers, variable defs.""".stripMargin
-  override val examples = List(ToolExample("fetch by id", GetWorkflowInput(workflowId = "wf-abc")))
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -43,7 +43,9 @@ final class GetWorkflowTool extends Tool with WorkflowToolSupport {
   protected def fetchAttempts: Int = 5
   protected def fetchRetryDelay: FiniteDuration = 150.millis
 
-  override def executeResult(input: GetWorkflowInput, ctx: ToolContext): Task[ToolResult[GetWorkflowOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: GetWorkflowInput, ctx: ToolContext): Task[ToolResult[GetWorkflowOutput]] =
     workflowHost(ctx) match {
       case Left(err) => Task.pure(ToolResult.failure(err))
       case Right(host) =>

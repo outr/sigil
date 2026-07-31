@@ -3,7 +3,20 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 case class DapScopesInput(sessionId: String, frameId: Int) extends ToolInput derives RW
 
@@ -16,8 +29,12 @@ case class DapScopesInput(sessionId: String, frameId: Int) extends ToolInput der
 final class DapScopesTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapScopesInput
   type Output = DapScopesOutput
-  val inputRW = summon[RW[DapScopesInput]]
-  val outputRW = summon[RW[DapScopesOutput]]
+  val io: ToolIO[DapScopesInput, DapScopesOutput] = ToolIO.derived[DapScopesInput, DapScopesOutput].withExamples(
+    ToolExample(
+      "fetch scopes for the top frame",
+      DapScopesInput(sessionId = "demo-session", frameId = 1000)
+    )
+  )
   override val name = ToolName("dap_scopes")
   override val description =
     """Fetch the variable scopes (Locals / Arguments / Globals / etc.) for a frame.
@@ -31,14 +48,10 @@ final class DapScopesTool(val manager: DapManager) extends Tool with DapToolSupp
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "scopes", "locals", "variables", "frame"))
   )
-  override val examples = List(
-    ToolExample(
-      "fetch scopes for the top frame",
-      DapScopesInput(sessionId = "demo-session", frameId = 1000)
-    )
-  )
 
-  override def executeResult(input: DapScopesInput, context: ToolContext): Task[ToolResult[DapScopesOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapScopesInput, context: ToolContext): Task[ToolResult[DapScopesOutput]] =
     withSession(input.sessionId, context) { session =>
       session.scopes(input.frameId).map { scopes =>
         ToolResult.success(DapScopesOutput(

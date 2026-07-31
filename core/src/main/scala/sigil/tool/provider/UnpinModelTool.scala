@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class UnpinModelInput() extends ToolInput derives RW
 
@@ -17,8 +17,7 @@ case class UnpinModelInput() extends ToolInput derives RW
 case object UnpinModelTool extends Tool {
   type Input  = UnpinModelInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[UnpinModelInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[UnpinModelInput, TextToolOutput] = ToolIO.derived[UnpinModelInput, TextToolOutput]
   override val name = ToolName("unpin_model")
   override val description =
     """Clear the conversation's pinned model. Dispatch reverts to mode + space strategies and the
@@ -30,8 +29,10 @@ case object UnpinModelTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("unpin", "unlock", "clear", "auto", "default", "model"))
   )
 
-  override def executeResult(input: UnpinModelInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: UnpinModelInput,
+                            ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
       case None       => Task.pure(None)
       case Some(conv) => Task.pure(Some(conv.copy(pinnedModelId = None, modified = Timestamp())))

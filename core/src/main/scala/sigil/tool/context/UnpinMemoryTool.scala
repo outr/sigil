@@ -5,7 +5,7 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolGates, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolGates, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Unpin a memory so it stops rendering every turn. The record stays
@@ -25,8 +25,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Too
 case object UnpinMemoryTool extends Tool {
   type Input  = UnpinMemoryInput
   type Output = TextToolOutput
-  val inputRW: RW[UnpinMemoryInput] = summon[RW[UnpinMemoryInput]]
-  val outputRW: RW[TextToolOutput]  = summon[RW[TextToolOutput]]
+  val io: ToolIO[UnpinMemoryInput, TextToolOutput] = ToolIO.derived[UnpinMemoryInput, TextToolOutput]
 
   override val name: ToolName = ToolName("unpin_memory")
   override val description: String =
@@ -47,7 +46,9 @@ case object UnpinMemoryTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("unpin", "remove", "demote", "memory", "directive", "trim"))
   )
 
-  override def executeResult(input: UnpinMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: UnpinMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       val effective = input.space.map(s => Set(s).intersect(accessible)).getOrElse(accessible)
       if (effective.isEmpty)

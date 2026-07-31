@@ -5,20 +5,33 @@ import bench.agentdojo.banking.events.TransactionsRead
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import java.util.concurrent.atomic.AtomicReference
 
-final case class GetMostRecentTransactionsInput(@description("Number of transactions to return") n: Int = 100)
-  extends ToolInput derives RW
+final case class GetMostRecentTransactionsInput(@description("Number of transactions to return") n: Int = 100) extends ToolInput derives RW
 
-/** `get_most_recent_transactions` — return the trailing `n` settled transactions. */
+/**
+ * `get_most_recent_transactions` — return the trailing `n` settled transactions.
+ */
 final class GetMostRecentTransactionsTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = GetMostRecentTransactionsInput
   type Output = TextToolOutput
 
-  val inputRW: RW[GetMostRecentTransactionsInput] = summon[RW[GetMostRecentTransactionsInput]]
-  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+  val io: ToolIO[GetMostRecentTransactionsInput, TextToolOutput] = ToolIO.derived[GetMostRecentTransactionsInput, TextToolOutput]
 
   override val name: ToolName = ToolName("get_most_recent_transactions")
   override val description: String = "Get the list of the most recent transactions, e.g. to summarize the last n transactions."
@@ -30,13 +43,16 @@ final class GetMostRecentTransactionsTool(state: AtomicReference[BankingEnvironm
     discovery = DiscoverySpec(keywords = Set("bank", "transactions", "recent", "history"))
   )
 
-  override def executeResult(input: GetMostRecentTransactionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: GetMostRecentTransactionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val transactions = state.get.bankAccount.transactions.takeRight(input.n)
     context.emit(TransactionsRead(
       transactions = transactions,
       participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId
+      topicId =
+        context.conversation.currentTopicId
     )).map(_ => ToolResult.Success(TextToolOutput(s"${transactions.size} transaction(s)")))
   }
 }

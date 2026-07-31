@@ -3,12 +3,22 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
-case class DapStackTraceInput(sessionId: String,
-                              threadId: Int,
-                              startFrame: Int = 0,
-                              levels: Int = 20) extends ToolInput derives RW
+case class DapStackTraceInput(sessionId: String, threadId: Int, startFrame: Int = 0, levels: Int = 20) extends ToolInput derives RW
 
 /**
  * Fetch the call stack for a stopped thread. Returns each frame's
@@ -20,8 +30,12 @@ case class DapStackTraceInput(sessionId: String,
 final class DapStackTraceTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapStackTraceInput
   type Output = DapStackTraceOutput
-  val inputRW = summon[RW[DapStackTraceInput]]
-  val outputRW = summon[RW[DapStackTraceOutput]]
+  val io: ToolIO[DapStackTraceInput, DapStackTraceOutput] = ToolIO.derived[DapStackTraceInput, DapStackTraceOutput].withExamples(
+    ToolExample(
+      "fetch the top 20 frames",
+      DapStackTraceInput(sessionId = "demo-session", threadId = 1)
+    )
+  )
   override val name = ToolName("dap_stack_trace")
   override val description =
     """Fetch the call stack for a stopped thread.
@@ -36,14 +50,10 @@ final class DapStackTraceTool(val manager: DapManager) extends Tool with DapTool
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "stack", "trace", "frames", "callstack"))
   )
-  override val examples = List(
-    ToolExample(
-      "fetch the top 20 frames",
-      DapStackTraceInput(sessionId = "demo-session", threadId = 1)
-    )
-  )
 
-  override def executeResult(input: DapStackTraceInput, context: ToolContext): Task[ToolResult[DapStackTraceOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapStackTraceInput, context: ToolContext): Task[ToolResult[DapStackTraceOutput]] =
     withSession(input.sessionId, context) { session =>
       session.stackTrace(input.threadId, input.startFrame, input.levels).map { frames =>
         ToolResult.success(DapStackTraceOutput(

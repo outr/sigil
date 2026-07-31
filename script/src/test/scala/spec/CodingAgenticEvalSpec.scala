@@ -10,11 +10,34 @@ import sigil.db.Model
 import sigil.provider.anthropic.AnthropicProvider
 import sigil.provider.cloudflare.CloudflareProvider
 import sigil.provider.{
-  CallId, GenerationSettings, MessageContent, Provider, ProviderCall, ProviderEvent, ProviderMessage,
-  ReasoningMode, ToolCallMessage, ToolChoice
+  CallId,
+  GenerationSettings,
+  MessageContent,
+  Provider,
+  ProviderCall,
+  ProviderEvent,
+  ProviderMessage,
+  ReasoningMode,
+  ToolCallMessage,
+  ToolChoice
 }
 import sigil.script.ScalaScriptExecutor
-import sigil.tool.{DiscoverySpec, Effect, Freshness, MutationTarget, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  MutationTarget,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import java.nio.file.{Files, Path}
 import scala.concurrent.duration.*
@@ -41,8 +64,8 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   override protected val testTimeout: FiniteDuration = 30.minutes
 
   private val anthropicKey = sys.env.get("ANTHROPIC_API_KEY").filter(_.nonEmpty)
-  private val cfToken      = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
-  private val cfAccount    = sys.env.get("CLOUDFLARE_ACCOUNT_ID").filter(_.nonEmpty)
+  private val cfToken = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
+  private val cfAccount = sys.env.get("CLOUDFLARE_ACCOUNT_ID").filter(_.nonEmpty)
 
   private val executor = new ScalaScriptExecutor()
 
@@ -63,14 +86,16 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       |}
       |""".stripMargin
 
-  /** Hidden cases — the buggy slugify fails the ones with leading/trailing
-    * separators; a correct fix trims hyphens at both ends and collapses runs. */
+  /**
+   * Hidden cases — the buggy slugify fails the ones with leading/trailing
+   * separators; a correct fix trims hyphens at both ends and collapses runs.
+   */
   private val cases: List[(String, String)] = List(
-    "Hello, World!"   -> "https://x.com/hello-world",
+    "Hello, World!" -> "https://x.com/hello-world",
     "  Spaced  Out  " -> "https://x.com/spaced-out",
-    "C++ & Scala"     -> "https://x.com/c-scala",
-    "---weird---"     -> "https://x.com/weird",
-    "Already-A-Slug"  -> "https://x.com/already-a-slug"
+    "C++ & Scala" -> "https://x.com/c-scala",
+    "---weird---" -> "https://x.com/weird",
+    "Already-A-Slug" -> "https://x.com/already-a-slug"
   )
 
   private def newWorkspace(): Path = {
@@ -80,7 +105,9 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     dir
   }
 
-  /** Compile the current workspace + assert the hidden cases via the REPL. */
+  /**
+   * Compile the current workspace + assert the hidden cases via the REPL.
+   */
   private def runTests(ws: Path): String = {
     val sources = List("Slug.scala", "Url.scala").map(f => Files.readString(ws.resolve(f))).mkString("\n")
     val asserts = cases.map { case (in, exp) =>
@@ -109,12 +136,15 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   case class EditInput(path: String, find: String, replace: String) extends ToolInput derives RW
   case class RunInput() extends ToolInput derives RW
 
-  /** Minimal Tool over a captured workspace; the loop calls `run` directly. */
-  private abstract class WsTool extends Tool {
+  /**
+   * Minimal Tool over a captured workspace; the loop calls `run` directly.
+   */
+  abstract private class WsTool extends Tool {
     type Output = TextToolOutput
-    val outputRW = summon[RW[TextToolOutput]]
     def run(input: ToolInput): String
-    override def executeResult(input: Input, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: Input, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(run(input))))
     def argsJson(in: ToolInput): String = JsonFormatter.Compact(inputRW.asInstanceOf[RW[ToolInput]].read(in))
   }
@@ -123,7 +153,7 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     def readAll: List[String] = Files.list(ws).iterator().asScala.map(_.getFileName.toString).filter(_.endsWith(".scala")).toList.sorted
     List(
       new WsTool {
-        type Input = ListInput; val inputRW = summon[RW[ListInput]]
+        type Input = ListInput; val io: sigil.tool.ToolIO[ListInput, TextToolOutput] = sigil.tool.ToolIO.derived[ListInput, TextToolOutput]
         val spec: ToolSpec = ToolSpec(
           name = ToolName("list_files"),
           description = "List the .scala files in the project.",
@@ -133,7 +163,7 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         def run(in: ToolInput) = readAll.mkString("\n")
       },
       new WsTool {
-        type Input = ReadInput; val inputRW = summon[RW[ReadInput]]
+        type Input = ReadInput; val io: sigil.tool.ToolIO[ReadInput, TextToolOutput] = sigil.tool.ToolIO.derived[ReadInput, TextToolOutput]
         val spec: ToolSpec = ToolSpec(
           name = ToolName("read_file"),
           description = "Read a file's full contents (with line numbers). Args: path.",
@@ -143,7 +173,7 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         def run(in: ToolInput) = readFile(ws, in.asInstanceOf[ReadInput].path)
       },
       new WsTool {
-        type Input = GrepInput; val inputRW = summon[RW[GrepInput]]
+        type Input = GrepInput; val io: sigil.tool.ToolIO[GrepInput, TextToolOutput] = sigil.tool.ToolIO.derived[GrepInput, TextToolOutput]
         val spec: ToolSpec = ToolSpec(
           name = ToolName("grep"),
           description = "Search all files for a substring. Args: pattern. Returns file:line matches.",
@@ -153,7 +183,7 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         def run(in: ToolInput) = grep(ws, in.asInstanceOf[GrepInput].pattern)
       },
       new WsTool {
-        type Input = EditInput; val inputRW = summon[RW[EditInput]]
+        type Input = EditInput; val io: sigil.tool.ToolIO[EditInput, TextToolOutput] = sigil.tool.ToolIO.derived[EditInput, TextToolOutput]
         val spec: ToolSpec = ToolSpec(
           name = ToolName("edit_file"),
           description = "Replace the FIRST exact occurrence of `find` with `replace` in `path`. Args: path, find, replace.",
@@ -163,7 +193,7 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         def run(in: ToolInput) = { val e = in.asInstanceOf[EditInput]; edit(ws, e.path, e.find, e.replace) }
       },
       new WsTool {
-        type Input = RunInput; val inputRW = summon[RW[RunInput]]
+        type Input = RunInput; val io: sigil.tool.ToolIO[RunInput, TextToolOutput] = sigil.tool.ToolIO.derived[RunInput, TextToolOutput]
         val spec: ToolSpec = ToolSpec(
           name = ToolName("run_tests"),
           description = "Compile the project and run the hidden test cases. Call this to verify your fix.",
@@ -217,12 +247,16 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     val byName = toolList.map(t => t.name.value -> t).toMap
     val maxIters = 18
 
-    def loop(messages: Vector[ProviderMessage], iter: Int): Task[String] = {
-      if (iter >= maxIters) Task.pure(s"(hit ${maxIters}-iteration cap)")
+    def loop(messages: Vector[ProviderMessage], iter: Int): Task[String] =
+      if (iter >= maxIters) Task.pure(s"(hit $maxIters-iteration cap)")
       else {
         val pc = ProviderCall(
-          model = model, system = system, messages = messages, roster = ToolRoster(toolList.toVector),
-          builtInTools = Set.empty, toolChoice = ToolChoice.Auto,
+          model = model,
+          system = system,
+          messages = messages,
+          roster = ToolRoster(toolList.toVector),
+          builtInTools = Set.empty,
+          toolChoice = ToolChoice.Auto,
           generationSettings = GenerationSettings(maxOutputTokens = Some(16000), reasoningMode = ReasoningMode.Off)
         )
         provider.call(pc).toList.flatMap { events =>
@@ -231,10 +265,13 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           val calls = events.collect { case ProviderEvent.ToolCallComplete(CallId(id), wc) => (id, names.getOrElse(id, wc.toolName), wc) }
           scala.util.Try(java.nio.file.Files.writeString(
             java.nio.file.Path.of(s"/tmp/ag-${model._id.value.replaceAll("[^A-Za-z0-9]", "_")}-i$iter.txt"),
-            s"events=${events.map(_.getClass.getSimpleName).distinct.mkString(",")}\ncalls=[${calls.map(_._2).mkString(",")}]\n---TEXT(${text.length})---\n${text.take(1500)}"))
+            s"events=${events.map(_.getClass.getSimpleName).distinct.mkString(",")}\ncalls=[${calls.map(_._2).mkString(",")}]\n---TEXT(${text.length})---\n${text.take(1500)}"
+          ))
           if (calls.isEmpty) Task.pure(s"(agent stopped after $iter iterations without passing)")
           else {
-            val toolCallMsgs = calls.map { case (id, n, wc) => ToolCallMessage(id, n, wc.decodedInput.flatMap(in => byName.get(n).map(_.argsJson(in))).getOrElse("{}")) }
+            val toolCallMsgs = calls.map { case (id, n, wc) =>
+              ToolCallMessage(id, n, wc.decodedInput.flatMap(in => byName.get(n).map(_.argsJson(in))).getOrElse("{}"))
+            }
             val results = calls.map { case (id, n, wc) =>
               val out = wc.decodedInput.flatMap(in => byName.get(n).map(_.run(in))).getOrElse(s"(unknown tool: $n)")
               ProviderMessage.ToolResult(id, out)
@@ -244,7 +281,6 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           }
         }.handleError(t => Task.pure(s"call error @iter$iter: ${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("").take(60)}"))
       }
-    }
 
     loop(Vector(ProviderMessage.User(Vector(MessageContent.Text(task)))), 0).map { stop =>
       s"final=${runTests(ws)}  | $stop"
@@ -256,14 +292,14 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       if (anthropicKey.isEmpty || cfToken.isEmpty || cfAccount.isEmpty)
         cancel("ANTHROPIC_API_KEY / CLOUDFLARE creds not set — skipping live agentic eval")
 
-      val cf   = CloudflareProvider(cfToken.get, cfAccount.get, TestSigil, tokenIdleTimeout = 120.seconds)
+      val cf = CloudflareProvider(cfToken.get, cfAccount.get, TestSigil, tokenIdleTimeout = 120.seconds)
       val anth = AnthropicProvider(apiKey = anthropicKey.get, sigilRef = TestSigil)
 
       val n = 5
       // (label, provider, id, runs)
       val plan: List[(String, Provider, Id[Model], Int)] = List(
-        ("cf/kimi-k2.6",         cf,   Model.id("cloudflare", "@cf/moonshotai/kimi-k2.6"), n),
-        ("cf/gpt-oss-120b",      cf,   Model.id("cloudflare", "@cf/openai/gpt-oss-120b"), n),
+        ("cf/kimi-k2.6", cf, Model.id("cloudflare", "@cf/moonshotai/kimi-k2.6"), n),
+        ("cf/gpt-oss-120b", cf, Model.id("cloudflare", "@cf/openai/gpt-oss-120b"), n),
         ("anthropic/sonnet-4-6", anth, Model.id("anthropic/claude-sonnet-4-6"), 2)
       )
       def itersOf(s: String): String = """after (\d+) iter""".r.findFirstMatchIn(s).map(_.group(1)).getOrElse("?")
@@ -277,7 +313,7 @@ class CodingAgenticEvalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
             a.flatMap(rs => agenticRun(provider, TestSigil.testModel(id), newWorkspace()).map(r => rs :+ r))
           }.map { results =>
             val passes = results.count(passed)
-            info(f"$label%-22s  ${passes}/${runs} PASS   iters=[${results.map(itersOf).mkString(",")}]")
+            info(f"$label%-22s  $passes/$runs PASS   iters=[${results.map(itersOf).mkString(",")}]")
             results.zipWithIndex.foreach { case (r, i) => info(f"    run ${i + 1}: ${r.take(120)}") }
             ()
           }

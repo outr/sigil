@@ -4,7 +4,7 @@ import fabric.rw.*
 import fabric.io.JsonParser
 import sigil.tool.core.RespondTool
 import sigil.tool.model.JsonStringFieldExtractor
-import sigil.tool.{DecodeError, DecodedCall, DecodeViolation, ToolRoster, WireCall}
+import sigil.tool.{DecodeError, DecodedCall, DecodeViolation, ToolRoster, ViolationKind, WireCall}
 
 import scala.collection.mutable
 
@@ -32,8 +32,7 @@ import scala.collection.mutable
  * Each provider's stream parser is responsible for translating upstream events
  * into calls to [[start]], [[appendArgs]], and at stream end [[complete]].
  */
-final class ToolCallAccumulator(roster: ToolRoster = ToolRoster.empty,
-                                providerKey: String = "unknown") {
+final class ToolCallAccumulator(roster: ToolRoster = ToolRoster.empty, providerKey: String = "unknown") {
   private val calls = mutable.LinkedHashMap.empty[Int, CallState]
 
   /**
@@ -68,7 +67,7 @@ final class ToolCallAccumulator(roster: ToolRoster = ToolRoster.empty,
     if (calls.contains(index)) return Vector.empty
     val pending = pendingHeaders.getOrElse(index, PendingHeader(None, None, new StringBuilder))
     val merged = pending.copy(
-      callId   = callIdOpt.orElse(pending.callId),
+      callId = callIdOpt.orElse(pending.callId),
       toolName = nameOpt.orElse(pending.toolName)
     )
     (merged.callId, merged.toolName) match {
@@ -161,7 +160,9 @@ final class ToolCallAccumulator(roster: ToolRoster = ToolRoster.empty,
                   // Keep the original error otherwise, so the diagnostic
                   // reflects what the model actually sent.
                   ToolCallAccumulator.repairMalformedJson(argsText)
-                    .flatMap(r => try Some(JsonParser(r)) catch { case _: Throwable => None })
+                    .flatMap(r =>
+                      try Some(JsonParser(r))
+                      catch { case _: Throwable => None })
                     .toRight(t)
               }
 
@@ -172,7 +173,7 @@ final class ToolCallAccumulator(roster: ToolRoster = ToolRoster.empty,
               val errorClass = parseErr.getClass.getSimpleName
               val errorMessage = Option(parseErr.getMessage).filter(_.nonEmpty).getOrElse("(no message)")
               val schemaSummary = ToolCallAccumulator.summarizeSchema(tool.inputRW.definition)
-              val violation = DecodeViolation(Nil, s"$errorClass: $errorMessage. Expected shape: $schemaSummary")
+              val violation = DecodeViolation(Nil, s"$errorClass: $errorMessage. Expected shape: $schemaSummary", ViolationKind.Structural)
               val raw = fabric.Str(argsText)
               Vector(ProviderEvent.ToolCallComplete(
                 s.callId,
@@ -182,7 +183,7 @@ final class ToolCallAccumulator(roster: ToolRoster = ToolRoster.empty,
             case Right(rawJson) =>
               val schemaWantsObj = tool.inputRW.definition.defType match {
                 case _: fabric.define.DefType.Obj => true
-                case _                            => false
+                case _ => false
               }
               if (rawJson.isArr && schemaWantsObj) {
                 throw new ProviderStreamException(
@@ -221,10 +222,10 @@ final class ToolCallAccumulator(roster: ToolRoster = ToolRoster.empty,
           Vector(ProviderEvent.ToolCallComplete(s.callId, WireCall.Unresolved(s.toolName, raw)))
       }
     }
-   // Sigil audit H8 — any pending headers still partial at stream
+    // Sigil audit H8 — any pending headers still partial at stream
     val orphanPending: Vector[ProviderEvent] = pendingHeaders.values.toVector.map { p =>
       ProviderEvent.Error(
-       s"Tool-call header arrived incomplete at stream close: " +
+        s"Tool-call header arrived incomplete at stream close: " +
           s"callId=${p.callId.map(_.value).getOrElse("<missing>")} " +
           s"toolName=${p.toolName.getOrElse("<missing>")}. " +
           s"Compat-backend bug (provider split id and name across chunks but didn't ship both before close)."
@@ -234,19 +235,16 @@ final class ToolCallAccumulator(roster: ToolRoster = ToolRoster.empty,
     streamFlush ++ completes ++ orphanPending
   }
 
-  private case class CallState(callId: CallId,
-                                toolName: String,
-                                buf: StringBuilder,
-                                processor: Option[RespondStreamProcessor])
+  private case class CallState(callId: CallId, toolName: String, buf: StringBuilder, processor: Option[RespondStreamProcessor])
 
-  /** Pending header for a tool call whose id and name arrived in
-    * separate chunks. Holds the partial fields plus any args that
-    * arrived before the header completed. Promoted to a full
-    * `CallState` once both `callId` and `toolName` are set. Sigil
-    * audit H8. */
-  private case class PendingHeader(callId: Option[CallId],
-                                   toolName: Option[String],
-                                   argsBuffer: StringBuilder)
+  /**
+   * Pending header for a tool call whose id and name arrived in
+   * separate chunks. Holds the partial fields plus any args that
+   * arrived before the header completed. Promoted to a full
+   * `CallState` once both `callId` and `toolName` are set. Sigil
+   * audit H8.
+   */
+  private case class PendingHeader(callId: Option[CallId], toolName: Option[String], argsBuffer: StringBuilder)
 
   private val pendingHeaders: mutable.LinkedHashMap[Int, PendingHeader] =
     mutable.LinkedHashMap.empty
@@ -346,27 +344,29 @@ object ToolCallAccumulator {
         ).flatten
         if (parts.isEmpty) "{}" else parts.mkString("{ ", "; ", " }")
       case DefType.Json => "(any JSON value)"
-      case other         => s"<${typeName(other)}>"
+      case other => s"<${typeName(other)}>"
     }
   }
 
-  /** One-word type name for the schema summary. Recurses into
-    * `Opt` and `Arr`; abbreviates `Obj` / `Poly` to `object` /
-    * `oneOf` since spelling out nested shapes inside a one-line
-    * summary defeats the purpose. */
+  /**
+   * One-word type name for the schema summary. Recurses into
+   * `Opt` and `Arr`; abbreviates `Obj` / `Poly` to `object` /
+   * `oneOf` since spelling out nested shapes inside a one-line
+   * summary defeats the purpose.
+   */
   private def typeName(defType: fabric.define.DefType): String = {
     import fabric.define.DefType
     defType match {
-      case DefType.Str         => "string"
-      case DefType.Int         => "integer"
-      case DefType.Dec         => "number"
-      case DefType.Bool        => "boolean"
-      case DefType.Null        => "null"
-      case DefType.Json        => "any"
-      case DefType.Arr(t)      => s"array<${typeName(t.defType)}>"
-      case DefType.Opt(t)      => typeName(t.defType)
-      case DefType.Obj(_)      => "object"
-      case DefType.Poly(_, _)  => "oneOf"
+      case DefType.Str => "string"
+      case DefType.Int => "integer"
+      case DefType.Dec => "number"
+      case DefType.Bool => "boolean"
+      case DefType.Null => "null"
+      case DefType.Json => "any"
+      case DefType.Arr(t) => s"array<${typeName(t.defType)}>"
+      case DefType.Opt(t) => typeName(t.defType)
+      case DefType.Obj(_) => "object"
+      case DefType.Poly(_, _) => "oneOf"
     }
   }
 }

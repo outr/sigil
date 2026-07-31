@@ -6,7 +6,7 @@ import sigil.Sigil
 import sigil.tool.ToolContext
 import sigil.event.{ModeChange, MessageRole}
 import sigil.provider.Mode
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, RefusalPayload, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, RefusalPayload, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.model.ChangeModeInput
 
 /**
@@ -28,8 +28,12 @@ import sigil.tool.model.ChangeModeInput
 case object ChangeModeTool extends Tool {
   type Input  = ChangeModeInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ChangeModeInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ChangeModeInput, TextToolOutput] = ToolIO.derived[ChangeModeInput, TextToolOutput].withExamples(
+    sigil.tool.ToolExample(
+      "switch to coding mode for a code-edit task",
+      ChangeModeInput(mode = "coding", reason = Some("user wants a function written"))
+    )
+  )
 
   override val name = ToolName("change_mode")
   override val description =
@@ -70,14 +74,9 @@ case object ChangeModeTool extends Tool {
     ))
   )
 
-  override val examples: List[sigil.tool.ToolExample] = List(
-    sigil.tool.ToolExample(
-      "switch to coding mode for a code-edit task",
-      ChangeModeInput(mode = "coding", reason = Some("user wants a function written"))
-    )
-  )
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 
-  override def executeResult(input: ChangeModeInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  private def executeResult(input: ChangeModeInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.modeByName(input.mode) match {
       case Some(mode) if mode.name == context.conversation.currentMode.name =>
         // Refuse same-mode re-entry. The didactic phrasing names the

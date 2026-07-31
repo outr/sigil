@@ -1,16 +1,15 @@
 package sigil.tool
 
-import fabric.io.JsonFormatter
 import fabric.rw.*
 import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.{Stream, Task}
 import sigil.{GlobalSpace, Sigil, SpaceId, TurnContext}
-import sigil.event.{Event, MessageRole, ToolOutcome}
+import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
-import sigil.signal.{EventState, Signal, ToolDelta}
+import sigil.signal.Signal
 
 /**
  * A capability available to agents at runtime. Persisted in
@@ -19,17 +18,21 @@ import sigil.signal.{EventState, Signal, ToolDelta}
  * polymorphic RW.
  *
  * **Authoring contract.** A tool declares a typed [[Input]] and a typed
- * [[Output]] (abstract type members) and implements `executeOutput` (or,
- * for explicit success-vs-logical-failure control, `executeResult`).
- * `execute` — the `Stream[Event]` surface the orchestrator drives — is
- * `final`: the framework runs the tool's resolution and builds exactly
- * one paired result event from it. A tool cannot emit a free-form,
+ * [[Output]] (abstract type members), carries its wire shape as one
+ * [[ToolIO]] value, and implements exactly one body via [[resolve]] —
+ * [[Resolution.Simple]] (return the typed output; a throw becomes a
+ * recoverable failure) or [[Resolution.Explicit]] (logical failures ride
+ * the [[ToolResult]] envelope in-band). `execute` — the `Stream[Signal]`
+ * surface the orchestrator drives — is `final` and delegates wholly to
+ * [[ToolExecutor]], the single pipeline that runs gates, unwraps the
+ * resolution, drains emitted events, bounds output, and builds exactly
+ * one paired result event. A tool cannot emit a free-form,
  * possibly-result-less event stream; the call/result pairing invariant
  * holds by construction.
  *
  * Durable events that are not the tool's result (a `change_mode`'s
  * `ModeChange`, a `respond`'s user-visible Message) are emitted via
- * `ctx.emit` during execution — see [[TurnContext]].
+ * `ctx.emit` during execution — see [[ToolContext]].
  *
  * `Tool` itself is monomorphic — the typing is carried by the `Input` /
  * `Output` type members, not type parameters — so `RecordDocument[Tool]`,
@@ -48,6 +51,21 @@ trait Tool extends RecordDocument[Tool] {
 
   /** The typed result payload this tool produces. */
   type Output <: ToolOutput
+
+  /** Wire-shape contract: input/output codecs, the input definition,
+    * the derived [[WireSurface]], and the typed examples — one
+    * indivisible value built by a [[ToolIO]] factory
+    * (`ToolIO.derived` / `.dynamic` / `.withSchema`), each a
+    * fail-fast construction gate. */
+  def io: ToolIO[Input, Output]
+
+  /** The tool's body — exactly one shape, unwrapped only by
+    * [[ToolExecutor]]. */
+  protected def resolve: Resolution[Input, Output]
+
+  /** Framework bridge to the protected [[resolve]] so the executor
+    * (the only legitimate unwrapper) can read it. */
+  private[sigil] final def resolution: Resolution[Input, Output] = resolve
 
   // ---- spec-derived identity ----
   // `name` / `description` / `keywords` / `space` / `modes` are
@@ -71,27 +89,31 @@ trait Tool extends RecordDocument[Tool] {
     * [[DiscoveryFilter.passesAffinity]]. */
   def modes: Set[Id[Mode]] = spec.discovery.modes
 
-  def inputRW: RW[Input]
-  def outputRW: RW[Output]
+  // ---- io-derived accessors ----
 
-  /** Simple authoring entry — return the typed [[Output]]. A thrown
-    * error (`Task.error`) is caught by the framework and surfaced as a
-    * recoverable [[ToolResult.Failure]]. Override this OR [[executeResult]]. */
-  def executeOutput(input: Input, context: ToolContext): Task[Output] =
-    Task.error(new NotImplementedError(
-      s"Tool '${name.value}' must override `executeOutput` or `executeResult`."
-    ))
+  final def inputRW: RW[Input] = io.inputRW
+  final def outputRW: RW[Output] = io.outputRW
 
-  /** Explicit authoring entry — full control over success vs. logical
-    * failure (file not found, validator rejection, missing precondition).
-    * Defaults to wrapping [[executeOutput]] in [[ToolResult.Success]].
-    *
-    * The returned `Task` is **total**: it resolves to a [[ToolResult]],
-    * or it errors (a crash) and the framework maps that to an
-    * unrecoverable failure. Either way the framework constructs exactly
-    * one paired result event — "tool emitted no result" is unrepresentable. */
-  def executeResult(input: Input, context: ToolContext): Task[ToolResult[Output]] =
-    executeOutput(input, context).map(ToolResult.success)
+  /** The schema's input definition — [[ToolIO.definition]], provably
+    * `inputRW.definition` for derived IO and construction-checked for
+    * `withSchema` / dynamic IO. */
+  final def inputDefinition: fabric.define.Definition = io.definition
+
+  /** The schema's output definition — the declared typed [[Output]]
+    * shape. Surfaced in `find_capability` results so agents (and UIs)
+    * can reason about the result shape before calling. */
+  final def outputDefinition: Option[fabric.define.Definition] = Some(io.outputRW.definition)
+
+  /** Worked examples, validated at [[ToolIO.withExamples]] construction.
+    * Non-final ONLY so persisted dynamic records whose constructor
+    * parameters carry an `examples` field can round-trip through
+    * fabric with the stored field name. */
+  def examples: List[ToolExample[Input]] = io.examples
+
+  /** Consolidated wire-surface derivation — single source for the schema
+    * the LLM sees, the example payload refusals show, the pre-decode
+    * coercion normalisation pass, and the end-to-end decode. */
+  final def wireSurface: WireSurface[Input] = io.surface
 
   /** When `true`, the framework never truncates or files this tool's
     * output on overflow — it is emitted inline verbatim. Derived from
@@ -103,171 +125,42 @@ trait Tool extends RecordDocument[Tool] {
   // ---- framework glue (final) ----
 
   /** The `Stream[Signal]` surface the orchestrator drives. **Final** —
-    * tools author via [[executeResult]] / [[executeOutput]] instead.
-    *
-    * Runs the tool's resolution (mapping any crash to a failure), then
-    * emits the tool's ancillary events (those the body recorded via
-    * `ctx.emit`) followed by exactly one [[ToolDelta]] that settles
-    * the originating `ToolInvoke` — folding the typed output, outcome
-    * (Success or Failure), and final state in one update. Ancillary-
-    * first ordering keeps the durable log causally consistent (a
-    * `change_mode`'s `ModeChange` precedes the settling delta; a
-    * `respond`'s reply `Message` precedes its).
-    *
-    * Sigil #265 — pre-fix the result was a separate `ToolResults`
-    * event linked back to the invoke by `origin`, which had to be
-    * paired by every downstream consumer (#259/#260/#261/#263 were
-    * all "the pair drifted" symptoms). The settling delta unifies the
-    * tool transaction into a single stateful invoke. */
+    * tools author via [[resolve]] instead. Delegates wholly to
+    * [[ToolExecutor]] with the full gate pipeline
+    * ([[GateContext.Gated]]): consent → preconditions → resolution →
+    * emit-buffer drain → output bounding → exactly one settling
+    * [[sigil.signal.ToolDelta]] that folds the typed output, outcome,
+    * and final state onto the originating `ToolInvoke`. */
   final def execute(input: ToolInput,
                     turn: TurnContext,
                     invokeId: Id[Event],
                     invokedName: ToolName = name,
-                    currentMessageId: Option[Id[Event]] = None): Stream[Signal] = {
-    val ctx = ToolContext(turn, invokeId, invokedName, currentMessageId)
-    Stream.force(
-      runResolution(input, ctx).flatMap { res =>
-        buildResultDelta(res, ctx).map { delta =>
-          Stream.emits[Signal](ctx.emittedEvents :+ delta)
-        }
-      }
-    )
-  }
+                    currentMessageId: Option[Id[Event]] = None): Stream[Signal] =
+    ToolExecutor.execute(this, input, turn, invokeId, invokedName, currentMessageId, GateContext.Gated)
 
-  /** Run [[executeResult]] against a defensively-cast input, mapping any
-    * throwable (including a `ClassCastException` from a mismatched input)
-    * to a recoverable [[ToolResult.Failure]]. Total — never errors. */
-  private[sigil] def runResolution(input: ToolInput, context: ToolContext): Task[ToolResult[Output]] =
-    Task(input.asInstanceOf[Input])
-      .flatMap(typed => executeResult(typed, context))
-      .handleError { err =>
-        Task.pure(ToolResult.failure(
-          message = Option(err.getMessage).getOrElse(err.getClass.getSimpleName),
-          args    = renderInputArgs(input)
-        ))
-      }
-
-  /** Build the settling [[ToolDelta]] from a resolution — folds output,
-    * outcome, and `state = Complete` onto the originating `ToolInvoke`
-    * in one update. Sigil #265. */
-  private[sigil] def buildResultDelta(result: ToolResult[Output], context: ToolContext): Task[ToolDelta] = {
-    val invokeId = context.invokeId
-    result match {
-      case ToolResult.Success(value) =>
-        // Measure + externalize the UNWRAPPED text for a TextToolOutput (#305):
-        // the inner text IS the result, so the overflow file holds clean content
-        // (e.g. newline-separated paths) a later grep/read_file consumes, not a
-        // one-line `{"text":"…"}` envelope that re-overflows and reads badly
-        // (#370). Structured outputs externalize their compact JSON as before.
-        val rendered  = value match {
-          case t: TextToolOutput => t.text
-          // Sigil #404 — a structured output that opts into a clean-text
-          // render (`modelText`) measures + overflows on THAT text, so the
-          // overflow file holds the same verbatim content the model would read
-          // inline (edit anchors stay faithful).
-          case o                 => o.modelText.getOrElse(JsonFormatter.Compact(outputRW.read(o)))
-        }
-        val threshold = context.sigil.inlineContentThreshold
-        // On overflow, the full result is written to a file and the bounded
-        // head (with the recovery path) becomes BOTH the summary AND the
-        // invoke's `output`. Leaving the full `value` on `output` defeated the
-        // overflow: `FrameBuilder` renders `output.text` in full, so the whole
-        // result still bloated the prompt (a 106KB grep settled inline despite
-        // the file write). `boundsOutputItself` tools deliver verbatim.
-        val resolved: Task[(Option[String], ToolOutput)] =
-          if (boundsOutputItself || !context.overflowLargeResults || rendered.length.toLong <= threshold)
-            Task.pure((None, value))
-          else buildOverflowSummary(value, rendered, threshold, context).map(s => (Some(s), TextToolOutput(s)))
-        resolved.map { case (summaryOpt, outputValue) =>
-          ToolDelta(
-            target         = invokeId,
-            conversationId = context.conversation.id,
-            state          = Some(EventState.Complete),
-            summary        = summaryOpt,
-            output         = Some(outputValue),
-            outcome        = Some(ToolOutcome.Success)
-          )
-        }
-      case ToolResult.Failure(message, hint, args) =>
-        val body = (List(message) ++ hint.toList.map(h => s"\n\nHint: $h") ++
-          args.toList.map(a => s"\n\nFailing args: $a")).mkString
-        Task.pure(ToolDelta(
-          target         = invokeId,
-          conversationId = context.conversation.id,
-          state          = Some(EventState.Complete),
-          summary        = Some(body),
-          // No real `output` — outcome carries the failure. The
-          // invoke's `output` field stays `ToolOutput.Pending`.
-          outcome        = Some(ToolOutcome.Failure(body, recoverable = true))
-        ))
-    }
-  }
-
-  /** A success result that overflows [[Sigil.inlineContentThreshold]] is
-    * written to a file under the conversation's [[FileSystemContext]]
-    * (`.sigil/output/<convId>/<tool>-<callId>.txt`); the returned summary
-    * is a bounded head + the path + stats, so the agent recovers the rest
-    * with the filesystem tools it already has (`grep` / `read_file`) rather
-    * than a bespoke reference handle. Because the write goes through the
-    * same context those tools use, the file lands where they run (local or
-    * ProxyTool-remote). Falls back to inline truncate-and-tell when no
-    * workspace is bound or the write fails. Sigil #345/#346. */
-  private def buildOverflowSummary(value: Output, rendered: String, threshold: Long, context: ToolContext): Task[String] = {
-    val head  = summarize(value, rendered)
-    val lines = rendered.count(_ == '\n') + 1
-    val truncateAndTell =
-      head + "\n\n" +
-        s"[${name.value}: result is ${rendered.length} bytes / $lines lines (over the $threshold-byte inline limit), " +
-        "truncated. Narrow your inputs to see the rest.]"
-    context.sigil.fileSystemContextFor(context.conversation.id).flatMap {
-      case Some(fs) =>
-        val relPath = s".sigil/output/${context.conversation.id.value}/${name.value}-${context.invokeId.value}.txt"
-        // Show the ABSOLUTE path when the context can name one — a
-        // relative pointer forces the model to guess the resolution
-        // root, and `.sigil` is a hidden directory the default
-        // glob/grep excludes, so a wrong guess turns one read into a
-        // dead workspace hunt. The write itself stays context-relative.
-        val shownPath = fs.absolutePathFor(relPath).getOrElse(relPath)
-        fs.writeFile(relPath, rendered).map { bytes =>
-          head + "\n\n" +
-            s"[${name.value}: full result is $lines lines / $bytes bytes — written to $shownPath. " +
-            "Use grep or read_file on that path to see the rest.]"
-        }.handleError(_ => Task.pure(truncateAndTell))
-      case None => Task.pure(truncateAndTell)
-    }
-  }
+  /** Public composition entry. Another tool's body calls this to invoke
+    * a tool and receive its typed [[Output]] directly — no JSON
+    * parsing. Routes through [[ToolExecutor]] with
+    * [[GateContext.PreGated]]: the consent gate is skipped deliberately
+    * (and recorded), preconditions still run. A [[ToolResult.Failure]]
+    * (or an unsatisfied precondition) raises [[ToolFailureException]]
+    * so the caller can `handleError` or let it propagate. */
+  final def invoke(input: Input, context: ToolContext): Task[Output] =
+    ToolExecutor.invoke(this)(input, context)
 
   /** Inline summary text rendered when the typed payload exceeds
-    * `inlineContentThreshold`. Default: truncate the JSON at 200 chars.
-    * Tools with richer summary semantics override. */
-  protected def summarize(output: Output, jsonRendered: String): String = {
-    // Prefer the unwrapped text for text outputs (#305) — the inner text IS
-    // the result; previewing the `{"text":"…"}` JSON envelope wraps the bounded
-    // head, making it inconsistent with non-overflow results and wasting the
-    // envelope on the prompt.
+    * `inlineContentThreshold`. Default: truncate the rendered form at
+    * 200 chars. Tools with richer summary semantics override. */
+  def summarize(output: Output, jsonRendered: String): String = {
+    // Prefer the unwrapped text for text outputs — the inner text IS
+    // the result; previewing the `{"text":"…"}` JSON envelope wraps the
+    // bounded head, making it inconsistent with non-overflow results.
     val source = output match {
       case t: TextToolOutput => t.text
-      case o                 => o.modelText.getOrElse(jsonRendered)  // #404 — clean-text opt-in
+      case o                 => o.modelText.getOrElse(jsonRendered)
     }
     if (source.length <= 200) source else source.take(200) + " …"
   }
-
-  /** Render the failing input to compact JSON for a [[ToolResult.Failure]]'s
-    * `args`. Best-effort — never a hard failure of the error path. */
-  private def renderInputArgs(input: ToolInput): Option[String] =
-    try Some(JsonFormatter.Compact(inputRW.read(input.asInstanceOf[Input])))
-    catch { case _: Throwable => None }
-
-  /** Public composition entry. Another tool's `executeResult` body calls
-    * this to invoke a tool and receive its typed [[Output]] directly —
-    * no JSON parsing. A [[ToolResult.Failure]] raises a
-    * [[ToolFailureException]] so the caller can `handleError` or let it
-    * propagate. */
-  def invoke(input: Input, context: ToolContext): Task[Output] =
-    executeResult(input, context).flatMap {
-      case ToolResult.Success(value)           => Task.pure(value)
-      case ToolResult.Failure(msg, hint, args) => Task.error(new ToolFailureException(name, msg, hint, args))
-    }
 
   // ---- defaults ----
 
@@ -277,24 +170,13 @@ trait Tool extends RecordDocument[Tool] {
     * which records the user sees. */
   final def kind: ToolKind = spec.discovery.kind
 
-  def examples: List[ToolExample] = Nil
   def createdBy: Option[ParticipantId] = None
   def _id: Id[Tool] = Id(name.value)
   def created: Timestamp = Tool.Epoch
   def modified: Timestamp = Tool.Epoch
 
-  /** The schema's input definition. Defaults to `inputRW.definition`;
-    * tools that need a dynamic schema (e.g. an enum populated from
-    * runtime config) override this. */
-  def inputDefinition: fabric.define.Definition = inputRW.definition
-
-  /** The schema's output definition — the declared typed [[Output]]
-    * shape. Surfaced in `find_capability` results so agents (and UIs)
-    * can reason about the result shape before calling. */
-  def outputDefinition: Option[fabric.define.Definition] = Some(outputRW.definition)
-
-  /** Pre-execution gates the orchestrator runs before
-    * [[execute]]. Each [[ToolPrecondition]] returns either
+  /** Pre-execution gates [[ToolExecutor]] runs before the resolution.
+    * Each [[ToolPrecondition]] returns either
     * [[ToolPreconditionResult.Satisfied]] (proceed) or
     * [[ToolPreconditionResult.Unsatisfied]] (skip execution; emit a
     * `Role.Tool` Message describing what needs to happen first, the
@@ -354,7 +236,7 @@ trait Tool extends RecordDocument[Tool] {
 
   /** True when this tool's execution may be DETACHED: if it is still
     * running when [[sigil.Sigil.toolDetachThresholdMs]] passes, the
-    * orchestrator settles the invoke with a tracking handle, lets the
+    * executor settles the invoke with a tracking handle, lets the
     * turn finish, and keeps the work running as a background task.
     * Derived from [[Execution.Detachable]], whose declaration carries
     * the progress story that makes a detached run observable. */
@@ -453,7 +335,7 @@ trait Tool extends RecordDocument[Tool] {
   def descriptionFor(mode: Mode, sigil: Sigil): String = description
 
   /** Render-ready schema — providers turn this into the LLM's tool list. */
-  lazy val schema: ToolSchema = ToolSchema(
+  final lazy val schema: ToolSchema = ToolSchema(
     id = Id[ToolSchema](_id.value),
     name = name,
     description = description,
@@ -461,16 +343,6 @@ trait Tool extends RecordDocument[Tool] {
     examples = examples,
     output = outputDefinition
   )
-
-  /** Consolidated wire-surface derivation — single source for the schema
-    * the LLM sees, the example payload refusals show, the pre-decode
-    * coercion normalisation pass, and the end-to-end decode.
-    *
-    * Default builds the surface from [[inputDefinition]], [[inputRW]],
-    * and [[examples]]; tools with custom derivation needs (an inputDefinition
-    * that's dynamic per call, for instance) override to plug in a
-    * specialised one. */
-  lazy val wireSurface: WireSurface[Input] = WireSurface.fromTool(this)
 }
 
 object Tool extends PolyType[Tool]()(using scala.reflect.ClassTag(classOf[Tool])) with RecordDocumentModel[Tool] with JsonConversion[Tool] {
@@ -496,8 +368,8 @@ object Tool extends PolyType[Tool]()(using scala.reflect.ClassTag(classOf[Tool])
    * `keywords` is repeated 5× in the indexed string so BM25's term-
    * frequency signal weights a tool author's curated intent surface
    * above incidental description prose. Without the boost, a long
-   612|    * description with accidentally-matching tokens can outscore a
-    613|    * tool whose keywords match the query exactly.
+   * description with accidentally-matching tokens can outscore a
+   * tool whose keywords match the query exactly.
    *
    * Apps can rebuild the searchable surface per tool by overriding any
    * of the source fields; the index recomputes on `tools.upsert`.

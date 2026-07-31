@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.BspReloadResult
 
 case class BspReloadInput(projectRoot: String) extends ToolInput derives RW
@@ -14,12 +14,10 @@ case class BspReloadInput(projectRoot: String) extends ToolInput derives RW
  * `Cargo.toml`, etc.) so subsequent compile/test calls see the new
  * targets / dependencies.
  */
-final class BspReloadTool(val manager: BspManager) extends Tool
-  with BspToolSupport {
-  type Input  = BspReloadInput
+final class BspReloadTool(val manager: BspManager) extends Tool with BspToolSupport {
+  type Input = BspReloadInput
   type Output = BspReloadResult
-  val inputRW  = summon[RW[BspReloadInput]]
-  val outputRW = summon[RW[BspReloadResult]]
+  val io: ToolIO[BspReloadInput, BspReloadResult] = ToolIO.derived[BspReloadInput, BspReloadResult]
 
   override val name = ToolName("bsp_reload")
   override val description =
@@ -36,9 +34,12 @@ final class BspReloadTool(val manager: BspManager) extends Tool
     )
   )
 
-  override def executeOutput(input: BspReloadInput, context: ToolContext): Task[BspReloadResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: BspReloadInput, context: ToolContext): Task[BspReloadResult] =
     withSessionTyped[BspReloadResult](
-      input.projectRoot, context,
+      input.projectRoot,
+      context,
       onError = msg => BspReloadResult(input.projectRoot, error = Some(msg))
     ) { session =>
       session.reload.map(_ => BspReloadResult(input.projectRoot))

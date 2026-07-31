@@ -7,10 +7,11 @@ import java.util.regex.Pattern
 
 /**
  * Walks a parsed JSON tree alongside its [[Definition]] and reports
- * any constraint violations. The orchestrator runs this between
- * `JsonParser` and `inputRW.write` for every tool call so the typed
- * input handed to `tool.execute` has already been checked against
- * the schema's `pattern`/length/numeric/array bounds.
+ * any constraint violations as structured [[DecodeViolation]]s. The
+ * decode path runs this between `JsonParser` and `inputRW.write` for
+ * every tool call so the typed input handed to the executor has
+ * already been checked against the schema's `pattern`/length/numeric/
+ * array bounds.
  *
  * Why post-decode (not pre-write): some constraints — most importantly
  * `pattern` — get stripped from the JSON Schema sent to OpenAI strict
@@ -24,14 +25,14 @@ import java.util.regex.Pattern
 object ToolInputValidator {
 
   /** Validate `json` against `definition`. Returns an empty list when
-    * everything passes; otherwise a list of `field-path: reason`
-    * messages. */
-  def validate(json: Json, definition: Definition): List[String] =
+    * everything passes; otherwise one [[DecodeViolation]] per failed
+    * constraint, each carrying its structured field path. */
+  def validate(json: Json, definition: Definition): List[DecodeViolation] =
     walk(path = Nil, json = json, definition = definition).toList
 
-  private def walk(path: List[String], json: Json, definition: Definition): Vector[String] = {
+  private def walk(path: List[String], json: Json, definition: Definition): Vector[DecodeViolation] = {
     val own = checkConstraints(path, json, definition.constraints)
-    val descend: Vector[String] = (json, definition.defType) match {
+    val descend: Vector[DecodeViolation] = (json, definition.defType) match {
       case (Obj(map), DefType.Obj(fields)) =>
         fields.iterator.flatMap { case (key, fieldDef) =>
           map.get(key) match {
@@ -50,9 +51,8 @@ object ToolInputValidator {
     own ++ descend
   }
 
-  private def checkConstraints(path: List[String], json: Json, c: Constraints): Vector[String] = {
+  private def checkConstraints(path: List[String], json: Json, c: Constraints): Vector[DecodeViolation] = {
     if (c.isEmpty) return Vector.empty
-    val pathStr = if (path.isEmpty) "<root>" else path.mkString(".")
     val errors = scala.collection.mutable.ListBuffer.empty[String]
 
     json match {
@@ -60,40 +60,39 @@ object ToolInputValidator {
         c.pattern.foreach { p =>
           val regex = Pattern.compile(p)
           if (!regex.matcher(value).find())
-            errors += s"$pathStr: value does not match pattern /$p/"
+            errors += s"value does not match pattern /$p/"
         }
-        c.minLength.foreach(min => if (value.length < min) errors += s"$pathStr: length ${value.length} < minLength $min")
-        c.maxLength.foreach(max => if (value.length > max) errors += s"$pathStr: length ${value.length} > maxLength $max")
+        c.minLength.foreach(min => if (value.length < min) errors += s"length ${value.length} < minLength $min")
+        c.maxLength.foreach(max => if (value.length > max) errors += s"length ${value.length} > maxLength $max")
 
       case NumDec(value, _) =>
-        checkNumeric(pathStr, value.toDouble, c, errors)
+        checkNumeric(value.toDouble, c, errors)
       case NumInt(value, _) =>
-        checkNumeric(pathStr, value.toDouble, c, errors)
+        checkNumeric(value.toDouble, c, errors)
 
       case Arr(items, _) =>
-        c.minItems.foreach(min => if (items.length < min) errors += s"$pathStr: ${items.length} items < minItems $min")
-        c.maxItems.foreach(max => if (items.length > max) errors += s"$pathStr: ${items.length} items > maxItems $max")
+        c.minItems.foreach(min => if (items.length < min) errors += s"${items.length} items < minItems $min")
+        c.maxItems.foreach(max => if (items.length > max) errors += s"${items.length} items > maxItems $max")
         c.uniqueItems.foreach { unique =>
           if (unique && items.distinct.length != items.length)
-            errors += s"$pathStr: array has duplicate items"
+            errors += "array has duplicate items"
         }
 
       case _ => ()
     }
-    errors.toVector
+    errors.toVector.map(reason => DecodeViolation(path, reason, ViolationKind.Constraint))
   }
 
-  private def checkNumeric(pathStr: String,
-                           value: Double,
+  private def checkNumeric(value: Double,
                            c: Constraints,
                            errors: scala.collection.mutable.ListBuffer[String]): Unit = {
-    c.minimum.foreach(min => if (value < min) errors += s"$pathStr: $value < minimum $min")
-    c.maximum.foreach(max => if (value > max) errors += s"$pathStr: $value > maximum $max")
-    c.exclusiveMinimum.foreach(min => if (value <= min) errors += s"$pathStr: $value not > exclusiveMinimum $min")
-    c.exclusiveMaximum.foreach(max => if (value >= max) errors += s"$pathStr: $value not < exclusiveMaximum $max")
+    c.minimum.foreach(min => if (value < min) errors += s"$value < minimum $min")
+    c.maximum.foreach(max => if (value > max) errors += s"$value > maximum $max")
+    c.exclusiveMinimum.foreach(min => if (value <= min) errors += s"$value not > exclusiveMinimum $min")
+    c.exclusiveMaximum.foreach(max => if (value >= max) errors += s"$value not < exclusiveMaximum $max")
     c.multipleOf.foreach { divisor =>
       if (divisor != 0 && (value % divisor) != 0.0)
-        errors += s"$pathStr: $value not a multiple of $divisor"
+        errors += s"$value not a multiple of $divisor"
     }
   }
 }

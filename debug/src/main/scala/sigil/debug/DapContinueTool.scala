@@ -3,7 +3,21 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 case class DapContinueInput(sessionId: String, threadId: Int) extends ToolInput derives RW
 
@@ -16,8 +30,12 @@ case class DapContinueInput(sessionId: String, threadId: Int) extends ToolInput 
 final class DapContinueTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapContinueInput
   type Output = TextToolOutput
-  val inputRW = summon[RW[DapContinueInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DapContinueInput, TextToolOutput] = ToolIO.derived[DapContinueInput, TextToolOutput].withExamples(
+    ToolExample(
+      "resume from a breakpoint",
+      DapContinueInput(sessionId = "demo-session", threadId = 1)
+    )
+  )
   override val name = ToolName("dap_continue")
   override val description =
     """Resume execution from a stopped state.
@@ -30,14 +48,10 @@ final class DapContinueTool(val manager: DapManager) extends Tool with DapToolSu
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "continue", "resume", "run", "execution"))
   )
-  override val examples = List(
-    ToolExample(
-      "resume from a breakpoint",
-      DapContinueInput(sessionId = "demo-session", threadId = 1)
-    )
-  )
 
-  override def executeResult(input: DapContinueInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapContinueInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.continueExecution(input.threadId).map { allThreads =>
         val text = if (allThreads) "All threads resumed." else s"Thread ${input.threadId} resumed."

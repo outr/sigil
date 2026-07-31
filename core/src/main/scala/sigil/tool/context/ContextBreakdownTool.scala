@@ -6,7 +6,7 @@ import sigil.tool.ToolContext
 import sigil.conversation.{ContextFrame, ContextMemory}
 import sigil.tokenize.HeuristicTokenizer
 import sigil.tool.model.{ContextBreakdownOutput, ContextSectionBreakdown, ContextSectionKind}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Returns a breakdown of how the current turn's context is being
@@ -24,8 +24,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolName, ToolProfile
 case object ContextBreakdownTool extends Tool {
   type Input  = ContextBreakdownInput
   type Output = ContextBreakdownOutput
-  val inputRW  = summon[RW[ContextBreakdownInput]]
-  val outputRW = summon[RW[ContextBreakdownOutput]]
+  val io: ToolIO[ContextBreakdownInput, ContextBreakdownOutput] = ToolIO.derived[ContextBreakdownInput, ContextBreakdownOutput]
   override val name = ToolName("context_breakdown")
   override val description =
     """Return a section-by-section breakdown of where your context window is being spent
@@ -42,7 +41,9 @@ case object ContextBreakdownTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("context", "breakdown", "tokens", "usage", "share", "where", "why"))
   )
 
-  override def executeOutput(input: ContextBreakdownInput, context: ToolContext): Task[ContextBreakdownOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: ContextBreakdownInput, context: ToolContext): Task[ContextBreakdownOutput] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
       val critTask = if (spaces.isEmpty) Task.pure(List.empty[ContextMemory])
                      else context.sigil.findCriticalMemories(spaces)

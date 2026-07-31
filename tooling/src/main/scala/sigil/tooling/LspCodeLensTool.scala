@@ -4,11 +4,10 @@ import fabric.rw.*
 import org.eclipse.lsp4j.CodeLens
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspCodeLensItem, LspCodeLensResult, LspPosition}
 
-case class LspCodeLensInput(languageId: String,
-                            filePath: String) extends ToolInput derives RW
+case class LspCodeLensInput(languageId: String, filePath: String) extends ToolInput derives RW
 
 /**
  * List code lenses in a file — the small "Run | Debug" / "N
@@ -17,12 +16,10 @@ case class LspCodeLensInput(languageId: String,
  * are surfaced for the agent's awareness; there is no execution path
  * for the lens's underlying command.
  */
-final class LspCodeLensTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspCodeLensInput
+final class LspCodeLensTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspCodeLensInput
   type Output = LspCodeLensResult
-  val inputRW  = summon[RW[LspCodeLensInput]]
-  val outputRW = summon[RW[LspCodeLensResult]]
+  val io: ToolIO[LspCodeLensInput, LspCodeLensResult] = ToolIO.derived[LspCodeLensInput, LspCodeLensResult]
   override val name = ToolName("lsp_code_lens")
   override val description =
     """List code lenses in a file (run / debug / N-references / etc. annotations).
@@ -40,9 +37,13 @@ final class LspCodeLensTool(val manager: LspManager) extends Tool
     )
   )
 
-  override def executeOutput(input: LspCodeLensInput, context: ToolContext): Task[LspCodeLensResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspCodeLensInput, context: ToolContext): Task[LspCodeLensResult] =
     withOpenDocumentOrThrow[LspCodeLensResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.codeLens(uri).map { lenses =>
         LspCodeLensResult(filePath = input.filePath, items = lenses.map(toItem))
@@ -52,8 +53,8 @@ final class LspCodeLensTool(val manager: LspManager) extends Tool
   private def toItem(lens: CodeLens): LspCodeLensItem = {
     val cmd = Option(lens.getCommand)
     LspCodeLensItem(
-      position   = LspPosition.fromLsp4j(lens.getRange.getStart),
-      title      = cmd.flatMap(c => Option(c.getTitle)),
+      position = LspPosition.fromLsp4j(lens.getRange.getStart),
+      title = cmd.flatMap(c => Option(c.getTitle)),
       hasCommand = cmd.isDefined
     )
   }

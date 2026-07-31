@@ -10,7 +10,20 @@ import rapid.Task
 import sigil.TurnContext
 import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.ToolContext
 import sigil.tool.ToolRoster
 
@@ -45,8 +58,10 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
   // asserts the diagnostic surfaces both the throw class and (when
   // applicable) the validator's hint.
 
-  /** An inputRW that always throws on write, simulating fabric's
-    * opaque `$$anon$N` failure mode. */
+  /**
+   * An inputRW that always throws on write, simulating fabric's
+   * opaque `$$anon$N` failure mode.
+   */
   private val throwingRW: RW[ToolInput] = {
     val baseDef = summon[RW[ValidInput]].definition.copy(
       className = Some("ThrowingInput"),
@@ -62,10 +77,10 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
   }
 
   private object StubTool extends Tool {
-    type Input  = ToolInput
+    type Input = ToolInput
     type Output = TextToolOutput
-    val inputRW  = throwingRW
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: sigil.tool.ToolIO[ToolInput, TextToolOutput] =
+      sigil.tool.ToolIO.derived[ToolInput, TextToolOutput](using throwingRW, summon[RW[TextToolOutput]])
     override val name: ToolName = ToolName("throwing_tool")
     override val description: String = "Always throws on inputRW.write."
     val spec: ToolSpec = ToolSpec(
@@ -75,15 +90,16 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
       discovery = DiscoverySpec(keywords = Set("test", "throwing_tool"))
     )
     override def _id: Id[Tool] = Id[Tool](name.value)
-    override def executeResult(input: ToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: ToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
   private object ValidTool extends Tool {
-    type Input  = ValidInput
+    type Input = ValidInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[ValidInput]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[ValidInput, TextToolOutput] = ToolIO.derived[ValidInput, TextToolOutput]
     override val name: ToolName = ToolName("valid_tool")
     override val description: String = "Round-trips ValidInput cleanly."
     val spec: ToolSpec = ToolSpec(
@@ -93,7 +109,9 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
       discovery = DiscoverySpec(keywords = Set("test", "valid_tool"))
     )
     override def _id: Id[Tool] = Id[Tool](name.value)
-    override def executeResult(input: ValidInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: ValidInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.name)))
   }
 
@@ -123,10 +141,10 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
       // name AND the message string distinctly.
       val args = """{"name":"alice","count":42}"""
       val msg = errorMessage(runComplete(StubTool, args))
-      msg should include ("Failed to parse args for tool throwing_tool")
+      msg should include("Failed to parse args for tool throwing_tool")
       // Class name distinct from the message:
-      msg should include ("NoClassDefFoundError")
-      msg should include ("sigil/script/ThrowingInput$$anon$3")
+      msg should include("NoClassDefFoundError")
+      msg should include("sigil/script/ThrowingInput$$anon$3")
     }
 
     "include a schema-shape summary so the agent can compare its emitted JSON" in {
@@ -138,9 +156,9 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
       // can compare its emitted JSON against this list.
       val args = """{"name":"alice","count":42}"""
       val msg = errorMessage(runComplete(StubTool, args))
-      msg should include ("Expected shape:")
-      msg should include ("name: string")
-      msg should include ("count: integer")
+      msg should include("Expected shape:")
+      msg should include("name: string")
+      msg should include("count: integer")
     }
 
     "still produce ToolCallComplete on the happy path (no error)" in {
@@ -157,13 +175,13 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
       // exception's class + message + schema summary.
       val args = """{"name":"alice","count":"""
       val msg = errorMessage(runComplete(ValidTool, args))
-      msg should include ("Failed to parse args for tool valid_tool")
+      msg should include("Failed to parse args for tool valid_tool")
       // Schema summary is present even on JSON-parse failures so
       // the agent can re-emit cleanly without having to look up the
       // tool's schema separately.
-      msg should include ("Expected shape:")
-      msg should include ("name: string")
-      msg should include ("count: integer")
+      msg should include("Expected shape:")
+      msg should include("name: string")
+      msg should include("count: integer")
     }
 
     "list optional fields separately from required" in {
@@ -177,10 +195,10 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
         override def definition: Definition = baseDef
       }
       object WithOptTool extends Tool {
-        type Input  = ToolInput
+        type Input = ToolInput
         type Output = TextToolOutput
-        val inputRW  = throwingOptRW
-        val outputRW = summon[RW[TextToolOutput]]
+        val io: sigil.tool.ToolIO[ToolInput, TextToolOutput] =
+          sigil.tool.ToolIO.derived[ToolInput, TextToolOutput](using throwingOptRW, summon[RW[TextToolOutput]])
         override val name: ToolName = ToolName("with_opt_tool")
         override val description: String = "Tool with required + optional fields."
         val spec: ToolSpec = ToolSpec(
@@ -190,12 +208,14 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
           discovery = DiscoverySpec(keywords = Set("test", "with_opt_tool"))
         )
         override def _id: Id[Tool] = Id[Tool](name.value)
-        override def executeResult(input: ToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+        protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+        private def executeResult(input: ToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
           Task.pure(ToolResult.Success(TextToolOutput("")))
       }
       val msg = errorMessage(runComplete(WithOptTool, """{"req":"x"}"""))
-      msg should include ("required: [req: string]")
-      msg should include ("optional: [opt: integer]")
+      msg should include("required: [req: string]")
+      msg should include("optional: [opt: integer]")
     }
   }
 }

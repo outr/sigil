@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.conversation.ConversationBudget
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 final case class SetBudgetInput(@description("Soft per-turn spend budget in USD — crossing it makes the agent pause, summarize, and ask whether to continue. Omit to leave unchanged.")
                                 turnSoft: Option[BigDecimal] = None,
@@ -28,8 +28,11 @@ final case class SetBudgetInput(@description("Soft per-turn spend budget in USD 
 case object SetBudgetTool extends Tool {
   type Input  = SetBudgetInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[SetBudgetInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[SetBudgetInput, TextToolOutput] = ToolIO.derived[SetBudgetInput, TextToolOutput].withExamples(
+    ToolExample("Cap the conversation at $5", SetBudgetInput(conversationHard = Some(BigDecimal(5)))),
+    ToolExample("Pause for approval every $2 of turn spend", SetBudgetInput(turnSoft = Some(BigDecimal(2)))),
+    ToolExample("Remove the conversation's budget override", SetBudgetInput(clear = true))
+  )
   override val name = ToolName("set_budget")
   override val description =
     """Set or clear this conversation's spend-budget override (USD). Soft budgets make the agent
@@ -49,13 +52,10 @@ case object SetBudgetTool extends Tool {
     ))
   )
 
-  override val examples = List(
-    ToolExample("Cap the conversation at $5", SetBudgetInput(conversationHard = Some(BigDecimal(5)))),
-    ToolExample("Pause for approval every $2 of turn spend", SetBudgetInput(turnSoft = Some(BigDecimal(2)))),
-    ToolExample("Remove the conversation's budget override", SetBudgetInput(clear = true))
-  )
 
-  override def executeResult(input: SetBudgetInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: SetBudgetInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val sigil = context.sigil
     val convId = context.conversation._id
     sigil.withDB(_.conversations.transaction(_.modify(convId) {

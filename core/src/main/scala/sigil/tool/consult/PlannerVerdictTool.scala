@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{AnalysisWork, GenerationSettings, OutputTokenCap, ReasoningMode, WorkType}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal-only tool the framework forces the planner model to call
@@ -17,8 +17,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolN
 case object PlannerVerdictTool extends Tool with FrameworkConsult {
   type Input  = PlannerVerdictInput
   type Output = TextToolOutput
-  val inputRW: RW[PlannerVerdictInput] = summon[RW[PlannerVerdictInput]]
-  val outputRW: RW[TextToolOutput]     = summon[RW[TextToolOutput]]
+  val io: ToolIO[PlannerVerdictInput, TextToolOutput] = ToolIO.derived[PlannerVerdictInput, TextToolOutput]
 
   override val name: ToolName = ToolName("planner_verdict")
   override val description: String =
@@ -55,6 +54,8 @@ case object PlannerVerdictTool extends Tool with FrameworkConsult {
 
   /** Never executed — the framework reads the typed input directly via
     * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
-  override def executeResult(input: PlannerVerdictInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: PlannerVerdictInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

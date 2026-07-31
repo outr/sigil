@@ -5,7 +5,7 @@ import lightdb.time.Timestamp
 import rapid.Task
 import sigil.provider.Effort
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class PinEffortInput(level: String) extends ToolInput derives RW
 
@@ -28,8 +28,11 @@ case class PinEffortInput(level: String) extends ToolInput derives RW
 case object PinEffortTool extends Tool {
   type Input  = PinEffortInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[PinEffortInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[PinEffortInput, TextToolOutput] = ToolIO.derived[PinEffortInput, TextToolOutput].withExamples(
+    ToolExample("Think harder", PinEffortInput("high")),
+    ToolExample("Maximum deliberation", PinEffortInput("max")),
+    ToolExample("Keep it quick", PinEffortInput("low"))
+  )
   override val name = ToolName("pin_effort")
   override val description =
     """Pin this conversation's reasoning effort (`low` / `medium` / `high` / `max`). Every agent
@@ -39,11 +42,6 @@ case object PinEffortTool extends Tool {
       |Use when the user wants to trade latency/cost for depth ("think harder on my replies",
       |"keep it quick and cheap"). Framework auxiliary calls (topic classifier, memory extractor,
       |summarization) stay on their own settings — the pin is about the user's replies.""".stripMargin
-  override val examples = List(
-    ToolExample("Think harder", PinEffortInput("high")),
-    ToolExample("Maximum deliberation", PinEffortInput("max")),
-    ToolExample("Keep it quick", PinEffortInput("low"))
-  )
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -54,8 +52,10 @@ case object PinEffortTool extends Tool {
     ))
   )
 
-  override def executeResult(input: PinEffortInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: PinEffortInput,
+                            ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val normalized = input.level.trim.toLowerCase.replaceAll("\\s+|-|_", "")
     val parsed: Option[Effort] = normalized match {
       case "low" | "fast" | "quick"            => Some(Effort.Low)

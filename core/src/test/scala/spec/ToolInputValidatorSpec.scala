@@ -33,8 +33,8 @@ class ToolInputValidatorSpec extends AnyWordSpec with Matchers {
       val json = fabric.obj("keywords" -> str("UPPERCASE"))
       val violations = ToolInputValidator.validate(json, obj)
       violations should have size 1
-      violations.head should include("keywords")
-      violations.head should include("pattern")
+      violations.head.render should include("keywords")
+      violations.head.render should include("pattern")
     }
 
     "pass a value that matches the pattern" in {
@@ -46,24 +46,25 @@ class ToolInputValidatorSpec extends AnyWordSpec with Matchers {
 
     "enforce minLength / maxLength" in {
       val d = stringDefWith(Constraints(minLength = Some(3), maxLength = Some(5)))
-      ToolInputValidator.validate(str("ab"), d).head should include("minLength")
-      ToolInputValidator.validate(str("abcdef"), d).head should include("maxLength")
+      ToolInputValidator.validate(str("ab"), d).head.render should include("minLength")
+      ToolInputValidator.validate(str("abcdef"), d).head.render should include("maxLength")
       ToolInputValidator.validate(str("abcd"), d) shouldBe Nil
     }
 
     "enforce numeric minimum / maximum" in {
       val d = Definition(DefType.Int, constraints = Constraints(minimum = Some(0), maximum = Some(10)))
-      ToolInputValidator.validate(num(-1), d).head should include("minimum")
-      ToolInputValidator.validate(num(11), d).head should include("maximum")
+      ToolInputValidator.validate(num(-1), d).head.render should include("minimum")
+      ToolInputValidator.validate(num(11), d).head.render should include("maximum")
       ToolInputValidator.validate(num(5), d) shouldBe Nil
     }
 
     "recurse into arrays and report path with index" in {
-      val arrDef = Definition(DefType.Arr(stringDefWith(Constraints(pattern = Some("""^x"""))))
+      val arrDef = Definition(
+        DefType.Arr(stringDefWith(Constraints(pattern = Some("""^x"""))))
       )
       val violations = ToolInputValidator.validate(arr(str("xa"), str("yb"), str("xc")), arrDef)
       violations should have size 1
-      violations.head should include("[1]")
+      violations.head.render should include("[1]")
     }
 
     "skip null values for Opt-typed fields" in {
@@ -79,7 +80,7 @@ class ToolInputValidatorSpec extends AnyWordSpec with Matchers {
       )))
       val violations = ToolInputValidator.validate(fabric.obj("maybe" -> str("nope")), d)
       violations should have size 1
-      violations.head should include("maybe")
+      violations.head.render should include("maybe")
     }
   }
 }

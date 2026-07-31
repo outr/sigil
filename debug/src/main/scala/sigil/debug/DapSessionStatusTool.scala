@@ -3,11 +3,23 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
-case class DapSessionStatusInput(sessionId: String,
-                                 waitForStopMs: Long = 0L,
-                                 drainOutput: Boolean = true) extends ToolInput derives RW
+case class DapSessionStatusInput(sessionId: String, waitForStopMs: Long = 0L, drainOutput: Boolean = true) extends ToolInput derives RW
 
 /**
  * Snapshot the current state of a debug session — running vs.
@@ -23,8 +35,12 @@ case class DapSessionStatusInput(sessionId: String,
 final class DapSessionStatusTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapSessionStatusInput
   type Output = TextToolOutput
-  val inputRW = summon[RW[DapSessionStatusInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DapSessionStatusInput, TextToolOutput] = ToolIO.derived[DapSessionStatusInput, TextToolOutput].withExamples(
+    ToolExample(
+      "wait up to 5 seconds for the next stop event",
+      DapSessionStatusInput(sessionId = "demo-session", waitForStopMs = 5000)
+    )
+  )
   override val name = ToolName("dap_session_status")
   override val description =
     """Snapshot a debug session's state — running / stopped / terminated, output, etc.
@@ -38,14 +54,10 @@ final class DapSessionStatusTool(val manager: DapManager) extends Tool with DapT
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "session", "status", "stopped", "output", "wait"))
   )
-  override val examples = List(
-    ToolExample(
-      "wait up to 5 seconds for the next stop event",
-      DapSessionStatusInput(sessionId = "demo-session", waitForStopMs = 5000)
-    )
-  )
 
-  override def executeResult(input: DapSessionStatusInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapSessionStatusInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       val waitTask =
         if (input.waitForStopMs <= 0) Task.unit

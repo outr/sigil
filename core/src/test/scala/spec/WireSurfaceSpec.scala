@@ -6,8 +6,22 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Task
 import sigil.tool.{
-  DefinitionToSchema, DiscoverySpec, Effect, InputNormalizer, MutationTargeting, TextToolOutput,
-  Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec, WireSurface
+  DefinitionToSchema,
+  DiscoverySpec,
+  Effect,
+  InputNormalizer,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec,
+  WireSurface
 }
 
 import spec.WireSurfaceSpec.*
@@ -120,11 +134,11 @@ class WireSurfaceSpec extends AnyWordSpec with Matchers {
       val rw = summon[RW[sigil.tool.model.RespondInput]]
       val surface = WireSurface.fromDefinition(rw.definition, rw)
       val raw = obj(
-        "topicLabel"   -> str("theme"),
+        "topicLabel" -> str("theme"),
         "topicSummary" -> str("theme work"),
-        "content"      -> str("All set."),
-        "endsTurn"     -> bool(true),
-        "keywords"     -> str("footer,ANALOG,newsletter,columns,wordmark,Horizon")
+        "content" -> str("All set."),
+        "endsTurn" -> bool(true),
+        "keywords" -> str("footer,ANALOG,newsletter,columns,wordmark,Horizon")
       )
       surface.decode(raw) match {
         case Right(input) =>
@@ -204,12 +218,12 @@ object WireSurfaceSpec {
   case class OptionalStrInput(note: Option[String] = None) extends ToolInput derives RW
   case class ScalarInput(count: Int, rate: Double, active: Boolean) extends ToolInput derives RW
 
-  case class MultiField(label: String,
-                        complexity: Complexity = Complexity.Medium,
-                        retries: Int = 0,
-                        optional: Option[String] = None) extends ToolInput derives RW
+  case class MultiField(label: String, complexity: Complexity = Complexity.Medium, retries: Int = 0, optional: Option[String] = None)
+    extends ToolInput derives RW
 
-  /** Two-violation fixture — both `slug` (regex) and `count` (max) fail. */
+  /**
+   * Two-violation fixture — both `slug` (regex) and `count` (max) fail.
+   */
   case class ConstrainedInput(
     @fabric.rw.pattern("^[a-z0-9-]+$") slug: String,
     @fabric.rw.maximum(100.0) count: Int
@@ -221,11 +235,10 @@ object WireSurfaceSpec {
   case class ExampleInput(label: String, count: Int) extends ToolInput derives RW
 
   case object ExampleTool extends Tool {
-    type Input  = ExampleInput
+    type Input = ExampleInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[ExampleInput]]
-    val outputRW = summon[RW[TextToolOutput]]
-    override val name        = ToolName("wire_surface_example_tool")
+    val io: ToolIO[ExampleInput, TextToolOutput] = ToolIO.derived[ExampleInput, TextToolOutput]
+    override val name = ToolName("wire_surface_example_tool")
     override val description = "Test tool for WireSurfaceSpec — decode round-trip via Tool.wireSurface."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -233,7 +246,9 @@ object WireSurfaceSpec {
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "wire_surface_example_tool"))
     )
-    override def executeResult(input: ExampleInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: ExampleInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.label)))
   }
 }

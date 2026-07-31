@@ -3,17 +3,17 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.lang.reflect.{Constructor, Field, Method, Modifier}
 
 /**
  * Introspect a class on the executor's classpath and return its
-    * constructors, public methods, and public fields. The
-     * agent uses this in `script-authoring` mode after
-     * [[LibraryLookupTool]] resolves a symbol to one or more FQNs and
-     * the agent needs the full signature surface to call into the
-     * library correctly.
+ * constructors, public methods, and public fields. The
+ * agent uses this in `script-authoring` mode after
+ * [[LibraryLookupTool]] resolves a symbol to one or more FQNs and
+ * the agent needs the full signature surface to call into the
+ * library correctly.
  *
  * Pure Java reflection — no `-sources.jar` required. Returns Scala-
  * style formatted signatures. Doesn't yet pull `@deprecated` or
@@ -21,10 +21,9 @@ import java.lang.reflect.{Constructor, Field, Method, Modifier}
  * (see [[ReadSourceTool]]).
  */
 case object ClassSignaturesTool extends Tool {
-  type Input  = ClassSignaturesInput
+  type Input = ClassSignaturesInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ClassSignaturesInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ClassSignaturesInput, TextToolOutput] = ToolIO.derived[ClassSignaturesInput, TextToolOutput]
 
   override val name = ToolName("class_signatures")
   override val description =
@@ -45,19 +44,22 @@ case object ClassSignaturesTool extends Tool {
     )
   )
 
-  override def executeResult(input: ClassSignaturesInput,
-                             context: ToolContext): Task[ToolResult[TextToolOutput]] = Task {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ClassSignaturesInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = Task {
     val text =
       try render(loadClass(input.fqn))
       catch {
         case _: ClassNotFoundException => s"(class not found on classpath: ${input.fqn})"
-        case e: Throwable               => s"(introspection failed: ${e.getClass.getSimpleName}: ${e.getMessage})"
+        case e: Throwable => s"(introspection failed: ${e.getClass.getSimpleName}: ${e.getMessage})"
       }
     ToolResult.Success(TextToolOutput(text))
   }
 
-  /** Resolve `fqn` to a `Class[_]`. For Scala objects, callers may pass
-    * either `Foo` or `Foo$` — try both. */
+  /**
+   * Resolve `fqn` to a `Class[_]`. For Scala objects, callers may pass
+   * either `Foo` or `Foo$` — try both.
+   */
   private def loadClass(fqn: String): Class[?] =
     try Class.forName(fqn)
     catch { case _: ClassNotFoundException => Class.forName(fqn + "$") }
@@ -80,8 +82,8 @@ case object ClassSignaturesTool extends Tool {
 
     val sb = new StringBuilder
     sb.append(s"# $name\n")
-    if (ctors.nonEmpty)   sb.append("\n## Constructors\n").append(ctors.mkString("\n"))
-    if (fields.nonEmpty)  sb.append("\n\n## Public fields\n").append(fields.mkString("\n"))
+    if (ctors.nonEmpty) sb.append("\n## Constructors\n").append(ctors.mkString("\n"))
+    if (fields.nonEmpty) sb.append("\n\n## Public fields\n").append(fields.mkString("\n"))
     if (methods.nonEmpty) sb.append("\n\n## Public methods\n").append(methods.mkString("\n"))
     if (ctors.isEmpty && fields.isEmpty && methods.isEmpty)
       sb.append("\n(no public surface — likely a hidden / synthetic / module class)")
@@ -106,8 +108,10 @@ case object ClassSignaturesTool extends Tool {
     s"  $staticTag${f.getName}: $tpe"
   }
 
-  /** Drop package prefix for readability. Keep generics cosmetic for now;
-    * full Scala type info would require parsing TASTy. */
+  /**
+   * Drop package prefix for readability. Keep generics cosmetic for now;
+   * full Scala type info would require parsing TASTy.
+   */
   private def simple(t: Class[?]): String = {
     val n = t.getName
     val short = n.substring(n.lastIndexOf('.') + 1).replace('$', '.')

@@ -13,10 +13,10 @@ package sigil.tool
  * Sigil-as-author speaks the same shape as Sigil-as-client.
  *
  * Sealed sum so callers pattern-match exhaustively. Tools produce
- * the envelope by overriding [[Tool.executeResult]]; tools that
- * override the simpler [[Tool.executeOutput]] get a default wrap
- * (success → Success; thrown error → Failure with the exception
- * message + JSON-serialised input as args).
+ * the envelope via [[Resolution.Explicit]]; tools authored with the
+ * simpler [[Resolution.Simple]] get a default wrap (success →
+ * Success; thrown error → Failure with the exception message +
+ * JSON-serialised input as args).
  *
  * `Failure.hint` is the high-leverage field — it teaches the agent
  * what to do next ("if you wanted to read a file, call read_file

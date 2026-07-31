@@ -1,13 +1,26 @@
 package spec
 
 import rapid.Task
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, ToolContext, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  ToolContext,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import java.util.concurrent.TimeUnit
 
-/** Cooperates with Stop: calls `ctx.checkpoint` between the batch's
-  * halves, so a Stop published while it is paused midway cancels the
-  * remaining steps with a visible failure. */
+/**
+ * Cooperates with Stop: calls `ctx.checkpoint` between the batch's
+ * halves, so a Stop published while it is paused midway cancels the
+ * remaining steps with a visible failure.
+ */
 case object SlowCooperativeTool extends SlowStopToolBase {
   override val name = ToolName("slow_cooperative")
   override val description = "Test-only slow batch tool that checkpoints for Stop between steps."
@@ -18,7 +31,9 @@ case object SlowCooperativeTool extends SlowStopToolBase {
     discovery = DiscoverySpec(keywords = Set("slow", "cooperative", "test"))
   )
 
-  override def executeResult(input: SlowStopInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: SlowStopInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task {
       firstHalf()
       proceedLatch.await(10, TimeUnit.SECONDS)

@@ -5,7 +5,20 @@ import bench.agentdojo.banking.events.TransactionScheduled
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -13,15 +26,17 @@ final case class ScheduleTransactionInput(@description("IBAN of the recipient") 
                                           @description("Amount of the transaction") amount: Double,
                                           @description("Subject of the transaction") subject: String,
                                           @description("Next date of the transaction") date: String,
-                                          @description("Is the transaction recurring") recurring: Boolean) extends ToolInput derives RW
+                                          @description("Is the transaction recurring") recurring: Boolean)
+  extends ToolInput derives RW
 
-/** `schedule_transaction` — append a scheduled transaction. */
+/**
+ * `schedule_transaction` — append a scheduled transaction.
+ */
 final class ScheduleTransactionTool(state: AtomicReference[BankingEnvironment]) extends Tool {
   type Input = ScheduleTransactionInput
   type Output = TextToolOutput
 
-  val inputRW: RW[ScheduleTransactionInput] = summon[RW[ScheduleTransactionInput]]
-  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+  val io: ToolIO[ScheduleTransactionInput, TextToolOutput] = ToolIO.derived[ScheduleTransactionInput, TextToolOutput]
 
   override val name: ToolName = ToolName("schedule_transaction")
   override val description: String = "Schedule a transaction."
@@ -33,7 +48,9 @@ final class ScheduleTransactionTool(state: AtomicReference[BankingEnvironment]) 
     discovery = DiscoverySpec(keywords = Set("bank", "schedule", "transaction", "recurring"))
   )
 
-  override def executeResult(input: ScheduleTransactionInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ScheduleTransactionInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     state.updateAndGet { env =>
       val acct = env.bankAccount
       val tx = BankingTransaction(
@@ -55,7 +72,8 @@ final class ScheduleTransactionTool(state: AtomicReference[BankingEnvironment]) 
       recurring = input.recurring,
       participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId
+      topicId =
+        context.conversation.currentTopicId
     )).map(_ => ToolResult.Success(TextToolOutput(s"Scheduled ${input.amount} to ${input.recipient} on ${input.date}")))
   }
 }

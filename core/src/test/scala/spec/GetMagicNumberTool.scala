@@ -3,10 +3,25 @@ package spec
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.ToolContext
 
-/** Empty input — `get_magic_number` takes no arguments. */
+/**
+ * Empty input — `get_magic_number` takes no arguments.
+ */
 final case class GetMagicNumberInput() extends ToolInput derives RW
 
 /**
@@ -20,10 +35,9 @@ final case class GetMagicNumberInput() extends ToolInput derives RW
  * chance to read the result and compose a `respond` call.
  */
 case object GetMagicNumberTool extends Tool {
-  type Input  = GetMagicNumberInput
+  type Input = GetMagicNumberInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[GetMagicNumberInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[GetMagicNumberInput, TextToolOutput] = ToolIO.derived[GetMagicNumberInput, TextToolOutput]
   override val name = ToolName("get_magic_number")
   override val description = "Returns the magic number. Call this first, then tell the user what number you got."
   val spec: ToolSpec = ToolSpec(
@@ -33,6 +47,8 @@ case object GetMagicNumberTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("test", "get_magic_number"))
   )
 
-  override def executeResult(input: GetMagicNumberInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: GetMagicNumberInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.Success(TextToolOutput("42")))
 }

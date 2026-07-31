@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{WebFetchInput, WebFetchOutput}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 import spice.http.client.HttpClient
 import spice.net.URL
 
@@ -19,8 +19,10 @@ import scala.concurrent.duration.*
 final class WebFetchTool(timeout: FiniteDuration = 30.seconds) extends Tool {
   type Input  = WebFetchInput
   type Output = WebFetchOutput
-  val inputRW  = summon[RW[WebFetchInput]]
-  val outputRW = summon[RW[WebFetchOutput]]
+  val io: ToolIO[WebFetchInput, WebFetchOutput] = ToolIO.derived[WebFetchInput, WebFetchOutput].withExamples(
+    ToolExample("Read a documentation page", WebFetchInput(url = "https://example.com/docs/intro")),
+    ToolExample("Fetch a small JSON endpoint", WebFetchInput(url = "https://api.example.com/status", maxLength = Some(8192)))
+  )
   override val name = ToolName("web_fetch")
   override val description =
     """Fetch the contents of a URL via HTTP GET. HTML responses are converted to a markdown-ish rendering;
@@ -32,12 +34,10 @@ final class WebFetchTool(timeout: FiniteDuration = 30.seconds) extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(keywords = Set("web", "fetch", "http", "url", "download", "page", "browse"))
   )
-  override val examples = List(
-    ToolExample("Read a documentation page", WebFetchInput(url = "https://example.com/docs/intro")),
-    ToolExample("Fetch a small JSON endpoint", WebFetchInput(url = "https://api.example.com/status", maxLength = Some(8192)))
-  )
 
-  override def executeOutput(input: WebFetchInput, ctx: ToolContext): Task[WebFetchOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: WebFetchInput, ctx: ToolContext): Task[WebFetchOutput] =
     HttpClient
       .url(URL.parse(input.url))
       .timeout(timeout)

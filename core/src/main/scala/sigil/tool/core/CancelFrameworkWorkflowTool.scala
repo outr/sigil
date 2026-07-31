@@ -3,7 +3,7 @@ package sigil.tool.core
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolOutput, ToolProfile, ToolSpec}
 
 case class CancelFrameworkWorkflowInput(workflowId: String,
                                         reason: Option[String] = None) extends ToolInput derives RW
@@ -43,8 +43,10 @@ enum CancelFrameworkWorkflowOutput extends ToolOutput derives RW {
 case object CancelFrameworkWorkflowTool extends Tool {
   type Input  = CancelFrameworkWorkflowInput
   type Output = CancelFrameworkWorkflowOutput
-  val inputRW  = summon[RW[CancelFrameworkWorkflowInput]]
-  val outputRW = summon[RW[CancelFrameworkWorkflowOutput]]
+  val io: ToolIO[CancelFrameworkWorkflowInput, CancelFrameworkWorkflowOutput] = ToolIO.derived[CancelFrameworkWorkflowInput, CancelFrameworkWorkflowOutput].withExamples(
+    ToolExample("Cancel a slow compress",
+      CancelFrameworkWorkflowInput(workflowId = "wf-abc-123", reason = Some("user clicked cancel")))
+  )
   override val name = ToolName("cancel_framework_workflow")
   override val description =
     """Cancel a framework-internal workflow (pre-flight, compress, frame-load, …) by its
@@ -59,13 +61,11 @@ case object CancelFrameworkWorkflowTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("cancel", "framework", "workflow", "abort", "stop", "preflight", "compress"))
   )
 
-  override val examples = List(
-    ToolExample("Cancel a slow compress",
-      CancelFrameworkWorkflowInput(workflowId = "wf-abc-123", reason = Some("user clicked cancel")))
-  )
 
-  override def executeOutput(input: CancelFrameworkWorkflowInput,
-                             ctx: ToolContext): Task[CancelFrameworkWorkflowOutput] = Task {
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: CancelFrameworkWorkflowInput,
+                            ctx: ToolContext): Task[CancelFrameworkWorkflowOutput] = Task {
     val sigil = ctx.sigil
     val reason = input.reason.getOrElse(s"agent ${ctx.caller}")
     sigil.activeFrameworkWorkflows.find(_.workflowId == input.workflowId) match {

@@ -4,12 +4,10 @@ import ch.epfl.scala.bsp4j.{BuildTargetIdentifier, StatusCode}
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.BspExecResult
 
-case class BspRunInput(projectRoot: String,
-                       target: String,
-                       arguments: List[String] = Nil) extends ToolInput derives RW
+case class BspRunInput(projectRoot: String, target: String, arguments: List[String] = Nil) extends ToolInput derives RW
 
 /**
  * Run a build target via the BSP server. `target` is the single
@@ -21,12 +19,10 @@ case class BspRunInput(projectRoot: String,
  * is debugging a small program. For long-running services or
  * interactive programs, prefer running outside Sigil.
  */
-final class BspRunTool(val manager: BspManager) extends Tool
-  with BspToolSupport {
-  type Input  = BspRunInput
+final class BspRunTool(val manager: BspManager) extends Tool with BspToolSupport {
+  type Input = BspRunInput
   type Output = BspExecResult
-  val inputRW  = summon[RW[BspRunInput]]
-  val outputRW = summon[RW[BspExecResult]]
+  val io: ToolIO[BspRunInput, BspExecResult] = ToolIO.derived[BspRunInput, BspExecResult]
 
   override val name = ToolName("bsp_run")
   override val description =
@@ -46,25 +42,28 @@ final class BspRunTool(val manager: BspManager) extends Tool
     )
   )
 
-  override def executeOutput(input: BspRunInput, context: ToolContext): Task[BspExecResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: BspRunInput, context: ToolContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](
-      input.projectRoot, context,
+      input.projectRoot,
+      context,
       onError = msg => BspExecResult(input.projectRoot, "ERROR", 0, "", msg)
     ) { session =>
       session.client.drainRunOutput()
       session.run(new BuildTargetIdentifier(input.target), input.arguments).map { result =>
         val status = result.getStatusCode match {
-          case StatusCode.OK        => "OK"
-          case StatusCode.ERROR     => "ERROR"
+          case StatusCode.OK => "OK"
+          case StatusCode.ERROR => "ERROR"
           case StatusCode.CANCELLED => "CANCELLED"
         }
         val (out, err) = session.client.drainRunOutput()
         BspExecResult(
           projectRoot = input.projectRoot,
-          status      = status,
+          status = status,
           targetCount = 1,
-          stdout      = out.mkString,
-          stderr      = err.mkString
+          stdout = out.mkString,
+          stderr = err.mkString
         )
       }
     }

@@ -8,7 +8,20 @@ import robobrowser.select.Selector
 import sigil.browser.BrowserStateDelta
 import sigil.browser.WebBrowserMode
 import sigil.information.StoredInformation
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
@@ -28,10 +41,11 @@ import sigil.tool.ToolContext
  * toward reading the whole doc; large pages toward the fragment tools.
  */
 final class BrowserSaveHtmlTool extends Tool {
-  type Input  = BrowserSaveHtmlInput
+  type Input = BrowserSaveHtmlInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[BrowserSaveHtmlInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[BrowserSaveHtmlInput, TextToolOutput] = ToolIO.derived[BrowserSaveHtmlInput, TextToolOutput].withExamples(
+    ToolExample("Save the current page", BrowserSaveHtmlInput())
+  )
 
   override val name = ToolName("browser_save_html")
   override val description =
@@ -49,42 +63,43 @@ final class BrowserSaveHtmlTool extends Tool {
       modes = Set(WebBrowserMode.id)
     )
   )
-  override val examples = List(
-    ToolExample("Save the current page", BrowserSaveHtmlInput())
-  )
 
-  override def executeResult(input: BrowserSaveHtmlInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: BrowserSaveHtmlInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
-      capture    <- controller.run { browser =>
-                      for {
-                        html <- browser(Selector("html")).outerHTML.map(_.headOption.getOrElse(""))
-                      } yield (html, browser.url())
-                    }
+      capture <- controller.run { browser =>
+        for {
+          html <- browser(Selector("html")).outerHTML.map(_.headOption.getOrElse(""))
+        } yield (html, browser.url())
+      }
       (rawHtml, currentUrl) = capture
-      doc        = Jsoup.parse(rawHtml)
+      doc = Jsoup.parse(rawHtml)
       normalized = doc.outerHtml()
-      bytes      = normalized.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-      stored     <- ctx.sigil.storeBytes(GlobalSpace, bytes, "text/html",
-                      metadata = Map(
-                        "kind" -> "browser-html",
-                        "conversationId" -> ctx.conversation.id.value,
-                        "url" -> currentUrl
-                      ))
+      bytes = normalized.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+      stored <- ctx.sigil.storeBytes(
+        GlobalSpace,
+        bytes,
+        "text/html",
+        metadata = Map(
+          "kind" -> "browser-html",
+          "conversationId" -> ctx.conversation.id.value,
+          "url" -> currentUrl
+        ))
       // also register the page as a lookup-able Information
       // (the subsystem an uploaded HTML file lands in) so the agent can
       // read the whole document via `lookup`, exactly as it reads an
       // uploaded file, instead of snippet-hunting through
       // browser_xpath_query / browser_text_search. The StoredFile stays
       // for those fragment tools.
-      info       = StoredInformation(content = normalized, space = GlobalSpace)
-      _          <- ctx.sigil.putInformation(info)
-      _          <- ctx.sigil.publish(BrowserStateDelta(
-                      target         = controller.stateId,
-                      conversationId = ctx.conversation.id,
-                      htmlFileId     = Some(stored._id)
-                    ))
+      info = StoredInformation(content = normalized, space = GlobalSpace)
+      _ <- ctx.sigil.putInformation(info)
+      _ <- ctx.sigil.publish(BrowserStateDelta(
+        target = controller.stateId,
+        conversationId = ctx.conversation.id,
+        htmlFileId = Some(stored._id)
+      ))
     } yield {
       val informationId = info.id.value
       val readWhole =
@@ -98,16 +113,19 @@ final class BrowserSaveHtmlTool extends Tool {
             s"""lookup(capabilityType="Information", name="$informationId"), which loads the full page into context."""
       val payload = BrowserHtmlOverview.overview(doc, stored._id.value, currentUrl).merge(obj(
         "informationId" -> str(informationId),
-        "sizeBytes"     -> num(bytes.length),
-        "readWhole"     -> str(readWhole)
+        "sizeBytes" -> num(bytes.length),
+        "readWhole" -> str(readWhole)
       ))
       ToolResult.Success(BrowserToolBase.toolResult(payload))
     }
 }
 
 object BrowserSaveHtmlTool {
-  /** Pages at or below this rendered byte size are
-    * recommended for whole-document `lookup`; larger pages steer the
-    * agent toward the fragment tools (with `lookup` still available). */
+
+  /**
+   * Pages at or below this rendered byte size are
+   * recommended for whole-document `lookup`; larger pages steer the
+   * agent toward the fragment tools (with `lookup` still available).
+   */
   val readWholeThresholdBytes: Int = 200_000
 }

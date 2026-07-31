@@ -5,7 +5,7 @@ import org.eclipse.lsp4j.{CodeAction, Command, Position, Range}
 import org.eclipse.lsp4j.jsonrpc.messages.{Either => LspEither}
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspCodeActionItem, LspCodeActionResult}
 
 case class LspCodeActionInput(languageId: String,
@@ -14,7 +14,8 @@ case class LspCodeActionInput(languageId: String,
                               startCharacter: Int,
                               endLine: Int,
                               endCharacter: Int,
-                              onlyKinds: List[String] = Nil) extends ToolInput derives RW
+                              onlyKinds: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Request available code actions for a range — quick fixes,
@@ -27,12 +28,10 @@ case class LspCodeActionInput(languageId: String,
  * `["quickfix"]`, `["refactor.extract"]`, `["source.organizeImports"]`
  * — defined in the spec under "CodeActionKind".
  */
-final class LspCodeActionTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspCodeActionInput
+final class LspCodeActionTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspCodeActionInput
   type Output = LspCodeActionResult
-  val inputRW  = summon[RW[LspCodeActionInput]]
-  val outputRW = summon[RW[LspCodeActionResult]]
+  val io: ToolIO[LspCodeActionInput, LspCodeActionResult] = ToolIO.derived[LspCodeActionInput, LspCodeActionResult]
   override val name = ToolName("lsp_code_action")
   override val description =
     """List code actions (quick fixes / refactors) available for a range.
@@ -50,17 +49,34 @@ final class LspCodeActionTool(val manager: LspManager) extends Tool
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(
       keywords = Set(
-        "lsp", "code action", "fix", "quickfix", "refactor", "refactoring", "suggestion",
-        "quick fix", "auto fix", "improve", "extract method", "extract variable",
-        "organize imports", "transform", "modify", "change"
+        "lsp",
+        "code action",
+        "fix",
+        "quickfix",
+        "refactor",
+        "refactoring",
+        "suggestion",
+        "quick fix",
+        "auto fix",
+        "improve",
+        "extract method",
+        "extract variable",
+        "organize imports",
+        "transform",
+        "modify",
+        "change"
       ),
       toolchain = Some("lsp")
     )
   )
 
-  override def executeOutput(input: LspCodeActionInput, context: ToolContext): Task[LspCodeActionResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspCodeActionInput, context: ToolContext): Task[LspCodeActionResult] =
     withOpenDocumentOrThrow[LspCodeActionResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       val range = new Range(
         new Position(input.startLine, input.startCharacter),
@@ -69,7 +85,7 @@ final class LspCodeActionTool(val manager: LspManager) extends Tool
       session.codeAction(uri, range, input.onlyKinds).map { actions =>
         LspCodeActionResult(
           filePath = input.filePath,
-          items    = actions.zipWithIndex.map { case (a, idx) => toItem(a, idx) }
+          items = actions.zipWithIndex.map { case (a, idx) => toItem(a, idx) }
         )
       }
     }

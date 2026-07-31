@@ -7,7 +7,7 @@ import sigil.event.{Event, Message, MessageDisposition}
 import sigil.provider.XmlToolCallSanitizer
 import sigil.signal.XmlToolCallLeak
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseDisposition}
-import sigil.tool.{TextToolOutput, ToolContext, ToolName, ToolResult, ToolSpec}
+import sigil.tool.{Resolution, TextToolOutput, ToolContext, ToolIO, ToolName, ToolResult, ToolSpec}
 
 /**
  * The respond tool — every user-facing reply goes through here. The
@@ -32,8 +32,7 @@ import sigil.tool.{TextToolOutput, ToolContext, ToolName, ToolResult, ToolSpec}
 case object RespondTool extends RespondFamilyTool {
   type Input = RespondInput
   type Output = TextToolOutput
-  val inputRW = summon[RW[RespondInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[RespondInput, TextToolOutput] = ToolIO.derived[RespondInput, TextToolOutput]
 
   override val name = ToolName("respond")
   override val description =
@@ -87,7 +86,9 @@ case object RespondTool extends RespondFamilyTool {
       "delivered and you keep working on the next iteration."
   )
 
-  override def executeResult(input: RespondInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: RespondInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     if (input.endsTurn) context.turn.clearDiscoveredCapabilities()
     if (input.endsTurn) context.turn.clearDiscoveredCapabilities()
     val sanitized = XmlToolCallSanitizer.sanitize(input.content)

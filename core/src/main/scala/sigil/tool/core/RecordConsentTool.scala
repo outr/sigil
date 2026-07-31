@@ -4,14 +4,24 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.ToolApproval
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, RefusalPayload, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, RefusalPayload, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.tool.model.RecordConsentInput
 
 case object RecordConsentTool extends Tool {
   type Input  = RecordConsentInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[RecordConsentInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[RecordConsentInput, TextToolOutput] = ToolIO.derived[RecordConsentInput, TextToolOutput].withExamples(
+    ToolExample(
+      "load_claude_state was refused pending consent; the user approved the prompt",
+      RecordConsentInput(toolName = "load_claude_state", approved = true,
+        reason = Some("user approved loading prior Claude Code session state when the gate prompted"))
+    ),
+    ToolExample(
+      "load_claude_state was refused pending consent; the user declined the prompt",
+      RecordConsentInput(toolName = "load_claude_state", approved = false,
+        reason = Some("user declined the state-load prompt"))
+    )
+  )
 
   override val name = ToolName("record_consent")
   override val description =
@@ -40,20 +50,10 @@ case object RecordConsentTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("consent", "approval", "approve", "decline", "permission", "record"))
   )
 
-  override val examples: List[ToolExample] = List(
-    ToolExample(
-      "load_claude_state was refused pending consent; the user approved the prompt",
-      RecordConsentInput(toolName = "load_claude_state", approved = true,
-        reason = Some("user approved loading prior Claude Code session state when the gate prompted"))
-    ),
-    ToolExample(
-      "load_claude_state was refused pending consent; the user declined the prompt",
-      RecordConsentInput(toolName = "load_claude_state", approved = false,
-        reason = Some("user declined the state-load prompt"))
-    )
-  )
 
-  override def executeResult(input: RecordConsentInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: RecordConsentInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val targetName = ToolName.internal(input.toolName)
     ctx.sigil.findTools.byName(targetName).flatMap {
       case None =>

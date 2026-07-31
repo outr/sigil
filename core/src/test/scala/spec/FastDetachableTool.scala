@@ -1,11 +1,26 @@
 package spec
 
 import rapid.Task
-import sigil.tool.{DiscoverySpec, Effect, Execution, MutationTargeting, ProgressContract, TextToolOutput, ToolContext, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Execution,
+  MutationTargeting,
+  ProgressContract,
+  Resolution,
+  TextToolOutput,
+  ToolContext,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
-/** Detachable tool that completes immediately — pins the regression
-  * that sub-threshold detachable executions stay fully synchronous,
-  * emission-identical to a non-detachable tool. */
+/**
+ * Detachable tool that completes immediately — pins the regression
+ * that sub-threshold detachable executions stay fully synchronous,
+ * emission-identical to a non-detachable tool.
+ */
 case object FastDetachableTool extends SlowStopToolBase {
   override val name = ToolName("fast_detachable")
   override val description = "Test-only detachable tool that completes instantly."
@@ -19,7 +34,9 @@ case object FastDetachableTool extends SlowStopToolBase {
     discovery = DiscoverySpec(keywords = Set("fast", "detachable", "test"))
   )
 
-  override def executeResult(input: SlowStopInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: SlowStopInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task {
       stepsRun.incrementAndGet()
       ToolResult.Success(TextToolOutput("fast detachable done"))

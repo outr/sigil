@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.provider.Complexity
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
 
 final case class RequestDeescalationInput(@description("Why the cheaper tier suffices now — e.g. 'the hard restoration is done; remaining work is mechanical error fixes'. Stored for transparency.")
                                           reason: String)
@@ -26,8 +26,12 @@ final case class RequestDeescalationOutput(@description("The complexity tier aft
 case object RequestDeescalationTool extends Tool {
   type Input  = RequestDeescalationInput
   type Output = RequestDeescalationOutput
-  val inputRW  = summon[RW[RequestDeescalationInput]]
-  val outputRW = summon[RW[RequestDeescalationOutput]]
+  val io: ToolIO[RequestDeescalationInput, RequestDeescalationOutput] = ToolIO.derived[RequestDeescalationInput, RequestDeescalationOutput].withExamples(
+    ToolExample(
+      "Step down after the hard phase completes",
+      RequestDeescalationInput(reason = "definitions restored from git history; remaining work is fixing mechanical compile errors")
+    )
+  )
   override val name = ToolName("request_deescalation")
   override val description =
     """Step this turn's complexity tier back DOWN one level so subsequent iterations route to a
@@ -47,15 +51,11 @@ case object RequestDeescalationTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("deescalate", "de-escalate", "tier", "complexity", "cheaper model", "step down", "cost"))
   )
 
-  override val examples = List(
-    ToolExample(
-      "Step down after the hard phase completes",
-      RequestDeescalationInput(reason = "definitions restored from git history; remaining work is fixing mechanical compile errors")
-    )
-  )
 
-  override def executeResult(input: RequestDeescalationInput,
-                             context: ToolContext): Task[ToolResult[RequestDeescalationOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: RequestDeescalationInput,
+                            context: ToolContext): Task[ToolResult[RequestDeescalationOutput]] =
     context.sigil.requestDeescalation(context.conversation._id, input.reason).map {
       case (tier, lowered) => ToolResult.success(RequestDeescalationOutput(tier = tier, lowered = lowered))
     }

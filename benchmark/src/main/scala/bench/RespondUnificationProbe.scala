@@ -5,12 +5,24 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
 import sigil.db.Model
-import sigil.provider.{
-  CallId, ConversationMode, GenerationSettings, OneShotRequest, Provider, ProviderEvent
-}
+import sigil.provider.{CallId, ConversationMode, GenerationSettings, OneShotRequest, Provider, ProviderEvent}
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.tool.model.SelectOption
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec, WireCall}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec,
+  WireCall
+}
 
 /**
  * Empirical probe for the `respond_*` unification design decision.
@@ -34,9 +46,11 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolI
  */
 object RespondUnificationProbe {
 
-  /** Minimal Sigil for the probe — no agent loop, no signals
-    * surface, just enough to satisfy `Provider.apply`'s
-    * resolver hooks. */
+  /**
+   * Minimal Sigil for the probe — no agent loop, no signals
+   * surface, just enough to satisfy `Provider.apply`'s
+   * resolver hooks.
+   */
   case class ProbeSigil() extends Sigil {
     override type DB = sigil.db.DefaultSigilDB
     override protected def buildDB(directory: Option[java.nio.file.Path],
@@ -69,27 +83,30 @@ object RespondUnificationProbe {
                                  topicSummary: String,
                                  content: UnifiedRespondContent,
                                  endsTurn: Boolean,
-                                 keywords: List[String] = Nil) extends ToolInput derives RW
+                                 keywords: List[String] = Nil)
+    extends ToolInput derives RW
 
   // ---- Baseline 4-tool inputs (current shape) ----
 
-  case class BaselineRespondInput(topicLabel: String, topicSummary: String,
-                                  content: String, endsTurn: Boolean,
-                                  keywords: List[String] = Nil) extends ToolInput derives RW
+  case class BaselineRespondInput(topicLabel: String,
+                                  topicSummary: String,
+                                  content: String,
+                                  endsTurn: Boolean,
+                                  keywords: List[String] = Nil)
+    extends ToolInput derives RW
   case class BaselineRespondFailureInput(reason: String, recoverable: Boolean = false) extends ToolInput derives RW
   case class BaselineRespondFieldInput(label: String, value: String, icon: Option[String] = None) extends ToolInput derives RW
-  case class BaselineRespondOptionsInput(prompt: String, options: List[SelectOption],
-                                         allowMultiple: Boolean) extends ToolInput derives RW
+  case class BaselineRespondOptionsInput(prompt: String, options: List[SelectOption], allowMultiple: Boolean) extends ToolInput derives RW
 
   // ---- Probe tools (just metadata; we never execute) ----
 
   object UnifiedRespondTool extends Tool {
     type Input = UnifiedRespondInput
     type Output = TextToolOutput
-    val inputRW: RW[UnifiedRespondInput] = summon[RW[UnifiedRespondInput]]
-    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+    val io: ToolIO[UnifiedRespondInput, TextToolOutput] = ToolIO.derived[UnifiedRespondInput, TextToolOutput]
     override val name: ToolName = ToolName("respond")
-    override val description: String = """Emit the agent's reply to the user. The `content` field is a tagged union: pick one of
+    override val description: String =
+      """Emit the agent's reply to the user. The `content` field is a tagged union: pick one of
         |  - `{"type": "Text", "content": "<markdown>"}` for plain text / markdown replies
         |  - `{"type": "Failure", "reason": "<short>", "recoverable": true|false}` when the task can't be completed
         |  - `{"type": "Field", "label": "<l>", "value": "<v>", "icon": null}` for a single labeled key/value
@@ -100,15 +117,16 @@ object RespondUnificationProbe {
       profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
       discovery = DiscoverySpec(keywords = Set("bench", "respond", "unified"))
     )
-    override def executeResult(input: UnifiedRespondInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: UnifiedRespondInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
   object BaselineRespondTool extends Tool {
     type Input = BaselineRespondInput
     type Output = TextToolOutput
-    val inputRW: RW[BaselineRespondInput] = summon[RW[BaselineRespondInput]]
-    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+    val io: ToolIO[BaselineRespondInput, TextToolOutput] = ToolIO.derived[BaselineRespondInput, TextToolOutput]
     override val name: ToolName = ToolName("respond")
     override val description: String = "Emit a plain text / markdown reply to the user."
     val spec: ToolSpec = ToolSpec(
@@ -117,15 +135,16 @@ object RespondUnificationProbe {
       profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
       discovery = DiscoverySpec(keywords = Set("bench", "respond", "text"))
     )
-    override def executeResult(input: BaselineRespondInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: BaselineRespondInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
   object BaselineRespondFailureTool extends Tool {
     type Input = BaselineRespondFailureInput
     type Output = TextToolOutput
-    val inputRW: RW[BaselineRespondFailureInput] = summon[RW[BaselineRespondFailureInput]]
-    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+    val io: ToolIO[BaselineRespondFailureInput, TextToolOutput] = ToolIO.derived[BaselineRespondFailureInput, TextToolOutput]
     override val name: ToolName = ToolName("respond_failure")
     override val description: String = "Signal that the agent cannot complete the requested task."
     val spec: ToolSpec = ToolSpec(
@@ -134,15 +153,16 @@ object RespondUnificationProbe {
       profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
       discovery = DiscoverySpec(keywords = Set("bench", "respond", "failure"))
     )
-    override def executeResult(input: BaselineRespondFailureInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: BaselineRespondFailureInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
   object BaselineRespondFieldTool extends Tool {
     type Input = BaselineRespondFieldInput
     type Output = TextToolOutput
-    val inputRW: RW[BaselineRespondFieldInput] = summon[RW[BaselineRespondFieldInput]]
-    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+    val io: ToolIO[BaselineRespondFieldInput, TextToolOutput] = ToolIO.derived[BaselineRespondFieldInput, TextToolOutput]
     override val name: ToolName = ToolName("respond_field")
     override val description: String = "Emit a single labeled key/value field."
     val spec: ToolSpec = ToolSpec(
@@ -151,15 +171,16 @@ object RespondUnificationProbe {
       profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
       discovery = DiscoverySpec(keywords = Set("bench", "respond", "field"))
     )
-    override def executeResult(input: BaselineRespondFieldInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: BaselineRespondFieldInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
   object BaselineRespondOptionsTool extends Tool {
     type Input = BaselineRespondOptionsInput
     type Output = TextToolOutput
-    val inputRW: RW[BaselineRespondOptionsInput] = summon[RW[BaselineRespondOptionsInput]]
-    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+    val io: ToolIO[BaselineRespondOptionsInput, TextToolOutput] = ToolIO.derived[BaselineRespondOptionsInput, TextToolOutput]
     override val name: ToolName = ToolName("respond_options")
     override val description: String = "Ask the user to pick from a fixed set of choices."
     val spec: ToolSpec = ToolSpec(
@@ -168,7 +189,9 @@ object RespondUnificationProbe {
       profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
       discovery = DiscoverySpec(keywords = Set("bench", "respond", "options"))
     )
-    override def executeResult(input: BaselineRespondOptionsInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: BaselineRespondOptionsInput, ctx: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
@@ -178,25 +201,25 @@ object RespondUnificationProbe {
 
   private val scenarios: List[Scenario] = List(
     Scenario(
-      name         = "text-reply",
-      prompt       = "Reply with exactly the words 'Hello, world!' as plain text. Nothing else.",
+      name = "text-reply",
+      prompt = "Reply with exactly the words 'Hello, world!' as plain text. Nothing else.",
       expectedKind = "Text"
     ),
     Scenario(
-      name         = "failure-reply",
-      prompt       = "The user asked you to do something you cannot do. Reply with a Failure indicating " +
-                     "reason=\"This is a demo failure response\" and recoverable=false.",
+      name = "failure-reply",
+      prompt = "The user asked you to do something you cannot do. Reply with a Failure indicating " +
+        "reason=\"This is a demo failure response\" and recoverable=false.",
       expectedKind = "Failure"
     ),
     Scenario(
-      name         = "field-reply",
-      prompt       = "Reply with a labeled field: label='Status', value='Online'.",
+      name = "field-reply",
+      prompt = "Reply with a labeled field: label='Status', value='Online'.",
       expectedKind = "Field"
     ),
     Scenario(
-      name         = "options-reply",
-      prompt       = "The user asked: 'Should I commit this change?' Reply with two single-select options: " +
-                     "'Yes' (value=yes) and 'No' (value=no). allowMultiple should be false.",
+      name = "options-reply",
+      prompt = "The user asked: 'Should I commit this change?' Reply with two single-select options: " +
+        "'Yes' (value=yes) and 'No' (value=no). allowMultiple should be false.",
       expectedKind = "Options"
     )
   )
@@ -211,7 +234,8 @@ object RespondUnificationProbe {
                                  success: Boolean,
                                  args: String) {
     def render: String =
-      f"  $roster%-9s | $scenario%-15s | tool=${toolCalled.getOrElse("<none>")}%-22s | kind=${emittedKind.getOrElse("?")}%-9s | expected=$expectedKind%-9s | ${if (success) "OK" else "MISS"}"
+      f"  $roster%-9s | $scenario%-15s | tool=${toolCalled.getOrElse("<none>")}%-22s | kind=${emittedKind.getOrElse(
+          "?")}%-9s | expected=$expectedKind%-9s | ${if (success) "OK" else "MISS"}"
   }
 
   def main(args: Array[String]): Unit = {
@@ -233,31 +257,34 @@ object RespondUnificationProbe {
 
     val host = sys.env.getOrElse("SIGIL_LLAMACPP_HOST", "https://llama.voidcraft.ai")
     val modelName = sys.env.getOrElse("SIGIL_LLAMACPP_MODEL", "qwen3.5-9b-q4_k_m")
-    val modelId   = Model.id("llamacpp", modelName)
-    val provider  = LlamaCppProvider(spice.net.URL.parse(host), Nil, sigil)
+    val modelId = Model.id("llamacpp", modelName)
+    val provider = LlamaCppProvider(spice.net.URL.parse(host), Nil, sigil)
     sigil.cache.replace(List(
       _root_.sigil.db.Model(
-        canonicalSlug       = s"llamacpp/$modelName",
-        huggingFaceId       = "",
-        name                = modelName,
-        displayName         = Some(modelName),
-        description         = "",
-        contextLength       = 32_768L,
-        architecture        = _root_.sigil.db.ModelArchitecture(
-          modality = "text->text", inputModalities = List("text"),
-          outputModalities = List("text"), tokenizer = "Unknown", instructType = None
+        canonicalSlug = s"llamacpp/$modelName",
+        huggingFaceId = "",
+        name = modelName,
+        displayName = Some(modelName),
+        description = "",
+        contextLength = 32_768L,
+        architecture = _root_.sigil.db.ModelArchitecture(
+          modality = "text->text",
+          inputModalities = List("text"),
+          outputModalities = List("text"),
+          tokenizer = "Unknown",
+          instructType = None
         ),
-        pricing             = _root_.sigil.db.ModelPricing(BigDecimal(0), BigDecimal(0), None, None),
-        topProvider         = _root_.sigil.db.ModelTopProvider(Some(32_768L), None, false),
-        perRequestLimits    = None,
+        pricing = _root_.sigil.db.ModelPricing(BigDecimal(0), BigDecimal(0), None, None),
+        topProvider = _root_.sigil.db.ModelTopProvider(Some(32_768L), None, false),
+        perRequestLimits = None,
         supportedParameters = Set.empty,
-        defaultParameters   = _root_.sigil.db.ModelDefaultParameters(),
-        knowledgeCutoff     = None,
-        expirationDate      = None,
-        links               = _root_.sigil.db.ModelLinks(""),
-        created             = lightdb.time.Timestamp(),
-        modified            = lightdb.time.Timestamp(),
-        _id                 = modelId
+        defaultParameters = _root_.sigil.db.ModelDefaultParameters(),
+        knowledgeCutoff = None,
+        expirationDate = None,
+        links = _root_.sigil.db.ModelLinks(""),
+        created = lightdb.time.Timestamp(),
+        modified = lightdb.time.Timestamp(),
+        _id = modelId
       )
     )).sync()
 
@@ -266,7 +293,7 @@ object RespondUnificationProbe {
     println(s"model: $modelName\n")
 
     val baselineTools = Vector(BaselineRespondTool, BaselineRespondFailureTool, BaselineRespondFieldTool, BaselineRespondOptionsTool)
-    val unifiedTools  = Vector(UnifiedRespondTool)
+    val unifiedTools = Vector(UnifiedRespondTool)
 
     val results = scenarios.flatMap { sc =>
       List("baseline", "unified").map { roster =>
@@ -281,7 +308,7 @@ object RespondUnificationProbe {
     results.foreach(r => println(r.render))
 
     val baselineSuccess = results.filter(_.roster == "baseline").count(_.success)
-    val unifiedSuccess  = results.filter(_.roster == "unified").count(_.success)
+    val unifiedSuccess = results.filter(_.roster == "unified").count(_.success)
     println(s"\nSummary: baseline=$baselineSuccess/4 unified=$unifiedSuccess/4")
     if (unifiedSuccess < baselineSuccess) {
       println(s"⚠️  unified shape underperformed baseline by ${baselineSuccess - unifiedSuccess} scenario(s)")
@@ -303,12 +330,12 @@ object RespondUnificationProbe {
       throw new _root_.sigil.provider.UnregisteredModelException(modelId, sigil.cache.all.map(_._id))
     )
     val request = OneShotRequest(
-      model              = resolvedModel,
-      systemPrompt       = "You are a tool-calling assistant. Use one of the supplied tools to reply. " +
-                           "Always call a tool — never reply with plain text outside a tool call.",
-      userPrompt         = scenario.prompt,
+      model = resolvedModel,
+      systemPrompt = "You are a tool-calling assistant. Use one of the supplied tools to reply. " +
+        "Always call a tool — never reply with plain text outside a tool call.",
+      userPrompt = scenario.prompt,
       generationSettings = GenerationSettings(maxOutputTokens = Some(500), temperature = Some(0.0)),
-      tools              = tools
+      tools = tools
     )
     val events: List[ProviderEvent] = scala.util.Try(provider(request).toList.sync()).getOrElse(Nil)
     val toolCall: Option[(String, ToolInput)] = events.collectFirst {
@@ -323,15 +350,15 @@ object RespondUnificationProbe {
         ProbeResult(scenario.name, rosterLabel, None, None, scenario.expectedKind, success = false, args = "<no tool call>")
       case Some((tn, input)) =>
         val (kind, success) = (rosterLabel, input) match {
-          case ("baseline", _: BaselineRespondInput)         => (Some("Text"),    scenario.expectedKind == "Text")
-          case ("baseline", _: BaselineRespondFailureInput)  => (Some("Failure"), scenario.expectedKind == "Failure")
-          case ("baseline", _: BaselineRespondFieldInput)    => (Some("Field"),   scenario.expectedKind == "Field")
-          case ("baseline", _: BaselineRespondOptionsInput)  => (Some("Options"), scenario.expectedKind == "Options")
-          case ("unified",  u: UnifiedRespondInput)          =>
+          case ("baseline", _: BaselineRespondInput) => (Some("Text"), scenario.expectedKind == "Text")
+          case ("baseline", _: BaselineRespondFailureInput) => (Some("Failure"), scenario.expectedKind == "Failure")
+          case ("baseline", _: BaselineRespondFieldInput) => (Some("Field"), scenario.expectedKind == "Field")
+          case ("baseline", _: BaselineRespondOptionsInput) => (Some("Options"), scenario.expectedKind == "Options")
+          case ("unified", u: UnifiedRespondInput) =>
             val k = u.content match {
-              case _: UnifiedRespondContent.Text    => "Text"
+              case _: UnifiedRespondContent.Text => "Text"
               case _: UnifiedRespondContent.Failure => "Failure"
-              case _: UnifiedRespondContent.Field   => "Field"
+              case _: UnifiedRespondContent.Field => "Field"
               case _: UnifiedRespondContent.Options => "Options"
             }
             (Some(k), k == scenario.expectedKind)

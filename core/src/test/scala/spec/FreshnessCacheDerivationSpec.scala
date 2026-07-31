@@ -9,12 +9,33 @@ import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
-  CallId, ConversationMode, ConversationRequest, GenerationSettings, Instructions,
-  Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
+  CallId,
+  ConversationMode,
+  ConversationRequest,
+  GenerationSettings,
+  Instructions,
+  Provider,
+  ProviderCall,
+  ProviderEvent,
+  ProviderType,
+  StopReason
 }
 import sigil.tool.{
-  CachedToolRead, DiscoverySpec, Effect, Freshness, MutationTarget, MutationTargeting,
-  TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolSpec
+  CachedToolRead,
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  MutationTarget,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolSpec
 }
 import spice.http.HttpRequest
 
@@ -40,43 +61,47 @@ class FreshnessCacheDerivationSpec extends AsyncWordSpec with AsyncTaskSpec with
   case class FreshPingInput() extends ToolInput derives RW
   ToolInput.register(RW.static(FreshPingInput()))
 
-  /** Read tool with a declared freshness; returns the live value of a
-    * shared mutable cell so a cached serve is distinguishable from a
-    * re-execution. */
-  private class FreshReadTool(val name0: ToolName,
-                              freshness0: Freshness,
-                              cell: AtomicReference[String],
-                              val counter: AtomicInteger) extends Tool {
-    type Input  = FreshPingInput
+  /**
+   * Read tool with a declared freshness; returns the live value of a
+   * shared mutable cell so a cached serve is distinguishable from a
+   * re-execution.
+   */
+  private class FreshReadTool(val name0: ToolName, freshness0: Freshness, cell: AtomicReference[String], val counter: AtomicInteger)
+    extends Tool {
+    type Input = FreshPingInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[FreshPingInput]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[FreshPingInput, TextToolOutput] = ToolIO.derived[FreshPingInput, TextToolOutput]
     val spec: ToolSpec = ToolSpec(
       name = name0,
       description = "freshness-declared read fixture",
       profile = ToolProfile(effect = Effect.ReadOnly(freshness0)),
       discovery = DiscoverySpec(keywords = Set("test", "freshness"))
     )
-    override def executeOutput(input: FreshPingInput, ctx: ToolContext): Task[TextToolOutput] = Task {
+    protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+    private def executeOutput(input: FreshPingInput, ctx: ToolContext): Task[TextToolOutput] = Task {
       counter.incrementAndGet()
       TextToolOutput(cell.get())
     }
   }
 
-  /** Mutating tool writing the shared cell; declares no target, so
-    * invalidation is conservative (whole Stable cache). */
+  /**
+   * Mutating tool writing the shared cell; declares no target, so
+   * invalidation is conservative (whole Stable cache).
+   */
   private class CellEditTool(val name0: ToolName, cell: AtomicReference[String]) extends Tool {
-    type Input  = FreshPingInput
+    type Input = FreshPingInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[FreshPingInput]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[FreshPingInput, TextToolOutput] = ToolIO.derived[FreshPingInput, TextToolOutput]
     val spec: ToolSpec = ToolSpec(
       name = name0,
       description = "mutating fixture writing the shared cell",
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "mutate"))
     )
-    override def executeOutput(input: FreshPingInput, ctx: ToolContext): Task[TextToolOutput] = Task {
+    protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+    private def executeOutput(input: FreshPingInput, ctx: ToolContext): Task[TextToolOutput] = Task {
       cell.set("post-edit")
       TextToolOutput("edited")
     }
@@ -102,55 +127,83 @@ class FreshnessCacheDerivationSpec extends AsyncWordSpec with AsyncTaskSpec with
                          tools: Vector[Tool],
                          cacheRef: AtomicReference[Map[String, CachedToolRead]]): ConversationRequest =
     ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = tools,
-      chain              = List(TestUser, TestAgent),
+      tools = tools,
+      chain = List(TestUser, TestAgent),
       toolResultCacheRef = cacheRef
     )
 
   private def newConv(prefix: String): Task[Id[Conversation]] = {
     val convId = Conversation.id(s"$prefix-${rapid.Unique()}")
-    val conv   = Conversation(topics = TestTopicStack, _id = convId)
+    val conv = Conversation(topics = TestTopicStack, _id = convId)
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map(_ => convId)
   }
 
   "Freshness-derived read cache" should {
 
     "serve a Pure read from cache across iterations, surviving an unrelated mutation" in {
-      val cell     = new AtomicReference("original")
-      val counter  = new AtomicInteger(0)
+      val cell = new AtomicReference("original")
+      val counter = new AtomicInteger(0)
       val readTool = new FreshReadTool(ToolName("pure_read"), Freshness.Pure, cell, counter)
       val editTool = new CellEditTool(ToolName("pure_epoch_edit"), cell)
       val cacheRef = new AtomicReference(Map.empty[String, CachedToolRead])
       for {
         convId <- newConv("pure")
-        tools   = Vector[Tool](readTool, editTool)
-        _ <- Orchestrator.process(TestSigil, new OneCallProvider(readTool), requestFor(convId, tools, cacheRef), Conversation(topics = TestTopicStack, _id = convId)).toList
-        _ <- Orchestrator.process(TestSigil, new OneCallProvider(editTool), requestFor(convId, tools, cacheRef), Conversation(topics = TestTopicStack, _id = convId)).toList
-        _ <- Orchestrator.process(TestSigil, new OneCallProvider(readTool), requestFor(convId, tools, cacheRef), Conversation(topics = TestTopicStack, _id = convId)).toList
+        tools = Vector[Tool](readTool, editTool)
+        _ <- Orchestrator.process(
+          TestSigil,
+          new OneCallProvider(readTool),
+          requestFor(convId, tools, cacheRef),
+          Conversation(topics = TestTopicStack, _id = convId)).toList
+        _ <- Orchestrator.process(
+          TestSigil,
+          new OneCallProvider(editTool),
+          requestFor(convId, tools, cacheRef),
+          Conversation(topics = TestTopicStack, _id = convId)).toList
+        _ <- Orchestrator.process(
+          TestSigil,
+          new OneCallProvider(readTool),
+          requestFor(convId, tools, cacheRef),
+          Conversation(topics = TestTopicStack, _id = convId)).toList
       } yield counter.get() shouldBe 1
     }
 
     "invalidate a Stable read when a mutation lands — read(x) → edit(x) → read(x) returns post-edit content" in {
-      val cell     = new AtomicReference("original")
-      val counter  = new AtomicInteger(0)
+      val cell = new AtomicReference("original")
+      val counter = new AtomicInteger(0)
       val readTool = new FreshReadTool(ToolName("stable_read"), Freshness.Stable, cell, counter)
       val editTool = new CellEditTool(ToolName("stable_cell_edit"), cell)
       val cacheRef = new AtomicReference(Map.empty[String, CachedToolRead])
       for {
-        convId  <- newConv("stable")
-        tools    = Vector[Tool](readTool, editTool)
-        _       <- Orchestrator.process(TestSigil, new OneCallProvider(readTool), requestFor(convId, tools, cacheRef), Conversation(topics = TestTopicStack, _id = convId)).toList
+        convId <- newConv("stable")
+        tools = Vector[Tool](readTool, editTool)
+        _ <- Orchestrator.process(
+          TestSigil,
+          new OneCallProvider(readTool),
+          requestFor(convId, tools, cacheRef),
+          Conversation(topics = TestTopicStack, _id = convId)).toList
         // Identical read served from cache pre-mutation.
-        _       <- Orchestrator.process(TestSigil, new OneCallProvider(readTool), requestFor(convId, tools, cacheRef), Conversation(topics = TestTopicStack, _id = convId)).toList
-        _       <- Orchestrator.process(TestSigil, new OneCallProvider(editTool), requestFor(convId, tools, cacheRef), Conversation(topics = TestTopicStack, _id = convId)).toList
-        signals <- Orchestrator.process(TestSigil, new OneCallProvider(readTool), requestFor(convId, tools, cacheRef), Conversation(topics = TestTopicStack, _id = convId)).toList
+        _ <- Orchestrator.process(
+          TestSigil,
+          new OneCallProvider(readTool),
+          requestFor(convId, tools, cacheRef),
+          Conversation(topics = TestTopicStack, _id = convId)).toList
+        _ <- Orchestrator.process(
+          TestSigil,
+          new OneCallProvider(editTool),
+          requestFor(convId, tools, cacheRef),
+          Conversation(topics = TestTopicStack, _id = convId)).toList
+        signals <- Orchestrator.process(
+          TestSigil,
+          new OneCallProvider(readTool),
+          requestFor(convId, tools, cacheRef),
+          Conversation(topics = TestTopicStack, _id = convId)).toList
       } yield {
         counter.get() shouldBe 2 // 1st executed, 2nd cached, post-edit re-executed
         val rendered = signals.collect {
@@ -161,15 +214,23 @@ class FreshnessCacheDerivationSpec extends AsyncWordSpec with AsyncTaskSpec with
     }
 
     "never cache a Volatile read" in {
-      val cell     = new AtomicReference("live")
-      val counter  = new AtomicInteger(0)
+      val cell = new AtomicReference("live")
+      val counter = new AtomicInteger(0)
       val readTool = new FreshReadTool(ToolName("volatile_read"), Freshness.Volatile, cell, counter)
       val cacheRef = new AtomicReference(Map.empty[String, CachedToolRead])
       for {
         convId <- newConv("volatile")
-        tools   = Vector[Tool](readTool)
-        _ <- Orchestrator.process(TestSigil, new OneCallProvider(readTool), requestFor(convId, tools, cacheRef), Conversation(topics = TestTopicStack, _id = convId)).toList
-        _ <- Orchestrator.process(TestSigil, new OneCallProvider(readTool), requestFor(convId, tools, cacheRef), Conversation(topics = TestTopicStack, _id = convId)).toList
+        tools = Vector[Tool](readTool)
+        _ <- Orchestrator.process(
+          TestSigil,
+          new OneCallProvider(readTool),
+          requestFor(convId, tools, cacheRef),
+          Conversation(topics = TestTopicStack, _id = convId)).toList
+        _ <- Orchestrator.process(
+          TestSigil,
+          new OneCallProvider(readTool),
+          requestFor(convId, tools, cacheRef),
+          Conversation(topics = TestTopicStack, _id = convId)).toList
       } yield {
         counter.get() shouldBe 2
         cacheRef.get() shouldBe empty

@@ -6,12 +6,23 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.db.Model
-import sigil.provider.{
-  ConversationMode, GenerationSettings, ProviderCall, ProviderMessage, StrictSchema, ToolChoice
-}
+import sigil.provider.{ConversationMode, GenerationSettings, ProviderCall, ProviderMessage, StrictSchema, ToolChoice}
 import sigil.provider.wire.OpenAIChatCompletions
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, JsonInput, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  JsonInput,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.model.RespondInput
 import rapid.Task
 import sigil.tool.ToolRoster
@@ -37,20 +48,23 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
 
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** A tool with a primitive input shape — strict-compatible. We re-use
-    * `RespondTool`'s `RespondInput` rather than minting a new case class:
-    * its schema is the canonical "no DefType.Json" example. */
+  /**
+   * A tool with a primitive input shape — strict-compatible. We re-use
+   * `RespondTool`'s `RespondInput` rather than minting a new case class:
+   * its schema is the canonical "no DefType.Json" example.
+   */
   private val typedTool: sigil.tool.Tool = sigil.tool.core.RespondTool
 
-  /** A tool whose input is the framework's `JsonInput` carrier — its
-    * schema is `DefType.Json` at the root, so `containsJson` returns
-    * true and strict mode opts out. */
+  /**
+   * A tool whose input is the framework's `JsonInput` carrier — its
+   * schema is `DefType.Json` at the root, so `containsJson` returns
+   * true and strict mode opts out.
+   */
   private object JsonyTool extends Tool {
-    type Input  = JsonInput
+    type Input = JsonInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[JsonInput]]
-    val outputRW = summon[RW[TextToolOutput]]
-    override val name        = ToolName("test_json_tool")
+    val io: ToolIO[JsonInput, TextToolOutput] = ToolIO.derived[JsonInput, TextToolOutput]
+    override val name = ToolName("test_json_tool")
     override val description = "Test tool with a Json root input."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -58,19 +72,21 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "test_json_tool"))
     )
-    override def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
   private val call: ProviderCall = ProviderCall(
-    model           = TestSigil.testModel(Model.id("test", "tools-dispatch-model")),
-    system            = "test system",
-    messages          = Vector(ProviderMessage.User(Vector(sigil.provider.MessageContent.Text("hi")))),
+    model = TestSigil.testModel(Model.id("test", "tools-dispatch-model")),
+    system = "test system",
+    messages = Vector(ProviderMessage.User(Vector(sigil.provider.MessageContent.Text("hi")))),
     roster = ToolRoster(Vector(typedTool, JsonyTool)),
-    builtInTools      = Set.empty,
-    toolChoice        = ToolChoice.Auto,
+    builtInTools = Set.empty,
+    toolChoice = ToolChoice.Auto,
     generationSettings = GenerationSettings(),
-    currentMode       = ConversationMode
+    currentMode = ConversationMode
   )
 
   private def renderToolByName(config: OpenAIChatCompletions.Config, name: String): Json = {
@@ -83,7 +99,7 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
 
     val cfg = OpenAIChatCompletions.Config(
       providerNamespace = "test",
-      providerName      = "Test",
+      providerName = "Test",
       strictModeCapable = true
     )
 
@@ -121,7 +137,7 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
       val rendered = renderToolByName(markerCfg, "test_json_tool")
       rendered("function")("parameters")("type").asString shouldBe marker
       // The strict-compatible tool should NOT be marked — it stays on the strict path.
-      renderToolByName(markerCfg, "respond")("function")("parameters")("type").asString shouldNot be (marker)
+      renderToolByName(markerCfg, "respond")("function")("parameters")("type").asString shouldNot be(marker)
     }
   }
 
@@ -129,7 +145,7 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
 
     val cfg = OpenAIChatCompletions.Config(
       providerNamespace = "test",
-      providerName      = "Test",
+      providerName = "Test",
       strictModeCapable = false
     )
 

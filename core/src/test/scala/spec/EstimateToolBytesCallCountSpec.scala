@@ -7,7 +7,20 @@ import rapid.{Stream, Task}
 import sigil.provider.{Provider, ProviderCall, ProviderType}
 import sigil.tokenize.Tokenizer
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -21,16 +34,12 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class EstimateToolBytesCallCountSpec extends AnyWordSpec with Matchers {
 
-  case class WideInput(field01: String = "",
-                       field02: String = "",
-                       field03: String = "",
-                       field04: String = "") extends ToolInput derives RW
+  case class WideInput(field01: String = "", field02: String = "", field03: String = "", field04: String = "") extends ToolInput derives RW
 
   case object WideTool extends Tool {
-    type Input  = WideInput
+    type Input = WideInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[WideInput]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[WideInput, TextToolOutput] = ToolIO.derived[WideInput, TextToolOutput]
     override val name = ToolName("wide_tool")
     override val description = "A short description."
     val spec: ToolSpec = ToolSpec(
@@ -40,7 +49,9 @@ class EstimateToolBytesCallCountSpec extends AnyWordSpec with Matchers {
       discovery = DiscoverySpec(keywords = Set("test", "wide_tool"))
     )
 
-    override def executeResult(input: WideInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: WideInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 

@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal tool invoked by [[sigil.vector.LLMReranker]]. Never registered
@@ -14,8 +14,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolN
 case object RerankTool extends Tool with FrameworkConsult {
   type Input  = RerankInput
   type Output = TextToolOutput
-  val inputRW: RW[RerankInput]     = summon[RW[RerankInput]]
-  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+  val io: ToolIO[RerankInput, TextToolOutput] = ToolIO.derived[RerankInput, TextToolOutput]
 
   override val name: ToolName = ToolName("rerank_candidates")
   override val description: String =
@@ -47,6 +46,8 @@ case object RerankTool extends Tool with FrameworkConsult {
 
   /** Never executed — the framework reads the typed input directly via
     * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
-  override def executeResult(input: RerankInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: RerankInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

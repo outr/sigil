@@ -10,7 +10,21 @@ import sigil.TurnContext
 import sigil.conversation.Conversation
 import sigil.event.ToolOutcome
 import sigil.signal.ToolDelta
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.ToolContext
 import sigil.tool.proxy.{ProxyTool, ToolProxyTransport}
 
@@ -27,18 +41,19 @@ import sigil.event.Event
 class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  private val convId   = Conversation.id("proxy-conv")
-  private val topicId  = TestTopicId
+  private val convId = Conversation.id("proxy-conv")
+  private val topicId = TestTopicId
 
   case class FakeToolInput(value: Int) extends ToolInput derives RW
 
   private case object FakeWrappedTool extends Tool {
-    type Input  = FakeToolInput
+    type Input = FakeToolInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[FakeToolInput]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[FakeToolInput, TextToolOutput] = ToolIO.derived[FakeToolInput, TextToolOutput].withExamples(
+      ToolExample("doubles its input", FakeToolInput(value = 5))
+    )
 
-    override val name        = ToolName("fake_tool")
+    override val name = ToolName("fake_tool")
     override val description = "Fake tool for proxy tests"
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -46,18 +61,17 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "fake"))
     )
-    override val examples: List[ToolExample] = List(
-      ToolExample("doubles its input", FakeToolInput(value = 5))
-    )
 
-    override def executeOutput(input: FakeToolInput, context: ToolContext): Task[TextToolOutput] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+    private def executeOutput(input: FakeToolInput, context: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(s"local: ${input.value * 2}"))
   }
 
   "ProxyTool" should {
     "preserve the wrapped tool's spec, name, description, and schema" in rapid.Task {
       val transport = new RecordingTransport
-      val proxy     = new ProxyTool(FakeWrappedTool, transport)
+      val proxy = new ProxyTool(FakeWrappedTool, transport)
       proxy.spec shouldBe FakeWrappedTool.spec
       proxy.name shouldBe FakeWrappedTool.name
       proxy.description shouldBe FakeWrappedTool.description
@@ -70,8 +84,8 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "route execute through the transport with the input rendered to Json" in {
       val transport = new RecordingTransport
-      val proxy     = new ProxyTool(FakeWrappedTool, transport)
-      val ctx       = makeContext()
+      val proxy = new ProxyTool(FakeWrappedTool, transport)
+      val ctx = makeContext()
       // The transport's remote side returns a typed result as Json —
       // here a TextToolOutput-shaped payload.
       transport.respondWith(ToolResult.Success(obj("text" -> str("remote-ok"))))
@@ -92,8 +106,8 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "pass the original ToolName through to the transport" in {
       val transport = new RecordingTransport
-      val proxy     = new ProxyTool(FakeWrappedTool, transport)
-      val ctx       = makeContext()
+      val proxy = new ProxyTool(FakeWrappedTool, transport)
+      val ctx = makeContext()
       transport.respondWith(ToolResult.Success(obj("text" -> str("ok"))))
 
       proxy.execute(FakeToolInput(value = 1), ctx, Event.id()).toList.map { _ =>
@@ -119,7 +133,9 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  /** Test transport — records each dispatch call, replays a configured result. */
+  /**
+   * Test transport — records each dispatch call, replays a configured result.
+   */
   private class RecordingTransport extends ToolProxyTransport {
     private val response = new AtomicReference[ToolResult[Json]](ToolResult.Success(obj()))
     val lastCall: AtomicReference[(ToolName, Json, ToolContext)] =

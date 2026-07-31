@@ -9,8 +9,22 @@ import sigil.tool.fs.{EditFileTool, LocalFileSystemContext}
 import sigil.tool.model.{EditFileInput, GrepInput}
 import sigil.tool.core.{FindCapabilityTool, RespondTool}
 import sigil.tool.{
-  ConsentSpec, DiscoverySpec, Effect, Freshness, MutationTarget, MutationTargeting, OutputBounds,
-  TextToolOutput, ToolContext, ToolGates, ToolInput, ToolName, ToolProfile, ToolSpec
+  ConsentSpec,
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  MutationTarget,
+  MutationTargeting,
+  OutputBounds,
+  Resolution,
+  TextToolOutput,
+  ToolContext,
+  ToolGates,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolSpec
 }
 
 /**
@@ -25,10 +39,9 @@ class MigratedToolProfileSpec extends AnyWordSpec with Matchers {
   case class GateProbeInput() extends ToolInput derives RW
 
   private object GatedProbeTool extends sigil.tool.Tool {
-    type Input  = GateProbeInput
+    type Input = GateProbeInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[GateProbeInput]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[GateProbeInput, TextToolOutput] = ToolIO.derived[GateProbeInput, TextToolOutput]
     val spec: ToolSpec = ToolSpec(
       name = ToolName("gated_probe"),
       description = "Consent-gated probe.",
@@ -38,7 +51,9 @@ class MigratedToolProfileSpec extends AnyWordSpec with Matchers {
       ),
       discovery = DiscoverySpec(keywords = Set("test", "gate"))
     )
-    override def executeOutput(input: GateProbeInput, ctx: ToolContext): Task[TextToolOutput] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+    private def executeOutput(input: GateProbeInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput("ran"))
   }
 

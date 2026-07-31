@@ -7,7 +7,21 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.browser.WebBrowserMode
 import sigil.browser.{BrowserScript, BrowserSigil, CookieJar}
-import sigil.tool.{DefinitionToSchema, DiscoverySpec, Effect, JsonSchemaToDefinition, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DefinitionToSchema,
+  DiscoverySpec,
+  Effect,
+  JsonSchemaToDefinition,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 /**
  * Persist a new [[BrowserScript]] under the framework's policy-
@@ -22,10 +36,9 @@ import sigil.tool.{DefinitionToSchema, DiscoverySpec, Effect, JsonSchemaToDefini
  * `find_capability` round-trip.
  */
 case object CreateBrowserScriptTool extends Tool {
-  type Input  = CreateBrowserScriptInput
+  type Input = CreateBrowserScriptInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[CreateBrowserScriptInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[CreateBrowserScriptInput, TextToolOutput] = ToolIO.derived[CreateBrowserScriptInput, TextToolOutput]
 
   override val name = ToolName("create_browser_script")
   override val description =
@@ -50,8 +63,9 @@ case object CreateBrowserScriptTool extends Tool {
     )
   )
 
-  override def executeResult(input: CreateBrowserScriptInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] = ctx.sigil match {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: CreateBrowserScriptInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = ctx.sigil match {
     case bs: BrowserSigil =>
       ToolName.parse(input.name) match {
         case Left(reason) =>
@@ -62,14 +76,14 @@ case object CreateBrowserScriptTool extends Tool {
         case Right(toolName) =>
           bs.browserScriptSpace(ctx.chain, input.space).flatMap { resolvedSpace =>
             val script = BrowserScript(
-              name        = toolName,
+              name = toolName,
               description = input.description,
-              parameters  = JsonSchemaToDefinition(input.parameters),
-              steps       = input.steps,
-              space       = resolvedSpace,
+              parameters = JsonSchemaToDefinition(input.parameters),
+              steps = input.steps,
+              space = resolvedSpace,
               cookieJarId = input.cookieJarId.map(s => Id[CookieJar](s)),
-              keywords    = input.keywords,
-              createdBy   = Some(ctx.caller)
+              keywords = input.keywords,
+              createdBy = Some(ctx.caller)
             )
             ctx.sigil.createTool(script).map { stored =>
               val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
@@ -83,8 +97,9 @@ case object CreateBrowserScriptTool extends Tool {
               text.append("Authoring follow-ups: update_browser_script, delete_browser_script.\n")
               ToolResult.Success(TextToolOutput(text.toString))
             }
-          }.handleError(t => Task.pure(ToolResult.failure(
-            s"Failed to create browser script: ${t.getMessage}")))
+          }.handleError(t =>
+            Task.pure(ToolResult.failure(
+              s"Failed to create browser script: ${t.getMessage}")))
       }
     case _ =>
       Task.pure(ToolResult.failure(

@@ -28,21 +28,21 @@ class WorkflowStepArgValidationSpec extends AsyncWordSpec with AsyncTaskSpec wit
   private def syntheticModel(id: Id[Model]): Model = {
     val now = lightdb.time.Timestamp()
     Model(
-      canonicalSlug       = id.value,
-      huggingFaceId       = "",
-      name                = id.value,
-      description         = s"Synthetic Model record for $id.",
-      contextLength       = 32768L,
-      architecture        = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
-      pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
-      topProvider         = ModelTopProvider(contextLength = Some(32768L), maxCompletionTokens = Some(8192L), isModerated = false),
-      perRequestLimits    = None,
+      canonicalSlug = id.value,
+      huggingFaceId = "",
+      name = id.value,
+      description = s"Synthetic Model record for $id.",
+      contextLength = 32768L,
+      architecture = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
+      pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+      topProvider = ModelTopProvider(contextLength = Some(32768L), maxCompletionTokens = Some(8192L), isModerated = false),
+      perRequestLimits = None,
       supportedParameters = Set("temperature", "tools"),
-      knowledgeCutoff     = None,
-      expirationDate      = None,
-      links               = ModelLinks(details = ""),
-      created             = now,
-      _id                 = id
+      knowledgeCutoff = None,
+      expirationDate = None,
+      links = ModelLinks(details = ""),
+      created = now,
+      _id = id
     )
   }
 
@@ -52,14 +52,14 @@ class WorkflowStepArgValidationSpec extends AsyncWordSpec with AsyncTaskSpec wit
     val convId = Conversation.id(s"argval-${rapid.Unique()}")
     val conv = Conversation(
       topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
-      _id    = convId
+      _id = convId
     )
     val tc = TurnContext(
-      sigil        = TestWorkflowSigil,
-      chain        = List(WorkflowTestUser),
+      sigil = TestWorkflowSigil,
+      chain = List(WorkflowTestUser),
       conversation = conv,
-      turnInput    = TurnInput(ConversationView(conversationId = convId)),
-      model        = TestWorkflowSigil.cache.find(modelId).get
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
+      model = TestWorkflowSigil.cache.find(modelId).get
     )
     ToolContext(tc, Event.id(), tool.name)
   }
@@ -72,22 +72,21 @@ class WorkflowStepArgValidationSpec extends AsyncWordSpec with AsyncTaskSpec wit
     "reject a Job step whose tool arguments use an unknown field name" in {
       // echo_back's only field is `text`; `bogus` should be rejected at authoring.
       val input = CreateWorkflowInput(name = "bad-args", steps = List(jobStep(obj("bogus" -> str("x")))))
-      tool.executeResult(input, ctx()).map {
-        case ToolResult.Failure(message, _, _) =>
-          message should include ("echo_back")
-          message should include ("unknown argument")
-          message should include ("bogus")
-          message should include ("text") // the valid field is surfaced
-        case other => fail(s"expected a Failure, got $other")
+      tool.invoke(input, ctx()).map(_ => fail("expected a Failure")).handleError {
+        case tfe: sigil.tool.ToolFailureException => rapid.Task {
+            val message = tfe.failureMessage
+            message should include("echo_back")
+            message should include("unknown argument")
+            message should include("bogus")
+            message should include("text") // the valid field is surfaced
+          }
+        case other => rapid.Task(fail(s"expected a ToolFailureException, got $other"))
       }
     }
 
     "accept a Job step whose tool arguments are field-correct" in {
       val input = CreateWorkflowInput(name = "good-args", steps = List(jobStep(obj("text" -> str("hi")))))
-      tool.executeResult(input, ctx()).map {
-        case ToolResult.Success(_) => succeed
-        case other                 => fail(s"expected Success, got $other")
-      }
+      tool.invoke(input, ctx()).map(_ => succeed)
     }
   }
 

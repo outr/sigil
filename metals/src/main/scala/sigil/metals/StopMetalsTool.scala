@@ -3,7 +3,21 @@ package sigil.metals
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 case class StopMetalsInput() extends ToolInput derives RW
 
@@ -17,10 +31,11 @@ case class StopMetalsInput() extends ToolInput derives RW
  * `metals_status` first to see what's live.
  */
 final class StopMetalsTool extends Tool {
-  type Input  = StopMetalsInput
+  type Input = StopMetalsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[StopMetalsInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[StopMetalsInput, TextToolOutput] = ToolIO.derived[StopMetalsInput, TextToolOutput].withExamples(
+    ToolExample("stop metals", StopMetalsInput())
+  )
 
   override val name = ToolName("stop_metals")
   override val description =
@@ -35,22 +50,31 @@ final class StopMetalsTool extends Tool {
       |
       |Tears down the subprocess and removes its McpServerConfig.
       |No-op if Metals isn't running for the workspace.""".stripMargin
-  override val examples = List(ToolExample("stop metals", StopMetalsInput()))
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(
       keywords = Set(
-        "metals", "stop", "scala", "lsp", "shutdown",
-        "kill", "terminate", "disable", "teardown", "tooling"
+        "metals",
+        "stop",
+        "scala",
+        "lsp",
+        "shutdown",
+        "kill",
+        "terminate",
+        "disable",
+        "teardown",
+        "tooling"
       )
     )
   )
 
   import MetalsToolSupport.*
 
-  override def executeResult(input: StopMetalsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: StopMetalsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val sigil = context.sigil
     workspaceFor(sigil, context).flatMap {
       case Left(msg) =>

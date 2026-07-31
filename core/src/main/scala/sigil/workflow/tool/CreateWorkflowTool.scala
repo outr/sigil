@@ -5,7 +5,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.{GlobalSpace, SpaceId}
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.{WorkflowStepKind, WorkflowStepSpec, WorkflowTemplate, WorkflowTrigger}
 
 case class CreateWorkflowInput(name: String,
@@ -30,24 +30,7 @@ case class CreateWorkflowInput(name: String,
 final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
   type Input = CreateWorkflowInput
   type Output = TextToolOutput
-  val inputRW = summon[RW[CreateWorkflowInput]]
-  val outputRW = summon[RW[TextToolOutput]]
-  override val name = ToolName("create_workflow")
-  override val description =
-    """Create a new workflow template.
-      |
-      |`name` is the template's identifier. `steps` is a flat list of steps; each step has a
-      |`kind` (Job / Condition / Approval / Parallel / Loop / SubWorkflow / Trigger) and fills the
-      |fields for that kind. Job: `tool` + `arguments` (a JSON OBJECT holding every tool parameter)
-      |or `prompt`, capturing into `output`. Loop: `over` (a variable — e.g. a prior Job's `output`,
-      |coerced from text) plus
-      |`bodyStepIds` (ids of steps in this same list to run per item, binding `itemVariable`).
-      |Parallel: `branchStepIds`. Reference {{output}} variables in later steps' arguments/prompts.
-      |`triggers` registers external firing conditions (conversation message, time / cron, webhook,
-      |cross-workflow event, plus app-defined ones).
-      |
-      |Returns the persisted template's id.""".stripMargin
-  override val examples = List(
+  val io: ToolIO[CreateWorkflowInput, TextToolOutput] = ToolIO.derived[CreateWorkflowInput, TextToolOutput].withExamples(
     ToolExample(
       "discovery-as-a-stage: find files, act on each",
       CreateWorkflowInput(
@@ -70,6 +53,21 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
       )
     )
   )
+  override val name = ToolName("create_workflow")
+  override val description =
+    """Create a new workflow template.
+      |
+      |`name` is the template's identifier. `steps` is a flat list of steps; each step has a
+      |`kind` (Job / Condition / Approval / Parallel / Loop / SubWorkflow / Trigger) and fills the
+      |fields for that kind. Job: `tool` + `arguments` (a JSON OBJECT holding every tool parameter)
+      |or `prompt`, capturing into `output`. Loop: `over` (a variable — e.g. a prior Job's `output`,
+      |coerced from text) plus
+      |`bodyStepIds` (ids of steps in this same list to run per item, binding `itemVariable`).
+      |Parallel: `branchStepIds`. Reference {{output}} variables in later steps' arguments/prompts.
+      |`triggers` registers external firing conditions (conversation message, time / cron, webhook,
+      |cross-workflow event, plus app-defined ones).
+      |
+      |Returns the persisted template's id.""".stripMargin
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -77,7 +75,9 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
     discovery = DiscoverySpec(keywords = Set("workflow", "create", "compose", "automation"))
   )
 
-  override def executeResult(input: CreateWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: CreateWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     WorkflowStepSpec.lower(input.steps, input.variableDefs.map(_.name).toSet) match {
       case Left(errors) => Task.pure(ToolResult.failure(WorkflowStepSpec.violationMessage(errors)))
       case Right(steps) =>

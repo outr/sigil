@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitShowInput, GitShowOutput}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Read-only `git_show` — render a single commit. Returns a typed
@@ -15,8 +15,10 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName
 final class GitShowTool(context: FileSystemContext) extends Tool {
   type Input  = GitShowInput
   type Output = GitShowOutput
-  val inputRW  = summon[RW[GitShowInput]]
-  val outputRW = summon[RW[GitShowOutput]]
+  val io: ToolIO[GitShowInput, GitShowOutput] = ToolIO.derived[GitShowInput, GitShowOutput].withExamples(
+    ToolExample("Show HEAD",          GitShowInput(sha = "HEAD")),
+    ToolExample("Show a specific sha", GitShowInput(sha = "abc1234"))
+  )
   override val name = ToolName("git_show")
   override val description =
     """Show a single commit's metadata + diff. `sha` accepts any git revision spec (`HEAD`, `HEAD~1`,
@@ -27,12 +29,10 @@ final class GitShowTool(context: FileSystemContext) extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(keywords = Set("git", "show", "commit", "inspect"))
   )
-  override val examples = List(
-    ToolExample("Show HEAD",          GitShowInput(sha = "HEAD")),
-    ToolExample("Show a specific sha", GitShowInput(sha = "abc1234"))
-  )
 
-  override def executeOutput(input: GitShowInput, ctx: ToolContext): Task[GitShowOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: GitShowInput, ctx: ToolContext): Task[GitShowOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val format = "%H%x00%an%x00%aI%x00%s%x00%b%x1e"
       // `--patch` is implicit for `git show`, but we add the

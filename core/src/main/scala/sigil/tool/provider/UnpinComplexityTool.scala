@@ -5,7 +5,7 @@ import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.ComplexityChange
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class UnpinComplexityInput() extends ToolInput derives RW
 
@@ -18,8 +18,7 @@ case class UnpinComplexityInput() extends ToolInput derives RW
 case object UnpinComplexityTool extends Tool {
   type Input  = UnpinComplexityInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[UnpinComplexityInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[UnpinComplexityInput, TextToolOutput] = ToolIO.derived[UnpinComplexityInput, TextToolOutput]
   override val name = ToolName("unpin_complexity")
   override val description =
     """Clear the conversation's pinned complexity tier. Every turn
@@ -32,8 +31,10 @@ case object UnpinComplexityTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("unpin", "unlock", "clear", "auto", "default", "complexity", "tier"))
   )
 
-  override def executeResult(input: UnpinComplexityInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: UnpinComplexityInput,
+                            ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.withDB(_.conversations.transaction { tx =>
       tx.get(ctx.conversation.id).flatMap {
         case None       => Task.pure(None)

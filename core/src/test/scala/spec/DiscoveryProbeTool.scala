@@ -2,9 +2,25 @@ package spec
 
 import fabric.rw.*
 import rapid.Task
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
-/** Input for [[DiscoveryProbeTool]] — `count` controls how many items it emits. */
+/**
+ * Input for [[DiscoveryProbeTool]] — `count` controls how many items it emits.
+ */
 case class DiscoveryProbeInput(count: Int) extends ToolInput derives RW
 
 /**
@@ -14,10 +30,9 @@ case class DiscoveryProbeInput(count: Int) extends ToolInput derives RW
  * text output, no hand-built array) without standing up a live filesystem.
  */
 case object DiscoveryProbeTool extends Tool {
-  type Input  = DiscoveryProbeInput
+  type Input = DiscoveryProbeInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[DiscoveryProbeInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DiscoveryProbeInput, TextToolOutput] = ToolIO.derived[DiscoveryProbeInput, TextToolOutput]
   override val name = ToolName("discovery_probe")
   override val description = "Emits N newline-separated items — a discovery-step stand-in for workflow tests."
   val spec: ToolSpec = ToolSpec(
@@ -26,7 +41,9 @@ case object DiscoveryProbeTool extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Pure)),
     discovery = DiscoverySpec(keywords = Set("test", "discovery_probe"))
   )
-  override def executeResult(input: DiscoveryProbeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DiscoveryProbeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     // Items are wide (path-shaped) so a modest count still exceeds the inline
     // cap — exercises the overflow path without thousands of loop iterations.
     Task.pure(ToolResult.Success(TextToolOutput(

@@ -92,7 +92,7 @@ object WireCall {
           "name" -> str(name),
           "args" -> rawArgs,
           "violations" -> arr(error.violations.map(v =>
-            obj("path" -> arr(v.path.map(str)*), "reason" -> str(v.reason)))*)
+            obj("path" -> arr(v.path.map(str)*), "reason" -> str(v.reason), "kind" -> str(v.kind.toString)))*)
         )
     },
     w = { json =>
@@ -101,7 +101,11 @@ object WireCall {
       json("type").asString match {
         case "malformed" =>
           val violations = json("violations").asVector.toList.map { v =>
-            DecodeViolation(v("path").asVector.toList.map(_.asString), v("reason").asString)
+            val kind = v.get("kind").map(_.asString) match {
+              case Some("Structural") => ViolationKind.Structural
+              case _                  => ViolationKind.Constraint
+            }
+            DecodeViolation(v("path").asVector.toList.map(_.asString), v("reason").asString, kind)
           }
           Malformed(name, DecodeError(violations, args), args)
         case _ =>

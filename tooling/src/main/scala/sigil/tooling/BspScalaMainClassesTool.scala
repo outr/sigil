@@ -3,13 +3,12 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspMainClassEntry, BspMainClassesResult, BspTargetMainClasses}
 
 import scala.jdk.CollectionConverters.*
 
-case class BspScalaMainClassesInput(projectRoot: String,
-                                    targets: List[String] = Nil) extends ToolInput derives RW
+case class BspScalaMainClassesInput(projectRoot: String, targets: List[String] = Nil) extends ToolInput derives RW
 
 /**
  * List discovered Scala `main` classes for each target — every
@@ -18,10 +17,9 @@ case class BspScalaMainClassesInput(projectRoot: String,
  * to run.
  */
 final class BspScalaMainClassesTool(val manager: BspManager) extends Tool with BspToolSupport {
-  type Input  = BspScalaMainClassesInput
+  type Input = BspScalaMainClassesInput
   type Output = BspMainClassesResult
-  val inputRW  = summon[RW[BspScalaMainClassesInput]]
-  val outputRW = summon[RW[BspMainClassesResult]]
+  val io: ToolIO[BspScalaMainClassesInput, BspMainClassesResult] = ToolIO.derived[BspScalaMainClassesInput, BspMainClassesResult]
 
   override val name = ToolName("bsp_scala_main_classes")
   override val description =
@@ -39,10 +37,13 @@ final class BspScalaMainClassesTool(val manager: BspManager) extends Tool with B
     )
   )
 
-  override def executeOutput(input: BspScalaMainClassesInput,
-                             context: ToolContext): Task[BspMainClassesResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: BspScalaMainClassesInput, context: ToolContext): Task[BspMainClassesResult] =
     withTargets[BspMainClassesResult](
-      input.projectRoot, context, input.targets,
+      input.projectRoot,
+      context,
+      input.targets,
       onError = msg => BspMainClassesResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspMainClassesResult(input.projectRoot, Nil)
     ) { (session, targets) =>

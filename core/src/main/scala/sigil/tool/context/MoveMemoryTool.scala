@@ -6,7 +6,7 @@ import rapid.Task
 import sigil.SpaceId
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolGates, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolGates, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Re-scope an existing memory to a different accessible
@@ -28,8 +28,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Too
 case object MoveMemoryTool extends Tool {
   type Input  = MoveMemoryInput
   type Output = TextToolOutput
-  val inputRW: RW[MoveMemoryInput]  = summon[RW[MoveMemoryInput]]
-  val outputRW: RW[TextToolOutput]  = summon[RW[TextToolOutput]]
+  val io: ToolIO[MoveMemoryInput, TextToolOutput] = ToolIO.derived[MoveMemoryInput, TextToolOutput]
 
   override val name: ToolName = ToolName("move_memory")
   override val description: String =
@@ -53,7 +52,9 @@ case object MoveMemoryTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("move", "rescope", "memory", "space", "transfer"))
   )
 
-  override def executeResult(input: MoveMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: MoveMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       if (!accessible.contains(input.newSpace))
         Task.pure(ToolResult.failure(

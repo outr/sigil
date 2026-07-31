@@ -3,13 +3,12 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 import scala.jdk.CollectionConverters.*
 
-case class LspPullDiagnosticsInput(languageId: String,
-                                   filePath: String) extends ToolInput derives RW
+case class LspPullDiagnosticsInput(languageId: String, filePath: String) extends ToolInput derives RW
 
 /**
  * Pull-model diagnostics — explicitly request fresh diagnostics for
@@ -26,12 +25,10 @@ case class LspPullDiagnosticsInput(languageId: String,
  *
  * Emits a typed [[LspDiagnosticsResult]].
  */
-final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspPullDiagnosticsInput
+final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspPullDiagnosticsInput
   type Output = LspDiagnosticsResult
-  val inputRW  = summon[RW[LspPullDiagnosticsInput]]
-  val outputRW = summon[RW[LspDiagnosticsResult]]
+  val io: ToolIO[LspPullDiagnosticsInput, LspDiagnosticsResult] = ToolIO.derived[LspPullDiagnosticsInput, LspDiagnosticsResult]
 
   override val name = ToolName("lsp_pull_diagnostics")
   override def verification: Boolean = true
@@ -49,31 +46,50 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(
       keywords = Set(
-        "lsp", "diagnostics", "errors", "warnings", "problems", "lint",
-        "analyze", "examine", "inspect", "review", "what's broken",
-        "fresh", "sync", "synchronous",
-        "scala", "type", "fix", "code", "language"
+        "lsp",
+        "diagnostics",
+        "errors",
+        "warnings",
+        "problems",
+        "lint",
+        "analyze",
+        "examine",
+        "inspect",
+        "review",
+        "what's broken",
+        "fresh",
+        "sync",
+        "synchronous",
+        "scala",
+        "type",
+        "fix",
+        "code",
+        "language"
       ),
       toolchain = Some("lsp")
     )
   )
 
-  override def executeOutput(input: LspPullDiagnosticsInput, context: ToolContext): Task[LspDiagnosticsResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspPullDiagnosticsInput, context: ToolContext): Task[LspDiagnosticsResult] =
     withOpenDocumentOrThrow[LspDiagnosticsResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.pullDiagnosticsVerdict(uri).map {
         case Some(items) =>
           LspDiagnosticsResult(
-            filePath    = input.filePath,
+            filePath = input.filePath,
             diagnostics = items.map(LspDiagnostic.fromLsp4j(input.filePath, _)),
-            fresh       = true
+            fresh = true
           )
         case None =>
           LspDiagnosticsResult(
-            filePath    = input.filePath,
+            filePath = input.filePath,
             diagnostics = session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _)),
-            fresh       = false
+            fresh = false
           )
       }
     }

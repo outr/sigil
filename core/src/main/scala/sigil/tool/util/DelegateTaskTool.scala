@@ -10,7 +10,7 @@ import sigil.participant.{AgentParticipant, DefaultAgentParticipant, WorkerParti
 import sigil.provider.ToolPolicy
 import sigil.signal.EventState
 import sigil.tool.model.{DelegateTaskInput, ResponseContent}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, RefusalPayload, Tool, ToolContext, ToolExample, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, RefusalPayload, Resolution, Tool, ToolContext, ToolExample, ToolIO, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
 
 /** Typed result of [[DelegateTaskTool]] — the handle the caller uses to
   * track / drill into the spawned worker. `taskId` is the worker agent's
@@ -50,8 +50,17 @@ case class DelegateTaskOutput(taskId: String,
 case object DelegateTaskTool extends Tool {
   type Input  = DelegateTaskInput
   type Output = DelegateTaskOutput
-  val inputRW  = summon[RW[DelegateTaskInput]]
-  val outputRW = summon[RW[DelegateTaskOutput]]
+  val io: ToolIO[DelegateTaskInput, DelegateTaskOutput] = ToolIO.derived[DelegateTaskInput, DelegateTaskOutput].withExamples(
+    ToolExample(
+      "Delegate a research task",
+      DelegateTaskInput(
+        role = "researcher",
+        roleDescription = Some("You are a research agent. Find relevant sources, synthesize, and report."),
+        brief = "Find recent papers on retrieval-augmented generation in 2026.",
+        goal = Some("identify candidate sources for a literature review")
+      )
+    )
+  )
   override val name = ToolName("delegate_task")
   override val description =
     """Spawn a worker agent for long-running or specialized work. The worker runs as a real agent in
@@ -69,19 +78,10 @@ case object DelegateTaskTool extends Tool {
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("delegate", "worker", "spawn", "task", "research", "background", "subagent"))
   )
-  override val examples = List(
-    ToolExample(
-      "Delegate a research task",
-      DelegateTaskInput(
-        role = "researcher",
-        roleDescription = Some("You are a research agent. Find relevant sources, synthesize, and report."),
-        brief = "Find recent papers on retrieval-augmented generation in 2026.",
-        goal = Some("identify candidate sources for a literature review")
-      )
-    )
-  )
 
-  override def executeResult(input: DelegateTaskInput, ctx: ToolContext): Task[ToolResult[DelegateTaskOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DelegateTaskInput, ctx: ToolContext): Task[ToolResult[DelegateTaskOutput]] =
     // Sigil #348 — structural depth cap. The doer framing on the worker
     // (WorkerSelfSkill) is the primary fix for re-delegation; this is the
     // bound that keeps delegation safe even when that framing doesn't hold

@@ -4,11 +4,10 @@ import fabric.rw.*
 import org.eclipse.lsp4j.DocumentLink
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspDocumentLinkItem, LspDocumentLinkResult, LspPosition}
 
-case class LspDocumentLinkInput(languageId: String,
-                                filePath: String) extends ToolInput derives RW
+case class LspDocumentLinkInput(languageId: String, filePath: String) extends ToolInput derives RW
 
 /**
  * List clickable document links in a file — URL strings, file paths
@@ -17,12 +16,10 @@ case class LspDocumentLinkInput(languageId: String,
  * servers) provide rich link metadata; servers that don't return
  * an empty list.
  */
-final class LspDocumentLinkTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspDocumentLinkInput
+final class LspDocumentLinkTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspDocumentLinkInput
   type Output = LspDocumentLinkResult
-  val inputRW  = summon[RW[LspDocumentLinkInput]]
-  val outputRW = summon[RW[LspDocumentLinkResult]]
+  val io: ToolIO[LspDocumentLinkInput, LspDocumentLinkResult] = ToolIO.derived[LspDocumentLinkInput, LspDocumentLinkResult]
   override val name = ToolName("lsp_document_links")
   override val description =
     """List the document links the language server has identified in a file.
@@ -39,9 +36,13 @@ final class LspDocumentLinkTool(val manager: LspManager) extends Tool
     )
   )
 
-  override def executeOutput(input: LspDocumentLinkInput, context: ToolContext): Task[LspDocumentLinkResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspDocumentLinkInput, context: ToolContext): Task[LspDocumentLinkResult] =
     withOpenDocumentOrThrow[LspDocumentLinkResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.documentLinks(uri).map { links =>
         LspDocumentLinkResult(filePath = input.filePath, items = links.map(toItem))
@@ -51,6 +52,6 @@ final class LspDocumentLinkTool(val manager: LspManager) extends Tool
   private def toItem(link: DocumentLink): LspDocumentLinkItem =
     LspDocumentLinkItem(
       position = LspPosition.fromLsp4j(link.getRange.getStart),
-      target   = Option(link.getTarget)
+      target = Option(link.getTarget)
     )
 }

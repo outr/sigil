@@ -12,7 +12,7 @@ import sigil.event.{Event, Message, ToolInvoke, ToolOutcome}
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, ReasoningMode}
 import sigil.signal.{EventState, ToolDelta}
-import sigil.tool.{ToolInput, ToolName}
+import sigil.tool.{ToolExecutor, ToolInput, ToolName}
 import sigil.tool.model.ResponseContent
 import strider.Workflow
 import strider.step.{Job, Step}
@@ -29,7 +29,7 @@ import strider.step.{Job, Step}
  *     finder, parse `arguments` (with `{{var}}` substitution) as
  *     fabric `Json`, decode through the tool's `inputRW`, build a
  *     synthetic [[TurnContext]] anchored on the workflow's
- *     conversation (when present), and call `tool.execute`. The
+ *     conversation (when present), and dispatch through the executor. The
  *     tool's emitted Messages are coalesced into a single Json
  *     output (`{ results: [...] }`).
  *
@@ -72,8 +72,8 @@ final case class SigilJobStep(input: JobStepInput,
 
   /** Resolve `tool` against the host Sigil's `findTools.byName`,
     * decode the workflow-substituted `arguments` through the tool's
-    * `inputRW`, run `tool.execute` against a synthetic TurnContext,
-    * and coalesce the result. */
+    * `inputRW`, dispatch through [[sigil.tool.ToolExecutor]] against a
+    * synthetic TurnContext, and coalesce the result. */
   private def runTool(host: Sigil, workflow: Workflow, toolName: String): Task[Json] = {
     host.findTools.byName(ToolName.internal(toolName)).flatMap {
       case None =>
@@ -135,12 +135,12 @@ final case class SigilJobStep(input: JobStepInput,
             ))
           case Right(typedInput) =>
             SyntheticTurnContext.build(host, workflow).flatMap { ctx =>
-              tool.execute(typedInput, ctx, Event.id()).toList.flatMap { signals =>
-                // #354 — a tool's real result rides the settling `ToolDelta`'s `output` (the typed
-                // `ToolOutput`); `ToolResults` was folded into the invoke (#265), so tools like
-                // bash/grep/read_file emit no Message. Read that output first (rendered via the
-                // tool's `outputRW`); on a logical Failure surface the reason; only then fall back
-                // to coalesced Messages, then a generic marker.
+              // Dispatch through the executor's collected entry: the full
+              // gate pipeline runs (a precondition-gated tool dispatched
+              // from a workflow is properly blocked), the resolution runs
+              // inline (a step has no turn to yield), and the typed result
+              // arrives as a ToolResultEnvelope — no cast.
+              ToolExecutor.executeCollected(tool)(typedInput, ctx, Event.id()).flatMap { case (signals, envelope) =>
                 val settle = signals.reverseIterator.collectFirst {
                   case d: ToolDelta if d.state.contains(EventState.Complete) => d
                 }
@@ -151,15 +151,21 @@ final case class SigilJobStep(input: JobStepInput,
                   if (texts.isEmpty) obj("ok" -> str("done"))
                   else obj("results" -> fabric.Arr(texts.map(t => (str(t): Json)).toVector, None))
                 }
-                val resultJson: Json = settle match {
-                  case Some(d) if d.output.isDefined =>
-                    tool.outputRW.read(d.output.get.asInstanceOf[tool.Output])
-                  case Some(d) =>
-                    d.outcome match {
+                def blockedMessage: Option[String] = signals.collectFirst {
+                  case m: Message if m.disposition.isInstanceOf[sigil.event.MessageDisposition.Failure] =>
+                    m.content.collect { case ResponseContent.Text(text) => text }.mkString
+                }
+                val resultJson: Json = envelope match {
+                  case Some(env) => tool.outputRW.read(env.output)
+                  case None =>
+                    settle.flatMap(_.outcome) match {
                       case Some(f: ToolOutcome.Failure) => obj("error" -> str(f.reason))
-                      case _                            => fromMessages
+                      case _ =>
+                        // No settle delta at all means the dispatch was gate-
+                        // blocked (consent / precondition refusal) — surface
+                        // the refusal as an error instead of a silent success.
+                        blockedMessage.map(m => obj("error" -> str(m)): Json).getOrElse(fromMessages)
                     }
-                  case None => fromMessages
                 }
                 // Sigil #376 — record the call as one settled ToolInvoke in the
                 // run's sub-conversation so it's openable.

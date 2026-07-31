@@ -10,7 +10,20 @@ import sigil.SpaceId
 import sigil.tool.ToolContext
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
-import sigil.tool.{DiscoverySpec, Effect, JsonInput, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  JsonInput,
+  MutationTargeting,
+  Resolution,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 /**
  * Persisted tool whose execution path is a stored script, created at
@@ -40,47 +53,52 @@ case class ScriptTool(override val name: ToolName,
                       // discoverable from any mode. Apps that want
                       // per-mode gating override at construction.
                       override val modes: Set[Id[Mode]] = Set.empty,
-                      override val examples: List[ToolExample] = Nil,
+                      override val examples: List[ToolExample[JsonInput]] = Nil,
                       override val createdBy: Option[ParticipantId] = None,
                       override val created: Timestamp = Timestamp(Nowish()),
-                      override val modified: Timestamp = Timestamp(Nowish())) extends Tool derives RW {
+                      override val modified: Timestamp = Timestamp(Nowish()))
+  extends Tool derives RW {
 
-  /** Derived from the persisted constructor fields, so validation
-    * runs on every load — a legacy row that has drifted out of
-    * validity is repaired with a warn where safe (blank description,
-    * empty keywords) rather than bricking the collection read. */
+  /**
+   * Derived from the persisted constructor fields, so validation
+   * runs on every load — a legacy row that has drifted out of
+   * validity is repaired with a warn where safe (blank description,
+   * empty keywords) rather than bricking the collection read.
+   */
   val spec: ToolSpec = ScriptTool.specFor(name, description, space, keywords, modes)
 
-  /** Stable id derived from `(name, space)` so `Sigil.createTool`'s
-    * upsert overwrites in place when an agent re-creates a tool with
-    * the same name in the same space. Lives in the body (not the
-    * ctor) because Scala 3 doesn't let default values reference
-    * earlier params of the same parameter list. Round-trips cleanly:
-    * fabric's case-class RW serializes only ctor params; on load the
-    * body computes the same id from the persisted `(name, space)`. */
+  /**
+   * Stable id derived from `(name, space)` so `Sigil.createTool`'s
+   * upsert overwrites in place when an agent re-creates a tool with
+   * the same name in the same space. Lives in the body (not the
+   * ctor) because Scala 3 doesn't let default values reference
+   * earlier params of the same parameter list. Round-trips cleanly:
+   * fabric's case-class RW serializes only ctor params; on load the
+   * body computes the same id from the persisted `(name, space)`.
+   */
   override val _id: Id[Tool] = ScriptTool.id(name, space)
 
-  type Input  = JsonInput
+  type Input = JsonInput
   type Output = ScriptToolOutput
-  override val inputRW: RW[JsonInput] = summon[RW[JsonInput]]
-  override val outputRW: RW[ScriptToolOutput] = summon[RW[ScriptToolOutput]]
 
-  override def inputDefinition: Definition = parameters
+  /**
+   * The record's stored `parameters` schema over honest JSON args.
+   */
+  val io: ToolIO[JsonInput, ScriptToolOutput] = ToolIO.dynamicAs[ScriptToolOutput](parameters)
 
-  override def executeResult(input: JsonInput,
-                             context: ToolContext): Task[ToolResult[ScriptToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[ScriptToolOutput]] =
     context.sigil match {
       case s: ScriptSigil => runOnExecutor(s.scriptExecutor, input.json, context)
-      case _              => Task.pure(ToolResult.failure(
-        "Sigil instance does not mix in ScriptSigil; cannot execute script tool."
-      ))
+      case _ => Task.pure(ToolResult.failure(
+          "Sigil instance does not mix in ScriptSigil; cannot execute script tool."
+        ))
     }
 
-  private def runOnExecutor(executor: ScriptExecutor,
-                            args: fabric.Json,
-                            context: ToolContext): Task[ToolResult[ScriptToolOutput]] = {
+  private def runOnExecutor(executor: ScriptExecutor, args: fabric.Json, context: ToolContext): Task[ToolResult[ScriptToolOutput]] = {
     val bindings = ScriptTools.defaultBindings(context) ++ Map("args" -> args, "context" -> context)
-    val started  = System.currentTimeMillis()
+    val started = System.currentTimeMillis()
     // Wrap the construction in `Task.defer` so synchronous throws
     // during executor.execute argument evaluation, a compile error, or
     // a runtime throw surface as a recoverable `ToolResult.failure`.
@@ -89,7 +107,7 @@ case class ScriptTool(override val name: ToolName,
       executor.execute(code, bindings)
         .map { output =>
           ToolResult.Success(ScriptToolOutput(
-            output     = Some(output),
+            output = Some(output),
             durationMs = System.currentTimeMillis() - started
           ))
         }
@@ -105,23 +123,21 @@ case class ScriptTool(override val name: ToolName,
     // fix the script.
     ToolResult.failure(
       message = ExecuteScriptTool.formatThrowable(t),
-      hint    = Some("fix the script and re-run")
+      hint = Some("fix the script and re-run")
     )
 }
 
 object ScriptTool {
 
-  /** Build the validated [[ToolSpec]] from persisted fields. Scripts
-    * run arbitrary code, so the effect is conservatively
-    * [[Effect.Mutating]] with unknown targets. Legacy rows with a
-    * blank description or no keywords are repaired with a warn — the
-    * row stays readable; the create path enforces the full contract
-    * for new records. */
-  def specFor(name: ToolName,
-              description: String,
-              space: SpaceId,
-              keywords: Set[String],
-              modes: Set[Id[Mode]]): ToolSpec = {
+  /**
+   * Build the validated [[ToolSpec]] from persisted fields. Scripts
+   * run arbitrary code, so the effect is conservatively
+   * [[Effect.Mutating]] with unknown targets. Legacy rows with a
+   * blank description or no keywords are repaired with a warn — the
+   * row stays readable; the create path enforces the full contract
+   * for new records.
+   */
+  def specFor(name: ToolName, description: String, space: SpaceId, keywords: Set[String], modes: Set[Id[Mode]]): ToolSpec = {
     val desc =
       if (description.isBlank) {
         scribe.warn(s"Script tool '${name.value}' has a blank persisted description; substituting a stub.")
@@ -141,12 +157,14 @@ object ScriptTool {
     )
   }
 
-  /** Stable record id derived from `(name, space)` so `Sigil.createTool`'s
-    * upsert actually overwrites in place when an agent re-creates a tool
-    * with the same name in the same space. Random ids would let
-    * collisions persist as duplicate rows; that contradicted
-    * [[CreateScriptToolTool]]'s docstring contract ("same name
-    * overwrites") and left agents with no way to disambiguate. */
+  /**
+   * Stable record id derived from `(name, space)` so `Sigil.createTool`'s
+   * upsert actually overwrites in place when an agent re-creates a tool
+   * with the same name in the same space. Random ids would let
+   * collisions persist as duplicate rows; that contradicted
+   * [[CreateScriptToolTool]]'s docstring contract ("same name
+   * overwrites") and left agents with no way to disambiguate.
+   */
   def id(name: ToolName, space: SpaceId): Id[Tool] =
     Id[Tool](s"script::${space.value}::${name.value}")
 }

@@ -79,6 +79,17 @@ object FrameBuilder {
       case ToolOutcome.Failure(reason, _) =>
         val body = if (ti.summary.nonEmpty) ti.summary else reason
         (body, Nil)
+      case ToolOutcome.Success if ti.overflow.isDefined && ti.summary.nonEmpty =>
+        // Bounded result: the typed `output` is preserved on the invoke
+        // (so typed consumers — and the visual channel below — keep the
+        // real value), but the model-facing text is the bounded head the
+        // executor wrote to `summary`. An ImageToolOutput with an
+        // oversized caption keeps its image.
+        val images = ti.output match {
+          case img: sigil.tool.ImageToolOutput => List(sigil.tool.ImageQuality.stamp(img.url, img.quality))
+          case _                               => Nil
+        }
+        (ti.summary, images)
       case ToolOutcome.Success =>
         ti.output match {
           case ToolOutput.Pending =>

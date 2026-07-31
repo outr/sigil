@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class PinModelInput(modelId: String) extends ToolInput derives RW
 
@@ -29,8 +29,10 @@ case class PinModelInput(modelId: String) extends ToolInput derives RW
 case object PinModelTool extends Tool {
   type Input  = PinModelInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[PinModelInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[PinModelInput, TextToolOutput] = ToolIO.derived[PinModelInput, TextToolOutput].withExamples(
+    ToolExample("Pin to local llama", PinModelInput("local/qwen3.5-9b")),
+    ToolExample("Pin to a frontier model", PinModelInput("openai/gpt-5.5"))
+  )
   override val name = ToolName("pin_model")
   override val description =
     """Pin this conversation's agent turn to one model. Overrides mode strategies and space
@@ -40,10 +42,6 @@ case object PinModelTool extends Tool {
       |
       |Use when the user wants deterministic model selection ("always use local qwen", "stay on
       |gpt-5.5 for my replies").""".stripMargin
-  override val examples = List(
-    ToolExample("Pin to local llama", PinModelInput("local/qwen3.5-9b")),
-    ToolExample("Pin to a frontier model", PinModelInput("openai/gpt-5.5"))
-  )
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -54,8 +52,10 @@ case object PinModelTool extends Tool {
     ))
   )
 
-  override def executeResult(input: PinModelInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: PinModelInput,
+                            ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ModelResolution.resolve(input.modelId, ctx).flatMap {
       case ModelResolutionResult.Unresolved(_, guidance) =>
         Task.pure(ToolResult.failure(guidance))

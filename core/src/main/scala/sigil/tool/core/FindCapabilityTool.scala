@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.event.CapabilityResults
 import sigil.signal.EventState
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoveryRequest, DiscoverySpec, Effect, Freshness, OutputBounds, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoveryRequest, DiscoverySpec, Effect, Freshness, OutputBounds, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
    * Discovery tool. The agent calls `find_capability` when it needs to
@@ -19,8 +19,11 @@ import sigil.tool.{DiscoveryRequest, DiscoverySpec, Effect, Freshness, OutputBou
 case object FindCapabilityTool extends Tool {
   type Input  = FindCapabilityInput
   type Output = FindCapabilityOutput
-  val inputRW  = summon[RW[FindCapabilityInput]]
-  val outputRW = summon[RW[FindCapabilityOutput]]
+  val io: ToolIO[FindCapabilityInput, FindCapabilityOutput] = ToolIO.derived[FindCapabilityInput, FindCapabilityOutput].withExamples(
+    ToolExample("Send a message",          FindCapabilityInput("send slack channel message")),
+    ToolExample("Pause / wait / sleep",    FindCapabilityInput("sleep wait delay pause")),
+    ToolExample("Look up by concept",      FindCapabilityInput("billing invoice payment charge"))
+  )
 
   override val name = ToolName("find_capability")
   override val description: String =
@@ -81,14 +84,11 @@ case object FindCapabilityTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("find", "capability", "discover", "search", "catalog", "tool"))
   )
 
-  override val examples: List[ToolExample] = List(
-    ToolExample("Send a message",          FindCapabilityInput("send slack channel message")),
-    ToolExample("Pause / wait / sleep",    FindCapabilityInput("sleep wait delay pause")),
-    ToolExample("Look up by concept",      FindCapabilityInput("billing invoice payment charge"))
-  )
 
-  override def executeResult(input: FindCapabilityInput,
-                             context: ToolContext): Task[ToolResult[FindCapabilityOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: FindCapabilityInput,
+                            context: ToolContext): Task[ToolResult[FindCapabilityOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
       val request = DiscoveryRequest(
         keywords = FindCapabilityTool.normaliseKeywords(input.keywords),

@@ -3,11 +3,22 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
-case class DapVariablesInput(sessionId: String,
-                             variablesReference: Int,
-                             maxResults: Int = 100) extends ToolInput derives RW
+case class DapVariablesInput(sessionId: String, variablesReference: Int, maxResults: Int = 100) extends ToolInput derives RW
 
 /**
  * Fetch variables from a scope or expanded structured value.
@@ -21,8 +32,12 @@ case class DapVariablesInput(sessionId: String,
 final class DapVariablesTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapVariablesInput
   type Output = DapVariablesOutput
-  val inputRW = summon[RW[DapVariablesInput]]
-  val outputRW = summon[RW[DapVariablesOutput]]
+  val io: ToolIO[DapVariablesInput, DapVariablesOutput] = ToolIO.derived[DapVariablesInput, DapVariablesOutput].withExamples(
+    ToolExample(
+      "fetch locals for a scope",
+      DapVariablesInput(sessionId = "demo-session", variablesReference = 1001)
+    )
+  )
   override val name = ToolName("dap_variables")
   override val description =
     """Fetch variables for a scope or structured value's children.
@@ -37,14 +52,10 @@ final class DapVariablesTool(val manager: DapManager) extends Tool with DapToolS
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "variables", "locals", "inspect", "values"))
   )
-  override val examples = List(
-    ToolExample(
-      "fetch locals for a scope",
-      DapVariablesInput(sessionId = "demo-session", variablesReference = 1001)
-    )
-  )
 
-  override def executeResult(input: DapVariablesInput, context: ToolContext): Task[ToolResult[DapVariablesOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapVariablesInput, context: ToolContext): Task[ToolResult[DapVariablesOutput]] =
     withSession(input.sessionId, context) { session =>
       session.variables(input.variablesReference).map { vars =>
         val capped = vars.take(input.maxResults)

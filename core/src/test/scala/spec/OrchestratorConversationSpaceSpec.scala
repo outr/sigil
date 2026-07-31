@@ -9,10 +9,31 @@ import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.db.Model
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
-  CallId, ConversationMode, ConversationRequest, GenerationSettings,
-  Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
+  CallId,
+  ConversationMode,
+  ConversationRequest,
+  GenerationSettings,
+  Instructions,
+  Provider,
+  ProviderCall,
+  ProviderEvent,
+  ProviderType,
+  StopReason
 }
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.ToolContext
 import spice.http.HttpRequest
 
@@ -37,20 +58,21 @@ import java.util.concurrent.atomic.AtomicReference
 class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Capture-tool — records the `ctx.conversation` it receives so
-    * the test can assert against it. Single-shot per spec; the
-    * captured reference is observed AFTER the orchestrator stream
-    * drains. */
+  /**
+   * Capture-tool — records the `ctx.conversation` it receives so
+   * the test can assert against it. Single-shot per spec; the
+   * captured reference is observed AFTER the orchestrator stream
+   * drains.
+   */
   private val captured: AtomicReference[Option[Conversation]] = new AtomicReference(None)
 
   case class CaptureInput() extends ToolInput derives RW
 
   case object CaptureTool extends Tool {
-    type Input  = CaptureInput
+    type Input = CaptureInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[CaptureInput]]
-    val outputRW = summon[RW[TextToolOutput]]
-    override val name        = ToolName("capture")
+    val io: ToolIO[CaptureInput, TextToolOutput] = ToolIO.derived[CaptureInput, TextToolOutput]
+    override val name = ToolName("capture")
     override val description = "test-only — captures the TurnContext's conversation"
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -58,7 +80,9 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "capture"))
     )
-    override def executeResult(input: CaptureInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: CaptureInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task {
         captured.set(Some(ctx.conversation))
         ToolResult.Success(TextToolOutput("captured"))
@@ -67,8 +91,10 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
   ToolInput.register(summon[RW[CaptureInput]])
   sigil.tool.Tool.register(fabric.rw.RW.static(CaptureTool))
 
-  /** Provider that synthesizes a single atomic `capture` tool call.
-    * Single content block, no streaming → atomic dispatch path. */
+  /**
+   * Provider that synthesizes a single atomic `capture` tool call.
+   * Single content block, no streaming → atomic dispatch path.
+   */
   private class CaptureCallProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -89,25 +115,25 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
 
     "thread the caller's Conversation (with custom SpaceId) into ctx.conversation (bug #46)" in {
       val convId = Conversation.id(s"orch-space-${rapid.Unique()}")
-      val view   = ConversationView(conversationId = convId)
+      val view = ConversationView(conversationId = convId)
       // Use TestSpace — already registered in TestSigil. Confirms a
       // non-GlobalSpace value round-trips into the tool.
-      val conv   = Conversation(
+      val conv = Conversation(
         topics = TestTopicStack,
-        space  = TestSpace,
-        _id    = convId
+        space = TestSpace,
+        _id = convId
       )
       val request = ConversationRequest(
-        conversationId     = convId,
-        model            = TestSigil.testModel(Model.id("test", "model")),
-        instructions       = Instructions(),
-        turnInput          = TurnInput(view),
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
-        previousTopics     = Nil,
+        conversationId = convId,
+        model = TestSigil.testModel(Model.id("test", "model")),
+        instructions = Instructions(),
+        turnInput = TurnInput(view),
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
+        previousTopics = Nil,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-        chain              = List(TestUser, TestAgent),
-        tools              = Vector(CaptureTool)
+        chain = List(TestUser, TestAgent),
+        tools = Vector(CaptureTool)
       )
       captured.set(None)
       for {

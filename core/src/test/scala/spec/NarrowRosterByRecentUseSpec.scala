@@ -10,11 +10,32 @@ import sigil.db.{Model, ModelArchitecture, ModelDefaultParameters, ModelLinks, M
 import sigil.event.Message
 import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
 import sigil.provider.{
-  CallId, GenerationSettings, Instructions, Provider, ProviderCall,
-  ProviderEvent, ProviderType, StopReason, ToolPolicy
+  CallId,
+  GenerationSettings,
+  Instructions,
+  Provider,
+  ProviderCall,
+  ProviderEvent,
+  ProviderType,
+  StopReason,
+  ToolPolicy
 }
 import sigil.signal.EventState
-import sigil.tool.{DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  InMemoryToolFinder,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolSpec
+}
 import sigil.tool.core.{CoreTools, FindCapabilityTool, RespondOptionsTool, RespondTool}
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
@@ -46,31 +67,29 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private val testModel: Model = {
     val now = lightdb.time.Timestamp()
     Model(
-      canonicalSlug       = modelId.value,
-      huggingFaceId       = "",
-      name                = modelId.value,
-      description         = "Synthetic model for sigil #304 wire-narrowing coverage.",
-      contextLength       = 200_000L,
-      architecture        = ModelArchitecture(
-        modality         = "text->text",
-        inputModalities  = List("text"),
+      canonicalSlug = modelId.value,
+      huggingFaceId = "",
+      name = modelId.value,
+      description = "Synthetic model for sigil #304 wire-narrowing coverage.",
+      contextLength = 200_000L,
+      architecture = ModelArchitecture(
+        modality = "text->text",
+        inputModalities = List("text"),
         outputModalities = List("text"),
-        tokenizer        = "GPT",
-        instructType     = None
+        tokenizer = "GPT",
+        instructType = None
       ),
-      pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0),
-                                          webSearch = None, inputCacheRead = None),
-      topProvider         = ModelTopProvider(contextLength = Some(200_000L),
-                                              maxCompletionTokens = Some(2_048L), isModerated = false),
-      perRequestLimits    = None,
+      pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+      topProvider = ModelTopProvider(contextLength = Some(200_000L), maxCompletionTokens = Some(2_048L), isModerated = false),
+      perRequestLimits = None,
       supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
-      defaultParameters   = ModelDefaultParameters(),
-      knowledgeCutoff     = None,
-      expirationDate      = None,
-      links               = ModelLinks(details = ""),
-      created             = now,
-      modified            = now,
-      _id                 = modelId
+      defaultParameters = ModelDefaultParameters(),
+      knowledgeCutoff = None,
+      expirationDate = None,
+      links = ModelLinks(details = ""),
+      created = now,
+      modified = now,
+      _id = modelId
     )
   }
   TestSigil.cache.merge(List(testModel)).sync()
@@ -80,10 +99,9 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
   ToolInput.register(summon[RW[NarrowingStubInput]])
 
   private def stubTool(n: String): Tool { type Input = NarrowingStubInput } = new Tool {
-    type Input  = NarrowingStubInput
+    type Input = NarrowingStubInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[NarrowingStubInput]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[NarrowingStubInput, TextToolOutput] = ToolIO.derived[NarrowingStubInput, TextToolOutput]
     override val name = ToolName.parse(n).fold(sys.error, identity)
     override val description = s"Synthetic tool $n."
     val spec: ToolSpec = ToolSpec(
@@ -92,7 +110,9 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", n))
     )
-    override def executeOutput(input: NarrowingStubInput, ctx: ToolContext): Task[TextToolOutput] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+    private def executeOutput(input: NarrowingStubInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput("ok"))
   }
 
@@ -100,11 +120,13 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private val Baseline: List[Tool { type Input = NarrowingStubInput }] = (1 to BaselineSize).toList.map(i => stubTool(s"app_tool_$i"))
   private val UsedTool: Tool { type Input = NarrowingStubInput } = Baseline(2) // app_tool_3
 
-  /** Scripts the Shopkeeper pattern — a single-iteration turn that
-    * emits both a non-terminal tool call AND a terminal respond in
-    * the same provider response. Every call is shaped this way so
-    * subsequent turns also single-iterate. */
-  private final class SingleIterTwoCallsProvider(
+  /**
+   * Scripts the Shopkeeper pattern — a single-iteration turn that
+   * emits both a non-terminal tool call AND a terminal respond in
+   * the same provider response. Every call is shaped this way so
+   * subsequent turns also single-iterate.
+   */
+  final private class SingleIterTwoCallsProvider(
     captured: ConcurrentLinkedQueue[ProviderCall]
   ) extends Provider {
     private val callCount = new AtomicInteger(0)
@@ -116,7 +138,7 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
       captured.add(input)
       val n = callCount.incrementAndGet()
-      val toolCid    = CallId(s"call-$n-tool")
+      val toolCid = CallId(s"call-$n-tool")
       val respondCid = CallId(s"call-$n-respond")
       Stream.emits(List[ProviderEvent](
         ProviderEvent.ToolCallStart(toolCid, UsedTool.schema.name.value),
@@ -126,10 +148,10 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
           respondCid,
           _root_.sigil.tool.core.RespondTool)(
           _root_.sigil.tool.model.RespondInput(
-            topicLabel   = "T",
+            topicLabel = "T",
             topicSummary = "test",
-            content      = s"reply $n",
-            endsTurn     = true
+            content = s"reply $n",
+            endsTurn = true
           )
         ),
         ProviderEvent.Done(StopReason.Complete)
@@ -144,14 +166,15 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = List(
-        RespondTool.schema.name, RespondOptionsTool.schema.name,
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = List(
+        RespondTool.schema.name,
+        RespondOptionsTool.schema.name,
         FindCapabilityTool.schema.name
       ) ++ Baseline.map(_.schema.name),
-      tools              = ToolPolicy.Standard,
-      instructions       = Instructions(),
+      tools = ToolPolicy.Standard,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -171,20 +194,19 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
     }
   }
 
-  private def callsFor(captured: ConcurrentLinkedQueue[ProviderCall],
-                       convId: Id[Conversation]): List[ProviderCall] =
+  private def callsFor(captured: ConcurrentLinkedQueue[ProviderCall], convId: Id[Conversation]): List[ProviderCall] =
     captured.iterator().asScalaList
       .filter(c => c.conversationId.contains(convId) && c.tools.nonEmpty)
 
-  /** Block until the agent's [[sigil.event.AgentState]] lock for
-    * `(agent, conv)` has settled to `Complete` (released claim). The
-    * cross-turn assertion only holds when turn 1's loop fully
-    * terminates BEFORE turn 2's user message lands — otherwise the
-    * second message becomes a within-loop external trigger and
-    * `runAgent` doesn't re-fire. */
-  private def waitForAgentIdle(convId: Id[Conversation],
-                               agentId: sigil.participant.ParticipantId,
-                               deadlineMs: Long): Task[Unit] = {
+  /**
+   * Block until the agent's [[sigil.event.AgentState]] lock for
+   * `(agent, conv)` has settled to `Complete` (released claim). The
+   * cross-turn assertion only holds when turn 1's loop fully
+   * terminates BEFORE turn 2's user message lands — otherwise the
+   * second message becomes a within-loop external trigger and
+   * `runAgent` doesn't re-fire.
+   */
+  private def waitForAgentIdle(convId: Id[Conversation], agentId: sigil.participant.ParticipantId, deadlineMs: Long): Task[Unit] = {
     val lockId: lightdb.id.Id[sigil.event.Event] =
       lightdb.id.Id(s"agentlock:${agentId.value}:${convId.value}")
     val end = System.currentTimeMillis() + deadlineMs
@@ -205,8 +227,8 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val captured = new ConcurrentLinkedQueue[ProviderCall]()
       TestSigil.setProvider(Task.pure(new SingleIterTwoCallsProvider(captured)))
       val convId = Conversation.id(s"narrow-cross-turn-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         // Turn 1: a single iteration that emits both `app_tool_3` and
@@ -214,12 +236,13 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
         // lands in the projection, then `respond(endsTurn=true)`
         // terminates the loop and releases the agent lock.
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("first request")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("first request")),
+          state =
+            EventState.Complete
+        ))
         _ <- waitUntil(callsFor(captured, convId).nonEmpty, deadlineMs = 10_000L)
         // Turn 1 must FULLY terminate (lock release) before turn 2's
         // user Message lands — otherwise turn 2 piggybacks onto the
@@ -231,15 +254,16 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
         // turn 2 fires — otherwise the cross-turn test could fail for
         // an unrelated reason.
         proj <- TestSigil.projectionFor(TestAgent, convId)
-        _     = proj.recentToolInvocations.map(_.toolName.value) should contain ("app_tool_3")
+        _ = proj.recentToolInvocations.map(_.toolName.value) should contain("app_tool_3")
         // Turn 2: a fresh user Message triggers a new `runAgent` claim.
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("second request")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("second request")),
+          state =
+            EventState.Complete
+        ))
         _ <- waitUntil(callsFor(captured, convId).size > turn1Count, deadlineMs = 10_000L)
       } yield {
         val allCalls = callsFor(captured, convId)
@@ -252,9 +276,9 @@ class NarrowRosterByRecentUseSpec extends AsyncWordSpec with AsyncTaskSpec with 
         // pre-#304 behaviour wiped recent at every `runAgent` start,
         // so this assertion fails on the snapshot: turn2FirstNames
         // would contain the full 10 baseline names.
-        turn2FirstNames should contain ("app_tool_3")
-        turn2FirstNames should contain (FindCapabilityTool.schema.name.value)
-        turn2FirstNames should contain (RespondTool.schema.name.value)
+        turn2FirstNames should contain("app_tool_3")
+        turn2FirstNames should contain(FindCapabilityTool.schema.name.value)
+        turn2FirstNames should contain(RespondTool.schema.name.value)
         val droppedNames = (1 to BaselineSize).map(i => s"app_tool_$i").toSet - "app_tool_3"
         turn2FirstNames.intersect(droppedNames) shouldBe Set.empty[String]
       }

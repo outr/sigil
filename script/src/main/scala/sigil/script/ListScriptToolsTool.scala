@@ -3,7 +3,7 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * List the script-backed tools visible to the caller. Visibility is
@@ -13,10 +13,9 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolN
  * space.
  */
 case object ListScriptToolsTool extends Tool {
-  type Input  = ListScriptToolsInput
+  type Input = ListScriptToolsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ListScriptToolsInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ListScriptToolsInput, TextToolOutput] = ToolIO.derived[ListScriptToolsInput, TextToolOutput]
 
   override val name = ToolName("list_script_tools")
   override val description =
@@ -33,8 +32,9 @@ case object ListScriptToolsTool extends Tool {
     )
   )
 
-  override def executeResult(input: ListScriptToolsInput,
-                             context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ListScriptToolsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       context.sigil.withDB(_.tools.transaction(_.list)).map { allTools =>
         val needle = input.nameContains.map(_.toLowerCase)
@@ -50,6 +50,5 @@ case object ListScriptToolsTool extends Tool {
   private def renderListing(tools: List[ScriptTool]): String =
     if (tools.isEmpty) "No script tools visible."
     else tools.map(t =>
-      s"- **${t.name.value}** _(space: ${t.space.value})_ — ${t.description}"
-    ).mkString("\n")
+      s"- **${t.name.value}** _(space: ${t.space.value})_ — ${t.description}").mkString("\n")
 }

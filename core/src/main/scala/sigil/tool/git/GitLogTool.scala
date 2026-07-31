@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitLogInput, GitLogOutput}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Read-only `git_log` — runs `git log` with a record-separator
@@ -15,8 +15,11 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName
 final class GitLogTool(context: FileSystemContext) extends Tool {
   type Input  = GitLogInput
   type Output = GitLogOutput
-  val inputRW  = summon[RW[GitLogInput]]
-  val outputRW = summon[RW[GitLogOutput]]
+  val io: ToolIO[GitLogInput, GitLogOutput] = ToolIO.derived[GitLogInput, GitLogOutput].withExamples(
+    ToolExample("20 most recent commits",    GitLogInput()),
+    ToolExample("Last 5 commits on a path",  GitLogInput(path = Some("src/main"), limit = Some(5))),
+    ToolExample("Commits since last Friday", GitLogInput(since = Some("last friday"), includeBody = true))
+  )
   override val name = ToolName("git_log")
   override val description =
     """Recent commit history. Optional `path` filters to commits touching that path; `since` accepts any
@@ -28,13 +31,10 @@ final class GitLogTool(context: FileSystemContext) extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(keywords = Set("git", "log", "history", "commits", "blame"))
   )
-  override val examples = List(
-    ToolExample("20 most recent commits",    GitLogInput()),
-    ToolExample("Last 5 commits on a path",  GitLogInput(path = Some("src/main"), limit = Some(5))),
-    ToolExample("Commits since last Friday", GitLogInput(since = Some("last friday"), includeBody = true))
-  )
 
-  override def executeOutput(input: GitLogInput, ctx: ToolContext): Task[GitLogOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: GitLogInput, ctx: ToolContext): Task[GitLogOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val limit    = input.limit.getOrElse(20)
       val format   = "%H%x00%an%x00%aI%x00%s%x00%b%x1e"

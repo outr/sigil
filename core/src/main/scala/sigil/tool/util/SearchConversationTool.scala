@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.{Event, Message, TopicChange}
 import sigil.tool.model.{ResponseContent, SearchConversationHit, SearchConversationInput, SearchConversationOutput}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Opt-in util-tier tool: retrieves historical events from the persistent
@@ -25,8 +25,16 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName
 case object SearchConversationTool extends Tool {
   type Input  = SearchConversationInput
   type Output = SearchConversationOutput
-  val inputRW  = summon[RW[SearchConversationInput]]
-  val outputRW = summon[RW[SearchConversationOutput]]
+  val io: ToolIO[SearchConversationInput, SearchConversationOutput] = ToolIO.derived[SearchConversationInput, SearchConversationOutput].withExamples(
+    ToolExample(
+      "Find earlier exchanges mentioning the Qdrant deployment",
+      SearchConversationInput(query = "Qdrant deployment")
+    ),
+    ToolExample(
+      "Walk the most recent events of a worker conversation",
+      SearchConversationInput(query = "", conversationId = Some(sigil.conversation.Conversation.id("worker-xyz")))
+    )
+  )
   override val name = ToolName("search_conversation")
   override val description =
     """Search OR walk the persistent log of a conversation (the caller's own, its parent, or one of
@@ -66,19 +74,11 @@ case object SearchConversationTool extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(keywords = Set("search", "conversation", "history", "find", "recall", "walk", "browse", "forensics"))
   )
-  override val examples = List(
-    ToolExample(
-      "Find earlier exchanges mentioning the Qdrant deployment",
-      SearchConversationInput(query = "Qdrant deployment")
-    ),
-    ToolExample(
-      "Walk the most recent events of a worker conversation",
-      SearchConversationInput(query = "", conversationId = Some(sigil.conversation.Conversation.id("worker-xyz")))
-    )
-  )
 
-  override def executeResult(input: SearchConversationInput,
-                             context: ToolContext): Task[ToolResult[SearchConversationOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: SearchConversationInput,
+                            context: ToolContext): Task[ToolResult[SearchConversationOutput]] = {
     val targetConvId = input.conversationId.getOrElse(context.conversation.id)
     val currentConvId = context.conversation.id
     context.sigil.canReadConversation(currentConvId, targetConvId).flatMap {

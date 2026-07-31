@@ -3,7 +3,7 @@ package sigil.tool.random
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.model.{RandomIntInput, RandomIntOutput}
 
 /**
@@ -22,8 +22,10 @@ import sigil.tool.model.{RandomIntInput, RandomIntOutput}
 case object RandomIntTool extends Tool {
   type Input  = RandomIntInput
   type Output = RandomIntOutput
-  val inputRW  = summon[RW[RandomIntInput]]
-  val outputRW = summon[RW[RandomIntOutput]]
+  val io: ToolIO[RandomIntInput, RandomIntOutput] = ToolIO.derived[RandomIntInput, RandomIntOutput].withExamples(
+    ToolExample("d20 dice roll", RandomIntInput(min = 1, max = 20)),
+    ToolExample("seeded coin flip (reproducible)", RandomIntInput(min = 0, max = 1, seed = Some(42L)))
+  )
 
   override val name = ToolName("random_int")
   override val description =
@@ -39,12 +41,10 @@ case object RandomIntTool extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
     discovery = DiscoverySpec(keywords = Set("random", "rand", "int", "integer", "number", "rng", "dice", "roll"))
   )
-  override val examples = List(
-    ToolExample("d20 dice roll", RandomIntInput(min = 1, max = 20)),
-    ToolExample("seeded coin flip (reproducible)", RandomIntInput(min = 0, max = 1, seed = Some(42L)))
-  )
 
-  override def executeOutput(input: RandomIntInput, context: ToolContext): Task[RandomIntOutput] = Task {
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: RandomIntInput, context: ToolContext): Task[RandomIntOutput] = Task {
     require(input.min <= input.max, s"random_int: min (${input.min}) must be <= max (${input.max})")
     val rng   = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)
     val span  = BigInt(input.max) - BigInt(input.min) + 1

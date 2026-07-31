@@ -3,13 +3,10 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspLocation, LspLocationsResult}
 
-case class LspGotoDefinitionInput(languageId: String,
-                                  filePath: String,
-                                  line: Int,
-                                  character: Int) extends ToolInput derives RW
+case class LspGotoDefinitionInput(languageId: String, filePath: String, line: Int, character: Int) extends ToolInput derives RW
 
 /**
  * Locate where a symbol is defined. `line` and `character` are 0-based
@@ -25,12 +22,10 @@ case class LspGotoDefinitionInput(languageId: String,
  *
  * Emits `LspLocationsResult` — empty when no definition was found.
  */
-final class LspGotoDefinitionTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspGotoDefinitionInput
+final class LspGotoDefinitionTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspGotoDefinitionInput
   type Output = LspLocationsResult
-  val inputRW  = summon[RW[LspGotoDefinitionInput]]
-  val outputRW = summon[RW[LspLocationsResult]]
+  val io: ToolIO[LspGotoDefinitionInput, LspLocationsResult] = ToolIO.derived[LspGotoDefinitionInput, LspLocationsResult]
 
   override val name = ToolName("lsp_goto_definition")
   override val description =
@@ -45,18 +40,36 @@ final class LspGotoDefinitionTool(val manager: LspManager) extends Tool
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(
       keywords = Set(
-        "lsp", "definition", "definitions", "where defined", "declaration",
-        "jump-to", "goto", "go to", "find symbol", "examine", "inspect",
-        "navigate", "source", "semantic", "symbol",
-        "scala", "language", "code"
+        "lsp",
+        "definition",
+        "definitions",
+        "where defined",
+        "declaration",
+        "jump-to",
+        "goto",
+        "go to",
+        "find symbol",
+        "examine",
+        "inspect",
+        "navigate",
+        "source",
+        "semantic",
+        "symbol",
+        "scala",
+        "language",
+        "code"
       ),
       toolchain = Some("lsp")
     )
   )
 
-  override def executeOutput(input: LspGotoDefinitionInput, context: ToolContext): Task[LspLocationsResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspGotoDefinitionInput, context: ToolContext): Task[LspLocationsResult] =
     withOpenDocumentOrThrow[LspLocationsResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.gotoDefinition(uri, input.line, input.character)
         .map(locs => LspLocationsResult(locs.map(LspLocation.fromLsp4j)))

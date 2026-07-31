@@ -4,18 +4,31 @@ import fabric.rw.*
 import rapid.Task
 import sigil.browser.BrowserScript
 import sigil.browser.WebBrowserMode
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
-/** Delete a stored [[BrowserScript]] by name. Authz: caller's
-  * `accessibleSpaces` must include the script's space (or the
-  * script must live in [[GlobalSpace]]). */
+/**
+ * Delete a stored [[BrowserScript]] by name. Authz: caller's
+ * `accessibleSpaces` must include the script's space (or the
+ * script must live in [[GlobalSpace]]).
+ */
 case object DeleteBrowserScriptTool extends Tool {
-  type Input  = DeleteBrowserScriptInput
+  type Input = DeleteBrowserScriptInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[DeleteBrowserScriptInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DeleteBrowserScriptInput, TextToolOutput] = ToolIO.derived[DeleteBrowserScriptInput, TextToolOutput]
 
   override val name = ToolName("delete_browser_script")
   override val description =
@@ -30,8 +43,9 @@ case object DeleteBrowserScriptTool extends Tool {
     )
   )
 
-  override def executeResult(input: DeleteBrowserScriptInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DeleteBrowserScriptInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.accessibleSpaces(ctx.chain).flatMap { accessible =>
       ctx.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {
@@ -50,6 +64,7 @@ case object DeleteBrowserScriptTool extends Tool {
               s"Tool '${input.name}' exists but is not a browser script."))
         }
       })
-    }.handleError(t => Task.pure(ToolResult.failure(
-      s"Failed to delete browser script: ${t.getMessage}")))
+    }.handleError(t =>
+      Task.pure(ToolResult.failure(
+        s"Failed to delete browser script: ${t.getMessage}")))
 }

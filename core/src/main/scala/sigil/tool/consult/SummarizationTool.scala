@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{GenerationSettings, ReasoningMode, SummarizationWork, WorkType}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal-only tool used by [[sigil.conversation.compression.SummaryOnlyCompressor]]
@@ -13,8 +13,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolN
 case object SummarizationTool extends Tool with FrameworkConsult {
   type Input  = SummarizationInput
   type Output = TextToolOutput
-  val inputRW: RW[SummarizationInput] = summon[RW[SummarizationInput]]
-  val outputRW: RW[TextToolOutput]    = summon[RW[TextToolOutput]]
+  val io: ToolIO[SummarizationInput, TextToolOutput] = ToolIO.derived[SummarizationInput, TextToolOutput]
 
   override val name: ToolName = ToolName("summarize_conversation")
   override val description: String =
@@ -48,6 +47,8 @@ case object SummarizationTool extends Tool with FrameworkConsult {
 
   /** Never executed — the framework reads the typed input directly via
     * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
-  override def executeResult(input: SummarizationInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: SummarizationInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

@@ -3,10 +3,23 @@ package sigil.debug
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
-case class DapDisconnectInput(sessionId: String,
-                              terminateDebuggee: Boolean = false) extends ToolInput derives RW
+case class DapDisconnectInput(sessionId: String, terminateDebuggee: Boolean = false) extends ToolInput derives RW
 
 /**
  * End a debug session. `terminateDebuggee = true` kills the
@@ -17,8 +30,16 @@ case class DapDisconnectInput(sessionId: String,
 final class DapDisconnectTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapDisconnectInput
   type Output = TextToolOutput
-  val inputRW = summon[RW[DapDisconnectInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DapDisconnectInput, TextToolOutput] = ToolIO.derived[DapDisconnectInput, TextToolOutput].withExamples(
+    ToolExample(
+      "detach without killing the program",
+      DapDisconnectInput(sessionId = "demo-session")
+    ),
+    ToolExample(
+      "kill the debugged program on disconnect",
+      DapDisconnectInput(sessionId = "demo-session", terminateDebuggee = true)
+    )
+  )
   override val name = ToolName("dap_disconnect")
   override val description =
     """End a debug session.
@@ -31,18 +52,10 @@ final class DapDisconnectTool(val manager: DapManager) extends Tool with DapTool
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "disconnect", "detach", "end", "session", "terminate"))
   )
-  override val examples = List(
-    ToolExample(
-      "detach without killing the program",
-      DapDisconnectInput(sessionId = "demo-session")
-    ),
-    ToolExample(
-      "kill the debugged program on disconnect",
-      DapDisconnectInput(sessionId = "demo-session", terminateDebuggee = true)
-    )
-  )
 
-  override def executeResult(input: DapDisconnectInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapDisconnectInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.disconnect(input.terminateDebuggee).flatMap(_ => manager.disconnect(input.sessionId)).map { _ =>
         val suffix = if (input.terminateDebuggee) " (debuggee terminated)" else ""

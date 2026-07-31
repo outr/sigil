@@ -6,19 +6,20 @@ import fabric.{arr, num, obj, str}
 import rapid.Task
 import sigil.browser.BrowserScript
 import sigil.browser.WebBrowserMode
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.GlobalSpace
 import sigil.tool.ToolContext
 
-/** List every [[BrowserScript]] the caller's `accessibleSpaces`
-  * authorizes them to see (plus any in [[GlobalSpace]]). Returns a
-  * compact JSON array — name, description, step count, space, jar
-  * binding. */
+/**
+ * List every [[BrowserScript]] the caller's `accessibleSpaces`
+ * authorizes them to see (plus any in [[GlobalSpace]]). Returns a
+ * compact JSON array — name, description, step count, space, jar
+ * binding.
+ */
 case object ListBrowserScriptsTool extends Tool {
-  type Input  = ListBrowserScriptsInput
+  type Input = ListBrowserScriptsInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ListBrowserScriptsInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ListBrowserScriptsInput, TextToolOutput] = ToolIO.derived[ListBrowserScriptsInput, TextToolOutput]
 
   override val name = ToolName("list_browser_scripts")
   override val description =
@@ -33,22 +34,24 @@ case object ListBrowserScriptsTool extends Tool {
     )
   )
 
-  override def executeResult(input: ListBrowserScriptsInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ListBrowserScriptsInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.accessibleSpaces(ctx.chain).flatMap { accessible =>
       ctx.sigil.withDB(_.tools.transaction { tx =>
         tx.query.toList.map { tools =>
           val scripts = tools.collect {
             case s: BrowserScript if s.space == GlobalSpace || accessible.contains(s.space) => s
           }
-          val payload = arr(scripts.map(s => obj(
-            "name"        -> str(s.name.value),
-            "description" -> str(s.description),
-            "stepCount"   -> num(s.steps.size),
-            "space"       -> str(s.space.value),
-            "cookieJarId" -> s.cookieJarId.map(j => str(j.value)).getOrElse(fabric.Null),
-            "keywords"    -> arr(s.keywords.toList.map(str)*)
-          ))*)
+          val payload = arr(scripts.map(s =>
+            obj(
+              "name" -> str(s.name.value),
+              "description" -> str(s.description),
+              "stepCount" -> num(s.steps.size),
+              "space" -> str(s.space.value),
+              "cookieJarId" -> s.cookieJarId.map(j => str(j.value)).getOrElse(fabric.Null),
+              "keywords" -> arr(s.keywords.toList.map(str)*)
+            ))*)
           ToolResult.Success(TextToolOutput(JsonFormatter.Compact(payload)))
         }
       })

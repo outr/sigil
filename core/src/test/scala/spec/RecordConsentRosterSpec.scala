@@ -5,7 +5,23 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Task
 import sigil.Sigil
-import sigil.tool.{ConsentSpec, DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolGates, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  ConsentSpec,
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolGates,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tool.core.RecordConsentTool
 
 /**
@@ -21,11 +37,10 @@ class RecordConsentRosterSpec extends AnyWordSpec with Matchers {
 
   private case class PlainInput() extends ToolInput derives RW
   private case object PlainTool extends Tool {
-    type Input  = PlainInput
+    type Input = PlainInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[PlainInput]]
-    val outputRW = summon[RW[TextToolOutput]]
-    override val name        = ToolName("plain_action")
+    val io: ToolIO[PlainInput, TextToolOutput] = ToolIO.derived[PlainInput, TextToolOutput]
+    override val name = ToolName("plain_action")
     override val description = "An action that needs no consent."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -33,17 +48,18 @@ class RecordConsentRosterSpec extends AnyWordSpec with Matchers {
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "plain"))
     )
-    override def executeResult(input: PlainInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: PlainInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
   private case class GatedInput() extends ToolInput derives RW
   private case object GatedTool extends Tool {
-    type Input  = GatedInput
+    type Input = GatedInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[GatedInput]]
-    val outputRW = summon[RW[TextToolOutput]]
-    override val name        = ToolName("gated_action")
+    val io: ToolIO[GatedInput, TextToolOutput] = ToolIO.derived[GatedInput, TextToolOutput]
+    override val name = ToolName("gated_action")
     override val description = "An action that requires user consent."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -54,7 +70,9 @@ class RecordConsentRosterSpec extends AnyWordSpec with Matchers {
       ),
       discovery = DiscoverySpec(keywords = Set("test", "gated"))
     )
-    override def executeResult(input: GatedInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: GatedInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 

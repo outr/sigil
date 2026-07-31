@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{InlayHint, InlayHintKind, Position, Range}
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspInlayHintItem, LspInlayHintsResult, LspPosition}
 
 import scala.jdk.CollectionConverters.*
@@ -14,7 +14,8 @@ case class LspInlayHintsInput(languageId: String,
                               startLine: Int = 0,
                               startCharacter: Int = 0,
                               endLine: Int = Int.MaxValue,
-                              endCharacter: Int = 0) extends ToolInput derives RW
+                              endCharacter: Int = 0)
+  extends ToolInput derives RW
 
 /**
  * List inlay hints in a range — inferred type annotations, parameter
@@ -24,12 +25,10 @@ case class LspInlayHintsInput(languageId: String,
  *
  * Default range covers the whole file (`startLine=0, endLine=∞`).
  */
-final class LspInlayHintsTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspInlayHintsInput
+final class LspInlayHintsTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspInlayHintsInput
   type Output = LspInlayHintsResult
-  val inputRW  = summon[RW[LspInlayHintsInput]]
-  val outputRW = summon[RW[LspInlayHintsResult]]
+  val io: ToolIO[LspInlayHintsInput, LspInlayHintsResult] = ToolIO.derived[LspInlayHintsInput, LspInlayHintsResult]
 
   override val name = ToolName("lsp_inlay_hints")
   override val description =
@@ -49,9 +48,13 @@ final class LspInlayHintsTool(val manager: LspManager) extends Tool
     )
   )
 
-  override def executeOutput(input: LspInlayHintsInput, context: ToolContext): Task[LspInlayHintsResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspInlayHintsInput, context: ToolContext): Task[LspInlayHintsResult] =
     withOpenDocumentOrThrow[LspInlayHintsResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       val range = new Range(
         new Position(input.startLine, input.startCharacter),
@@ -64,7 +67,7 @@ final class LspInlayHintsTool(val manager: LspManager) extends Tool
 
   private def toItem(hint: InlayHint): LspInlayHintItem = {
     val kind = Option(hint.getKind).map {
-      case InlayHintKind.Type      => "type"
+      case InlayHintKind.Type => "type"
       case InlayHintKind.Parameter => "param"
     }.getOrElse("hint")
     val label = hint.getLabel match {

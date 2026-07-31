@@ -3,7 +3,7 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 import java.io.{ByteArrayOutputStream, File, InputStream}
 import java.net.URLClassLoader
@@ -12,25 +12,25 @@ import java.util.jar.JarFile
 import scala.util.boundary
 import scala.util.boundary.break
 
-/** Read a symbol's source code from a `-sources.jar` on the executor's
-   * classpath.
-   *
-   * sbt typically downloads `-sources.jar` artifacts alongside the
-   * regular jars for IDE support; this tool exploits that. When no
-   * `-sources.jar` ships the symbol's source, returns
-   * `(source not available)` and the agent falls back on
-   * [[ClassSignaturesTool]].
-   *
-   * The resolution is whole-file — given `spice.http.client.HttpClient`,
-   * we return the contents of `spice/http/client/HttpClient.scala`
-   * (or `.java`). Methods inside the file aren't separately extractable
-   * without a parser; the agent reads the whole class.
-   */
+/**
+ * Read a symbol's source code from a `-sources.jar` on the executor's
+ * classpath.
+ *
+ * sbt typically downloads `-sources.jar` artifacts alongside the
+ * regular jars for IDE support; this tool exploits that. When no
+ * `-sources.jar` ships the symbol's source, returns
+ * `(source not available)` and the agent falls back on
+ * [[ClassSignaturesTool]].
+ *
+ * The resolution is whole-file — given `spice.http.client.HttpClient`,
+ * we return the contents of `spice/http/client/HttpClient.scala`
+ * (or `.java`). Methods inside the file aren't separately extractable
+ * without a parser; the agent reads the whole class.
+ */
 case object ReadSourceTool extends Tool {
-  type Input  = ReadSourceInput
+  type Input = ReadSourceInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ReadSourceInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ReadSourceInput, TextToolOutput] = ToolIO.derived[ReadSourceInput, TextToolOutput]
 
   override val name = ToolName("read_source")
   override val description =
@@ -50,10 +50,12 @@ case object ReadSourceTool extends Tool {
     )
   )
 
-  override def executeResult(input: ReadSourceInput,
-                             context: ToolContext): Task[ToolResult[TextToolOutput]] = Task {
-    val text = try render(input.fqn)
-    catch { case e: Throwable => s"(read_source failed: ${e.getClass.getSimpleName}: ${e.getMessage})" }
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ReadSourceInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = Task {
+    val text =
+      try render(input.fqn)
+      catch { case e: Throwable => s"(read_source failed: ${e.getClass.getSimpleName}: ${e.getMessage})" }
     ToolResult.Success(TextToolOutput(text))
   }
 
@@ -63,7 +65,7 @@ case object ReadSourceTool extends Tool {
     val candidates = List(s"$relPath.scala", s"$relPath.java")
     findInClasspath(candidates) match {
       case Some((path, body)) => s"# $fqn\n# (source: $path)\n\n$body"
-      case None               => s"(source not available for $fqn — no `-sources.jar` on the classpath ships $relPath.scala or .java)"
+      case None => s"(source not available for $fqn — no `-sources.jar` on the classpath ships $relPath.scala or .java)"
     }
   }
 
@@ -102,15 +104,20 @@ case object ReadSourceTool extends Tool {
             val buf = new Array[Byte](8192)
             var n = is.read(buf)
             while (n != -1) { baos.write(buf, 0, n); n = is.read(buf) }
-          } finally try is.close() catch { case _: Throwable => () }
+          } finally
+            try is.close()
+            catch { case _: Throwable => () }
           (s"${file.getName}!$rel", baos.toString("UTF-8"))
         }
       }.nextOption()
     } catch { case _: Throwable => None }
-    finally if (jar != null) try jar.close() catch { case _: Throwable => () }
+    finally
+      if (jar != null)
+        try jar.close()
+        catch { case _: Throwable => () }
   }
 
-  private def findInDir(root: File, candidates: List[String]): Option[(String, String)] = {
+  private def findInDir(root: File, candidates: List[String]): Option[(String, String)] =
     candidates.iterator.flatMap { rel =>
       val f = new File(root, rel)
       if (f.isFile) {
@@ -118,5 +125,4 @@ case object ReadSourceTool extends Tool {
         catch { case _: Throwable => None }
       } else None
     }.nextOption()
-  }
 }

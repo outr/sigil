@@ -7,7 +7,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.storage.{FileVersion, WriteResult}
 import sigil.tool.model.{WriteFileInput, WriteFileOutput}
-import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, PlaceholderInputDetector, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Write `content` (UTF-8) to `path`, creating parent directories
@@ -24,8 +24,13 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, Pla
 final class WriteFileTool(context: FileSystemContext) extends Tool {
   type Input  = WriteFileInput
   type Output = WriteFileOutput
-  val inputRW  = summon[RW[WriteFileInput]]
-  val outputRW = summon[RW[WriteFileOutput]]
+  val io: ToolIO[WriteFileInput, WriteFileOutput] = ToolIO.derived[WriteFileInput, WriteFileOutput].withExamples(
+    ToolExample("Save text to a new file", WriteFileInput(path = "notes.txt", content = "Some notes.")),
+    ToolExample(
+      "Update a file safely",
+      WriteFileInput(path = "config.yaml", content = "debug: true", expectedHash = Some("abc123..."))
+    )
+  )
   override val name = ToolName("write_file")
   override val description =
     """Write content (UTF-8) to a file. Creates parent directories. Overwrites existing content.
@@ -47,13 +52,6 @@ final class WriteFileTool(context: FileSystemContext) extends Tool {
     ),
     discovery = DiscoverySpec(keywords = Set("file", "write", "save", "create", "output"))
   )
-  override val examples = List(
-    ToolExample("Save text to a new file", WriteFileInput(path = "notes.txt", content = "Some notes.")),
-    ToolExample(
-      "Update a file safely",
-      WriteFileInput(path = "config.yaml", content = "debug: true", expectedHash = Some("abc123..."))
-    )
-  )
 
   /** Non-Success WriteFileOutputs (Stale, NotFound) are logical failures of
     * the WRITE operation — the commit did NOT land. Surfacing them through
@@ -61,7 +59,9 @@ final class WriteFileTool(context: FileSystemContext) extends Tool {
     * Tool-role Failure Messages with actionable hints, instead of a
     * Success-shaped `ToolResults` the agent might gloss over and incorrectly
     * report as "I saved the file." */
-  override def executeResult(input: WriteFileInput, ctx: ToolContext): Task[ToolResult[WriteFileOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: WriteFileInput, ctx: ToolContext): Task[ToolResult[WriteFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        => runWrite(input, ctx)

@@ -3,11 +3,10 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspFoldingRangeItem, LspFoldingRangeResult}
 
-case class LspFoldingRangeInput(languageId: String,
-                                filePath: String) extends ToolInput derives RW
+case class LspFoldingRangeInput(languageId: String, filePath: String) extends ToolInput derives RW
 
 /**
  * List foldable regions in a file — class bodies, method bodies,
@@ -15,12 +14,10 @@ case class LspFoldingRangeInput(languageId: String,
  * compress a long file into a navigable outline before zooming in:
  * "what major sections does this file have, and where do they live?"
  */
-final class LspFoldingRangeTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspFoldingRangeInput
+final class LspFoldingRangeTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspFoldingRangeInput
   type Output = LspFoldingRangeResult
-  val inputRW  = summon[RW[LspFoldingRangeInput]]
-  val outputRW = summon[RW[LspFoldingRangeResult]]
+  val io: ToolIO[LspFoldingRangeInput, LspFoldingRangeResult] = ToolIO.derived[LspFoldingRangeInput, LspFoldingRangeResult]
   override val name = ToolName("lsp_folding_range")
   override val description =
     """List foldable regions in a file (class bodies, methods, import blocks, etc.).
@@ -37,18 +34,22 @@ final class LspFoldingRangeTool(val manager: LspManager) extends Tool
     )
   )
 
-  override def executeOutput(input: LspFoldingRangeInput, context: ToolContext): Task[LspFoldingRangeResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspFoldingRangeInput, context: ToolContext): Task[LspFoldingRangeResult] =
     withOpenDocumentOrThrow[LspFoldingRangeResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.foldingRange(uri).map { ranges =>
         LspFoldingRangeResult(
           filePath = input.filePath,
           ranges = ranges.map { r =>
             LspFoldingRangeItem(
-              kind      = Option(r.getKind).getOrElse("region"),
+              kind = Option(r.getKind).getOrElse("region"),
               startLine = r.getStartLine + 1,
-              endLine   = r.getEndLine + 1
+              endLine = r.getEndLine + 1
             )
           }
         )

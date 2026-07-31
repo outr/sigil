@@ -7,7 +7,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.storage.{FileVersion, WriteResult}
 import sigil.tool.model.{EditAtRangeInput, EditAtRangeOutput}
-import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, PlaceholderInputDetector, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Position-based file edit. Replaces the half-open range
@@ -27,8 +27,23 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTarget, MutationTargeting, Pla
 final class EditAtRangeTool(context: FileSystemContext) extends Tool {
   type Input  = EditAtRangeInput
   type Output = EditAtRangeOutput
-  val inputRW  = summon[RW[EditAtRangeInput]]
-  val outputRW = summon[RW[EditAtRangeOutput]]
+  val io: ToolIO[EditAtRangeInput, EditAtRangeOutput] = ToolIO.derived[EditAtRangeInput, EditAtRangeOutput].withExamples(
+    ToolExample(
+      "Replace a single line",
+      EditAtRangeInput(path = "src/main.scala", startLine = 4, startChar = 0, endLine = 5, endChar = 0,
+        newText = "  val x = 42\n")
+    ),
+    ToolExample(
+      "Insert at a specific column",
+      EditAtRangeInput(path = "config.toml", startLine = 0, startChar = 0, endLine = 0, endChar = 0,
+        newText = "# header\n")
+    ),
+    ToolExample(
+      "Delete a multi-line block",
+      EditAtRangeInput(path = "src/util.scala", startLine = 10, startChar = 0, endLine = 14, endChar = 0,
+        newText = "")
+    )
+  )
   override val name = ToolName("edit_at_range")
   override val description =
     """Replace a range of text in a file with new content. The range is specified by
@@ -64,25 +79,10 @@ final class EditAtRangeTool(context: FileSystemContext) extends Tool {
     ),
     discovery = DiscoverySpec(keywords = Set("file", "edit", "range", "position", "line", "column", "replace"))
   )
-  override val examples = List(
-    ToolExample(
-      "Replace a single line",
-      EditAtRangeInput(path = "src/main.scala", startLine = 4, startChar = 0, endLine = 5, endChar = 0,
-        newText = "  val x = 42\n")
-    ),
-    ToolExample(
-      "Insert at a specific column",
-      EditAtRangeInput(path = "config.toml", startLine = 0, startChar = 0, endLine = 0, endChar = 0,
-        newText = "# header\n")
-    ),
-    ToolExample(
-      "Delete a multi-line block",
-      EditAtRangeInput(path = "src/util.scala", startLine = 10, startChar = 0, endLine = 14, endChar = 0,
-        newText = "")
-    )
-  )
 
-  override def executeResult(input: EditAtRangeInput, ctx: ToolContext): Task[ToolResult[EditAtRangeOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: EditAtRangeInput, ctx: ToolContext): Task[ToolResult[EditAtRangeOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        => runEdit(input, ctx)

@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolIO, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.LspWorkspaceSymbol
 
 import scala.jdk.CollectionConverters.*
@@ -26,15 +26,11 @@ import scala.jdk.CollectionConverters.*
  * cross-module dependency updates) comes for free because we use
  * the same underlying `lsp_rename` path; this wrapper just removes
  * the lookup dance.
- *
-*
  */
-final class LspRenameSymbolTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspRenameSymbolInput
+final class LspRenameSymbolTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspRenameSymbolInput
   type Output = LspRenameSymbolOutput
-  val inputRW  = summon[RW[LspRenameSymbolInput]]
-  val outputRW = summon[RW[LspRenameSymbolOutput]]
+  val io: ToolIO[LspRenameSymbolInput, LspRenameSymbolOutput] = ToolIO.derived[LspRenameSymbolInput, LspRenameSymbolOutput]
 
   override val name = ToolName("lsp_rename_symbol")
   override val description =
@@ -56,32 +52,49 @@ final class LspRenameSymbolTool(val manager: LspManager) extends Tool
     profile = ToolProfile(effect = Effect.Destructive(MutationTargeting.none, "DESTRUCTIVE.")),
     discovery = DiscoverySpec(
       keywords = Set(
-        "lsp", "rename", "refactor", "symbol", "by name", "high-level",
-        "semantic", "identifier", "across project", "workspace", "change name",
+        "lsp",
+        "rename",
+        "refactor",
+        "symbol",
+        "by name",
+        "high-level",
+        "semantic",
+        "identifier",
+        "across project",
+        "workspace",
+        "change name",
         // Discoverability: surface via find-and-replace queries when the
         // intent is a semantic rename, and via navigation queries that
         // are actually rename intents in disguise.
-        "find", "find symbol", "replace name", "change identifier",
-        "update symbol name", "global rename", "search rename"
+        "find",
+        "find symbol",
+        "replace name",
+        "change identifier",
+        "update symbol name",
+        "global rename",
+        "search rename"
       ),
       toolchain = Some("lsp")
     )
   )
 
-  override def executeOutput(input: LspRenameSymbolInput,
-                             context: ToolContext): Task[LspRenameSymbolOutput] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspRenameSymbolInput, context: ToolContext): Task[LspRenameSymbolOutput] =
     withSessionTyped[LspRenameSymbolOutput](
-      input.languageId, input.projectRoot, context,
+      input.languageId,
+      input.projectRoot,
+      context,
       onError = msg => LspRenameSymbolOutput.Failed(input.symbolName, msg)
     ) { (session, _, _) =>
       session.workspaceSymbols(input.symbolName).flatMap { hits =>
         val symbols = hits.map { h =>
           LspWorkspaceSymbol(
-            kind      = Option(h.kind).map(_.toString.toLowerCase).getOrElse("unknown"),
-            name      = h.name,
+            kind = Option(h.kind).map(_.toString.toLowerCase).getOrElse("unknown"),
+            name = h.name,
             container = h.containerName,
-            uri       = h.uri,
-            position  = h.range.map(r => sigil.tooling.types.LspPosition.fromLsp4j(r.getStart))
+            uri = h.uri,
+            position = h.range.map(r => sigil.tooling.types.LspPosition.fromLsp4j(r.getStart))
           )
         }.toList
         val nameMatched = symbols.filter { s =>
@@ -89,8 +102,8 @@ final class LspRenameSymbolTool(val manager: LspManager) extends Tool
           else s.name == input.symbolName
         }
         val kindFiltered = input.kindHint match {
-          case None         => nameMatched
-          case Some(hint)   => nameMatched.filter(_.kind.equalsIgnoreCase(hint))
+          case None => nameMatched
+          case Some(hint) => nameMatched.filter(_.kind.equalsIgnoreCase(hint))
         }
         kindFiltered match {
           case Nil =>
@@ -123,24 +136,27 @@ final class LspRenameSymbolTool(val manager: LspManager) extends Tool
         }
       }
     }
-  }
 
-  /** Drive the underlying LspRenameTool flow against the resolved
-    * declaration position. Adapted from [[sigil.tooling.LspRenameTool]]
-    * — we don't simply delegate because that tool's output type
-    * is [[sigil.tooling.types.LspRenameResult]] and we want to
-    * surface a single typed [[LspRenameSymbolOutput]] here. */
+  /**
+   * Drive the underlying LspRenameTool flow against the resolved
+   * declaration position. Adapted from [[sigil.tooling.LspRenameTool]]
+   * — we don't simply delegate because that tool's output type
+   * is [[sigil.tooling.types.LspRenameResult]] and we want to
+   * surface a single typed [[LspRenameSymbolOutput]] here.
+   */
   private def renameAt(input: LspRenameSymbolInput,
                        filePath: String,
                        line: Int,
                        character: Int,
-                       context: ToolContext): Task[LspRenameSymbolOutput] = {
+                       context: ToolContext): Task[LspRenameSymbolOutput] =
     withOpenDocumentTyped[LspRenameSymbolOutput](
-      input.languageId, filePath, context,
+      input.languageId,
+      filePath,
+      context,
       onError = msg => LspRenameSymbolOutput.Failed(input.symbolName, msg)
     ) { (session, uri) =>
       session.rename(uri, line, character, input.newName).flatMap {
-        case None       =>
+        case None =>
           Task.pure(LspRenameSymbolOutput.Failed(
             input.symbolName,
             s"LSP server returned no edits for rename at $filePath:$line:$character"
@@ -149,9 +165,9 @@ final class LspRenameSymbolTool(val manager: LspManager) extends Tool
           val ok = sigil.tooling.PermissiveWorkspaceEditApplier.apply(edit)
           val urisChanged = (
             Option(edit.getChanges).map(_.keySet().asScala.toList).getOrElse(Nil) ++
-            Option(edit.getDocumentChanges).map(_.asScala.toList.flatMap { e =>
-              if (e.isLeft) List(e.getLeft.getTextDocument.getUri) else Nil
-            }).getOrElse(Nil)
+              Option(edit.getDocumentChanges).map(_.asScala.toList.flatMap { e =>
+                if (e.isLeft) List(e.getLeft.getTextDocument.getUri) else Nil
+              }).getOrElse(Nil)
           ).distinct
           val notifyTask = manager.notifyFilesChanged(
             urisChanged.map { u =>
@@ -161,8 +177,8 @@ final class LspRenameSymbolTool(val manager: LspManager) extends Tool
           notifyTask.map { _ =>
             if (ok)
               LspRenameSymbolOutput.Renamed(
-                symbolName   = input.symbolName,
-                newName      = input.newName,
+                symbolName = input.symbolName,
+                newName = input.newName,
                 filesChanged = urisChanged.size
               )
             else
@@ -173,5 +189,4 @@ final class LspRenameSymbolTool(val manager: LspManager) extends Tool
           }
       }
     }
-  }
 }

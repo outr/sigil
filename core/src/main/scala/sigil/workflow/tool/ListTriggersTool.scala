@@ -5,7 +5,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
 case class ListTriggersInput(workflowId: String) extends ToolInput derives RW
@@ -19,8 +19,9 @@ case class ListTriggersInput(workflowId: String) extends ToolInput derives RW
 final class ListTriggersTool extends Tool with WorkflowToolSupport {
   type Input  = ListTriggersInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[ListTriggersInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[ListTriggersInput, TextToolOutput] = ToolIO.derived[ListTriggersInput, TextToolOutput].withExamples(
+ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc"))
+  )
   override val name = ToolName("list_triggers")
   override val description =
     """List the triggers registered on a workflow template.
@@ -28,7 +29,6 @@ final class ListTriggersTool extends Tool with WorkflowToolSupport {
       |`workflowId` is the template id. Returns each trigger's index, kind, and typed
       |field values — useful before unregistering a trigger by index, or when reviewing
       |what events fire a workflow.""".stripMargin
-  override val examples = List(ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc")))
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -36,7 +36,9 @@ final class ListTriggersTool extends Tool with WorkflowToolSupport {
     discovery = DiscoverySpec(keywords = Set("workflow", "trigger", "list"))
   )
 
-  override def executeResult(input: ListTriggersInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ListTriggersInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))

@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.{ActiveSkillSlot, SkillSource}
 import sigil.skill.Skill
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Loads a [[sigil.skill.Skill]] into the agent's
@@ -31,8 +31,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Too
 case object ActivateSkillTool extends Tool {
   type Input  = ActivateSkillInput
   type Output = TextToolOutput
-  val inputRW: RW[ActivateSkillInput] = summon[RW[ActivateSkillInput]]
-  val outputRW: RW[TextToolOutput]    = summon[RW[TextToolOutput]]
+  val io: ToolIO[ActivateSkillInput, TextToolOutput] = ToolIO.derived[ActivateSkillInput, TextToolOutput]
 
   override val name: ToolName = ToolName("activate_skill")
   override val description: String =
@@ -54,7 +53,9 @@ case object ActivateSkillTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("activate", "skill", "load", "enable", "use"))
   )
 
-  override def executeResult(input: ActivateSkillInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ActivateSkillInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.withDB(_.skills.transaction(_.get(lightdb.id.Id[Skill](input.name)))).flatMap {
       case None =>
         Task.pure(ToolResult.failure(

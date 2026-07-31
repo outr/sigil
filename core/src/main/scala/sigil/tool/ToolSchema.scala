@@ -13,6 +13,6 @@ case class ToolSchema(id: Id[ToolSchema],
                      name: ToolName,
                      description: String,
                      input: Definition,
-                     examples: List[ToolExample],
+                     examples: List[ToolExample[ToolInput]],
                      output: Option[Definition] = None)
   derives RW

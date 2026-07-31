@@ -3,12 +3,22 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 import sigil.tooling.types.LspDidChangeResult
 
-case class LspDidChangeInput(languageId: String,
-                             filePath: String,
-                             text: String) extends ToolInput derives RW
+case class LspDidChangeInput(languageId: String, filePath: String, text: String) extends ToolInput derives RW
 
 /**
  * Send a full-document content update to the language server.
@@ -21,12 +31,10 @@ case class LspDidChangeInput(languageId: String,
  * `workspace/didChangeWatchedFiles` notification is the typical
  * fan-out path. This tool exists for explicit "refresh now" flows.
  */
-final class LspDidChangeTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspDidChangeInput
+final class LspDidChangeTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspDidChangeInput
   type Output = LspDidChangeResult
-  val inputRW  = summon[RW[LspDidChangeInput]]
-  val outputRW = summon[RW[LspDidChangeResult]]
+  val io: ToolIO[LspDidChangeInput, LspDidChangeResult] = ToolIO.derived[LspDidChangeInput, LspDidChangeResult]
   override val name = ToolName("lsp_did_change")
   override val description =
     """Update the language server's in-memory copy of a document by passing the file's
@@ -49,9 +57,10 @@ final class LspDidChangeTool(val manager: LspManager) extends Tool
     )
   )
 
-  override def executeResult(input: LspDidChangeInput,
-                             context: ToolContext): Task[ToolResult[LspDidChangeResult]] = {
-   // Refuse obvious misuse: any `text` below the threshold can't
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: LspDidChangeInput, context: ToolContext): Task[ToolResult[LspDidChangeResult]] =
+    // Refuse obvious misuse: any `text` below the threshold can't
     // plausibly be a full document; return a structured Failure with
     // a hint pointing at read_file via find_capability.
     if (input.text.length < LspDidChangeTool.MinPlausibleDocumentLength) {
@@ -67,24 +76,28 @@ final class LspDidChangeTool(val manager: LspManager) extends Tool
       ))
     } else {
       withSessionOrThrow[LspDidChangeResult](
-        input.languageId, input.filePath, context
+        input.languageId,
+        input.filePath,
+        context
       ) { (session, uri, _) =>
         session.didChangeFull(uri, input.text).map(_ => LspDidChangeResult(uri))
       }.map(r => ToolResult.success(r))
         .handleError { err =>
           Task.pure(ToolResult.failure(
             message = Option(err.getMessage).getOrElse(err.getClass.getSimpleName),
-            args    = Some(s"filePath=${input.filePath}, languageId=${input.languageId}")
+            args = Some(s"filePath=${input.filePath}, languageId=${input.languageId}")
           ))
         }
     }
-  }
 }
 
 object LspDidChangeTool {
-  /** Minimum `text` payload length before lsp_did_change accepts it as a
-    * plausible full-document update. Below this, the tool refuses with
-    * a Failure pointing at read_file. Apps with legitimately tiny source
-    * files (single-line scripts) can override the tool to lower the bar. */
+
+  /**
+   * Minimum `text` payload length before lsp_did_change accepts it as a
+   * plausible full-document update. Below this, the tool refuses with
+   * a Failure pointing at read_file. Apps with legitimately tiny source
+   * files (single-line scripts) can override the tool to lower the bar.
+   */
   val MinPlausibleDocumentLength: Int = 30
 }

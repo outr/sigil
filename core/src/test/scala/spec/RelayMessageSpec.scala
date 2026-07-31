@@ -29,7 +29,8 @@ class RelayMessageSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   // The agent-wake behavior is covered separately (#328 / #327).
   private case class Member(override val id: ParticipantId,
                             override val displayName: String = "member",
-                            override val avatarUrl: Option[String] = None) extends Participant derives RW
+                            override val avatarUrl: Option[String] = None)
+    extends Participant derives RW
   Participant.register(summon[RW[Member]])
 
   // The worker participant in the sub-conversation.
@@ -41,27 +42,27 @@ class RelayMessageSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private def toolCtx(conv: Conversation): ToolContext =
     ToolContext(
       TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestAgent),  // caller = chain.last = TestAgent
+        sigil = TestSigil,
+        chain = List(TestAgent), // caller = chain.last = TestAgent
         conversation = conv,
-        turnInput    = TurnInput(ConversationView(conversationId = conv._id)),
-        model        = TestSigil.defaultTestModel
+        turnInput = TurnInput(ConversationView(conversationId = conv._id)),
+        model = TestSigil.defaultTestModel
       ),
       Event.id(),
       ToolName("relay_test")
     )
 
   private def parentConv(id: Id[Conversation]) = Conversation(
-    topics       = List(TopicEntry(TestTopicId, "parent", "parent")),
+    topics = List(TopicEntry(TestTopicId, "parent", "parent")),
     participants = List(Member(TestAgent)),
-    _id          = id
+    _id = id
   )
 
   private def workerConv(id: Id[Conversation], parent: Id[Conversation]) = Conversation(
-    topics               = List(TopicEntry(TestTopicId, "worker", "worker")),
-    participants          = List(Member(TestAgent), Member(WorkerAgent)),
+    topics = List(TopicEntry(TestTopicId, "worker", "worker")),
+    participants = List(Member(TestAgent), Member(WorkerAgent)),
     parentConversationId = Some(parent),
-    _id                  = id
+    _id = id
   )
 
   private def messagesIn(convId: Id[Conversation]) =
@@ -75,16 +76,15 @@ class RelayMessageSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val p = parentConv(pId)
       val w = workerConv(wId, pId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(p)))
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(w)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(p)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(w)))
         // Agent is anchored in the parent P, relays a brief down into W.
-        res <- RelayMessageTool.executeResult(
+        _ <- RelayMessageTool.invoke(
           RelayMessageInput(conversationId = wId, content = "do the work", addressees = Some(List(WorkerAgent.value))),
           toolCtx(p)
         )
         msgs <- messagesIn(wId)
       } yield {
-        res shouldBe a[ToolResult.Success[?]]
         val relayed = msgs.find(_.content.collect { case ResponseContent.Text(t) => t }.mkString.contains("do the work"))
         relayed should not be empty
         relayed.get.participantId shouldBe TestAgent
@@ -96,22 +96,22 @@ class RelayMessageSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "reject a relay into a conversation the agent is not a member of" in {
       val foreignId = Conversation.id(s"relay-foreign-${rapid.Unique()}")
       val foreign = Conversation(
-        topics       = List(TopicEntry(TestTopicId, "foreign", "foreign")),
-        participants = List(Member(WorkerAgent)),  // TestAgent is NOT a member
-        _id          = foreignId
+        topics = List(TopicEntry(TestTopicId, "foreign", "foreign")),
+        participants = List(Member(WorkerAgent)), // TestAgent is NOT a member
+        _id = foreignId
       )
       // Anchor the caller in a conversation it does belong to.
       val homeId = Conversation.id(s"relay-home-${rapid.Unique()}")
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(foreign)))
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(parentConv(homeId))))
-        res <- RelayMessageTool.executeResult(
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(foreign)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(parentConv(homeId))))
+        res <- RelayMessageTool.invoke(
           RelayMessageInput(conversationId = foreignId, content = "intrude"),
           toolCtx(parentConv(homeId))
-        )
+        ).map(_ => true).handleError(_ => rapid.Task.pure(false))
         msgs <- messagesIn(foreignId)
       } yield {
-        res shouldBe a[ToolResult.Failure]
+        res shouldBe false
         msgs.exists(_.content.collect { case ResponseContent.Text(t) => t }.mkString.contains("intrude")) shouldBe false
       }
     }
@@ -120,13 +120,13 @@ class RelayMessageSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val pId = Conversation.id(s"relay-bad-addr-parent-${rapid.Unique()}")
       val wId = Conversation.id(s"relay-bad-addr-worker-${rapid.Unique()}")
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(parentConv(pId))))
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(workerConv(wId, pId))))
-        res <- RelayMessageTool.executeResult(
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(parentConv(pId))))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(workerConv(wId, pId))))
+        res <- RelayMessageTool.invoke(
           RelayMessageInput(conversationId = wId, content = "hi", addressees = Some(List("nobody-here"))),
           toolCtx(parentConv(pId))
-        )
-      } yield res shouldBe a[ToolResult.Failure]
+        ).map(_ => true).handleError(_ => rapid.Task.pure(false))
+      } yield res shouldBe false
     }
   }
 

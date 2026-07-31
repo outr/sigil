@@ -6,7 +6,21 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DefinitionToSchema, DiscoverySpec, Effect, JsonSchemaToDefinition, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DefinitionToSchema,
+  DiscoverySpec,
+  Effect,
+  JsonSchemaToDefinition,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 /**
  * Modify an existing [[ScriptTool]] in-place. Looks the record up by
@@ -22,10 +36,9 @@ import sigil.tool.{DefinitionToSchema, DiscoverySpec, Effect, JsonSchemaToDefini
  * (possibly-updated) tool's invocation shape and JSON schema.
  */
 case object UpdateScriptToolTool extends Tool {
-  type Input  = UpdateScriptToolInput
+  type Input = UpdateScriptToolInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[UpdateScriptToolInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[UpdateScriptToolInput, TextToolOutput] = ToolIO.derived[UpdateScriptToolInput, TextToolOutput]
 
   override val name = ToolName("update_script_tool")
   override val description =
@@ -42,8 +55,9 @@ case object UpdateScriptToolTool extends Tool {
     )
   )
 
-  override def executeResult(input: UpdateScriptToolInput,
-                             context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: UpdateScriptToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       context.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {
@@ -55,10 +69,10 @@ case object UpdateScriptToolTool extends Tool {
             } else {
               val updated = existing.copy(
                 description = input.description.getOrElse(existing.description),
-                code        = input.code.getOrElse(existing.code),
-                parameters  = input.parameters.fold(existing.parameters)(JsonSchemaToDefinition.apply),
-                keywords    = input.keywords.getOrElse(existing.keywords),
-                modified    = Timestamp(Nowish())
+                code = input.code.getOrElse(existing.code),
+                parameters = input.parameters.fold(existing.parameters)(JsonSchemaToDefinition.apply),
+                keywords = input.keywords.getOrElse(existing.keywords),
+                modified = Timestamp(Nowish())
               )
               tx.upsert(updated).map { stored =>
                 val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))

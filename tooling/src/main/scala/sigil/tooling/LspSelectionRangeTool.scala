@@ -4,12 +4,11 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{Position, SelectionRange}
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspRange, LspSelectionRangeChain, LspSelectionRangeResult}
 
-case class LspSelectionRangeInput(languageId: String,
-                                  filePath: String,
-                                  positions: List[LspSelectionRangeInput.Pos]) extends ToolInput derives RW
+case class LspSelectionRangeInput(languageId: String, filePath: String, positions: List[LspSelectionRangeInput.Pos]) extends ToolInput
+  derives RW
 
 object LspSelectionRangeInput {
   case class Pos(line: Int, character: Int) derives RW
@@ -27,12 +26,10 @@ object LspSelectionRangeInput {
  * essential when the agent is reasoning about "the entire surrounding
  * context" for an edit.
  */
-final class LspSelectionRangeTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspSelectionRangeInput
+final class LspSelectionRangeTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspSelectionRangeInput
   type Output = LspSelectionRangeResult
-  val inputRW  = summon[RW[LspSelectionRangeInput]]
-  val outputRW = summon[RW[LspSelectionRangeResult]]
+  val io: ToolIO[LspSelectionRangeInput, LspSelectionRangeResult] = ToolIO.derived[LspSelectionRangeInput, LspSelectionRangeResult]
 
   override val name = ToolName("lsp_selection_range")
   override val description =
@@ -52,15 +49,19 @@ final class LspSelectionRangeTool(val manager: LspManager) extends Tool
     )
   )
 
-  override def executeOutput(input: LspSelectionRangeInput, context: ToolContext): Task[LspSelectionRangeResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspSelectionRangeInput, context: ToolContext): Task[LspSelectionRangeResult] =
     withOpenDocumentOrThrow[LspSelectionRangeResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       val positions = input.positions.map(p => new Position(p.line, p.character))
       session.selectionRange(uri, positions).map { results =>
         LspSelectionRangeResult(
           filePath = input.filePath,
-          chains   = results.map(r => LspSelectionRangeChain(flatten(r)))
+          chains = results.map(r => LspSelectionRangeChain(flatten(r)))
         )
       }
     }

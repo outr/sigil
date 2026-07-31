@@ -5,7 +5,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{ClassificationWork, GenerationSettings, OutputTokenCap, ReasoningMode, WorkType}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal-only tool used by [[sigil.Sigil.classifyTopicShift]] to drive
@@ -16,8 +16,6 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolN
 class TopicClassifierTool(priorLabels: List[String]) extends Tool with FrameworkConsult {
   type Input  = TopicClassifierInput
   type Output = TextToolOutput
-  val inputRW: RW[TopicClassifierInput] = summon[RW[TopicClassifierInput]]
-  val outputRW: RW[TextToolOutput]      = summon[RW[TextToolOutput]]
 
   override val name: ToolName = ToolName("classify_topic_shift")
   override val description: String =
@@ -44,19 +42,19 @@ class TopicClassifierTool(priorLabels: List[String]) extends Tool with Framework
     reasoningMode  = ReasoningMode.Off
   )
 
-  /** Override the schema's input definition with one whose `kind` field
-    * has a dynamic enum populated from the per-call prior labels. */
-  override def inputDefinition: Definition = {
+  /** Hand-built schema whose `kind` field has a dynamic enum populated
+    * from the per-call prior labels; `withSchema` round-trips a probe
+    * value through the definition and the RW at construction. */
+  val io: ToolIO[TopicClassifierInput, TextToolOutput] = {
     val enumKeys: List[String] = "NoChange" :: "Refine" :: "New" :: priorLabels
     val polyValues: Map[String, Definition] =
       enumKeys.map(k => k -> Definition(DefType.Null)).toMap
-    Definition(DefType.Obj(Map(
+    ToolIO.withSchema[TopicClassifierInput, TextToolOutput](Definition(DefType.Obj(Map(
       "kind" -> Definition(DefType.Poly(polyValues))
-    )))
+    ))))
   }
 
   /** Never executed — the framework reads the typed input directly via
     * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
-  override def executeResult(input: TopicClassifierInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
-    Task.pure(ToolResult.success(TextToolOutput("")))
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit((_, _) => Task.pure(ToolResult.success(TextToolOutput(""))))
 }

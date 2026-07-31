@@ -10,7 +10,23 @@ import sigil.{GlobalSpace, SpaceId}
 import sigil.tool.ToolContext
 import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.provider.Mode
-import sigil.tool.{DiscoverySpec, Effect, ImageToolOutput, JsonInput, JsonSchemaToDefinition, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  ImageToolOutput,
+  JsonInput,
+  JsonSchemaToDefinition,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolName,
+  ToolOutput,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import java.util.Base64
 
@@ -30,26 +46,27 @@ import java.util.Base64
  * The display name in `name` includes the server's `prefix` (so two
  * servers can both expose `read_file` without collision).
  */
-final class McpTool(manager: McpManager,
-                    serverConfig: McpServerConfig,
-                    definition: McpToolDefinition) extends Tool {
-  type Input  = JsonInput
+final class McpTool(manager: McpManager, serverConfig: McpServerConfig, definition: McpToolDefinition) extends Tool {
+  type Input = JsonInput
   type Output = ToolOutput
-  val inputRW  = summon[RW[JsonInput]]
-  val outputRW = summon[RW[ToolOutput]]
 
   val spec: ToolSpec = McpTool.specFor(serverConfig, definition)
 
-  override def inputDefinition: Definition =
-    JsonSchemaToDefinition(definition.inputSchema)
+  /**
+   * The server-advertised schema over honest JSON args; results are
+   * the polymorphic [[ToolOutput]] (text or image).
+   */
+  val io: ToolIO[JsonInput, ToolOutput] =
+    ToolIO.dynamicAs[ToolOutput](JsonSchemaToDefinition(definition.inputSchema))
 
-  override val examples: List[ToolExample] = Nil
   override val createdBy: Option[ParticipantId] = None
   override val _id: Id[Tool] = Id(name.value)
   override val created: Timestamp = Tool.Epoch
   override val modified: Timestamp = Tool.Epoch
 
-  override def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[ToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[ToolOutput]] = {
     val agentId = context.chain.collectFirst { case a: AgentParticipantId => a }
       .getOrElse(context.caller)
     manager.callTool(serverConfig.name, definition.name, input.json, agentId).flatMap { result =>
@@ -76,11 +93,14 @@ final class McpTool(manager: McpManager,
   private def buildOutput(result: Json, context: ToolContext): Task[ToolOutput] = {
     val blocks = result.get("content").map(_.asVector.toList).getOrElse(Nil)
     val images = blocks.flatMap(imageRef)
-    val text   = blocks.flatMap(blockToText).mkString("\n")
+    val text = blocks.flatMap(blockToText).mkString("\n")
     images match {
       case Nil => Task.pure(TextToolOutput(text))
       case (data, mime) :: _ =>
-        context.sigil.storeBytes(GlobalSpace, Base64.getDecoder.decode(data), mime,
+        context.sigil.storeBytes(
+          GlobalSpace,
+          Base64.getDecoder.decode(data),
+          mime,
           metadata = Map("kind" -> "mcp-tool-result", "server" -> serverConfig.name, "tool" -> definition.name))
           .map { stored =>
             val note =
@@ -89,8 +109,8 @@ final class McpTool(manager: McpManager,
                 if (text.isEmpty) extra else s"$text\n$extra"
               } else text
             ImageToolOutput(
-              url  = context.sigil.storageUrl(stored),
-              alt  = s"MCP image result from ${name.value}",
+              url = context.sigil.storageUrl(stored),
+              alt = s"MCP image result from ${name.value}",
               text = Option(note).filter(_.nonEmpty)
             )
           }
@@ -104,11 +124,13 @@ final class McpTool(manager: McpManager,
     if (imageRef(block).isDefined) None
     else block.get("type").map(_.asString).getOrElse("") match {
       case "text" => block.get("text").map(_.asString)
-      case _      => Some(fabric.io.JsonFormatter.Compact(block))
+      case _ => Some(fabric.io.JsonFormatter.Compact(block))
     }
 
-  /** `(base64Data, mimeType)` for an `image` content block or an
-    * embedded `resource` block whose `mimeType` is `image/…`. */
+  /**
+   * `(base64Data, mimeType)` for an `image` content block or an
+   * embedded `resource` block whose `mimeType` is `image/…`.
+   */
   private def imageRef(block: Json): Option[(String, String)] = {
     val t = block.get("type").map(_.asString).getOrElse("")
     if (t == "image") {
@@ -125,14 +147,16 @@ final class McpTool(manager: McpManager,
 
 object McpTool {
 
-  /** Build the validated [[ToolSpec]] from the server-advertised
-    * definition. The display name (server prefix + tool name) is
-    * validated against the provider grammar; characters providers
-    * reject are replaced with `_` (with a warn) so one oddly-named
-    * server tool can't break the whole server's roster. A missing
-    * description gets a synthesized stub. MCP declares no effect
-    * metadata, so the effect is conservatively [[Effect.Mutating]]
-    * with unknown targets. */
+  /**
+   * Build the validated [[ToolSpec]] from the server-advertised
+   * definition. The display name (server prefix + tool name) is
+   * validated against the provider grammar; characters providers
+   * reject are replaced with `_` (with a warn) so one oddly-named
+   * server tool can't break the whole server's roster. A missing
+   * description gets a synthesized stub. MCP declares no effect
+   * metadata, so the effect is conservatively [[Effect.Mutating]]
+   * with unknown targets.
+   */
   def specFor(serverConfig: McpServerConfig, definition: McpToolDefinition): ToolSpec = {
     val rawName = serverConfig.prefix.getOrElse("") + definition.name
     val name = ToolName.parse(rawName).getOrElse {
@@ -147,7 +171,8 @@ object McpTool {
       s"MCP tool `${definition.name}` from server `${serverConfig.name}`."
     ) match {
       case d if d.length > ToolSpec.DescriptionBudget =>
-        scribe.warn(s"MCP tool '$rawName' description is ${d.length} chars; truncating to the ${ToolSpec.DescriptionBudget}-char wire budget.")
+        scribe.warn(
+          s"MCP tool '$rawName' description is ${d.length} chars; truncating to the ${ToolSpec.DescriptionBudget}-char wire budget.")
         d.take(ToolSpec.DescriptionBudget)
       case d => d
     }

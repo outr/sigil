@@ -8,7 +8,7 @@ import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
 import sigil.event.{Event, ToolApproval, ToolOutcome}
 import sigil.signal.ToolDelta
-import sigil.tool.{TextToolOutput, ToolName}
+import sigil.tool.{Resolution, TextToolOutput, ToolIO, ToolName}
 import sigil.tool.core.RecordConsentTool
 import sigil.tool.model.RecordConsentInput
 import fabric.rw.RW
@@ -39,10 +39,9 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   // tool is a consent-gated stub so the pair-emission assertions
   // exercise the happy path rather than the validation refusal path.
   private object ConsentGatedStub extends sigil.tool.Tool {
-    type Input  = RecordConsentInput
+    type Input = RecordConsentInput
     type Output = TextToolOutput
-    val inputRW                                       = summon[RW[RecordConsentInput]]
-    val outputRW                                      = summon[RW[TextToolOutput]]
+    val io: ToolIO[RecordConsentInput, TextToolOutput] = ToolIO.derived[RecordConsentInput, TextToolOutput]
     override val name = ToolName("consent_gated_stub")
     override val description = "Stub tool that requires consent — for RecordConsentPairingSpec."
     val spec: sigil.tool.ToolSpec = sigil.tool.ToolSpec(
@@ -54,7 +53,9 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       ),
       discovery = sigil.tool.DiscoverySpec(keywords = Set("test", "consent"))
     )
-    override def executeResult(input: RecordConsentInput, ctx: sigil.tool.ToolContext) =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: RecordConsentInput, ctx: sigil.tool.ToolContext) =
       Task.pure(sigil.tool.ToolResult.success(TextToolOutput("")))
   }
   private val testToolName: String = ConsentGatedStub.name.value
@@ -62,18 +63,18 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   private def turnContextFor(): Task[TurnContext] = {
     val convId = Conversation.id(s"consent-pair-${rapid.Unique()}")
-    val topic  = TopicEntry(
-      id      = sigil.conversation.Topic.id(s"topic-$convId"),
-      label   = "test",
+    val topic = TopicEntry(
+      id = sigil.conversation.Topic.id(s"topic-$convId"),
+      label = "test",
       summary = "test"
     )
     val conv = Conversation(_id = convId, topics = List(topic))
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map { stored =>
       TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestUser, TestAgent),
+        sigil = TestSigil,
+        chain = List(TestUser, TestAgent),
         conversation = stored,
-        turnInput    = TurnInput(conversationId = stored._id),
+        turnInput = TurnInput(conversationId = stored._id),
         model = TestSigil.defaultTestModel
       )
     }
@@ -83,10 +84,11 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "emit a ToolApproval AND settle the ToolInvoke on approve" in {
       for {
-        ctx    <- turnContextFor()
+        ctx <- turnContextFor()
         events <- RecordConsentTool.execute(
-                    RecordConsentInput(toolName = testToolName, approved = true,
-                      reason = Some("user picked Claude state in setup options")), ctx, Event.id()).toList
+          RecordConsentInput(toolName = testToolName, approved = true, reason = Some("user picked Claude state in setup options")),
+          ctx,
+          Event.id()).toList
       } yield {
         val approvals = events.collect { case t: ToolApproval => t }
         approvals should have size 1
@@ -106,10 +108,11 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "settle the ToolInvoke with the decline reason on decline" in {
       for {
-        ctx    <- turnContextFor()
+        ctx <- turnContextFor()
         events <- RecordConsentTool.execute(
-                    RecordConsentInput(toolName = testToolName, approved = false,
-                      reason = Some("user explicitly did not select")), ctx, Event.id()).toList
+          RecordConsentInput(toolName = testToolName, approved = false, reason = Some("user explicitly did not select")),
+          ctx,
+          Event.id()).toList
       } yield {
         events.collect { case t: ToolApproval => t } should have size 1
         val settling = events.collect {
@@ -124,9 +127,11 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "settle the ToolInvoke even when reason is absent" in {
       for {
-        ctx    <- turnContextFor()
+        ctx <- turnContextFor()
         events <- RecordConsentTool.execute(
-                    RecordConsentInput(toolName = testToolName, approved = true), ctx, Event.id()).toList
+          RecordConsentInput(toolName = testToolName, approved = true),
+          ctx,
+          Event.id()).toList
       } yield {
         val settling = events.collect {
           case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d

@@ -4,7 +4,7 @@ import fabric.define.Definition
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, JsonInput, JsonSchemaToDefinition, MutationTargeting, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, JsonInput, JsonSchemaToDefinition, MutationTargeting, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * A UI-registered interaction tool — the in-memory [[Tool]] the
@@ -34,14 +34,15 @@ final class ClientTool(val clientSpec: ClientToolSpec,
                        registry: ClientToolRegistry) extends Tool {
   type Input  = JsonInput
   type Output = TextToolOutput
-  val inputRW: RW[JsonInput] = summon[RW[JsonInput]]
-  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   val spec: ToolSpec = ClientTool.specFor(clientSpec)
 
-  override def inputDefinition: Definition = JsonSchemaToDefinition(clientSpec.inputSchema)
+  /** The client's registered schema over honest JSON args. */
+  val io: ToolIO[JsonInput, TextToolOutput] = ToolIO.dynamic(JsonSchemaToDefinition(clientSpec.inputSchema))
 
-  override def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     if (!registry.isLive(conversationId, clientSpec.name))
       Task.pure(ToolResult.failure(
         s"`${clientSpec.name}` is a UI tool whose client is no longer connected — the interface that " +

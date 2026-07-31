@@ -6,7 +6,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.ComplexityChange
 import sigil.provider.Complexity
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 case class PinComplexityInput(tier: String) extends ToolInput derives RW
 
@@ -26,8 +26,11 @@ case class PinComplexityInput(tier: String) extends ToolInput derives RW
 case object PinComplexityTool extends Tool {
   type Input  = PinComplexityInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[PinComplexityInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[PinComplexityInput, TextToolOutput] = ToolIO.derived[PinComplexityInput, TextToolOutput].withExamples(
+    ToolExample("Pin to medium tier",     PinComplexityInput("medium")),
+    ToolExample("Pin to frontier",        PinComplexityInput("very-high")),
+    ToolExample("Local-only with low tier", PinComplexityInput("low"))
+  )
   override val name = ToolName("pin_complexity")
   override val description =
     """Pin this conversation's routing complexity tier
@@ -47,11 +50,6 @@ case object PinComplexityTool extends Tool {
       |a specific model can't degrade.
       |
       |Use `unpin_complexity` to revert.""".stripMargin
-  override val examples = List(
-    ToolExample("Pin to medium tier",     PinComplexityInput("medium")),
-    ToolExample("Pin to frontier",        PinComplexityInput("very-high")),
-    ToolExample("Local-only with low tier", PinComplexityInput("low"))
-  )
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -62,8 +60,10 @@ case object PinComplexityTool extends Tool {
     ))
   )
 
-  override def executeResult(input: PinComplexityInput,
-                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: PinComplexityInput,
+                            ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val normalized = input.tier.trim.toLowerCase.replaceAll("\\s+|-|_", "")
     val parsed: Option[Complexity] = normalized match {
       case "low"                            => Some(Complexity.Low)

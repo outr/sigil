@@ -150,12 +150,11 @@ object RefusalPayload {
 
   /** Render the refusal for a call whose args failed to parse or decode
     * (the `WireCall.Malformed` shape). A pure materialise failure
-    * (type-shape mismatch, missing required field — every violation
-    * root-level) keeps the historical "Failed to parse args" phrasing;
-    * field-scoped constraint violations read as "violated schema
-    * constraints". The model's args ride the body verbatim. `tool` is
-    * the resolved carrier when available so the schema + example are
-    * appended. */
+    * (every violation [[ViolationKind.Structural]]) keeps the
+    * historical "Failed to parse args" phrasing; constraint violations
+    * read as "violated schema constraints". The model's args ride the
+    * body verbatim. `tool` is the resolved carrier when available so
+    * the schema + example are appended. */
   def malformedArgs(tool: Option[Tool], name: String, error: DecodeError, rawArgs: Json): String = {
     val argsText = rawArgs match {
       case fabric.Str(s, _) => s
@@ -163,7 +162,7 @@ object RefusalPayload {
     }
     val rawSnippet = argsText.take(500)
     val truncated = if (argsText.length > 500) " (truncated)" else ""
-    val pureMaterialise = error.violations.forall(_.path.isEmpty)
+    val pureMaterialise = error.violations.forall(_.kind == ViolationKind.Structural)
     val rule =
       if (pureMaterialise) s"Failed to parse args for tool $name: ${error.render}."
       else s"Args for tool $name violated schema constraints: ${error.render}"

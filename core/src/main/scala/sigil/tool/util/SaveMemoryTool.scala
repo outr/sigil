@@ -8,7 +8,7 @@ import sigil.tool.ToolContext
 import sigil.conversation.{ContextMemory, MemorySource, UpsertMemoryResult}
 import sigil.provider.Mode
 import sigil.tool.model.{MemoryWriteOutcome, SaveMemoryInput, SaveMemoryOutput}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolGates, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolGates, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Surface [[sigil.Sigil.upsertMemoryByKey]] (or `persistMemory` when
@@ -26,23 +26,7 @@ final class SaveMemoryTool(space: SpaceId,
                            source: MemorySource = MemorySource.Explicit) extends Tool {
   type Input  = SaveMemoryInput
   type Output = SaveMemoryOutput
-  val inputRW  = summon[RW[SaveMemoryInput]]
-  val outputRW = summon[RW[SaveMemoryOutput]]
-  override val name = ToolName("save_memory")
-  override val description =
-    """Persist a fact for later retrieval. Required: `fact` + `label` (short title) + `summary`
-      |(one-line gist). Pass `key` to overwrite a previously-saved memory under that key (versioned
-      |upsert); omit `key` to append a new memory. Returns `{outcome, memoryId}`.""".stripMargin
-  val spec: ToolSpec = ToolSpec(
-    name = name,
-    description = description,
-    profile = ToolProfile(
-      effect = Effect.Destructive(target = MutationTargeting.none, consequence = "DESTRUCTIVE."),
-      gates = ToolGates(requiresAccessibleSpaces = true)
-    ),
-    discovery = DiscoverySpec(keywords = Set("memory", "save", "remember", "store", "persist", "fact"))
-  )
-  override val examples = List(
+  val io: ToolIO[SaveMemoryInput, SaveMemoryOutput] = ToolIO.derived[SaveMemoryInput, SaveMemoryOutput].withExamples(
     ToolExample(
       "Save a user preference",
       SaveMemoryInput(
@@ -61,8 +45,24 @@ final class SaveMemoryTool(space: SpaceId,
       )
     )
   )
+  override val name = ToolName("save_memory")
+  override val description =
+    """Persist a fact for later retrieval. Required: `fact` + `label` (short title) + `summary`
+      |(one-line gist). Pass `key` to overwrite a previously-saved memory under that key (versioned
+      |upsert); omit `key` to append a new memory. Returns `{outcome, memoryId}`.""".stripMargin
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(
+      effect = Effect.Destructive(target = MutationTargeting.none, consequence = "DESTRUCTIVE."),
+      gates = ToolGates(requiresAccessibleSpaces = true)
+    ),
+    discovery = DiscoverySpec(keywords = Set("memory", "save", "remember", "store", "persist", "fact"))
+  )
 
-  override def executeOutput(input: SaveMemoryInput, ctx: ToolContext): Task[SaveMemoryOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: SaveMemoryInput, ctx: ToolContext): Task[SaveMemoryOutput] =
     resolveSpace(input.space, ctx).flatMap { resolvedSpace =>
       val mem = ContextMemory(
         fact         = input.fact,

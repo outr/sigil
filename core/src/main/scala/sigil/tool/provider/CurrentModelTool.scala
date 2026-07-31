@@ -3,7 +3,7 @@ package sigil.tool.provider
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Read-only introspection tool that reports the conversation's
@@ -21,8 +21,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolName, ToolProfile
 case object CurrentModelTool extends Tool {
   type Input  = CurrentModelInput
   type Output = CurrentModelOutput
-  val inputRW  = summon[RW[CurrentModelInput]]
-  val outputRW = summon[RW[CurrentModelOutput]]
+  val io: ToolIO[CurrentModelInput, CurrentModelOutput] = ToolIO.derived[CurrentModelInput, CurrentModelOutput]
 
   override val name = ToolName("current_model")
   override val description =
@@ -49,7 +48,9 @@ case object CurrentModelTool extends Tool {
     ))
   )
 
-  override def executeOutput(input: CurrentModelInput, ctx: ToolContext): Task[CurrentModelOutput] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: CurrentModelInput, ctx: ToolContext): Task[CurrentModelOutput] = {
     val conv = ctx.conversation
     val host = ctx.sigil
 

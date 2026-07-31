@@ -3,13 +3,10 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspHover, LspHoverResult}
 
-case class LspHoverInput(languageId: String,
-                         filePath: String,
-                         line: Int,
-                         character: Int) extends ToolInput derives RW
+case class LspHoverInput(languageId: String, filePath: String, line: Int, character: Int) extends ToolInput derives RW
 
 /**
  * Returns the hover information at a position — type signature,
@@ -23,12 +20,10 @@ case class LspHoverInput(languageId: String,
  * Emits `LspHoverResult` — `hover` is `None` when the server returned
  * no hover info at that position.
  */
-final class LspHoverTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspHoverInput
+final class LspHoverTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspHoverInput
   type Output = LspHoverResult
-  val inputRW  = summon[RW[LspHoverInput]]
-  val outputRW = summon[RW[LspHoverResult]]
+  val io: ToolIO[LspHoverInput, LspHoverResult] = ToolIO.derived[LspHoverInput, LspHoverResult]
 
   override val name = ToolName("lsp_hover")
   override val description =
@@ -47,9 +42,13 @@ final class LspHoverTool(val manager: LspManager) extends Tool
     )
   )
 
-  override def executeOutput(input: LspHoverInput, context: ToolContext): Task[LspHoverResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspHoverInput, context: ToolContext): Task[LspHoverResult] =
     withOpenDocumentOrThrow[LspHoverResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.hover(uri, input.line, input.character)
         .map(h => LspHoverResult(h.map(LspHover.fromLsp4j)))

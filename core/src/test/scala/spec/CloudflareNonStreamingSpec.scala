@@ -7,11 +7,23 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Task
 import sigil.db.Model
-import sigil.provider.{
-  GenerationSettings, ProviderCall, ProviderEvent, StopReason, ToolChoice
-}
+import sigil.provider.{GenerationSettings, ProviderCall, ProviderEvent, StopReason, ToolChoice}
 import sigil.provider.wire.OpenAIChatCompletions
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import spec.CloudflareNonStreamingSpec.*
 import sigil.tool.ToolRoster
@@ -30,8 +42,8 @@ class CloudflareNonStreamingSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private val cfg: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
-    providerNamespace        = "cloudflare",
-    providerName             = "Cloudflare",
+    providerNamespace = "cloudflare",
+    providerName = "Cloudflare",
     nonStrictSchemaTransform = identity
   )
 
@@ -39,12 +51,12 @@ class CloudflareNonStreamingSpec extends AnyWordSpec with Matchers {
 
   private def call(gen: GenerationSettings = GenerationSettings()): ProviderCall =
     ProviderCall(
-      model              = model,
-      system             = "be a coding agent",
-      messages           = Vector.empty,
+      model = model,
+      system = "be a coding agent",
+      messages = Vector.empty,
       roster = ToolRoster(Vector(ListFilesTool)),
-      builtInTools       = Set.empty,
-      toolChoice         = ToolChoice.Auto,
+      builtInTools = Set.empty,
+      toolChoice = ToolChoice.Auto,
       generationSettings = gen
     )
 
@@ -75,17 +87,17 @@ class CloudflareNonStreamingSpec extends AnyWordSpec with Matchers {
       // The exact shape captured from CF: reasoning_content, then a tool
       // call, finish_reason tool_calls. (Streaming returned stop + no call.)
       val response = JsonFormatter.Compact(obj(
-        "id"     -> str("id-1"),
+        "id" -> str("id-1"),
         "object" -> str("chat.completion"),
         "choices" -> arr(obj(
           "index" -> num(0),
           "message" -> obj(
-            "role"              -> str("assistant"),
-            "content"           -> Null,
+            "role" -> str("assistant"),
+            "content" -> Null,
             "reasoning_content" -> str("We need to call list_files."),
             "tool_calls" -> arr(obj(
-              "id"    -> str("call-1"),
-              "type"  -> str("function"),
+              "id" -> str("call-1"),
+              "type" -> str("function"),
               "index" -> num(0),
               "function" -> obj("name" -> str("list_files"), "arguments" -> str("{}"))
             ))
@@ -99,7 +111,9 @@ class CloudflareNonStreamingSpec extends AnyWordSpec with Matchers {
 
       events.collectFirst { case ProviderEvent.ThinkingDelta(t) => t } shouldBe Some("We need to call list_files.")
       events.collectFirst { case ProviderEvent.ToolCallStart(_, n) => n } shouldBe Some("list_files")
-      events.flatMap { case ProviderEvent.ToolCallComplete(_, wc) => wc.decodedInput; case _ => None }.collectFirst { case in: ListFilesInput => in } shouldBe Some(ListFilesInput())
+      events.flatMap { case ProviderEvent.ToolCallComplete(_, wc) => wc.decodedInput; case _ => None }.collectFirst {
+        case in: ListFilesInput => in
+      } shouldBe Some(ListFilesInput())
       events.exists { case _: ProviderEvent.Usage => true; case _ => false } shouldBe true
       events.collectFirst { case ProviderEvent.Done(sr) => sr } shouldBe Some(StopReason.ToolCall)
     }
@@ -111,10 +125,9 @@ object CloudflareNonStreamingSpec {
   ToolInput.register(RW.static(ListFilesInput()))
 
   case object ListFilesTool extends Tool {
-    type Input  = ListFilesInput
+    type Input = ListFilesInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[ListFilesInput]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[ListFilesInput, TextToolOutput] = ToolIO.derived[ListFilesInput, TextToolOutput]
     override val name = ToolName("list_files")
     override val description = "List the project files."
     val spec: ToolSpec = ToolSpec(
@@ -123,7 +136,9 @@ object CloudflareNonStreamingSpec {
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", "list", "files"))
     )
-    override def executeResult(input: ListFilesInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+    private def executeResult(input: ListFilesInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 }

@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.provider.{GenerationSettings, OutputTokenCap, ReasoningMode, SummarizationWork, WorkType}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Internal tool invoked by both
@@ -23,8 +23,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolN
 case object ExtractMemoriesTool extends Tool with FrameworkConsult {
   type Input  = ExtractMemoriesInput
   type Output = TextToolOutput
-  val inputRW: RW[ExtractMemoriesInput] = summon[RW[ExtractMemoriesInput]]
-  val outputRW: RW[TextToolOutput]      = summon[RW[TextToolOutput]]
+  val io: ToolIO[ExtractMemoriesInput, TextToolOutput] = ToolIO.derived[ExtractMemoriesInput, TextToolOutput]
 
   override val name: ToolName = ToolName("extract_memories")
   override val description: String =
@@ -87,6 +86,8 @@ case object ExtractMemoriesTool extends Tool with FrameworkConsult {
 
   /** Never executed — the framework reads the typed input directly via
     * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
-  override def executeResult(input: ExtractMemoriesInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ExtractMemoriesInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

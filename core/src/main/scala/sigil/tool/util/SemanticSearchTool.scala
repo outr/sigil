@@ -6,7 +6,7 @@ import sigil.SpaceId
 import sigil.tool.ToolContext
 import sigil.conversation.MemoryStatus
 import sigil.tool.model.{SemanticSearchHit, SemanticSearchInput, SemanticSearchOutput}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * The unified memory-retrieval tool. Wraps
@@ -27,8 +27,12 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolExample, ToolName
 case object SemanticSearchTool extends Tool {
   type Input  = SemanticSearchInput
   type Output = SemanticSearchOutput
-  val inputRW  = summon[RW[SemanticSearchInput]]
-  val outputRW = summon[RW[SemanticSearchOutput]]
+  val io: ToolIO[SemanticSearchInput, SemanticSearchOutput] = ToolIO.derived[SemanticSearchInput, SemanticSearchOutput].withExamples(
+    ToolExample("Recall a preference", SemanticSearchInput(query = "user's preferred coding style")),
+    ToolExample("Top 3 matches only", SemanticSearchInput(query = "deadline next week", limit = 3)),
+    ToolExample("Include archived versions",
+      SemanticSearchInput(query = "deploy target", includeHistory = true))
+  )
   override val name = ToolName("semantic_search")
   override val description =
     """Search persisted memories. Returns matches ranked by embedding similarity when a vector
@@ -41,14 +45,10 @@ case object SemanticSearchTool extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(keywords = Set("semantic", "search", "memory", "recall", "remember", "find", "vector", "similarity", "rag"))
   )
-  override val examples = List(
-    ToolExample("Recall a preference", SemanticSearchInput(query = "user's preferred coding style")),
-    ToolExample("Top 3 matches only", SemanticSearchInput(query = "deadline next week", limit = 3)),
-    ToolExample("Include archived versions",
-      SemanticSearchInput(query = "deploy target", includeHistory = true))
-  )
 
-  override def executeOutput(input: SemanticSearchInput, ctx: ToolContext): Task[SemanticSearchOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: SemanticSearchInput, ctx: ToolContext): Task[SemanticSearchOutput] =
     resolveSpaces(input, ctx).flatMap { spaces =>
       if (spaces.isEmpty)
         Task.pure(SemanticSearchOutput(query = input.query, memories = Nil, count = 0))

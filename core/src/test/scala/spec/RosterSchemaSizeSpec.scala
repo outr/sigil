@@ -7,7 +7,19 @@ import rapid.{Stream, Task}
 import sigil.provider.{ConversationMode, Provider, ProviderCall, ProviderType}
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolSpec
+}
 
 /**
  * Coverage for sigil bug #43 — `Provider.estimateRoster` must include
@@ -30,15 +42,15 @@ class RosterSchemaSizeSpec extends AnyWordSpec with Matchers {
                        field09: String = "",
                        field10: String = "",
                        field11: String = "",
-                       field12: String = "") extends ToolInput derives RW
+                       field12: String = "")
+    extends ToolInput derives RW
 
   case object WideTool extends Tool {
-    type Input  = WideInput
+    type Input = WideInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[WideInput]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[WideInput, TextToolOutput] = ToolIO.derived[WideInput, TextToolOutput]
 
-    override val name        = ToolName("wide_tool")
+    override val name = ToolName("wide_tool")
     override val description = "A short description."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -47,7 +59,9 @@ class RosterSchemaSizeSpec extends AnyWordSpec with Matchers {
       discovery = DiscoverySpec(keywords = Set("test", "wide_tool"))
     )
 
-    override def executeOutput(input: WideInput, context: ToolContext): Task[TextToolOutput] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+    private def executeOutput(input: WideInput, context: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(""))
   }
 

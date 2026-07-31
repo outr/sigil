@@ -6,7 +6,20 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{Conversation, ConversationView, DiscoveredCapability, TopicEntry, TurnInput}
 import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions, ProviderCall}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolContext, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolContext,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolSpec
+}
 import sigil.tool.discovery.CapabilityType
 
 import java.util.concurrent.atomic.AtomicReference
@@ -40,10 +53,9 @@ class PromptToolsConsistencySpec extends AsyncWordSpec with AsyncTaskSpec with M
   case class StubInput() extends ToolInput derives fabric.rw.RW
 
   private def stubTool(n: String): Tool = new Tool {
-    type Input  = StubInput
+    type Input = StubInput
     type Output = TextToolOutput
-    val inputRW  = summon[fabric.rw.RW[StubInput]]
-    val outputRW = summon[fabric.rw.RW[TextToolOutput]]
+    val io: ToolIO[StubInput, TextToolOutput] = ToolIO.derived[StubInput, TextToolOutput]
     override val name = ToolName.parse(n).fold(sys.error, identity)
     override val description = s"stub tool $n"
     val spec: ToolSpec = ToolSpec(
@@ -52,7 +64,9 @@ class PromptToolsConsistencySpec extends AsyncWordSpec with AsyncTaskSpec with M
       profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
       discovery = DiscoverySpec(keywords = Set("test", n))
     )
-    override def executeOutput(input: StubInput, context: ToolContext): Task[TextToolOutput] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+    private def executeOutput(input: StubInput, context: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(s"$n ran"))
   }
 
@@ -84,22 +98,22 @@ class PromptToolsConsistencySpec extends AsyncWordSpec with AsyncTaskSpec with M
       .empty(TestUser, convId)
       .copy(suggestedTools = projectionSuggested)
     val ti = TurnInput(
-      conversationId         = convId,
+      conversationId = convId,
       participantProjections = Map(TestUser -> proj)
     )
     val request = ConversationRequest(
-      conversationId         = convId,
-      model                  = TestSigil.defaultTestModel,
-      instructions           = Instructions(),
-      turnInput              = ti,
-      currentMode            = ConversationMode,
-      currentTopic           = TestTopicEntry,
-      previousTopics         = Nil,
-      generationSettings     = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools                  = wireTools,
-      builtInTools           = Set.empty,
-      chain                  = List(TestUser),
-      roles                  = List(sigil.role.GeneralistRole),
+      conversationId = convId,
+      model = TestSigil.defaultTestModel,
+      instructions = Instructions(),
+      turnInput = ti,
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
+      generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
+      tools = wireTools,
+      builtInTools = Set.empty,
+      chain = List(TestUser),
+      roles = List(sigil.role.GeneralistRole),
       discoveredCapabilities = ref.get(),
       discoveredCapabilitiesRef = ref
     )
@@ -107,13 +121,15 @@ class PromptToolsConsistencySpec extends AsyncWordSpec with AsyncTaskSpec with M
     // is the wire roster the prompt sections must consistency-check
     // against.
     val m = classOf[sigil.provider.Provider].getDeclaredMethod(
-      "renderSystem", classOf[ConversationRequest], classOf[sigil.provider.ResolvedReferences]
+      "renderSystem",
+      classOf[ConversationRequest],
+      classOf[sigil.provider.ResolvedReferences]
     )
     m.setAccessible(true)
     val resolved = sigil.provider.ResolvedReferences(
       criticalMemories = Vector.empty,
-      memories         = Vector.empty,
-      summaries        = Vector.empty
+      memories = Vector.empty,
+      summaries = Vector.empty
     )
     // Sigil #302 — renderSystem now returns RenderedSystem(stable,
     // volatile); join them for the existing assertions that don't
@@ -127,47 +143,47 @@ class PromptToolsConsistencySpec extends AsyncWordSpec with AsyncTaskSpec with M
 
     "filter 'Capabilities you've already discovered' matches to wire-offered names only" in Task {
       val discovered = List(
-        ToolName("wired_tool_a"),     // offered — should appear
-        ToolName("not_on_wire_x")     // discovered but not offered — must NOT appear
+        ToolName("wired_tool_a"), // offered — should appear
+        ToolName("not_on_wire_x") // discovered but not offered — must NOT appear
       )
       val prompt = renderSystem(
-        discoveredMatches  = discovered,
+        discoveredMatches = discovered,
         projectionSuggested = Nil,
-        wireTools          = Vector(wireTool1, wireTool2)
+        wireTools = Vector(wireTool1, wireTool2)
       )
-      prompt should include ("Capabilities you've already discovered")
-      prompt should include ("wired_tool_a")
-      prompt should not include ("not_on_wire_x")
+      prompt should include("Capabilities you've already discovered")
+      prompt should include("wired_tool_a")
+      prompt should not include "not_on_wire_x"
     }
 
     "filter 'Suggested tools' to wire-offered names only" in Task {
       val suggested = List(
-        ToolName("wired_tool_b"),     // offered — should appear
-        ToolName("not_on_wire_y")     // suggested but not offered — must NOT appear
+        ToolName("wired_tool_b"), // offered — should appear
+        ToolName("not_on_wire_y") // suggested but not offered — must NOT appear
       )
       val prompt = renderSystem(
-        discoveredMatches   = Nil,
+        discoveredMatches = Nil,
         projectionSuggested = suggested,
-        wireTools           = Vector(wireTool1, wireTool2)
+        wireTools = Vector(wireTool1, wireTool2)
       )
-      prompt should include ("Suggested tools")
-      prompt should include ("wired_tool_b")
-      prompt should not include ("not_on_wire_y")
+      prompt should include("Suggested tools")
+      prompt should include("wired_tool_b")
+      prompt should not include "not_on_wire_y"
     }
 
     "omit the 'Capabilities you've already discovered' section entirely when no discovered matches are offered" in Task {
       val discovered = List(ToolName("not_on_wire_x"), ToolName("not_on_wire_y"))
       val prompt = renderSystem(
-        discoveredMatches  = discovered,
+        discoveredMatches = discovered,
         projectionSuggested = Nil,
-        wireTools          = Vector(wireTool1, wireTool2)
+        wireTools = Vector(wireTool1, wireTool2)
       )
       // With every discovered match filtered out, the whole section
       // (including the DIRECTIVE sentence) is suppressed — the
       // prompt isn't allowed to claim "these tools are NOW in your
       // roster" for tools that aren't.
-      prompt should not include ("Capabilities you've already discovered")
-      prompt should not include ("DIRECTIVE: These tools are NOW in your roster")
+      prompt should not include "Capabilities you've already discovered"
+      prompt should not include "DIRECTIVE: These tools are NOW in your roster"
     }
   }
 

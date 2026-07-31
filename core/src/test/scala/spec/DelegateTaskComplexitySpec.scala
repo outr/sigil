@@ -34,80 +34,80 @@ class DelegateTaskComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with M
     import sigil.db.{ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
     val now = lightdb.time.Timestamp()
     Model(
-      canonicalSlug       = id.value,
-      huggingFaceId       = "",
-      name                = id.value,
-      description         = s"Synthetic Model record for $id.",
-      contextLength       = 32768L,
-      architecture        = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
-      pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
-      topProvider         = ModelTopProvider(contextLength = Some(32768L), maxCompletionTokens = Some(8192L), isModerated = false),
-      perRequestLimits    = None,
+      canonicalSlug = id.value,
+      huggingFaceId = "",
+      name = id.value,
+      description = s"Synthetic Model record for $id.",
+      contextLength = 32768L,
+      architecture = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
+      pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+      topProvider = ModelTopProvider(contextLength = Some(32768L), maxCompletionTokens = Some(8192L), isModerated = false),
+      perRequestLimits = None,
       supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
-      knowledgeCutoff     = None,
-      expirationDate      = None,
-      links               = ModelLinks(details = ""),
-      created             = now,
-      _id                 = id
+      knowledgeCutoff = None,
+      expirationDate = None,
+      links = ModelLinks(details = ""),
+      created = now,
+      _id = id
     )
   }
 
-  /** A conversation whose caller is an AgentParticipant — `delegate_task`
-    * requires the caller to be one (it becomes the worker's supervisor). */
+  /**
+   * A conversation whose caller is an AgentParticipant — `delegate_task`
+   * requires the caller to be one (it becomes the worker's supervisor).
+   */
   private def supervisorContext(): Task[TurnContext] = {
     // The supervisor must be an AgentParticipant whose id type is
     // registered in TestWorkflowSigil — WorkerParticipantId qualifies.
     val supervisorId = WorkerParticipantId(s"supervisor-${rapid.Unique()}")
-    val supervisor   = DefaultAgentParticipant(id = supervisorId, modelId = modelId)
+    val supervisor = DefaultAgentParticipant(id = supervisorId, modelId = modelId)
     val conv = Conversation(
-      topics       = List(TopicEntry(TestTopicId, "test", "test")),
+      topics = List(TopicEntry(TestTopicId, "test", "test")),
       participants = List(supervisor),
-      _id          = Conversation.id(s"delegate-complexity-${rapid.Unique()}")
+      _id = Conversation.id(s"delegate-complexity-${rapid.Unique()}")
     )
     TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv))).map { stored =>
       TurnContext(
-        sigil        = TestWorkflowSigil,
-        chain        = List(supervisorId),
+        sigil = TestWorkflowSigil,
+        chain = List(supervisorId),
         conversation = stored,
-        turnInput    = TurnInput(ConversationView(conversationId = stored._id)),
-        model        = TestWorkflowSigil.cache.find(modelId).get
+        turnInput = TurnInput(ConversationView(conversationId = stored._id)),
+        model = TestWorkflowSigil.cache.find(modelId).get
       )
     }
   }
 
   private def input(complexity: Option[Complexity]): DelegateTaskInput =
     DelegateTaskInput(
-      role       = "bug-finder",
+      role = "bug-finder",
       roleDescription = Some("Find bugs."),
-      brief      = "Find all bug references in the repo.",
-      modelId    = Some(modelId.value),
+      brief = "Find all bug references in the repo.",
+      modelId = Some(modelId.value),
       complexity = complexity
     )
 
   private def workerConvComplexity(complexity: Option[Complexity]): Task[Option[Complexity]] =
     supervisorContext().flatMap { ctx =>
-      DelegateTaskTool.executeResult(input(complexity), toolContext(ctx)).flatMap {
-        case ToolResult.Success(out: DelegateTaskOutput) =>
-          TestWorkflowSigil.withDB(_.conversations.transaction(_.get(Conversation.id(out.workerConvId))))
-            .map(_.flatMap(_.pinnedComplexity))
-        case other => Task.pure(fail(s"expected a successful spawn, got $other"))
+      DelegateTaskTool.invoke(input(complexity), toolContext(ctx)).flatMap { out =>
+        TestWorkflowSigil.withDB(_.conversations.transaction(_.get(Conversation.id(out.workerConvId))))
+          .map(_.flatMap(_.pinnedComplexity))
       }
     }
 
-  /** Wrap a TurnContext into a ToolContext for the typed tool call. */
+  /**
+   * Wrap a TurnContext into a ToolContext for the typed tool call.
+   */
   private def toolContext(turn: TurnContext): sigil.tool.ToolContext =
     sigil.tool.ToolContext(turn, sigil.event.Event.id(), DelegateTaskTool.name)
 
   "delegate_task" should {
-    "NOT pin complexity on the worker conversation, even when one is delegated (#351)" in {
+    "NOT pin complexity on the worker conversation, even when one is delegated (#351)" in
       // The supervisor's early guess must not freeze the worker's tier;
       // per-turn classification (+ earned request_escalation) owns routing.
       workerConvComplexity(Some(Complexity.High)).map(_ shouldBe None)
-    }
 
-    "leave the worker conversation unpinned when no complexity is delegated" in {
+    "leave the worker conversation unpinned when no complexity is delegated" in
       workerConvComplexity(None).map(_ shouldBe None)
-    }
   }
 
   "tear down" should {

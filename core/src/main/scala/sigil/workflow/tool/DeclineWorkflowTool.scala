@@ -5,7 +5,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
 import strider.Workflow
 import strider.step.Step
 
@@ -27,8 +27,12 @@ case class DeclineWorkflowInput(runId: String,
 final class DeclineWorkflowTool extends Tool with WorkflowToolSupport {
   type Input  = DeclineWorkflowInput
   type Output = TextToolOutput
-  val inputRW  = summon[RW[DeclineWorkflowInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DeclineWorkflowInput, TextToolOutput] = ToolIO.derived[DeclineWorkflowInput, TextToolOutput].withExamples(
+    ToolExample("Decline a deploy approval",
+      DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate")),
+    ToolExample("Decline with a reason",
+      DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate", reason = Some("staging tests failing")))
+  )
   override val name = ToolName("decline_workflow")
   override val description =
     """Decline a workflow run paused on an approval step.
@@ -36,12 +40,6 @@ final class DeclineWorkflowTool extends Tool with WorkflowToolSupport {
       |`runId` is the run id; `stepId` is the id of the waiting approval step. `reason` is
       |optional free-form text — appended to the resume payload so the workflow's
       |branching can match on it.""".stripMargin
-  override val examples = List(
-    ToolExample("Decline a deploy approval",
-      DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate")),
-    ToolExample("Decline with a reason",
-      DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate", reason = Some("staging tests failing")))
-  )
   val spec: ToolSpec = ToolSpec(
     name = name,
     description = description,
@@ -49,7 +47,9 @@ final class DeclineWorkflowTool extends Tool with WorkflowToolSupport {
     discovery = DiscoverySpec(keywords = Set("workflow", "decline", "reject", "no", "deny", "refuse"))
   )
 
-  override def executeResult(input: DeclineWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DeclineWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostTyped(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     val payload: Json = input.reason.filter(_.nonEmpty).fold[Json](str("decline"))(r => str(s"decline: $r"))
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {

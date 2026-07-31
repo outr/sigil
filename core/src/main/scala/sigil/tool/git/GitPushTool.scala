@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitPushError, GitPushInput, GitPushOutput}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * `git_push` — push committed changes to a remote. WRITES external
@@ -30,8 +30,13 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, 
 final class GitPushTool(context: FileSystemContext) extends Tool {
   type Input  = GitPushInput
   type Output = GitPushOutput
-  val inputRW  = summon[RW[GitPushInput]]
-  val outputRW = summon[RW[GitPushOutput]]
+  val io: ToolIO[GitPushInput, GitPushOutput] = ToolIO.derived[GitPushInput, GitPushOutput].withExamples(
+    ToolExample("Push current branch to its upstream", GitPushInput()),
+    ToolExample("First push of a feature branch",      GitPushInput(setUpstream = true)),
+    ToolExample("Push tags too",                       GitPushInput(tags = true)),
+    ToolExample("Force-with-lease (safer force)",      GitPushInput(forceWithLease = true)),
+    ToolExample("Explicit remote and branch",          GitPushInput(remote = Some("upstream"), branch = Some("feature/x")))
+  )
   override val name = ToolName("git_push")
   override val description =
     """Push committed changes to a remote. Defaults push the current branch to its tracked
@@ -51,15 +56,10 @@ final class GitPushTool(context: FileSystemContext) extends Tool {
     profile = ToolProfile(effect = Effect.Destructive(target = MutationTargeting.none, consequence = "DESTRUCTIVE.")),
     discovery = DiscoverySpec(keywords = Set("git", "push", "publish", "upload", "remote", "upstream", "deploy", "sync"))
   )
-  override val examples = List(
-    ToolExample("Push current branch to its upstream", GitPushInput()),
-    ToolExample("First push of a feature branch",      GitPushInput(setUpstream = true)),
-    ToolExample("Push tags too",                       GitPushInput(tags = true)),
-    ToolExample("Force-with-lease (safer force)",      GitPushInput(forceWithLease = true)),
-    ToolExample("Explicit remote and branch",          GitPushInput(remote = Some("upstream"), branch = Some("feature/x")))
-  )
 
-  override def executeOutput(input: GitPushInput, ctx: ToolContext): Task[GitPushOutput] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: GitPushInput, ctx: ToolContext): Task[GitPushOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       validateForcePushGate(input) match {
         case Some(reason) =>

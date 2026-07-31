@@ -11,7 +11,7 @@ import sigil.information.Information
 import sigil.information.Information.given
 import sigil.skill.Skill
 import sigil.tool.discovery.CapabilityType
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolName, ToolProfile, ToolSpec}
 import sigil.tool.model.{LookupChunk, LookupInput, LookupOutput}
 
 /**
@@ -37,8 +37,7 @@ import sigil.tool.model.{LookupChunk, LookupInput, LookupOutput}
 case object LookupTool extends Tool {
   type Input  = LookupInput
   type Output = LookupOutput
-  val inputRW  = summon[RW[LookupInput]]
-  val outputRW = summon[RW[LookupOutput]]
+  val io: ToolIO[LookupInput, LookupOutput] = ToolIO.derived[LookupInput, LookupOutput]
   override val name = ToolName("lookup")
   override val description =
     """Resolve a capability match (from a capability search) to its full record. Use this when
@@ -62,7 +61,9 @@ case object LookupTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("lookup", "fetch", "retrieve", "resolve", "details", "full", "expand"))
   )
 
-  override def executeOutput(input: LookupInput, context: ToolContext): Task[LookupOutput] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LookupInput, context: ToolContext): Task[LookupOutput] = {
     val typeName = input.capabilityType.toString
     val resolved = input.capabilityType match {
       case CapabilityType.Memory      => resolveMemory(input.name, typeName, context)

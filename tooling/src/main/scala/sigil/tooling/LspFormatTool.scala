@@ -4,15 +4,12 @@ import fabric.rw.*
 import org.eclipse.lsp4j.FormattingOptions
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.LspFormatResult
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
 
-case class LspFormatInput(languageId: String,
-                          filePath: String,
-                          tabSize: Int = 2,
-                          insertSpaces: Boolean = true) extends ToolInput derives RW
+case class LspFormatInput(languageId: String, filePath: String, tabSize: Int = 2, insertSpaces: Boolean = true) extends ToolInput derives RW
 
 /**
  * Format an entire file via the language server's formatting
@@ -24,12 +21,10 @@ case class LspFormatInput(languageId: String,
  * Rust, etc.). Servers that don't have formatting support return an
  * empty edit list — the file is unchanged.
  */
-final class LspFormatTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspFormatInput
+final class LspFormatTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspFormatInput
   type Output = LspFormatResult
-  val inputRW  = summon[RW[LspFormatInput]]
-  val outputRW = summon[RW[LspFormatResult]]
+  val io: ToolIO[LspFormatInput, LspFormatResult] = ToolIO.derived[LspFormatInput, LspFormatResult]
   override val name = ToolName("lsp_format")
   override val description =
     """Format a file via the language server's formatting provider.
@@ -49,9 +44,13 @@ final class LspFormatTool(val manager: LspManager) extends Tool
     )
   )
 
-  override def executeOutput(input: LspFormatInput, context: ToolContext): Task[LspFormatResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspFormatInput, context: ToolContext): Task[LspFormatResult] =
     withOpenDocumentOrThrow[LspFormatResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       val opts = new FormattingOptions(input.tabSize, input.insertSpaces)
       session.formatting(uri, opts).flatMap { edits =>

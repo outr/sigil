@@ -3,7 +3,19 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 /**
  * [[sigil.tool.Tool]] that hands the model's `code` argument to the
@@ -40,21 +52,9 @@ class ExecuteScriptTool(executor: ScriptExecutor,
                         override val name: ToolName = ToolName("execute_script"),
                         override val description: String = ExecuteScriptTool.DefaultDescription)
   extends Tool {
-  type Input  = ScriptInput
+  type Input = ScriptInput
   type Output = ScriptToolOutput
-  val inputRW  = summon[RW[ScriptInput]]
-  val outputRW = summon[RW[ScriptToolOutput]]
-
-  val spec: ToolSpec = ToolSpec(
-    name = name,
-    description = description,
-    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
-    discovery = DiscoverySpec(
-      keywords = Set("execute", "run", "evaluate", "eval", "script"),
-      preferIfNoBetter = true
-    )
-  )
-  override val examples = List(
+  val io: ToolIO[ScriptInput, ScriptToolOutput] = ToolIO.derived[ScriptInput, ScriptToolOutput].withExamples(
     ToolExample(
       "Compute a derived value",
       ScriptInput(code = "val x = 1 + 2; x * 10", summary = "demo: small arithmetic")
@@ -75,15 +75,25 @@ class ExecuteScriptTool(executor: ScriptExecutor,
     )
   )
 
-  override def descriptionFor(mode: _root_.sigil.provider.Mode,
-                              sigilInstance: _root_.sigil.Sigil): String =
+  val spec: ToolSpec = ToolSpec(
+    name = name,
+    description = description,
+    profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
+    discovery = DiscoverySpec(
+      keywords = Set("execute", "run", "evaluate", "eval", "script"),
+      preferIfNoBetter = true
+    )
+  )
+
+  override def descriptionFor(mode: _root_.sigil.provider.Mode, sigilInstance: _root_.sigil.Sigil): String =
     executor.advertisedSurface match {
-      case Some(surface) => s"${description}\n\n$surface"
-      case None          => description
+      case Some(surface) => s"$description\n\n$surface"
+      case None => description
     }
 
-  override def executeResult(input: ScriptInput,
-                             context: ToolContext): Task[ToolResult[ScriptToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: ScriptInput, context: ToolContext): Task[ToolResult[ScriptToolOutput]] = {
     val started = System.currentTimeMillis()
     // Wrap the whole construction in an outer `Task.defer` and
     // `.handleError` it so synchronous throws during evaluation of
@@ -95,7 +105,7 @@ class ExecuteScriptTool(executor: ScriptExecutor,
       executor.execute(input.code, bindings(context))
         .map { output =>
           ToolResult.Success(ScriptToolOutput(
-            output     = Some(output),
+            output = Some(output),
             durationMs = System.currentTimeMillis() - started
           ))
         }
@@ -113,15 +123,18 @@ class ExecuteScriptTool(executor: ScriptExecutor,
     // agent has enough to fix the script.
     ToolResult.failure(
       message = ExecuteScriptTool.formatThrowable(t),
-      hint    = Some("fix the script and re-run")
+      hint = Some("fix the script and re-run")
     )
 }
 
 object ExecuteScriptTool {
-  /** Format a throwable as a short stack-trace string suitable for a
-    * `ScriptResult.error` field. Trims to the first 8 lines so the
-    * model has the framing + the script-relevant frames without the
-    * ~80-line JVM stack. */
+
+  /**
+   * Format a throwable as a short stack-trace string suitable for a
+   * `ScriptResult.error` field. Trims to the first 8 lines so the
+   * model has the framing + the script-relevant frames without the
+   * ~80-line JVM stack.
+   */
   private[script] def formatThrowable(t: Throwable): String = {
     val sw = new java.io.StringWriter
     t.printStackTrace(new java.io.PrintWriter(sw))

@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolExample, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
 /**
  * Opt-in tool: return the full version history of a keyed memory,
@@ -13,8 +13,9 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolE
 case object MemoryHistoryTool extends Tool {
   type Input  = MemoryHistoryInput
   type Output = TextToolOutput
-  val inputRW: RW[MemoryHistoryInput] = summon[RW[MemoryHistoryInput]]
-  val outputRW: RW[TextToolOutput]    = summon[RW[TextToolOutput]]
+  val io: ToolIO[MemoryHistoryInput, TextToolOutput] = ToolIO.derived[MemoryHistoryInput, TextToolOutput].withExamples(
+    ToolExample("History of the user's theme preference", MemoryHistoryInput(key = "user.ui.theme"))
+  )
 
   override val name: ToolName = ToolName("memory_history")
   override val description: String =
@@ -32,11 +33,10 @@ case object MemoryHistoryTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("memory", "history", "version"))
   )
 
-  override val examples: List[ToolExample] = List(
-    ToolExample("History of the user's theme preference", MemoryHistoryInput(key = "user.ui.theme"))
-  )
 
-  override def executeResult(input: MemoryHistoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: MemoryHistoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     resolveSpace(input, context).flatMap {
       case None =>
         Task.pure(s"[memory_history] no memory space available for key ${input.key}.")

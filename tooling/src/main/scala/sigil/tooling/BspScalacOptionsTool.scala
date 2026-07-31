@@ -3,13 +3,12 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{BspScalacOptionsResult, BspTargetScalacOptions}
 
 import scala.jdk.CollectionConverters.*
 
-case class BspScalacOptionsInput(projectRoot: String,
-                                 targets: List[String] = Nil) extends ToolInput derives RW
+case class BspScalacOptionsInput(projectRoot: String, targets: List[String] = Nil) extends ToolInput derives RW
 
 /**
  * List the scalac options + classpath for each target. The agent
@@ -18,10 +17,9 @@ case class BspScalacOptionsInput(projectRoot: String,
  * resolution issues.
  */
 final class BspScalacOptionsTool(val manager: BspManager) extends Tool with BspToolSupport {
-  type Input  = BspScalacOptionsInput
+  type Input = BspScalacOptionsInput
   type Output = BspScalacOptionsResult
-  val inputRW  = summon[RW[BspScalacOptionsInput]]
-  val outputRW = summon[RW[BspScalacOptionsResult]]
+  val io: ToolIO[BspScalacOptionsInput, BspScalacOptionsResult] = ToolIO.derived[BspScalacOptionsInput, BspScalacOptionsResult]
 
   override val name = ToolName("bsp_scalac_options")
   override val description =
@@ -39,10 +37,13 @@ final class BspScalacOptionsTool(val manager: BspManager) extends Tool with BspT
     )
   )
 
-  override def executeOutput(input: BspScalacOptionsInput,
-                             context: ToolContext): Task[BspScalacOptionsResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: BspScalacOptionsInput, context: ToolContext): Task[BspScalacOptionsResult] =
     withTargets[BspScalacOptionsResult](
-      input.projectRoot, context, input.targets,
+      input.projectRoot,
+      context,
+      input.targets,
       onError = msg => BspScalacOptionsResult(input.projectRoot, Nil, error = Some(msg)),
       emptyResult = BspScalacOptionsResult(input.projectRoot, Nil)
     ) { (session, targets) =>
@@ -51,10 +52,10 @@ final class BspScalacOptionsTool(val manager: BspManager) extends Tool with BspT
           projectRoot = input.projectRoot,
           items = items.map { item =>
             BspTargetScalacOptions(
-              target         = item.getTarget.getUri,
-              options        = Option(item.getOptions).map(_.asScala.toList).getOrElse(Nil),
+              target = item.getTarget.getUri,
+              options = Option(item.getOptions).map(_.asScala.toList).getOrElse(Nil),
               classDirectory = Option(item.getClassDirectory).filter(_.nonEmpty),
-              classpath      = Option(item.getClasspath).map(_.asScala.toList).getOrElse(Nil)
+              classpath = Option(item.getClasspath).map(_.asScala.toList).getOrElse(Nil)
             )
           }
         )

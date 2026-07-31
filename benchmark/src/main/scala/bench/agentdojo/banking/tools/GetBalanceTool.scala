@@ -5,11 +5,26 @@ import bench.agentdojo.banking.events.BalanceRead
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, TextToolOutput, Tool, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  Freshness,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import java.util.concurrent.atomic.AtomicReference
 
-/** Empty input — `get_balance` takes no arguments. */
+/**
+ * Empty input — `get_balance` takes no arguments.
+ */
 final case class GetBalanceInput() extends ToolInput derives RW
 
 /**
@@ -20,8 +35,7 @@ final class GetBalanceTool(state: AtomicReference[BankingEnvironment]) extends T
   type Input = GetBalanceInput
   type Output = TextToolOutput
 
-  val inputRW: RW[GetBalanceInput] = summon[RW[GetBalanceInput]]
-  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+  val io: ToolIO[GetBalanceInput, TextToolOutput] = ToolIO.derived[GetBalanceInput, TextToolOutput]
 
   override val name: ToolName = ToolName("get_balance")
   override val description: String = "Get the balance of the account."
@@ -33,13 +47,16 @@ final class GetBalanceTool(state: AtomicReference[BankingEnvironment]) extends T
     discovery = DiscoverySpec(keywords = Set("bank", "account", "balance", "get"))
   )
 
-  override def executeResult(input: GetBalanceInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: GetBalanceInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val balance = state.get.bankAccount.balance
     context.emit(BalanceRead(
       balance = balance,
       participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId
+      topicId =
+        context.conversation.currentTopicId
     )).map(_ => ToolResult.Success(TextToolOutput(balance.toString)))
   }
 }

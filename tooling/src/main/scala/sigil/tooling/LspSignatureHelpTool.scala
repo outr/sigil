@@ -4,15 +4,12 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{MarkupContent, SignatureHelp, SignatureInformation}
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
 import sigil.tooling.types.{LspSignature, LspSignatureHelpResult, LspSignatureParam}
 
 import scala.jdk.CollectionConverters.*
 
-case class LspSignatureHelpInput(languageId: String,
-                                 filePath: String,
-                                 line: Int,
-                                 character: Int) extends ToolInput derives RW
+case class LspSignatureHelpInput(languageId: String, filePath: String, line: Int, character: Int) extends ToolInput derives RW
 
 /**
  * Function-call signature help at a position — overload list, the
@@ -23,12 +20,10 @@ case class LspSignatureHelpInput(languageId: String,
  * The agent uses this to ground argument names + types when calling
  * a method whose signature isn't obvious from context.
  */
-final class LspSignatureHelpTool(val manager: LspManager) extends Tool
-  with LspToolSupport {
-  type Input  = LspSignatureHelpInput
+final class LspSignatureHelpTool(val manager: LspManager) extends Tool with LspToolSupport {
+  type Input = LspSignatureHelpInput
   type Output = LspSignatureHelpResult
-  val inputRW  = summon[RW[LspSignatureHelpInput]]
-  val outputRW = summon[RW[LspSignatureHelpResult]]
+  val io: ToolIO[LspSignatureHelpInput, LspSignatureHelpResult] = ToolIO.derived[LspSignatureHelpInput, LspSignatureHelpResult]
 
   override val name = ToolName("lsp_signature_help")
   override val description =
@@ -49,9 +44,13 @@ final class LspSignatureHelpTool(val manager: LspManager) extends Tool
     )
   )
 
-  override def executeOutput(input: LspSignatureHelpInput, context: ToolContext): Task[LspSignatureHelpResult] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: LspSignatureHelpInput, context: ToolContext): Task[LspSignatureHelpResult] =
     withOpenDocumentOrThrow[LspSignatureHelpResult](
-      input.languageId, input.filePath, context
+      input.languageId,
+      input.filePath,
+      context
     ) { (session, uri) =>
       session.signatureHelp(uri, input.line, input.character).map(toResult)
     }
@@ -61,7 +60,7 @@ final class LspSignatureHelpTool(val manager: LspManager) extends Tool
     case Some(h) =>
       val sigs = Option(h.getSignatures).map(_.asScala.toList).getOrElse(Nil)
       LspSignatureHelpResult(
-        signatures      = sigs.map(toSignature),
+        signatures = sigs.map(toSignature),
         activeSignature = Option(h.getActiveSignature).map(_.toInt).getOrElse(0),
         activeParameter = Option(h.getActiveParameter).map(_.toInt).getOrElse(-1)
       )
@@ -79,7 +78,8 @@ final class LspSignatureHelpTool(val manager: LspManager) extends Tool
       },
       parameters = Option(sig.getParameters).map(_.asScala.toList.map { p =>
         val lbl = p.getLabel
-        val asString = if (lbl.isLeft) lbl.getLeft else {
+        val asString = if (lbl.isLeft) lbl.getLeft
+        else {
           // Right side is a tuple of int offsets into the signature label;
           // round-trip the substring rather than the offsets.
           val offs = lbl.getRight

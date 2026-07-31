@@ -3,7 +3,7 @@ package sigil.tool.provider
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
  * Read-only catalog listing — surfaces every model registered with
@@ -19,8 +19,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Tool, ToolName, ToolProfile
 case object ListModelsTool extends Tool {
   type Input  = ListModelsInput
   type Output = ListModelsOutput
-  val inputRW  = summon[RW[ListModelsInput]]
-  val outputRW = summon[RW[ListModelsOutput]]
+  val io: ToolIO[ListModelsInput, ListModelsOutput] = ToolIO.derived[ListModelsInput, ListModelsOutput]
 
   override val name = ToolName("list_models")
   override val description =
@@ -45,7 +44,9 @@ case object ListModelsTool extends Tool {
     ))
   )
 
-  override def executeOutput(input: ListModelsInput, ctx: ToolContext): Task[ListModelsOutput] = Task {
+  protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+  private def executeOutput(input: ListModelsInput, ctx: ToolContext): Task[ListModelsOutput] = Task {
     val all = ctx.sigil.cache.find(provider = input.provider, model = None)
     val q = input.query.map(_.toLowerCase.trim).filter(_.nonEmpty)
     val filtered = q match {

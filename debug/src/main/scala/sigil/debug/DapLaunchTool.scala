@@ -4,7 +4,21 @@ import fabric.Json
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec,
+  Effect,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolExample,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolResult,
+  ToolSpec
+}
 
 import scala.jdk.CollectionConverters.*
 
@@ -12,7 +26,8 @@ case class DapLaunchInput(languageId: String,
                           sessionId: String,
                           launchArguments: Map[String, Json] = Map.empty,
                           breakpointsByFile: Map[String, List[Int]] = Map.empty,
-                          exceptionFilters: List[String] = Nil) extends ToolInput derives RW
+                          exceptionFilters: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Spawn a debug adapter for the given language and start a fresh
@@ -36,8 +51,17 @@ case class DapLaunchInput(languageId: String,
 final class DapLaunchTool(val manager: DapManager) extends Tool with DapToolSupport {
   type Input = DapLaunchInput
   type Output = TextToolOutput
-  val inputRW = summon[RW[DapLaunchInput]]
-  val outputRW = summon[RW[TextToolOutput]]
+  val io: ToolIO[DapLaunchInput, TextToolOutput] = ToolIO.derived[DapLaunchInput, TextToolOutput].withExamples(
+    ToolExample(
+      "launch a sbt main class with one breakpoint",
+      DapLaunchInput(
+        languageId = "scala",
+        sessionId = "demo-session",
+        launchArguments = Map("mainClass" -> fabric.str("com.example.Main")),
+        breakpointsByFile = Map("/abs/path/Main.scala" -> List(15))
+      )
+    )
+  )
   override val name = ToolName("dap_launch")
   override val description =
     """Spawn a debug adapter and launch a fresh program for debugging.
@@ -55,36 +79,27 @@ final class DapLaunchTool(val manager: DapManager) extends Tool with DapToolSupp
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("debug", "dap", "launch", "run", "program", "debugger", "start"))
   )
-  override val examples = List(
-    ToolExample(
-      "launch a sbt main class with one breakpoint",
-      DapLaunchInput(
-        languageId = "scala",
-        sessionId = "demo-session",
-        launchArguments = Map("mainClass" -> fabric.str("com.example.Main")),
-        breakpointsByFile = Map("/abs/path/Main.scala" -> List(15))
-      )
-    )
-  )
 
-  override def executeResult(input: DapLaunchInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
+  protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
+
+  private def executeResult(input: DapLaunchInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     manager.spawn(input.languageId, input.sessionId).flatMap { session =>
       val args = input.launchArguments.map { case (k, v) => k -> jsonToObject(v) }.asJava
 
       for {
-        _    <- session.launch(args)
-        bps  <- Task.sequence(
-                  input.breakpointsByFile.toList.map { case (path, lines) =>
-                    session.setBreakpoints(path, lines).map(path -> _)
-                  }
-                )
-        _    <- if (input.exceptionFilters.nonEmpty) session.setExceptionBreakpoints(input.exceptionFilters)
-                else Task.pure(Nil)
-        _    <- session.configurationDone()
+        _ <- session.launch(args)
+        bps <- Task.sequence(
+          input.breakpointsByFile.toList.map { case (path, lines) =>
+            session.setBreakpoints(path, lines).map(path -> _)
+          }
+        )
+        _ <- if (input.exceptionFilters.nonEmpty) session.setExceptionBreakpoints(input.exceptionFilters)
+        else Task.pure(Nil)
+        _ <- session.configurationDone()
       } yield {
         val bpReport = bps.map { case (path, set) =>
           val verified = set.count(_.isVerified)
-          s"  $path: ${verified}/${set.size} verified"
+          s"  $path: $verified/${set.size} verified"
         }.mkString("\n")
         val header = s"Debug session '${input.sessionId}' launched (language=${input.languageId})."
         val text = if (bpReport.isEmpty) header else s"$header\nBreakpoints:\n$bpReport"
@@ -92,15 +107,17 @@ final class DapLaunchTool(val manager: DapManager) extends Tool with DapToolSupp
       }
     }.handleError(e => Task.pure(ToolResult.failure(s"DAP launch failed: ${e.getMessage}")))
 
-  /** Translate fabric `Json` into the boxed Java types lsp4j-debug
-    * expects in the launch arguments map. Values that don't fit a
-    * primitive role flatten to their JSON-string form. */
+  /**
+   * Translate fabric `Json` into the boxed Java types lsp4j-debug
+   * expects in the launch arguments map. Values that don't fit a
+   * primitive role flatten to their JSON-string form.
+   */
   private def jsonToObject(j: Json): Object = j match {
-    case fabric.Str(s, _)   => s
-    case fabric.NumInt(n, _)  => java.lang.Long.valueOf(n)
+    case fabric.Str(s, _) => s
+    case fabric.NumInt(n, _) => java.lang.Long.valueOf(n)
     case fabric.NumDec(d, _) => d.bigDecimal.doubleValue.asInstanceOf[Object]
-    case fabric.Bool(b, _)  => java.lang.Boolean.valueOf(b)
-    case fabric.Null        => null
+    case fabric.Bool(b, _) => java.lang.Boolean.valueOf(b)
+    case fabric.Null => null
     case fabric.Arr(values, _) =>
       values.toArray.map(jsonToObject)
     case obj: fabric.Obj =>

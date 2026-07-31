@@ -6,7 +6,22 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.GlobalSpace
 import sigil.conversation.Conversation
-import sigil.tool.{DiscoveryRequest, DiscoverySpec, Effect, InMemoryToolFinder, MutationTargeting, TextToolOutput, Tool, ToolFinder, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{
+  DiscoveryRequest,
+  DiscoverySpec,
+  Effect,
+  InMemoryToolFinder,
+  MutationTargeting,
+  Resolution,
+  TextToolOutput,
+  Tool,
+  ToolFinder,
+  ToolIO,
+  ToolInput,
+  ToolName,
+  ToolProfile,
+  ToolSpec
+}
 import sigil.tool.ToolContext
 import sigil.TurnContext
 
@@ -32,14 +47,15 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
   case class GenericInput(payload: String) extends ToolInput derives RW
 
-  /** "Generic" tool — no toolchain, scores by keyword match. */
+  /**
+   * "Generic" tool — no toolchain, scores by keyword match.
+   */
   case object GrepLikeTool extends Tool {
-    type Input  = GenericInput
+    type Input = GenericInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[GenericInput]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[GenericInput, TextToolOutput] = ToolIO.derived[GenericInput, TextToolOutput]
 
-    override val name        = ToolName("grep_like")
+    override val name = ToolName("grep_like")
     override val description = "Generic search."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -48,18 +64,21 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       discovery = DiscoverySpec(keywords = Set("grep", "search", "examine", "inspect", "code"))
     )
 
-    override def executeOutput(input: GenericInput, ctx: ToolContext): Task[TextToolOutput] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+    private def executeOutput(input: GenericInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(""))
   }
 
-  /** Tagged with `lsp` toolchain. Same keyword set as the generic. */
+  /**
+   * Tagged with `lsp` toolchain. Same keyword set as the generic.
+   */
   case object LspLikeTool extends Tool {
-    type Input  = GenericInput
+    type Input = GenericInput
     type Output = TextToolOutput
-    val inputRW  = summon[RW[GenericInput]]
-    val outputRW = summon[RW[TextToolOutput]]
+    val io: ToolIO[GenericInput, TextToolOutput] = ToolIO.derived[GenericInput, TextToolOutput]
 
-    override val name        = ToolName("lsp_like_diagnostics")
+    override val name = ToolName("lsp_like_diagnostics")
     override val description = "LSP-backed inspection."
     val spec: ToolSpec = ToolSpec(
       name = name,
@@ -68,27 +87,33 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       discovery = DiscoverySpec(keywords = Set("lsp", "examine", "inspect", "analyze"), toolchain = Some("lsp"))
     )
 
-    override def executeOutput(input: GenericInput, ctx: ToolContext): Task[TextToolOutput] =
+    protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
+
+    private def executeOutput(input: GenericInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(""))
   }
 
   ToolInput.register(RW.static(GenericInput("")))
 
-  /** A finder that returns both tools, ordered by keyword match (grep
-    * has more matches for "examine search" so ranks first by default). */
+  /**
+   * A finder that returns both tools, ordered by keyword match (grep
+   * has more matches for "examine search" so ranks first by default).
+   */
   private val finder: ToolFinder = InMemoryToolFinder(List(GrepLikeTool, LspLikeTool))
 
   private def request(active: Set[String]): DiscoveryRequest =
     DiscoveryRequest(
-      keywords     = "examine inspect code",
-      chain        = List(TestUser, TestAgent),
-      mode         = sigil.provider.ConversationMode,
+      keywords = "examine inspect code",
+      chain = List(TestUser, TestAgent),
+      mode = sigil.provider.ConversationMode,
       callerSpaces = Set(GlobalSpace),
       conversationId = Some(Conversation.id(s"toolchain-boost-${rapid.Unique()}"))
     )
 
-  /** Active toolchains the test injects for the next call. Each
-    * test sets this then calls findCapabilities. */
+  /**
+   * Active toolchains the test injects for the next call. Each
+   * test sets this then calls findCapabilities.
+   */
   private val activeRef: java.util.concurrent.atomic.AtomicReference[Set[String]] =
     new java.util.concurrent.atomic.AtomicReference(Set.empty[String])
 
@@ -106,7 +131,7 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         // and their score difference is small (no big lift).
         tools.map(_.name).toSet should contain allOf ("grep_like", "lsp_like_diagnostics")
         val grepScore = tools.find(_.name == "grep_like").map(_.score).getOrElse(0.0)
-        val lspScore  = tools.find(_.name == "lsp_like_diagnostics").map(_.score).getOrElse(0.0)
+        val lspScore = tools.find(_.name == "lsp_like_diagnostics").map(_.score).getOrElse(0.0)
         math.abs(grepScore - lspScore) should be < TestSigil.toolchainBoost
       }
     }
@@ -122,7 +147,7 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         TestSigil.findCapabilities(request(Set("lsp"))).map { matches =>
           val tools = matches.filter(_.capabilityType.toString.toLowerCase.contains("tool"))
           val grepScore = tools.find(_.name == "grep_like").map(_.score).getOrElse(0.0)
-          val lspScore  = tools.find(_.name == "lsp_like_diagnostics").map(_.score).getOrElse(0.0)
+          val lspScore = tools.find(_.name == "lsp_like_diagnostics").map(_.score).getOrElse(0.0)
           // 1) The boost lifts the lsp tool above the generic.
           lspScore should be > grepScore
           // 2) The boost adds exactly `toolchainBoost` to the lsp
@@ -137,7 +162,7 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       TestSigil.findCapabilities(request(Set("bsp"))).map { matches =>
         val tools = matches.filter(_.capabilityType.toString.toLowerCase.contains("tool"))
         val grepScore = tools.find(_.name == "grep_like").map(_.score).getOrElse(0.0)
-        val lspScore  = tools.find(_.name == "lsp_like_diagnostics").map(_.score).getOrElse(0.0)
+        val lspScore = tools.find(_.name == "lsp_like_diagnostics").map(_.score).getOrElse(0.0)
         // Neither tool has toolchain="bsp"; both score by base
         // ordering only.
         math.abs(grepScore - lspScore) should be < TestSigil.toolchainBoost
