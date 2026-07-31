@@ -5,7 +5,11 @@ import rapid.Task
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, ParticipantProjection, ToolCallState, TurnInput}
 import sigil.db.Model
+import sigil.diagnostics.ProfileSection
 import sigil.information.InformationSummary
+import sigil.provider.ContextSections
+
+import scala.annotation.tailrec
 import sigil.participant.ParticipantId
 import sigil.conversation.compression.extract.{MemoryExtractor, NoOpMemoryExtractor}
 import sigil.tokenize.{HeuristicTokenizer, JtokkitTokenizer, Tokenizer}
@@ -409,28 +413,41 @@ case class StandardContextCurator(sigil: Sigil,
             stampPressure(result.copy(frames = fullyElided), 1)
           }
 
+        /** The section-shaped shed stages, in
+          * [[sigil.provider.ContextSection.shedStage]] order: retrieved
+          * memories, then unreferenced Information, then persisted
+          * summaries. Each is a cheap drop re-gated against the cap
+          * before the next runs. Returns `Right` at the first stage
+          * that fits, `Left` with everything shed when none does. */
+        @tailrec
+        def sectionShedCascade(remaining: List[ProfileSection],
+                               current: TurnInput,
+                               summariesArg: Vector[ContextSummary]): Either[TurnInput, TurnInput] =
+          remaining match {
+            case Nil        => Left(current)
+            case id :: rest =>
+              val next = id match {
+                case ProfileSection.Memories    => current.copy(memories = Vector.empty)
+                case ProfileSection.Information =>
+                  val referenced = referencedInformationIds(frames)
+                  current.copy(information = information.filter(i => referenced.contains(i.id.value)))
+                case ProfileSection.Summaries   => current.copy(summaries = Vector.empty)
+                case _                          => current
+              }
+              val nextSummaries = if (id == ProfileSection.Summaries) Vector.empty else summariesArg
+              if (tokensOf(next, frames, nextSummaries) <= cap) Right(next)
+              else sectionShedCascade(rest, next, nextSummaries)
+          }
+
         if (tokensOf(tent, frames, resolvedSummaries) <= cap) Task {
           sigil.elisionPressureStreaks.remove(tentative.conversationId)
           tent
         }
         else {
-          // Stage 1 — drop non-critical retrieved memories.
-          val afterStage1 = tent.copy(memories = Vector.empty)
-          if (tokensOf(afterStage1, frames, resolvedSummaries) <= cap) Task.pure(afterStage1)
-          else {
-            // Stage 2 — drop unreferenced Information.
-            val referenced = referencedInformationIds(frames)
-            val keptInformation = information.filter(i => referenced.contains(i.id.value))
-            val afterStage2 = afterStage1.copy(information = keptInformation)
-            if (tokensOf(afterStage2, frames, resolvedSummaries) <= cap) Task.pure(afterStage2)
-            else {
-              // Stage 2b — drop persisted summaries (cheap-shed
-              // before invoking compressor). Apps relying on
-              // import-time summaries pay the cost only when the
-              // budget genuinely can't accommodate them.
-              val afterStage2b = afterStage2.copy(summaries = Vector.empty)
-              if (tokensOf(afterStage2b, frames, Vector.empty) <= cap) Task.pure(afterStage2b)
-              else resolveElisionProtectedIds(tentative.conversationId, frames).flatMap { elisionProtected =>
+          sectionShedCascade(StandardContextCurator.sectionShedOrder, tent, resolvedSummaries) match {
+            case Right(fitted)            => Task.pure(fitted)
+            case Left(afterSectionSheds)  =>
+              resolveElisionProtectedIds(tentative.conversationId, frames).flatMap { elisionProtected =>
                 compactLargeFrames(tentative.conversationId, frames, elisionProtected).flatMap { compacted =>
                 // Stage 2c — elide oversized tool-result / message frames
                 // to a short summary + reload-id (#316). Targets the
@@ -468,7 +485,7 @@ case class StandardContextCurator(sigil: Sigil,
                 val escalate = sigil.elisionPressureEscalationStreak > 0 &&
                   streak >= sigil.elisionPressureEscalationStreak &&
                   (compressor ne NoOpContextCompressor)
-                val afterStage2c = stampPressure(afterStage2b.copy(frames = compacted), elidedCount)
+                val afterStage2c = stampPressure(afterSectionSheds.copy(frames = compacted), elidedCount)
                 if (!escalate && tokensOf(afterStage2c, compacted, Vector.empty) <= cap) Task.pure(afterStage2c)
                 else {
                 // Stage 3 — last-resort frame shed for sheer history
@@ -480,7 +497,7 @@ case class StandardContextCurator(sigil: Sigil,
                 // rewriting) so the resulting summary + clearedAt advance
                 // durably removes it.
                 val stage3Frames = if (escalate) frames else compacted
-                val stage3Base   = if (escalate) afterStage2b else afterStage2c
+                val stage3Base   = if (escalate) afterSectionSheds else afterStage2c
                 resolveProtectedEventIds(tentative.conversationId, stage3Frames).flatMap { protectedIds =>
                   shedFramesIteratively(
                     kept = stage3Frames,
@@ -533,7 +550,6 @@ case class StandardContextCurator(sigil: Sigil,
             }
           }
         }
-      }
     } yield out
 
   /** Resolve persisted-summary ids on `TurnInput.summaries` to full
@@ -848,6 +864,18 @@ case class StandardContextCurator(sigil: Sigil,
 }
 
 object StandardContextCurator {
+
+  /** The sections `budgetResolve` can shed, in shed order — derived
+    * from [[sigil.provider.ContextSection.shedStage]] so the renderer's
+    * section list and the curator's cascade cannot disagree about what
+    * is sheddable or in what order. Structural stages (frame elision,
+    * escalation, iterative shed, last resort) are not section-shaped
+    * and run after these. */
+  private[compression] val sectionShedOrder: List[ProfileSection] =
+    ContextSections.all
+      .flatMap(s => s.shedStage.map(_ -> s.id))
+      .sortBy(_._1)
+      .map(_._2)
 
   /** Frames-style governance for the Summaries section: drop
     * subsumed restatements, then budget newest-first by

@@ -22,12 +22,14 @@ case class RequestProfile(total: Int,
                           insights: List[ContextManagementInsight] = Nil) derives RW
 
 /** Discriminator for the parts of a wire request a `RequestProfile`
-  * counts. Mirrors the section layout `Provider.renderSystem`
-  * produces, plus the framing pieces (frames, tool roster) that live
-  * outside the system prompt on the wire. */
+  * counts. One case per entry in
+  * [[sigil.provider.ContextSections.all]] — the list the renderer and
+  * the profiler both drive from — plus the framing pieces (frames,
+  * tool roster) that live outside the system prompt on the wire. */
 enum ProfileSection derives RW {
   case ToolFramingPrefix
   case ModeBlock
+  case PreviousTopics
   case Instructions
   case CriticalMemories
   case Summaries
@@ -36,8 +38,12 @@ enum ProfileSection derives RW {
   case Roles
   case ActiveSkills
   case RecentTools
+  case RepeatedToolCalls
   case SuggestedTools
+  case DiscoveredCapabilities
   case ExtraContext
+  case ParticipantContext
+  case GreetingHint
   case Frames
   case ToolRoster
 }

@@ -1,21 +1,22 @@
 package sigil.diagnostics
 
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextMemory}
-import sigil.provider.{ConversationRequest, Provider, ResolvedReferences}
+import sigil.conversation.ContextFrame
+import sigil.provider.{ContextSection, ContextSections, ConversationRequest, ResolvedReferences, SectionContext}
 import sigil.tokenize.Tokenizer
 import sigil.tool.Tool
 
 /**
  * Build a [[RequestProfile]] for a [[ConversationRequest]] — counting
  * tokens per system-prompt section, per conversation frame, and per
- * wire-level piece. Mirrors the section layout `Provider.renderSystem`
- * produces; if those two drift, [[spec.RequestProfilerSpec]] catches it
- * by asserting `profile.total ≈ tokenizer.count(rendered system + frames)`.
+ * wire-level piece.
  *
- * Phase 0 instrumentation: opt-in via `Sigil.profileWireRequests`. The
- * data drives the shed-order decisions in the curator; not used in any
- * hot path.
+ * Section accounting runs the SAME [[ContextSection]] renderers
+ * `Provider.renderSystem` emits from, so the profile cannot drift from
+ * the wire. Only the two wire-level pieces the section list does not
+ * cover — conversation frames and the tool roster — are counted here.
+ *
+ * Opt-in via `Sigil.profileWireRequests`. Not used in any hot path.
  */
 object RequestProfiler {
 
@@ -27,8 +28,10 @@ object RequestProfiler {
   def profile(request: ConversationRequest,
               resolved: ResolvedReferences,
               tokenizer: Tokenizer,
-              sigil: Sigil): RequestProfile = {
-    val raw = profileWith(request, resolved, tokenizer, t => t.descriptionFor(request.currentMode, sigil))
+              sigil: Sigil,
+              sections: List[ContextSection] = ContextSections.all): RequestProfile = {
+    val raw = profileWith(request, resolved, tokenizer, t => t.descriptionFor(request.currentMode, sigil),
+      sigil.discoveredCapabilitiesPromptCap, sections)
     val contextLength = sigil.cache.find(request.modelId).map(_.contextLength.toInt).getOrElse(0)
     val cfg = InsightGenerator.InsightConfig(contextLength = contextLength)
     val insights = InsightGenerator.insights(
@@ -49,152 +52,21 @@ object RequestProfiler {
   def profileWith(request: ConversationRequest,
                   resolved: ResolvedReferences,
                   tokenizer: Tokenizer,
-                  descriptionFor: Tool => String): RequestProfile = {
+                  descriptionFor: Tool => String,
+                  discoveredCapabilitiesPromptCap: Int = 25,
+                  sectionList: List[ContextSection] = ContextSections.all): RequestProfile = {
     val turn = request.turnInput
-    val chain = request.chain
 
     val sections = scala.collection.mutable.Map.empty[ProfileSection, Int]
     def add(section: ProfileSection, text: String): Unit =
       if (text.nonEmpty) sections(section) = sections.getOrElse(section, 0) + tokenizer.count(text)
 
-    // 1. Tool framing prefix
-    if (request.tools.nonEmpty) {
-      add(ProfileSection.ToolFramingPrefix,
-        "You communicate exclusively through tool calls. Plain text output is never delivered to the user — always pick a tool.\n\n")
-      add(ProfileSection.ToolFramingPrefix,
-        "Tool calls go through the JSON `tool_calls` protocol the API negotiates with you. " +
-          "Never emit `<tool_call>`, `<function=…>`, or similar XML/tag syntax inside `content` or any " +
-          "other string field — those will NOT be parsed as tool calls; they will leak to the user as " +
-          "text. If you want to make a follow-up tool call after responding, set `respond.endsTurn = false` " +
-          "and issue the next call on the next iteration. A turn-ending respond describes what you DID, " +
-          "not what you are about to do — content announcing work you have not done yet requires " +
-          "`endsTurn = false`.\n\n")
-    }
+    // System-prompt sections: counted from the renderer's own
+    // functions, so the accounting is the wire's by construction.
+    val sectionContext = SectionContext(request, resolved, discoveredCapabilitiesPromptCap)
+    sectionList.foreach(s => s.render(sectionContext).foreach(add(s.id, _)))
 
-    // 2. Mode + topic block
-    val modeText = new StringBuilder
-    modeText.append(s"Current mode: ${request.currentMode} — ${request.currentMode.description}\n")
-    modeText.append(s"Current topic: \"${request.currentTopic.label}\" — ${request.currentTopic.summary}\n")
-    if (request.previousTopics.nonEmpty) {
-      modeText.append("Previous topics in this conversation:\n")
-      request.previousTopics.foreach(t => modeText.append(s"  - \"${t.label}\" — ${t.summary}\n"))
-    }
-    add(ProfileSection.ModeBlock, modeText.toString)
-
-    // 3. Instructions (variant matches Provider.renderSystem branching)
-    val findCapabilityAvailable = request.tools.exists(_.schema.name.value == "find_capability")
-    val instr =
-      if (!findCapabilityAvailable) request.instructions.renderWithoutTools
-      else request.instructions.render
-    add(ProfileSection.Instructions, instr)
-
-    // 4. Critical memories — use `summary || fact` to mirror Provider.renderSystem
-    if (resolved.criticalMemories.nonEmpty) {
-      val text = "\n== Critical directives ==\n" +
-        resolved.criticalMemories.map(m => s"- ${memoryRenderText(m)}\n").mkString
-      add(ProfileSection.CriticalMemories, text)
-    }
-
-    // 5. Summaries
-    if (resolved.summaries.nonEmpty) {
-      val text = "\n== Earlier in this conversation ==\n" +
-        resolved.summaries.map(_.text + "\n").mkString
-      add(ProfileSection.Summaries, text)
-    }
-
-    // 6. Memories — use `summary || fact` to mirror Provider.renderSystem
-    if (resolved.memories.nonEmpty) {
-      val text = "\n== Memories ==\n" +
-        resolved.memories.map(m => s"- ${memoryRenderText(m)}\n").mkString
-      add(ProfileSection.Memories, text)
-    }
-
-    // 7. Information
-    if (turn.information.nonEmpty) {
-      val text = "\n== Referenced content (look up by id) ==\n" +
-        turn.information.map(i => s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n").mkString
-      add(ProfileSection.Information, text)
-    }
-
-    // 8. Roles
-    val rolesText = request.roles match {
-      case Nil => ""
-      case List(single) =>
-        if (single.description.nonEmpty) s"\n${single.description}\n" else ""
-      case multi =>
-        "\nYou serve the following roles:\n" + multi.map { r =>
-          val tail = if (r.description.nonEmpty) s" — ${r.description}" else ""
-          s"- ${r.name}$tail\n"
-        }.mkString
-    }
-    add(ProfileSection.Roles, rolesText)
-
-    // 9. Active skills (chain-aggregated + role-bundled)
-    val skills = turn.aggregatedSkills(chain)
-    val roleSkills = request.roles.flatMap(_.skill.toList)
-    val allSkills = (skills ++ roleSkills).distinctBy(_.name)
-    if (allSkills.nonEmpty) {
-      val text = "\n== Active skills ==\n" + allSkills.map { s =>
-        val body = if (s.content.nonEmpty) s.content + "\n" else ""
-        s"- ${s.name}\n$body"
-      }.mkString
-      add(ProfileSection.ActiveSkills, text)
-    }
-
-    // 10. Recently used tools (dedup-aware -- includes repeated-call
-    //     groups so the profiler's section accounting matches what
-    //     the system-prompt renderer emits)
-    val recentInvocations = chain.flatMap(id => turn.projectionFor(id).recentToolInvocations)
-    val nowMs = System.currentTimeMillis()
-    val recent = recentInvocations
-      .distinctBy(inv => (inv.toolName, inv.argsHash))
-      .sortBy(-_.invokedAt.value)
-      .take(Provider.RecentToolsPromptCap)
-    if (recent.nonEmpty) {
-      val lines = recent.map { inv =>
-        val ago = Provider.humanizeAgo(nowMs - inv.invokedAt.value)
-        val previewSuffix = if (inv.argsPreview.nonEmpty) s" (${inv.argsPreview})" else ""
-        s"- ${inv.toolName.value}$previewSuffix -- $ago\n"
-      }.mkString
-      val duplicateGroups = recentInvocations
-        .groupBy(inv => (inv.toolName, inv.argsHash))
-        .collect { case (key, occurrences) if occurrences.size > 1 => key -> occurrences }
-        .toList
-        .sortBy(-_._2.maxBy(_.invokedAt.value).invokedAt.value)
-      val dupText =
-        if (duplicateGroups.isEmpty) ""
-        else "\n== Repeated tool calls ==\n" + duplicateGroups.map { case ((tn, _), occurrences) =>
-          val preview = occurrences.head.argsPreview
-          val latest = occurrences.maxBy(_.invokedAt.value).invokedAt.value
-          val ago = Provider.humanizeAgo(nowMs - latest)
-          val previewText = if (preview.nonEmpty) s" `$preview`" else ""
-          s"- You called `${tn.value}` with these args ${occurrences.size} times " +
-            s"(most recently $ago):$previewText.\n"
-        }.mkString
-      add(ProfileSection.RecentTools, "\n== Recently used tools ==\n" + lines + dupText)
-    }
-
-    // 11. Suggested tools
-    val suggestedTools = chain.flatMap(id => turn.projectionFor(id).suggestedTools).distinct
-    if (suggestedTools.nonEmpty) {
-      val text = "\n== Suggested tools ==\n" + suggestedTools.map(t => s"- $t\n").mkString
-      add(ProfileSection.SuggestedTools, text)
-    }
-
-    // 12. Extra context (turn-level + per-participant)
-    val extraText = new StringBuilder
-    if (turn.extraContext.nonEmpty) {
-      extraText.append("\n== Conversation context ==\n")
-      turn.extraContext.foreach { case (k, v) => extraText.append(s"- ${k.value}: $v\n") }
-    }
-    val perPart = chain.flatMap(id => turn.projectionFor(id).extraContext.map(id -> _))
-    if (perPart.nonEmpty) {
-      extraText.append("\n== Participant context ==\n")
-      perPart.foreach { case (pid, (k, v)) => extraText.append(s"- ${pid.value} ${k.value}: $v\n") }
-    }
-    add(ProfileSection.ExtraContext, extraText.toString)
-
-    // 13. Frames (the message array)
+    // Frames (the message array) — wire-level, outside the section list.
     val frameProfiles = turn.frames.map { f =>
       val (kind, text, eventId) = f match {
         case t: ContextFrame.Text      => ("Text", t.content, t.sourceEventId)
@@ -216,7 +88,7 @@ object RequestProfiler {
     val framesTotal = frameProfiles.iterator.map(_.tokens).sum
     if (framesTotal > 0) sections(ProfileSection.Frames) = framesTotal
 
-    // 14. Tool roster — every tool's name + description as the wire
+    // Tool roster — every tool's name + description as the wire
     // payload would carry it. JSON-schema overhead approximated by
     // the description length (the schema body is comparable in size).
     if (request.tools.nonEmpty) {
@@ -229,11 +101,4 @@ object RequestProfiler {
     val total = sections.values.sum
     RequestProfile(total = total, sections = sections.toMap, frames = frameProfiles)
   }
-
-  /** Mirrors `Provider.renderSystem`'s memory-render policy: prefer
-    * `summary` when set, fall back to `fact`. Apps writing concise
-    * pinned directives via the `summary` field shrink per-turn
-    * rendered cost; the full `fact` remains recoverable via `lookup`. */
-  private def memoryRenderText(m: ContextMemory): String =
-    if (m.summary.trim.nonEmpty) m.summary else m.fact
 }

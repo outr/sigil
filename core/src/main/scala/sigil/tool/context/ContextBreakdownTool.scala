@@ -5,7 +5,9 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.{ContextFrame, ContextMemory}
 import sigil.tokenize.HeuristicTokenizer
-import sigil.tool.model.{ContextBreakdownOutput, ContextSectionBreakdown, ContextSectionKind}
+import sigil.diagnostics.ProfileSection
+import sigil.provider.ContextSections
+import sigil.tool.model.{ContextBreakdownOutput, ContextSectionBreakdown}
 import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolName, ToolProfile, ToolSpec}
 
 /**
@@ -66,7 +68,7 @@ case object ContextBreakdownTool extends Tool {
         }.sum
 
         val criticalTokens = criticals.iterator.map { m =>
-          tokenizer.count(if (m.summary.trim.nonEmpty) m.summary else m.fact)
+          tokenizer.count(ContextSections.memoryRenderText(m))
         }.sum
 
         val skills      = turn.aggregatedSkills(context.chain)
@@ -81,10 +83,10 @@ case object ContextBreakdownTool extends Tool {
           totalTokens = total,
           currentMode = mode.name,
           sections = List(
-            ContextSectionBreakdown(ContextSectionKind.Frames,           frameTokens,    turn.frames.size),
-            ContextSectionBreakdown(ContextSectionKind.CriticalMemories, criticalTokens, criticals.size),
-            ContextSectionBreakdown(ContextSectionKind.ActiveSkills,     skillTokens,    skills.size),
-            ContextSectionBreakdown(ContextSectionKind.ModeBlock,        modeTokens,     1)
+            ContextSectionBreakdown(ProfileSection.Frames,           frameTokens,    turn.frames.size),
+            ContextSectionBreakdown(ProfileSection.CriticalMemories, criticalTokens, criticals.size),
+            ContextSectionBreakdown(ProfileSection.ActiveSkills,     skillTokens,    skills.size),
+            ContextSectionBreakdown(ProfileSection.ModeBlock,        modeTokens,     1)
           ),
           note = "Tokens estimated via the char/4 heuristic; production budget uses the provider's tokenizer."
         )

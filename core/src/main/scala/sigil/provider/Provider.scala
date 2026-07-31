@@ -1102,7 +1102,7 @@ trait Provider extends Service with ModelResolver {
     if (sigil.profileWireRequests) {
       agentId match {
         case Some(pid) =>
-          val profile = RequestProfiler.profile(c, resolved, tokenizer, sigil)
+          val profile = RequestProfiler.profile(c, resolved, tokenizer, sigil, contextSections)
           sigil.publish(WireRequestProfile(c.conversationId, c.modelId, pid, profile))
         case None => Task.unit
       }
@@ -1402,319 +1402,39 @@ trait Provider extends Service with ModelResolver {
       else stable + volatile
   }
 
+  /** The section list this provider renders from. Defaults to the
+    * framework's [[ContextSections.all]]; apps override to add,
+    * reorder, drop, or re-budget a section. Every consumer of the
+    * layout — the renderer below, [[sigil.diagnostics.RequestProfiler]],
+    * and the curator's section-shed cascade — reads this one list. */
+  protected def contextSections: List[ContextSection] = ContextSections.all
+
   private def renderSystem(c: ConversationRequest,
                            resolved: ResolvedReferences): RenderedSystem = {
-    val turn = c.turnInput
-    val chain = c.chain
-    val sb = new StringBuilder
+    val ctx = SectionContext(
+      request = c,
+      resolved = resolved,
+      discoveredCapabilitiesPromptCap = sigil.discoveredCapabilitiesPromptCap
+    )
+    val sections = contextSections
 
-    // ---- stable prefix (cacheable) ----
-
-    if (c.tools.nonEmpty) {
-      sb.append(
-        "You communicate exclusively through tool calls. Plain text output is never delivered to the user — " +
-          "always pick a tool.\n\n"
-      )
-      sb.append(
-        "Tool calls go through the JSON `tool_calls` protocol the API negotiates with you. " +
-          "Never emit `<tool_call>`, `<function=…>`, or similar XML/tag syntax inside `content` or any " +
-          "other string field — those will NOT be parsed as tool calls; they will leak to the user as " +
-          "text. If you want to make a follow-up tool call after responding, set `respond.endsTurn = false` " +
-          "and issue the next call on the next iteration. A turn-ending respond describes what you DID, " +
-          "not what you are about to do — content announcing work you have not done yet requires " +
-          "`endsTurn = false`.\n\n"
-      )
-    }
-
-    sb.append(s"Current mode: ${c.currentMode} — ${c.currentMode.description}\n")
-    // Tools that need runtime context (e.g. `change_mode` enumerating
-    // the available modes) override `Tool.descriptionFor` to fold
-    // that context into their own description. The framework
-    // prompt-builder stays free of per-tool special cases.
-    sb.append(s"Current topic: \"${c.currentTopic.label}\" — ${c.currentTopic.summary}\n")
-    if (c.previousTopics.nonEmpty) {
-      sb.append("Previous topics in this conversation:\n")
-      c.previousTopics.foreach(t => sb.append(s"  - \"${t.label}\" — ${t.summary}\n"))
-    }
-
-    // The TOOLS discovery block teaches the discovery-first behaviour
-    // generically — it names no specific tool, so tool-specific guidance
-    // (how to query discovery, when to switch mode, how a reply renders)
-    // travels with each tool's own description. The one gate left is
-    // whether discovery itself is available: if `find_capability` isn't
-    // in the roster (e.g. the active mode uses `ToolPolicy.None` or
-    // `Exclusive` with a fixed set), telling the model to discover is a
-    // dead loop, so strip the block.
-    val findCapabilityAvailable =
-      c.tools.exists(_.schema.name.value == "find_capability")
-    val instr =
-      if (!findCapabilityAvailable) c.instructions.renderWithoutTools
-      else c.instructions.render
-    if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
-
-    // Roles render the agent's identity into the system prompt. A single
-    // role is shown linearly (one description block); multiple roles get a
-    // "You serve the following roles:" preamble + per-role enumeration so
-    // the model handles multi-role identity explicitly even when each
-    // role's description was written self-contained.
-    c.roles match {
-      case Nil           => ()
-      case List(single)  =>
-        if (single.description.nonEmpty)
-          sb.append("\n").append(single.description).append("\n")
-      case multi         =>
-        sb.append("\nYou serve the following roles:\n")
-        multi.foreach { r =>
-          sb.append(s"- ${r.name}")
-          if (r.description.nonEmpty) sb.append(s" — ${r.description}")
-          sb.append("\n")
-        }
-    }
-
-    val skills = turn.aggregatedSkills(chain)
-    val roleSkills = c.roles.flatMap(_.skill.toList)
-    // Skill presence is state-coupled to the current mode, not coupled to a
-    // ModeChange event having fired. A conversation created already in its
-    // working mode never publishes a ModeChange, so `activeSkills[Mode]` is
-    // empty — fold the current mode's skill in directly. `distinctBy(_.name)`
-    // keeps this idempotent with the ModeChange-driven path (a switched-into
-    // mode's slot is already in `activeSkills` under the same name).
-    val modeSkill = c.currentMode.skill.toList
-    val allSkills = (skills ++ roleSkills ++ modeSkill).distinctBy(_.name)
-    if (allSkills.nonEmpty) {
-      sb.append("\n== Active skills ==\n")
-      allSkills.foreach { s =>
-        sb.append(s"- ${s.name}\n")
-        if (s.content.nonEmpty) sb.append(s.content).append("\n")
-      }
-    }
-
-    if (resolved.criticalMemories.nonEmpty) {
-      sb.append("\n== Pinned directives ==\n")
-      resolved.criticalMemories.foreach(m => sb.append(s"- ${memoryRenderText(m)}\n"))
-    }
-
-    if (turn.information.nonEmpty) {
-      sb.append("\n== Referenced content (look up by id) ==\n")
-      turn.information.foreach(i =>
-        sb.append(s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n"))
-    }
-
-    // ---- volatile tail (per-turn, excluded from the cacheable prefix) ----
-    //
-    // Everything below churns turn-to-turn, so it must ride BEHIND the
-    // request's cacheable prefix (tools, system prompt, message history) —
-    // full-history-replay providers append it as a trailing message via
-    // [[ProviderCall.messagesWithVolatileTail]]; OpenAI Responses folds it
-    // into its per-request `instructions`. Accumulate into its own builder
-    // so [[RenderedSystem]] carries the two segments separately.
-    val stable = sb.toString
-    sb.setLength(0)
-
-    // Summaries ride the VOLATILE tail, not the cacheable prefix: the
-    // rolling intra-turn compaction stream updates them mid-turn, and
-    // a summary rendered ahead of the message history invalidated the
-    // whole prompt cache on every update (measured: cache creation was
-    // 88% of a $54 turn — the entire prefix re-cached per iteration
-    // while only this section changed). In the tail, an update
-    // invalidates nothing ahead of it.
-    if (resolved.summaries.nonEmpty) {
-      sb.append("\n== Earlier in this conversation (summarized) ==\n")
-      resolved.summaries.foreach { s =>
-        sb.append(s.text)
-        if (s.coversEventIds.nonEmpty)
-          sb.append(s""" [summarizes ${s.coversEventIds.size} earlier events — """ +
-            s"""reload_content("${s._id.value}") to browse them and reload any in full]""")
-        sb.append("\n")
-      }
-      // Reload convention (#316). Large tool results / messages may be
-      // elided to a short summary + an id, and old history folded into
-      // the summaries above. `reload_content("<id>")` reloads full content —
-      // an event id returns that event (paginated); a summary id lists
-      // the events it covers to drill into. Nothing is lost, only
-      // deferred — reach for it when you need detail an entry only hints at.
-      sb.append("\nWhen an entry shows `reload_content(\"<id>\")`, call it to reload the full content " +
-        "it elided (an event id → that event; a summary id → the events it covers).\n")
-    }
-
-    if (resolved.memories.nonEmpty) {
-      sb.append("\n== Memories ==\n")
-      resolved.memories.foreach(m => sb.append(s"- ${memoryRenderText(m)}\n"))
-    }
-
-    val recentInvocations = chain.flatMap(id => turn.projectionFor(id).recentToolInvocations)
-    val now = System.currentTimeMillis()
-    val recent = recentInvocations
-      .distinctBy(inv => (inv.toolName, inv.argsHash))
-      .sortBy(-_.invokedAt.value)
-      .take(Provider.RecentToolsPromptCap)
-    if (recent.nonEmpty) {
-      sb.append("\n== Recently used tools ==\n")
-      // Agency must be unambiguous: this digest is a memory aid about
-      // the assistant's OWN prior calls, not an external log. When
-      // budget pressure has trimmed a call's full transaction from the
-      // history, this line is the only remaining record — a model that
-      // reads it as "the system did this" disowns its own actions and
-      // hands the user work it already owns.
-      sb.append("These are tool calls YOU (the assistant) made earlier in this conversation:\n")
-      recent.foreach { inv =>
-        val ago = Provider.humanizeAgo(now - inv.invokedAt.value)
-        val previewSuffix = if (inv.argsPreview.nonEmpty) s" (${inv.argsPreview})" else ""
-        sb.append(s"- ${inv.toolName.value}$previewSuffix -- $ago\n")
-      }
-    }
-    // Surface every (toolName, argsHash) bucket that fires more than
-    // once in the rolling window. Informational, not directive: the
-    // count and args are stated as data; the agent decides what to do
-    // with it. Earlier wording prescribed "try a different approach"
-    // and listed options, which some models read as a hard stop
-    // signal and respond to by abandoning the turn entirely. Stating
-    // the fact and pointing at the prior outputs lets the agent
-    // self-correct without an over-interpreted directive.
-    val duplicateGroups = recentInvocations
-      .groupBy(inv => (inv.toolName, inv.argsHash))
-      .collect { case (key, occurrences) if occurrences.size > 1 => key -> occurrences }
-      .toList
-      .sortBy(-_._2.maxBy(_.invokedAt.value).invokedAt.value)
-    if (duplicateGroups.nonEmpty) {
-      sb.append("\n== Repeated tool calls ==\n")
-      // State the explanation ONCE — repeating the full paragraph per group
-      // (4+ identical ~350-char blocks observed live) bloats the prompt and
-      // reads as noise. The per-group lines below carry only the facts.
-      sb.append(
-        // Sigil #397 — only point at `find_capability` when discovery is in
-        // the roster. Under ToolPolicy.ActiveOnly/None/Exclusive it isn't, so
-        // naming it tells the model to call a tool it doesn't have.
-        if (findCapabilityAvailable)
-          "Identical inputs yield identical results UNLESS your tool roster has changed since " +
-            "(compare your current offered tools against what you remember). If a tool you used before isn't in " +
-            "your offer now, re-call `find_capability` even with the same keywords; the framework's cache state " +
-            "may have changed.\n"
-        else
-          "Identical inputs yield identical results. If you've already seen a tool's output for these exact " +
-            "arguments, reuse it instead of calling again.\n"
-      )
-      val summary = duplicateGroups.map { case ((toolName, _), occurrences) =>
-        val preview = occurrences.head.argsPreview
-        val latest = occurrences.maxBy(_.invokedAt.value).invokedAt.value
-        val ago = Provider.humanizeAgo(now - latest)
-        val previewText = if (preview.nonEmpty) s" `$preview`" else ""
-        sb.append(s"- `${toolName.value}` called ${occurrences.size}x with identical args (most recent $ago):$previewText\n")
-        s"${toolName.value}=${occurrences.size}x"
-      }.mkString(", ")
-      // Mirror the prompt insertion to the backend log so forensics
-      // questions ("did the duplicate-call detector fire?") resolve
-      // via a log grep without having to dig into the wire-log
-      // capture of the system prompt itself. The prompt insertion
-      // above remains authoritative for agent behavior.
+    // Mirror the duplicate-call insertion to the backend log so
+    // forensics questions ("did the duplicate-call detector fire?")
+    // resolve via a log grep without digging into the wire-log capture
+    // of the system prompt itself. Logged here rather than inside the
+    // section renderer so the profiler's pass doesn't double-log.
+    if (ctx.duplicateGroups.nonEmpty) {
+      val summary = ctx.duplicateGroups
+        .map { case ((toolName, _), occurrences) => s"${toolName.value}=${occurrences.size}x" }
+        .mkString(", ")
       scribe.info(s"Duplicate tool calls detected: $summary")
     }
 
-   // The sections were rendered from raw projection / TurnContext sources,
-    // which drifted from the merged wire roster: the narrowing path (#286/#287),
-    // or `findTools.byName` returning None on a discovered name, both produced
-    // rosters smaller than what the prompt advertised. Filtering both sections
-    // by `wireToolNames` makes the prompt's claim accurate by construction.
-    val wireToolNames: Set[_root_.sigil.tool.ToolName] = c.tools.map(_.schema.name).toSet
-
-    val suggestedTools = chain
-      .flatMap(id => turn.projectionFor(id).suggestedTools)
-      .distinct
-      .filter(wireToolNames.contains)
-    if (suggestedTools.nonEmpty) {
-      sb.append("\n== Suggested tools ==\n")
-      suggestedTools.foreach(t => sb.append(s"- ${t.value}\n"))
-    }
-
-    // Tools the agent has already discovered via `find_capability`
-    // earlier in this agent loop. Source is the per-loop cache on
-    // Tools the agent has already discovered via `find_capability`
-     // earlier in this agent loop. Source is the per-loop cache on
-     // [[sigil.TurnContext]] — empty on a fresh user turn,
-     // populated as the agent issues find_capability calls during the
-     // iteration loop, discarded when the loop ends. Cap keeps the
-     // prompt bounded inside one loop. Per-match filter (#299) keeps
-     // only names actually present in the wire roster — so the
-     // "DIRECTIVE" sentence below isn't a lie when narrowing has
-     // dropped a discovered tool from the offered set.
-    val discovered = c.discoveredCapabilities.toList
-      .sortBy(-_._2.lastSeen.value)
-      .take(sigil.discoveredCapabilitiesPromptCap)
-      .map { case (query, dc) => (query, dc.matches.filter(wireToolNames.contains)) }
-      .filter { case (_, matches) => matches.nonEmpty }
-    if (discovered.nonEmpty) {
-      sb.append("\n== Capabilities you've already discovered (this turn) ==\n")
-      discovered.foreach { case (query, matches) =>
-        sb.append(s"- `find_capability($query)` → ${matches.map(_.value).mkString(", ")}\n")
-      }
-      sb.append(
-        "DIRECTIVE: These tools are NOW in your roster — call them directly to complete the task. " +
-          "Re-calling `find_capability` for the same query, or falling back to `respond` without first " +
-          "calling the discovered action tool the user requested, is a protocol violation. If the user's " +
-          "request maps to one of these tools, invoke it on THIS iteration.\n"
-      )
-    }
-
-    if (turn.extraContext.nonEmpty) {
-      sb.append("\n== Conversation context ==\n")
-      turn.extraContext.foreach { case (k, v) => sb.append(s"- ${k.value}: $v\n") }
-    }
-
-    val perParticipantExtras =
-      chain.flatMap(id => turn.projectionFor(id).extraContext.map(id -> _))
-    if (perParticipantExtras.nonEmpty) {
-      sb.append("\n== Participant context ==\n")
-      perParticipantExtras.foreach { case (pid, (k, v)) =>
-        sb.append(s"- ${pid.value} ${k.value}: $v\n")
-      }
-    }
-
-    // Bug #63 — when this turn was fired by `greetsOnJoin`'s
-    // greeting flow, append a clear instruction so the model
-    // doesn't have to guess from the empty trigger stream
-    // whether this is a moment to introduce itself or to stay
-    // silent. Without this hint, the model picks `respond` vs
-    // `no_response` stochastically, breaking the user contract
-    // implied by `greetsOnJoin = true`. The hint is rendered
-    // last so it sits within the model's recency-biased
-    // attention.
-    if (c.isGreeting) {
-      sb.append("\n== Greeting turn ==\n")
-      sb.append("This is a fresh conversation. Call `respond` with a brief introduction — ")
-      sb.append("state your role and offer to help. ")
-      // Sigil #397 — drop the `find_capability` clause when discovery is off.
-      if (findCapabilityAvailable)
-        sb.append("Do NOT call `no_response` or `find_capability` on this turn; " +
-          "the user expects a greeting, not silence or discovery.\n")
-      else
-        sb.append("Do NOT call `no_response` on this turn; the user expects a greeting, not silence.\n")
-    }
-
-    RenderedSystem(stable = stable, volatile = sb.toString)
+    RenderedSystem(
+      stable = ContextSections.render(sections, Placement.StablePrefix, ctx),
+      volatile = ContextSections.render(sections, Placement.VolatileTail, ctx)
+    )
   }
-
-  /** What to render for a memory in the system prompt's `Critical
-    * directives` / `Memories` sections. Prefers `summary` when set so
-    * apps that author tight directives keep per-turn cost down; the
-    * full `fact` is always recoverable via the `lookup` tool. */
-  /** Prompt rendering for a memory: the summary when set (the
-    * compressed per-turn form), the full fact otherwise. When the
-    * summary elides a materially longer fact AND the memory has a
-    * referenceable key, the line carries its drill-down handle --
-    * `[full: lookup("<key>")]` -- mirroring the summaries section's
-    * inline `reload_content("<id>")` convention. Without the handle
-    * the agent's only route from a summary hinting at more detail was
-    * a semantic re-search and hoping the right record ranked first. */
-  private def memoryRenderText(m: ContextMemory): String =
-    if (m.summary.trim.isEmpty) m.fact
-    else {
-      val handle = m.key match {
-        case Some(key) if m.fact.trim.length > m.summary.trim.length * 2 && m.fact.trim.length > 200 =>
-          s" [full: lookup(\"" + key + "\")]"
-        case _ => ""
-      }
-      m.summary + handle
-    }
 
   /** Render a conversation's [[ContextFrame]]s into format-neutral
     * [[ProviderMessage]]s. Mapping rules:
