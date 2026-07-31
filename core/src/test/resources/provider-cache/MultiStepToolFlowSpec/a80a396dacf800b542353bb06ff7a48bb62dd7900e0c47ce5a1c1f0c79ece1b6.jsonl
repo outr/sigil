@@ -1,0 +1,13 @@
+{"requestHash":"a80a396dacf800b542353bb06ff7a48bb62dd7900e0c47ce5a1c1f0c79ece1b6","recordedAt":1785529351173}
+{"callId":"750900677","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"750900677","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"750900677","text":"The","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"750900677","text":" magic","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"750900677","text":" number","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"750900677","text":" is","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"750900677","text":" 4","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"750900677","text":"2","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"750900677","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"750900677","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Magic Number","topicSummary":"Retrieved the magic number from the system","content":"The magic number is 42.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":3791,"completionTokens":80,"totalTokens":3871,"isEstimated":false,"cacheReadTokens":3629,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

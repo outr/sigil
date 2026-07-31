@@ -1,0 +1,5 @@
+{"requestHash":"f94ff95250a768dfa545688fa772889c4693c8ca2242458656279d0adaa5cf32","recordedAt":1785529363450}
+{"callId":"274316963","toolName":"classify_memory","type":"ProviderEvent.ToolCallStart"}
+{"callId":"274316963","call":{"type":"decoded","name":"classify_memory","args":{"keywords":["project-codename","Atlas","project-name","identifier","naming"],"permanence":"Permanence.Once","space":"project","ambiguityReason":null}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":997,"completionTokens":98,"totalTokens":1095,"isEstimated":false,"cacheReadTokens":871,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}
