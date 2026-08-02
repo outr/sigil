@@ -1,12 +1,12 @@
-{"requestHash":"5b97d1c52fc013cdef0a7cd7c51871c30010d57ed57056870dba3b421d163809","recordedAt":1785529136567}
+{"requestHash":"5b97d1c52fc013cdef0a7cd7c51871c30010d57ed57056870dba3b421d163809","recordedAt":1785681682278}
 {"text":"Blue","type":"ProviderEvent.TextDelta"}
 {"text":".","type":"ProviderEvent.TextDelta"}
 {"text":"\n\n","type":"ProviderEvent.TextDelta"}
 {"usage":{"promptTokens":0,"completionTokens":1,"totalTokens":1,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"callId":"2d744782c","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
-{"callId":"2d744782c","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
-{"callId":"2d744782c","text":"Blue","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"2d744782c","text":".","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"2d744782c","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Favorite Color","topicSummary":"User shared their favorite color.","content":"Blue.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"callId":"9739d2eb1","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"9739d2eb1","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"9739d2eb1","text":"Blue","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"9739d2eb1","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"9739d2eb1","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Favorite Color","topicSummary":"User shared their favorite color.","content":"Blue.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
 {"usage":{"promptTokens":4168,"completionTokens":88,"totalTokens":4256,"isEstimated":false,"cacheReadTokens":3952,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

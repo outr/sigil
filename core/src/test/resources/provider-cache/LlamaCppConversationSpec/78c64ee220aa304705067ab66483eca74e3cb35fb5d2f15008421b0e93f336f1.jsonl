@@ -1,5 +1,5 @@
-{"requestHash":"78c64ee220aa304705067ab66483eca74e3cb35fb5d2f15008421b0e93f336f1","recordedAt":1785529140184}
-{"callId":"05f24857f","toolName":"change_mode","type":"ProviderEvent.ToolCallStart"}
-{"callId":"05f24857f","call":{"type":"decoded","name":"change_mode","args":{"mode":"coding","reason":"User wants to start a Scala coding session with design, implementation, and testing phases"}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":3947,"completionTokens":54,"totalTokens":4001,"isEstimated":false,"cacheReadTokens":3898,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"requestHash":"78c64ee220aa304705067ab66483eca74e3cb35fb5d2f15008421b0e93f336f1","recordedAt":1785681687785}
+{"callId":"aa6f4eddb","toolName":"change_mode","type":"ProviderEvent.ToolCallStart"}
+{"callId":"aa6f4eddb","call":{"type":"decoded","name":"change_mode","args":{"mode":"coding","reason":"User wants to start a Scala coding session with design, implementation, and testing phases"}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":3947,"completionTokens":54,"totalTokens":4001,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

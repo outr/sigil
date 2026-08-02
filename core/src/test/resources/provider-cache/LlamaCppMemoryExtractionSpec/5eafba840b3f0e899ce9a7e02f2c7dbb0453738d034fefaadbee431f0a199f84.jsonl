@@ -1,5 +1,5 @@
-{"requestHash":"5eafba840b3f0e899ce9a7e02f2c7dbb0453738d034fefaadbee431f0a199f84","recordedAt":1785529126227}
-{"callId":"26091d12c","toolName":"summarize_conversation","type":"ProviderEvent.ToolCallStart"}
-{"callId":"26091d12c","call":{"type":"decoded","name":"summarize_conversation","args":{"summary":"Alice introduced herself and stated her preference for dark-mode interfaces in all applications. She also specified that the deployment target is staging.us-east-1, which she emphasized is important for any infrastructure-related work. The agent acknowledged both preferences for future reference.","tokenEstimate":40}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":838,"completionTokens":92,"totalTokens":930,"isEstimated":false,"cacheReadTokens":645,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"requestHash":"5eafba840b3f0e899ce9a7e02f2c7dbb0453738d034fefaadbee431f0a199f84","recordedAt":1785681659151}
+{"callId":"408efe496","toolName":"summarize_conversation","type":"ProviderEvent.ToolCallStart"}
+{"callId":"408efe496","call":{"type":"decoded","name":"summarize_conversation","args":{"summary":"Alice introduced herself and established two preferences: she prefers dark-mode interfaces across all applications, and the deployment target environment is staging.us-east-1 for any infrastructure-related work.","tokenEstimate":35}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":838,"completionTokens":77,"totalTokens":915,"isEstimated":false,"cacheReadTokens":645,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

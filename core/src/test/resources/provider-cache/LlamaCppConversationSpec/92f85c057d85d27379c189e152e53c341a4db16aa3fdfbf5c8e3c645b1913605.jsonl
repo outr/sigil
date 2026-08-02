@@ -1,16 +1,16 @@
-{"requestHash":"92f85c057d85d27379c189e152e53c341a4db16aa3fdfbf5c8e3c645b1913605","recordedAt":1785529129070}
-{"callId":"7ae343967","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
-{"callId":"7ae343967","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
-{"callId":"7ae343967","text":"Blue","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"7ae343967","text":" is","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"7ae343967","text":" a","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"7ae343967","text":" great","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"7ae343967","text":" choice","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"7ae343967","text":" for","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"7ae343967","text":" a","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"7ae343967","text":" favorite","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"7ae343967","text":" color","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"7ae343967","text":"!","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"7ae343967","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Favorite Color","topicSummary":"User shared their favorite color.","content":"Blue is a great choice for a favorite color!","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"requestHash":"92f85c057d85d27379c189e152e53c341a4db16aa3fdfbf5c8e3c645b1913605","recordedAt":1785681674175}
+{"callId":"2be77b86e","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"2be77b86e","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"2be77b86e","text":"Blue","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2be77b86e","text":" is","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2be77b86e","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2be77b86e","text":" great","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2be77b86e","text":" choice","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2be77b86e","text":" for","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2be77b86e","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2be77b86e","text":" favorite","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2be77b86e","text":" color","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2be77b86e","text":"!","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2be77b86e","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Favorite Color","topicSummary":"User shared their favorite color.","content":"Blue is a great choice for a favorite color!","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
 {"usage":{"promptTokens":3923,"completionTokens":93,"totalTokens":4016,"isEstimated":false,"cacheReadTokens":3898,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

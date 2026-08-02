@@ -1,5 +1,5 @@
-{"requestHash":"4aa3a4a2cd7b7bf6f8e380ca146b2d47b4be4b73487cf7679f2cfdcca75a8414","recordedAt":1785529122700}
-{"callId":"56872160f","toolName":"extract_memories","type":"ProviderEvent.ToolCallStart"}
-{"callId":"56872160f","call":{"type":"decoded","name":"extract_memories","args":{"memories":[{"content":"The user's name is Alice.","label":"User name","key":"user.name","tags":[]},{"content":"Alice prefers dark-mode interfaces in every app she uses.","label":"Preferred interface theme","key":"user.preferred_theme","tags":["preference"]},{"content":"The deployment target for infrastructure-related tasks is staging.us-east-1.","label":"Deployment target","key":"project.deploy_target","tags":[]}]}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":1144,"completionTokens":128,"totalTokens":1272,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"requestHash":"4aa3a4a2cd7b7bf6f8e380ca146b2d47b4be4b73487cf7679f2cfdcca75a8414","recordedAt":1785681655809}
+{"callId":"b6ba74d6b","toolName":"extract_memories","type":"ProviderEvent.ToolCallStart"}
+{"callId":"b6ba74d6b","call":{"type":"decoded","name":"extract_memories","args":{"memories":[{"content":"User prefers dark-mode interfaces in every app.","label":"Preferred interface theme","key":"user.preferred_interface_theme","tags":["preference","ui"]},{"content":"Deployment target is staging.us-east-1.","label":"Deployment target","key":"project.deploy_target","tags":["infrastructure"]}]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":1144,"completionTokens":108,"totalTokens":1252,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

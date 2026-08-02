@@ -1,4 +1,4 @@
-{"requestHash":"dca6a8f0f9d7a961767ecef43d21b60168cbe5362298364f5ecc17ac7657df5e","recordedAt":1785529133257}
+{"requestHash":"dca6a8f0f9d7a961767ecef43d21b60168cbe5362298364f5ecc17ac7657df5e","recordedAt":1785681669393}
 {"text":"The","type":"ProviderEvent.ThinkingDelta"}
 {"text":" user","type":"ProviderEvent.ThinkingDelta"}
 {"text":" is","type":"ProviderEvent.ThinkingDelta"}
@@ -9,16 +9,17 @@
 {"text":" question","type":"ProviderEvent.ThinkingDelta"}
 {"text":" and","type":"ProviderEvent.ThinkingDelta"}
 {"text":" wants","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":12,"totalTokens":12,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":" just","type":"ProviderEvent.ThinkingDelta"}
 {"text":" the","type":"ProviderEvent.ThinkingDelta"}
 {"text":" number","type":"ProviderEvent.ThinkingDelta"}
 {"text":" as","type":"ProviderEvent.ThinkingDelta"}
 {"text":" a","type":"ProviderEvent.ThinkingDelta"}
 {"text":" response","type":"ProviderEvent.ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":20,"totalTokens":20,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":".","type":"ProviderEvent.ThinkingDelta"}
 {"text":" This","type":"ProviderEvent.ThinkingDelta"}
 {"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":22,"totalTokens":22,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":" a","type":"ProviderEvent.ThinkingDelta"}
 {"text":" straightforward","type":"ProviderEvent.ThinkingDelta"}
 {"text":" knowledge","type":"ProviderEvent.ThinkingDelta"}
@@ -27,16 +28,17 @@
 {"text":" doesn","type":"ProviderEvent.ThinkingDelta"}
 {"text":"'t","type":"ProviderEvent.ThinkingDelta"}
 {"text":" require","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":37,"totalTokens":37,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":" any","type":"ProviderEvent.ThinkingDelta"}
 {"text":" tool","type":"ProviderEvent.ThinkingDelta"}
 {"text":" calls","type":"ProviderEvent.ThinkingDelta"}
 {"text":" -","type":"ProviderEvent.ThinkingDelta"}
 {"text":" I","type":"ProviderEvent.ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":41,"totalTokens":41,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":" can","type":"ProviderEvent.ThinkingDelta"}
 {"text":" answer","type":"ProviderEvent.ThinkingDelta"}
 {"text":" this","type":"ProviderEvent.ThinkingDelta"}
 {"text":" directly","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":48,"totalTokens":48,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":" from","type":"ProviderEvent.ThinkingDelta"}
 {"text":" my","type":"ProviderEvent.ThinkingDelta"}
 {"text":" own","type":"ProviderEvent.ThinkingDelta"}
@@ -45,8 +47,8 @@
 {"text":"\n\n","type":"ProviderEvent.ThinkingDelta"}
 {"text":"However","type":"ProviderEvent.ThinkingDelta"}
 {"text":",","type":"ProviderEvent.ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":56,"totalTokens":56,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":56,"totalTokens":56,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":" need","type":"ProviderEvent.ThinkingDelta"}
 {"text":" to","type":"ProviderEvent.ThinkingDelta"}
 {"text":" remember","type":"ProviderEvent.ThinkingDelta"}
@@ -55,7 +57,6 @@
 {"text":" reply","type":"ProviderEvent.ThinkingDelta"}
 {"text":" must","type":"ProviderEvent.ThinkingDelta"}
 {"text":" be","type":"ProviderEvent.ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":67,"totalTokens":67,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":" a","type":"ProviderEvent.ThinkingDelta"}
 {"text":" tool","type":"ProviderEvent.ThinkingDelta"}
 {"text":" call","type":"ProviderEvent.ThinkingDelta"}
@@ -64,8 +65,8 @@
 {"text":" this","type":"ProviderEvent.ThinkingDelta"}
 {"text":" is","type":"ProviderEvent.ThinkingDelta"}
 {"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":74,"totalTokens":74,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":" simple","type":"ProviderEvent.ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":76,"totalTokens":76,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":" Q","type":"ProviderEvent.ThinkingDelta"}
 {"text":"&A","type":"ProviderEvent.ThinkingDelta"}
 {"text":" situation","type":"ProviderEvent.ThinkingDelta"}
@@ -85,10 +86,10 @@
 {"text":" answer","type":"ProviderEvent.ThinkingDelta"}
 {"text":".","type":"ProviderEvent.ThinkingDelta"}
 {"text":"\n","type":"ProviderEvent.ThinkingDelta"}
-{"callId":"9ec68dc3f","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"85bb7f0c4","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
 {"usage":{"promptTokens":0,"completionTokens":93,"totalTokens":93,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"callId":"9ec68dc3f","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
-{"callId":"9ec68dc3f","text":"4","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"9ec68dc3f","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Math Question","topicSummary":"Simple arithmetic question","content":"4","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"callId":"85bb7f0c4","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"85bb7f0c4","text":"4","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"85bb7f0c4","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Math Question","topicSummary":"Simple arithmetic question","content":"4","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
 {"usage":{"promptTokens":4167,"completionTokens":163,"totalTokens":4330,"isEstimated":false,"cacheReadTokens":4144,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

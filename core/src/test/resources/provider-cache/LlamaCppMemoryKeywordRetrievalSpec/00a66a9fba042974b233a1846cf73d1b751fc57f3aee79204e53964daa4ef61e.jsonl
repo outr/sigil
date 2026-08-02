@@ -1,5 +1,0 @@
-{"requestHash":"00a66a9fba042974b233a1846cf73d1b751fc57f3aee79204e53964daa4ef61e","recordedAt":1785529366033}
-{"callId":"31f5f9770","toolName":"classify_memory","type":"ProviderEvent.ToolCallStart"}
-{"callId":"31f5f9770","call":{"type":"decoded","name":"classify_memory","args":{"keywords":["deploy-target","staging-east-1","deployment","environment","infrastructure"],"permanence":"Permanence.Once","space":"project","ambiguityReason":null}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":1002,"completionTokens":73,"totalTokens":1075,"isEstimated":false,"cacheReadTokens":871,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

@@ -1,7 +1,7 @@
-{"requestHash":"4fed6f10b2a6f6cd9957641a7d6ab353eb0b49058b8d7cf780e31c3f52703ec7","recordedAt":1785529122516}
-{"callId":"78c919e5e","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
-{"callId":"78c919e5e","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
-{"callId":"78c919e5e","text":"hi","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"78c919e5e","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Greeting","topicSummary":"User requested a simple greeting response.","content":"hi","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"requestHash":"4fed6f10b2a6f6cd9957641a7d6ab353eb0b49058b8d7cf780e31c3f52703ec7","recordedAt":1785681666749}
+{"callId":"674d80382","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"674d80382","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"674d80382","text":"hi","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"674d80382","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Greeting","topicSummary":"User requested a simple greeting response.","content":"hi","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
 {"usage":{"promptTokens":3918,"completionTokens":85,"totalTokens":4003,"isEstimated":false,"cacheReadTokens":3898,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}
