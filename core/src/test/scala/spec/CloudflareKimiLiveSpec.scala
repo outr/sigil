@@ -235,8 +235,8 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       repeat(Reps)(runScenario(pc)).map { attempts =>
         expectAllPassed(attempts)
         attempts.foreach { events =>
-          val r = events.collect { case ProviderEvent.ToolCallComplete(_, in) => in }
-            .head.asInstanceOf[RespondInput]
+          val r = events.collect { case ProviderEvent.ToolCallComplete(_, wc) => wc }
+            .headOption.flatMap(_.inputFor(RespondTool)).getOrElse(fail("no decoded respond call"))
           r.topicLabel.trim should not be empty
           r.topicSummary.trim should not be empty
           r.content.trim should not be empty
@@ -280,8 +280,8 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       repeat(Reps)(runScenario(pc)).map { attempts =>
         expectAllPassed(attempts)
         attempts.foreach { events =>
-          val r = events.collect { case ProviderEvent.ToolCallComplete(_, in) => in }
-            .head.asInstanceOf[RespondInput]
+          val r = events.collect { case ProviderEvent.ToolCallComplete(_, wc) => wc }
+            .headOption.flatMap(_.inputFor(RespondTool)).getOrElse(fail("no decoded respond call"))
           r.content.trim should not be empty
         }
         succeed
