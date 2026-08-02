@@ -78,19 +78,16 @@ object BootCompletenessCheck {
 
   private def probeInput(tool: Tool): List[String] = {
     val inputClass = tool.inputRW.definition.className.getOrElse(tool.inputRW.definition.defType.toString)
-    try {
+    val fullRoundTrip = () => {
       val typed: ToolInput = tool.examples.headOption.map(_.input).getOrElse {
         val synthesized = tool.wireSurface.normalize(WireSurface.synthesizeExample(tool.inputDefinition))
         tool.inputRW.write(synthesized)
       }
       val polyJson = summon[RW[ToolInput]].read(typed)
       summon[RW[ToolInput]].write(polyJson)
-      Nil
-    } catch {
-      case t: Throwable =>
-        List(s"tool '${tool.name.value}' input $inputClass failed the polymorphic RW[ToolInput] round-trip: " +
-          s"${t.getClass.getSimpleName}: ${t.getMessage}")
+      ()
     }
+    probe(tool, "input", inputClass, summon[RW[ToolInput]], fullRoundTrip)
   }
 
   private def probeOutput(tool: Tool): List[String] = {
@@ -102,17 +99,74 @@ object BootCompletenessCheck {
     if (outputDefinition.className == basePolyClass) Nil
     else {
       val outputClass = outputDefinition.className.getOrElse(outputDefinition.defType.toString)
-      try {
+      val fullRoundTrip = () => {
         val synthesized = WireSurface.synthesizeExample(outputDefinition)
         val typed: ToolOutput = tool.outputRW.write(synthesized)
         val polyJson = summon[RW[ToolOutput]].read(typed)
         summon[RW[ToolOutput]].write(polyJson)
-        Nil
+        ()
+      }
+      probe(tool, "output", outputClass, summon[RW[ToolOutput]], fullRoundTrip)
+    }
+  }
+
+  /** Try the full value round-trip; when it fails, separate the two
+    * failure classes. A missing polymorphic registration is THE
+    * violation this pass exists for. A synthesized probe value that a
+    * refined field type rejects (a `URL`-typed field handed the
+    * placeholder string, a regex-constrained field, …) is a synthesis
+    * limitation, not a registration gap — for those, registration is
+    * still verified by dispatching the bare discriminator through the
+    * polymorphic RW: dispatch reaching field-level errors proves the
+    * subtype is registered. */
+  private def probe[P](tool: Tool,
+                       side: String,
+                       probeClass: String,
+                       polyRW: RW[P],
+                       fullRoundTrip: () => Unit): List[String] =
+    try {
+      fullRoundTrip()
+      Nil
+    } catch {
+      case t: Throwable if mentionsTypeNotFound(t) =>
+        List(s"tool '${tool.name.value}' $side $probeClass is not registered with the polymorphic RW: " +
+          s"${t.getClass.getSimpleName}: ${t.getMessage}")
+      case t: Throwable =>
+        if (dispatchResolves(polyRW, probeClass)) {
+          scribe.debug(s"boot probe for '${tool.name.value}' $side could not synthesize a valid $probeClass " +
+            s"(${t.getMessage}); registration verified via discriminator dispatch")
+          Nil
+        } else {
+          List(s"tool '${tool.name.value}' $side $probeClass failed the polymorphic RW round-trip and its " +
+            s"discriminator does not dispatch: ${t.getClass.getSimpleName}: ${t.getMessage}")
+        }
+    }
+
+  /** True when the polymorphic RW's dispatch recognizes the class's
+    * discriminator — tried with both the full and the simple class
+    * name, accepting any failure that is NOT type-not-found (a
+    * missing-field error means dispatch succeeded and decoding reached
+    * the subtype's own RW). */
+  private def dispatchResolves[P](polyRW: RW[P], className: String): Boolean = {
+    val simpleName = className.split('.').last
+    List(className, simpleName).distinct.exists { candidate =>
+      try {
+        polyRW.write(fabric.obj("type" -> fabric.str(candidate)))
+        true
       } catch {
-        case t: Throwable =>
-          List(s"tool '${tool.name.value}' output $outputClass failed the polymorphic RW[ToolOutput] round-trip: " +
-            s"${t.getClass.getSimpleName}: ${t.getMessage}")
+        case t: Throwable => !mentionsTypeNotFound(t)
       }
     }
+  }
+
+  private def mentionsTypeNotFound(err: Throwable): Boolean = {
+    var cur: Throwable = err
+    var seen = 0
+    while (cur != null && seen < 10) {
+      if (Option(cur.getMessage).exists(_.contains("Type not found"))) return true
+      cur = cur.getCause
+      seen += 1
+    }
+    false
   }
 }

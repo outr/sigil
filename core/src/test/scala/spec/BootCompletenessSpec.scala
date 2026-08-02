@@ -68,6 +68,31 @@ class BootCompletenessSpec extends AnyWordSpec with Matchers {
       BootCompletenessCheck.collectViolations(TestSigil.resolvedStaticTools) shouldBe empty
     }
 
+    "pass for a registered output type whose refined fields reject synthesized probe values" in {
+      // ImageToolOutput.url is a URL — the definition-driven synthesizer
+      // cannot fabricate a parseable value, so the probe must fall back
+      // to discriminator dispatch rather than reporting a registration
+      // violation.
+      val screenshotLike: Tool = new Tool {
+        type Input = sigil.tool.JsonInput
+        type Output = sigil.tool.ImageToolOutput
+        val io: ToolIO[sigil.tool.JsonInput, sigil.tool.ImageToolOutput] =
+          ToolIO.dynamicAs[sigil.tool.ImageToolOutput](summon[fabric.rw.RW[UnregisteredProbeInput]].definition)
+        val spec: ToolSpec = ToolSpec(
+          name = ToolName.parse("refined_output_probe").fold(sys.error, identity),
+          description = "Probe tool with a URL-typed output field.",
+          profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+          discovery = DiscoverySpec(keywords = Set("probe", "refined"))
+        )
+        protected def resolve: Resolution[Input, Output] = {
+          import spice.net.*
+          Resolution.Simple((_: sigil.tool.JsonInput, _: ToolContext) => Task.pure(
+            sigil.tool.ImageToolOutput(url = url"https://example.invalid/probe.png")))
+        }
+      }
+      BootCompletenessCheck.collectViolations(List(screenshotLike)) shouldBe empty
+    }
+
     "fail startup naming the type for a deliberately-unregistered input RW" in {
       val violations = BootCompletenessCheck.collectViolations(List(stubTool("unregistered_probe_tool")))
       violations should have size 1
