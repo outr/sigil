@@ -59,7 +59,9 @@ final class EmbeddingBackedToolFinder(sigil: Sigil,
     * Idempotent — safe to run on every startup. */
   def indexAll: Task[Int] =
     if (!vectorWired) Task.pure(0)
-    else sigil.withDB(_.tools.transaction(_.list)).flatMap { tools =>
+    // Lenient read — a de-registered tool's stale row must not abort
+    // bulk indexing of the rest of the catalog.
+    else sigil.withDB(_.tools.transaction(_.jsonStream.toList)).map(Sigil.decodeToolsLeniently).flatMap { tools =>
       Task.sequence(tools.map(indexTool)).map(_ => tools.size)
     }
 

@@ -8190,7 +8190,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
       val settledMutations: Task[List[sigil.tool.ToolName]] =
         if (successfulInvokes.isEmpty) Task.pure(Nil)
-        else withDB(_.tools.transaction(_.list)).map { toolRows =>
+        // Lenient read — a de-registered tool's stale row must not
+        // abort post-turn extraction.
+        else withDB(_.tools.transaction(_.jsonStream.toList)).map(Sigil.decodeToolsLeniently).map { toolRows =>
           val toolsByName = toolRows.iterator.map(t => t.name.value -> t).toMap
           successfulInvokes.iterator
             .filter(ti => toolsByName.get(ti.toolName.value).exists(_.spec.profile.effect.mutates))
@@ -8833,7 +8835,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         }.sortBy(_.timestamp.value)
         val windowInvokes = arcInvokes.filter(_.timestamp.value > windowCutoff)
         val shown = windowInvokes.takeRight(20)
-        db.tools.transaction(_.list).map { toolRows =>
+        // Lenient read — a de-registered tool's stale row must not
+        // abort checkpoint progress evaluation mid-turn.
+        db.tools.transaction(_.jsonStream.toList).map(Sigil.decodeToolsLeniently).map { toolRows =>
           val toolsByName = toolRows.iterator.map(t => t.name.value -> t).toMap
           // Respond-family pulses publish a Message — user-visible
           // delivery, not external work. Counting them as mutations
