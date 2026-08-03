@@ -1019,6 +1019,7 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
       FailingTool,
       DiscoveryProbeTool,
       GatedProbeTool,
+      ConsentProbeTool,
       sigil.tool.util.DelegateTaskTool,
       sigil.tool.util.RelayMessageTool
     )

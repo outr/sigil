@@ -140,7 +140,8 @@ final case class SigilJobStep(input: JobStepInput,
               // from a workflow is properly blocked), the resolution runs
               // inline (a step has no turn to yield), and the typed result
               // arrives as a ToolResultEnvelope — no cast.
-              ToolExecutor.executeCollected(tool)(typedInput, ctx, Event.id()).flatMap { case (signals, envelope) =>
+              val invokeId = Event.id()
+              ToolExecutor.executeCollected(tool)(typedInput, ctx, invokeId).flatMap { case (signals, envelope) =>
                 val settle = signals.reverseIterator.collectFirst {
                   case d: ToolDelta if d.state.contains(EventState.Complete) => d
                 }
@@ -167,9 +168,15 @@ final case class SigilJobStep(input: JobStepInput,
                         blockedMessage.map(m => obj("error" -> str(m)): Json).getOrElse(fromMessages)
                     }
                 }
-                // Sigil #376 — record the call as one settled ToolInvoke in the
-                // run's sub-conversation so it's openable.
-                persistToolInvocation(host, workflow, ctx, ToolName.internal(toolName), typedInput, settle).map(_ => resultJson)
+                // A tool's ancillary durable events (`ctx.emit`) — a
+                // `record_consent`'s ToolApproval, a `change_mode`'s
+                // ModeChange, a `respond`'s reply Message — are the step's
+                // real effect. They publish first, then the settled invoke.
+                val emitted: List[Event] = signals.collect { case e: Event => e }
+                publishEmitted(host, emitted)
+                  .flatMap(_ => persistToolInvocation(
+                    host, workflow, ctx, ToolName.internal(toolName), typedInput, settle, invokeId))
+                  .map(_ => resultJson)
               }
             }
         }
@@ -221,18 +228,34 @@ final case class SigilJobStep(input: JobStepInput,
       }
     }
 
+  /** Publish the tool's ancillary durable events in emission order. Unlike
+    * the transcript persistence below these are the step's actual effect —
+    * a `ToolApproval` a later gated step reads, a `ModeChange` the run's
+    * conversation depends on — so the publish is AWAITED, not detached. A
+    * per-event failure is logged and skipped rather than failing the step. */
+  private def publishEmitted(host: Sigil, events: List[Event]): Task[Unit] =
+    events.foldLeft(Task.unit) { (acc, event) =>
+      acc.flatMap(_ => host.publish(event).map(_ => ()).handleError { t =>
+        Task(scribe.warn(
+          s"Workflow step '${input.id}': publishing tool-emitted ${event.getClass.getSimpleName} failed: ${t.getMessage}"))
+      })
+    }
+
   /** Sigil #376 — record a tool step as one settled [[ToolInvoke]] (input +
     * output + outcome) in the run's sub-conversation so the call is openable.
     * `tool.execute` emits only the settling delta (the orchestrator normally
     * supplies the invoke), so we mint the paired, already-Complete invoke here
-    * rather than publishing an orphan delta. Best-effort and gated on a bound
-    * run with a resolvable author; a publish hiccup never fails the step. */
+    * rather than publishing an orphan delta. It carries the dispatch's own
+    * invoke id so the emitted events' `origin` stamps resolve. Best-effort and
+    * gated on a bound run with a resolvable author; a publish hiccup never
+    * fails the step. */
   private def persistToolInvocation(host: Sigil,
                                     workflow: Workflow,
                                     ctx: TurnContext,
                                     toolName: ToolName,
                                     input: ToolInput,
-                                    settle: Option[ToolDelta]): Task[Unit] =
+                                    settle: Option[ToolDelta],
+                                    invokeId: Id[Event]): Task[Unit] =
     if (workflow.conversationId.isEmpty) Task.unit
     else
       ctx.chain.headOption match {
@@ -243,6 +266,7 @@ final case class SigilJobStep(input: JobStepInput,
             participantId  = author,
             conversationId = ctx.conversation._id,
             topicId        = ctx.conversation.currentTopicId,
+            _id            = invokeId,
             input          = Some(input),
             output         = settle.flatMap(_.output).getOrElse(sigil.tool.ToolOutput.Pending),
             outcome        = settle.flatMap(_.outcome).getOrElse(ToolOutcome.Success),
