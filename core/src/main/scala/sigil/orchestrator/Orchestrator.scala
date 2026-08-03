@@ -466,6 +466,10 @@ object Orchestrator {
         // enriched refusal through the same handling a provider `Error`
         // gets: the in-flight invoke settles as an orphan with the
         // diagnostic and a paired Tool-role Failure re-triggers the agent.
+        // Record the id first — a provider that duplicates the complete
+        // (the split-finish quirk the guard above exists for) would
+        // otherwise pair ONE invoke with TWO refusals.
+        state.completedCallIds += callId
         translate(
           ProviderEvent.Error(malformedArgsRefusal(roster, malformedName, decodeError, malformedRawArgs, state.dialect)),
           sigil, request, conversation, roster, state
@@ -549,6 +553,15 @@ object Orchestrator {
           state = Some(EventState.Complete),
           internal = isInternal
         ))
+        // Early-return dispatch paths that DO produce a real result —
+        // a served cache hit, an inlined duplicate, a raced re-issue
+        // handed the settled result — settle the invoke's outcome too.
+        // Leaving it `Pending` reads downstream as "raced past, retry",
+        // which is exactly the loop those intercepts exist to end.
+        val settledPrefix: List[Signal] = toolDeltaPrefix.map {
+          case td: ToolDelta => td.copy(outcome = Some(ToolOutcome.Success))
+          case other         => other
+        }
         // Local def so `return` statements inside the streaming /
         // atomic branches (refusal challenge, repeated-query intercept)
         // return from THIS def rather than from `translate`. That
@@ -842,7 +855,7 @@ object Orchestrator {
                           visibility     = MessageVisibility.Agents,
                           origin         = Some(invokeId)
                         )
-                        Stream.emits(toolDeltaPrefix ::: List[Signal](
+                        Stream.emits(settledPrefix ::: List[Signal](
                           racedMsg,
                           StateDelta(target = racedMsg._id, conversationId = convId, state = EventState.Complete)
                         ))
@@ -964,7 +977,7 @@ object Orchestrator {
                     visibility     = MessageVisibility.Agents,
                     origin         = Some(invokeId)
                   )
-                  return Stream.emits(toolDeltaPrefix ::: List[Signal](
+                  return Stream.emits(settledPrefix ::: List[Signal](
                     dupeMsg,
                     StateDelta(target = dupeMsg._id, conversationId = convId, state = EventState.Complete)
                   ))
@@ -1012,24 +1025,19 @@ object Orchestrator {
                       visibility     = MessageVisibility.Agents,
                       origin         = Some(invokeId)
                     )
-                    return Stream.emits(toolDeltaPrefix ::: List[Signal](
+                    return Stream.emits(settledPrefix ::: List[Signal](
                       cacheMsg,
                       StateDelta(target = cacheMsg._id, conversationId = convId, state = EventState.Complete)
                     ))
                   case None => ()
                 }
               }
-              // A mutating call invalidates cached Stable reads: entries
-              // whose declared target overlaps the mutation's, and — when
-              // either side declares no target — every Stable entry
-              // (conservative). Pure entries survive any mutation.
-              if (tool.spec.profile.effect.mutates) {
-                val mutTarget = tool.mutationTargetOf(input)
-                request.toolResultCacheRef.updateAndGet(_.filter { case (_, entry) =>
-                  entry.freshness == Freshness.Pure ||
-                    (mutTarget.isDefined && entry.target.isDefined && entry.target != mutTarget)
-                })
-              }
+              // Any mutating call invalidates every cached Stable read —
+              // a mutation's blast radius isn't knowable from its declared
+              // target alone (a write can change what an unrelated read
+              // returns), so the conservative sweep is the correct one.
+              // Pure entries survive any mutation.
+              if (tool.spec.profile.effect.mutates) clearStableReads(request)
               val context = TurnContext(
                 sigil = sigil,
                 chain = request.chain,
@@ -1160,13 +1168,13 @@ object Orchestrator {
                         // cache so a later iteration's identical call is served
                         // from here instead of re-executing.
                         cacheFreshness.foreach { f =>
-                          request.toolResultCacheRef.updateAndGet(_ + (argsKey -> CachedToolRead(settledContent, f, None)))
+                          request.toolResultCacheRef.updateAndGet(_ + (argsKey -> CachedToolRead(settledContent, f)))
                         }
                       }
                     case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) =>
                       state.dispatchedResultContent(invokeId) = m.content
                       cacheFreshness.foreach { f =>
-                        request.toolResultCacheRef.updateAndGet(_ + (argsKey -> CachedToolRead(m.content, f, None)))
+                        request.toolResultCacheRef.updateAndGet(_ + (argsKey -> CachedToolRead(m.content, f)))
                       }
                     case _ =>
                   }
@@ -2151,6 +2159,15 @@ object Orchestrator {
     * completion. Falls back to `toString` for robustness — if
     * fabric's RW path throws on a particular ToolInput shape, the
     * dedupe just doesn't fire for that call rather than crashing. */
+  /** Drop every [[Freshness.Stable]] entry from the turn-scoped read
+    * cache. Run whenever a mutating call lands: a mutation's blast radius
+    * isn't derivable from its declared target, so the sweep is
+    * unconditional. Pure entries are input-determined and survive. */
+  private[sigil] def clearStableReads(request: ConversationRequest): Unit = {
+    request.toolResultCacheRef.updateAndGet(_.filter(_._2.freshness == Freshness.Pure))
+    ()
+  }
+
   private def canonicalArgsKey(toolName: String, input: sigil.tool.ToolInput): String = {
     val argsJson =
       try fabric.io.JsonFormatter.Compact(summon[fabric.rw.RW[sigil.tool.ToolInput]].read(input))

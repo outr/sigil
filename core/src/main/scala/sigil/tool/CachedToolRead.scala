@@ -4,13 +4,10 @@ import sigil.tool.model.ResponseContent
 
 /**
  * One entry in the orchestrator's turn-scoped read cache: the settled
- * content of a read-only tool call plus the declarations invalidation
+ * content of a read-only tool call plus the [[Freshness]] invalidation
  * derives from. [[Freshness.Pure]] entries survive the whole turn;
- * [[Freshness.Stable]] entries are dropped when a mutating call lands
- * whose [[MutationTarget]] overlaps `target` (conservatively — any
- * mutation — when either side declares no target). Volatile reads are
- * never cached.
+ * [[Freshness.Stable]] entries are dropped as soon as ANY mutating call
+ * lands in the turn. Volatile reads are never cached.
  */
 final case class CachedToolRead(content: Vector[ResponseContent],
-                                freshness: Freshness,
-                                target: Option[MutationTarget])
+                                freshness: Freshness)

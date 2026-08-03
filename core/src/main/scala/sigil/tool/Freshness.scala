@@ -6,9 +6,8 @@ package sigil.tool
  *
  *   - [[Pure]] — same input always produces the same output; cache
  *     freely within the turn.
- *   - [[Stable]] — world-coupled; cacheable until a mutating call
- *     lands whose target overlaps (or any mutation, when targets are
- *     unknown).
+ *   - [[Stable]] — world-coupled; cacheable until ANY mutating call
+ *     lands in the turn.
  *   - [[Volatile]] — advancing external state (a process's output
  *     stream, the current turn's context breakdown); never cached.
  *     Result frames of Volatile reads are also elided from later
