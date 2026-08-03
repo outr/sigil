@@ -166,6 +166,44 @@ class ToolExecutorPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       }
     }
 
+    "never drop an emit that races the settle — it is either drained or raises" in {
+      // Hold the resolution open on a latch while a SECOND thread emits,
+      // so the emit and the close-and-drain genuinely contend. Because
+      // both go through one atomic state, the event either rides the
+      // result stream or the emitting task sees LateEmissionException;
+      // it can never land in a buffer nobody reads.
+      val resolutionReached = new java.util.concurrent.CountDownLatch(1)
+      val emitDone = new java.util.concurrent.CountDownLatch(1)
+      val emitOutcome = new java.util.concurrent.atomic.AtomicReference[Either[Throwable, Unit]](Right(()))
+      val tool = new Fixture("pair_race_emit") {
+        protected def resolve: Resolution[Input, Output] = Resolution.Simple { (_, ctx) =>
+          Task {
+            val racer = new Thread(() => {
+              resolutionReached.countDown()
+              emitOutcome.set(
+                try { ctx.emit(emitted(ctx, "RACING-EMIT")).sync(); Right(()) }
+                catch { case t: Throwable => Left(t) }
+              )
+              emitDone.countDown()
+            })
+            racer.start()
+            resolutionReached.await()
+            TextToolOutput("ok")
+          }
+        }
+      }
+      tool.execute(PairingProbeInput(), turn, Event.id()).toList.map { signals =>
+        emitDone.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        settleDeltas(signals) should have size 1
+        val delivered = markerCount(signals, "RACING-EMIT")
+        emitOutcome.get() match {
+          case Right(())                     => delivered shouldBe 1
+          case Left(_: LateEmissionException) => delivered shouldBe 0
+          case Left(other)                    => fail(s"unexpected emit failure: $other")
+        }
+      }
+    }
+
     "settle an oversized result with one delta preserving the typed output plus an overflow pointer" in {
       val big = "y" * 50000
       val tool = new Fixture("pair_oversized") {

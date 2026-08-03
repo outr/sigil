@@ -42,10 +42,8 @@ final case class ToolContext(turn: TurnContext,
                              invokeId: Id[Event],
                              toolName: ToolName,
                              currentMessageId: Option[Id[Event]] = None,
-                             private val emittedEventsRef: AtomicReference[Vector[Event]] =
-                               new AtomicReference(Vector.empty[Event]),
-                             private val emissionsClosed: java.util.concurrent.atomic.AtomicBoolean =
-                               new java.util.concurrent.atomic.AtomicBoolean(false)) {
+                             private val emissionState: AtomicReference[Option[Vector[Event]]] =
+                               new AtomicReference[Option[Vector[Event]]](Some(Vector.empty))) {
 
   // ---- pass-throughs for fields every tool body reads ----
 
@@ -156,31 +154,37 @@ final case class ToolContext(turn: TurnContext,
    * The buffer CLOSES when the tool's resolution settles: a late `emit`
    * (typically a fiber the body leaked) raises [[LateEmissionException]]
    * loudly — logged and surfaced to the emitting task — instead of
-   * silently dropping the event.
+   * silently dropping the event. Buffer and closed-state are ONE
+   * [[AtomicReference]] (`Some(buffered)` open, `None` closed), so an emit
+   * racing the settle either lands in a buffer that is still drained or
+   * raises; it can never append to a dead buffer.
    */
   def emit(event: Event): rapid.Task[Unit] =
     rapid.Task.defer {
-      if (emissionsClosed.get()) {
+      val updated = emissionState.updateAndGet(_.map(_ :+ event))
+      if (updated.isEmpty) {
         val err = new LateEmissionException(toolName, invokeId)
         scribe.error(err.getMessage, err)
         rapid.Task.error(err)
-      } else {
-        val _ = emittedEventsRef.updateAndGet(_ :+ event)
-        rapid.Task.unit
-      }
+      } else rapid.Task.unit
     }
 
   /** Snapshot of the ancillary durable events this tool has emitted via
     * [[emit]] and not yet drained, in emission order. */
-  def emittedEvents: List[Event] = emittedEventsRef.get().toList
+  def emittedEvents: List[Event] = emissionState.get().getOrElse(Vector.empty).toList
 
-  /** Atomically remove and return the pending emitted events. The single
-    * drain implementation [[ToolExecutor]] uses on every path — inline
-    * settle, detach-time flush, and post-detach completion — so an event
-    * is delivered exactly once regardless of when it was emitted. */
-  private[sigil] def drainEmitted(): List[Event] = emittedEventsRef.getAndSet(Vector.empty).toList
+  /** Atomically remove and return the pending emitted events without
+    * closing the buffer — the detach-time flush. Draining an already-closed
+    * context yields nothing. */
+  private[sigil] def drainEmitted(): List[Event] =
+    emissionState.getAndUpdate(_.map(_ => Vector.empty)).getOrElse(Vector.empty).toList
 
-  /** Close the emission buffer — called by [[ToolExecutor]] when the
-    * tool's resolution settles. Subsequent [[emit]] calls raise. */
-  private[sigil] def closeEmissions(): Unit = emissionsClosed.set(true)
+  /** Close the emission buffer AND return whatever was still buffered, in
+    * one atomic step — called by [[ToolExecutor]] when the tool's
+    * resolution settles. Because close and final drain are indivisible, an
+    * emit racing the settle is either included here or raises
+    * [[LateEmissionException]]; it can never land in a buffer nobody reads.
+    * Subsequent [[emit]] calls raise. */
+  private[sigil] def closeEmissions(): List[Event] =
+    emissionState.getAndSet(None).getOrElse(Vector.empty).toList
 }

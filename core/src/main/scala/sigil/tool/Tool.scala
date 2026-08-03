@@ -43,8 +43,11 @@ trait Tool extends RecordDocument[Tool] {
 
   /** Identity + capabilities, validated at creation by
     * [[ToolSpec.apply]]. The single required metadata member — every
-    * other metadata accessor derives from it. */
-  val spec: ToolSpec
+    * other metadata accessor derives from it. Declared `def` so an
+    * implementation whose spec depends on a value initialized in its
+    * own body (a decorator forwarding `underlying.spec`) can supply a
+    * `lazy val`; the common `val spec = ToolSpec(...)` is unaffected. */
+  def spec: ToolSpec
 
   /** The typed argument shape this tool consumes. */
   type Input <: ToolInput

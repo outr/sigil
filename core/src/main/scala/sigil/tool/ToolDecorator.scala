@@ -25,14 +25,15 @@ trait ToolDecorator extends Tool {
 
   /** The decorated tool — the single source every surface forwards
     * from. Supply as a constructor parameter (`class MyDecorator(val
-    * underlying: Tool, …) extends ToolDecorator`) so it is initialized
-    * before the trait body captures [[spec]]. */
+    * underlying: Tool, …) extends ToolDecorator`). [[spec]] is `lazy`
+    * so a subclass that initializes `underlying` in its own body
+    * (rather than as a parameter) still reads a constructed value. */
   val underlying: Tool
 
   type Input = underlying.Input
   type Output = underlying.Output
 
-  val spec: ToolSpec = underlying.spec
+  lazy val spec: ToolSpec = underlying.spec
 
   def io: ToolIO[Input, Output] = underlying.io
 

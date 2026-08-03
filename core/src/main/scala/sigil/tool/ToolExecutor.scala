@@ -43,52 +43,32 @@ private[sigil] object ToolExecutor {
       if (tool.detachable) detachableStream(tool, input, turn, invokeId, invokedName, currentMessageId)
       else inlineStream(tool, input, turn, invokeId, invokedName, currentMessageId)
 
-    val consentGated = gate match {
-      case GateContext.Gated       => tool.requiresUserConsent
-      case GateContext.PreGated(by) =>
-        if (tool.requiresUserConsent)
-          scribe.debug(s"Tool `${tool.name.value}`: consent gate pre-satisfied by parent invoke ${by.value}")
-        false
-    }
-
     // Fast path: tools without preconditions / an applicable consent
     // gate construct their stream synchronously — sync throws at
     // construction stay visible to the dispatch site's error handler
     // instead of sliding into an async stream error.
-    if (tool.preconditions.isEmpty && !consentGated)
-      dispatch()
-    else Stream.force(consentOutcome(tool, turn, invokeId, consentGated).flatMap {
-      case Left(blockedSignals) => Task.pure(Stream.emits(blockedSignals))
-      case Right(()) =>
-        if (tool.preconditions.isEmpty)
-          Task.pure(dispatch())
-        else preflightOutcome(tool, turn, invokeId).map {
-          case Right(())            => dispatch()
-          case Left(blockedSignals) => Stream.emits(blockedSignals)
-        }
+    if (tool.preconditions.isEmpty && !consentApplies(tool, gate)) dispatch()
+    else Stream.force(gateBlock(tool, turn, gate).map {
+      case None       => dispatch()
+      case Some(body) => Stream.emits(refusalSignals(body, turn, invokeId))
     })
   }
 
   // ---- Typed composition entry (Tool.invoke) -------------------------
 
   /** Composition dispatch — one tool's body invoking another. Runs
-    * through the executor with [[GateContext.PreGated]]: consent is
-    * skipped deliberately (and recorded), preconditions STILL run (an
-    * unsatisfied one raises [[ToolFailureException]]). Emissions land
-    * on the caller's still-open buffer and drain with the caller's own
-    * result; a [[ToolResult.Failure]] raises [[ToolFailureException]];
-    * a thrown error propagates as-is. */
-  def invoke(tool: Tool)(input: tool.Input, context: ToolContext): Task[tool.Output] = {
-    if (tool.requiresUserConsent)
-      scribe.debug(s"Tool `${tool.name.value}`: consent gate pre-satisfied by parent invoke ${context.invokeId.value}")
-    checkPreconditions(tool, context.turn).flatMap {
-      case unsatisfied @ (_ :: _) =>
-        val lines = unsatisfied.map { case (n, reason, fix) =>
-          val fixHint = fix.map(f => s" — try `$f`").getOrElse("")
-          s"$n: $reason$fixHint"
-        }.mkString("; ")
-        Task.error(new ToolFailureException(tool.name, s"preconditions not met: $lines", hint = None, args = None))
-      case Nil =>
+    * through the SAME gate stage as every other route with
+    * [[GateContext.PreGated]]: consent is skipped deliberately (and
+    * recorded), preconditions STILL run. A blocked gate raises
+    * [[ToolFailureException]] carrying the same prose the wire path
+    * would have surfaced as a Tool-role refusal. Emissions land on the
+    * caller's still-open buffer and drain with the caller's own result;
+    * a [[ToolResult.Failure]] raises [[ToolFailureException]]; a thrown
+    * error propagates as-is. */
+  def invoke(tool: Tool)(input: tool.Input, context: ToolContext): Task[tool.Output] =
+    gateBlock(tool, context.turn, GateContext.PreGated(context.invokeId)).flatMap {
+      case Some(body) => Task.error(new ToolFailureException(tool.name, body, hint = None, args = None))
+      case None =>
         tool.resolution match {
           case Resolution.Simple(run)   => run(input, context)
           case Resolution.Explicit(run) =>
@@ -98,7 +78,6 @@ private[sigil] object ToolExecutor {
             }
         }
     }
-  }
 
   // ---- Typed collected entry (workflow steps) ------------------------
 
@@ -110,21 +89,17 @@ private[sigil] object ToolExecutor {
   def executeCollected(tool: Tool)(input: tool.Input,
                                    turn: TurnContext,
                                    invokeId: Id[Event]): Task[(List[Signal], Option[ToolResultEnvelope[tool.Output]])] =
-    consentOutcome(tool, turn, invokeId, consentGated = tool.requiresUserConsent).flatMap {
-      case Left(blocked) => Task.pure((blocked, None))
-      case Right(()) =>
-        preflightOutcome(tool, turn, invokeId).flatMap {
-          case Left(blocked) => Task.pure((blocked, None))
-          case Right(()) =>
-            val ctx = ToolContext(turn, invokeId, tool.name, None)
-            resolveResult(tool)(input, ctx).flatMap { result =>
-              Task(ctx.closeEmissions()).flatMap { _ =>
-                settle(tool)(result, ctx).map { case (delta, envelope) =>
-                  val signals = stamp(invokeId, tool.name)(ctx.drainEmitted().map(e => e: Signal) :+ (delta: Signal))
-                  (signals, envelope)
-                }
-              }
+    gateBlock(tool, turn, GateContext.Gated).flatMap {
+      case Some(body) => Task.pure((refusalSignals(body, turn, invokeId), None))
+      case None =>
+        val ctx = ToolContext(turn, invokeId, tool.name, None)
+        resolveResult(tool)(input, ctx).flatMap { result =>
+          Task(ctx.closeEmissions()).flatMap { emitted =>
+            settle(tool)(result, ctx).map { case (delta, envelope) =>
+              val signals = stamp(invokeId, tool.name)(emitted.map(e => e: Signal) :+ (delta: Signal))
+              (signals, envelope)
             }
+          }
         }
     }
 
@@ -139,9 +114,9 @@ private[sigil] object ToolExecutor {
     val ctx = ToolContext(turn, invokeId, invokedName, currentMessageId)
     Stream.force(
       resolveResult(tool)(input, ctx).flatMap { result =>
-        ctx.closeEmissions()
+        val emitted = ctx.closeEmissions()
         settle(tool)(result, ctx).map { case (delta, _) =>
-          Stream.emits(stamp(invokeId, invokedName)(ctx.drainEmitted().map(e => e: Signal) :+ (delta: Signal)))
+          Stream.emits(stamp(invokeId, invokedName)(emitted.map(e => e: Signal) :+ (delta: Signal)))
         }
       }
     )
@@ -184,31 +159,67 @@ private[sigil] object ToolExecutor {
       currentMessageId = currentMessageId
     )
 
+    // Registered BEFORE the awaited workspace resolution: a Stop landing
+    // during that await must still reach this dispatch's token, and the
+    // workspace only enriches the panel projection. The resolved value
+    // re-registers the same entry in place.
+    val baseTask = DetachedToolTask(
+      invokeId          = invokeId,
+      conversationId    = turn.conversation.id,
+      toolName          = invokedName,
+      workspace         = None,
+      keepRunningOnStop = tool.detachedKeepRunningOnStop,
+      cancellation      = token,
+      startedAt         = lightdb.time.Timestamp(lightdb.util.Nowish()),
+      detachedAt        = None
+    )
+    sigil.registerDetachableDispatch(baseTask)
+
     Stream.force(
       for {
         workspace <- sigil.resolvedWorkspaceFor(turn.conversation.id).handleError(_ => Task.pure(None))
-        _ <- Task {
-          sigil.registerDetachableDispatch(DetachedToolTask(
-            invokeId          = invokeId,
-            conversationId    = turn.conversation.id,
-            toolName          = invokedName,
-            workspace         = workspace.map(_.toString),
-            keepRunningOnStop = tool.detachedKeepRunningOnStop,
-            cancellation      = token,
-            startedAt         = lightdb.time.Timestamp(lightdb.util.Nowish()),
-            detachedAt        = None
-          ))
-        }
-        completed = new java.util.concurrent.atomic.AtomicReference[Option[ToolResult[tool.Output]]](None)
-        fiber <- resolveResult(tool)(input, toolCtx).map { r => completed.set(Some(r)); r }.start
-        outcome <- awaitWithinThreshold(completed, sigil.toolDetachThresholdMs)
-        signals <- outcome match {
+        _ <- Task(sigil.registerDetachableDispatch(baseTask.copy(workspace = workspace.map(_.toString))))
+        // A Stop that landed while the workspace resolved (or before
+        // dispatch reached here at all) must not start a fiber that then
+        // runs to completion outside the turn. Settle it as cancelled.
+        stopped = sigil.stopRequested(turn.conversation.id) && !tool.detachedKeepRunningOnStop
+        signals <-
+          if (stopped) {
+            sigil.completeDetachedTool(invokeId)
+            val emitted = toolCtx.closeEmissions()
+            scribe.info(
+              s"Detachable tool `${invokedName.value}` (${invokeId.value}) not started — the conversation " +
+                "was already stopped; settling as cancelled.")
+            settle(tool)(
+              ToolResult.failure(s"cancelled: `${invokedName.value}` was stopped before it started"),
+              toolCtx
+            ).map { case (delta, _) =>
+              stamp(invokeId, invokedName)(emitted.map(e => e: Signal) :+ (delta: Signal))
+            }
+          } else runDetachable(tool, input, turn, invokeId, invokedName, toolCtx, token)
+      } yield Stream.emits(signals)
+    )
+  }
+
+  private def runDetachable(tool: Tool,
+                            input: ToolInput,
+                            turn: TurnContext,
+                            invokeId: Id[Event],
+                            invokedName: ToolName,
+                            toolCtx: ToolContext,
+                            token: _root_.sigil.CancellationToken): Task[List[Signal]] = {
+    val sigil = turn.sigil
+    for {
+      completed <- Task(new java.util.concurrent.atomic.AtomicReference[Option[ToolResult[tool.Output]]](None))
+      fiber <- resolveResult(tool)(input, toolCtx).map { r => completed.set(Some(r)); r }.start
+      outcome <- awaitWithinThreshold(completed, sigil.toolDetachThresholdMs)
+      signals <- outcome match {
           case Some(result) =>
             // Sub-threshold completion — emission-identical to inline.
             sigil.completeDetachedTool(invokeId)
-            toolCtx.closeEmissions()
+            val emitted = toolCtx.closeEmissions()
             settle(tool)(result, toolCtx).map { case (delta, _) =>
-              stamp(invokeId, invokedName)(toolCtx.drainEmitted().map(e => e: Signal) :+ (delta: Signal))
+              stamp(invokeId, invokedName)(emitted.map(e => e: Signal) :+ (delta: Signal))
             }
           case None =>
             // DETACH. Drain what the body has emitted so far; anything
@@ -234,14 +245,24 @@ private[sigil] object ToolExecutor {
             // Completion watcher — publishes the real settle + the
             // continuation trigger outside the (long-gone) turn batch.
             fiber.join.flatMap { result =>
-              toolCtx.closeEmissions()
-              val lateEvents = toolCtx.drainEmitted()
+              // A detachable MUTATING tool applies its change when it
+              // completes, not when it dispatched — re-clear the turn's
+              // Stable reads so a read cached in between can't be served
+              // across the mutation.
+              if (tool.spec.profile.effect.mutates)
+                turn.toolResultCacheRef.updateAndGet(_.filter(_._2.freshness == Freshness.Pure))
+              val lateEvents = toolCtx.closeEmissions()
               settle(tool)(result, toolCtx).flatMap { case (delta, _) =>
                 val cancelled = token.isCancelled
                 val publishLate = stamp(invokeId, invokedName)(lateEvents.map(e => e: Signal)).foldLeft(Task.unit) { (acc, sig) =>
                   acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
                 }
-                val publishSettle = sigil.publish(delta).handleError(t => Task {
+                // The settle rides the same stamp as the late events so
+                // the respond family's `internal` mirroring is uniform
+                // across every publish this path makes.
+                val publishSettle = stamp(invokeId, invokedName)(List[Signal](delta)).foldLeft(Task.unit) { (acc, sig) =>
+                  acc.flatMap(_ => sigil.publish(sig))
+                }.handleError(t => Task {
                   scribe.error(s"Detached tool ${invokedName.value} (${invokeId.value}): settle publish failed", t)
                 })
                 val continuation =
@@ -285,8 +306,7 @@ private[sigil] object ToolExecutor {
               .startUnit()
             Task.pure(stamp(invokeId, invokedName)(drainedNow.map(e => e: Signal)) :+ (detachDelta: Signal))
         }
-      } yield Stream.emits(signals)
-    )
+    } yield signals
   }
 
   /** Poll `completed` every 25ms up to `thresholdMs`. Deliberately NOT
@@ -449,61 +469,74 @@ private[sigil] object ToolExecutor {
 
   // ---- Gates ---------------------------------------------------------
 
+  /** Whether the consent gate applies to this dispatch.
+    * [[GateContext.PreGated]] skips it — a recorded decision, logged
+    * with the parent invoke that already answered for it. */
+  private def consentApplies(tool: Tool, gate: GateContext): Boolean = gate match {
+    case GateContext.Gated => tool.requiresUserConsent
+    case GateContext.PreGated(by) =>
+      if (tool.requiresUserConsent)
+        scribe.debug(s"Tool `${tool.name.value}`: consent gate pre-satisfied by parent invoke ${by.value}")
+      false
+  }
+
+  /** The ONE gate stage every dispatch route runs: consent (per
+    * [[GateContext]]) then preconditions. `None` proceeds; `Some(body)`
+    * blocks, carrying the prose each route renders in its own shape —
+    * a Tool-role refusal Message on the wire / workflow paths, a
+    * [[ToolFailureException]] on the composition path. */
+  private def gateBlock(tool: Tool, context: TurnContext, gate: GateContext): Task[Option[String]] =
+    consentBlock(tool, context, consentApplies(tool, gate)).flatMap {
+      case blocked @ Some(_) => Task.pure(blocked)
+      case None              => preflightBlock(tool, context)
+    }
+
   /** Verify a [[sigil.event.ToolApproval]] exists before dispatching a
-    * consent-gated tool. Returns `Right(())` to proceed; `Left(signals)`
-    * to short-circuit dispatch with a Tool-role refusal Message the
-    * agent reads on its next iteration. */
-  private def consentOutcome(tool: Tool,
-                             context: TurnContext,
-                             originatingInvokeId: Id[Event],
-                             consentGated: Boolean): Task[Either[List[Signal], Unit]] =
-    if (!consentGated) Task.pure(Right(()))
-    else if (_root_.sigil.orchestrator.Orchestrator.isAutonomousPosture(context)) Task.pure(Right(()))
+    * consent-gated tool. `None` to proceed; `Some(body)` to block. */
+  private def consentBlock(tool: Tool,
+                           context: TurnContext,
+                           consentGated: Boolean): Task[Option[String]] =
+    if (!consentGated) Task.pure(None)
+    else if (_root_.sigil.orchestrator.Orchestrator.isAutonomousPosture(context)) Task.pure(None)
     else context.sigil.latestToolApproval(tool.name, context.conversation._id).map {
-      case Some(approval) if approval.approved => Right(())
+      case Some(approval) if approval.approved => None
       case Some(declined) =>
         val reason = declined.reason.map(r => s" — $r").getOrElse("")
-        val body =
+        Some(
           s"""Tool `${tool.name.value}` cannot run — user previously declined this action$reason.
              |
              |If the user's intent has changed, ask them again (e.g. via `respond_options`) and
              |record the new decision with `record_consent("${tool.name.value}", approved=true,
-             |reason="...")` before retrying.""".stripMargin
-        Left(refusalSignals(body, context, originatingInvokeId))
+             |reason="...")` before retrying.""".stripMargin)
       case None =>
         val question = tool.consentPrompt.map(p => s"""Suggested question: "$p"\n\n""").getOrElse("")
-        val body =
+        Some(
           s"""Tool `${tool.name.value}` requires user consent before running.
              |
              |${question}Ask the user (typically via `respond_options` listing this action), wait for the
              |reply, then call `record_consent("${tool.name.value}", approved=true, reason="...")`
              |and retry the tool. The framework refuses to dispatch consent-gated tools without
-             |a `ToolApproval` record in this conversation.""".stripMargin
-        Left(refusalSignals(body, context, originatingInvokeId))
+             |a `ToolApproval` record in this conversation.""".stripMargin)
     }
 
   /** Run every [[Tool.preconditions]] check. If any returns
-    * [[ToolPreconditionResult.Unsatisfied]], yield a Role.Tool Message
+    * [[ToolPreconditionResult.Unsatisfied]], block with prose
     * describing the blocked state instead of letting the resolution
-    * run. The Message is paired to the originating ToolInvoke so
-    * FrameBuilder threads it under that call. */
-  private def preflightOutcome(tool: Tool,
-                               context: TurnContext,
-                               originatingInvokeId: Id[Event]): Task[Either[List[Signal], Unit]] =
+    * run. */
+  private def preflightBlock(tool: Tool, context: TurnContext): Task[Option[String]] =
     checkPreconditions(tool, context).map { unsatisfied =>
-      if (unsatisfied.isEmpty) Right(())
+      if (unsatisfied.isEmpty) None
       else {
         val lines = unsatisfied.map { case (n, reason, fix) =>
           val fixHint = fix.map(f => s" — try `$f`").getOrElse("")
           s"- **$n**: $reason$fixHint"
         }.mkString("\n")
-        val body =
+        Some(
           s"""Tool `${tool.name.value}` cannot run yet — preconditions not met:
              |
              |$lines
              |
-             |Resolve the blocked items, then retry.""".stripMargin
-        Left(refusalSignals(body, context, originatingInvokeId))
+             |Resolve the blocked items, then retry.""".stripMargin)
       }
     }
 
