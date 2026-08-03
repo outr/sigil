@@ -46,11 +46,14 @@ import java.util.Base64
  * The display name in `name` includes the server's `prefix` (so two
  * servers can both expose `read_file` without collision).
  */
-final class McpTool(manager: McpManager, serverConfig: McpServerConfig, definition: McpToolDefinition) extends Tool {
+final class McpTool(manager: McpManager,
+                    serverConfig: McpServerConfig,
+                    definition: McpToolDefinition,
+                    nameOverride: Option[ToolName] = None) extends Tool {
   type Input = JsonInput
   type Output = ToolOutput
 
-  val spec: ToolSpec = McpTool.specFor(serverConfig, definition)
+  val spec: ToolSpec = McpTool.specFor(serverConfig, definition, nameOverride)
 
   /**
    * The server-advertised schema over honest JSON args; results are
@@ -152,21 +155,17 @@ object McpTool {
    * definition. The display name (server prefix + tool name) is
    * validated against the provider grammar; characters providers
    * reject are replaced with `_` (with a warn) so one oddly-named
-   * server tool can't break the whole server's roster. A missing
-   * description gets a synthesized stub. MCP declares no effect
-   * metadata, so the effect is conservatively [[Effect.Mutating]]
-   * with unknown targets.
+   * server tool can't break the whole server's roster. `nameOverride`
+   * carries the collision-resolved name [[resolveNames]] assigned when
+   * two raw names sanitize to one. A missing description gets a
+   * synthesized stub. MCP declares no effect metadata, so the effect is
+   * conservatively [[Effect.Mutating]] with unknown targets.
    */
-  def specFor(serverConfig: McpServerConfig, definition: McpToolDefinition): ToolSpec = {
-    val rawName = serverConfig.prefix.getOrElse("") + definition.name
-    val name = ToolName.parse(rawName).getOrElse {
-      val sanitized = rawName.replaceAll("[^a-zA-Z0-9_-]", "_").take(64)
-      scribe.warn(s"MCP tool name '$rawName' is outside the provider grammar; sanitized to '$sanitized'.")
-      ToolName.parse(sanitized).fold(
-        err => throw new IllegalArgumentException(s"MCP tool name '$rawName' cannot be sanitized: $err"),
-        identity
-      )
-    }
+  def specFor(serverConfig: McpServerConfig,
+              definition: McpToolDefinition,
+              nameOverride: Option[ToolName] = None): ToolSpec = {
+    val rawName = displayName(serverConfig, definition)
+    val name = nameOverride.getOrElse(sanitizedName(rawName))
     val description = definition.description.filterNot(_.isBlank).getOrElse(
       s"MCP tool `${definition.name}` from server `${serverConfig.name}`."
     ) match {
@@ -186,5 +185,57 @@ object McpTool {
         kind = McpKind
       )
     )
+  }
+
+  /** The raw display name a server advertises this tool under —
+    * `prefix + name`, before any grammar sanitization. */
+  def displayName(serverConfig: McpServerConfig, definition: McpToolDefinition): String =
+    serverConfig.prefix.getOrElse("") + definition.name
+
+  /** Grammar-conform a raw display name: characters providers reject
+    * collapse to `_` and the result truncates to the 64-char limit.
+    * Lossy by construction — [[resolveNames]] is what keeps two raw
+    * names that collapse together from shadowing each other. */
+  def sanitizedName(rawName: String): ToolName =
+    ToolName.parse(rawName).getOrElse {
+      val sanitized = rawName.replaceAll("[^a-zA-Z0-9_-]", "_").take(64)
+      scribe.warn(s"MCP tool name '$rawName' is outside the provider grammar; sanitized to '$sanitized'.")
+      ToolName.parse(sanitized).fold(
+        err => throw new IllegalArgumentException(s"MCP tool name '$rawName' cannot be sanitized: $err"),
+        identity
+      )
+    }
+
+  /** Map every raw display name in a roster to a UNIQUE [[ToolName]].
+    * Sanitization is lossy — `fs.read` and `fs:read` both collapse to
+    * `fs_read`, and two names differing past the 64th character
+    * truncate together — so the naive mapping silently drops one tool
+    * from the roster. Colliding entries after the first (in sorted
+    * order, so the assignment is stable across calls) get a `_2`,
+    * `_3`, … suffix that fits inside the 64-char limit, and each
+    * collision warns naming both raw names. */
+  def resolveNames(rawNames: Iterable[String]): Map[String, ToolName] = {
+    val taken = scala.collection.mutable.Map.empty[String, String]
+    rawNames.toList.distinct.sorted.map { raw =>
+      val base = sanitizedName(raw)
+      val resolved =
+        if (!taken.contains(base.value)) base
+        else {
+          val owner = taken(base.value)
+          val unique = LazyList.from(2).map { n =>
+            val suffix = s"_$n"
+            base.value.take(64 - suffix.length) + suffix
+          }.find(candidate => !taken.contains(candidate)).get
+          scribe.warn(
+            s"MCP tool names '$raw' and '$owner' both resolve to '${base.value}' after grammar sanitization; " +
+              s"'$raw' is exposed as '$unique' so neither is shadowed.")
+          ToolName.parse(unique).fold(
+            err => throw new IllegalArgumentException(s"MCP tool name '$raw' cannot be disambiguated: $err"),
+            identity
+          )
+        }
+      taken(resolved.value) = raw
+      raw -> resolved
+    }.toMap
   }
 }

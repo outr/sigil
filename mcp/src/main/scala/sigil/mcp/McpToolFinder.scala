@@ -18,16 +18,18 @@ final class McpToolFinder(manager: McpManager) extends ToolFinder {
   override val toolIO: List[ToolIO[?, ?]] =
     List(ToolIO.dynamicAs[ToolOutput](Definition(DefType.Json)))
 
-  override def byName(name: ToolName): Task[Option[Tool]] =
+  /** Materialize every advertised tool with collision-resolved names —
+    * two raw names that sanitize to one would otherwise silently
+    * shadow, dropping a tool from the roster. */
+  private def allTools: Task[List[McpTool]] =
     manager.allToolsByDisplayName.map { all =>
-      all.get(name.value).map { case (cfg, td) => new McpTool(manager, cfg, td) }
+      val names = McpTool.resolveNames(all.keys)
+      all.toList.map { case (raw, (cfg, td)) => new McpTool(manager, cfg, td, names.get(raw)) }
     }
 
+  override def byName(name: ToolName): Task[Option[Tool]] =
+    allTools.map(_.find(_.name == name))
+
   override def apply(request: DiscoveryRequest): Task[List[Tool]] =
-    manager.allToolsByDisplayName.map { all =>
-      val candidates: List[Tool] = all.values.toList.map { case (cfg, td) =>
-        new McpTool(manager, cfg, td)
-      }
-      candidates.filter(t => DiscoveryFilter.matches(t, request))
-    }
+    allTools.map(_.filter(t => DiscoveryFilter.matches(t, request)))
 }
