@@ -4,7 +4,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.diagnostics.ProfileSection
-import sigil.provider.{ContextSection, ContextSections, Placement}
+import sigil.provider.{ContextSection, ContextSections, Placement, SectionBody}
 
 /**
  * A section's shed effect is data on the section, so the curator's
@@ -21,7 +21,7 @@ class ContextSectionShedSpec extends AnyWordSpec with Matchers {
   private def custom(id: ProfileSection,
                      stage: Option[Int],
                      shed: Option[TurnInput => TurnInput]): ContextSection =
-    ContextSection(id, Placement.VolatileTail, stage, _ => Some("body"), shed)
+    ContextSection(id, Placement.VolatileTail, stage, _ => Some(SectionBody.Blob("body")), shed)
 
   "ContextSections.shedCascade" should {
 

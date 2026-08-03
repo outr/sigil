@@ -67,7 +67,7 @@ object RequestProfiler {
 
     // System-prompt sections: counted from the renderer's own
     // functions, so the accounting is the wire's by construction.
-    sectionList.foreach(s => s.render(sectionContext).foreach(add(s.id, _)))
+    sectionList.foreach(s => s.rendered(sectionContext).foreach(add(s.id, _)))
 
     // Frames (the message array) — wire-level, outside the section list.
     val frameProfiles = turn.frames.map { f =>

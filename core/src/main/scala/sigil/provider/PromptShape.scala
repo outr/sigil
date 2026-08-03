@@ -1,6 +1,7 @@
 package sigil.provider
 
 import fabric.rw.*
+import sigil.diagnostics.ProfileSection
 
 /**
  * How verbosely the section list renders.
@@ -44,5 +45,21 @@ enum PromptShape derives RW {
   def skillCap: Option[Int] = this match {
     case Full    => None
     case Compact => Some(4)
+  }
+
+  /** Tokens this shape allows one section to occupy, or `None` for no
+    * budget. Composes with the caps above rather than replacing them:
+    * a cap bounds entry COUNT (cheap, exact, shape-independent), a
+    * budget bounds rendered SIZE (what actually competes for the
+    * window when entries vary wildly in length).
+    *
+    * Neither shape declares a budget today — a section's own
+    * [[ContextSection.budget]] is the only source until a profile has
+    * measured evidence that a given section needs a per-model ceiling,
+    * and adding one here must not silently reshape prompts that the
+    * caps already size correctly. */
+  def budgetFor(section: ProfileSection): Option[Int] = this match {
+    case Full    => None
+    case Compact => None
   }
 }

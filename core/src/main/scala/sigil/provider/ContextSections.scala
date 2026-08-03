@@ -58,12 +58,24 @@ object ContextSections {
     "\nWhen an entry shows `reload_content(\"<id>\")`, call it to reload the full content " +
       "it elided (an event id → that event; a summary id → the events it covers).\n"
 
+  /** A prose section: rendered as one unit, never budget-trimmed. */
   private def section(id: ProfileSection,
                       placement: Placement,
                       shedStage: Option[Int] = None,
                       shed: Option[TurnInput => TurnInput] = None)
                      (render: SectionContext => Option[String]): ContextSection =
-    ContextSection(id, placement, shedStage, render, shed)
+    ContextSection(id, placement, shedStage, c => render(c).map(SectionBody.Blob(_)), shed)
+
+  /** A header-over-lines section: the prompt shape's entry cap bounds
+    * how many lines render, and `budget` trims the rendered result
+    * further when one is declared. */
+  private def entrySection(id: ProfileSection,
+                           placement: Placement,
+                           shedStage: Option[Int] = None,
+                           shed: Option[TurnInput => TurnInput] = None,
+                           budget: Option[Int] = None)
+                          (render: SectionContext => Option[SectionBody.Entries]): ContextSection =
+    ContextSection(id, placement, shedStage, render(_), shed, budget)
 
   private def nonEmpty(s: String): Option[String] = if (s.isEmpty) None else Some(s)
 
@@ -96,10 +108,11 @@ object ContextSections {
     }
 
   private val previousTopics: ContextSection =
-    section(ProfileSection.PreviousTopics, Placement.StablePrefix) { c =>
+    entrySection(ProfileSection.PreviousTopics, Placement.StablePrefix) { c =>
       if (c.request.previousTopics.isEmpty) None
-      else Some("Previous topics in this conversation:\n" +
-        c.capped(c.request.previousTopics.toList).map(t => s"  - \"${t.label}\" — ${t.summary}\n").mkString)
+      else Some(SectionBody.Entries(
+        header = "Previous topics in this conversation:\n",
+        lines  = c.capped(c.request.previousTopics.toList).map(t => s"  - \"${t.label}\" — ${t.summary}\n")))
     }
 
   /** The discovery block teaches discovery-first behaviour generically —
@@ -130,11 +143,13 @@ object ContextSections {
     }
 
   private val activeSkills: ContextSection =
-    section(ProfileSection.ActiveSkills, Placement.StablePrefix) { c =>
+    entrySection(ProfileSection.ActiveSkills, Placement.StablePrefix) { c =>
       if (c.allSkills.isEmpty) None
-      else Some("\n== Active skills ==\n" + c.allSkills.map { s =>
-        s"- ${s.name}\n" + (if (s.content.nonEmpty) s.content + "\n" else "")
-      }.mkString)
+      else Some(SectionBody.Entries(
+        header = "\n== Active skills ==\n",
+        lines  = c.allSkills.toList.map { s =>
+          s"- ${s.name}\n" + (if (s.content.nonEmpty) s.content + "\n" else "")
+        }))
     }
 
   private val criticalMemories: ContextSection =
@@ -165,20 +180,22 @@ object ContextSections {
     * message history they invalidated the whole prompt cache on every
     * update. In the tail, an update invalidates nothing ahead of it. */
   private val summaries: ContextSection =
-    section(ProfileSection.Summaries, Placement.VolatileTail, shedStage = Some(3),
+    entrySection(ProfileSection.Summaries, Placement.VolatileTail, shedStage = Some(3),
       shed = Some(t => t.copy(summaries = Vector.empty))) { c =>
       if (c.resolved.summaries.isEmpty) None
-      else Some(SummariesHeader +
-        c.capped(c.resolved.summaries.toList, c.promptShape.summaryCap).map(summaryLine).mkString +
-        SummariesFooter)
+      else Some(SectionBody.Entries(
+        header = SummariesHeader,
+        lines  = c.capped(c.resolved.summaries.toList, c.promptShape.summaryCap).map(summaryLine),
+        footer = SummariesFooter))
     }
 
   private val memories: ContextSection =
-    section(ProfileSection.Memories, Placement.VolatileTail, shedStage = Some(1),
+    entrySection(ProfileSection.Memories, Placement.VolatileTail, shedStage = Some(1),
       shed = Some(t => t.copy(memories = Vector.empty))) { c =>
       if (c.resolved.memories.isEmpty) None
-      else Some(MemoriesHeader +
-        c.capped(c.resolved.memories.toList, c.promptShape.memoryCap).map(memoryLine).mkString)
+      else Some(SectionBody.Entries(
+        header = MemoriesHeader,
+        lines  = c.capped(c.resolved.memories.toList, c.promptShape.memoryCap).map(memoryLine)))
     }
 
   /** Agency must be unambiguous: this digest is a memory aid about the
@@ -186,15 +203,16 @@ object ContextSections {
     * pressure has trimmed a call's full transaction from the history,
     * this line is the only remaining record. */
   private val recentTools: ContextSection =
-    section(ProfileSection.RecentTools, Placement.VolatileTail) { c =>
+    entrySection(ProfileSection.RecentTools, Placement.VolatileTail) { c =>
       if (c.recentTools.isEmpty) None
-      else Some("\n== Recently used tools ==\n" +
-        "These are tool calls YOU (the assistant) made earlier in this conversation:\n" +
-        c.recentTools.map { inv =>
+      else Some(SectionBody.Entries(
+        header = "\n== Recently used tools ==\n" +
+          "These are tool calls YOU (the assistant) made earlier in this conversation:\n",
+        lines  = c.recentTools.map { inv =>
           val ago = Provider.humanizeAgo(c.now - inv.invokedAt.value)
           val previewSuffix = if (inv.argsPreview.nonEmpty) s" (${inv.argsPreview})" else ""
           s"- ${inv.toolName.value}$previewSuffix -- $ago\n"
-        }.mkString)
+        }))
     }
 
   /** Every `(toolName, argsHash)` bucket firing more than once in the
@@ -228,9 +246,11 @@ object ContextSections {
     }
 
   private val suggestedTools: ContextSection =
-    section(ProfileSection.SuggestedTools, Placement.VolatileTail) { c =>
+    entrySection(ProfileSection.SuggestedTools, Placement.VolatileTail) { c =>
       if (c.suggestedTools.isEmpty) None
-      else Some("\n== Suggested tools ==\n" + c.suggestedTools.map(t => s"- ${t.value}\n").mkString)
+      else Some(SectionBody.Entries(
+        header = "\n== Suggested tools ==\n",
+        lines  = c.suggestedTools.map(t => s"- ${t.value}\n")))
     }
 
   /** Tools the agent already discovered via `find_capability` earlier
@@ -238,16 +258,17 @@ object ContextSections {
     * DIRECTIVE sentence honest when narrowing dropped a discovered
     * tool from the offered set. */
   private val discoveredCapabilities: ContextSection =
-    section(ProfileSection.DiscoveredCapabilities, Placement.VolatileTail) { c =>
+    entrySection(ProfileSection.DiscoveredCapabilities, Placement.VolatileTail) { c =>
       if (c.discovered.isEmpty) None
-      else Some("\n== Capabilities you've already discovered (this turn) ==\n" +
-        c.discovered.map { case (query, matches) =>
+      else Some(SectionBody.Entries(
+        header = "\n== Capabilities you've already discovered (this turn) ==\n",
+        lines  = c.discovered.map { case (query, matches) =>
           s"- `find_capability($query)` → ${matches.map(_.value).mkString(", ")}\n"
-        }.mkString +
-        "DIRECTIVE: These tools are NOW in your roster — call them directly to complete the task. " +
-        "Re-calling `find_capability` for the same query, or falling back to `respond` without first " +
-        "calling the discovered action tool the user requested, is a protocol violation. If the user's " +
-        "request maps to one of these tools, invoke it on THIS iteration.\n")
+        },
+        footer = "DIRECTIVE: These tools are NOW in your roster — call them directly to complete the task. " +
+          "Re-calling `find_capability` for the same query, or falling back to `respond` without first " +
+          "calling the discovered action tool the user requested, is a protocol violation. If the user's " +
+          "request maps to one of these tools, invoke it on THIS iteration.\n"))
     }
 
   private val extraContext: ContextSection =
@@ -305,7 +326,7 @@ object ContextSections {
 
   /** Concatenate every section rendering for one placement. */
   def render(sections: List[ContextSection], placement: Placement, c: SectionContext): String =
-    sections.iterator.filter(_.placement == placement).flatMap(_.render(c)).mkString
+    sections.iterator.filter(_.placement == placement).flatMap(_.rendered(c)).mkString
 
   /** The curator's section-shed cascade for a section list: every
     * section declaring a `shedStage`, ordered by it.
