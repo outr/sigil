@@ -126,8 +126,9 @@ object ParaphraseLoopDetector {
     }
   }
 
-  /** Stable [[sigil.conversation.ContextKey]] value the curator uses
-    * when injecting the observation into `TurnInput.extraContext`.
-    * Apps reading `extraContext` can filter on this key. */
-  val ContextKeyValue: String = "_paraphraseObservation"
+  /** Wire string of the [[sigil.conversation.ContextKey]] the curator
+    * uses when injecting the observation into `TurnInput.extraContext`.
+    * Apps holding the key itself filter on
+    * [[sigil.conversation.ContextKey.ParaphraseObservation]]. */
+  val ContextKeyValue: String = _root_.sigil.conversation.ContextKey.ParaphraseObservation.value
 }

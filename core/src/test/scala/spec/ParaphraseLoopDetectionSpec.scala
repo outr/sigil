@@ -151,7 +151,7 @@ class ParaphraseLoopDetectionSpec extends AnyWordSpec with Matchers {
 
     "expose the observation under the documented context key" in {
       ParaphraseLoopDetector.ContextKeyValue shouldBe "_paraphraseObservation"
-      ContextKey(ParaphraseLoopDetector.ContextKeyValue).value shouldBe "_paraphraseObservation"
+      ContextKey.ParaphraseObservation.value shouldBe "_paraphraseObservation"
     }
   }
 }

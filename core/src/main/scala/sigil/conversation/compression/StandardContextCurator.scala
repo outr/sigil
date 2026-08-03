@@ -802,7 +802,7 @@ case class StandardContextCurator(sigil: Sigil,
           insights = Nil
         )
         sigil.publish(notice).map { _ =>
-          turnInput.copy(extraContext = turnInput.extraContext + (ContextKey("_budgetWarning") -> message))
+          turnInput.copy(extraContext = turnInput.extraContext + (ContextKey.BudgetWarning -> message))
         }
       }
     }
@@ -833,7 +833,7 @@ case class StandardContextCurator(sigil: Sigil,
               case None          => turn
               case Some(pattern) =>
                 turn.copy(extraContext = turn.extraContext +
-                  (_root_.sigil.conversation.ContextKey(ParaphraseLoopDetector.ContextKeyValue) -> pattern.render()))
+                  (_root_.sigil.conversation.ContextKey.ParaphraseObservation -> pattern.render()))
             }
         }
     }
@@ -920,7 +920,7 @@ object StandardContextCurator {
     * naked-text decision challenge, which backs off rather than
     * prodding a context-starved agent through extra iterations. */
   val ContextPressureKey: _root_.sigil.conversation.ContextKey =
-    _root_.sigil.conversation.ContextKey("_contextPressure")
+    _root_.sigil.conversation.ContextKey.ContextPressure
 
   /** Sigil #288 — replace oversized top-level string fields in a
     * tool-call args JSON with a short placeholder. The placeholder

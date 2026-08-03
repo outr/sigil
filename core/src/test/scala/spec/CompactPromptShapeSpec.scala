@@ -51,7 +51,7 @@ class CompactPromptShapeSpec extends AnyWordSpec with Matchers {
     conversationId = convId,
     frames = Vector.empty,
     participantProjections = Map(TestAgent -> projection),
-    extraContext = Map(ContextKey("_budgetWarning") -> "pinned directives occupy 31% of the window"),
+    extraContext = Map(ContextKey.BudgetWarning -> "pinned directives occupy 31% of the window"),
     alwaysOnSkills = skills
   )
 

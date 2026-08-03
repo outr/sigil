@@ -99,7 +99,8 @@ class DegenerateGenerationDetectionSpec extends AnyWordSpec with Matchers {
       // The two systems agree on the key value so the provider's
       // detection of paraphrase signal matches what the curator
       // writes.
-      ContextKey(ParaphraseLoopDetector.ContextKeyValue).value shouldBe "_paraphraseObservation"
+      ContextKey.ParaphraseObservation.value shouldBe "_paraphraseObservation"
+      ParaphraseLoopDetector.ContextKeyValue shouldBe ContextKey.ParaphraseObservation.value
     }
   }
 }

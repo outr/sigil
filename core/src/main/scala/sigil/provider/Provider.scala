@@ -1088,9 +1088,8 @@ trait Provider extends Service with ModelResolver {
     * bounded; the agent's next iteration reads the loop diagnostic and
     * can self-correct. */
   private def tightenMaxTokensForParaphrase(c: ConversationRequest): GenerationSettings =
-    if (c.turnInput.extraContext.exists { case (k, _) =>
-          k.value == _root_.sigil.conversation.compression.ParaphraseLoopDetector.ContextKeyValue
-        }) c.generationSettings.tightenedTo(Provider.ParaphraseLoopMaxOutputTokensCap)
+    if (c.turnInput.extraContext.contains(_root_.sigil.conversation.ContextKey.ParaphraseObservation))
+      c.generationSettings.tightenedTo(Provider.ParaphraseLoopMaxOutputTokensCap)
     else c.generationSettings
 
   /** Agent-initiated turns (greeting / scheduled / autonomous /
