@@ -277,12 +277,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * all account against the records this returns.
    */
   private[sigil] final def resolveReferences(turn: sigil.conversation.TurnInput): Task[ResolvedReferences] = {
+    // This is the LAST read before the bytes go on the wire, and the ids
+    // it hydrates were selected at retrieval time — potentially several
+    // iterations earlier. A memory revoked in between (rejected,
+    // superseded by a newer version, expired) must not render, so the
+    // shared recall gate applies here too rather than trusting the id list.
+    val now = lightdb.time.Timestamp()
     val memTask: Task[(List[Option[ContextMemory]], List[Option[ContextMemory]])] =
       if (turn.criticalMemories.isEmpty && turn.memories.isEmpty) Task.pure((Nil, Nil))
       else withDB(_.memories.transaction { tx =>
+        def recallable(loaded: List[Option[ContextMemory]]): List[Option[ContextMemory]] =
+          loaded.map(_.filter(_.isRecallable(now)))
         for {
-          crit    <- Task.sequence(turn.criticalMemories.toList.map(tx.get))
-          regular <- Task.sequence(turn.memories.toList.map(tx.get))
+          crit    <- Task.sequence(turn.criticalMemories.toList.map(tx.get)).map(recallable)
+          regular <- Task.sequence(turn.memories.toList.map(tx.get)).map(recallable)
         } yield (crit, regular)
       })
     val sumTask: Task[List[Option[ContextSummary]]] =
