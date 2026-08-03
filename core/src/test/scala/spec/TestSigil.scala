@@ -725,6 +725,18 @@ object TestSigil extends Sigil {
     resolveProviderStrategyRef.set(Some(f))
 
   /**
+   * Per-test reply-suggestion configuration. Default is `None` — the
+   * framework fires no post-turn suggestion consult, matching the
+   * shipped default.
+   */
+  private val replySuggestionsRef =
+    new AtomicReference[Option[sigil.conversation.ReplySuggestionsConfig]](None)
+  override def replySuggestions: Option[sigil.conversation.ReplySuggestionsConfig] = replySuggestionsRef.get()
+  def setReplySuggestions(config: sigil.conversation.ReplySuggestionsConfig): Unit =
+    replySuggestionsRef.set(Some(config))
+  def resetReplySuggestions(): Unit = replySuggestionsRef.set(None)
+
+  /**
    * Reset every mutable hook to its default. Call from `beforeEach`
    * (or inline at the start of a test) to guarantee isolation from
    * prior tests within the same suite.
@@ -748,6 +760,7 @@ object TestSigil extends Sigil {
     healingModeRef.set(sigil.heal.HealingMode.Strict)
     pinCoversAuxiliaryCallsOverride.set(None)
     currentParticipantRef.set(p => Task.pure(p))
+    replySuggestionsRef.set(None)
   }
 
   override def currentParticipant(persisted: Participant): Task[Participant] =

@@ -12,7 +12,8 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, TurnPlan, UpsertMemoryResult}
+import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, ReplySuggestionContext, ReplySuggestionsConfig, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, TurnPlan, UpsertMemoryResult}
+import sigil.conversation.compression.TranscriptRenderer
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
@@ -24,7 +25,7 @@ import sigil.transport.SignalTransport
 
 import java.nio.file.Path
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
-import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
+import sigil.tool.consult.{ConsultTool, SuggestReplyInput, SuggestReplyTool, TopicClassifierTool}
 import sigil.provider.{GenerationSettings, TokenUsage}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
@@ -39,12 +40,12 @@ import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextR
 import sigil.provider.Provider
 import sigil.provider.{ContextSection, ContextSections, InstructionTier, ModelProfile, PromptShape, Reliability, ResolvedReferences}
 import sigil.service.Service
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
+import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, SuggestedReplies, ToolDelta, TopicDelta}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
 import sigil.tool.core.{CoreTools, FindCapabilityTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.model.{Card, ResponseContent}
 import sigil.tool.{ToolFinder, ToolInput}
 import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, VectorSearchResult}
 
@@ -7454,6 +7455,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     def terminate(skipFallback: Boolean = false): Task[Unit] = {
       if (turnExtractorFired.compareAndSet(false, true)) {
         firePostTurnExtraction(agent, convId, claimed.timestamp).startUnit()
+        fireReplySuggestions(agent, convId, claimed.timestamp).startUnit()
       }
       // Sigil bug #282 — defensive guarantee: never release the agent's
       // claim without something user-visible reaching the conversation.
@@ -8425,6 +8427,182 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           Task(scribe.warn(s"MemoryExtractor failed for conversation ${convId.value}: ${e.getMessage}"))
         }
     }
+
+  /**
+   * Framework-generated reply suggestions — OFF by default. When set,
+   * every turn that settles with a user-visible reply fires a cheap
+   * background consult predicting what the user is likely to say next,
+   * and the framework publishes the result as a transient
+   * [[sigil.signal.SuggestedReplies]] notice. `None` dispatches
+   * nothing and costs nothing.
+   *
+   * Clients render `suggestions.headOption` as inline type-ahead in
+   * the composer, or the whole list as tappable chips when the config
+   * asks for more than one.
+   */
+  def replySuggestions: Option[ReplySuggestionsConfig] = None
+
+  /** How many trailing [[ContextFrame]]s the reply-suggestion consult
+    * renders as its "earlier in the conversation" excerpt, on top of
+    * the settled reply and the triggering user message it always
+    * carries. */
+  def replySuggestionFrameTail: Int = 6
+
+  /** Assemble the reply-suggestion consult's inputs from the settled
+    * turn and dispatch it. Fires once per turn at the agent loop's
+    * terminate boundary, on a background fiber — every failure is
+    * logged at WARN and swallowed so the turn's settle path never
+    * depends on it.
+    *
+    * Skipped entirely for worker scratchpads (`parentConversationId`
+    * set) and staging conversations: nobody is composing a reply
+    * there. */
+  private final def fireReplySuggestions(agent: AgentParticipant,
+                                         convId: Id[Conversation],
+                                         turnStartTimestamp: Timestamp): Task[Unit] =
+    replySuggestions match {
+      case None => Task.unit
+      case Some(config) =>
+        withDB(_.conversations.transaction(_.get(convId)))
+          .flatMap {
+            case Some(conv) if conv.parentConversationId.isEmpty && conv.stagingFor.isEmpty =>
+              suggestRepliesFor(agent, conv, config, turnStartTimestamp)
+            case _ => Task.unit
+          }
+          .handleError { e =>
+            Task(scribe.warn(s"reply-suggestion consult failed for conversation ${convId.value}: ${e.getMessage}"))
+          }
+    }
+
+  private final def suggestRepliesFor(agent: AgentParticipant,
+                                      conv: Conversation,
+                                      config: ReplySuggestionsConfig,
+                                      turnStartTimestamp: Timestamp): Task[Unit] = {
+    val convId = conv._id
+    withDB(_.conversationEvents(convId)).flatMap { all =>
+      val convEvents = all.iterator
+        .filter(_.conversationId == convId)
+        .filter(_.state == EventState.Complete)
+        .toVector
+        .sortBy(_.timestamp.value)
+      val turnReplies = convEvents.iterator.collect {
+        case m: Message
+          if m.timestamp.value >= turnStartTimestamp.value && m.participantId == agent.id &&
+            m.role == MessageRole.Standard => m
+      }.toVector
+      val optionsOffered = turnReplies.exists(m => contentOffersOptions(m.content))
+      val settledReply = turnReplies.filter(m => allowsNonAgentViewer(m.visibility, conv)).lastOption
+      settledReply match {
+        case Some(reply) if !(config.skipWhenOptionsOffered && optionsOffered) =>
+          // Render rather than concatenate text blocks: a reply built
+          // from options / fields / a table carries no Text block at
+          // all, and the prediction needs to read what the user saw.
+          val agentReply = PlainTextRenderer.render(reply.content).trim
+          // The triggering message precedes the agent's claim, so it
+          // lives outside the turn window — take the conversation's
+          // most recent user-authored Message instead.
+          val userEvent = convEvents.reverseIterator.collectFirst {
+            case m: Message if !m.participantId.isInstanceOf[AgentParticipantId] && m.role == MessageRole.Standard => m
+          }
+          if (agentReply.isEmpty) Task.unit
+          else framesFor(convId).flatMap { frames =>
+            val anchored = (reply._id :: userEvent.map(_._id).toList).toSet
+            val tail = frames.filterNot(f => anchored.contains(f.sourceEventId)).takeRight(replySuggestionFrameTail)
+            runReplySuggestionConsult(agent, config, ReplySuggestionContext(
+              conversationId = convId,
+              replyMessageId = reply._id,
+              agentReply     = agentReply,
+              userMessage    = userEvent.map(m => PlainTextRenderer.render(m.content).trim).getOrElse(""),
+              recentExchange = TranscriptRenderer.render(tail).trim,
+              count          = config.count
+            ))
+          }
+        case _ => Task.unit
+      }
+    }
+  }
+
+  private final def runReplySuggestionConsult(agent: AgentParticipant,
+                                              config: ReplySuggestionsConfig,
+                                              ctx: ReplySuggestionContext): Task[Unit] = {
+    val userPrompt = config.promptOverride.fold(renderReplySuggestionPrompt(ctx))(_(ctx))
+    ConsultTool
+      .invokeRouted[SuggestReplyInput](
+        sigil           = this,
+        tool            = SuggestReplyTool,
+        chain           = List(agent.id),
+        fallbackModelId = config.fallbackModelId,
+        systemPrompt =
+          "You predict what a person will type next in their conversation with an assistant. " +
+            "You answer only by calling `suggest_reply`.",
+        userPrompt = userPrompt
+      )
+      .flatMap {
+        case Some(result) =>
+          val cleaned = result.suggestions.iterator
+            .map(cleanReplySuggestion)
+            .filter(_.nonEmpty)
+            .distinct
+            .take(ctx.count)
+            .toList
+          if (cleaned.isEmpty) Task.unit
+          else publish(SuggestedReplies(ctx.conversationId, ctx.replyMessageId, cleaned))
+        case None => Task.unit
+      }
+  }
+
+  /** The reply-suggestion consult's user prompt. Branches on
+    * `ctx.count`: one suggestion is a type-ahead completion, several
+    * are candidates that must differ in intent. Public so a
+    * [[ReplySuggestionsConfig.promptOverride]] can extend the
+    * framework's phrasing rather than replace it wholesale. */
+  def renderReplySuggestionPrompt(ctx: ReplySuggestionContext): String = {
+    val sb = new StringBuilder
+    if (ctx.recentExchange.nonEmpty) sb.append("Earlier in the conversation:\n").append(ctx.recentExchange).append("\n\n")
+    if (ctx.userMessage.nonEmpty) sb.append("The person just said:\n").append(ctx.userMessage).append("\n\n")
+    sb.append("The assistant replied:\n").append(ctx.agentReply).append("\n\n")
+    sb.append(
+      if (ctx.count == 1)
+        "Predict the single most likely message this person sends next. Write it the way they would type it — " +
+          "first person, one short line, no quotation marks and no markup. Return exactly one suggestion."
+      else
+        s"Predict ${ctx.count} candidate next messages with DISTINCT intents — one that continues the current " +
+          "thread, one that redirects to something else, one that digs into a specific detail of the reply. " +
+          "Write each the way this person would type it — first person, one short line, no quotation marks and " +
+          s"no markup. Return exactly ${ctx.count} suggestions, most likely first."
+    )
+    sb.toString
+  }
+
+  private def cleanReplySuggestion(raw: String): String = {
+    val stripped = raw.trim.stripPrefix("- ").stripPrefix("* ").trim
+    if (stripped.length >= 2 && stripped.startsWith("\"") && stripped.endsWith("\"")) stripped.substring(1, stripped.length - 1).trim
+    else stripped
+  }
+
+  /** True when at least one non-agent participant of `conv` may see a
+    * message tagged with `visibility`. Falls back to the tag alone for
+    * conversations with no human participant on the roster (a
+    * signal-driven UI can still be watching). */
+  private def allowsNonAgentViewer(visibility: MessageVisibility, conv: Conversation): Boolean = {
+    val humans = conv.participants.iterator.map(_.id).filterNot(_.isInstanceOf[AgentParticipantId]).toList
+    if (humans.nonEmpty) humans.exists(v => visibilityAllows(visibility, v))
+    else visibility match {
+      case MessageVisibility.Agents            => false
+      case MessageVisibility.Participants(ids) => ids.exists(!_.isInstanceOf[AgentParticipantId])
+      case _                                   => true
+    }
+  }
+
+  /** True when the reply offered the user structured choices —
+    * [[ResponseContent.Options]] either at the top level or nested in
+    * a [[ResponseContent.Card]] emitted by `respond_card` /
+    * `respond_cards`. */
+  private def contentOffersOptions(content: Vector[ResponseContent]): Boolean = content.exists {
+    case _: ResponseContent.Options => true
+    case c: ResponseContent.Card    => contentOffersOptions(Card.typedSections(c))
+    case _                          => false
+  }
 
   /** Sigil #285 — consult [[intraTurnCompactor]] at an iteration
     * boundary and, if it fires, run [[intraTurnCompressor.compressCovering]]

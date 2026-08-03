@@ -1,0 +1,5 @@
+{"requestHash":"ea09a2c70ed16064331e1fc58628c0f868d58f13c51935df0bc64906072a172f","recordedAt":1785771413561}
+{"callId":"7d985eb01","toolName":"suggest_reply","type":"ProviderEvent.ToolCallStart"}
+{"callId":"7d985eb01","call":{"type":"decoded","name":"suggest_reply","args":{"suggestions":["Can I use a for loop to reverse a list instead?","What if the list is immutable and I need to keep the original?","Do I need to import anything special to use the reverse method?"]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":581,"completionTokens":69,"totalTokens":650,"isEstimated":false,"cacheReadTokens":362,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}
