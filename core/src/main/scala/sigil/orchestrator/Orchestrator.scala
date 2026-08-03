@@ -553,11 +553,19 @@ object Orchestrator {
           state = Some(EventState.Complete),
           internal = isInternal
         ))
-        // Early-return dispatch paths that DO produce a real result —
-        // a served cache hit, an inlined duplicate, a raced re-issue
-        // handed the settled result — settle the invoke's outcome too.
-        // Leaving it `Pending` reads downstream as "raced past, retry",
-        // which is exactly the loop those intercepts exist to end.
+        // Early-return dispatch paths that hand the agent a real result
+        // without re-running the tool — a served cache hit, an inlined
+        // duplicate — settle the invoke's outcome too. Leaving it
+        // `Pending` reads downstream as "raced past, retry", which is
+        // exactly the loop those intercepts exist to end.
+        //
+        // A REFUSED dispatch is not one of them and keeps the `Pending`
+        // outcome its sibling refusal (the duplicate-call cap below)
+        // already carries: no tool ran, so nothing settled. `Success`
+        // there is read by every consumer of the durable row as a tool
+        // that ran and changed state — the progress checkpoint counts
+        // exactly that as its mutation evidence, and a turn whose every
+        // call is refused would report meaningful progress forever.
         val settledPrefix: List[Signal] = toolDeltaPrefix.map {
           case td: ToolDelta => td.copy(outcome = Some(ToolOutcome.Success))
           case other         => other
@@ -855,7 +863,7 @@ object Orchestrator {
                           visibility     = MessageVisibility.Agents,
                           origin         = Some(invokeId)
                         )
-                        Stream.emits(settledPrefix ::: List[Signal](
+                        Stream.emits(toolDeltaPrefix ::: List[Signal](
                           racedMsg,
                           StateDelta(target = racedMsg._id, conversationId = convId, state = EventState.Complete)
                         ))
