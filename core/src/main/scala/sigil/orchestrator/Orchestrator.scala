@@ -156,7 +156,7 @@ object Orchestrator {
       // invokes aren't in the registry (it tracks Messages only) —
       // settleOrphanToolInvoke owns them.
       val richlyHandled: List[lightdb.id.Id[Event]] = state.activeMessageId.toList
-      val orphanToolInvokes = settleOrphanToolInvoke(
+      val orphanToolInvokes = OrphanSettlement.settleOrphanToolInvoke(
         state, convId,
         caller = callerForOrphan,
         topicId = request.currentTopic.id,
@@ -167,11 +167,11 @@ object Orchestrator {
           ),
         recoverable = true
       )
-      val orphanMessage = if (errOpt.isDefined) settleOrphanMessage(state, convId, error = errorMsg) else Nil
+      val orphanMessage = if (errOpt.isDefined) OrphanSettlement.settleOrphanMessage(state, convId, error = errorMsg) else Nil
       richlyHandled.foreach(state.openEvents.remove)
       // Generic backstop — settle every remaining Active event the
       // turn opened, whatever its kind; Failed on a turn-error exit.
-      val genericSettles = settleOpenEvents(state, convId, failed = errOpt.isDefined)
+      val genericSettles = OrphanSettlement.settleOpenEvents(state, convId, failed = errOpt.isDefined)
       val orphans = orphanToolInvokes ++ orphanMessage ++ genericSettles
       orphans.foldLeft(Task.unit) { (acc, sig) =>
         acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
@@ -180,7 +180,7 @@ object Orchestrator {
 
     provider(request)
       .flatMap(pe => translate(pe, sigil, request, conversation, roster, state))
-      .map { signal => trackOpenEvent(state, signal); signal }
+      .map { signal => OrphanSettlement.trackOpenEvent(state, signal); signal }
       .onErrorFinalize { t =>
         // Outer-level errors land here. Capture for the guarantee
         // block, which actually does the orphan-settle publish — we
@@ -273,7 +273,7 @@ object Orchestrator {
 
       case ProviderEvent.ContentBlockStart(_, blockType, arg) =>
         // Close the previous block if one was open, then start tracking the new kind.
-        val closeSignals = closeCurrentBlock(state, convId)
+        val closeSignals = OrphanSettlement.closeCurrentBlock(state, convId)
         state.currentKind = Some(kindOf(blockType))
         state.currentArg = arg
         Stream.emits(closeSignals)
@@ -456,7 +456,7 @@ object Orchestrator {
             // from activeCalls) rather than state.activeToolName,
             // which now reads the most-recent-remaining call after
             // the remove above.
-            val closeBlock = closeCurrentBlock(state, convId)
+            val closeBlock = OrphanSettlement.closeCurrentBlock(state, convId)
             // The streaming path settles the in-flight Message via
             // `MessageDelta` and never runs the tool body — so it must
             // emit the call's settling delta itself. Sigil #265 — the
@@ -1363,7 +1363,7 @@ object Orchestrator {
             active => s"Tool `${active.toolName}` did not produce a result before the stream ended."
         }
         val orphanRecoverable = stopReason == StopReason.MaxTokens
-        val closeOrphan = settleOrphanToolInvoke(state, convId, caller, topicId, reasonFor = reasonFor, recoverable = orphanRecoverable)
+        val closeOrphan = OrphanSettlement.settleOrphanToolInvoke(state, convId, caller, topicId, reasonFor = reasonFor, recoverable = orphanRecoverable)
         // Bug #149 — memory extraction used to fire per-iteration
         // here. Lifted to `Sigil.runAgentLoop`'s `terminate()`
         // boundary so it fires exactly once per user turn instead
@@ -1434,11 +1434,11 @@ object Orchestrator {
         val providerKey = request.modelId.value.split("/", 2).headOption.getOrElse(request.modelId.value)
         scribe.warn(s"Provider error (raw, model=${request.modelId.value}): $msg")
         val safeMsg = sigil.sanitizeProviderError(providerKey, msg)
-        val orphanSettle = settleOrphanToolInvoke(state, convId, caller, topicId, error = Some(safeMsg))
+        val orphanSettle = OrphanSettlement.settleOrphanToolInvoke(state, convId, caller, topicId, error = Some(safeMsg))
         // The failure is routed to the agent below (recoverable
         // Tool failure + retry); don't ALSO dead-end the user with the
         // streamed placeholder's "failed to produce a valid reply".
-        val orphanMessageSettle = settleOrphanMessage(state, convId, error = Some(safeMsg), routedToAgent = true)
+        val orphanMessageSettle = OrphanSettlement.settleOrphanMessage(state, convId, error = Some(safeMsg), routedToAgent = true)
         // Bug #69 — Tool-role Message MUST have origin. Pair to the
         // active ToolInvoke if one is open (the typical case — the
         // provider's error came mid-tool-call); otherwise fall back
@@ -1505,158 +1505,6 @@ object Orchestrator {
         Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals ++ List(errorResult, errorMessage))
     }
   }
-
-  /** Maintain `state.openEvents` as signals stream past — the
-    * automatic registration that lets the turn-end settle guarantee
-    * cover every kind of Active Message without per-kind wiring. An
-    * Active Message registers; a settling StateDelta / MessageDelta,
-    * or a Message emitted already Complete, deregisters. */
-  private def trackOpenEvent(state: State, signal: Signal): Unit = signal match {
-    case m: Message =>
-      if (m.state == EventState.Active) state.openEvents.add(m._id)
-      else state.openEvents.remove(m._id)
-    case sd: StateDelta if sd.state == EventState.Complete =>
-      state.openEvents.remove(sd.target)
-    case md: MessageDelta if md.state.contains(EventState.Complete) =>
-      state.openEvents.remove(md.target)
-    case _ => ()
-  }
-
-  /** Generic turn-end settle for every Message still registered in
-    * `state.openEvents` — the universal backstop guaranteeing no
-    * Active Message outlives its turn, whatever kind it is (image
-    * messages, and any future kind, are covered with no new code).
-    * Runs from the termination-guarantee block, which fires on every
-    * exit path — clean Done, error, mid-stream abort, cancellation.
-    * Settles with a Failure disposition when the turn ended in error,
-    * else to Complete. The streaming Message is removed from the
-    * registry by `reconcileInflight` before this runs — it gets the
-    * richer `settleOrphanMessage` handling. Clears the registry. */
-  private def settleOpenEvents(state: State, convId: Id[Conversation], failed: Boolean): List[Signal] = {
-    val settles: List[Signal] = state.openEvents.toList.map { id =>
-      if (failed)
-        MessageDelta(
-          target = id,
-          conversationId = convId,
-          state = Some(EventState.Complete),
-          disposition = Some(MessageDisposition.Failure(recoverable = false))
-        )
-      else
-        StateDelta(target = id, conversationId = convId, state = EventState.Complete)
-    }
-    state.openEvents.clear()
-    settles
-  }
-
-  /** Settle every in-flight `ToolInvoke` and pair each with a durable
-    * Tool-role failure Message. The pairing keeps the conversation's
-    * frame trail well-formed; without it, subsequent turns'
-    * `renderInput` finds dangling ToolInvokes and falls into its
-    * defensive synthesis path. `reasonFor` lets the caller customize
-    * the failure text per orphan (e.g. the MaxTokens-truncation path
-    * supplies a more actionable diagnosis); the default is a brief
-    * generic phrasing. */
-  private def settleOrphanToolInvoke(state: State,
-                                     convId: lightdb.id.Id[Conversation],
-                                     caller: ParticipantId,
-                                     topicId: lightdb.id.Id[Topic],
-                                     error: Option[String] = None,
-                                     reasonFor: ActiveCall => String =
-                                       a => s"Tool `${a.toolName}` did not produce a result",
-                                     recoverable: Boolean = false): List[Signal] = {
-    val signals = state.activeCalls.values.toList.flatMap { active =>
-      val isInternal = RespondFamilyTool.containsRaw(active.toolName)
-      // Sigil bug #204 — ToolInvoke emission is deferred to
-      // `ToolCallComplete` so the normal path can stamp `input`. For
-      // active calls that never reached Complete (stream abort,
-      // validator rejection mid-call), synthesize the ToolInvoke
-      // here with `input = None` so the closeDelta and pairedFailure
-      // have a real target to refer to — otherwise the corruption-
-      // resistance invariant (#190) breaks: the closeDelta's target
-      // would silently no-op against a non-existent event, and the
-      // pairedFailure's `origin` would dangle.
-      val synthInvoke: Signal = ToolInvoke(
-        toolName       = ToolName.internal(active.toolName),
-        participantId  = caller,
-        conversationId = convId,
-        topicId        = topicId,
-        _id            = active.invokeId,
-        state          = EventState.Active,
-        internal       = isInternal
-      )
-      // Sigil #265 — the orphan settle is one [[ToolDelta]] folding
-      // input + state = Complete + outcome = Failure(reason, recoverable)
-      // onto the invoke in a single update. The
-      // agent reads the failure on its next iteration via the invoke's
-      // own settled `outcome`/`summary`. Bug #51 — `error = Some(...)`
-      // surfaces the provider-side diagnostic so client chips render
-      // "(invalid args: …)" instead of the "(input pending)" placeholder
-      // reserved for genuinely-mid-flight calls.
-      val reason = reasonFor(active)
-      val settleDelta: Signal = ToolDelta(
-        target         = active.invokeId,
-        conversationId = convId,
-        input          = None,
-        state          = Some(EventState.Complete),
-        summary        = Some(reason),
-        outcome        = Some(ToolOutcome.Failure(reason, recoverable = recoverable)),
-        error          = error
-      )
-      List(synthInvoke, settleDelta)
-    }
-    state.activeCalls.clear()
-    signals
-  }
-
-  /**
-   * Sigil bug #171 — settle the in-flight streaming Message that was
-   * started during respond-family `ContentBlockDelta` flow when the
-   * tool call ultimately failed (parse error, mid-stream throw). Emits
-   * a terminal `MessageDelta(state=Complete, disposition=Failure)` so
-   * the chat bubble stops rendering as "agent is still typing" and
-   * shows the failure inline. Idempotent — returns empty when no
-   * Message was streamed. Always clears `state.activeMessageId`.
-   *
-   * `routedToAgent` — when the same failure is ALSO being routed to the
-   * agent as a recoverable Tool failure (the `ProviderEvent.Error` path:
-   * the agent retries and produces the real reply), the streamed
-   * placeholder must NOT surface a user-facing "failed to produce a
-   * valid reply" dead-end — that's the failure leaking to the user as a
-   * respond message instead of being handled by the agent. The Message
-   * still settles to `Complete` (so the "typing" indicator stops and
-   * live clients don't hang) but with empty content + a recoverable
-   * Failure disposition, which clients collapse — leaving only the
-   * agent's retried respond visible. Genuine unrecovered turn failures
-   * (`reconcileInflight`) keep `routedToAgent = false` and show the
-   * diagnostic inline.
-   */
-  private def settleOrphanMessage(state: State,
-                                  convId: lightdb.id.Id[Conversation],
-                                  error: Option[String] = None,
-                                  routedToAgent: Boolean = false): List[Signal] =
-    // Only settle when a Message was actually emitted — a thinking-
-    // reserved id without `activeMessageCreated` points at no event.
-    state.activeMessageId.filter(_ => state.activeMessageCreated) match {
-      case None =>
-        state.activeMessageId = None
-        state.activeMessageCreated = false
-        Nil
-      case Some(msgId) =>
-        state.activeMessageId = None
-        state.activeMessageCreated = false
-        val reason = error.getOrElse("Tool call failed before settling")
-        val replacement =
-          if (routedToAgent) Vector.empty[ResponseContent]
-          else Vector(ResponseContent.Text(s"Model output failed to produce a valid reply: $reason"))
-        val delta: Signal = MessageDelta(
-          target             = msgId,
-          conversationId     = convId,
-          contentReplacement = Some(replacement),
-          state              = Some(EventState.Complete),
-          disposition        = Some(sigil.event.MessageDisposition.Failure(recoverable = true))
-        )
-        List(delta)
-    }
 
   /** Bug #126 — decide whether an atomic `respond` should be
     * suppressed and replaced with a refusal-challenge diagnostic.
@@ -1911,33 +1759,6 @@ object Orchestrator {
     * use blank lines) don't mask an otherwise-identical repeat. */
   private[orchestrator] def normalizeForDedup(s: String): String =
     s.trim.replaceAll("\\s+", " ")
-
-  /**
-   * Emit a `MessageDelta` with `MessageContentDelta(complete = true, delta = full
-   * block text)` if a content block is currently open and the buffer has
-   * content. Resets the block buffer + kind. The full text closes the block
-   * for the DB applier (which appends a fully-formed `ResponseContent`);
-   * subscribers that already saw the streaming chunks can treat this as the
-   * canonical final form.
-   */
-  private def closeCurrentBlock(state: State, convId: lightdb.id.Id[Conversation]): List[Signal] = {
-    val emit = for {
-      msgId <- state.activeMessageId
-      kind  <- state.currentKind
-      if state.currentBuffer.nonEmpty
-    } yield {
-      val text = state.currentBuffer.toString
-      MessageDelta(
-        target = msgId,
-        conversationId = convId,
-        content = Some(MessageContentDelta(kind = kind, arg = state.currentArg, complete = true, delta = text))
-      )
-    }
-    state.currentBuffer.clear()
-    state.currentKind = None
-    state.currentArg = None
-    emit.toList
-  }
 
   /** Resolve a [[ProviderImage]] to a fetchable URL. A
     * [[ProviderImage.Hosted]] URL passes through unchanged;
