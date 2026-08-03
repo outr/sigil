@@ -39,6 +39,12 @@ object ConsultOutcome {
                        completionTokens: Option[Int],
                        totalTokens: Option[Int]) extends ConsultOutcome[Nothing]
 
+  /** The model DID call the tool and its arguments failed to decode.
+    * Distinct from [[NoOpinion]] (the model declined) — this is a
+    * schema-vs-model disagreement, and `error` names every violation so
+    * the caller can log or repair rather than shrug. */
+  case class Unparseable(error: sigil.tool.DecodeError) extends ConsultOutcome[Nothing]
+
   /** Stream errored, parse failed, or the wire layer threw. */
   case class Failed(cause: Throwable) extends ConsultOutcome[Nothing]
 

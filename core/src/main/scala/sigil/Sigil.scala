@@ -548,9 +548,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * upgrade, suggestion cascade) sees the same instances, so tools
    * that hold mutable state (e.g.
    * [[sigil.tool.process.ProcessRegistry]]) behave even when
-   * constructed inline. The boot completeness pass re-invokes the
-   * override once and warns loudly if the second read is structurally
-   * different — hoist conditional construction to a stable value:
+   * constructed inline. Overrides that construct stateful values
+   * inline still want them hoisted, so the shared instance is obvious
+   * at the call site rather than incidental to the memoization:
    * {{{
    *   private lazy val processRegistry = new ProcessRegistry()
    *   override def staticTools: List[Tool] =
@@ -4547,8 +4547,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     }
 
   /** Sigil #289 — predicate for cross-conversation reads. The
-    * conversation-query tools (`search_conversation`, `reload_content`,
-    * `query_tool_output`) call this before dispatching a read against
+    * conversation-query tools (`search_conversation`, `reload_content`)
+    * call this before dispatching a read against
     * a `conversationId` that differs from the caller's current
     * conversation. Allowed when:
     *   - target == current (same conversation; trivially allowed)
@@ -4844,8 +4844,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // recent user-authored Standard Message makes it structurally
       // impossible for a shed to permanently filter the active task out
       // of context — regardless of any shed-logic bug. Old history
-      // before the task still sheds (recoverable via search_conversation
-      // / query_tool_output). Explicit conversation-clear sets `clearedAt`
+      // before the task still sheds (recoverable via search_conversation,
+      // or by reading the overflow file a bounded result named).
+      // Explicit conversation-clear sets `clearedAt`
       // directly and is intentionally unaffected by this cap.
       val taskTs: Option[Long] = evs.iterator.collect {
         case m: sigil.event.Message
@@ -5785,6 +5786,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         emitClassifierFailedNotice(
           "classifyTopicShift",
           s"${cause.getClass.getSimpleName}: ${Option(cause.getMessage).getOrElse("")} — falling back to NoChange",
+          started
+        ).map(_ => TopicShiftResult.NoChange)
+      case sigil.tool.consult.ConsultOutcome.Unparseable(error) =>
+        emitClassifierFailedNotice(
+          "classifyTopicShift",
+          s"classifier reply failed to decode (${error.render}) — falling back to NoChange",
           started
         ).map(_ => TopicShiftResult.NoChange)
     }
@@ -9783,12 +9790,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _ = Signal.register((allEventRWs ++ allDeltaRWs ++ allNoticeRWs ++ signalRegistrations)*)
       // Boot completeness — every registered tool's probe input/output
       // must round-trip through the polymorphic RWs, names must be
-      // roster-wide unique, and suggested-next references must
-      // resolve. Needs only the tool list + the registrations above,
-      // so codegen-only flows (no DB) run it too. Also re-invokes the
-      // staticTools override once to enforce the memoized-value
-      // contract with a loud warning on drift.
-      _ = sigil.tool.BootCompletenessCheck.run(resolvedStaticTools, staticTools)
+      // roster-wide unique, no two IO types may collide on their simple
+      // class name, and suggested-next references must resolve. Needs
+      // only the tool list + the registrations above, so codegen-only
+      // flows (no DB) run it too.
+      _ = sigil.tool.BootCompletenessCheck.run(resolvedStaticTools)
     } yield ()
   }.singleton
 
@@ -10570,7 +10576,21 @@ object Sigil {
     * read in [[sigil.tool.StaticToolSyncUpgrade]]. */
   def decodeToolsLeniently(rows: List[fabric.Json]): List[sigil.tool.Tool] = {
     val toolRW = summon[RW[sigil.tool.Tool]]
-    rows.flatMap(json => scala.util.Try(json.as[sigil.tool.Tool](using toolRW)).toOption)
+    rows.flatMap { json =>
+      scala.util.Try(json.as[sigil.tool.Tool](using toolRW)) match {
+        case scala.util.Success(tool) => Some(tool)
+        case scala.util.Failure(err) =>
+          val id = sigil.tool.StaticToolSyncUpgrade.extractOrphanId(json).getOrElse("(no extractable id)")
+          val detail = s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("")}"
+          if (sigil.tool.StaticToolSyncUpgrade.isSpecViolation(err))
+            scribe.warn(s"lenient tool read: skipping row id=$id — it decoded but its ToolSpec is invalid ($detail). " +
+              "The record is intact; fix the spec so the tool becomes discoverable again.")
+          else
+            scribe.warn(s"lenient tool read: skipping row id=$id — its polytype is not registered ($detail). " +
+              "Register the tool's RW or let the static-tool sync prune the orphan.")
+          None
+      }
+    }
   }
 
   def reconcileConsentTool(tools: Vector[sigil.tool.Tool]): Vector[sigil.tool.Tool] = {

@@ -13,6 +13,11 @@ import fabric.rw.RW
  *     otherwise) — a forgotten registration fails startup naming the
  *     type instead of crashing at first wire render or persistence;
  *   - tool names are roster-wide unique;
+ *   - no two registered input/output types share a SIMPLE class name
+ *     (fabric's polymorphic dispatch keys on the lowercased simple
+ *     name while registration dedupes by FQCN, so a collision
+ *     silently shadows last-wins);
+ *   - accessor-level identity matches the tool's [[ToolSpec]];
  *   - every `suggestedNextTools` reference resolves against the
  *     registered set.
  *
@@ -23,31 +28,10 @@ import fabric.rw.RW
  */
 object BootCompletenessCheck {
 
-  /** Run the full pass. `secondRead` re-invokes the app's
-    * `staticTools` override once so a structurally different second
-    * result (the documented fresh-state footgun class) is surfaced as
-    * a loud warning naming the difference. */
-  def run(tools: List[Tool], secondRead: => List[Tool]): Unit = {
-    warnOnStructuralDrift(tools, secondRead)
+  /** Run the full pass over the memoized static roster. */
+  def run(tools: List[Tool]): Unit = {
     val violations = collectViolations(tools)
     if (violations.nonEmpty) throw new ToolRegistrationException(violations)
-  }
-
-  private def warnOnStructuralDrift(first: List[Tool], second: List[Tool]): Unit = {
-    val a = first.map(_.name.value)
-    val b = second.map(_.name.value)
-    if (a != b) {
-      val onlyFirst = a.diff(b)
-      val onlySecond = b.diff(a)
-      val detail =
-        (if (onlyFirst.nonEmpty) s" only-in-first-read: ${onlyFirst.mkString(", ")};" else "") +
-          (if (onlySecond.nonEmpty) s" only-in-second-read: ${onlySecond.mkString(", ")};" else "") +
-          (if (onlyFirst.isEmpty && onlySecond.isEmpty) s" same names, different order: first=${a.mkString(", ")} second=${b.mkString(", ")}" else "")
-      scribe.warn(
-        "staticTools returned a structurally different list on a second invocation — the override must be a " +
-          s"stable value (hoist stateful construction to a lazy val).$detail The first read is memoized and used everywhere."
-      )
-    }
   }
 
   /** Collect every violation without throwing — the testable core. */
@@ -70,8 +54,52 @@ object BootCompletenessCheck {
       }
     }
     val ioViolations = tools.flatMap(probeRoundTrip)
-    duplicateViolations ++ danglingSuggestions ++ ioViolations
+    duplicateViolations ++ danglingSuggestions ++ simpleNameCollisions(tools) ++
+      specConsistency(tools) ++ ioViolations
   }
+
+  /** Fabric's polymorphic dispatch keys on the LOWERCASED SIMPLE class
+    * name, while registration dedupes by fully-qualified name — so two
+    * input (or output) types named the same in different packages both
+    * register and the second silently shadows the first. Every value of
+    * the shadowed type then decodes as the other one. Report the pair. */
+  private def simpleNameCollisions(tools: List[Tool]): List[String] = {
+    def collisionsFor(side: String, classNames: List[String]): List[String] =
+      classNames.distinct
+        .groupBy(fqcn => fqcn.split('.').last.toLowerCase)
+        .collect { case (simple, fqcns) if fqcns.size > 1 =>
+          s"registered tool $side types collide on the simple name '$simple': ${fqcns.sorted.mkString(", ")} — " +
+            "fabric dispatches polymorphic reads by lowercased simple name, so one silently shadows the other. " +
+            "Rename one of the types."
+        }
+        .toList
+        .sorted
+
+    val inputs = tools.flatMap(_.inputRW.definition.className)
+    val outputs = tools.flatMap(_.outputRW.definition.className)
+    collisionsFor("input", inputs) ++ collisionsFor("output", outputs)
+  }
+
+  /** A tool's accessors and its [[ToolSpec]] must agree. `name`
+    * especially: it keys the record `_id`, the consent lookup, and
+    * roster resolution, so a divergent override splits one tool into
+    * two identities. */
+  private def specConsistency(tools: List[Tool]): List[String] =
+    tools.flatMap { t =>
+      List(
+        Option.when(t.name != t.spec.name)(
+          s"tool '${t.name.value}' overrides `name` away from its spec name '${t.spec.name.value}' — " +
+            "the record id, consent lookup, and roster resolution key off different values"),
+        Option.when(t.description != t.spec.description)(
+          s"tool '${t.name.value}' overrides `description` away from its spec description"),
+        Option.when(t.keywords != t.spec.discovery.keywords)(
+          s"tool '${t.name.value}' overrides `keywords` away from its spec keywords"),
+        Option.when(t.space != t.spec.discovery.space)(
+          s"tool '${t.name.value}' overrides `space` away from its spec space"),
+        Option.when(t.modes != t.spec.discovery.modes)(
+          s"tool '${t.name.value}' overrides `modes` away from its spec modes")
+      ).flatten
+    }
 
   private def probeRoundTrip(tool: Tool): List[String] =
     probeInput(tool) ++ probeOutput(tool)
@@ -80,7 +108,7 @@ object BootCompletenessCheck {
     val inputClass = tool.inputRW.definition.className.getOrElse(tool.inputRW.definition.defType.toString)
     val fullRoundTrip = () => {
       val typed: ToolInput = tool.examples.headOption.map(_.input).getOrElse {
-        val synthesized = tool.wireSurface.normalize(WireSurface.synthesizeExample(tool.inputDefinition))
+        val synthesized = tool.wireSurface.normalize(WireSurface.synthesizeProbe(tool.inputDefinition))
         tool.inputRW.write(synthesized)
       }
       val polyJson = summon[RW[ToolInput]].read(typed)
@@ -100,7 +128,7 @@ object BootCompletenessCheck {
     else {
       val outputClass = outputDefinition.className.getOrElse(outputDefinition.defType.toString)
       val fullRoundTrip = () => {
-        val synthesized = WireSurface.synthesizeExample(outputDefinition)
+        val synthesized = WireSurface.synthesizeProbe(outputDefinition)
         val typed: ToolOutput = tool.outputRW.write(synthesized)
         val polyJson = summon[RW[ToolOutput]].read(typed)
         summon[RW[ToolOutput]].write(polyJson)

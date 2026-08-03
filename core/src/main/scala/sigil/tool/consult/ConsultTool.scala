@@ -8,7 +8,7 @@ import sigil.tool.ToolContext
 import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, StopReason}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec, WireCall}
 
 /**
  * One-shot LLM consultation. Two surfaces on the same object:
@@ -138,6 +138,9 @@ case object ConsultTool extends Tool {
    *                                    budget before forming the structured
    *                                    answer); carries token-usage counts when
    *                                    the provider surfaces them.
+   *   - [[ConsultOutcome.Unparseable]] — the model called the tool and its
+   *                                    arguments failed to decode; carries
+   *                                    every violation.
    *   - [[ConsultOutcome.Failed]]    — wire-level / parse exception.
    *
    * Callers whose default on `None` is "use the fallback silently"
@@ -179,8 +182,21 @@ case object ConsultTool extends Tool {
           case ProviderEvent.ToolCallComplete(_, wc) => wc.inputFor(tool)
           case _                                     => None
         }.nextOption()
+        // A `Malformed` call for THIS tool means the model DID answer and
+        // the answer failed to decode — a parse failure carrying every
+        // violation, not an absence of opinion. Surfacing it as NoOpinion
+        // hid the one signal that says the schema and the model disagree.
+        val malformed: Option[WireCall.Malformed] = events.iterator.collect {
+          case ProviderEvent.ToolCallComplete(_, m: WireCall.Malformed) if m.name == tool.name.value => m
+        }.nextOption()
         parsed match {
           case Some(v) => ConsultOutcome.Parsed(v)
+          case None if malformed.isDefined =>
+            val m = malformed.get
+            scribe.warn(
+              s"consult: `${tool.name.value}` reply from model ${modelId.value} failed to decode — " +
+                m.error.violations.map(v => s"${v.path.mkString(".")}: ${v.reason}").mkString("; "))
+            ConsultOutcome.Unparseable(m.error)
           case None =>
             val usage = events.collectFirst { case ProviderEvent.Usage(u) => u }
             val stop  = events.collectFirst { case ProviderEvent.Done(reason) => reason }

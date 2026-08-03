@@ -206,6 +206,40 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       }
     }
 
+    "return Unparseable — not NoOpinion — when the model's tool_call args fail to decode" in {
+      // The model DID answer; the answer didn't fit the schema. Reporting
+      // that as NoOpinion hid the one signal saying schema and model
+      // disagree, and every caller silently took its fallback.
+      val bad = fabric.obj("answer" -> fabric.arr(fabric.str("not-a-string")))
+      val provider = new ScriptedProvider(List(
+        ProviderEvent.ToolCallStart(CallId("p-bad"), ProbeTool.schema.name.value),
+        ProviderEvent.ToolCallComplete(CallId("p-bad"), sigil.tool.WireCall.Malformed(
+          name    = ProbeTool.schema.name.value,
+          error   = sigil.tool.DecodeError(
+            List(sigil.tool.DecodeViolation(List("answer"), "expected a string", sigil.tool.ViolationKind.Structural)),
+            bad
+          ),
+          rawArgs = bad
+        )),
+        ProviderEvent.Done(StopReason.ToolCall)
+      ))
+      withProvider(provider) {
+        ConsultTool.invokeRich[ProbeInput](
+          sigil = TestSigil,
+          modelId = modelId,
+          chain = List(TestUser),
+          systemPrompt = "sys",
+          userPrompt = "ask",
+          tool = ProbeTool
+        ).map {
+          case u: ConsultOutcome.Unparseable =>
+            u.error.violations.map(_.reason).mkString should include("expected a string")
+            u.error.violations.flatMap(_.path) should contain("answer")
+          case other => fail(s"expected Unparseable, got $other")
+        }
+      }
+    }
+
     "return Truncated when the stream closes with StopReason.MaxTokens and no tool_call" in {
       val provider = new ScriptedProvider(List(
         ProviderEvent.Usage(TokenUsage(promptTokens = 7500, completionTokens = 25000, totalTokens = 32500)),

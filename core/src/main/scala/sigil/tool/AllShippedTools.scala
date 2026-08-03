@@ -30,16 +30,13 @@ import scala.concurrent.duration.*
  * — the framework essentials (`respond`, `change_mode`, `stop`, …) —
  * so the typical chain is `super.staticTools ++ AllShippedTools(...)`.
  *
- * `processRegistry` is REQUIRED (not defaulted) because
- * [[sigil.Sigil.staticTools]] is a `def` and the framework calls it
- * more than once during startup (input-RW registration, then `Tool`
- * registration). Constructing a fresh registry inline — `Some(new
- * ProcessRegistry())` — would hand each call a different in-memory
- * map, so an agent that spawned `p1` via call-1's `process_spawn`
- * couldn't read it back through call-2's `process_output`. Forcing
- * the parameter pushes the lifetime decision to the call site, where
- * a `lazy val` keeps it singleton-per-Sigil. Apps that don't want the
- * `process_*` family pass `None`.
+ * `processRegistry` is REQUIRED (not defaulted) because the registry's
+ * lifetime is a real decision the call site owns: the `process_*`
+ * tools only round-trip handles when all four share ONE in-memory map,
+ * and that map must outlive any single `staticTools` evaluation.
+ * Forcing the parameter puts a `lazy val` at the call site instead of
+ * a `new ProcessRegistry()` buried in a helper. Apps that don't want
+ * the `process_*` family pass `None`.
  *
  * Excluded (need consumer-supplied configuration that has no sensible
  * default):
@@ -84,9 +81,9 @@ object AllShippedTools {
     * @param processRegistry shared in-memory subprocess registry for the
     *                        `process_*` tools; pass `Some(reg)` with `reg`
     *                        hoisted to a `lazy val` on the calling Sigil
-    *                        so the same instance survives every
-    *                        `staticTools` re-evaluation. `None` omits
-    *                        the four `process_*` tools from the result.
+    *                        so all four tools share one handle map.
+    *                        `None` omits the four `process_*` tools from
+    *                        the result.
     * @param webFetchTimeout HTTP timeout for `web_fetch`
     */
   def apply(fs: FileSystemContext,

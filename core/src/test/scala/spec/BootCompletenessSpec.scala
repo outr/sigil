@@ -35,9 +35,15 @@ case class UnregisteredProbeInput(value: String) extends ToolInput derives RW
  *   - a dangling `suggestedNextTools` reference fails naming both
  *     tools;
  *   - duplicate names fail;
- *   - all violations are collected into ONE exception;
- *   - a structurally different second `staticTools` read warns but
- *     does not fail.
+ *   - two input types sharing a SIMPLE class name fail naming both
+ *     FQCNs (fabric dispatches by lowercased simple name while
+ *     registration dedupes by FQCN, so one silently shadows the other);
+ *   - an accessor that diverges from the tool's spec fails;
+ *   - all violations are collected into ONE exception.
+ *
+ * Also pins the fabric error text the pass hangs on: the
+ * unregistered-polytype probe classifies by matching "Type not found",
+ * so a fabric rewording would silently disable the whole check.
  */
 class BootCompletenessSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -55,6 +61,25 @@ class BootCompletenessSpec extends AnyWordSpec with Matchers {
     )
     protected def resolve: Resolution[Input, Output] =
       Resolution.Simple((_: UnregisteredProbeInput, _: ToolContext) => Task.pure(TextToolOutput("ok")))
+  }
+
+  private val collideAIO: ToolIO[spec.collidea.CollidingProbeInput, TextToolOutput] =
+    ToolIO.derived[spec.collidea.CollidingProbeInput, TextToolOutput]
+  private val collideBIO: ToolIO[spec.collideb.CollidingProbeInput, TextToolOutput] =
+    ToolIO.derived[spec.collideb.CollidingProbeInput, TextToolOutput]
+
+  private def collidingTool[I <: ToolInput](toolName: String, toolIO: ToolIO[I, TextToolOutput]): Tool = new Tool {
+    type Input = I
+    type Output = TextToolOutput
+    val io: ToolIO[I, TextToolOutput] = toolIO
+    val spec: ToolSpec = ToolSpec(
+      name = ToolName.parse(toolName).fold(sys.error, identity),
+      description = s"Simple-name collision probe $toolName.",
+      profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+      discovery = DiscoverySpec(keywords = Set("probe", toolName))
+    )
+    protected def resolve: Resolution[Input, Output] =
+      Resolution.Simple((_: I, _: ToolContext) => Task.pure(TextToolOutput("ok")))
   }
 
   // Ensure the polymorphic registrations (and the framework's own boot
@@ -129,7 +154,7 @@ class BootCompletenessSpec extends AnyWordSpec with Matchers {
         stubTool("broken_two")
       )
       val ex = intercept[ToolRegistrationException] {
-        BootCompletenessCheck.run(roster, roster)
+        BootCompletenessCheck.run(roster)
       }
       // One dangling suggestion + two unregistered-input probes.
       ex.violations.size shouldBe 3
@@ -137,9 +162,56 @@ class BootCompletenessSpec extends AnyWordSpec with Matchers {
       ex.getMessage should include("UnregisteredProbeInput")
     }
 
-    "warn without failing when the second staticTools read is structurally different" in {
-      val stable = TestSigil.resolvedStaticTools
-      noException should be thrownBy BootCompletenessCheck.run(stable, stable.reverse)
+    "fail naming both FQCNs when two input types share a simple class name" in {
+      val violations = BootCompletenessCheck
+        .collectViolations(List(collidingTool("collide_a", collideAIO), collidingTool("collide_b", collideBIO)))
+        .filter(_.contains("simple name"))
+      violations should have size 1
+      violations.head should include("spec.collidea.CollidingProbeInput")
+      violations.head should include("spec.collideb.CollidingProbeInput")
+    }
+
+    "not report a collision when the same input type is reused across tools" in {
+      BootCompletenessCheck
+        .collectViolations(List(stubTool("reuse_one"), stubTool("reuse_two")))
+        .filter(_.contains("simple name")) shouldBe empty
+    }
+
+    "fail when a tool's accessor diverges from its spec" in {
+      val divergent: Tool = new Tool {
+        type Input = UnregisteredProbeInput
+        type Output = TextToolOutput
+        val io: ToolIO[UnregisteredProbeInput, TextToolOutput] = ToolIO.derived[UnregisteredProbeInput, TextToolOutput]
+        val spec: ToolSpec = ToolSpec(
+          name = ToolName("spec_name_probe"),
+          description = "Probe whose `name` accessor lies about its spec.",
+          profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+          discovery = DiscoverySpec(keywords = Set("probe"))
+        )
+        override val name: ToolName = ToolName("accessor_name_probe")
+        protected def resolve: Resolution[Input, Output] =
+          Resolution.Simple((_: UnregisteredProbeInput, _: ToolContext) => Task.pure(TextToolOutput("ok")))
+      }
+      val violations = BootCompletenessCheck.collectViolations(List(divergent)).filter(_.contains("overrides `name`"))
+      violations should have size 1
+      violations.head should include("spec_name_probe")
+    }
+  }
+
+  "fabric's unregistered-polytype error" should {
+    "still report 'Type not found'" in {
+      // `BootCompletenessCheck.mentionsTypeNotFound` classifies a probe
+      // failure by matching this exact substring. If fabric rewords it,
+      // every genuine registration gap silently reclassifies as a
+      // synthesis limitation and the boot pass stops catching anything.
+      val err = intercept[Throwable] {
+        summon[RW[ToolInput]].write(fabric.obj("type" -> fabric.str("spec_definitely_unregistered_polytype")))
+      }
+      val messages = Iterator.iterate(err: Throwable)(_.getCause)
+        .takeWhile(_ != null).take(10)
+        .flatMap(t => Option(t.getMessage))
+        .mkString(" | ")
+      messages should include("Type not found")
     }
   }
 
