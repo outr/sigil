@@ -30,7 +30,8 @@ import fabric.rw.*
 final class ToolIO[I <: ToolInput, O <: ToolOutput] private (val inputRW: RW[I],
                                                              val outputRW: RW[O],
                                                              val definition: Definition,
-                                                             val examples: List[ToolExample[I]]) {
+                                                             val examples: List[ToolExample[I]],
+                                                             val lintExempt: Boolean) {
 
   /** Single derivation surface for the schema the LLM sees, the
     * refusal example payload, pre-decode normalisation, and the
@@ -55,21 +56,22 @@ final class ToolIO[I <: ToolInput, O <: ToolOutput] private (val inputRW: RW[I],
       }
     }
     if (violations.nonEmpty) throw new ToolIOException(ToolIO.contextName(definition), violations)
-    new ToolIO(inputRW, outputRW, definition, es.toList)
+    new ToolIO(inputRW, outputRW, definition, es.toList, lintExempt)
   }
 }
 
 object ToolIO {
 
   /** Standard derivation — the definition is `inputRW.definition` by
-    * construction. Runs the schema-ergonomics lint ([[SchemaErgonomics]])
-    * unconditionally: a required union field with a payload-requiring
-    * variant fails the tool's instantiation. */
-  def derived[I <: ToolInput, O <: ToolOutput](using irw: RW[I], orw: RW[O]): ToolIO[I, O] = {
-    val definition = irw.definition
-    lint(definition)
-    new ToolIO(irw, orw, definition, Nil)
-  }
+    * construction. The schema-ergonomics rule ([[SchemaErgonomics]]) is
+    * enforced by the boot completeness pass, NOT here: a union field's
+    * emitted shape depends on which polymorphic subtypes the APP has
+    * registered (a field-carrying `SpaceId` variant flips a passing
+    * union to unfillable), and tool objects initialize before app
+    * registrations complete — a construction-time verdict would be
+    * init-order roulette. Boot sees the final registered state. */
+  def derived[I <: ToolInput, O <: ToolOutput](using irw: RW[I], orw: RW[O]): ToolIO[I, O] =
+    new ToolIO(irw, orw, irw.definition, Nil, lintExempt = false)
 
   /** Runtime schema over [[JsonInput]] with a prose result — the
     * common dynamic-tool shape. */
@@ -81,7 +83,7 @@ object ToolIO {
     * ergonomics lint — the schema is server- or record-provided and
     * surfaced as-is. */
   def dynamicAs[O <: ToolOutput](definition: Definition)(using orw: RW[O]): ToolIO[JsonInput, O] =
-    new ToolIO(summon[RW[JsonInput]], orw, definition, Nil)
+    new ToolIO(summon[RW[JsonInput]], orw, definition, Nil, lintExempt = true)
 
   /** Hand-built or deliberately-kept definition over a typed input
     * (dynamic enum schemas; rich unions that are a considered,
@@ -90,8 +92,9 @@ object ToolIO {
     * confined to an optional field is caught — through the surface's
     * decode (normalise → validate → materialise via the RW) and throws
     * on disagreement.
-    * The ergonomics lint does NOT run here — choosing this
-    * constructor IS the recorded decision to keep the schema shape. */
+    * The ergonomics rule does NOT apply to this constructor — at
+    * boot or otherwise; choosing it IS the recorded decision to keep
+    * the schema shape. */
   def withSchema[I <: ToolInput, O <: ToolOutput](definition: Definition)(using irw: RW[I], orw: RW[O]): ToolIO[I, O] = {
     val probeJson = WireSurface.synthesizeProbe(definition)
     WireSurface.fromDefinition(definition, irw).decode(probeJson) match {
@@ -102,13 +105,9 @@ object ToolIO {
         )
       case Right(_) => ()
     }
-    new ToolIO(irw, orw, definition, Nil)
+    new ToolIO(irw, orw, definition, Nil, lintExempt = true)
   }
 
-  private def lint(definition: Definition): Unit = {
-    val findings = SchemaErgonomics.unfillableUnionFindings(WireSurface.emitSchema(definition))
-    if (findings.nonEmpty) throw new ToolIOException(contextName(definition), findings)
-  }
 
   private def contextName(definition: Definition): String =
     definition.className.getOrElse("(anonymous input)")

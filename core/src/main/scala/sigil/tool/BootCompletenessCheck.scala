@@ -13,6 +13,9 @@ import fabric.rw.RW
  *     otherwise) — a forgotten registration fails startup naming the
  *     type instead of crashing at first wire render or persistence;
  *   - tool names are roster-wide unique;
+ *   - the schema-ergonomics rule holds against the FINAL registered
+ *     polymorphic state (required unions with payload-requiring
+ *     variants; `withSchema`/`dynamic` IO is exempt);
  *   - no two registered input/output types share a SIMPLE class name
  *     (fabric's polymorphic dispatch keys on the lowercased simple
  *     name while registration dedupes by FQCN, so a collision
@@ -55,8 +58,21 @@ object BootCompletenessCheck {
     }
     val ioViolations = tools.flatMap(probeRoundTrip)
     duplicateViolations ++ danglingSuggestions ++ simpleNameCollisions(tools) ++
-      specConsistency(tools) ++ ioViolations
+      specConsistency(tools) ++ ergonomicsViolations(tools) ++ ioViolations
   }
+
+  /** The schema-ergonomics rule, evaluated here — with registrations
+    * FINAL — rather than at `ToolIO.derived` time: a union field's
+    * emitted shape depends on the app's registered polymorphic
+    * subtypes, so only the boot pass sees the truth. Tools built via
+    * `ToolIO.withSchema` / `dynamic*` are exempt (the recorded
+    * decision to keep the shape). */
+  private def ergonomicsViolations(tools: List[Tool]): List[String] =
+    tools.filterNot(_.io.lintExempt).flatMap { t =>
+      SchemaErgonomics.unfillableUnionFindings(WireSurface.emitSchema(t.inputDefinition)).map { finding =>
+        s"tool '${t.name.value}' input schema is not model-fillable: $finding"
+      }
+    }
 
   /** Fabric's polymorphic dispatch keys on the LOWERCASED SIMPLE class
     * name, while registration dedupes by fully-qualified name — so two

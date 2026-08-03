@@ -5,7 +5,7 @@ import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.tool.consult.TopicClassifierTool
-import sigil.tool.{TextToolOutput, ToolExample, ToolIO, ToolIOException, ToolInput}
+import sigil.tool.{SchemaErgonomics, TextToolOutput, ToolExample, ToolIO, ToolIOException, ToolInput}
 
 /**
  * ToolIO construction gates:
@@ -21,34 +21,44 @@ import sigil.tool.{TextToolOutput, ToolExample, ToolIO, ToolIOException, ToolInp
  */
 class ToolIOConstructionSpec extends AnyWordSpec with Matchers {
 
-  "ToolIO.derived ergonomics lint" should {
+  "the schema-ergonomics rule (enforced at boot, not construction)" should {
 
-    "reject a required union field whose variant requires a nested member" in {
-      val ex = intercept[ToolIOException] {
-        ToolIO.derived[UnfillableUnionInput, TextToolOutput]
-      }
-      ex.getMessage should include("predicate")
-      ex.getMessage should include("oneOf")
+    // Union shapes depend on the app's registered polymorphic subtypes,
+    // so `ToolIO.derived` never lints — the boot completeness pass does,
+    // against the final registered state. These pin the rule through
+    // that seam.
+
+    "construct a required-union input without throwing (verdict is boot's)" in {
+      noException should be thrownBy ToolIO.derived[UnfillableUnionInput, TextToolOutput]
+    }
+
+    "flag a required union field whose variant requires a nested member at boot" in {
+      val findings = SchemaErgonomics.unfillableUnionFindings(
+        sigil.tool.DefinitionToSchema(summon[fabric.rw.RW[UnfillableUnionInput]].definition))
+      findings should not be empty
+      findings.head should include("predicate")
     }
 
     "accept the same union when the field is optional" in {
-      noException should be thrownBy ToolIO.derived[OptionalUnionInput, TextToolOutput]
+      SchemaErgonomics.unfillableUnionFindings(
+        sigil.tool.DefinitionToSchema(summon[fabric.rw.RW[OptionalUnionInput]].definition)) shouldBe empty
     }
 
     "accept a union nested under an OPTIONAL parent — the whole subtree is skippable" in {
-      noException should be thrownBy ToolIO.derived[OptionalParentUnionInput, TextToolOutput]
+      SchemaErgonomics.unfillableUnionFindings(
+        sigil.tool.DefinitionToSchema(summon[fabric.rw.RW[OptionalParentUnionInput]].definition)) shouldBe empty
     }
 
     "accept a list of unions — the model can always emit an empty array" in {
-      noException should be thrownBy ToolIO.derived[UnionListInput, TextToolOutput]
+      SchemaErgonomics.unfillableUnionFindings(
+        sigil.tool.DefinitionToSchema(summon[fabric.rw.RW[UnionListInput]].definition)) shouldBe empty
     }
 
-    "still reject a required union nested under a required parent" in {
-      val ex = intercept[ToolIOException] {
-        ToolIO.derived[RequiredParentUnionInput, TextToolOutput]
-      }
-      ex.getMessage should include("oneOf")
-      ex.getMessage should include("predicate")
+    "still flag a required union nested under a required parent" in {
+      val findings = SchemaErgonomics.unfillableUnionFindings(
+        sigil.tool.DefinitionToSchema(summon[fabric.rw.RW[RequiredParentUnionInput]].definition))
+      findings should not be empty
+      findings.head should include("predicate")
     }
   }
 

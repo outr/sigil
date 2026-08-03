@@ -36,8 +36,8 @@ case object MoveMemoryTool extends Tool {
       |when scope changes ("this used to be project-A only; it now applies to me across projects").
       |
       |- `key`       — the memory's stable key (preferred) or `_id` value if no key.
-      |- `newSpace`  — the target space (must be in your accessible spaces).
-      |- `fromSpace` — optional disambiguator when the same key exists in multiple spaces.
+      |- `newSpace`  — the target space's value string (must be one of your accessible spaces).
+      |- `fromSpace` — optional space value string to disambiguate when the same key exists in multiple spaces.
       |
       |The record's id, key, and pinned status are preserved.""".stripMargin
 
@@ -55,26 +55,31 @@ case object MoveMemoryTool extends Tool {
 
   private def executeResult(input: MoveMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
-      if (!accessible.contains(input.newSpace))
-        Task.pure(ToolResult.failure(
-          s"[move_memory] target space '${input.newSpace.value}' is not in this caller's accessible spaces; cannot move.",
-          hint = Some("Choose a newSpace the caller can access; check accessible spaces before moving.")
-        ))
-      else {
-        val sourceSpaces = input.fromSpace.map(s => Set(s).intersect(accessible)).getOrElse(accessible)
-        if (sourceSpaces.isEmpty)
+      def accessibleValues: String = accessible.map(_.value).toList.sorted.take(20).mkString(", ")
+      accessible.find(_.value == input.newSpace) match {
+        case None =>
           Task.pure(ToolResult.failure(
-            s"[move_memory] no accessible source spaces; cannot find '${input.key}'.",
-            hint = Some("The supplied fromSpace is not accessible — omit it or pass an accessible space.")
+            s"[move_memory] target space '${input.newSpace}' is not in this caller's accessible spaces; cannot move.",
+            hint = Some(s"Pass one of the accessible space values: $accessibleValues.")
           ))
-        else findTarget(input.key, sourceSpaces, context).flatMap {
-          case MemoryTarget.Found(memory) if memory.spaceId == input.newSpace =>
+        case Some(targetSpace) =>
+          val sourceSpaces = input.fromSpace match {
+            case None    => accessible
+            case Some(v) => accessible.filter(_.value == v)
+          }
+          if (sourceSpaces.isEmpty)
+            Task.pure(ToolResult.failure(
+              s"[move_memory] fromSpace '${input.fromSpace.getOrElse("")}' is not an accessible space; cannot find '${input.key}'.",
+              hint = Some(s"Omit fromSpace or pass one of: $accessibleValues.")
+            ))
+          else findTarget(input.key, sourceSpaces, context).flatMap {
+          case MemoryTarget.Found(memory) if memory.spaceId == targetSpace =>
             Task.pure(ToolResult.Success(TextToolOutput(
-              s"[move_memory] memory '${displayKey(memory)}' is already in space '${input.newSpace.value}'; nothing to do.")))
+              s"[move_memory] memory '${displayKey(memory)}' is already in space '${targetSpace.value}'; nothing to do.")))
           case MemoryTarget.Found(memory) =>
-            context.sigil.updateMemory(memory.copy(spaceId = input.newSpace)).map { _ =>
+            context.sigil.updateMemory(memory.copy(spaceId = targetSpace)).map { _ =>
               ToolResult.Success(TextToolOutput(
-                s"[move_memory] moved memory '${displayKey(memory)}' from space '${memory.spaceId.value}' to '${input.newSpace.value}'."))
+                s"[move_memory] moved memory '${displayKey(memory)}' from space '${memory.spaceId.value}' to '${targetSpace.value}'."))
             }
           case MemoryTarget.NotRecallable(memory) =>
             Task.pure(ToolResult.failure(
@@ -87,7 +92,7 @@ case object MoveMemoryTool extends Tool {
               s"[move_memory] no memory found matching key '${input.key}' in accessible spaces.",
               hint = Some("Confirm the key with list_memories, or pass fromSpace to disambiguate.")
             ))
-        }
+          }
       }
     }
 

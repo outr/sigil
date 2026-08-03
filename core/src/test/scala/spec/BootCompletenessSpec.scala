@@ -25,6 +25,20 @@ import sigil.tool.{
   * `RW[ToolInput]` — the boot pass must fail naming it. */
 case class UnregisteredProbeInput(value: String) extends ToolInput derives RW
 
+/** A field-carrying SpaceId — the shape every multi-tenant downstream
+  * app registers, and the shape that makes a required SpaceId input
+  * union unfillable. */
+case class Bug437FieldSpace(tenantId: String) extends sigil.SpaceId {
+  override val value: String = s"tenant-$tenantId"
+}
+object Bug437FieldSpace {
+  implicit val rw: RW[Bug437FieldSpace] = RW.gen
+}
+
+/** Deliberately violates the ergonomics rule once a field-carrying
+  * SpaceId variant is registered. */
+case class RequiredSpaceProbeInput(target: sigil.SpaceId) extends ToolInput derives RW
+
 /**
  * Coverage for [[BootCompletenessCheck]] — the startup pass at the end
  * of `Sigil.polymorphicRegistrations`:
@@ -91,6 +105,37 @@ class BootCompletenessSpec extends AnyWordSpec with Matchers {
 
     "pass for the framework's registered static roster" in {
       BootCompletenessCheck.collectViolations(TestSigil.resolvedStaticTools) shouldBe empty
+    }
+
+    "pass the shipped roster with a field-carrying SpaceId registered (the downstream-app shape)" in {
+      // A multi-tenant app's spaces carry fields (tenant/user ids). No
+      // shipped tool may take a required SpaceId — a field-carrying
+      // variant would make that union unfillable and abort every
+      // consumer's boot.
+      sigil.SpaceId.register(Bug437FieldSpace.rw)
+      BootCompletenessCheck.collectViolations(TestSigil.resolvedStaticTools) shouldBe empty
+    }
+
+    "still flag a required poly-union input once a field-carrying variant is registered" in {
+      sigil.SpaceId.register(Bug437FieldSpace.rw)
+      val offender: Tool = new Tool {
+        type Input = RequiredSpaceProbeInput
+        type Output = TextToolOutput
+        val io: ToolIO[RequiredSpaceProbeInput, TextToolOutput] =
+          ToolIO.derived[RequiredSpaceProbeInput, TextToolOutput]
+        val spec: ToolSpec = ToolSpec(
+          name = ToolName.parse("required_space_probe").fold(sys.error, identity),
+          description = "Probe with a required SpaceId union input.",
+          profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Volatile)),
+          discovery = DiscoverySpec(keywords = Set("probe", "space"))
+        )
+        protected def resolve: Resolution[Input, Output] =
+          Resolution.Simple((_: RequiredSpaceProbeInput, _: sigil.tool.ToolContext) => Task.pure(TextToolOutput("ok")))
+      }
+      val violations = BootCompletenessCheck.collectViolations(List(offender))
+        .filter(_.contains("model-fillable"))
+      violations should not be empty
+      violations.head should include("required_space_probe")
     }
 
     "pass for a registered output type whose refined fields reject synthesized probe values" in {
