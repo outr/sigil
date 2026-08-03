@@ -281,8 +281,12 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "trust an on_track verdict over mechanical stall signals" in {
       TestSigil.setPlannerModelId(oversightModelId)
+      // Two extra repeats vs the original scenario: the duplicate-call
+      // cap now refuses cache-served identical reads earlier (they
+      // settle as real results), which pushes the identical-refusal
+      // streak's threshold one checkpoint boundary later.
       val provider = new PlannerScriptProvider(
-        respondAfter = 6,
+        respondAfter = 8,
         mainShape    = MainShape.IdenticalReads,
         verdicts     = Vector(onTrack("collecting the magic numbers"))
       )
@@ -304,7 +308,7 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           invokesNamed(events, "_stall_detected") shouldBe empty
           invokesNamed(events, "_planner_correction") shouldBe empty
           // The turn completed with the executor's own respond.
-          provider.mainCalls.get() shouldBe 7
+          provider.mainCalls.get() shouldBe 9
         }
       }
     }
