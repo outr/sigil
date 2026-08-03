@@ -86,12 +86,14 @@ object ToolIO {
   /** Hand-built or deliberately-kept definition over a typed input
     * (dynamic enum schemas; rich unions that are a considered,
     * app-extensible surface). Round-trips a probe value synthesized
-    * from the definition through the surface's decode (normalise →
-    * validate → materialise via the RW) and throws on disagreement.
+    * from the definition — optional fields INCLUDED, so a disagreement
+    * confined to an optional field is caught — through the surface's
+    * decode (normalise → validate → materialise via the RW) and throws
+    * on disagreement.
     * The ergonomics lint does NOT run here — choosing this
     * constructor IS the recorded decision to keep the schema shape. */
   def withSchema[I <: ToolInput, O <: ToolOutput](definition: Definition)(using irw: RW[I], orw: RW[O]): ToolIO[I, O] = {
-    val probeJson = WireSurface.synthesizeExample(definition)
+    val probeJson = WireSurface.synthesizeProbe(definition)
     WireSurface.fromDefinition(definition, irw).decode(probeJson) match {
       case Left(err) =>
         throw new ToolIOException(

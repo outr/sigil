@@ -34,6 +34,22 @@ class ToolIOConstructionSpec extends AnyWordSpec with Matchers {
     "accept the same union when the field is optional" in {
       noException should be thrownBy ToolIO.derived[OptionalUnionInput, TextToolOutput]
     }
+
+    "accept a union nested under an OPTIONAL parent — the whole subtree is skippable" in {
+      noException should be thrownBy ToolIO.derived[OptionalParentUnionInput, TextToolOutput]
+    }
+
+    "accept a list of unions — the model can always emit an empty array" in {
+      noException should be thrownBy ToolIO.derived[UnionListInput, TextToolOutput]
+    }
+
+    "still reject a required union nested under a required parent" in {
+      val ex = intercept[ToolIOException] {
+        ToolIO.derived[RequiredParentUnionInput, TextToolOutput]
+      }
+      ex.getMessage should include("oneOf")
+      ex.getMessage should include("predicate")
+    }
   }
 
   "ToolIO.withSchema" should {
@@ -80,6 +96,16 @@ enum UnionPredFixture derives RW {
 case class UnfillableUnionInput(predicate: UnionPredFixture) extends ToolInput derives RW
 
 case class OptionalUnionInput(predicate: Option[UnionPredFixture] = None) extends ToolInput derives RW
+
+/** Carrier whose own `predicate` is required — required only when the
+  * CARRIER is required too. */
+case class UnionCarrierFixture(predicate: UnionPredFixture) derives RW
+
+case class OptionalParentUnionInput(advanced: Option[UnionCarrierFixture] = None) extends ToolInput derives RW
+
+case class RequiredParentUnionInput(advanced: UnionCarrierFixture) extends ToolInput derives RW
+
+case class UnionListInput(predicates: List[UnionPredFixture]) extends ToolInput derives RW
 
 case class CountProbeInput(count: Int) extends ToolInput derives RW
 

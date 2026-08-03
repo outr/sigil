@@ -174,8 +174,11 @@ object WireSurface {
       Discriminator -> obj("type" -> str("string"), "const" -> str(leafOf(name)))
     definition.defType match {
       case DefType.Obj(map) =>
+        // Same rule as `objectSchema`: a field with a declared default is
+        // not required — fabric fills it for an absent key, and marking it
+        // required pushes weak models to fabricate a value.
         val required = str(Discriminator) :: map.collect {
-          case (key, d) if !d.isOpt => str(key)
+          case (key, d) if !d.isOpt && d.defaultValue.isEmpty => str(key)
         }.toList
         obj(
           "type" -> str("object"),
@@ -204,21 +207,33 @@ object WireSurface {
 
   // ---- Example synthesizer ------------------------------------------
 
+  /** Model-facing example payload — required fields only, so the
+    * refusal body shows the minimum valid call rather than a wall of
+    * optional placeholders. */
   private[tool] def synthesizeExample(definition: Definition): fabric.Json =
-    synthesizeForType(definition.defType)
+    synthesizeForType(definition.defType, includeOptional = false)
 
-  private def synthesizeForType(t: DefType): fabric.Json = t match {
+  /** Verification probe — the SAME synthesis with optional fields
+    * populated. Used only by [[ToolIO.withSchema]]'s round-trip check
+    * and [[BootCompletenessCheck]]'s probes, where the point is to
+    * catch a definition/RW disagreement; an optional field whose
+    * declared type doesn't match what the RW expects is invisible to a
+    * required-only payload. Never sent to a model. */
+  private[tool] def synthesizeProbe(definition: Definition): fabric.Json =
+    synthesizeForType(definition.defType, includeOptional = true)
+
+  private def synthesizeForType(t: DefType, includeOptional: Boolean): fabric.Json = t match {
     case DefType.Str         => str("<string>")
     case DefType.Int         => num(0)
     case DefType.Dec         => num(0.0)
     case DefType.Bool        => bool(true)
     case DefType.Null        => Null
     case DefType.Json        => obj()
-    case DefType.Arr(item)   => arr(synthesizeForType(item.defType))
-    case DefType.Opt(inner)  => synthesizeForType(inner.defType)
+    case DefType.Arr(item)   => arr(synthesizeForType(item.defType, includeOptional))
+    case DefType.Opt(inner)  => synthesizeForType(inner.defType, includeOptional)
     case DefType.Obj(fields) =>
       Obj(fields.iterator.flatMap { case (k, d) =>
-        if (d.isOpt) None else Some(k -> synthesizeForType(d.defType))
+        if (d.isOpt && !includeOptional) None else Some(k -> synthesizeForType(d.defType, includeOptional))
       }.toMap)
     case DefType.Poly(values, _) if values.nonEmpty && values.values.forall(d => isSingletonShape(d)) =>
       // Singleton-only poly — schema advertises a flat string enum;
@@ -228,7 +243,7 @@ object WireSurface {
     case DefType.Poly(values, _) =>
       values.headOption match {
         case Some((discValue, branchDef)) =>
-          val branchObj = synthesizeForType(branchDef.defType) match {
+          val branchObj = synthesizeForType(branchDef.defType, includeOptional) match {
             case Obj(map) => map
             case other    => Map("value" -> other)
           }

@@ -45,8 +45,15 @@ object SchemaErgonomics {
           else Nil
         val props = m.get("properties").collect { case Obj(p) => p }.getOrElse(Map.empty)
         val reqHere = requiredFields(m).toSet
-        val kids = props.toList.flatMap { case (k, v) => walk(v, if (path.isEmpty) k else s"$path.$k", reqHere.contains(k)) }
-        val arrItem = m.get("items").toList.flatMap(v => walk(v, s"$path[]", isRequired))
+        // A child is required only when its parent is ALSO required —
+        // the whole subtree under an optional field is skippable, which
+        // is exactly the escape hatch the rule prescribes.
+        val kids = props.toList.flatMap { case (k, v) =>
+          walk(v, if (path.isEmpty) k else s"$path.$k", isRequired && reqHere.contains(k))
+        }
+        // Array elements are never required: the model can always emit
+        // `[]`, so a union inside `items` is a fillable shape.
+        val arrItem = m.get("items").toList.flatMap(v => walk(v, s"$path[]", isRequired = false))
         here ++ kids ++ arrItem
       case _ => Nil
     }
