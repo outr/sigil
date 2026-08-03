@@ -8,11 +8,14 @@ import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 /**
  * Budget — cuts the ranked list to what the turn can afford:
  *
- *   1. count cap — `take(limit)`;
- *   2. pinned exclusion — drops the turn's pinned ids
+ *   1. pinned exclusion — drops the turn's pinned ids
  *      ([[MemoryRetrievalContext.exclude]]) so criticals never
- *      double-render (applied after the count cut, matching the
- *      legacy retriever's order);
+ *      double-render. Applied BEFORE the count cut so an excluded
+ *      entry gives its slot back: the default pipeline's Gate stage
+ *      already drops pinned records, but a custom pipeline that gates
+ *      differently (or populates `exclude` with something other than
+ *      the pinned set) would otherwise silently under-fill the turn;
+ *   2. count cap — `take(limit)`;
  *   3. optional token cap — walks the survivors best-first,
  *      estimating each record's rendered cost (`summary` falling back
  *      to `fact`, via [[TokenEstimator.estimateMemories]]) and keeps
@@ -27,7 +30,7 @@ case class BudgetStage(limit: Int,
   override val name: String = "budget"
 
   override def run(state: MemoryRetrievalState, ctx: MemoryRetrievalContext): Task[MemoryRetrievalState] = Task {
-    val counted = state.ranked.take(limit).filterNot(m => ctx.exclude.contains(m._id))
+    val counted = state.ranked.filterNot(m => ctx.exclude.contains(m._id)).take(limit)
     state.copy(ranked = tokenBudget.fold(counted)(applyTokenCap(counted, _)))
   }
 

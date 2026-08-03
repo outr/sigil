@@ -80,7 +80,11 @@ object QdrantOps {
       "limit" -> num(limit),
       "with_payload" -> bool(true)
     ) ++ (if (filter.isEmpty) Nil else List("filter" -> filterExpr(filter)))
-    postJson(baseUrl.withPath(s"/collections/$collection/points/search"), obj(bodyFields*)).map { json =>
+    // An `anyOf` clause with no values is unsatisfiable — short-circuit
+    // rather than trusting the server's reading of `match.any: []`, so
+    // the empty-set case means the same thing on every backend.
+    if (filter.matchesNothing) Task.pure(Nil)
+    else postJson(baseUrl.withPath(s"/collections/$collection/points/search"), obj(bodyFields*)).map { json =>
       json("result").asVector.map { r =>
         val id = r("id") match {
           case Str(s, _) => s

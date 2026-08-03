@@ -16,21 +16,24 @@ import sigil.vector.TemporalBoost
  * score(m) = base(m) × (1 + recencyWeight × recency(m) + reinforcementWeight × reinforcement(m))
  * }}}
  *
- *   - `recency(m)` ∈ (0, 1] — [[TemporalBoost]]'s exponential-decay
- *     curve over the memory's age (`now − max(created, modified)`);
- *     1.0 at age zero, 0.5 at one [[recencyHalfLifeMs]].
+ *   - `recency(m)` ∈ (0, 1] — [[TemporalBoost.decay]]'s
+ *     exponential-decay curve over the memory's age
+ *     (`now − max(created, modified)`); 1.0 at age zero, 0.5 at one
+ *     [[recencyHalfLifeMs]].
  *   - `reinforcement(m)` ∈ [0, 1) — log-dampened access frequency,
  *     `ln(1 + accessCount) / (1 + ln(1 + accessCount))`; 0 for a
  *     never-accessed memory, asymptotically 1 for a hot one — a hot
  *     memory cannot monopolize because the term saturates.
  *
  * The multiplier is bounded to
- * `[1, 1 + recencyWeight + reinforcementWeight]`, so with the
- * conservative defaults the new terms act at tiebreak scale: exact
- * RRF ties break toward the fresher / more-reinforced memory, entries
- * whose base scores differ by more than the band never reorder, and
- * both weights at `0.0` reproduce the pre-pipeline RRF ordering
- * exactly.
+ * `[1, 1 + recencyWeight + reinforcementWeight]`. At the defaults
+ * (8% combined headroom) that is a bounded REORDER, not a pure
+ * tiebreak: RRF base scores of adjacent ranks differ by roughly
+ * `1/(k+r) − 1/(k+r+1)`, so at `rrfK = 60` the band can lift a
+ * memory past a handful of neighbours — call it ~5 adjacent ranks —
+ * but never across the list. Entries whose base scores differ by more
+ * than the band never reorder, and both weights at `0.0` reproduce
+ * pure confidence-weighted RRF ordering exactly.
  */
 case class FuseStage(rrfK: Int = 60,
                      lexicalWeight: Double = 2.0,
@@ -38,6 +41,10 @@ case class FuseStage(rrfK: Int = 60,
                      recencyWeight: Double = FuseStage.DefaultRecencyWeight,
                      reinforcementWeight: Double = FuseStage.DefaultReinforcementWeight,
                      recencyHalfLifeMs: Long = FuseStage.DefaultRecencyHalfLifeMs) extends MemoryRetrievalStage {
+  require(recencyWeight >= 0.0, "recencyWeight must be non-negative")
+  require(reinforcementWeight >= 0.0, "reinforcementWeight must be non-negative")
+  require(recencyHalfLifeMs > 0, "recencyHalfLifeMs must be positive")
+
   override val name: String = "fuse"
 
   override def run(state: MemoryRetrievalState, ctx: MemoryRetrievalContext): Task[MemoryRetrievalState] = Task {
@@ -72,8 +79,7 @@ case class FuseStage(rrfK: Int = 60,
 
   private[retrieval] def recencyFactor(m: ContextMemory, now: Timestamp): Double = {
     val freshest = math.max(m.created.value, m.modified.value)
-    val age = math.max(0L, now.value - freshest).toDouble
-    math.pow(0.5, age / recencyHalfLifeMs.toDouble)
+    TemporalBoost.decay(math.max(0L, now.value - freshest).toDouble, recencyHalfLifeMs)
   }
 
   private[retrieval] def reinforcementFactor(m: ContextMemory): Double = {

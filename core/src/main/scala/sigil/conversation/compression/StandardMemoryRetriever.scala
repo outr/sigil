@@ -161,13 +161,6 @@ case class StandardMemoryRetriever(limit: Int = 5,
     sigil.withDB(_.conversations.transaction(_.get(conversationId)))
       .map(_.map(_.currentMode.id))
 
-  /** Apply the per-memory mode-affinity gate. A memory with empty
-    * `modeAffinity` is universal — surfaces regardless of mode. A
-    * non-empty set means the memory only surfaces when `currentMode`
-    * is in it. */
-  private def matchesCurrentMode(memory: ContextMemory, currentMode: Option[Id[Mode]]): Boolean =
-    memory.modeAffinity.isEmpty || currentMode.exists(memory.modeAffinity.contains)
-
   /** Resolve the per-turn space set: caller's accessible spaces plus
     * [[GlobalSpace]] (universally accessible — pinned memories in
     * Global render across every conversation that can see them). */
@@ -230,7 +223,7 @@ case class StandardMemoryRetriever(limit: Int = 5,
     }).map { rows =>
       rows.iterator
         .filter(_.isRecallable(now))
-        .filter(matchesCurrentMode(_, currentMode))
+        .filter(GateStage.matchesMode(_, currentMode))
         .map(_._id).toVector
     }
 }
@@ -287,36 +280,5 @@ object StandardMemoryRetriever {
     frames.reverseIterator.collectFirst {
       case t: ContextFrame.Text if !agent.contains(t.participantId) => t.content
     }
-  }
-
-  /** Reciprocal Rank Fusion of N ranked id lists. Standard formula:
-    * `score(d) = sum over rankers r of weight(d) / (k + rank_r(d))`,
-    * where rank starts at 1. A document only ranked by one signal
-    * still contributes; documents ranked highly across multiple
-    * signals accumulate the most score. The `weightOf` hook lets
-    * callers shape the fused score with per-document signals like
-    * confidence — default 1.0 reproduces the standard RRF formula.
-    * Returns ids in descending fused-score order. */
-  def rrfFuse[A](rankings: List[List[A]], k: Int, weightOf: A => Double = (_: A) => 1.0): List[A] =
-    rrfFuse(rankings.map(r => (r, 1.0)), k, weightOf)
-
-  /** Weighted RRF — each ranker carries its own multiplier on top
-    * of the per-document `weightOf`. Used to give one signal more
-    * influence than another (e.g. lexical BM25 over hash-vector
-    * cosine on small candidate pools). */
-  @scala.annotation.targetName("rrfFuseWeighted")
-  def rrfFuse[A](weightedRankings: List[(List[A], Double)], k: Int, weightOf: A => Double): List[A] = {
-    val accum = scala.collection.mutable.LinkedHashMap.empty[A, Double]
-    weightedRankings.foreach { case (ranking, rankerWeight) =>
-      ranking.iterator.zipWithIndex.foreach { case (id, idx) =>
-        val rank = idx + 1
-        val contribution = weightOf(id) * rankerWeight / (k + rank)
-        accum.updateWith(id) {
-          case Some(v) => Some(v + contribution)
-          case None    => Some(contribution)
-        }
-      }
-    }
-    accum.toList.sortBy { case (_, score) => -score }.map(_._1)
   }
 }

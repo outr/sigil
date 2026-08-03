@@ -30,9 +30,19 @@ case class RecallStage() extends MemoryRetrievalStage {
 
   /** Lucene BM25 query over `ContextMemory.searchText`. Splits the
     * query into whitespace tokens and OR-matches; result order is BM25
-    * relevance. */
+    * relevance.
+    *
+    * The token list is deduplicated and capped at
+    * [[RecallStage.MaxQueryTokens]] — one `Should` clause is built per
+    * token, and the retrieval query is composed from topic label +
+    * summary + keywords + the last user message, so a pasted artefact
+    * would otherwise compile into a clause count Lucene rejects
+    * outright (taking the turn with it). Past the cap the extra terms
+    * add noise, not recall. */
   private def luceneHits(ctx: MemoryRetrievalContext): Task[List[ContextMemory]] = {
-    val tokens = ctx.query.toLowerCase.split("\\s+").iterator.map(_.trim).filter(_.nonEmpty).toList
+    val tokens = ctx.query.toLowerCase.split("\\s+").iterator
+      .map(_.trim).filter(_.nonEmpty)
+      .toList.distinct.take(RecallStage.MaxQueryTokens)
     if (tokens.isEmpty || ctx.spaces.isEmpty) Task.pure(Nil)
     else ctx.sigil.withDB(_.memories.transaction { tx =>
       tx.query
@@ -54,4 +64,10 @@ case class RecallStage() extends MemoryRetrievalStage {
         .toList
     })
   }
+}
+
+object RecallStage {
+  /** Ceiling on the distinct query tokens compiled into the lexical
+    * leg's clause list. */
+  val MaxQueryTokens: Int = 32
 }

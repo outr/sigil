@@ -33,15 +33,27 @@ trait VectorIndex {
     * value-set matching natively (Qdrant `match any`) override this
     * for a single round-trip; the default expands each `anyOf` clause
     * into per-value exact searches and merges by score, so the filter
-    * still applies inside the index's top-K cut rather than after it. */
+    * still applies inside the index's top-K cut rather than after it.
+    *
+    * The expansion is a cartesian product across clauses — one query
+    * per combination — so a filter with several multi-valued clauses
+    * costs a lot of round-trips against a remote backend. Past
+    * [[VectorIndex.FanOutWarnThreshold]] combinations the default logs
+    * a warning: that is the point to either narrow the scope or
+    * override this method with a native value-set query. */
   def search(vector: Vector[Double],
              limit: Int,
              filter: VectorQueryFilter): Task[List[VectorSearchResult]] =
-    if (filter.anyOf.isEmpty) search(vector, limit, filter.exact)
+    if (filter.matchesNothing) Task.pure(Nil)
+    else if (filter.anyOf.isEmpty) search(vector, limit, filter.exact)
     else {
       val combos = filter.anyOf.foldLeft(List(filter.exact)) { case (bases, (key, values)) =>
         bases.flatMap(base => values.toList.map(v => base + (key -> v)))
       }
+      if (combos.size > VectorIndex.FanOutWarnThreshold)
+        scribe.warn(s"VectorIndex: anyOf filter expanded to ${combos.size} searches " +
+          s"(${filter.anyOf.map { case (k, v) => s"$k=${v.size}" }.mkString(", ")}) — " +
+          "consider a backend with native value-set matching")
       Task.sequence(combos.map(c => search(vector, limit, c))).map { results =>
         results.flatten
           .groupBy(_.id).values.map(_.maxBy(_.score)).toList
@@ -57,4 +69,12 @@ trait VectorIndex {
     * the given vector dimensionality. Called once at init for backends
     * that need schema setup (Qdrant); trivially unit for in-memory. */
   def ensureCollection(dimensions: Int): Task[Unit]
+}
+
+object VectorIndex {
+  /** Combination count past which the default `anyOf` expansion warns.
+    * Eight covers the framework's own usage (a `kind` clause plus a
+    * handful of accessible spaces); beyond it the per-combination
+    * round-trips dominate. */
+  val FanOutWarnThreshold: Int = 8
 }

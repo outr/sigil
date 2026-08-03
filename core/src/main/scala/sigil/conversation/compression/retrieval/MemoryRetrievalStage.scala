@@ -12,7 +12,7 @@ import rapid.Task
  *   → Gate (recallable + mode affinity + unpinned)
  *   → Fuse (confidence-weighted RRF × recency × reinforcement)
  *   → Rerank (optional LLM reranker)
- *   → Budget (count cap + optional token cap)
+ *   → Budget (pinned exclusion + count cap + optional token cap)
  *   → Record (access marking)
  * }}}
  *
