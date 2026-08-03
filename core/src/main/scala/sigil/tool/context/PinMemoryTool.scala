@@ -1,7 +1,6 @@
 package sigil.tool.context
 
 import fabric.rw.*
-import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
@@ -62,15 +61,21 @@ case object PinMemoryTool extends Tool {
         ))
       else
         findTarget(input.key, effective, context).flatMap {
-          case Some(memory) if !memory.pinned =>
+          case MemoryTarget.Found(memory) if !memory.pinned =>
             context.sigil.updateMemory(memory.copy(pinned = true)).map { _ =>
               ToolResult.Success(TextToolOutput(
                 s"[pin_memory] pinned memory '${displayKey(memory)}'. It will now render every turn until unpinned."))
             }
-          case Some(memory) =>
+          case MemoryTarget.Found(memory) =>
             Task.pure(ToolResult.Success(TextToolOutput(
               s"[pin_memory] memory '${displayKey(memory)}' is already pinned; nothing to do.")))
-          case None =>
+          case MemoryTarget.NotRecallable(memory) =>
+            Task.pure(ToolResult.failure(
+              s"[pin_memory] memory '${displayKey(memory)}' cannot be pinned because ${MemoryTarget.reason(memory)}.",
+              hint = Some("Pinning it would write a record no retrieval surfaces. Pin the current version instead, " +
+                "or save the fact again with save_memory.")
+            ))
+          case MemoryTarget.Missing =>
             Task.pure(ToolResult.failure(
               s"[pin_memory] no memory found matching key '${input.key}' in accessible spaces.",
               hint = Some("Check the key via list_memories, or save the memory first with save_memory.")
@@ -81,17 +86,8 @@ case object PinMemoryTool extends Tool {
   /** Look for the target by `key` first, then by `_id` fallback. */
   private def findTarget(key: String,
                          spaces: Set[sigil.SpaceId],
-                         context: ToolContext): Task[Option[ContextMemory]] =
-    context.sigil.findMemories(spaces).flatMap { memories =>
-      memories.find(m => m.key.contains(key)) match {
-        case some @ Some(_) => Task.pure(some)
-        case None =>
-          context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
-            case some @ Some(m) if spaces.contains(m.spaceId) => some
-            case _                                            => None
-          }
-      }
-    }
+                         context: ToolContext): Task[MemoryTarget] =
+    context.sigil.findMemories(spaces).flatMap(MemoryTarget.resolve(key, spaces, _, context))
 
   private def displayKey(m: ContextMemory): String =
     m.key.getOrElse(m.label)

@@ -7,7 +7,8 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.conversation.{ConversationView, Conversation, ContextMemory, MemorySource, TopicEntry, TurnInput}
 import sigil.tool.context.{MoveMemoryInput, MoveMemoryTool}
-import sigil.event.Event
+import sigil.event.{Event, ToolOutcome}
+import sigil.signal.ToolDelta
 
 /**
  * Coverage for [[MoveMemoryTool]] — agent re-scoping a memory to a
@@ -130,6 +131,28 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         after.flatMap(_.key) shouldBe Some("k.pinned-move")
         after.map(_.pinned) shouldBe Some(true)
         after.map(_.spaceId) shouldBe Some(TestSpace)
+      }
+    }
+  }
+
+  "The `_id` fallback" should {
+    "refuse a non-recallable target with a diagnostic instead of re-scoping a dead row" in {
+      reseed(Set(GlobalSpace, TestSpace))
+      val convId = Conversation.id(s"move-archived-${rapid.Unique()}")
+      val ctx = makeContext(convId)
+      for {
+        m       <- seed("k.rejected-move", "A fact the user disowned.", GlobalSpace)
+        _       <- TestSigil.rejectMemory(m._id)
+        signals <- MoveMemoryTool.execute(
+                     MoveMemoryInput(key = m._id.value, newSpace = TestSpace), ctx, Event.id()).toList
+        after   <- reload(m._id)
+      } yield {
+        val body = signals.collectFirst {
+          case d: ToolDelta => d.outcome.collect { case ToolOutcome.Failure(text, _) => text }
+        }.flatten.getOrElse(
+          fail(s"expected a Failure ToolDelta; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
+        body should include("cannot be moved")
+        after.map(_.spaceId) shouldBe Some(GlobalSpace)
       }
     }
   }

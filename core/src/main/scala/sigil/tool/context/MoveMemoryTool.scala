@@ -1,7 +1,6 @@
 package sigil.tool.context
 
 import fabric.rw.*
-import lightdb.id.Id
 import rapid.Task
 import sigil.SpaceId
 import sigil.tool.ToolContext
@@ -69,15 +68,21 @@ case object MoveMemoryTool extends Tool {
             hint = Some("The supplied fromSpace is not accessible — omit it or pass an accessible space.")
           ))
         else findTarget(input.key, sourceSpaces, context).flatMap {
-          case Some(memory) if memory.spaceId == input.newSpace =>
+          case MemoryTarget.Found(memory) if memory.spaceId == input.newSpace =>
             Task.pure(ToolResult.Success(TextToolOutput(
               s"[move_memory] memory '${displayKey(memory)}' is already in space '${input.newSpace.value}'; nothing to do.")))
-          case Some(memory) =>
+          case MemoryTarget.Found(memory) =>
             context.sigil.updateMemory(memory.copy(spaceId = input.newSpace)).map { _ =>
               ToolResult.Success(TextToolOutput(
                 s"[move_memory] moved memory '${displayKey(memory)}' from space '${memory.spaceId.value}' to '${input.newSpace.value}'."))
             }
-          case None =>
+          case MemoryTarget.NotRecallable(memory) =>
+            Task.pure(ToolResult.failure(
+              s"[move_memory] memory '${displayKey(memory)}' cannot be moved because ${MemoryTarget.reason(memory)}.",
+              hint = Some("Move the current version instead — re-scoping an archived record changes nothing any " +
+                "retrieval reads.")
+            ))
+          case MemoryTarget.Missing =>
             Task.pure(ToolResult.failure(
               s"[move_memory] no memory found matching key '${input.key}' in accessible spaces.",
               hint = Some("Confirm the key with list_memories, or pass fromSpace to disambiguate.")
@@ -88,17 +93,8 @@ case object MoveMemoryTool extends Tool {
 
   private def findTarget(key: String,
                          spaces: Set[SpaceId],
-                         context: ToolContext): Task[Option[ContextMemory]] =
-    context.sigil.findMemories(spaces).flatMap { memories =>
-      memories.find(m => m.key.contains(key)) match {
-        case some @ Some(_) => Task.pure(some)
-        case None =>
-          context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
-            case some @ Some(m) if spaces.contains(m.spaceId) => some
-            case _                                            => None
-          }
-      }
-    }
+                         context: ToolContext): Task[MemoryTarget] =
+    context.sigil.findMemories(spaces).flatMap(MemoryTarget.resolve(key, spaces, _, context))
 
   private def displayKey(m: ContextMemory): String =
     m.key.getOrElse(m.label)

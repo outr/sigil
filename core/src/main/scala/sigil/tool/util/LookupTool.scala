@@ -4,7 +4,9 @@ import fabric.rw.*
 import fabric.{Json, Obj, Str}
 import fabric.io.JsonFormatter
 import lightdb.id.Id
+import lightdb.time.Timestamp
 import rapid.Task
+import sigil.GlobalSpace
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
 import sigil.information.Information
@@ -120,20 +122,41 @@ case object LookupTool extends Tool {
       case _ => (payload, None)
     }
 
+  /**
+   * Resolve a memory by `key`, falling back to `_id`.
+   *
+   * Scoped to the caller's accessible spaces plus
+   * [[sigil.GlobalSpace]] — a memory key is a stable slot name
+   * (`user.email`, `project.deploy_target`), so the SAME key routinely
+   * exists in every tenant's space. An unscoped `key ===` lookup
+   * returns whichever row the index happens to hold first, which for
+   * a multi-tenant store is a cross-tenant disclosure, not a miss.
+   *
+   * Among in-scope matches the CURRENT version wins (`validUntil`
+   * unset) — a key resolves to what the slot holds now, never to a
+   * superseded value — and the shared recall gate
+   * ([[ContextMemory.isRecallable]]) applies, so a rejected or expired
+   * record reads as `NotFound` rather than being handed back in full.
+   */
   private def resolveMemory(name: String, typeName: String, context: ToolContext): Task[LookupOutput] =
-    context.sigil.withDB { db =>
-      db.memories.transaction { tx =>
-        tx.query.filter(_.key === Some(name)).toList.flatMap { byKey =>
-          byKey.headOption match {
-            case Some(memory) =>
-              Task.pure(LookupOutput.Found(typeName, name, summon[RW[ContextMemory]].read(memory)))
-            case None =>
-              tx.get(Id[ContextMemory](name)).map {
-                case Some(memory) =>
-                  LookupOutput.Found(typeName, name, summon[RW[ContextMemory]].read(memory))
-                case None =>
-                  LookupOutput.NotFound(typeName, name)
-              }
+    context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
+      val spaces = accessible + GlobalSpace
+      val now = Timestamp()
+      def inScope(m: ContextMemory): Boolean = spaces.contains(m.spaceId) && m.isRecallable(now)
+      context.sigil.withDB { db =>
+        db.memories.transaction { tx =>
+          tx.query.filter(_.key === Some(name)).toList.flatMap { byKey =>
+            byKey.filter(inScope).sortBy(m => -m.modified.value).headOption match {
+              case Some(memory) =>
+                Task.pure(LookupOutput.Found(typeName, name, summon[RW[ContextMemory]].read(memory)))
+              case None =>
+                tx.get(Id[ContextMemory](name)).map {
+                  case Some(memory) if inScope(memory) =>
+                    LookupOutput.Found(typeName, name, summon[RW[ContextMemory]].read(memory))
+                  case _ =>
+                    LookupOutput.NotFound(typeName, name)
+                }
+            }
           }
         }
       }

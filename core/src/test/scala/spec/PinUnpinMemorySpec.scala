@@ -6,7 +6,8 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.{GlobalSpace, TurnContext}
 import sigil.conversation.{ConversationView, Conversation, ContextMemory, MemorySource, TopicEntry, TurnInput}
-import sigil.event.Event
+import sigil.event.{Event, ToolOutcome}
+import sigil.signal.ToolDelta
 import sigil.tool.context.{PinMemoryInput, PinMemoryTool, UnpinMemoryInput, UnpinMemoryTool}
 
 /**
@@ -61,6 +62,13 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
   private def reload(id: Id[ContextMemory]): Task[Option[ContextMemory]] =
     TestSigil.withDB(_.memories.transaction(_.get(id)))
+
+  /** The recoverable-failure body off the settling [[ToolDelta]]. */
+  private def failureBody(signals: List[sigil.signal.Signal]): String =
+    signals.collectFirst {
+      case d: ToolDelta => d.outcome.collect { case ToolOutcome.Failure(body, _) => body }
+    }.flatten.getOrElse(
+      fail(s"expected a Failure ToolDelta; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
 
   "PinMemoryTool" should {
     "promote an unpinned memory to pinned" in {
@@ -162,6 +170,43 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         afterPin shouldBe true
         afterUnpin shouldBe false
         present shouldBe true
+      }
+    }
+  }
+
+  "The `_id` fallback" should {
+    "refuse a superseded target with a diagnostic instead of writing a record nothing reads" in {
+      reseed()
+      val convId = Conversation.id(s"pin-archived-${rapid.Unique()}")
+      val ctx = makeContext(convId)
+      def keyed(fact: String) = ContextMemory(
+        fact = fact, label = "k.versioned", summary = fact, key = Some("k.versioned"),
+        source = MemorySource.Explicit, spaceId = GlobalSpace)
+      for {
+        first  <- TestSigil.upsertMemoryByKey(keyed("The staging URL is a.example.com."))
+        _      <- TestSigil.upsertMemoryByKey(keyed("The staging URL is b.example.com."))
+        // The agent passes the archived version's raw id.
+        signals <- PinMemoryTool.execute(PinMemoryInput(key = first.memory._id.value), ctx, Event.id()).toList
+        after   <- reload(first.memory._id)
+      } yield {
+        failureBody(signals) should include("superseded")
+        // And nothing was written.
+        after.map(_.pinned) shouldBe Some(false)
+      }
+    }
+
+    "refuse a rejected target" in {
+      reseed()
+      val convId = Conversation.id(s"pin-rejected-${rapid.Unique()}")
+      val ctx = makeContext(convId)
+      for {
+        m       <- seed("k.rejected", "A fact the user disowned.")
+        _       <- TestSigil.rejectMemory(m._id)
+        signals <- PinMemoryTool.execute(PinMemoryInput(key = m._id.value), ctx, Event.id()).toList
+        after   <- reload(m._id)
+      } yield {
+        failureBody(signals) should include("Rejected")
+        after.map(_.pinned) shouldBe Some(false)
       }
     }
   }

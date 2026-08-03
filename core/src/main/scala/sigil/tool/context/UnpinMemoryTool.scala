@@ -1,7 +1,6 @@
 package sigil.tool.context
 
 import fabric.rw.*
-import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
@@ -58,15 +57,18 @@ case object UnpinMemoryTool extends Tool {
         ))
       else
         findTarget(input.key, effective, context).flatMap {
-          case Some(memory) if memory.pinned =>
+          case MemoryTarget.Found(memory) if memory.pinned =>
             context.sigil.updateMemory(memory.copy(pinned = false)).map { _ =>
               ToolResult.Success(TextToolOutput(
                 s"[unpin_memory] unpinned memory '${displayKey(memory)}'. The record remains accessible via topical retrieval, lookup, and semantic_search."))
             }
-          case Some(memory) =>
+          case MemoryTarget.Found(memory) =>
             Task.pure(ToolResult.Success(TextToolOutput(
               s"[unpin_memory] memory '${displayKey(memory)}' is not pinned; nothing to do.")))
-          case None =>
+          case MemoryTarget.NotRecallable(memory) =>
+            Task.pure(ToolResult.Success(TextToolOutput(
+              s"[unpin_memory] memory '${displayKey(memory)}' already renders nowhere — ${MemoryTarget.reason(memory)}.")))
+          case MemoryTarget.Missing =>
             Task.pure(ToolResult.failure(
               s"[unpin_memory] no pinned memory found matching key '${input.key}' in accessible spaces.",
               hint = Some("List currently pinned memories with list_memories(pinned=true) to confirm the key.")
@@ -76,18 +78,8 @@ case object UnpinMemoryTool extends Tool {
 
   private def findTarget(key: String,
                          spaces: Set[sigil.SpaceId],
-                         context: ToolContext): Task[Option[ContextMemory]] =
-    context.sigil.findCriticalMemories(spaces).flatMap { pinned =>
-      pinned.find(m => m.key.contains(key)) match {
-        case some @ Some(_) => Task.pure(some)
-        case None =>
-          // Fallback: maybe the agent passed an _id (UUID-style) from list_memories(pinned=true)
-          context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
-            case some @ Some(m) if spaces.contains(m.spaceId) => some
-            case _                                            => None
-          }
-      }
-    }
+                         context: ToolContext): Task[MemoryTarget] =
+    context.sigil.findCriticalMemories(spaces).flatMap(MemoryTarget.resolve(key, spaces, _, context))
 
   private def displayKey(m: ContextMemory): String =
     m.key.getOrElse(m.label)
