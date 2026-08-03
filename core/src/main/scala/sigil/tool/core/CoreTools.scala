@@ -150,6 +150,7 @@ object CoreTools {
       summon[RW[sigil.tool.consult.RerankInput]],
       summon[RW[sigil.tool.consult.ProgressReflectionInput]],
       summon[RW[sigil.tool.consult.PlannerVerdictInput]],
+      summon[RW[sigil.tool.consult.SuggestReplyInput]],
       // Sigil #271 — used as the placeholder input for tool calls whose
       // name doesn't resolve. The accumulator wraps the model's raw args
       // in a [[sigil.tool.JsonInput]] and the orchestrator dispatches to

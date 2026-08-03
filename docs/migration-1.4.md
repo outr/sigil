@@ -511,6 +511,15 @@ Each entry names the fix.
   `render: SectionContext => Option[String]`, and the matching `shed: TurnInput => TurnInput`.
   Declaring a `shedStage` without a `shed` fails startup, so the renderer and the shedder can't
   drift apart.
+- **Reply suggestions.** `replySuggestions: Option[ReplySuggestionsConfig]` (default `None`).
+  Set it and every turn that settles with a user-visible reply fires a cheap background
+  consult predicting what the person types next, delivered as a transient
+  `SuggestedReplies(conversationId, forMessageId, suggestions)` notice — never persisted,
+  never replayed. `count = 1` (the default) phrases the single most likely message as inline
+  type-ahead for a composer; `count > 1` asks for that many candidates with distinct intents,
+  for a chip UI. Worker scratchpads, staging conversations, and (by default) turns that
+  already offered `respond_options` are skipped; `promptOverride` takes the assembled
+  `ReplySuggestionContext` when you want your own phrasing.
 - **Embedding reconciliation.** `EmbeddingReconcileTask` ships in the default
   `maintenanceTasks`. Every memory index write stamps `ContextMemory.embedding` with the
   embedder id, dimensionality, and a SHA-256 of the embedded text; the sweep finds rows whose

@@ -44,6 +44,7 @@ import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
 import sigil.tool.core.{CoreTools, FindCapabilityTool}
+import sigil.conversation.{ReplySuggestionContext, ReplySuggestionsConfig}
 import sigil.tool.model.ResponseContent
 import sigil.tool.{ToolFinder, ToolInput}
 import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, VectorSearchResult}
@@ -2289,6 +2290,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
     * is an explicit stronger tier). `None` (default) disables the
     * planner entirely; checkpoint behavior is unchanged. */
   protected def plannerModelId: Option[Id[Model]] = None
+
+  /**
+   * Framework-generated reply suggestions — OFF by default. When set,
+   * every turn that settles with a user-visible reply fires a cheap
+   * background consult predicting what the user is likely to say next,
+   * and the framework publishes the result as a transient
+   * [[sigil.signal.SuggestedReplies]] notice. `None` dispatches
+   * nothing and costs nothing.
+   *
+   * Clients render `suggestions.headOption` as inline type-ahead in
+   * the composer, or the whole list as tappable chips when the config
+   * asks for more than one.
+   */
+  def replySuggestions: Option[ReplySuggestionsConfig] = None
+
+  /** How many trailing [[ContextFrame]]s the reply-suggestion consult
+    * renders as its "earlier in the conversation" excerpt, on top of
+    * the settled reply and the triggering user message it always
+    * carries. */
+  def replySuggestionFrameTail: Int = 6
+
 
   /** Iterations between routine planner reviews when [[plannerModelId]]
     * is set. The planner consult is sparse by design: it fires on
