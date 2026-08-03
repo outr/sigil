@@ -51,7 +51,7 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, V
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
-trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with CheckpointOps with HealingOps with DirectiveOps with RoutingOps with DiscoveryOps with AgentLoopOps with TopicOps with ConversationOps with PublishOps with ProjectionOps with RetrievalOps {
+trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with CheckpointOps with HealingOps with DirectiveOps with RoutingOps with DiscoveryOps with AgentLoopOps with TopicOps with ConversationOps with PublishOps with ProjectionOps with RetrievalOps with RegistrationOps {
 
   /**
    * The concrete [[SigilDB]] type this Sigil uses. Defaults to
@@ -184,43 +184,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
     sigil.provider.CreativeWork,
     sigil.provider.SummarizationWork
   ) ++ workTypeRegistrations).distinct
-
-  /** Every Event RW the framework knows about — `CoreSignals.events ++ eventRegistrations`. */
-  final def allEventRWs: List[RW[? <: Event]] = CoreSignals.events ++ eventRegistrations
-
-  /** Every Delta RW the framework knows about — `CoreSignals.deltas ++ deltaRegistrations`. */
-  final def allDeltaRWs: List[RW[? <: Delta]] = CoreSignals.deltas ++ deltaRegistrations
-
-  /** Every Notice RW the framework knows about — `CoreSignals.notices ++ noticeRegistrations`. */
-  final def allNoticeRWs: List[RW[? <: Notice]] = CoreSignals.notices ++ noticeRegistrations
-
-  /**
-   * Simple-class-name set of every registered Event subtype — what wire
-   * routers / Dart codegen / spice's `durableSubtypes` knob need to
-   * distinguish "persist + replay this subtype" from "transient pulse".
-   *
-   * Names match the wire discriminator that fabric writes for each subtype
-   * (`Product.productPrefix` — i.e. the simple class name). Apps that add
-   * custom Events via `eventRegistrations` see them surface here
-   * automatically.
-   */
-  final def eventSubtypeNames: Set[String] =
-    allEventRWs.flatMap(_.definition.className).map(simpleClassName).toSet
-
-  /** Simple-class-name set of every registered Delta subtype. */
-  final def deltaSubtypeNames: Set[String] =
-    allDeltaRWs.flatMap(_.definition.className).map(simpleClassName).toSet
-
-  /** Simple-class-name set of every registered Notice subtype. */
-  final def noticeSubtypeNames: Set[String] =
-    allNoticeRWs.flatMap(_.definition.className).map(simpleClassName).toSet
-
-  private def simpleClassName(fullName: String): String = {
-    val lastDot = fullName.lastIndexOf('.')
-    val lastDollar = fullName.lastIndexOf('$')
-    val start = math.max(lastDot, lastDollar) + 1
-    fullName.substring(start)
-  }
 
   /**
    * App-specific ParticipantId subtypes. Apps register their own
@@ -610,19 +573,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
    * }}}
    */
   def staticTools: List[sigil.tool.Tool] = sigil.tool.core.CoreTools.all.toList
-
-  private val staticToolsMemo =
-    new java.util.concurrent.atomic.AtomicReference[Option[List[sigil.tool.Tool]]](None)
-
-  /** Memoized first read of [[staticTools]] — the framework's single
-    * access path to the static roster. */
-  final def resolvedStaticTools: List[sigil.tool.Tool] = staticToolsMemo.get() match {
-    case Some(list) => list
-    case None =>
-      val fresh = staticTools
-      if (staticToolsMemo.compareAndSet(None, Some(fresh))) fresh
-      else staticToolsMemo.get().get
-  }
 
   /**
    * App-provided `Tool` subtypes that support runtime instance
@@ -2533,124 +2483,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
   def discoveredCapabilitiesPromptCap: Int = 25
 
   // -- lifecycle --
-
-  /**
-   * Phase-1 lifecycle: populate every fabric `PolyType` discriminator
-   * with the framework + app-defined subtypes. Pure JVM-level effect
-   * — does not open the LightDB / RocksDB store, does not start any
-   * background fibers. Idempotent (`.singleton`).
-   *
-   * Codegen / schema-introspection tasks (e.g. Dart generator,
-   * OpenAPI schema dumper) call `polymorphicRegistrations.sync()`
-   * instead of `instance.sync()`. That gives them the populated
-   * `summon[RW[Signal]].definition`, `summon[RW[ParticipantId]].definition`,
-   * etc. without contending with a live backend for the RocksDB
-   * lock — multiple developer terminals can run codegen against the
-   * same Sigil module while a server is running.
-   *
-   * `instance` runs this first, so runtime consumers see the same
-   * ordering as before.
-   *
-   * **Registration order matters.** Leaf polys (no fields referencing
-   * other polys) MUST be populated before composite polys whose
-   * case-class subtypes have fields typed against the leaves —
-   * otherwise fabric's lazy-val `Definition` for those subtypes
-   * captures an empty leaf-poly snapshot when `RW.poly` walks them
-   * at register-time, and downstream callers see leaf polys with
-   * zero subtypes.
-   */
-  val polymorphicRegistrations: Task[Unit] = Task.defer {
-    for {
-      _ <- logger.info("Sigil registering polymorphic discriminators...")
-      // Leaf polys (no fields referencing other polys) first — `RW.poly`
-      // reads each subtype's `definition` eagerly at register-time
-      // (fabric/rw/RW.scala:207) and case-class definitions are
-      // `lazy val` (fabric/rw/CompileRW.scala:996), so the first read
-      // freezes the leaf-poly state in. Any aggregate registration
-      // (Participant, Tool, Signal) whose subtypes have fields typed
-      // against a leaf must run after that leaf, otherwise downstream
-      // consumers (notably the Spice Dart codegen) see empty
-      // dispatchers despite the leaf register call succeeding.
-      _ = SpaceId.register((RW.static(GlobalSpace) :: spaceIds).distinct*)
-      _ = sigil.tool.ToolKind.register(
-            (RW.static(sigil.tool.BuiltinKind) :: RW.static(sigil.tool.InternalKind) ::
-              RW.static(sigil.tool.consult.ConsultKind) :: toolKindRegistrations).distinct*
-          )
-      _ = ParticipantId.register((summon[RW[sigil.participant.WorkerParticipantId]] :: participantIds).distinctBy(_.definition.className)*)
-      _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
-      _ = sigil.provider.WorkType.register(workTypes.map(w => RW.static(w))*)
-      // Sigil #386 — app-defined conversation status; framework `Open`
-      // default auto-registered. Leaf poly (referenced by `Conversation.status`
-      // and the `ConversationStatusChanged` notice), so registers here before
-      // the aggregate Signal registration below walks the notice definitions.
-      _ = sigil.conversation.ConversationStatus.register(
-            (RW.static(sigil.conversation.ConversationStatus.Open) :: conversationStatusRegistrations).distinct*
-          )
-      // Mixin hook — runs AFTER the framework leaf polytypes (SpaceId,
-      // ParticipantId, Mode, WorkType, …) register but BEFORE any aggregate
-      // that walks tool / participant / signal Definitions. A mixin polytype
-      // referenced by a tool input (e.g. a `WorkflowStepInput` in
-      // `create_workflow`'s `steps` schema) MUST be registered before the
-      // `ToolInput.register` below forces those input Definitions via
-      // `.distinctBy(_.definition.className)` — accessing `.definition`
-      // freezes the lazy-val snapshot, so a subtype registered afterward never
-      // appears in the rendered schema (the field collapses to `array<string>`
-      // and no agent can fill it). WorkflowSigil registers `WorkflowTrigger`
-      // first, then `WorkflowStepInput` (which references it), so the leaf-poly
-      // ordering #18 guards against is preserved here too.
-      _ <- mixinPolymorphicRegistrations
-      // Input AND output poly-RWs derive symmetrically from the same
-      // sources: the memoized static roster's ToolIO, the finder's
-      // declared IO contribution (an app override of `findTools`
-      // contributes its codecs by construction instead of silently
-      // disabling the static channel), and the explicit registration
-      // lists for runtime-created records (`ScriptTool` / dynamic
-      // tools whose classes have no static instance).
-      registeredToolIO = resolvedStaticTools.map(_.io) ++ findTools.toolIO
-      staticInputRWs = registeredToolIO.map(_.inputRW.asInstanceOf[RW[? <: sigil.tool.ToolInput]])
-      _ = ToolInput.register((CoreTools.inputRWs ++ staticInputRWs ++ toolInputRegistrations).distinctBy(_.definition.className)*)
-      // Sigil #265 — `ToolOutput` is a polymorphic discriminator on
-      // `ToolInvoke.output`. Register the framework-shipped `Pending` /
-      // `Progress` cases, every registered ToolIO's output RW, and any
-      // app-defined output subtypes so `ToolInvoke` RW round-trips
-      // cleanly through persistence and the wire.
-      staticOutputRWs = registeredToolIO.map(_.outputRW.asInstanceOf[RW[? <: sigil.tool.ToolOutput]])
-      // A tool whose `Output` is the open `ToolOutput` itself (e.g. an
-      // MCP tool that returns text OR an image) carries the base
-      // PolyType RW as its `outputRW`. Registering that base RW would
-      // re-expand the whole hierarchy and collide every already-listed
-      // leaf — so drop it here (no concrete leaf is named `ToolOutput`).
-      baseToolOutputClassName = summon[RW[sigil.tool.ToolOutput]].definition.className
-      _ = sigil.tool.ToolOutput.register(
-            (sigil.tool.ToolOutput.frameworkOutputRWs ++ staticOutputRWs ++ toolOutputRegistrations)
-              .filterNot(_.definition.className == baseToolOutputClassName)
-              .distinctBy(_.definition.className)*
-          )
-      _ = sigil.viewer.ViewerStatePayload.register(viewerStatePayloadRegistrations.distinct*)
-      // Heal-pipeline polytypes. The framework-shipped CorruptionEvidence
-      // subtypes are registered here; apps with their own evidence
-      // shapes register through `corruptionEvidenceRegistrations`.
-      _ = sigil.heal.CorruptionEvidence.register(
-            (List[RW[? <: sigil.heal.CorruptionEvidence]](
-              summon[RW[sigil.heal.CorruptionEvidence.MissingToolResult]],
-              summon[RW[sigil.heal.CorruptionEvidence.DanglingToolResultOrigin]],
-              summon[RW[sigil.heal.CorruptionEvidence.OrphanSummaryCoverage]]
-            ) ++ corruptionEvidenceRegistrations).distinct*
-          )
-      // Aggregates after leaves + mixins.
-      _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
-      _ = sigil.tool.Tool.register((resolvedStaticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
-      _ = sigil.skill.Skill.register((staticSkills.map(s => RW.static(s)) ++ skillRegistrations).distinct*)
-      _ = Signal.register((allEventRWs ++ allDeltaRWs ++ allNoticeRWs ++ signalRegistrations)*)
-      // Boot completeness — every registered tool's probe input/output
-      // must round-trip through the polymorphic RWs, names must be
-      // roster-wide unique, no two IO types may collide on their simple
-      // class name, and suggested-next references must resolve. Needs
-      // only the tool list + the registrations above, so codegen-only
-      // flows (no DB) run it too.
-      _ = sigil.tool.BootCompletenessCheck.run(resolvedStaticTools)
-    } yield ()
-  }.singleton
 
   /** True once [[instance]]'s task body has begun executing — used by
     * [[shutdown]] to skip DB-dispose when no instance was ever
