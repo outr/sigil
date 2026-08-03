@@ -343,7 +343,7 @@ object Orchestrator {
         // otherwise pair ONE invoke with TWO refusals.
         state.completedCallIds += callId
         translate(
-          ProviderEvent.Error(malformedArgsRefusal(sigil, request, roster, malformedName, decodeError, malformedRawArgs, state.dialect)),
+          ProviderEvent.Error(MalformedArgsRefusal.malformedArgsRefusal(sigil, request, roster, malformedName, decodeError, malformedRawArgs, state.dialect)),
           sigil, request, conversation, roster, state
         )
 
@@ -365,7 +365,7 @@ object Orchestrator {
             // A rebind can surface Malformed for a replayed stream whose
             // args no longer decode; route it like the direct case.
             return translate(
-              ProviderEvent.Error(malformedArgsRefusal(sigil, request, roster, m.name, m.error, m.rawArgs, state.dialect)),
+              ProviderEvent.Error(MalformedArgsRefusal.malformedArgsRefusal(sigil, request, roster, m.name, m.error, m.rawArgs, state.dialect)),
               sigil, request, conversation, roster, state
             )
         }
@@ -701,7 +701,7 @@ object Orchestrator {
                     // a file, never imply failure, never prescribe tools
                     // the roster may not carry.
                     return Stream.force(
-                      racedResultLookup(sigil, convId, toolName, canonicalHash, turnStartMs).map { settled =>
+                      RacedResultLookup.racedResultLookup(sigil, convId, toolName, canonicalHash, turnStartMs).map { settled =>
                         val body = settled match {
                           case Some((outcome, rendered)) =>
                             val bounded =
@@ -1114,7 +1114,7 @@ object Orchestrator {
                       // challenge.
                     case _root_.sigil.tool.model.ResponseDisposition.Success =>
                       if (r.content.nonEmpty) {
-                        return Stream.force(refusalChallengeOutcome(sigil, findCapabilityAvailable, r.content, convId, caller, topicId).map {
+                        return Stream.force(RefusalChallengeIntercept.refusalChallengeOutcome(sigil, findCapabilityAvailable, r.content, convId, caller, topicId).map {
                           case Some(challengeSignals) =>
                             Stream.emits(toolDeltaPrefix ::: challengeSignals)
                           case None =>
@@ -1138,7 +1138,7 @@ object Orchestrator {
                   // a different result from the prior hits, before
                   // it burns the turn looping until
                   // `maxAgentIterations`.
-                  return Stream.force(repeatedQueryOutcome(sigil, fc.keywords, convId, caller, topicId).map {
+                  return Stream.force(RepeatedQueryIntercept.repeatedQueryOutcome(sigil, fc.keywords, convId, caller, topicId).map {
                     case Some(interceptSignals) =>
                       // Settle the find_capability invoke itself with a
                       // recoverable Failure so its frame renders the
@@ -1506,197 +1506,6 @@ object Orchestrator {
     }
   }
 
-  /** Bug #126 — decide whether an atomic `respond` should be
-    * suppressed and replaced with a refusal-challenge diagnostic.
-    *
-    * Returns:
-    *   - `Some(signals)` when the content reads as a refusal AND
-    *     the agent didn't consult `find_capability` since the last
-    *     user-authored Message AND we haven't already challenged
-    *     this user turn. The signals are a synthetic
-    *     `_refusal_challenge` ToolInvoke + a paired Tool-role
-    *     `Failure` Message the agent reads on its next iteration.
-    *   - `None` when the content isn't a refusal, when the agent
-    *     DID call `find_capability` (an informed refusal is valid),
-    *     or when a prior `_refusal_challenge` is already on the
-    *     tail (loop-safety — challenge once, then step aside).
-    *
-    * Apps tune the refusal-detection itself via
-    * [[sigil.Sigil.refusalDetector]] — e.g. apps where refusal is
-    * a legitimate outcome plug in [[RefusalDetector.Never]] to
-    * disable the intercept entirely.
-    */
-  private def refusalChallengeOutcome(sigil: Sigil,
-                                      findCapabilityAvailable: Boolean,
-                                      content: String,
-                                      convId: lightdb.id.Id[Conversation],
-                                      caller: ParticipantId,
-                                      topicId: lightdb.id.Id[Topic]): Task[Option[List[Signal]]] = {
-    // Sigil #397 — the challenge's whole corrective is "call `find_capability`
-    // before refusing". With discovery suppressed (ToolPolicy.ActiveOnly/None/
-    // Exclusive) there is no such tool, so an informed refusal is the only
-    // option — never challenge it.
-    if (!findCapabilityAvailable || !sigil.refusalDetector.isRefusal(content)) Task.pure(None)
-    else sigil.withDB(_.conversationEvents(convId)).map { allEvents =>
-      val convEvents = allEvents
-        .filter(_.conversationId == convId)
-        .sortBy(_.timestamp.value)
-      // "Last user message" = most recent non-agent participantId on
-      // a Message event. Agent-only conversations (delegated workers
-      // with no human in the chain) skip the challenge — no user
-      // intent to defend against.
-      val lastUserIdx = convEvents.lastIndexWhere {
-        case m: Message => !m.participantId.isInstanceOf[_root_.sigil.participant.AgentParticipantId]
-        case _          => false
-      }
-      if (lastUserIdx < 0) None
-      else {
-        val tail = convEvents.drop(lastUserIdx + 1)
-        val discoveryAttempted = tail.exists {
-          case ti: ToolInvoke if ti.toolName.value == "find_capability" => true
-          case _                                                        => false
-        }
-        val alreadyChallenged = tail.exists {
-          case ti: ToolInvoke if ti.toolName.value == Directive.RefusalChallengeName => true
-          case _                                                           => false
-        }
-        if (discoveryAttempted || alreadyChallenged) None
-        else Some(buildRefusalChallengeSignals(caller, convId, topicId))
-      }
-    }
-  }
-
-  /** Construct the (synthetic-invoke, Failure-message) pair the
-    * orchestrator emits when [[refusalChallengeOutcome]] fires. The
-    * invoke's `_refusal_challenge` name doubles as the marker
-    * `refusalChallengeOutcome` walks for on subsequent iterations
-    * to enforce the once-per-user-turn limit. */
-  private def buildRefusalChallengeSignals(caller: ParticipantId,
-                                           convId: lightdb.id.Id[Conversation],
-                                           topicId: lightdb.id.Id[Topic]): List[Signal] = {
-    SyntheticDiagnostic(Directive.RefusalChallenge, caller, convId, topicId,
-      disposition = MessageDisposition.Failure(recoverable = true))
-  }
-
-  /** Sigil #420 — resolve the latest SETTLED invoke of
-    * `(toolName, argsHash)` from this turn's durable events, returning
-    * its outcome plus the rendered result content (the same rendering
-    * the invoke's frame carries — for an overflowed result that is its
-    * own head + real-file-path summary). `None` when no matching
-    * invoke has settled yet — the call is genuinely still in flight.
-    * Best-effort: a lookup failure degrades to the still-finishing
-    * wording rather than crashing the dispatch. */
-  private def racedResultLookup(sigil: Sigil,
-                                convId: lightdb.id.Id[Conversation],
-                                toolName: String,
-                                argsHash: String,
-                                turnStartMs: Long): Task[Option[(ToolOutcome, String)]] =
-    sigil.withDB(_.eventsTransaction(convId)(_.list)).map { events =>
-      events.iterator
-        .collect {
-          case ti: ToolInvoke
-            if ti.conversationId == convId
-              && ti.toolName.value == toolName
-              && ti.timestamp.value >= turnStartMs
-              && ti.state == _root_.sigil.signal.EventState.Complete
-              && ti.outcome != ToolOutcome.Pending
-              && ti.input.exists(i => _root_.sigil.tool.ToolInputCanonicalizer.argsHash(i) == argsHash) =>
-            ti
-        }
-        .toList
-        .sortBy(-_.timestamp.value)
-        .headOption
-        .map { ti =>
-          val (content, _) = _root_.sigil.conversation.FrameBuilder.toolInvokePayload(ti)
-          (ti.outcome, content)
-        }
-    }.handleError(_ => Task.pure(None))
-
-  /** Bug #159 — decide whether a `find_capability` dispatch should be
-    * suppressed because the agent already issued the same query
-    * earlier in this user turn.
-    *
-    * Returns:
-    *   - `Some(signals)` when a prior `find_capability` invoke since
-    *     the last user-authored Message carries identical normalized
-    *     keywords AND no `_repeated_query_intercept` marker is
-    *     already on the tail. The signals are a synthetic
-    *     `_repeated_query_intercept` ToolInvoke + a paired Tool-role
-    *     `Failure` that tells the agent to refine the query or pick
-    *     a different result from the previous hits.
-    *   - `None` when no duplicate is on the tail, when the prior
-    *     query had different keywords, when no prior `find_capability`
-    *     exists this turn, or when a prior intercept is already
-    *     present (once-per-turn limit — same shape as the refusal
-    *     challenge's loop safety). */
-  private def repeatedQueryOutcome(sigil: Sigil,
-                                   keywords: String,
-                                   convId: lightdb.id.Id[Conversation],
-                                   caller: ParticipantId,
-                                   topicId: lightdb.id.Id[Topic]): Task[Option[List[Signal]]] = {
-    val normalized = Orchestrator.normalizeQuery(keywords)
-    sigil.withDB(_.conversationEvents(convId)).map { allEvents =>
-      val convEvents = allEvents
-        .filter(_.conversationId == convId)
-        .sortBy(_.timestamp.value)
-      val lastUserIdx = convEvents.lastIndexWhere {
-        case m: Message => !m.participantId.isInstanceOf[_root_.sigil.participant.AgentParticipantId]
-        case _          => false
-      }
-      if (lastUserIdx < 0) None
-      else {
-        val tail = convEvents.drop(lastUserIdx + 1)
-        val alreadyIntercepted = tail.exists {
-          case ti: ToolInvoke if ti.toolName.value == Directive.RepeatedQueryInterceptName => true
-          case _                                                                  => false
-        }
-        if (alreadyIntercepted) None
-        else {
-          val priorMatch = tail.exists {
-            case ti: ToolInvoke if ti.toolName.value == "find_capability" =>
-              ti.input match {
-                case Some(fc: FindCapabilityInput) =>
-                  Orchestrator.normalizeQuery(fc.keywords) == normalized
-                case _ => false
-              }
-            case _ => false
-          }
-          if (!priorMatch) None
-          else Some(buildRepeatedQuerySignals(caller, convId, topicId, normalized))
-        }
-      }
-    }
-  }
-
-  /** Construct the (synthetic-invoke, Failure-message) pair the
-    * orchestrator emits when [[repeatedQueryOutcome]] fires. The
-    * `_repeated_query_intercept` invoke name doubles as the marker
-    * the detector walks for to enforce once-per-user-turn loop
-    * safety. */
-  private def buildRepeatedQuerySignals(caller: ParticipantId,
-                                        convId: lightdb.id.Id[Conversation],
-                                        topicId: lightdb.id.Id[Topic],
-                                        normalizedKeywords: String): List[Signal] = {
-    SyntheticDiagnostic(Directive.RepeatedQueryIntercept(normalizedKeywords), caller, convId, topicId,
-      disposition = MessageDisposition.Failure(recoverable = true))
-  }
-
-
-  /** Render the enriched refusal for a [[WireCall.Malformed]] — the
-    * resolved tool's args failed to parse or decode. Verbosity follows
-    * the running model's
-    * [[sigil.provider.ModelProfile.toolCallReliability]]: a solid
-    * emitter reads the violated rule alone, a wobbly one gets the
-    * schema + worked example pinned alongside it. */
-  private def malformedArgsRefusal(sigil: Sigil,
-                                   request: ConversationRequest,
-                                   roster: ToolRoster,
-                                   name: String,
-                                   error: DecodeError,
-                                   rawArgs: fabric.Json,
-                                   dialect: SchemaDialect): String =
-    RefusalPayload.malformedArgs(roster.resolve(name), name, error, rawArgs, dialect,
-      sigil.modelProfileFor(request.model).toolCallReliability)
 
   /** Public alias for [[executeAtomic]] — exposes the consent +
     * precondition gates the agent loop runs before dispatching a
