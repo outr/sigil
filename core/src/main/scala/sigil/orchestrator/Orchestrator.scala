@@ -6,6 +6,7 @@ import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
 import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome}
+import sigil.governor.{OutcomeVerdict, TurnOutcome}
 import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, ProviderImage, SchemaDialect, StopReason, XmlToolCallSanitizer}
 import sigil.storage.StoredFileCategory
@@ -1492,28 +1493,6 @@ object Orchestrator {
         }
         val orphanRecoverable = stopReason == StopReason.MaxTokens
         val closeOrphan = settleOrphanToolInvoke(state, convId, caller, topicId, reasonFor = reasonFor, recoverable = orphanRecoverable)
-        // Detect token-level repetition loops — the model hit
-        // max_tokens AND the accumulated text is dominated by a
-        // single repeated sentence. Surface as a Failure-block
-        // Tool-role Message so the next agent iteration sees the
-        // diagnostic and self-corrects rather than reading the
-        // 200k-char tail back into the prompt.
-        val degenerateDiagnostic: List[Signal] = stopReason match {
-          case StopReason.MaxTokens =>
-            val text = state.turnBuffer.toString
-            _root_.sigil.provider.DegenerateContentDetector.Default.detect(text) match {
-              case Some(hit) =>
-                scribe.warn(s"orchestrator: degenerate generation detected (${hit.occurrences}/${hit.totalSentences} sentences " +
-                  s"= ${math.round(hit.share * 100)}% repetition) in conversation $convId — emitting Failure diagnostic")
-                SyntheticDiagnostic(
-                  Directive.DegenerateGeneration(hit.repeatedSentence, hit.occurrences,
-                    hit.totalSentences, hit.share, text.length),
-                  caller, convId, topicId,
-                  disposition = MessageDisposition.Failure(recoverable = true))
-              case None => Nil
-            }
-          case _ => Nil
-        }
         // Bug #149 — memory extraction used to fire per-iteration
         // here. Lifted to `Sigil.runAgentLoop`'s `terminate()`
         // boundary so it fires exactly once per user turn instead
@@ -1522,135 +1501,44 @@ object Orchestrator {
         // Orchestrator.process call has its own State, so a
         // multi-iteration turn produced N extractions over
         // overlapping content.
-        // Bug #75 — if the model emitted plain text without any tool
-        // call this turn, the framework was silently dropping the
-        // text and bug-#46's placeholder fired post-loop with no
-        // feedback to the model. Now the orchestrator surfaces the
-        // drop as a tool-call-shaped diagnostic the agent reads on
-        // its next iteration — structurally identical to a script
-        // compile error / arg-parse error / validator failure: a
-        // Tool-role Message carrying
-        // `MessageDisposition.Failure(reason, recoverable = true)`,
-        // paired with a synthetic ToolInvoke representing the
-        // "attempted reply via plain text" that the framework
-        // rejected.
         //
-        // The Tool-role tag is what makes the diagnostic re-trigger
-        // the agent's loop within the current claim
-        // (`TriggerFilter.isTriggerFor` always re-fires on Tool
-        // role, even from self). The synthetic ToolInvoke gives the
-        // Message a parent for bug #69's origin invariant. Both are
-        // marked `internal = true` so client UIs can filter them
-        // out — this is framework-internal model-correction noise,
-        // not user-facing content. Visibility = Agents keeps the
-        // diagnostic out of the user-facing wire stream regardless.
-        // Sigil #398 — plain text means different things depending on whether
-        // the turn ran on forced `tool_choice`. A model NOT in the
-        // forced-tool_choice-rejecter memo (#395) ran on `Required`, so plain
-        // text is genuine drift (bug #75 — gemma ignoring the forcing) and is
-        // dropped + diagnosed here. A model IN the memo (Fable / Mythos, whose
-        // forced choice was downgraded to `auto`) chose prose as its answer; a
-        // `Complete` plain-text turn from it is committed by `nakedTextTerminal`
-        // below, not diagnosed. (Grammar-constrained providers can't drift
-        // under forced tool_choice, so this only ever bites the chat-completions
-        // wire, which streams prose as TextDelta into `plainTextBuffer`.)
-        val autoAnsweredPlainText =
-          stopReason == StopReason.Complete && Provider.rejectsForcedToolChoice(request.modelId)
-        val plainTextDiagnostic: List[Signal] =
-          if (state.plainTextBuffer.nonEmpty && !state.sawAnyToolCall && !autoAnsweredPlainText) {
-            SyntheticDiagnostic(Directive.PlainTextReply(state.plainTextBuffer.toString),
-              caller, convId, topicId,
-              disposition = MessageDisposition.Failure(recoverable = true))
-          } else Nil
-        // A naked-text terminal (`end_turn` → StopReason.Complete with
-        // user-visible prose and NO tool call) carries no explicit
-        // continue-vs-yield decision — the decision lives on `respond`'s
-        // required `endsTurn` field, which prose bypasses. Treating the
-        // prose as an implicit yield is the announce-then-stall failure
-        // mode: the model narrates its next step, stops, and the turn
-        // ends with the announced work undone. So a naked-text terminal
-        // is not committed as terminal — it gets a
-        // `_turn_decision_required` challenge (a Tool-role diagnostic
-        // that re-triggers the loop) instructing the model to either
-        // execute the announced work or end the turn explicitly via the
-        // respond family. The challenge re-fires with an ESCALATED
-        // directive when the model answers it with more prose (a
-        // one-shot guard would guarantee the second narration is
-        // accepted as terminal — the exact stall it exists to break),
-        // bounded per user turn by `Sigil.nakedTextChallengeLimit` for
-        // loop safety. A naked text past the budget — or on a
-        // forced-synthesis recovery turn, where the framework has had
-        // its say — commits as the terminal reply.
-        //
-        // Two wire shapes carry the prose:
-        //   - `ContentBlockDelta` (Anthropic / OpenAI Responses / Google) —
-        //     a Message was born (`activeMessageCreated`) and has already
-        //     streamed to clients; settle it Complete either way. On the
-        //     challenge path it settles WITHOUT `terminalReply` (a visible
-        //     progress message; the turn continues), on the commit path
-        //     WITH it.
-        //   - `TextDelta` (OpenAI-compatible chat-completions) — buffered
-        //     in `plainTextBuffer` with NO Message born, and only
-        //     meaningful for a model in the forced-tool_choice-rejecter
-        //     memo (one that actually ran on `auto`; any other model's
-        //     plain text on this wire is drift and went to the
-        //     `_plain_text_reply` diagnostic above). On the challenge path
-        //     nothing is minted — the challenge carries the dropped text
-        //     so the model can re-wrap it in `respond`; on the commit path
-        //     a Message is minted and settled terminally.
-        // Sigil #416 — back off the decision challenge when this turn's
-        // context was elided under budget pressure. A context-starved
-        // agent can only narrate (its reads were rewritten to stubs);
-        // challenging it burns iterations without changing anything —
-        // commit the prose and let the turn end.
-        val contextPressured = request.turnInput.extraContext.contains(
-          _root_.sigil.conversation.compression.StandardContextCurator.ContextPressureKey)
-        val nakedTextOutcome: Task[List[Signal]] =
-          if (stopReason != StopReason.Complete || state.sawAnyToolCall) Task.pure(Nil)
-          else if (state.activeMessageCreated) {
-            // Snapshot the streamed text into the settle — the per-delta
-            // `ContentBlockDelta`s were `complete = false` (snapshot-only
-            // persistence ignores them), so without this the committed
-            // Message would settle empty.
-            val text = state.currentBuffer.toString
-            def settle(terminal: Boolean): List[Signal] =
-              state.activeMessageId.toList.map(id =>
-                MessageDelta(target = id, conversationId = convId,
-                  contentReplacement = Some(Vector(ResponseContent.Text(text))),
-                  state = Some(EventState.Complete), terminalReply = terminal))
-            if (request.forceResponseSynthesis || contextPressured) Task.pure(settle(terminal = true))
-            else turnDecisionChallengeCount(sigil, convId).map { count =>
-              if (count >= sigil.nakedTextChallengeLimit) settle(terminal = true)
-              else
-                settle(terminal = false) ++
-                  buildTurnDecisionSignals(caller, convId, topicId, droppedText = None, priorChallenges = count)
-            }
-          } else if (state.plainTextBuffer.nonEmpty && Provider.rejectsForcedToolChoice(request.modelId)) {
-            val text = state.plainTextBuffer.toString
-            def mintTerminal: List[Signal] = {
-              val id = state.activeMessageId.getOrElse(Event.id())
-              val msg = Message(
-                participantId = caller,
-                conversationId = convId,
-                topicId = topicId,
-                content = Vector.empty,
-                modelId = Some(request.modelId),
-                modelDisplayName = modelDisplayName,
-                _id = id,
-                state = EventState.Active
-              )
-              List(msg, MessageDelta(target = id, conversationId = convId,
-                contentReplacement = Some(Vector(ResponseContent.Text(text))),
-                state = Some(EventState.Complete), terminalReply = true))
-            }
-            if (request.forceResponseSynthesis || contextPressured) Task.pure(mintTerminal)
-            else turnDecisionChallengeCount(sigil, convId).map { count =>
-              if (count >= sigil.nakedTextChallengeLimit) mintTerminal
-              else buildTurnDecisionSignals(caller, convId, topicId, droppedText = Some(text), priorChallenges = count)
-            }
-          } else Task.pure(Nil)
-        Stream.force(nakedTextOutcome.map(naked =>
-          Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic ++ naked)))
+        // Everything else this branch decides — the plain-text drop
+        // diagnostic, the repetition-loop diagnostic, the naked-text
+        // turn decision — is delegated to `Sigil.outcomeGovernors`.
+        // The orchestrator distils what the iteration produced into a
+        // `TurnOutcome` and emits whatever the governors vote for,
+        // in list order, into this same stream: their diagnostics are
+        // the agent loop's continuation signal, and the naked-text
+        // verdict decides how the turn's own streamed Message settles,
+        // so neither can wait for the boundary after the drain.
+        val outcome = TurnOutcome(
+          caller                 = caller,
+          conversationId         = convId,
+          topicId                = topicId,
+          modelId                = request.modelId,
+          modelDisplayName       = modelDisplayName,
+          stopReason             = stopReason,
+          sawToolCall            = state.sawAnyToolCall,
+          activeMessageCreated   = state.activeMessageCreated,
+          activeMessageId        = state.activeMessageId,
+          streamedText           = state.currentBuffer.toString,
+          bufferedText           = state.plainTextBuffer.toString,
+          generatedText          = state.turnBuffer.toString,
+          forceResponseSynthesis = request.forceResponseSynthesis,
+          // Sigil #416 — a turn whose context was elided under budget
+          // pressure could only narrate; the governors that would
+          // challenge it back off instead of burning iterations.
+          contextPressured       = request.turnInput.extraContext.contains(
+            _root_.sigil.conversation.compression.StandardContextCurator.ContextPressureKey)
+        )
+        val governed: Task[List[Signal]] =
+          sigil.outcomeGovernors.foldLeft(Task.pure(List.empty[Signal])) { (acc, governor) =>
+            acc.flatMap(emitted => governor.evaluate(outcome, sigil).map {
+              case OutcomeVerdict.Proceed        => emitted
+              case OutcomeVerdict.Emit(additional) => emitted ++ additional
+            })
+          }
+        Stream.force(governed.map(votes => Stream.emits(closeOrphan ++ votes)))
       case ProviderEvent.Error(msg)                       =>
         // Bug #50 — surface the provider/validator failure as a
         // Tool-role Message so the agent's next iteration sees a
@@ -2004,51 +1892,6 @@ object Orchestrator {
           (ti.outcome, content)
         }
     }.handleError(_ => Task.pure(None))
-
-  /** How many `_turn_decision_required` challenges have fired since
-    * the last user-authored Message — the per-user-turn budget input
-    * for the naked-text decision challenge (bounded by
-    * [[Sigil.nakedTextChallengeLimit]]). A conversation with no user
-    * message yet (greeting turns, agent-only spawns) counts over the
-    * whole event log, which bounds the challenges until a user
-    * message arrives. */
-  private def turnDecisionChallengeCount(sigil: Sigil,
-                                         convId: lightdb.id.Id[Conversation]): Task[Int] =
-    sigil.withDB(_.conversationEvents(convId)).map { allEvents =>
-      val convEvents = allEvents
-        .filter(_.conversationId == convId)
-        .sortBy(_.timestamp.value)
-      val lastUserIdx = convEvents.lastIndexWhere {
-        case m: Message => !m.participantId.isInstanceOf[_root_.sigil.participant.AgentParticipantId]
-        case _          => false
-      }
-      val tail = if (lastUserIdx < 0) convEvents else convEvents.drop(lastUserIdx + 1)
-      tail.count {
-        case ti: ToolInvoke => ti.toolName.value == TurnDecisionToolName
-        case _              => false
-      }
-    }
-
-  /** Construct the (synthetic-invoke, Failure-message) pair emitted
-    * when a naked-text terminal is intercepted for an explicit turn
-    * decision. The invoke's `_turn_decision_required` name doubles as
-    * the marker [[turnDecisionAlreadyChallenged]] walks for. When the
-    * prose was buffered-and-dropped (chat-completions wire),
-    * `droppedText` carries it so the model can re-wrap the content in
-    * `respond`; when the prose already streamed to the user as a
-    * Message, the wording steers toward `no_response` (nothing more to
-    * deliver) or further work instead of a duplicate reply. */
-  private def buildTurnDecisionSignals(caller: ParticipantId,
-                                       convId: lightdb.id.Id[Conversation],
-                                       topicId: lightdb.id.Id[Topic],
-                                       droppedText: Option[String],
-                                       priorChallenges: Int): List[Signal] = {
-    // The Nth bare narration is STRONGER evidence of an announce-then-
-    // stall than the first — the agent answered the prior challenge
-    // with more prose. Escalate the directive instead of repeating it.
-    SyntheticDiagnostic(Directive.TurnDecisionRequired(droppedText, priorChallenges), caller, convId, topicId,
-      disposition = MessageDisposition.Failure(recoverable = true))
-  }
 
   /** Bug #159 — decide whether a `find_capability` dispatch should be
     * suppressed because the agent already issued the same query

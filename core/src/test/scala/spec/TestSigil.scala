@@ -553,6 +553,20 @@ object TestSigil extends Sigil {
   def resetTurnGovernors(): Unit = turnGovernorsRef.set(None)
 
   /**
+   * Per-test drained-iteration governor roster. Specs registering a
+   * custom [[sigil.governor.OutcomeGovernor]] prepend or append it
+   * here; `resetOutcomeGovernors` reverts to the framework defaults.
+   */
+  private val outcomeGovernorsRef =
+    new java.util.concurrent.atomic.AtomicReference[Option[List[sigil.governor.OutcomeGovernor]]](None)
+  override def outcomeGovernors: List[sigil.governor.OutcomeGovernor] =
+    outcomeGovernorsRef.get().getOrElse(super.outcomeGovernors)
+  def defaultOutcomeGovernors: List[sigil.governor.OutcomeGovernor] = super.outcomeGovernors
+  def setOutcomeGovernors(governors: List[sigil.governor.OutcomeGovernor]): Unit =
+    outcomeGovernorsRef.set(Some(governors))
+  def resetOutcomeGovernors(): Unit = outcomeGovernorsRef.set(None)
+
+  /**
    * Per-test planner-tier override — specs exercising the planner
    * checkpoint set the oversight model id here; `None` (the framework
    * default) keeps the executor self-reflection path.

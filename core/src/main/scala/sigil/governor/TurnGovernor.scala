@@ -27,10 +27,15 @@ import rapid.Task
   *     forced synthesis, the no-tool-call full-roster retry, and the
   *     worker-rest path — recoveries with continuation shapes a vote
   *     cannot express.
-  *   - The orchestrator's mid-stream intercepts (refusal challenge,
-  *     duplicate-call suppression, turn-decision challenge). Those fire
-  *     while the provider stream is still open, rewriting what the model
-  *     just emitted; a governor only ever sees a fully drained iteration.
+  *   - The orchestrator's mid-stream intercepts — the refusal challenge
+  *     and the repeated-query suppression. Those fire while the provider
+  *     stream is still open, rewriting a call the model is in the middle
+  *     of making; a governor only ever sees a fully drained iteration.
+  *
+  * The guards that read a drained iteration but must publish INTO it
+  * rather than at the boundary after it are
+  * [[OutcomeGovernor]]s — same arbitration seam, different attachment
+  * point.
   */
 trait TurnGovernor {
 

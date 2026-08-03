@@ -18,7 +18,8 @@ import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.governor.{BudgetDirective, BudgetGovernor, CheckpointIntervention, GovernorContext}
-import sigil.governor.{GovernorVote, ProgressGovernor, TurnGovernor}
+import sigil.governor.{DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
+  ProgressGovernor, TurnDecisionGovernor, TurnGovernor}
 import sigil.transport.SignalTransport
 
 import java.nio.file.Path
@@ -7133,6 +7134,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * included. The iteration cap and the orchestrator's mid-stream
     * intercepts are NOT governors — see [[TurnGovernor]] for why. */
   protected def turnGovernors: List[TurnGovernor] = List(budgetGovernor, progressGovernor)
+
+  private lazy val plainTextReplyGovernor: PlainTextReplyGovernor = new PlainTextReplyGovernor
+  private lazy val degenerateGenerationGovernor: DegenerateGenerationGovernor = new DegenerateGenerationGovernor()
+  private lazy val turnDecisionGovernor: TurnDecisionGovernor = new TurnDecisionGovernor
+
+  /** The guards consulted once per iteration, at the moment the provider
+    * stream closes. Unlike [[turnGovernors]] every one is evaluated and
+    * their emissions concatenate, so list order is the order the turn
+    * publishes them in.
+    *
+    * Apps override to append their own outcome guards, drop a built-in,
+    * or reorder. See [[sigil.governor.OutcomeGovernor]] for why these
+    * verdicts ride the turn's own stream rather than the boundary
+    * after it. */
+  def outcomeGovernors: List[OutcomeGovernor] =
+    List(plainTextReplyGovernor, degenerateGenerationGovernor, turnDecisionGovernor)
 
   /** Sigil #257 / #273 — how many times the agent loop retries with the
     * FULL tool roster when a turn emits ZERO `tool_use` blocks (genuine
