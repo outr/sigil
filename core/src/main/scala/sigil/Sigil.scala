@@ -51,7 +51,9 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, V
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
-trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with CheckpointOps with HealingOps with DirectiveOps with RoutingOps with DiscoveryOps with AgentLoopOps with TopicOps with ConversationOps with PublishOps with ProjectionOps with RetrievalOps with RegistrationOps with LifecycleOps {
+trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with CheckpointOps with HealingOps
+  with DirectiveOps with RoutingOps with DiscoveryOps with AgentLoopOps with TopicOps with ConversationOps
+  with PublishOps with ProjectionOps with RetrievalOps with RegistrationOps with LifecycleOps {
 
   /**
    * The concrete [[SigilDB]] type this Sigil uses. Defaults to
