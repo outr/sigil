@@ -4,6 +4,7 @@ import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.{FrameworkWorkflowControl, Sigil}
 import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, Conversation, MemorySource}
+import sigil.conversation.compression.extract.ExtractionTurn
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
@@ -180,6 +181,17 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
     }).unit
   }
 
+  /** Run the app's chosen [[sigil.conversation.compression.extract.HighSignalFilter]]
+    * over a chunk before spending an extraction consult on it. The
+    * per-turn pathway already gates on this filter; the compression
+    * pathway extracting unconditionally meant an app that deliberately
+    * narrowed what counts as durable still paid for — and stored —
+    * extractions from every shed chunk. Chunks with no filter wired
+    * (`signalFilter = None`) extract as before. */
+  private def passesSignalFilter(sigil: Sigil, transcript: String): Boolean =
+    sigil.memoryExtractor.signalFilter.forall(_.isHighSignal(
+      ExtractionTurn(userMessage = transcript, agentResponse = "")))
+
   private def extractAndPersist(sigil: Sigil,
                                 modelId: Id[Model],
                                 chain: List[ParticipantId],
@@ -187,19 +199,21 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                 conversationId: Id[Conversation],
                                 space: SpaceId,
                                 sourceEventIds: List[Id[_root_.sigil.event.Event]]): Task[Unit] = {
-    val userPrompt =
-      s"""Extract durable facts from the following conversation excerpt. Output via the
-         |`extract_memories` tool. Supply a `key` for facts that represent a durable
-         |identity slot whose value may change over time (so future extractions can version it);
-         |omit `key` for one-shot facts.
-         |
-         |${transcript}""".stripMargin
-    ConsultTool.invoke[ExtractMemoriesInput](
+    if (!passesSignalFilter(sigil, transcript))
+      Task(scribe.debug(s"MemoryContextCompressor: chunk failed the high-signal filter for " +
+        s"conversation ${conversationId.value} — skipping extraction consult"))
+    else ConsultTool.invoke[ExtractMemoriesInput](
       sigil = sigil,
       modelId = modelId,
       chain = chain,
       systemPrompt = extractionSystemPrompt,
-      userPrompt = userPrompt,
+      userPrompt =
+        s"""Extract durable facts from the following conversation excerpt. Output via the
+           |`extract_memories` tool. Supply a `key` for facts that represent a durable
+           |identity slot whose value may change over time (so future extractions can version it);
+           |omit `key` for one-shot facts.
+           |
+           |${transcript}""".stripMargin,
       tool = ExtractMemoriesTool,
       generationSettings = GenerationSettings(
         outputTokenCap = OutputTokenCap.Below(maxExtractionTokens),

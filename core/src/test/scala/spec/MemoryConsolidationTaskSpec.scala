@@ -60,12 +60,14 @@ class MemoryConsolidationTaskSpec extends AsyncWordSpec with AsyncTaskSpec with 
   }
 
   private class ScriptedConsolidation(verdictFor: List[ContextMemory] => Option[ConsolidateMemoriesInput],
-                                      clusterCap: Int = 8)
+                                      clusterCap: Int = 8,
+                                      candidateCap: Int = 200)
     extends MemoryConsolidationTask(
       spaces = List(MemoryTestSpace),
       fallbackModelId = Id[Model]("test-model"),
       chain = List(TestAgent),
-      maxClustersPerSweep = clusterCap
+      maxClustersPerSweep = clusterCap,
+      maxCandidatesPerSpace = candidateCap
     ) {
     val consulted: ListBuffer[List[ContextMemory]] = ListBuffer.empty
 
@@ -87,7 +89,10 @@ class MemoryConsolidationTaskSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def seed(fact: String,
                    createdOffsetMs: Long = 0L,
-                   sourceEventIds: List[Id[Event]] = Nil): Task[ContextMemory] =
+                   sourceEventIds: List[Id[Event]] = Nil,
+                   modeAffinity: Set[Id[sigil.provider.Mode]] = Set.empty,
+                   memoryType: sigil.conversation.MemoryType = sigil.conversation.MemoryType.Fact,
+                   expiresAt: Option[Timestamp] = None): Task[ContextMemory] =
     TestSigil.persistMemory(ContextMemory(
       fact = fact,
       label = fact.take(24),
@@ -95,7 +100,11 @@ class MemoryConsolidationTaskSpec extends AsyncWordSpec with AsyncTaskSpec with 
       source = MemorySource.Compression,
       spaceId = MemoryTestSpace,
       keywords = Vector("test"),
+      memoryType = memoryType,
+      expiresAt = expiresAt,
       created = Timestamp(System.currentTimeMillis() - createdOffsetMs),
+      modified = Timestamp(System.currentTimeMillis() - createdOffsetMs),
+      modeAffinity = modeAffinity,
       sourceEventIds = sourceEventIds
     ))
 
@@ -165,6 +174,107 @@ class MemoryConsolidationTaskSpec extends AsyncWordSpec with AsyncTaskSpec with 
         clusterCap = 1)
       task.runOnce(TestSigil).map { _ =>
         task.consulted.size should be(1)
+      }
+    }
+
+    "never cluster memories whose mode affinity differs" in {
+      wire()
+      val coding = Id[sigil.provider.Mode]("coding")
+      seed("The user's favorite color is blue.", createdOffsetMs = 60_000, modeAffinity = Set(coding)).sync()
+      seed("User prefers the color blue.").sync()
+
+      val task = new ScriptedConsolidation(_ => Some(ConsolidateMemoriesInput(verdict = ConsolidationVerdict.KeepSeparate)))
+      task.runOnce(TestSigil).map { _ =>
+        // Near-identical embeddings, but a mode-scoped record and a
+        // universal one can't merge into a single scope.
+        task.consulted.size should be(0)
+      }
+    }
+
+    "carry mode affinity and memory type from the primary member onto the merged record" in {
+      wire()
+      val coding = Id[sigil.provider.Mode]("coding")
+      val older = seed("The user's favorite color is blue.", createdOffsetMs = 60_000,
+        modeAffinity = Set(coding), memoryType = sigil.conversation.MemoryType.Preference).sync()
+      seed("User prefers the color blue.", modeAffinity = Set(coding),
+        memoryType = sigil.conversation.MemoryType.Preference).sync()
+
+      val task = new ScriptedConsolidation(_ => Some(ConsolidateMemoriesInput(
+        verdict = ConsolidationVerdict.Merge,
+        mergedFact = Some("The user's favorite color is blue.")
+      )))
+      task.runOnce(TestSigil).flatMap { _ =>
+        TestSigil.withDB(_.memories.transaction(_.list)).map { rows =>
+          val merged = rows.find(_.supersedes.contains(older._id)).getOrElse(fail("merged record missing"))
+          merged.modeAffinity should be(Set(coding))
+          merged.memoryType should be(sigil.conversation.MemoryType.Preference)
+        }
+      }
+    }
+
+    "skip memories that carry an expiry" in {
+      wire()
+      val soon = Timestamp(System.currentTimeMillis() + 3_600_000L)
+      seed("The user's favorite color is blue.", createdOffsetMs = 60_000, expiresAt = Some(soon)).sync()
+      seed("User prefers the color blue.", expiresAt = Some(soon)).sync()
+
+      val task = new ScriptedConsolidation(_ => Some(ConsolidateMemoriesInput(verdict = ConsolidationVerdict.KeepSeparate)))
+      task.runOnce(TestSigil).map { _ =>
+        task.consulted.size should be(0)
+      }
+    }
+
+    "refuse a merge whose fact is not grounded in the cluster" in {
+      wire()
+      val older = seed("The user's favorite color is blue.", createdOffsetMs = 60_000).sync()
+      val newer = seed("User prefers the color blue.").sync()
+
+      val task = new ScriptedConsolidation(_ => Some(ConsolidateMemoriesInput(
+        verdict = ConsolidationVerdict.Merge,
+        mergedFact = Some("Quarterly revenue exceeded projections across every regional territory.")
+      )))
+      task.runOnce(TestSigil).flatMap { _ =>
+        TestSigil.withDB(_.memories.transaction(_.list)).map { rows =>
+          task.consulted.size should be(1)
+          rows.size should be(2)
+          rows.map(_._id).toSet should be(Set(older._id, newer._id))
+          rows.forall(_.validUntil.isEmpty) should be(true)
+        }
+      }
+    }
+
+    "refuse a merge whose fact is empty or an unbounded expansion" in {
+      val cluster = List(
+        ContextMemory(fact = "The deploy target is us-east-1.", label = "t", summary = "s",
+          source = MemorySource.Compression, spaceId = MemoryTestSpace),
+        ContextMemory(fact = "Deploys go to us-east-1.", label = "t", summary = "s",
+          source = MemorySource.Compression, spaceId = MemoryTestSpace)
+      )
+      Task {
+        sigil.maintenance.MemoryConsolidationTask.validateMerge(cluster, None).isLeft should be(true)
+        sigil.maintenance.MemoryConsolidationTask.validateMerge(cluster, Some("   ")).isLeft should be(true)
+        sigil.maintenance.MemoryConsolidationTask
+          .validateMerge(cluster, Some("The deploy target is us-east-1. " * 30)).isLeft should be(true)
+        sigil.maintenance.MemoryConsolidationTask
+          .validateMerge(cluster, Some("The deploy target is us-east-1.")).isRight should be(true)
+      }
+    }
+
+    "prefer the newest candidates so an unmergeable backlog cannot starve fresh duplicates" in {
+      wire()
+      // Two stale, unmergeable singletons plus a fresh near-duplicate
+      // pair. With an oldest-first take of 2, the pair would never be
+      // examined.
+      seed("The deploy target is us-east-1.", createdOffsetMs = 900_000).sync()
+      seed("The user's dog is named Biscuit.", createdOffsetMs = 800_000).sync()
+      val a = seed("The user's favorite color is blue.", createdOffsetMs = 2_000).sync()
+      val b = seed("User prefers the color blue.", createdOffsetMs = 1_000).sync()
+
+      val task = new ScriptedConsolidation(
+        _ => Some(ConsolidateMemoriesInput(verdict = ConsolidationVerdict.KeepSeparate)),
+        candidateCap = 2)
+      task.runOnce(TestSigil).map { _ =>
+        task.consulted.toList.map(_.map(_._id).toSet) should be(List(Set(a._id, b._id)))
       }
     }
 

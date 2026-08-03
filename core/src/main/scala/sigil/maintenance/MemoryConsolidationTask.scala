@@ -91,8 +91,20 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
       }
     }
 
-  /** Keyless, unpinned, Approved, recallable memories in the space —
-    * oldest first, capped at [[maxCandidatesPerSpace]]. */
+  /** Keyless, unpinned, Approved, recallable, non-expiring memories in
+    * the space, newest first, capped at [[maxCandidatesPerSpace]].
+    *
+    * Memories with `expiresAt` set are excluded: consolidating a fact
+    * that is scheduled to stop mattering into a merged record that
+    * never expires launders a temporary fact into a permanent one.
+    *
+    * Newest-first matters when the space holds more than
+    * [[maxCandidatesPerSpace]] rows. Under an oldest-first take the
+    * same head of the corpus is re-examined every sweep — if it holds
+    * no mergeable pairs, nothing beyond it is ever looked at, and
+    * fresh duplicates (which is where duplicates actually come from)
+    * never get a turn. Ordering by `modified` also gives a record
+    * touched by a keyed refresh another pass. */
   private def candidates(host: Sigil, space: SpaceId): Task[List[ContextMemory]] =
     host.withDB(_.memories.transaction { tx =>
       tx.query
@@ -104,16 +116,24 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
     }).map { rows =>
       val now = Timestamp()
       rows
-        .filter(m => !m.key.exists(_.nonEmpty) && m.fact.nonEmpty && m.isRecallable(now))
-        .sortBy(_.created.value)
+        .filter(m => !m.key.exists(_.nonEmpty) && m.fact.nonEmpty && m.expiresAt.isEmpty && m.isRecallable(now))
+        .sortBy(m => -m.modified.value)
         .take(maxCandidatesPerSpace)
     }
 
   /** Greedy near-duplicate clustering: walk candidates in stable
-    * (oldest-first) order; each unvisited seed vector-searches the
+    * (newest-first) order; each unvisited seed vector-searches the
     * space and pulls in unvisited candidates at cosine ≥
-    * [[similarityThreshold]]. Clusters need ≥ 2 members; at most
-    * `budget` clusters are produced. */
+    * [[similarityThreshold]] that share the seed's exact
+    * [[ContextMemory.modeAffinity]]. Clusters need ≥ 2 members; at
+    * most `budget` clusters are produced.
+    *
+    * Identical mode affinity is a hard clustering constraint, not a
+    * merge-time reconciliation: a directive scoped to one mode and a
+    * near-identical universal fact state the same thing in different
+    * scopes, and any single merged record either escalates the scoped
+    * one to universal (it now fires in every mode) or demotes the
+    * universal one (it stops firing where it used to). */
   private def buildClusters(host: Sigil,
                             space: SpaceId,
                             embedded: List[(ContextMemory, Vector[Double])],
@@ -138,6 +158,7 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
             val members = (seed._id :: matched).distinct
               .flatMap(byId.get)
               .filterNot(m => m._id != seed._id && visited(m._id))
+              .filter(m => m.modeAffinity == seed.modeAffinity)
               .take(maxClusterSize)
             if (members.size >= 2) loop(rest, visited ++ members.map(_._id), members :: acc)
             else loop(rest, visited + seed._id, acc)
@@ -148,12 +169,20 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
   }
 
   /** Consult the cluster and apply the verdict. Failures are logged
-    * and swallowed — one bad cluster never aborts the sweep. */
+    * and swallowed — one bad cluster never aborts the sweep. A Merge
+    * whose proposed fact fails [[MemoryConsolidationTask.validateMerge]]
+    * degrades to KeepSeparate: the sweep archives real user facts, so
+    * a hallucinated or degenerate merge is the one outcome worth
+    * refusing outright. */
   private def consolidate(host: Sigil, space: SpaceId, cluster: List[ContextMemory]): Task[Unit] =
     consultCluster(host, cluster)
       .flatMap {
-        case Some(input) if input.verdict == ConsolidationVerdict.Merge && input.mergedFact.exists(_.trim.nonEmpty) =>
-          applyMerge(host, space, cluster, input)
+        case Some(input) if input.verdict == ConsolidationVerdict.Merge =>
+          MemoryConsolidationTask.validateMerge(cluster, input.mergedFact) match {
+            case Right(_) => applyMerge(host, space, cluster, input)
+            case Left(reason) => Task(scribe.warn(
+              s"$name: rejecting merge in space ${space.value} ($reason) — keeping ${cluster.size} records separate"))
+          }
         case _ => Task.unit
       }
       .handleError { e =>
@@ -182,7 +211,15 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
   }
 
   /** Write the merged record and archive every member through the
-    * standard versioning fields. */
+    * standard versioning fields. The merged record inherits the
+    * cluster's shared `modeAffinity` (identical by construction — see
+    * [[buildClusters]]) and the primary member's `memoryType`, so a
+    * consolidation never silently widens a memory's retrieval gate or
+    * reclassifies what kind of thing it is.
+    *
+    * Archiving goes through [[Sigil.updateMemory]], which deletes the
+    * member's vector point rather than re-embedding it — an archived
+    * record must not stay reachable through the semantic leg. */
   private def applyMerge(host: Sigil,
                          space: SpaceId,
                          cluster: List[ContextMemory],
@@ -196,6 +233,7 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
       summary = fact,
       source = MemorySource.Compression,
       spaceId = space,
+      memoryType = primary.memoryType,
       keywords = cluster.iterator.flatMap(_.keywords).toVector.distinct,
       confidence = cluster.iterator.map(_.confidence).max,
       validFrom = Some(now),
@@ -205,6 +243,7 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
         case one :: Nil => one
         case _          => None
       },
+      modeAffinity = primary.modeAffinity,
       sourceEventIds = cluster.flatMap(_.sourceEventIds).distinct
     )
     host.persistMemory(merged).flatMap { stored =>
@@ -216,6 +255,61 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
 }
 
 object MemoryConsolidationTask {
+  /** Ceiling on the merged fact's length as a multiple of the combined
+    * member facts — a merge that says MORE than its inputs did is
+    * elaboration, not consolidation. */
+  val MaxMergeLengthFactor: Int = 2
+
+  /** Minimum share of some single member's content words that must
+    * survive into the merged fact. A merge grounded in the cluster
+    * restates one member closely; a fabrication shares almost nothing
+    * with any of them. */
+  val MinMergeOverlap: Double = 0.3
+
+  /** Words this short or shorter are structural (articles,
+    * prepositions, conjunctions) and carry no grounding signal. */
+  private val MaxStructuralWordLength: Int = 3
+
+  /**
+   * Check a consult's proposed merged fact against the cluster it
+   * claims to consolidate. `Right(fact)` when the merge is safe to
+   * apply; `Left(reason)` describes why it was refused.
+   *
+   * Applying a merge archives every member, so an unusable merged
+   * fact doesn't just add noise — it destroys the recallability of
+   * facts the user actually stated. Three cheap structural checks
+   * catch the failure modes a small summarization-tier model
+   * exhibits: an empty or whitespace `mergedFact`, an "expansion"
+   * that elaborates well past its inputs, and a fact whose content
+   * words overlap none of the members (a confabulation, or the model
+   * answering some other cluster).
+   */
+  def validateMerge(cluster: List[ContextMemory], mergedFact: Option[String]): Either[String, String] = {
+    val fact = mergedFact.map(_.trim).getOrElse("")
+    if (fact.isEmpty) Left("merged fact is empty")
+    else {
+      val combinedLength = cluster.iterator.map(_.fact.trim.length).sum
+      if (combinedLength > 0 && fact.length > combinedLength * MaxMergeLengthFactor)
+        Left(s"merged fact is ${fact.length} chars against $combinedLength of member facts")
+      else {
+        val mergedWords = contentWords(fact)
+        val bestOverlap = cluster.iterator.map { m =>
+          val memberWords = contentWords(m.fact)
+          if (memberWords.isEmpty) 0.0
+          else memberWords.count(mergedWords.contains).toDouble / memberWords.size
+        }.maxOption.getOrElse(0.0)
+        if (bestOverlap < MinMergeOverlap)
+          Left(f"merged fact shares only ${bestOverlap * 100}%.0f%% of any member's content words")
+        else Right(fact)
+      }
+    }
+  }
+
+  private def contentWords(text: String): Set[String] =
+    text.toLowerCase.split("[^a-z0-9]+").iterator
+      .filter(_.length > MaxStructuralWordLength)
+      .toSet
+
   val SystemPrompt: String =
     """You curate an agent framework's long-term memory store. You'll be shown a small cluster of
       |memories whose embeddings are nearly identical. Decide whether they state the same underlying

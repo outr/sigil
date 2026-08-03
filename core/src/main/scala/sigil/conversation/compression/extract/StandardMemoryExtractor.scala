@@ -54,6 +54,8 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                                    maxExtractionTokens: Int = StandardMemoryExtractor.DefaultMaxExtractionTokens)
   extends MemoryExtractor {
 
+  override def signalFilter: Option[HighSignalFilter] = Some(filter)
+
   override def extract(sigil: Sigil,
                        conversationId: Id[Conversation],
                        modelId: Id[Model],

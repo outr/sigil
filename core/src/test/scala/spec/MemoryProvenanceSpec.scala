@@ -5,11 +5,13 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextMemory, Conversation, MemorySource, UpsertMemoryResult}
+import sigil.conversation.{ContextFrame, ContextMemory, Conversation, MemorySource, ToolCallState, UpsertMemoryResult}
 import sigil.conversation.compression.extract.{ExtractionTurn, MemoryExtractor}
 import sigil.db.Model
 import sigil.event.Event
 import sigil.participant.ParticipantId
+import sigil.tool.ToolName
+import sigil.tool.util.SleepTool
 
 /**
  * Coverage for event-grain memory provenance
@@ -105,6 +107,53 @@ class MemoryProvenanceSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         val turn = recorder.lastTurn
         turn.isDefined should be(true)
         turn.get.sourceEventIds should be(List(f1, f2))
+      }
+    }
+
+    "carry the shed slice's settled mutations as extraction evidence" in {
+      class RecordingExtractor extends MemoryExtractor {
+        @volatile var lastTurn: Option[ExtractionTurn] = None
+        override def extract(sigil: Sigil,
+                             conversationId: Id[Conversation],
+                             modelId: Id[Model],
+                             chain: List[ParticipantId],
+                             userMessage: String,
+                             agentResponse: String): Task[List[ContextMemory]] = Task.pure(Nil)
+        override def extractTurn(sigil: Sigil,
+                                 conversationId: Id[Conversation],
+                                 modelId: Id[Model],
+                                 chain: List[ParticipantId],
+                                 turn: ExtractionTurn): Task[List[ContextMemory]] = {
+          lastTurn = Some(turn)
+          Task.pure(Nil)
+        }
+      }
+      val recorder = new RecordingExtractor
+      val mutating = eventId("m1")
+      val readOnly = eventId("m2")
+      def call(toolName: ToolName, id: Id[Event]): ContextFrame.ToolCall = ContextFrame.ToolCall(
+        toolName = toolName,
+        argsJson = "{}",
+        callId = id,
+        participantId = TestAgent,
+        sourceEventId = id,
+        state = ToolCallState.Complete("done")
+      )
+      val frames: Vector[ContextFrame] = Vector(
+        ContextFrame.Text("Apply the change.", TestUser, eventId("m0")),
+        call(MutatingSpecTool.name, mutating),
+        call(SleepTool.name, readOnly)
+      )
+      recorder.extractFromFrames(
+        sigil = TestSigil,
+        conversationId = Conversation.id(s"prov-mut-${rapid.Unique()}"),
+        modelId = Id[Model]("test-model"),
+        chain = List(TestUser, TestAgent),
+        frames = frames
+      ).map { _ =>
+        // Only the mutating tool counts as evidence; a read-only call
+        // says nothing about whether the slice changed the world.
+        recorder.lastTurn.map(_.settledMutations) should be(Some(List(MutatingSpecTool.name)))
       }
     }
   }

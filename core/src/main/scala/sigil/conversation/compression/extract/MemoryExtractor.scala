@@ -6,6 +6,7 @@ import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextMemory, Conversation, ToolCallState}
 import sigil.db.Model
 import sigil.participant.ParticipantId
+import sigil.tool.ToolName
 
 /**
  * Extracts durable memories from a conversation turn. Two callsites:
@@ -25,6 +26,16 @@ import sigil.participant.ParticipantId
  * low-value utterances.
  */
 trait MemoryExtractor {
+  /** The [[HighSignalFilter]] this extractor gates on, when it has
+    * one. Exposed so the OTHER extraction leg — the compression-time
+    * pathway in
+    * [[sigil.conversation.compression.MemoryContextCompressor]] — can
+    * spend its consults under the same policy the app chose here,
+    * instead of extracting from every shed chunk unconditionally.
+    * `None` means "no gate" and the compression leg extracts from
+    * everything, matching a filterless extractor. */
+  def signalFilter: Option[HighSignalFilter] = None
+
   def extract(sigil: Sigil,
               conversationId: Id[Conversation],
               modelId: Id[Model],
@@ -48,8 +59,12 @@ trait MemoryExtractor {
   /** Compression-time extraction over the about-to-be-shed frame
     * slice. Default reduces the slice to a transcript and delegates
     * to [[extractTurn]] with the user-side text concatenated as
-    * `userMessage`, the agent-side text as `agentResponse`, and the
-    * slice's source event ids as provenance. Apps override for
+    * `userMessage`, the agent-side text as `agentResponse`, the
+    * slice's source event ids as provenance, and the settled mutating
+    * tool calls found in the slice as structured evidence — the same
+    * `settledMutations` signal the per-turn pathway supplies, so a
+    * mutation-gated filter ([[AgenticSignalFilter]]) judges a shed
+    * slice by what it DID, not only by how it read. Apps override for
     * frame-aware extraction (e.g. type-aware branching by
     * `ContextFrame` subtype). */
   def extractFromFrames(sigil: Sigil,
@@ -82,16 +97,25 @@ trait MemoryExtractor {
             (users, agents)
         }
     }
-    extractTurn(
-      sigil          = sigil,
-      conversationId = conversationId,
-      modelId        = modelId,
-      chain          = chain,
-      turn           = ExtractionTurn(
-        userMessage    = userText.mkString("\n"),
-        agentResponse  = agentText.mkString("\n"),
-        sourceEventIds = frames.iterator.map(_.sourceEventId).distinct.toList
+    val settledCalls = frames.iterator.collect {
+      case tc: ContextFrame.ToolCall if !tc.internal && tc.state.isInstanceOf[ToolCallState.Complete] => tc.toolName
+    }.toList.distinct
+    val mutationsTask =
+      if (settledCalls.isEmpty) Task.pure(List.empty[ToolName])
+      else sigil.mutatingToolNames.map(mutating => settledCalls.filter(n => mutating.contains(n.value)))
+    mutationsTask.flatMap { mutations =>
+      extractTurn(
+        sigil          = sigil,
+        conversationId = conversationId,
+        modelId        = modelId,
+        chain          = chain,
+        turn           = ExtractionTurn(
+          userMessage      = userText.mkString("\n"),
+          agentResponse    = agentText.mkString("\n"),
+          sourceEventIds   = frames.iterator.map(_.sourceEventId).distinct.toList,
+          settledMutations = mutations
+        )
       )
-    )
+    }
   }
 }
