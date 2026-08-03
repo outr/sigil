@@ -3,10 +3,10 @@ package sigil.tool.context
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.conversation.{ContextFrame, ContextMemory}
 import sigil.tokenize.HeuristicTokenizer
-import sigil.diagnostics.ProfileSection
-import sigil.provider.ContextSections
+import sigil.diagnostics.{ProfileSection, RequestProfiler}
+import sigil.participant.AgentParticipant
+import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, SectionContext}
 import sigil.tool.model.{ContextBreakdownOutput, ContextSectionBreakdown}
 import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolName, ToolProfile, ToolSpec}
 
@@ -15,9 +15,15 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, T
  * spent — section-by-section token contributions. Used when the user
  * asks "where is your context going?" / "why is my context full?".
  *
- * Computed against the current [[TurnContext]]: the conversation's
- * frames + critical memories + active skills + mode block. Token
- * counts via the char/4 heuristic — accurate enough to answer the
+ * The numbers come from [[sigil.diagnostics.RequestProfiler]] run over
+ * a [[SectionContext]] built from the current turn — the same
+ * accounting the wire profile reports, against the same section list
+ * ([[sigil.Sigil.contextSections]]), so the agent's answer cannot drift
+ * from what the framework actually sends. The wire-only pieces the tool
+ * cannot see from a dispatch (the resolved tool roster and its framing
+ * preamble) are outside the breakdown; the note says so.
+ *
+ * Token counts via the char/4 heuristic — accurate enough to answer the
  * user's question; production budget enforcement uses the provider's
  * per-vendor tokenizer separately.
  *
@@ -45,51 +51,67 @@ case object ContextBreakdownTool extends Tool {
 
   protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
 
-  private def executeOutput(input: ContextBreakdownInput, context: ToolContext): Task[ContextBreakdownOutput] =
-    context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
-      val critTask = if (spaces.isEmpty) Task.pure(List.empty[ContextMemory])
-                     else context.sigil.findCriticalMemories(spaces)
-      critTask.map { criticals =>
-        val tokenizer = HeuristicTokenizer
-        val turn      = context.turnInput
-
-        val frameTokens = turn.frames.iterator.map {
-          case f: ContextFrame.Text      => tokenizer.count(f.content)
-          case f: ContextFrame.ToolCall  =>
-            // Sigil #261 — unified ToolCall(state) frame: count args
-            // plus (when Complete) the result content as one frame.
-            val resultTokens = f.state match {
-              case sigil.conversation.ToolCallState.Complete(content, _) => tokenizer.count(content)
-              case sigil.conversation.ToolCallState.Active               => 0
-            }
-            tokenizer.count(f.argsJson) + resultTokens
-          case f: ContextFrame.System    => tokenizer.count(f.content)
-          case f: ContextFrame.Reasoning => tokenizer.count(f.summary.mkString("\n"))
-        }.sum
-
-        val criticalTokens = criticals.iterator.map { m =>
-          tokenizer.count(ContextSections.memoryRenderText(m))
-        }.sum
-
-        val skills      = turn.aggregatedSkills(context.chain)
-        val skillTokens = skills.iterator.map(s => tokenizer.count(s.name) + tokenizer.count(s.content)).sum
-
-        val mode       = context.conversation.currentMode
-        val modeTokens = tokenizer.count(s"${mode.name} — ${mode.description}")
-
-        val total = frameTokens + criticalTokens + skillTokens + modeTokens
-
-        ContextBreakdownOutput(
-          totalTokens = total,
-          currentMode = mode.name,
-          sections = List(
-            ContextSectionBreakdown(ProfileSection.Frames,           frameTokens,    turn.frames.size),
-            ContextSectionBreakdown(ProfileSection.CriticalMemories, criticalTokens, criticals.size),
-            ContextSectionBreakdown(ProfileSection.ActiveSkills,     skillTokens,    skills.size),
-            ContextSectionBreakdown(ProfileSection.ModeBlock,        modeTokens,     1)
-          ),
-          note = "Tokens estimated via the char/4 heuristic; production budget uses the provider's tokenizer."
-        )
-      }
+  private def executeOutput(input: ContextBreakdownInput, context: ToolContext): Task[ContextBreakdownOutput] = {
+    val sigil = context.sigil
+    val conv  = context.conversation
+    val agent = conv.participants.collectFirst {
+      case a: AgentParticipant if a.id == context.caller => a
     }
+    val rolesTask = agent.fold(Task.pure(List.empty[_root_.sigil.role.Role]))(_.resolveRoles(context.turn))
+    for {
+      resolved <- sigil.resolveReferences(context.turnInput)
+      roles    <- rolesTask
+    } yield {
+      val request = ConversationRequest(
+        conversationId     = conv.id,
+        model              = context.model,
+        instructions       = agent.map(_.instructions).getOrElse(Instructions()),
+        turnInput          = context.turnInput,
+        currentMode        = conv.currentMode,
+        currentTopic       = conv.currentTopic,
+        previousTopics     = conv.previousTopics,
+        generationSettings = GenerationSettings(),
+        chain              = context.chain,
+        roles              = roles
+      )
+      val sectionContext = SectionContext(
+        request                         = request,
+        resolved                        = resolved,
+        discoveredCapabilitiesPromptCap = sigil.discoveredCapabilitiesPromptCap,
+        promptShape                     = sigil.modelProfileFor(context.model).promptShape
+      )
+      val profile = RequestProfiler.profile(sectionContext, HeuristicTokenizer, sigil, sigil.contextSections)
+      val sections = profile.sections.toList
+        .sortBy { case (_, tokens) => -tokens }
+        .map { case (id, tokens) => ContextSectionBreakdown(id, tokens, entryCount(id, sectionContext)) }
+      ContextBreakdownOutput(
+        totalTokens = profile.total,
+        currentMode = conv.currentMode.name,
+        sections    = sections,
+        note = "Section accounting is the framework's own wire profiler, minus the tool roster and its " +
+          "framing preamble (not visible from a tool dispatch). Tokens estimated via the char/4 heuristic; " +
+          "production budget uses the provider's tokenizer."
+      )
+    }
+  }
+
+  /** How many entries a section rendered, for the list-shaped ones;
+    * `1` for the sections that render a single block. */
+  private def entryCount(id: ProfileSection, c: SectionContext): Int = id match {
+    case ProfileSection.Frames                 => c.turn.frames.size
+    case ProfileSection.CriticalMemories       => c.resolved.criticalMemories.size
+    case ProfileSection.Memories               => c.capped(c.resolved.memories.toList, c.promptShape.memoryCap).size
+    case ProfileSection.Summaries              => c.capped(c.resolved.summaries.toList, c.promptShape.summaryCap).size
+    case ProfileSection.Information            => c.turn.information.size
+    case ProfileSection.ActiveSkills           => c.allSkills.size
+    case ProfileSection.PreviousTopics         => c.capped(c.request.previousTopics).size
+    case ProfileSection.RecentTools            => c.recentTools.size
+    case ProfileSection.RepeatedToolCalls      => c.duplicateGroups.size
+    case ProfileSection.SuggestedTools         => c.suggestedTools.size
+    case ProfileSection.DiscoveredCapabilities => c.discovered.size
+    case ProfileSection.ExtraContext           => c.turn.extraContext.size
+    case ProfileSection.ParticipantContext     => c.perParticipantExtras.size
+    case ProfileSection.ToolRoster             => c.request.tools.size
+    case _                                     => 1
+  }
 }

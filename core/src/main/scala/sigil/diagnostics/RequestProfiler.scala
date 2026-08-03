@@ -2,7 +2,7 @@ package sigil.diagnostics
 
 import sigil.Sigil
 import sigil.conversation.ContextFrame
-import sigil.provider.{ContextSection, ContextSections, ConversationRequest, PromptShape, ResolvedReferences, SectionContext}
+import sigil.provider.{ContextSection, ContextSections, ConversationRequest, SectionContext}
 import sigil.tokenize.Tokenizer
 import sigil.tool.Tool
 
@@ -24,14 +24,19 @@ object RequestProfiler {
     * `descriptionFor` calls hit `Tool.descriptionFor(currentMode, sigil)` —
     * which is the wire-accurate string for tools like `change_mode` that
     * fold runtime context into their description. Adds insights derived
-    * from the model's `contextLength` (looked up via `sigil.cache`). */
-  def profile(request: ConversationRequest,
-              resolved: ResolvedReferences,
+    * from the model's `contextLength` (looked up via `sigil.cache`).
+    *
+    * The [[SectionContext]] is the renderer's own — the provider builds
+    * it once per turn and hands the same value to both, so the profile
+    * counts the bytes the wire carries (same `now`, same derivations,
+    * one pass of the shared lazy vals). */
+  def profile(ctx: SectionContext,
               tokenizer: Tokenizer,
               sigil: Sigil,
               sections: List[ContextSection] = ContextSections.all): RequestProfile = {
-    val raw = profileWith(request, resolved, tokenizer, t => t.descriptionFor(request.currentMode, sigil),
-      sigil.discoveredCapabilitiesPromptCap, sections, sigil.modelProfileFor(request.model).promptShape)
+    val request = ctx.request
+    val resolved = ctx.resolved
+    val raw = profileWith(ctx, tokenizer, t => t.descriptionFor(request.currentMode, sigil), sections)
     val contextLength = sigil.cache.find(request.modelId).map(_.contextLength.toInt).getOrElse(0)
     val cfg = InsightGenerator.InsightConfig(contextLength = contextLength)
     val insights = InsightGenerator.insights(
@@ -49,13 +54,11 @@ object RequestProfiler {
     * synthetic benches that don't want to spin up a full Sigil — pass
     * `_.description` to fall back to static descriptions, or supply a
     * custom mapping for richer scenarios. */
-  def profileWith(request: ConversationRequest,
-                  resolved: ResolvedReferences,
+  def profileWith(sectionContext: SectionContext,
                   tokenizer: Tokenizer,
                   descriptionFor: Tool => String,
-                  discoveredCapabilitiesPromptCap: Int = 25,
-                  sectionList: List[ContextSection] = ContextSections.all,
-                  promptShape: PromptShape = PromptShape.Full): RequestProfile = {
+                  sectionList: List[ContextSection] = ContextSections.all): RequestProfile = {
+    val request = sectionContext.request
     val turn = request.turnInput
 
     val sections = scala.collection.mutable.Map.empty[ProfileSection, Int]
@@ -64,8 +67,6 @@ object RequestProfiler {
 
     // System-prompt sections: counted from the renderer's own
     // functions, so the accounting is the wire's by construction.
-    val sectionContext = SectionContext(request, resolved, discoveredCapabilitiesPromptCap,
-      promptShape = promptShape)
     sectionList.foreach(s => s.render(sectionContext).foreach(add(s.id, _)))
 
     // Frames (the message array) — wire-level, outside the section list.

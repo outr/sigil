@@ -15,8 +15,9 @@ import sigil.conversation.TurnPlan
  * [[sigil.tool.DirectiveInput]] so consumers pattern-match instead of
  * parsing prose.
  *
- * [[Directive.wireNames]] is the one membership source for the
- * consumers that used to string-compare individual names.
+ * Case names are wire-stable: they are persisted inside
+ * [[sigil.tool.DirectiveInput]] on every synthetic invoke and read back
+ * by clients and by replay, so renaming a case is a wire break.
  */
 enum Directive derives RW {
 
@@ -76,10 +77,23 @@ enum Directive derives RW {
   /** XML tool-call syntax leaked into `respond.content`. */
   case XmlToolCallLeak(firstLeakedExcerpt: String)
 
+  /** Whether the directive stays in context once read.
+    *
+    * A durable directive states something the agent must keep judging
+    * against for the rest of the turn — the plan is the standing
+    * objective, and dropping it leaves the planner correcting against a
+    * plan the executor can no longer see. Everything else is a
+    * transient nudge aimed at ONE next iteration; stale copies are
+    * context noise the curator sheds. */
+  def durable: Boolean = this match {
+    case _: Plan => true
+    case _       => false
+  }
+
   /** The synthetic invoke's tool name. Stable and client-facing —
     * clients and persisted history key off these. */
   def wireName: String = this match {
-    case _: Plan                 => "_plan"
+    case _: Plan                 => Directive.PlanName
     case _: PlannerCorrection    => "_planner_correction"
     case _: BudgetCheckin        => "_budget_checkin"
     case _: BudgetCeiling        => "_budget_ceiling"
@@ -213,29 +227,17 @@ enum Directive derives RW {
 
 object Directive {
 
+  val PlanName: String = "_plan"
   val RefusalChallengeName: String = "_refusal_challenge"
   val RepeatedQueryInterceptName: String = "_repeated_query_intercept"
   val StallDetectedName: String = "_stall_detected"
   val CapReachedName: String = "_cap_reached"
 
-  /** Every wire name the framework's directive channel uses. The one
-    * membership source for consumers that need "is this invoke a
-    * framework directive?" without enumerating names themselves. */
-  val wireNames: Set[String] = Set(
-    "_plan",
-    "_planner_correction",
-    "_budget_checkin",
-    "_budget_ceiling",
-    StallDetectedName,
-    CapReachedName,
-    RefusalChallengeName,
-    Orchestrator.TurnDecisionToolName,
-    RepeatedQueryInterceptName,
-    "_plain_text_reply",
-    "_degenerate_generation",
-    "_provider_error",
-    sigil.provider.XmlToolCallSanitizer.SyntheticInvokeName
-  )
+  /** Wire names of the directives whose frames survive the curator's
+    * stale-internal-frame shed. Membership source for consumers that
+    * classify a synthetic invoke by name alone — a persisted frame
+    * carries the wire name, not the typed payload. */
+  val durableWireNames: Set[String] = Set(PlanName)
 
   private[sigil] def fmt(v: BigDecimal): String = f"$$${v}%.2f"
 

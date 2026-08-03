@@ -117,13 +117,12 @@ class PromptToolsConsistencySpec extends AsyncWordSpec with AsyncTaskSpec with M
       discoveredCapabilities = ref.get(),
       discoveredCapabilitiesRef = ref
     )
-    // renderSystem takes the ConversationRequest directly — `c.tools`
-    // is the wire roster the prompt sections must consistency-check
-    // against.
+    // renderSystem renders from the turn's SectionContext, which carries
+    // the ConversationRequest — `request.tools` is the wire roster the
+    // prompt sections must consistency-check against.
     val m = classOf[sigil.provider.Provider].getDeclaredMethod(
       "renderSystem",
-      classOf[ConversationRequest],
-      classOf[sigil.provider.ResolvedReferences]
+      classOf[sigil.provider.SectionContext]
     )
     m.setAccessible(true)
     val resolved = sigil.provider.ResolvedReferences(
@@ -131,10 +130,15 @@ class PromptToolsConsistencySpec extends AsyncWordSpec with AsyncTaskSpec with M
       memories = Vector.empty,
       summaries = Vector.empty
     )
+    val sectionContext = sigil.provider.SectionContext(
+      request = request,
+      resolved = resolved,
+      discoveredCapabilitiesPromptCap = TestSigil.discoveredCapabilitiesPromptCap
+    )
     // Sigil #302 — renderSystem now returns RenderedSystem(stable,
     // volatile); join them for the existing assertions that don't
     // distinguish the two segments.
-    val rendered = m.invoke(provider, request, resolved)
+    val rendered = m.invoke(provider, sectionContext)
     val combined = rendered.getClass.getMethod("combined").invoke(rendered).asInstanceOf[String]
     combined
   }

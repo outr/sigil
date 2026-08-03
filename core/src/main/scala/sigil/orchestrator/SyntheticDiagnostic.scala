@@ -29,8 +29,12 @@ object SyntheticDiagnostic {
     * diagnostic Message. Callers that build a bespoke Message (a copy of
     * an existing intervention, a non-Failure directive) use this and
     * stamp `origin = Some(invoke._id)` themselves; callers that want the
-    * standard Failure-message pairing use [[apply]]. */
-  def invoke(name: String,
+    * standard Failure-message pairing use [[apply]].
+    *
+    * Framework-internal: the diagnostic channel's vocabulary is
+    * [[Directive]], and a raw name carries no typed payload for
+    * consumers to match on. */
+  private[sigil] def invoke(name: String,
              caller: ParticipantId,
              convId: Id[Conversation],
              topicId: Id[Topic],
@@ -68,12 +72,18 @@ object SyntheticDiagnostic {
             disposition: MessageDisposition): List[Signal] =
     build(invoke(directive, caller, convId, topicId), directive.render, disposition)
 
-  /** Build the (synthetic-invoke, paired Tool-role Message) signal pair.
-    * The Message carries `MessageVisibility.Agents` so the diagnostic
-    * never leaks to user-facing viewers; `disposition` defaults to
-    * `Success` (the `_provider_error` shape) — callers surfacing a
-    * recoverable failure pass `MessageDisposition.Failure(...)`. */
-  def apply(name: String,
+  /** Build the (synthetic-invoke, paired Tool-role Message) signal pair
+    * from a raw name + prose. The Message carries
+    * `MessageVisibility.Agents` so the diagnostic never leaks to
+    * user-facing viewers; `disposition` defaults to `Success` — callers
+    * surfacing a recoverable failure pass
+    * `MessageDisposition.Failure(...)`.
+    *
+    * Framework-internal, and the last resort within the framework too:
+    * every publish site the framework owns carries a [[Directive]], so
+    * the persisted invoke has a typed payload and the prose has one
+    * render seam. */
+  private[sigil] def apply(name: String,
             caller: ParticipantId,
             convId: Id[Conversation],
             topicId: Id[Topic],

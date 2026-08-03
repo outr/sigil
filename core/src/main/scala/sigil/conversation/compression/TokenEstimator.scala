@@ -2,6 +2,7 @@ package sigil.conversation.compression
 
 import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, ToolCallState}
 import sigil.information.InformationSummary
+import sigil.provider.ContextSections
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 
 /**
@@ -36,18 +37,29 @@ object TokenEstimator {
       case ContextFrame.Reasoning(_, summary, _, _, _, _) => tokenizer.count(summary.mkString("\n"))
     }.sum
 
-  /** Estimate tokens used by resolved memory records. Mirrors the
-    * `summary || fact` policy the renderer applies — the per-turn
-    * cost reflects what actually gets sent on the wire. */
-  def estimateMemories(memories: Vector[ContextMemory], tokenizer: Tokenizer = HeuristicTokenizer): Int =
-    memories.iterator.map { m =>
-      val text = if (m.summary.trim.nonEmpty) m.summary else m.fact
-      tokenizer.count(text)
-    }.sum
+  /** Estimate tokens used by resolved memory records — counted from
+    * the line the renderer emits ([[ContextSections.memoryLine]]:
+    * `summary || fact`, plus the `lookup(...)` drill-down handle when
+    * one is attached), so the budget reflects the wire. `header` is the
+    * section's own heading, charged once when the section renders. */
+  def estimateMemories(memories: Vector[ContextMemory],
+                       tokenizer: Tokenizer = HeuristicTokenizer,
+                       header: String = ContextSections.MemoriesHeader): Int =
+    if (memories.isEmpty) 0
+    else tokenizer.count(header) + memories.iterator.map(m => memoryTokens(m, tokenizer)).sum
 
-  /** Estimate tokens used by resolved summary records. */
+  /** One memory's own rendered cost, without the section heading —
+    * what a per-record walk (the retrieval budget stage) charges. */
+  def memoryTokens(memory: ContextMemory, tokenizer: Tokenizer = HeuristicTokenizer): Int =
+    tokenizer.count(ContextSections.memoryLine(memory))
+
+  /** Estimate tokens used by resolved summary records — each entry's
+    * text plus its `reload_content(...)` handle, the section heading,
+    * and the trailing instruction the section always emits. */
   def estimateSummaries(summaries: Vector[ContextSummary], tokenizer: Tokenizer = HeuristicTokenizer): Int =
-    summaries.iterator.map(s => tokenizer.count(s.text)).sum
+    if (summaries.isEmpty) 0
+    else tokenizer.count(ContextSections.SummariesHeader) + tokenizer.count(ContextSections.SummariesFooter) +
+      summaries.iterator.map(s => tokenizer.count(ContextSections.summaryLine(s))).sum
 
   /** Estimate tokens used by Information catalog entries (id + summary
     * lines as `Provider.renderSystem` emits them). */
@@ -56,7 +68,9 @@ object TokenEstimator {
 
   /** Sum the curator-controlled sections of a tentative TurnInput.
     * System prompt overhead + tool roster are added by the provider's
-    * pre-flight gate; this is the curator's portion only. */
+    * pre-flight gate; this is the curator's portion only. Memories and
+    * summaries are counted from their rendered lines; the remaining
+    * sections stay approximations of the rendered form. */
   def estimateCuratorSections(frames: Vector[ContextFrame],
                               criticalMemories: Vector[ContextMemory],
                               memories: Vector[ContextMemory],
@@ -64,7 +78,7 @@ object TokenEstimator {
                               information: Vector[InformationSummary],
                               tokenizer: Tokenizer): Int =
     estimateFrames(frames, tokenizer) +
-      estimateMemories(criticalMemories, tokenizer) +
+      estimateMemories(criticalMemories, tokenizer, ContextSections.CriticalMemoriesHeader) +
       estimateMemories(memories, tokenizer) +
       estimateSummaries(summaries, tokenizer) +
       estimateInformation(information, tokenizer)

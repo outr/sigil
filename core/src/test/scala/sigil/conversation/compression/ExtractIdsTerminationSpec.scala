@@ -17,12 +17,10 @@ import spec.TestSigil
 class ExtractIdsTerminationSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  private val curator = StandardContextCurator(TestSigil)
-
   "extractIds" should {
 
     "return immediately when the needle is unterminated (no closing ])" in {
-      val ids = curator.extractIds("Look at Information[user-pinned but no closing here", "Information[").toList
+      val ids = StandardContextCurator.extractIds("Look at Information[user-pinned but no closing here", "Information[").toList
       // No well-formed reference present — id set is empty. The
       // contract is "terminates"; emptiness is a sanity check the
       // bisect-test didn't trip on residual matches.
@@ -30,7 +28,7 @@ class ExtractIdsTerminationSpec extends AnyWordSpec with Matchers {
     }
 
     "extract every well-formed reference and skip an unterminated tail" in {
-      val ids = curator.extractIds(
+      val ids = StandardContextCurator.extractIds(
         "See Information[alpha-1] and Information[beta-2] and Information[runaway",
         "Information["
       ).toList
@@ -39,7 +37,7 @@ class ExtractIdsTerminationSpec extends AnyWordSpec with Matchers {
     }
 
     "extract back-to-back references when one immediately follows another" in {
-      val ids = curator.extractIds("Information[one]Information[two]", "Information[").toList
+      val ids = StandardContextCurator.extractIds("Information[one]Information[two]", "Information[").toList
       ids shouldBe List("one", "two")
     }
 
@@ -48,7 +46,7 @@ class ExtractIdsTerminationSpec extends AnyWordSpec with Matchers {
       // `indexOf(']')` returns the FIRST `]` after `start`, which is
       // the semantically correct boundary. A `[` between needle and
       // `]` (junk content) is harmlessly captured as part of the id.
-      val ids = curator.extractIds("Information[id-with-[brackets]-rest]", "Information[").toList
+      val ids = StandardContextCurator.extractIds("Information[id-with-[brackets]-rest]", "Information[").toList
       ids shouldBe List("id-with-[brackets")
     }
   }

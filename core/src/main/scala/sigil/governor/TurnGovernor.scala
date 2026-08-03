@@ -13,6 +13,13 @@ import rapid.Task
   * reflection, a DB scan) pays nothing at a boundary an earlier governor
   * already claimed.
   *
+  * That precedence is absolute, so a custom governor PREPENDED to the
+  * default list preempts every built-in at any boundary it claims —
+  * including the hard spend ceiling, which is first by default precisely
+  * because a runaway turn must not wait behind anything. Append after
+  * the defaults (`super.turnGovernors :+ mine`) unless preemption is
+  * exactly the intent.
+  *
   * Two things deliberately stay outside this seam:
   *
   *   - The `maxAgentIterations` cap. It is not a boundary vote but the

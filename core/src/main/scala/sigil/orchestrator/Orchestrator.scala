@@ -471,7 +471,7 @@ object Orchestrator {
         // otherwise pair ONE invoke with TWO refusals.
         state.completedCallIds += callId
         translate(
-          ProviderEvent.Error(malformedArgsRefusal(roster, malformedName, decodeError, malformedRawArgs, state.dialect)),
+          ProviderEvent.Error(malformedArgsRefusal(sigil, request, roster, malformedName, decodeError, malformedRawArgs, state.dialect)),
           sigil, request, conversation, roster, state
         )
 
@@ -493,7 +493,7 @@ object Orchestrator {
             // A rebind can surface Malformed for a replayed stream whose
             // args no longer decode; route it like the direct case.
             return translate(
-              ProviderEvent.Error(malformedArgsRefusal(roster, m.name, m.error, m.rawArgs, state.dialect)),
+              ProviderEvent.Error(malformedArgsRefusal(sigil, request, roster, m.name, m.error, m.rawArgs, state.dialect)),
               sigil, request, conversation, roster, state
             )
         }
@@ -2113,13 +2113,20 @@ object Orchestrator {
 
 
   /** Render the enriched refusal for a [[WireCall.Malformed]] — the
-    * resolved tool's args failed to parse or decode. */
-  private def malformedArgsRefusal(roster: ToolRoster,
+    * resolved tool's args failed to parse or decode. Verbosity follows
+    * the running model's
+    * [[sigil.provider.ModelProfile.toolCallReliability]]: a solid
+    * emitter reads the violated rule alone, a wobbly one gets the
+    * schema + worked example pinned alongside it. */
+  private def malformedArgsRefusal(sigil: Sigil,
+                                   request: ConversationRequest,
+                                   roster: ToolRoster,
                                    name: String,
                                    error: DecodeError,
                                    rawArgs: fabric.Json,
                                    dialect: SchemaDialect): String =
-    RefusalPayload.malformedArgs(roster.resolve(name), name, error, rawArgs, dialect)
+    RefusalPayload.malformedArgs(roster.resolve(name), name, error, rawArgs, dialect,
+      sigil.modelProfileFor(request.model).toolCallReliability)
 
   /** Public alias for [[executeAtomic]] — exposes the consent +
     * precondition gates the agent loop runs before dispatching a

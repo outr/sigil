@@ -309,6 +309,34 @@ object FrameBuilder {
   }
 
   /**
+   * The one tool-result pairing rule: whether a paired Tool-role
+   * result still has work to do on its parent call's frame.
+   *
+   * A call whose frame is still `Active`, or whose settled frame
+   * carries the "result hasn't landed" placeholder, adopts the
+   * result's payload. A call already carrying its real result is left
+   * alone — the framework's settled synthetic diagnostics stamp their
+   * reason onto the invoke's own `outcome` + `summary`, so their frame
+   * is complete before the paired Message arrives.
+   *
+   * `invokeOutcome` is the persisted invoke's outcome where the caller
+   * has it (the live settle path reads the row); `frame.resultPending`
+   * is the projection of that same fact for callers that only hold
+   * frames.
+   */
+  private[sigil] def settlesPairedCall(frame: ContextFrame.ToolCall,
+                                       invokeOutcome: Option[ToolOutcome] = None): Boolean =
+    frame.state == ToolCallState.Active || frame.resultPending ||
+      invokeOutcome.contains(ToolOutcome.Pending)
+
+  /** Apply a settled Tool-role event's payload to `frame` — the shared
+    * transition every pairing path performs once it decides to fold. */
+  private[sigil] def settledPairedFrame(frame: ContextFrame.ToolCall, event: Event): ContextFrame.ToolCall = {
+    val (content, images) = toolResultPayload(event)
+    frame.copy(state = ToolCallState.Complete(content, images), resultPending = false)
+  }
+
+  /**
    * Fold a newly-Complete event into an existing frame vector — the
    * single event→frame rule set.
    *
@@ -318,8 +346,9 @@ object FrameBuilder {
    * context: folding a Tool-role result into its parent
    * `ContextFrame.ToolCall`, which the live path does separately in
    * `Sigil.attachContextFrameOnSettle` against the persisted invoke.
-   * The fold predicate mirrors that path's — settle a call whose frame
-   * is still `Active` OR whose result is still pending.
+   * Both consult [[settlesPairedCall]], and both treat a parent that
+   * already carries its result as a no-op — only a result with NO
+   * parent frame at all is an orphan.
    */
   def appendFor(existing: Vector[ContextFrame], event: Event): Vector[ContextFrame] = {
     if (event.state != EventState.Complete) return existing
@@ -332,23 +361,21 @@ object FrameBuilder {
           // fields. For `Message` the typed fields are the wrapper
           // itself, so the text is extracted directly and the model
           // sees a clean result rather than doubly-wrapped JSON.
-          val (content, images) = toolResultPayload(event)
-          val matchingIdx = existing.indexWhere {
-            case tc: ContextFrame.ToolCall
-                if tc.callId == callId && (tc.state == ToolCallState.Active || tc.resultPending) => true
-            case _ => false
+          val parentIdx = existing.indexWhere {
+            case tc: ContextFrame.ToolCall => tc.callId == callId
+            case _                         => false
           }
-          if (matchingIdx >= 0) {
-            val tc = existing(matchingIdx).asInstanceOf[ContextFrame.ToolCall]
-            return existing.updated(
-              matchingIdx,
-              tc.copy(state = ToolCallState.Complete(content, images), resultPending = false)
-            )
+          if (parentIdx >= 0) {
+            val tc = existing(parentIdx).asInstanceOf[ContextFrame.ToolCall]
+            return if (settlesPairedCall(tc)) existing.updated(parentIdx, settledPairedFrame(tc, event))
+                   else existing
           }
-          // No matching open ToolCall — orphan result. Surface as a
-          // synthetic agents-only Text frame so the data doesn't vanish
-          // silently; the live publish path's invariant gate prevents
-          // this for fresh events, so it covers replay scenarios.
+          // No parent ToolCall frame at all — genuine orphan result.
+          // Surface as a synthetic agents-only Text frame so the data
+          // doesn't vanish silently; the live publish path's invariant
+          // gate prevents this for fresh events, so it covers replay
+          // scenarios.
+          val (content, _) = toolResultPayload(event)
           return existing :+ ContextFrame.Text(
             content       = s"[framework: orphan tool result for callId=${callId.value} — content: $content]",
             participantId = event.participantId,

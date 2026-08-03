@@ -36,7 +36,7 @@ import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentPart
 import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
-import sigil.provider.{InstructionTier, ModelProfile, PromptShape, Reliability}
+import sigil.provider.{ContextSection, ContextSections, InstructionTier, ModelProfile, PromptShape, Reliability, ResolvedReferences}
 import sigil.service.Service
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
@@ -254,6 +254,49 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * tokenizer pass.
    */
   def profileWireRequests: Boolean = true
+
+  /**
+   * The ordered system-prompt section list, and the one place the
+   * layout is declared. `Provider.renderSystem` concatenates it,
+   * [[sigil.diagnostics.RequestProfiler]] counts it, the curator runs
+   * its `shed` effects in `shedStage` order, and `context_breakdown`
+   * reports the profiler's numbers — so an app that adds, drops,
+   * reorders, or re-budgets a section here moves every consumer at
+   * once. Overriding on a single Provider would desync the renderer
+   * from the shedder, which is why the hook lives on Sigil.
+   *
+   * Validated at [[instance]] boot: a section declaring a `shedStage`
+   * without a `shed` effect fails startup.
+   */
+  def contextSections: List[ContextSection] = ContextSections.all
+
+  /**
+   * Resolve the ids on `TurnInput.criticalMemories` / `.memories` /
+   * `.summaries` to full records. Ids that don't resolve are dropped
+   * silently. The renderer, the wire profiler, and `context_breakdown`
+   * all account against the records this returns.
+   */
+  private[sigil] final def resolveReferences(turn: sigil.conversation.TurnInput): Task[ResolvedReferences] = {
+    val memTask: Task[(List[Option[ContextMemory]], List[Option[ContextMemory]])] =
+      if (turn.criticalMemories.isEmpty && turn.memories.isEmpty) Task.pure((Nil, Nil))
+      else withDB(_.memories.transaction { tx =>
+        for {
+          crit    <- Task.sequence(turn.criticalMemories.toList.map(tx.get))
+          regular <- Task.sequence(turn.memories.toList.map(tx.get))
+        } yield (crit, regular)
+      })
+    val sumTask: Task[List[Option[ContextSummary]]] =
+      if (turn.summaries.isEmpty) Task.pure(Nil)
+      else withDB(_.summaries.transaction(tx => Task.sequence(turn.summaries.toList.map(tx.get))))
+    for {
+      (crit, regular) <- memTask
+      summaries       <- sumTask
+    } yield ResolvedReferences(
+      criticalMemories = crit.flatten.toVector,
+      memories         = regular.flatten.toVector,
+      summaries        = summaries.flatten.toVector
+    )
+  }
 
   /**
    * Wall-clock budget (ms) a streaming provider call may spend with NO
@@ -3320,23 +3363,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                         case Some(ti: ToolInvoke) =>
                           ti.contextFrame match {
                             // Settle the invoke's frame from its paired Tool-role
-                            // result when the frame is still Active OR the invoke
-                            // is still Pending. The second case covers the
-                            // refuse paths (duplicate-call cap, tool-fan-out cap,
-                            // …) whose `toolDeltaPrefix` already flipped the frame
-                            // to Complete with the #354 "raced past" placeholder
-                            // before the paired Failure Message arrives — without
-                            // this, that placeholder stuck and told the agent to
-                            // retry a call the framework deliberately refused.
+                            // result under the shared pairing rule
+                            // ([[FrameBuilder.settlesPairedCall]]). The pending
+                            // clause covers the refuse paths (duplicate-call cap,
+                            // tool-fan-out cap, …) whose `toolDeltaPrefix` already
+                            // flipped the frame to Complete with the #354 "raced
+                            // past" placeholder before the paired Failure Message
+                            // arrives — without this, that placeholder stuck and
+                            // told the agent to retry a call the framework
+                            // deliberately refused.
                             case Some(tc: ContextFrame.ToolCall)
-                                if tc.state == ToolCallState.Active ||
-                                   ti.outcome == sigil.event.ToolOutcome.Pending =>
-                              val (content, images) = FrameBuilder.toolResultPayload(e)
-                              val updated = tc.copy(
-                                state = ToolCallState.Complete(content, images),
-                                resultPending = false
-                              )
-                              tx.upsert(ti.withContextFrame(Some(updated))).unit
+                                if FrameBuilder.settlesPairedCall(tc, Some(ti.outcome)) =>
+                              tx.upsert(ti.withContextFrame(Some(FrameBuilder.settledPairedFrame(tc, e)))).unit
                             case _ => Task.unit
                           }
                         case _ => Task.unit
@@ -3430,16 +3468,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           m.origin.foreach { invokeId =>
             framedMap.get(invokeId).foreach { ti =>
               ti.contextFrame match {
-                // Same predicate the live settle path uses: fold when the
-                // frame is still Active OR the result is still pending. A
-                // settled invoke whose result hasn't landed yet inlines a
-                // Complete placeholder frame with `resultPending`, so an
-                // Active-only test never matched and imported tool results
-                // never folded into their calls.
-                case Some(tc: ContextFrame.ToolCall) if tc.state == ToolCallState.Active || tc.resultPending =>
-                  val (content, images) = FrameBuilder.toolResultPayload(m)
-                  val updated = tc.copy(state = ToolCallState.Complete(content, images), resultPending = false)
-                  framedMap(invokeId) = ti.withContextFrame(Some(updated))
+                // The shared pairing rule ([[FrameBuilder.settlesPairedCall]]):
+                // fold when the parent frame is still Active or still carries
+                // the "result hasn't landed" placeholder. A parent already
+                // holding its own settled payload — every framework synthetic
+                // diagnostic — is left as-is.
+                case Some(tc: ContextFrame.ToolCall) if FrameBuilder.settlesPairedCall(tc) =>
+                  framedMap(invokeId) = ti.withContextFrame(Some(FrameBuilder.settledPairedFrame(tc, m)))
                 case _ =>
               }
             }
@@ -6998,13 +7033,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * periodic tick — anomaly- and first-plan-driven only. */
   protected def plannerCadence: Int = 24
 
-  /** What a model is behaviorally capable of. The framework's default
-    * treats every model as frontier-tier and comfortable across its
-    * whole window, so an app that doesn't override this sees no
-    * behavior change at all. Apps override to declare their weaker
-    * models — the checkpoint cadence, planner arming, discovery roster
-    * ceiling, and prompt verbosity all read the result. */
-  def modelProfileFor(model: Model): ModelProfile = ModelProfile.default(model)
+  /** What a model is behaviorally capable of. Defaults to
+    * [[ModelProfile.heuristic]] — an advertised parameter count or a
+    * known frontier family, nothing else; every unrecognized model
+    * keeps the frontier-tier default and behaves exactly as before.
+    * Apps that know their fleet override to declare it outright — the
+    * checkpoint cadence, planner arming, discovery roster ceiling,
+    * refusal verbosity, and prompt shape all read the result. */
+  def modelProfileFor(model: Model): ModelProfile = ModelProfile.heuristic(model)
 
   /** The profile for a model id, falling back to the frontier default
     * when the id isn't registered. */
@@ -7083,7 +7119,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * at a boundary the budget gate already claimed.
     *
     * Apps override to append their own guards, drop a built-in, or
-    * reorder. The iteration cap and the orchestrator's mid-stream
+    * reorder. Append (`super.turnGovernors :+ mine`) unless preemption
+    * is the intent: a governor placed BEFORE the built-ins claims
+    * boundaries ahead of every one of them, the hard spend ceiling
+    * included. The iteration cap and the orchestrator's mid-stream
     * intercepts are NOT governors — see [[TurnGovernor]] for why. */
   protected def turnGovernors: List[TurnGovernor] = List(budgetGovernor, progressGovernor)
 
@@ -8438,12 +8477,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     case other => other.toString
   }
 
+  /** Run the checkpoint for a boundary the caller has already decided is
+    * due. `modelProfile` and `plannerCadence` come from the
+    * [[sigil.governor.GovernorContext]] assembled once per boundary, so
+    * the per-model derivations are not repeated here. */
   private[sigil] final def runProgressCheckpoint(agent: AgentParticipant,
                                                  convId: Id[Conversation],
                                                  claimed: AgentState,
-                                                 iteration: Int): Task[Option[CheckpointIntervention]] = Task.defer {
-    if (effectiveProgressCheckpointInterval(agent.modelId) <= 0) Task.pure(None)
-    else if (plannerModelId.isDefined) runPlannerCheckpoint(agent, convId, claimed, iteration, plannerModelId.get)
+                                                 iteration: Int,
+                                                 modelProfile: ModelProfile,
+                                                 plannerCadence: Int): Task[Option[CheckpointIntervention]] = Task.defer {
+    if (plannerModelId.isDefined)
+      runPlannerCheckpoint(agent, convId, claimed, iteration, plannerModelId.get, modelProfile, plannerCadence)
     else {
       val state = checkpointStates.computeIfAbsent(claimed._id,
         _ => CheckpointState(lastStatus = None, noProgressStreak = 0))
@@ -8578,42 +8623,33 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               }
               val stuck = state.noProgressStreak >= consecutiveNoProgressLimit
               if (report.shouldAskUser || stuck || stall.detected) {
-                val reason =
+                val directive: Directive =
                   if (report.shouldAskUser)
-                    // Genuine ask-the-user terminal — this one IS meant to
-                    // reach the user (the caller rewrites the exact wording;
-                    // a first-person voice is correct here).
-                    s"I need clarification before I can continue. ${effectiveStuckOn.getOrElse("")}".trim
+                    // Genuine ask-the-user terminal — the agent asks the
+                    // human itself. In a directed worker the governor
+                    // substitutes the supervisor handoff.
+                    Directive.StallAskUser
                   else if (stall.detected)
                     // Stall-detector hit on the current checkpoint —
                     // intervene immediately rather than waiting for
                     // `consecutiveNoProgressLimit` streaks to stack.
-                    checkpointDirective(
+                    Directive.ProgressCheckpoint(
                       stall.reason.getOrElse(
                         "You have repeated the same kind of call without gaining new information."),
                       effectiveStuckOn)
                   else
-                    checkpointDirective(
+                    Directive.ProgressCheckpoint(
                       s"You have run $iteration iterations without meaningful progress since: " +
                         s"\"${priorStatus.getOrElse(report.currentStatus)}\".",
                       effectiveStuckOn)
                 // Bug #133 — distinguish "ask the user" (genuine
                 // terminal — needs human input) from "agent should
                 // act differently now" (directive — agent gets one
-                // more iteration). The caller in `runAgentLoop`
-                // routes each to the right shape. Constructing the
-                // Message with Standard role here is fine: the
-                // caller rewrites it to Tool-role + Agents
-                // visibility for the directive case.
+                // more iteration). The governor routes each to the
+                // right shape and publishes the typed directive on the
+                // internal Tool-role channel.
                 Task.pure(Some(CheckpointIntervention(
-                  message = Message(
-                    participantId  = agent.id,
-                    conversationId = convId,
-                    topicId        = topicId,
-                    content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
-                    state          = EventState.Complete,
-                    role           = MessageRole.Standard
-                  ),
+                  directive = directive,
                   askingUser = report.shouldAskUser,
                   // Sigil #385 — escalate to a TERMINAL forced synthesis once
                   // the no-progress streak has persisted past
@@ -8682,7 +8718,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                          convId: Id[Conversation],
                                          claimed: AgentState,
                                          iteration: Int,
-                                         plannerModel: Id[Model]): Task[Option[CheckpointIntervention]] = {
+                                         plannerModel: Id[Model],
+                                         modelProfile: ModelProfile,
+                                         plannerCadence: Int): Task[Option[CheckpointIntervention]] = {
     val state = checkpointStates.computeIfAbsent(claimed._id,
       _ => CheckpointState(lastStatus = None, noProgressStreak = 0))
     evaluateStall(convId, agent.id).flatMap { rawStall =>
@@ -8704,12 +8742,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           else None
         val anomalyReason = stallReason.orElse(churnReason)
         anomalyReason.foreach(_ => state.plannerAnomalyPending = true)
-        val cadence = effectivePlannerCadence(agent.modelId)
-        val cadenceDue = cadence > 0 && iteration - state.lastPlannerIteration >= cadence
+        val cadenceDue = plannerCadence > 0 && iteration - state.lastPlannerIteration >= plannerCadence
         // An executor declared as needing oversight treats every cadence
         // tick as armed: the review runs with full anomaly framing rather
         // than the sparse, anomaly-only path a frontier executor gets.
-        if (cadenceDue && modelProfileForId(agent.modelId).needsOversight)
+        if (cadenceDue && modelProfile.needsOversight)
           state.plannerAnomalyPending = true
         if (!state.plannerAnomalyPending && state.plan.isDefined && !cadenceDue) Task.pure(None)
         else withDB(_.conversations.transaction(_.get(convId))).flatMap {
@@ -8754,15 +8791,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                       state.lastStatus = Some(reason)
                       state.noProgressStreak = state.noProgressStreak + 1
                       Some(CheckpointIntervention(
-                        message = Message(
-                          participantId  = agent.id,
-                          conversationId = convId,
-                          topicId        = conv.currentTopicId,
-                          content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(
-                            checkpointDirective(reason, Some(reason)))),
-                          state          = EventState.Complete,
-                          role           = MessageRole.Standard
-                        ),
+                        directive  = Directive.ProgressCheckpoint(reason, Some(reason)),
                         askingUser = false,
                         terminal   = terminalOnPersistentNoProgress(state.noProgressStreak)
                       ))
@@ -9059,22 +9088,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         .identicalInputStreak(records, hardStallIdenticalCallLimit)
         .reason
     }.handleError(_ => Task.pure(None))
-
-  /** Frame a checkpoint DIRECTIVE (the non-ask-user nudge) as an
-    * explicitly internal, non-conversational instruction. The directive
-    * reaches the agent as a Tool-role message hidden from the user, but a
-    * reason worded as a first-person question ("How would you like me to
-    * proceed?") is read by an instruction-following model as the USER
-    * challenging it — so it posts a user-visible "You're right…"
-    * acknowledgment, a reply to a message the user never sent (and, across
-    * repeated checkpoints on a long turn, several such ghost-replies). The
-    * envelope states the situation as a fact, adds an explicit
-    * do-not-acknowledge instruction, and asks a question of nobody — so
-    * there is nothing for the model to answer in chat. The genuine
-    * ask-the-user checkpoint (`shouldAskUser`) keeps its first-person
-    * user-facing wording; only the directive path is reframed. */
-  private[sigil] def checkpointDirective(body: String, stuckOn: Option[String]): String =
-    Directive.ProgressCheckpoint(body, stuckOn).render
 
   private final def evaluateStall(convId: Id[Conversation],
                                   agentId: ParticipantId): Task[sigil.conversation.compression.StallDetector.Signal] =
@@ -9950,6 +9963,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     for {
       _ <- polymorphicRegistrations
       _ <- logger.info("Sigil initializing...")
+      // Fail startup on a section list the curator can't act on.
+      _ = ContextSections.shedCascade(contextSections)
       _ <- Task(Profig.initConfiguration())
       _ = instanceStarted.set(true)
       config = Profig("sigil").as[Config]

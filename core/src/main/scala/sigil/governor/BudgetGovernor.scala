@@ -19,15 +19,13 @@ final class BudgetGovernor(host: Sigil) extends TurnGovernor {
 
   override def evaluate(ctx: GovernorContext): Task[GovernorVote] =
     host.evaluateBudgetGate(ctx.conversation, ctx.claimed).map {
-      case Some(directive) if directive.hard =>
-        GovernorVote.Intervene(
-          host.publishInternalDirective(ctx.agent, ctx.conversation, directive.directive),
-          Some(ForcedSynthesisReason.BudgetCeiling)
-        )
       case Some(directive) =>
+        // Deferred: a vote the loop never executes (an earlier governor
+        // claimed the boundary) must not have built, timestamped, or
+        // allocated its publish.
         GovernorVote.Intervene(
-          host.publishInternalDirective(ctx.agent, ctx.conversation, directive.directive),
-          None
+          Task.defer(host.publishInternalDirective(ctx.agent, ctx.conversation, directive.directive)),
+          if (directive.hard) Some(ForcedSynthesisReason.BudgetCeiling) else None
         )
       case None => GovernorVote.Proceed
     }

@@ -78,16 +78,34 @@ class FrameRuleSetEquivalenceSpec extends AsyncWordSpec with AsyncTaskSpec with 
     origin = Some(directiveInvoke._id)
   ).copy(timestamp = at(6))
 
+  // The shape production actually persists for a synthetic diagnostic:
+  // `SyntheticDiagnostic.apply` stamps the reason onto the invoke's own
+  // outcome + summary, so the invoke is SETTLED (outcome = Failure)
+  // before its paired Tool-role Message arrives.
+  private val settledDirective: List[Event] =
+    sigil.orchestrator.SyntheticDiagnostic(
+      sigil.orchestrator.Directive.PlainTextReply("here is my answer in prose"),
+      TestAgent, convId, TestTopicId,
+      disposition = MessageDisposition.Failure(recoverable = true)
+    ).collect { case e: Event => e }
+
+  private val settledDirectiveInvoke: ToolInvoke =
+    settledDirective.collectFirst { case ti: ToolInvoke => ti }.get.copy(timestamp = at(8))
+
+  private val settledDirectiveResult: Message =
+    settledDirective.collectFirst { case m: Message => m }.get.copy(timestamp = at(9))
+
   private val agentReply = Message(
     participantId = TestAgent,
     conversationId = convId,
     topicId = TestTopicId,
     content = Vector(ResponseContent.Text("found it")),
     state = EventState.Complete
-  ).copy(timestamp = at(7))
+  ).copy(timestamp = at(10))
 
   private val sequence: List[Event] =
-    List(userMessage, imageMessage, invoke, toolResult, directiveInvoke, directiveResult, agentReply)
+    List(userMessage, imageMessage, invoke, toolResult, directiveInvoke, directiveResult,
+      settledDirectiveInvoke, settledDirectiveResult, agentReply)
 
   "The one event→frame rule set" should {
     "project the same frames through the live path and a from-scratch fold" in {
@@ -110,10 +128,45 @@ class FrameRuleSetEquivalenceSpec extends AsyncWordSpec with AsyncTaskSpec with 
     "fold a tool result into its parent call rather than appending a frame" in {
       val folded = FrameBuilder.build(sequence)
       val calls = folded.collect { case tc: ContextFrame.ToolCall => tc }
-      calls should have size 2
+      calls should have size 3
       calls.foreach(_.state shouldBe a[sigil.conversation.ToolCallState.Complete])
       folded.collect { case t: ContextFrame.Text => t.content } should not contain
         "[framework: orphan tool result for callId=" + invoke._id.value + "]"
+    }
+
+    "leave a SETTLED synthetic diagnostic's frame alone rather than orphaning its paired message" in {
+      // The invoke already carries the directive prose on its own
+      // outcome + summary. Its paired Tool-role Message must fold (or
+      // no-op) — never append a `[framework: orphan tool result …]`
+      // frame restating the same directive.
+      val folded = FrameBuilder.build(List(settledDirectiveInvoke, settledDirectiveResult))
+      folded should have size 1
+      val tc = folded.head.asInstanceOf[ContextFrame.ToolCall]
+      tc.callId shouldBe settledDirectiveInvoke._id
+      tc.state shouldBe a[sigil.conversation.ToolCallState.Complete]
+      folded.collect { case t: ContextFrame.Text => t.content } shouldBe empty
+    }
+
+    "produce no orphan-result frames anywhere in the sequence" in {
+      val folded = FrameBuilder.build(sequence)
+      folded.collect { case t: ContextFrame.Text => t.content }
+        .filter(_.contains("orphan tool result")) shouldBe empty
+    }
+
+    "still surface a GENUINE orphan — a result whose call has no frame at all" in {
+      val stray = Message(
+        participantId = TestAgent,
+        conversationId = convId,
+        topicId = TestTopicId,
+        role = MessageRole.Tool,
+        content = Vector(ResponseContent.Text("late result")),
+        state = EventState.Complete,
+        origin = Some(Id[Event]("never-invoked"))
+      )
+      val folded = FrameBuilder.build(List(stray))
+      folded should have size 1
+      folded.head.asInstanceOf[ContextFrame.Text].content should include ("orphan tool result")
+      folded.head.visibility shouldBe MessageVisibility.Agents
     }
 
     "degrade rather than throw on a Tool-role event with no origin" in {

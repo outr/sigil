@@ -239,7 +239,10 @@ object ProfilerHarness {
   // ---- profile + report ----
 
   def profile(request: sigil.provider.ConversationRequest, refs: ResolvedReferences = resolved()): RequestProfile =
-    RequestProfiler.profileWith(request, refs, tokenizer, _.description)
+    RequestProfiler.profileWith(
+      sigil.provider.SectionContext(request, refs, discoveredCapabilitiesPromptCap = 25),
+      tokenizer,
+      _.description)
 
   def writeReport(name: String, title: String, profiles: Seq[RequestProfile]): Unit = {
     // sbt's `benchmark/runMain` forks with cwd=benchmark/ — anchor to that.

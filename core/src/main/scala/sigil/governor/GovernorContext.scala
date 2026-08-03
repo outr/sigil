@@ -8,8 +8,9 @@ import sigil.provider.ModelProfile
 
 /** Everything a [[TurnGovernor]] reads at an agent-loop iteration
   * boundary. Assembled once per boundary by the loop and shared across
-  * every governor in the fold, so the profile lookups and cadence
-  * derivations happen once rather than per governor.
+  * every governor in the fold, so the profile lookup and the two cadence
+  * derivations happen once and are threaded from here into the work they
+  * gate rather than being recomputed downstream.
   *
   * @param agent              the agent whose turn is running
   * @param conversation       the conversation, reloaded this iteration

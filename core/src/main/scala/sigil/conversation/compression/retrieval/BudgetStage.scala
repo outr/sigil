@@ -18,7 +18,7 @@ import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
  *   2. count cap — `take(limit)`;
  *   3. optional token cap — walks the survivors best-first,
  *      estimating each record's rendered cost (`summary` falling back
- *      to `fact`, via [[TokenEstimator.estimateMemories]]) and keeps
+ *      to `fact`, via [[TokenEstimator.memoryTokens]]) and keeps
  *      the prefix that fits. Strictly a prefix: a memory that
  *      overflows the budget ends the walk rather than letting a
  *      lower-ranked cheaper record jump it. The top-ranked memory is
@@ -41,7 +41,7 @@ case class BudgetStage(limit: Int,
     var first = true
     ranked.foreach { m =>
       if (open) {
-        val cost = TokenEstimator.estimateMemories(Vector(m), tokenizer)
+        val cost = TokenEstimator.memoryTokens(m, tokenizer)
         if (first || used + cost <= budget) {
           kept += m
           used += cost

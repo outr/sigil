@@ -3,7 +3,7 @@ package sigil.tool
 import fabric.Json
 import fabric.define.Definition
 import fabric.io.{JsonFormatter, JsonParser}
-import sigil.provider.SchemaDialect
+import sigil.provider.{Reliability, SchemaDialect}
 
 /**
  * Builds enriched [[ToolResult.Failure]] payloads for refusal paths so the
@@ -69,8 +69,9 @@ object RefusalPayload {
                      rule: String,
                      hint: Option[String] = None,
                      sentArgs: Option[String] = None,
-                     dialect: SchemaDialect = SchemaDialect.Identity): ToolResult.Failure = {
-    val body = buildBody(rule, tool, hint, dialect)
+                     dialect: SchemaDialect = SchemaDialect.Identity,
+                     reliability: Reliability = Reliability.Wobbly): ToolResult.Failure = {
+    val body = buildBody(rule, tool, hint, dialect, reliability)
     ToolResult.Failure(message = body, hint = None, args = sentArgs)
   }
 
@@ -156,8 +157,10 @@ object RefusalPayload {
   def enrichRule(tool: Tool,
                  rule: String,
                  sentArgs: Option[String] = None,
-                 dialect: SchemaDialect = SchemaDialect.Identity): String =
-    buildBody(rule, tool, hint = None, dialect) + sentArgs.map(a => s"\n\nYou sent:\n$a").getOrElse("")
+                 dialect: SchemaDialect = SchemaDialect.Identity,
+                 reliability: Reliability = Reliability.Wobbly): String =
+    buildBody(rule, tool, hint = None, dialect, reliability) +
+      sentArgs.map(a => s"\n\nYou sent:\n$a").getOrElse("")
 
   /** Render the refusal for a call whose args failed to parse or decode
     * (the `WireCall.Malformed` shape). A pure materialise failure
@@ -170,7 +173,8 @@ object RefusalPayload {
                     name: String,
                     error: DecodeError,
                     rawArgs: Json,
-                    dialect: SchemaDialect = SchemaDialect.Identity): String = {
+                    dialect: SchemaDialect = SchemaDialect.Identity,
+                    reliability: Reliability = Reliability.Wobbly): String = {
     val argsText = rawArgs match {
       case fabric.Str(s, _) => s
       case other            => fabric.io.JsonFormatter.Compact(other)
@@ -185,16 +189,30 @@ object RefusalPayload {
       if (pureMaterialise) Some(s"$rawSnippet$truncated")
       else Some(renderSentArgs(argsText))
     tool match {
-      case Some(t) => enrichRule(t, rule, sentArgs, dialect)
+      case Some(t) => enrichRule(t, rule, sentArgs, dialect, reliability)
       case None    => rule + sentArgs.map(a => s"\n\nYou sent:\n$a").getOrElse("")
     }
   }
 
-  private def buildBody(rule: String, tool: Tool, hint: Option[String], dialect: SchemaDialect): String = {
+  /** The refusal body. A model whose tool calls are
+    * [[Reliability.Solid]] fumbled a constraint, not the call shape —
+    * it already has the schema in its roster, so re-printing the schema
+    * and a worked example spends tokens on hand-holding it doesn't
+    * need. Wobbly / Unreliable emitters get the full block pinned next
+    * to the rejection. */
+  private def buildBody(rule: String,
+                        tool: Tool,
+                        hint: Option[String],
+                        dialect: SchemaDialect,
+                        reliability: Reliability): String = {
     val hintBlock = hint.map(h => s"\n\n$h").getOrElse("")
-    s"$rule$hintBlock\n\n" +
-      s"Schema for `${tool.name.value}`:\n${schemaJson(tool, dialect)}\n\n" +
-      s"Example call for `${tool.name.value}`:\n${exampleJson(tool)}"
+    reliability match {
+      case Reliability.Solid => s"$rule$hintBlock"
+      case _ =>
+        s"$rule$hintBlock\n\n" +
+          s"Schema for `${tool.name.value}`:\n${schemaJson(tool, dialect)}\n\n" +
+          s"Example call for `${tool.name.value}`:\n${exampleJson(tool)}"
+    }
   }
 
   /** Convenience for tools whose refusal needs to mention the raw args

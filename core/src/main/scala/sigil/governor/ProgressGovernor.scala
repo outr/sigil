@@ -1,10 +1,7 @@
 package sigil.governor
 
 import rapid.Task
-import sigil.event.{Message, MessageRole, MessageVisibility}
-import sigil.orchestrator.{Directive, SyntheticDiagnostic}
-import sigil.signal.EventState
-import sigil.tool.model.ResponseContent
+import sigil.orchestrator.Directive
 import sigil.{ForcedSynthesisReason, Sigil}
 
 /** Progress guard — the checkpoint / planner reflection plus the
@@ -47,44 +44,27 @@ final class ProgressGovernor(host: Sigil) extends TurnGovernor {
     // checkpoint and letting a grinding worker flail to the cap.
     val checkpointTask: Task[Option[CheckpointIntervention]] =
       if (ctx.checkpointInterval > 0 && ctx.nextIteration % ctx.checkpointInterval == 0)
-        host.runProgressCheckpoint(agent, convId, ctx.claimed, ctx.nextIteration)
+        host.runProgressCheckpoint(agent, convId, ctx.claimed, ctx.nextIteration,
+          ctx.modelProfile, ctx.plannerCadence)
       else
         host.evaluateHardStall(convId, agent.id).map(_.map(reason =>
           CheckpointIntervention(
-            message = Message(
-              participantId  = agent.id,
-              conversationId = convId,
-              topicId        = conv.currentTopicId,
-              content        = Vector(ResponseContent.Text(host.checkpointDirective(reason, None))),
-              state          = EventState.Complete,
-              role           = MessageRole.Standard
-            ),
+            directive  = Directive.ProgressCheckpoint(reason, None),
             askingUser = false,
             terminal   = true
           )))
     checkpointTask.map {
       case Some(intervention) =>
-        val stallDirective: Directive =
+        // The ask-the-user escalation misfires in a directed worker —
+        // its supervisor owns the human — so it is redirected there.
+        // Every other shape publishes the directive the checkpoint
+        // built, so the persisted payload and the prose match.
+        val directive: Directive =
           if (intervention.askingUser && host.isDirectedWorkerConversation(conv))
             Directive.StallAskSupervisor
-          else if (intervention.askingUser)
-            Directive.StallAskUser
-          else Directive.ProgressCheckpoint(body = "", stuckOn = None)
-        val syntheticInvoke = SyntheticDiagnostic
-          .invoke(stallDirective, agent.id, convId, conv.currentTopicId)
-        // The non-asking case adopts the intervention's own
-        // already-rendered body so its identity survives.
-        val directiveContent =
-          if (intervention.askingUser) Vector(ResponseContent.Text(stallDirective.render))
-          else intervention.message.content
-        val taggedDirective = intervention.message.copy(
-          role       = MessageRole.Tool,
-          visibility = MessageVisibility.Agents,
-          origin     = Some(syntheticInvoke._id),
-          content    = directiveContent
-        )
+          else intervention.directive
         GovernorVote.Intervene(
-          host.publish(syntheticInvoke).flatMap(_ => host.publish(taggedDirective)).unit,
+          Task.defer(host.publishInternalDirective(agent, conv, directive)),
           if (intervention.terminal || host.isDirectedWorkerConversation(conv))
             Some(ForcedSynthesisReason.StallIntervention)
           else None

@@ -49,7 +49,10 @@ enum ProfileSection derives RW {
 }
 
 /** Per-frame token contribution. `kind` is one of `Text`, `ToolCall`,
-  * `ToolResult`, `System`, `Reasoning` so reports can group by event type. */
+  * `System`, `Reasoning` — the [[sigil.conversation.ContextFrame]]
+  * variants — so reports can group by frame type. A settled tool
+  * transaction is ONE `ToolCall` entry carrying both its args and its
+  * result content. */
 case class FrameProfile(kind: String,
                         sourceEventId: Id[Event],
                         tokens: Int) derives RW

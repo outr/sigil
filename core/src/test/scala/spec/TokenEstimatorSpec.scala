@@ -7,6 +7,7 @@ import sigil.GlobalSpace
 import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, MemorySource, ToolCallState}
 import sigil.conversation.compression.TokenEstimator
 import sigil.event.Event
+import sigil.provider.ContextSections
 import sigil.tokenize.{HeuristicTokenizer, JtokkitTokenizer}
 import sigil.tool.ToolName
 
@@ -56,17 +57,54 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
       val withTokens = TokenEstimator.estimateMemories(Vector(withSummary), HeuristicTokenizer)
       val withoutTokens = TokenEstimator.estimateMemories(Vector(withoutSummary), HeuristicTokenizer)
       withTokens should be < withoutTokens
-      withTokens shouldBe 11
-      withoutTokens shouldBe 114
+      // The estimate counts what renders: the section heading plus each
+      // memory's bullet line — not the bare summary string.
+      withTokens shouldBe (HeuristicTokenizer.count(ContextSections.MemoriesHeader) +
+        HeuristicTokenizer.count(ContextSections.memoryLine(withSummary)))
+      withTokens should be > HeuristicTokenizer.count(withSummary.summary)
+    }
+
+    "charge nothing for an empty section" in {
+      TokenEstimator.estimateMemories(Vector.empty, HeuristicTokenizer) shouldBe 0
+    }
+
+    "count the drill-down handle the renderer attaches" in {
+      val elided = ContextMemory(
+        fact = "x" * 400,
+        label = "Test directive",
+        summary = "y" * 40,
+        key = Some("pinned-key"),
+        source = MemorySource.Explicit, pinned = true,
+        spaceId = GlobalSpace
+      )
+      val handleless = elided.copy(key = None)
+      TokenEstimator.estimateMemories(Vector(elided), HeuristicTokenizer) should be >
+        TokenEstimator.estimateMemories(Vector(handleless), HeuristicTokenizer)
     }
   }
 
   "estimateSummaries" should {
-    "sum text across summaries" in {
+    "count each summary's rendered line plus the section's own framing" in {
       val s1 = ContextSummary(text = "abcd" * 10, conversationId = Id("conv"), tokenEstimate = 0)
       val s2 = ContextSummary(text = "efgh" * 10, conversationId = Id("conv"), tokenEstimate = 0)
       val total = TokenEstimator.estimateSummaries(Vector(s1, s2), HeuristicTokenizer)
-      total shouldBe 22  // (40 + 40) * 2 / 7 = 22
+      val bareText = HeuristicTokenizer.count(s1.text) + HeuristicTokenizer.count(s2.text)
+      total should be > bareText
+      total shouldBe (HeuristicTokenizer.count(ContextSections.SummariesHeader) +
+        HeuristicTokenizer.count(ContextSections.SummariesFooter) +
+        HeuristicTokenizer.count(ContextSections.summaryLine(s1)) +
+        HeuristicTokenizer.count(ContextSections.summaryLine(s2)))
+    }
+
+    "count the reload_content handle a covering summary renders" in {
+      val bare = ContextSummary(text = "abcd" * 10, conversationId = Id("conv"), tokenEstimate = 0)
+      val covering = bare.copy(coversEventIds = List(Id[Event]("e1"), Id[Event]("e2")))
+      TokenEstimator.estimateSummaries(Vector(covering), HeuristicTokenizer) should be >
+        TokenEstimator.estimateSummaries(Vector(bare), HeuristicTokenizer)
+    }
+
+    "charge nothing for an empty section" in {
+      TokenEstimator.estimateSummaries(Vector.empty, HeuristicTokenizer) shouldBe 0
     }
   }
 

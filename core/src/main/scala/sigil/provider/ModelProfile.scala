@@ -38,4 +38,43 @@ object ModelProfile {
     needsOversight = false,
     promptShape = PromptShape.Full
   )
+
+  /** Parameter count in billions as advertised in a model id or name —
+    * `llama3.2:3b`, `qwen3.5-9b-q4_k_m`, `mixtral-8x7b`. The largest
+    * match wins, so a quantization suffix or a mixture-of-experts
+    * multiplier can't read as the model's size. */
+  private val SizePattern = """(\d+(?:\.\d+)?)\s*[bB]\b""".r
+
+  /** Families whose weakest member still follows multi-step instructions
+    * and emits well-formed tool calls. */
+  private val FrontierPattern =
+    """(?i)(claude|gpt-4|gpt-5|\bo[13]\b|gemini-[^\s]*(pro|ultra)|grok)""".r
+
+  /** Infer a profile from the model's id and name.
+    *
+    * Deliberately conservative: only the two signals that are reliable
+    * from a bare identifier are used — an advertised parameter count
+    * (small models get tighter oversight and a compact prompt) and
+    * membership in a known frontier family. Anything unrecognized gets
+    * [[default]], so a model the framework has never heard of behaves
+    * exactly as it did before. Apps that know their fleet override
+    * [[sigil.Sigil.modelProfileFor]] and skip the guessing entirely.
+    */
+  def heuristic(model: Model): ModelProfile = {
+    val text = s"${model._id.value} ${model.name}"
+    val declaredSize = SizePattern.findAllMatchIn(text).flatMap(m => m.group(1).toDoubleOption).maxOption
+    declaredSize match {
+      case Some(b) if b < 4 =>
+        ModelProfile(InstructionTier.Minimal, Reliability.Wobbly, model.contextLength.toInt,
+          needsOversight = true, promptShape = PromptShape.Compact)
+      case Some(b) if b < 15 =>
+        ModelProfile(InstructionTier.Small, Reliability.Wobbly, model.contextLength.toInt,
+          needsOversight = false, promptShape = PromptShape.Compact)
+      case _ =>
+        if (FrontierPattern.findFirstIn(text).isDefined)
+          ModelProfile(InstructionTier.Frontier, Reliability.Solid, model.contextLength.toInt,
+            needsOversight = false, promptShape = PromptShape.Full)
+        else default(model)
+    }
+  }
 }

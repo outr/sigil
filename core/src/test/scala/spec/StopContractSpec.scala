@@ -147,8 +147,10 @@ class StopContractSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         // A framework-style Tool-role diagnostic — the exact shape the
         // challenge / auto-continue machinery uses to re-trigger an agent.
         _ <- Task.sequence(SyntheticDiagnostic(
-               "_stall_detected", TestAgent, convId, TestTopicEntry.id,
-               reason = "queued re-trigger from before the stop"
+               sigil.orchestrator.Directive.ProgressCheckpoint(
+                 "queued re-trigger from before the stop", None),
+               TestAgent, convId, TestTopicEntry.id,
+               disposition = sigil.event.MessageDisposition.Success
              ).collect { case e: sigil.event.Event => TestSigil.publish(e) })
         _ <- Task.sleep(300.millis)
         suppressedCalls = provider.calls.get()

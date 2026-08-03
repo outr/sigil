@@ -111,11 +111,11 @@ case object RespondTool extends RespondFamilyTool {
         // iteration sees what went wrong and can retry with proper
         // JSON.
         val pair = sigil.orchestrator.SyntheticDiagnostic(
-          name = XmlToolCallSanitizer.SyntheticInvokeName,
+          directive = sigil.orchestrator.Directive.XmlToolCallLeak(firstExcerpt),
           caller = context.caller,
           convId = context.conversation.id,
           topicId = context.conversation.currentTopicId,
-          reason = XmlToolCallSanitizer.interventionDirective(firstExcerpt)
+          disposition = MessageDisposition.Success
         )
         val emit = pair.foldLeft(rapid.Task.unit) { (acc, signal) =>
           acc.flatMap(_ =>

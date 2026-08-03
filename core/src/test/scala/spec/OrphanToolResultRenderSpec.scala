@@ -3,26 +3,25 @@ package spec
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.conversation.{ContextFrame, ToolCallState}
-import sigil.event.Event
+import sigil.conversation.{Conversation, ContextFrame, FrameBuilder, ToolCallState}
+import sigil.event.{Event, Message, MessageRole, ToolInvoke}
 import sigil.provider.{Provider, ProviderMessage}
+import sigil.signal.EventState
 import sigil.tool.ToolName
+import sigil.tool.model.ResponseContent
 
 /**
- * Regression for sigil bug #174 — the wire-side `renderFrames` guard
- * against orphan `ContextFrame.ToolResult` entries whose matching
- * `ContextFrame.ToolCall` isn't in the current request's frames.
+ * Regression for sigil bug #174 — an orphan tool result (a Tool-role
+ * event whose parent call is not in the current request's frames) must
+ * never reach the wire as a `ProviderMessage.ToolResult`. When it did,
+ * OpenAI / DeepInfra / etc. 400'd the request with "No tool call found
+ * for function call output with call_id ...".
  *
- * Without the guard, the renderer emitted a `ProviderMessage.ToolResult`
- * with the framework call_id (no `wireCallIdByEvent` entry to map
- * through), and OpenAI / DeepInfra / etc. 400'd the request with "No
- * tool call found for function call output with call_id ...". The
- * widge-server consumer hit this on every second user turn.
- *
- * Fix (defensive): when `wireCallIdByEvent` lacks an entry for the
- * orphan's callId, drop the frame and log a warning. Keeps the wire
- * request well-formed regardless of why the ToolCall was dropped
- * upstream.
+ * Driven end-to-end through the real projection: events go through
+ * `FrameBuilder`, the resulting frames through `Provider.renderFrames`.
+ * A genuine orphan degrades to an agents-only Text frame and emits no
+ * wire result; a settled synthetic diagnostic's paired message is NOT
+ * an orphan and must not produce the fallback at all.
  */
 class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
 
@@ -45,31 +44,53 @@ class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
 
   TestSigil.initFor(getClass.getSimpleName)
 
+  private val convId = Conversation.id("orphan-render-conv")
+
   "Bug #174 — orphan ToolResult guard" should {
 
     "drop a ToolResult whose matching ToolCall isn't in the request" in {
-      // TODO(#261): semantics changed, review — orphan ToolResult can
-      // no longer reach the renderer; FrameBuilder collapses it into a
-      // synthetic Text fallback before the renderer ever sees it. The
-      // wire-side orphan guard is therefore unreachable under the
-      // unified ToolCall(state) model. Keep the spec compiling by
-      // exercising the equivalent shape: a Text fallback frame between
-      // user and agent texts.
+      // Build the frames the REAL projection produces for an orphan
+      // result — a Tool-role Message whose `origin` names a call with
+      // no frame in this request (the ToolInvoke was shed, or the
+      // result is being replayed against a trimmed history).
       val orphanCallId = Id[Event]("orphan-call-id")
-      val frames = Vector[ContextFrame](
-        ContextFrame.Text(content = "hi", participantId = TestUser, sourceEventId = Id[Event]("user")),
-        ContextFrame.Text(
-          content       = s"[framework: orphan tool result for callId=${orphanCallId.value} — content: {\"hits\":[]}]",
-          participantId = TestAgent,
-          sourceEventId = Id[Event]("tr-event")
-        ),
-        ContextFrame.Text(content = "ok", participantId = TestAgent, sourceEventId = Id[Event]("agent"))
+      val events = List[Event](
+        userText("hi"),
+        toolResultMessage(orphanCallId, """{"hits":[]}"""),
+        agentText("ok")
       )
+      val frames = FrameBuilder.build(events)
+      // FrameBuilder degrades the orphan to an agents-only Text frame.
+      val fallback = frames.collect { case t: ContextFrame.Text => t }
+        .filter(_.content.contains("orphan tool result"))
+      fallback should have size 1
+      fallback.head.content should include (orphanCallId.value)
       val rendered = Probe.renderFor(frames, TestAgent)
-      // No ToolResult was ever in the vector — none on the wire either.
+      // Nothing pairs on the wire, so no ToolResult message is emitted —
+      // the shape that used to 400 the request never reaches the API.
       rendered.collect { case t: ProviderMessage.ToolResult => t } shouldBe empty
-      // Text frames render normally.
       rendered.collect { case u: ProviderMessage.User => u } should have size 1
+    }
+
+    "NOT emit an orphan fallback for a settled synthetic diagnostic's paired result" in {
+      // The framework's own diagnostics settle their invoke before the
+      // paired Tool-role Message lands. That message must fold (or
+      // no-op) — a fallback frame here duplicates the directive prose
+      // into the agent's context on every subsequent turn.
+      val events = sigil.orchestrator.SyntheticDiagnostic(
+        sigil.orchestrator.Directive.RefusalChallenge,
+        TestAgent, convId, TestTopicId,
+        disposition = sigil.event.MessageDisposition.Failure(recoverable = true)
+      ).collect { case e: Event => e }
+      val frames = FrameBuilder.build(events)
+      frames.collect { case t: ContextFrame.Text => t.content }
+        .filter(_.contains("orphan tool result")) shouldBe empty
+      // One internal ToolCall frame, rendered as the out-of-band System
+      // note the framework uses for its own directives.
+      frames.collect { case tc: ContextFrame.ToolCall => tc } should have size 1
+      val systems = Probe.renderFor(frames, TestAgent).collect { case s: ProviderMessage.System => s }
+      systems should have size 1
+      systems.head.content should include ("find_capability")
     }
 
     "pair correctly when the ToolCall IS in the request" in {
@@ -94,34 +115,52 @@ class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
     }
 
     "drop the orphan even when the request also has a valid pair (mixed scenario)" in {
-      // TODO(#261): semantics changed, review — see the orphan-only
-      // case above. Orphans never reach the renderer; we simulate the
-      // FrameBuilder fallback (a Text frame) and keep the paired
-      // ToolCall(state = Complete) frame as the only thing the
-      // renderer is asked to produce a ToolResult message from.
       val orphanId = Id[Event]("orphan")
-      val pairedId = Id[Event]("paired")
-      val frames = Vector[ContextFrame](
-        ContextFrame.Text(content = "hi", participantId = TestUser, sourceEventId = Id[Event]("user")),
-        ContextFrame.Text(
-          content       = s"[framework: orphan tool result for callId=${orphanId.value} — content: orphan content]",
-          participantId = TestAgent,
-          sourceEventId = Id[Event]("tr-orphan")
-        ),
-        ContextFrame.ToolCall(
-          toolName = ToolName("vector_lookup"),
-          argsJson = "{}",
-          callId = pairedId,
-          participantId = TestAgent,
-          sourceEventId = Id[Event]("tc-paired"),
-          state = ToolCallState.Complete("paired content")
-        )
+      val invoke = ToolInvoke(
+        toolName       = ToolName("vector_lookup"),
+        participantId  = TestAgent,
+        conversationId = convId,
+        topicId        = TestTopicId,
+        state          = EventState.Complete
       )
+      val events = List[Event](
+        userText("hi"),
+        toolResultMessage(orphanId, "orphan content"),
+        invoke,
+        toolResultMessage(invoke._id, "paired content")
+      )
+      val frames = FrameBuilder.build(events)
       val rendered = Probe.renderFor(frames, TestAgent)
       val tr = rendered.collect { case t: ProviderMessage.ToolResult => t }
-      // Only the paired ToolResult survives.
+      // Only the genuinely-paired call produces a wire result.
       tr should have size 1
       tr.head.content shouldBe "paired content"
     }
   }
+
+  private def userText(text: String): Message = Message(
+    participantId  = TestUser,
+    conversationId = convId,
+    topicId        = TestTopicId,
+    content        = Vector(ResponseContent.Text(text)),
+    state          = EventState.Complete
+  )
+
+  private def agentText(text: String): Message = Message(
+    participantId  = TestAgent,
+    conversationId = convId,
+    topicId        = TestTopicId,
+    content        = Vector(ResponseContent.Text(text)),
+    state          = EventState.Complete
+  )
+
+  private def toolResultMessage(origin: Id[Event], text: String): Message = Message(
+    participantId  = TestAgent,
+    conversationId = convId,
+    topicId        = TestTopicId,
+    role           = MessageRole.Tool,
+    content        = Vector(ResponseContent.Text(text)),
+    state          = EventState.Complete,
+    origin         = Some(origin)
+  )
 }

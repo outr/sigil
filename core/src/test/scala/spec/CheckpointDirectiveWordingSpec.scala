@@ -157,10 +157,14 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
   private def textOf(m: Message): String =
     m.content.collect { case t: ResponseContent.Text => t.text }.mkString
 
+  /** One run, shared by both assertions — the scenario drives a real
+    * agent loop and is the expensive part of this spec. */
+  private lazy val signalsOnce: List[Signal] = runScenario().sync()
+
   "A checkpoint directive nudge (sigil #412 re-file)" should {
 
     "be framework-voiced and non-conversational — no first-person question, explicit do-not-acknowledge" in {
-      runScenario().map { signals =>
+      Task(signalsOnce).map { signals =>
         // The directive reaches the agent as a Tool-role, Agents-visibility
         // message hidden from the user.
         val directives = signals.collect {
@@ -176,6 +180,37 @@ class CheckpointDirectiveWordingSpec extends AsyncWordSpec with AsyncTaskSpec wi
             text should include("Do not apologize")
             // (b) no first-person question for the model to "answer"
             text should not include "How would you like me to proceed?"
+          }
+          succeed
+        }
+      }
+    }
+
+    "persist the typed directive that produced the prose the agent reads" in {
+      Task(signalsOnce).map { signals =>
+        val invokesById = signals.collect {
+          case ti: sigil.event.ToolInvoke if ti.internal => ti._id -> ti
+        }.toMap
+        val pairs = signals.collect {
+          case m: Message if m.role == MessageRole.Tool && m.visibility == MessageVisibility.Agents =>
+            m.origin.flatMap(invokesById.get).map(_ -> m)
+        }.flatten
+        val checkpoints = pairs.collect {
+          case (ti, m) if ti.toolName.value == sigil.orchestrator.Directive.StallDetectedName =>
+            (ti.input.collect { case d: sigil.tool.DirectiveInput => d.directive }, textOf(m))
+        }
+        withClue(s"checkpoint pairs=${checkpoints.size}: ") {
+          checkpoints should not be empty
+          checkpoints.foreach { case (directiveOpt, prose) =>
+            val directive = directiveOpt.getOrElse(fail("synthetic invoke carried no DirectiveInput"))
+            // The persisted payload IS the prose's source — not an
+            // empty-bodied placeholder alongside real text.
+            directive.render shouldBe prose
+            directive match {
+              case cp: sigil.orchestrator.Directive.ProgressCheckpoint =>
+                cp.body.trim should not be empty
+              case other => fail(s"expected a ProgressCheckpoint payload, got $other")
+            }
           }
           succeed
         }

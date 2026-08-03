@@ -1,6 +1,7 @@
 package sigil.provider
 
-import sigil.conversation.ContextMemory
+import sigil.conversation.{ContextMemory, ContextSummary, TurnInput}
+import sigil.conversation.compression.StandardContextCurator
 import sigil.diagnostics.ProfileSection
 
 /**
@@ -10,7 +11,7 @@ import sigil.diagnostics.ProfileSection
  * curator's section-shed cascade, and `context_breakdown` are all
  * consumers of this one list — the layout cannot drift between them.
  * Apps reorder, drop, or add sections by overriding
- * `Provider.contextSections`.
+ * [[sigil.Sigil.contextSections]], which every consumer reads.
  *
  * Order is the emission order: stable-prefix sections first, then the
  * volatile tail. Rendering concatenates each section's output for the
@@ -36,11 +37,33 @@ object ContextSections {
       m.summary + handle
     }
 
+  /** One memory's rendered line, bullet and newline included. */
+  def memoryLine(m: ContextMemory): String = s"- ${memoryRenderText(m)}\n"
+
+  /** One summary's rendered line: its text plus, when it covers events,
+    * the inline `reload_content` drill-down handle. */
+  def summaryLine(s: ContextSummary): String = {
+    val handle =
+      if (s.coversEventIds.nonEmpty)
+        s""" [summarizes ${s.coversEventIds.size} earlier events — """ +
+          s"""reload_content("${s._id.value}") to browse them and reload any in full]"""
+      else ""
+    s.text + handle + "\n"
+  }
+
+  val CriticalMemoriesHeader: String = "\n== Pinned directives ==\n"
+  val MemoriesHeader: String = "\n== Memories ==\n"
+  val SummariesHeader: String = "\n== Earlier in this conversation (summarized) ==\n"
+  val SummariesFooter: String =
+    "\nWhen an entry shows `reload_content(\"<id>\")`, call it to reload the full content " +
+      "it elided (an event id → that event; a summary id → the events it covers).\n"
+
   private def section(id: ProfileSection,
                       placement: Placement,
-                      shedStage: Option[Int] = None)
+                      shedStage: Option[Int] = None,
+                      shed: Option[TurnInput => TurnInput] = None)
                      (render: SectionContext => Option[String]): ContextSection =
-    ContextSection(id, placement, shedStage, render)
+    ContextSection(id, placement, shedStage, render, shed)
 
   private def nonEmpty(s: String): Option[String] = if (s.isEmpty) None else Some(s)
 
@@ -76,7 +99,7 @@ object ContextSections {
     section(ProfileSection.PreviousTopics, Placement.StablePrefix) { c =>
       if (c.request.previousTopics.isEmpty) None
       else Some("Previous topics in this conversation:\n" +
-        c.request.previousTopics.map(t => s"  - \"${t.label}\" — ${t.summary}\n").mkString)
+        c.capped(c.request.previousTopics.toList).map(t => s"  - \"${t.label}\" — ${t.summary}\n").mkString)
     }
 
   /** The discovery block teaches discovery-first behaviour generically —
@@ -117,12 +140,19 @@ object ContextSections {
   private val criticalMemories: ContextSection =
     section(ProfileSection.CriticalMemories, Placement.StablePrefix) { c =>
       if (c.resolved.criticalMemories.isEmpty) None
-      else Some("\n== Pinned directives ==\n" +
-        c.resolved.criticalMemories.map(m => s"- ${memoryRenderText(m)}\n").mkString)
+      else Some(CriticalMemoriesHeader + c.resolved.criticalMemories.map(memoryLine).mkString)
     }
 
+  /** Drops the Information entries the turn's frames never reference —
+    * a catalog line nothing points at is pure overhead. */
+  private val shedUnreferencedInformation: TurnInput => TurnInput = t => {
+    val referenced = StandardContextCurator.referencedInformationIds(t.frames)
+    t.copy(information = t.information.filter(i => referenced.contains(i.id.value)))
+  }
+
   private val information: ContextSection =
-    section(ProfileSection.Information, Placement.StablePrefix, shedStage = Some(2)) { c =>
+    section(ProfileSection.Information, Placement.StablePrefix, shedStage = Some(2),
+      shed = Some(shedUnreferencedInformation)) { c =>
       if (c.turn.information.isEmpty) None
       else Some("\n== Referenced content (look up by id) ==\n" +
         c.turn.information.map(i => s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n").mkString)
@@ -135,27 +165,20 @@ object ContextSections {
     * message history they invalidated the whole prompt cache on every
     * update. In the tail, an update invalidates nothing ahead of it. */
   private val summaries: ContextSection =
-    section(ProfileSection.Summaries, Placement.VolatileTail, shedStage = Some(3)) { c =>
+    section(ProfileSection.Summaries, Placement.VolatileTail, shedStage = Some(3),
+      shed = Some(t => t.copy(summaries = Vector.empty))) { c =>
       if (c.resolved.summaries.isEmpty) None
-      else {
-        val body = c.resolved.summaries.map { s =>
-          val handle =
-            if (s.coversEventIds.nonEmpty)
-              s""" [summarizes ${s.coversEventIds.size} earlier events — """ +
-                s"""reload_content("${s._id.value}") to browse them and reload any in full]"""
-            else ""
-          s.text + handle + "\n"
-        }.mkString
-        Some("\n== Earlier in this conversation (summarized) ==\n" + body +
-          "\nWhen an entry shows `reload_content(\"<id>\")`, call it to reload the full content " +
-          "it elided (an event id → that event; a summary id → the events it covers).\n")
-      }
+      else Some(SummariesHeader +
+        c.capped(c.resolved.summaries.toList, c.promptShape.summaryCap).map(summaryLine).mkString +
+        SummariesFooter)
     }
 
   private val memories: ContextSection =
-    section(ProfileSection.Memories, Placement.VolatileTail, shedStage = Some(1)) { c =>
+    section(ProfileSection.Memories, Placement.VolatileTail, shedStage = Some(1),
+      shed = Some(t => t.copy(memories = Vector.empty))) { c =>
       if (c.resolved.memories.isEmpty) None
-      else Some("\n== Memories ==\n" + c.resolved.memories.map(m => s"- ${memoryRenderText(m)}\n").mkString)
+      else Some(MemoriesHeader +
+        c.capped(c.resolved.memories.toList, c.promptShape.memoryCap).map(memoryLine).mkString)
     }
 
   /** Agency must be unambiguous: this digest is a memory aid about the
@@ -283,4 +306,22 @@ object ContextSections {
   /** Concatenate every section rendering for one placement. */
   def render(sections: List[ContextSection], placement: Placement, c: SectionContext): String =
     sections.iterator.filter(_.placement == placement).flatMap(_.render(c)).mkString
+
+  /** The curator's section-shed cascade for a section list: every
+    * section declaring a `shedStage`, ordered by it.
+    *
+    * Throws when a section declares a stage without a `shed` effect —
+    * a stage the cascade would run as a no-op, quietly weakening the
+    * budget guard. The framework calls this at boot against
+    * [[sigil.Sigil.contextSections]] so an app's mistake surfaces at
+    * startup rather than under budget pressure. */
+  def shedCascade(sections: List[ContextSection]): List[ContextSection] = {
+    val staged = sections.filter(_.shedStage.nonEmpty)
+    staged.find(_.shed.isEmpty).foreach { s =>
+      throw new IllegalArgumentException(
+        s"ContextSection ${s.id} declares shedStage=${s.shedStage.get} but carries no `shed` effect — " +
+          "a shed stage the curator cannot apply is a silent no-op. Provide `shed`, or drop `shedStage`.")
+    }
+    staged.sortBy(_.shedStage.get)
+  }
 }

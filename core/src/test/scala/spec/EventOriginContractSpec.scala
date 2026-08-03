@@ -108,15 +108,13 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
   // ---- multi-event tool emit: all share one origin ----
 
   "Multiple Tool-role events sharing one origin (bug #69 structural fix)" should {
-    "fold the first matching result into ToolCall.state; later same-origin events surface as orphans" in {
-      // TODO(#261): semantics changed, review — under the unified
-      // ToolCall(state) model, only the first Tool-role event with a
-      // matching origin folds the parent ToolCall into Complete. The
-      // matching ToolCall is no longer Active after the first fold, so
-      // subsequent same-origin events go through the orphan fallback
-      // and become synthetic Text frames. The wire-level merging that
-      // used to happen across N ToolResult frames is now a non-issue
-      // because there is at most one result per call.
+    "fold the first matching result into ToolCall.state; later same-origin events are no-ops" in {
+      // Under the unified ToolCall(state) model there is at most one
+      // result per call: the first Tool-role event settles the parent
+      // frame, and later same-origin events find it settled and change
+      // nothing. This is exactly what the live settle path does against
+      // the persisted invoke — a divergence here would mean a rebuilt
+      // conversation carried frames production never had.
       val invoke = activeInvoke("multi_emit")
       val ack          = toolMessage("step 1: ack",          origin = Some(invoke._id))
       val suggestion   = toolMessage("step 2: schema",       origin = Some(invoke._id))
@@ -125,14 +123,12 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
         Vector[ContextFrame](activeFrameFor(invoke))
       )(FrameBuilder.appendFor)
 
-      // 1 Complete ToolCall + 2 orphan Text fallbacks.
       val toolCalls = frames.collect { case tc: ContextFrame.ToolCall => tc }
       toolCalls should have size 1
       toolCalls.head.callId shouldBe invoke._id
       toolCalls.head.state shouldBe ToolCallState.Complete("step 1: ack")
-      val textOrphans = frames.collect { case t: ContextFrame.Text => t }
-      textOrphans should have size 2
-      textOrphans.foreach(_.content should include (invoke._id.value))
+      // No orphan fallbacks — the parent frame exists, so nothing is orphaned.
+      frames.collect { case t: ContextFrame.Text => t } shouldBe empty
     }
 
     "interleaved frames with non-matching callId stay separate" in {
@@ -316,34 +312,32 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
 
   "Provider.renderFrames renders ToolCall(Complete) as one function_call_output (bug #69)" should {
     "produce a single ProviderMessage.ToolResult carrying the Complete state's content" in {
-      // TODO(#261): semantics changed, review — under the unified
-      // ToolCall(state) model the framework no longer needs to merge
-      // multiple ToolResult frames; only the first Tool-role event
-      // folds into the parent ToolCall's state and the rest become
-      // orphan Text fallbacks. The wire still stays 1:1 by
-      // construction (one ToolCall ⇒ one function_call_output), so
-      // the rest of this spec exercises the steady-state shape only.
+      // Driven from events through the real projection: a settled
+      // invoke plus THREE Tool-role events sharing its origin. The
+      // projection collapses them into one ToolCall frame, so the wire
+      // carries exactly one `function_call_output` — the shape
+      // Anthropic and OpenAI both require.
       import sigil.conversation.{ConversationView, TurnInput}
       import sigil.db.Model
       import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions, ProviderRequest}
       import sigil.provider.openai.OpenAIProvider
       import sigil.tool.core.CoreTools
 
-      val invokeId: Id[Event] = Id("merge-test-invoke")
       val toolName = ToolName("multi_emit_test_tool")
-      val frames: Vector[ContextFrame] = Vector(
-        // A single ToolCall in Complete state — the only frame the
-        // framework produces for a settled tool call under the new
-        // unified model.
-        ContextFrame.ToolCall(
-          toolName = toolName,
-          argsJson = "{}",
-          callId = invokeId,
-          participantId = TestAgent,
-          sourceEventId = invokeId,
-          state = ToolCallState.Complete("PRIMARY_RESULT_MARKER")
-        )
+      val invoke = ToolInvoke(
+        toolName = toolName,
+        participantId = TestAgent,
+        conversationId = conversationId,
+        topicId = TestTopicId,
+        state = EventState.Complete
       )
+      val frames: Vector[ContextFrame] = FrameBuilder.build(List[Event](
+        invoke,
+        toolMessage("PRIMARY_RESULT_MARKER", origin = Some(invoke._id)),
+        toolMessage("SECONDARY_MARKER", origin = Some(invoke._id)),
+        toolMessage("TERTIARY_MARKER", origin = Some(invoke._id))
+      ))
+      frames.collect { case tc: ContextFrame.ToolCall => tc } should have size 1
       val view = ConversationView(
         conversationId = conversationId,
         frames = frames
@@ -366,6 +360,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       }
 
       body should include ("PRIMARY_RESULT_MARKER")
+      body should not include "SECONDARY_MARKER"
       val outputCount = "\"function_call_output\"".r.findAllIn(body).size
       outputCount shouldBe 1
     }

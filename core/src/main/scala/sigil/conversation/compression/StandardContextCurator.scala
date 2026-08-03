@@ -7,7 +7,8 @@ import sigil.conversation.{ContextFrame, ContextKey, ContextMemory, ContextSumma
 import sigil.db.Model
 import sigil.diagnostics.ProfileSection
 import sigil.information.InformationSummary
-import sigil.provider.ContextSections
+import sigil.orchestrator.Directive
+import sigil.provider.{ContextSection, ContextSections}
 
 import scala.annotation.tailrec
 import sigil.participant.ParticipantId
@@ -34,9 +35,13 @@ import sigil.tool.Freshness
  *      extracted catalog entries + retrieved memory ids + projections.
  *   7. Budget-guard via [[budget]] against the target model's
  *      context length. Multi-stage shed:
- *        - Stage 1 — drop non-critical retrieved memories.
- *        - Stage 2 — drop Information records the frames don't reference.
- *        - Stage 3 — iterative frame compression (per bug #23).
+ *        - The section-shaped stages, in
+ *          [[sigil.provider.ContextSection.shedStage]] order — each
+ *          section's own `shed` effect, so the framework's (retrieved
+ *          memories, then unreferenced Information, then summaries) and
+ *          an app's run on the same terms.
+ *        - Then the structural stages: frame elision, escalation, and
+ *          iterative frame compression.
  *
  * Every pipeline stage has a NoOp default — apps opt in component
  * by component.
@@ -185,8 +190,9 @@ case class StandardContextCurator(sigil: Sigil,
             !elidedEvents.contains(f.sourceEventId)
         )
         // Sigil #385 — shed consumed framework-internal diagnostic frames
-        // (keep only the latest) so stall/refusal/cap nudges don't pile up in
-        // the prompt and re-feed the loop they were meant to break.
+        // (keeping the newest nudge, plus every durable directive) so
+        // stall/refusal/cap nudges don't pile up in the prompt and re-feed
+        // the loop they were meant to break.
         visibleFrames = StandardContextCurator.dropStaleInternalFrames(visibleFrames0)
         // Cap the per-turn frame budget. Bulk-imported conversations
         // (50K+ events) flow through curate every turn; without a
@@ -424,27 +430,22 @@ case class StandardContextCurator(sigil: Sigil,
           }
 
         /** The section-shaped shed stages, in
-          * [[sigil.provider.ContextSection.shedStage]] order: retrieved
-          * memories, then unreferenced Information, then persisted
-          * summaries. Each is a cheap drop re-gated against the cap
-          * before the next runs. Returns `Right` at the first stage
-          * that fits, `Left` with everything shed when none does. */
+          * [[sigil.provider.ContextSection.shedStage]] order — each
+          * section's own `shed` effect applied to the turn, re-gated
+          * against the cap before the next runs. Returns `Right` at the
+          * first stage that fits, `Left` with everything shed when none
+          * does. Framework sections shed retrieved memories, then
+          * unreferenced Information, then persisted summaries; an app's
+          * sections take part on the same terms. */
         @tailrec
-        def sectionShedCascade(remaining: List[ProfileSection],
+        def sectionShedCascade(remaining: List[ContextSection],
                                current: TurnInput,
                                summariesArg: Vector[ContextSummary]): Either[TurnInput, TurnInput] =
           remaining match {
-            case Nil        => Left(current)
-            case id :: rest =>
-              val next = id match {
-                case ProfileSection.Memories    => current.copy(memories = Vector.empty)
-                case ProfileSection.Information =>
-                  val referenced = referencedInformationIds(frames)
-                  current.copy(information = information.filter(i => referenced.contains(i.id.value)))
-                case ProfileSection.Summaries   => current.copy(summaries = Vector.empty)
-                case _                          => current
-              }
-              val nextSummaries = if (id == ProfileSection.Summaries) Vector.empty else summariesArg
+            case Nil             => Left(current)
+            case section :: rest =>
+              val next = section.shed.fold(current)(_(current))
+              val nextSummaries = if (next.summaries.isEmpty) Vector.empty else summariesArg
               if (tokensOf(next, frames, nextSummaries) <= cap) Right(next)
               else sectionShedCascade(rest, next, nextSummaries)
           }
@@ -454,7 +455,7 @@ case class StandardContextCurator(sigil: Sigil,
           tent
         }
         else {
-          sectionShedCascade(StandardContextCurator.sectionShedOrder, tent, resolvedSummaries) match {
+          sectionShedCascade(ContextSections.shedCascade(sigil.contextSections), tent, resolvedSummaries) match {
             case Right(fitted)            => Task.pure(fitted)
             case Left(afterSectionSheds)  =>
               resolveElisionProtectedIds(tentative.conversationId, frames).flatMap { elisionProtected =>
@@ -761,46 +762,6 @@ case class StandardContextCurator(sigil: Sigil,
     })
   }
 
-  /** Information ids referenced inside the current frames. */
-  private def referencedInformationIds(frames: Vector[ContextFrame]): Set[String] = {
-    val needle = "Information["
-    frames.iterator.flatMap {
-      case t: ContextFrame.Text     => extractIds(t.content, needle)
-      case tc: ContextFrame.ToolCall =>
-        // Sigil #261 — unified frame: args + (if Complete) result content.
-        val argIds = extractIds(tc.argsJson, needle)
-        val resultIds = tc.state match {
-          case ToolCallState.Complete(content, _) => extractIds(content, needle)
-          case ToolCallState.Active               => Iterator.empty
-        }
-        argIds ++ resultIds
-      case s: ContextFrame.System   => extractIds(s.content, needle)
-      case _                        => Iterator.empty
-    }.toSet
-  }
-
-  private[compression] def extractIds(content: String, needle: String): Iterator[String] = {
-    if (!content.contains(needle)) Iterator.empty
-    else {
-      val out = List.newBuilder[String]
-      var idx = content.indexOf(needle)
-      while (idx >= 0) {
-        val start = idx + needle.length
-        val end = content.indexOf(']', start)
-        if (end > start) out += content.substring(start, end)
-        // Advance past the current match's prefix regardless of
-        // whether a closing `]` was found. The previous formulation
-        // (`content.indexOf(needle, end + 1)`) reduced to
-        // `content.indexOf(needle, 0)` when `end == -1` and re-matched
-        // the same unterminated reference forever — bricked the
-        // curator for any conversation whose frame content contained
-        // `Information[` without a closing bracket (user-pasted text,
-        // imported transcript fragments).
-        idx = content.indexOf(needle, start)
-      }
-      out.result().iterator
-    }
-  }
 
   private def attachBudgetWarning(turnInput: TurnInput,
                                   model: Model,
@@ -810,7 +771,8 @@ case class StandardContextCurator(sigil: Sigil,
                                   conversationId: Id[Conversation]): Task[TurnInput] =
     if (memResult.criticalMemories.isEmpty) Task.pure(turnInput)
     else resolveCriticalForWarning(memResult).flatMap { pinnedMemories =>
-      val pinnedTokens = TokenEstimator.estimateMemories(pinnedMemories, tokenizer)
+      val pinnedTokens =
+        TokenEstimator.estimateMemories(pinnedMemories, tokenizer, ContextSections.CriticalMemoriesHeader)
       val ctxLen = model.contextLength.toInt
       if (ctxLen <= 0 || pinnedTokens.toDouble / ctxLen <= pinnedShareWarningThreshold) Task.pure(turnInput)
       else {
@@ -879,17 +841,46 @@ case class StandardContextCurator(sigil: Sigil,
 
 object StandardContextCurator {
 
-  /** The sections `budgetResolve` can shed, in shed order — derived
-    * from [[sigil.provider.ContextSection.shedStage]] so the renderer's
-    * section list and the curator's cascade cannot disagree about what
-    * is sheddable or in what order. Structural stages (frame elision,
-    * escalation, iterative shed, last resort) are not section-shaped
-    * and run after these. */
-  private[compression] val sectionShedOrder: List[ProfileSection] =
-    ContextSections.all
-      .flatMap(s => s.shedStage.map(_ -> s.id))
-      .sortBy(_._1)
-      .map(_._2)
+  /** Information ids referenced inside the current frames. */
+  private[sigil] def referencedInformationIds(frames: Vector[ContextFrame]): Set[String] = {
+    val needle = "Information["
+    frames.iterator.flatMap {
+      case t: ContextFrame.Text     => extractIds(t.content, needle)
+      case tc: ContextFrame.ToolCall =>
+        // Sigil #261 — unified frame: args + (if Complete) result content.
+        val argIds = extractIds(tc.argsJson, needle)
+        val resultIds = tc.state match {
+          case ToolCallState.Complete(content, _) => extractIds(content, needle)
+          case ToolCallState.Active               => Iterator.empty
+        }
+        argIds ++ resultIds
+      case s: ContextFrame.System   => extractIds(s.content, needle)
+      case _                        => Iterator.empty
+    }.toSet
+  }
+
+  private[compression] def extractIds(content: String, needle: String): Iterator[String] = {
+    if (!content.contains(needle)) Iterator.empty
+    else {
+      val out = List.newBuilder[String]
+      var idx = content.indexOf(needle)
+      while (idx >= 0) {
+        val start = idx + needle.length
+        val end = content.indexOf(']', start)
+        if (end > start) out += content.substring(start, end)
+        // Advance past the current match's prefix regardless of
+        // whether a closing `]` was found. The previous formulation
+        // (`content.indexOf(needle, end + 1)`) reduced to
+        // `content.indexOf(needle, 0)` when `end == -1` and re-matched
+        // the same unterminated reference forever — bricked the
+        // curator for any conversation whose frame content contained
+        // `Information[` without a closing bracket (user-pasted text,
+        // imported transcript fragments).
+        idx = content.indexOf(needle, start)
+      }
+      out.result().iterator
+    }
+  }
 
   /** Frames-style governance for the Summaries section: drop
     * subsumed restatements, then budget newest-first by
@@ -1004,22 +995,37 @@ object StandardContextCurator {
     }
   }
 
-  /** Sigil #385 — keep only the most-recent framework-internal diagnostic
-    * frame (`ContextFrame.ToolCall(internal = true)`); drop older ones. They
-    * are transient nudges (stall / refusal-challenge / cap directives) meant
-    * to steer ONE next iteration — once consumed, stale copies are pure
-    * context noise that, re-sent every turn, compound the very loop they warn
-    * against (observed live: a single turn's prompt carried 200+ accumulated
-    * `_stall_detected` diagnostics). The durable events are untouched; this is
-    * a per-turn prompt-shaping step only. */
+  /** Sigil #385 — shed consumed framework-internal diagnostic frames
+    * (`ContextFrame.ToolCall(internal = true)`). Transient nudges (stall /
+    * refusal-challenge / cap directives) steer ONE next iteration; once
+    * consumed, stale copies are pure context noise that, re-sent every turn,
+    * compound the very loop they warn against (observed live: a single turn's
+    * prompt carried 200+ accumulated `_stall_detected` diagnostics), so only
+    * the newest transient frame survives.
+    *
+    * Durable directives ([[sigil.orchestrator.Directive.durableWireNames]] —
+    * the plan) are exempt: the planner keeps judging the executor against a
+    * plan the executor must still be able to read. The newest frame per
+    * durable wire name is kept, so a replan supersedes its predecessor
+    * without a later stall nudge evicting the plan entirely.
+    *
+    * The durable events are untouched; this is a per-turn prompt-shaping
+    * step only. */
   def dropStaleInternalFrames(frames: Vector[ContextFrame]): Vector[ContextFrame] = {
-    val internalIdx = frames.iterator.zipWithIndex.collect {
-      case (tc: ContextFrame.ToolCall, idx) if tc.internal => idx
+    val internal = frames.iterator.zipWithIndex.collect {
+      case (tc: ContextFrame.ToolCall, idx) if tc.internal => tc -> idx
     }.toVector
-    if (internalIdx.size <= 1) frames
+    if (internal.size <= 1) frames
     else {
-      val drop = internalIdx.dropRight(1).toSet // keep only the latest
-      frames.zipWithIndex.collect { case (f, idx) if !drop.contains(idx) => f }
+      val (durable, transient) = internal.partition {
+        case (tc, _) => Directive.durableWireNames.contains(tc.toolName.value)
+      }
+      val internalIdx = internal.map(_._2).toSet
+      val keep = durable.groupBy(_._1.toolName.value).values.map(_.map(_._2).max).toSet ++
+        transient.lastOption.map(_._2).toSet
+      frames.zipWithIndex.collect {
+        case (f, idx) if !internalIdx.contains(idx) || keep.contains(idx) => f
+      }
     }
   }
 

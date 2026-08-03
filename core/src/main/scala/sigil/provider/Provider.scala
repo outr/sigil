@@ -5,7 +5,7 @@ import fabric.io.JsonFormatter
 import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, ToolCallState, TurnInput}
+import sigil.conversation.{ContextFrame, ToolCallState}
 import sigil.db.Model
 import sigil.diagnostics.RequestProfiler
 import sigil.participant.ParticipantId
@@ -983,7 +983,7 @@ trait Provider extends Service with ModelResolver {
   }
 
   private def translateConversation(c: ConversationRequest): Task[ProviderCall] =
-    resolveReferences(c.turnInput).flatMap { resolved =>
+    sigil.resolveReferences(c.turnInput).flatMap { resolved =>
       val agentId = c.chain.lastOption
       // Load the prior provider-response handle from the agent's
       // projection (today only OpenAI's Responses API uses it). Falls
@@ -1042,7 +1042,16 @@ trait Provider extends Service with ModelResolver {
             proj.recentToolInvocations.iterator.map(_.toolName).toSet
         case None => Set.empty
       }
-      val renderedSystem = renderSystem(c, resolved)
+      // One SectionContext per turn, shared by the renderer and the
+      // profiler: the same `now`, the same derived lazy vals, one pass
+      // of the section renderers each.
+      val sectionContext = SectionContext(
+        request = c,
+        resolved = resolved,
+        discoveredCapabilitiesPromptCap = sigil.discoveredCapabilitiesPromptCap,
+        promptShape = sigil.modelProfileFor(c.model).promptShape
+      )
+      val renderedSystem = renderSystem(sectionContext)
       val providerCall = ProviderCall(
         model = c.model,
         system = renderedSystem.stable,
@@ -1064,7 +1073,7 @@ trait Provider extends Service with ModelResolver {
         priorMessageCount = priorMessageCount,
         preservedToolNames = preserved
       )
-      emitWireProfile(c, resolved, agentId).map(_ => providerCall)
+      emitWireProfile(sectionContext, agentId).map(_ => providerCall)
     }
 
   // Sigil #274 — `filterToolsForForcedSynthesis` moved to
@@ -1106,13 +1115,13 @@ trait Provider extends Service with ModelResolver {
     * Cheap (jtokkit milliseconds for typical request sizes) — supports
     * the always-visible context-utilisation gauge downstream apps
     * render without further opt-in. */
-  private def emitWireProfile(c: ConversationRequest,
-                              resolved: ResolvedReferences,
+  private def emitWireProfile(ctx: SectionContext,
                               agentId: Option[ParticipantId]): Task[Unit] =
     if (sigil.profileWireRequests) {
       agentId match {
         case Some(pid) =>
-          val profile = RequestProfiler.profile(c, resolved, tokenizer, sigil, contextSections)
+          val c = ctx.request
+          val profile = RequestProfiler.profile(ctx, tokenizer, sigil, sigil.contextSections)
           sigil.publish(WireRequestProfile(c.conversationId, c.modelId, pid, profile))
         case None => Task.unit
       }
@@ -1352,68 +1361,17 @@ trait Provider extends Service with ModelResolver {
     }
   }
 
-  /** Resolve the ids on `TurnInput.criticalMemories` / `.memories` /
-    * `.summaries` to full records via the DB. Ids that don't resolve are
-    * dropped silently.
+  /** The rendered system prompt, split by [[Placement]].
     *
-    * This is the LAST read before the bytes go on the wire, and the ids
-    * it hydrates were selected at retrieval time — potentially several
-    * iterations earlier. A memory revoked in between (rejected,
-    * superseded by a newer version, expired) must not render, so the
-    * shared recall gate ([[ContextMemory.isRecallable]]) applies here
-    * too rather than trusting the id list. */
-  private def resolveReferences(turn: TurnInput): Task[ResolvedReferences] = {
-    val now = lightdb.time.Timestamp()
-    val memTask: Task[(List[Option[ContextMemory]], List[Option[ContextMemory]])] =
-      if (turn.criticalMemories.isEmpty && turn.memories.isEmpty)
-        Task.pure((Nil, Nil))
-      else sigil.withDB(_.memories.transaction { tx =>
-        def recallable(loaded: List[Option[ContextMemory]]): List[Option[ContextMemory]] =
-          loaded.map(_.filter(_.isRecallable(now)))
-        for {
-          crit    <- Task.sequence(turn.criticalMemories.toList.map(tx.get)).map(recallable)
-          regular <- Task.sequence(turn.memories.toList.map(tx.get)).map(recallable)
-        } yield (crit, regular)
-      })
-    val sumTask: Task[List[Option[ContextSummary]]] =
-      if (turn.summaries.isEmpty) Task.pure(Nil)
-      else sigil.withDB(_.summaries.transaction { tx =>
-        Task.sequence(turn.summaries.toList.map(tx.get))
-      })
-    for {
-      (crit, regular) <- memTask
-      summaries       <- sumTask
-    } yield ResolvedReferences(
-      criticalMemories = crit.flatten.toVector,
-      memories = regular.flatten.toVector,
-      summaries = summaries.flatten.toVector
-    )
-  }
-
-  /** Compose the system prompt body from every contextually relevant
-    * field on a [[ConversationRequest]]. Each section is omitted
-    * when its source is empty. Every Model-visible field on `TurnInput`
-    * MUST appear here. The companion
-    * [[spec.LlamaCppRequestCoverageSpec]] is the regression guard. */
-  /** Compose the system prompt body, stable content first, volatile
-    * content last.
+    * The stable segment is the provider's system prompt (part of the
+    * cacheable prefix); the volatile segment rides behind the prefix as
+    * a trailing message via [[ProviderCall.messagesWithVolatileTail]],
+    * or folds into a per-request channel outside the transcript (OpenAI
+    * Responses' `instructions`) via [[RenderedSystem.combined]].
     *
-    * Section ordering is cache-aware: the prefix sections (tool
-    * framing, mode + topic, instructions, roles, skills, pinned
-    * directives, summaries, referenced content) change rarely across
-    * turns within one conversation, so providers with prompt caching
-    * (Anthropic's `cache_control` breakpoints, OpenAI / DeepSeek's
-    * automatic prefix caches) can serve them from a cache hit. The
-    * tail sections (retrieved non-critical memories, recently used
-    * tools, repeated-call diagnostics, discovered capabilities,
-    * per-turn budget warnings, the greeting hint) shift every turn —
-    * placing them last keeps the cacheable prefix stable. */
-  /** Split system prompt return shape. The stable segment is the
-    * provider's system prompt (part of the cacheable prefix); the
-    * volatile segment rides behind the prefix as a trailing message
-    * via [[ProviderCall.messagesWithVolatileTail]], or folds into a
-    * per-request channel outside the transcript (OpenAI Responses'
-    * `instructions`) via [[RenderedSystem.combined]]. */
+    * Which section lands where is declared per section in
+    * [[sigil.Sigil.contextSections]], not decided here — this type only
+    * carries the two concatenations. */
   protected case class RenderedSystem(stable: String, volatile: String) {
     /** Single-string form used by providers that don't split. */
     def combined: String =
@@ -1422,22 +1380,8 @@ trait Provider extends Service with ModelResolver {
       else stable + volatile
   }
 
-  /** The section list this provider renders from. Defaults to the
-    * framework's [[ContextSections.all]]; apps override to add,
-    * reorder, drop, or re-budget a section. Every consumer of the
-    * layout — the renderer below, [[sigil.diagnostics.RequestProfiler]],
-    * and the curator's section-shed cascade — reads this one list. */
-  protected def contextSections: List[ContextSection] = ContextSections.all
-
-  private def renderSystem(c: ConversationRequest,
-                           resolved: ResolvedReferences): RenderedSystem = {
-    val ctx = SectionContext(
-      request = c,
-      resolved = resolved,
-      discoveredCapabilitiesPromptCap = sigil.discoveredCapabilitiesPromptCap,
-      promptShape = sigil.modelProfileFor(c.model).promptShape
-    )
-    val sections = contextSections
+  private def renderSystem(ctx: SectionContext): RenderedSystem = {
+    val sections = sigil.contextSections
 
     // Mirror the duplicate-call insertion to the backend log so
     // forensics questions ("did the duplicate-call detector fire?")

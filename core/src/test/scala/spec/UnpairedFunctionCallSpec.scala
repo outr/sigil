@@ -4,10 +4,12 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Stream
-import sigil.conversation.{ContextFrame, ToolCallState}
-import sigil.event.Event
+import sigil.conversation.{Conversation, ContextFrame, FrameBuilder, ToolCallState}
+import sigil.event.{Event, Message, MessageRole}
 import sigil.provider.{Provider, ProviderCall, ProviderEvent, ProviderMessage, ProviderType}
+import sigil.signal.EventState
 import sigil.tool.ToolName
+import sigil.tool.model.ResponseContent
 
 /**
  * Coverage for `Provider.renderFrames` when an unpaired
@@ -94,18 +96,26 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
     }
 
     "tolerate a ToolResult arriving for a call that was never seen (no crash)" in {
-      // TODO(#261): semantics changed, review — under the unified
-      // ToolCall(state) model, an orphan ToolResult cannot exist as
-      // a frame; FrameBuilder.appendFor folds it into a Text fallback.
-      // Simulate that fallback at the renderer level.
-      val frames = Vector[ContextFrame](
-        ContextFrame.Text(
-          content       = s"[framework: orphan tool result for callId=${callC.value} — content: orphan-result]",
-          participantId = agent,
-          sourceEventId = Id[Event]("result-C")
-        )
+      // Real path: the projection sees a Tool-role result whose parent
+      // call has no frame, degrades it to an agents-only Text frame,
+      // and the renderer ships that as ordinary text rather than an
+      // unpairable wire result.
+      val stray: Event = Message(
+        participantId  = agent,
+        conversationId = Conversation.id("unpaired-conv"),
+        topicId        = TestTopicId,
+        role           = MessageRole.Tool,
+        content        = Vector(ResponseContent.Text("orphan-result")),
+        state          = EventState.Complete,
+        origin         = Some(callC)
       )
+      val frames = FrameBuilder.build(List(stray))
+      frames should have size 1
+      frames.head.asInstanceOf[ContextFrame.Text].content should include (callC.value)
       noException should be thrownBy TestProvider.render(frames, agent)
+      TestProvider.render(frames, agent).collect {
+        case t: ProviderMessage.ToolResult => t
+      } shouldBe empty
     }
   }
 

@@ -21,10 +21,13 @@ case class SectionContext(request: ConversationRequest,
                           now: Long = System.currentTimeMillis(),
                           promptShape: PromptShape = PromptShape.Full) {
 
-  /** Apply the prompt shape's per-section entry cap to a list-shaped
-    * section. `Full` caps nothing. */
-  def capped[A](entries: List[A]): List[A] =
-    promptShape.entryCap.fold(entries)(entries.take)
+  /** Apply the prompt shape's general per-section entry cap to a
+    * list-shaped section. `Full` caps nothing. */
+  def capped[A](entries: List[A]): List[A] = capped(entries, promptShape.entryCap)
+
+  /** Apply a specific [[PromptShape]] cap (memories, summaries, skills)
+    * to a list-shaped section. */
+  def capped[A](entries: List[A], cap: Option[Int]): List[A] = cap.fold(entries)(entries.take)
 
   def turn: TurnInput = request.turnInput
 
@@ -49,17 +52,17 @@ case class SectionContext(request: ConversationRequest,
     * `distinctBy(_.name)` keeps the mode fold idempotent with the
     * ModeChange-driven path. */
   lazy val allSkills: Vector[sigil.conversation.ActiveSkillSlot] =
-    (turn.aggregatedSkills(chain) ++ request.roles.flatMap(_.skill.toList) ++
-      request.currentMode.skill.toList).distinctBy(_.name)
+    capped((turn.aggregatedSkills(chain) ++ request.roles.flatMap(_.skill.toList) ++
+      request.currentMode.skill.toList).distinctBy(_.name).toList, promptShape.skillCap).toVector
 
   lazy val recentInvocations: List[sigil.conversation.RecentToolInvocation] =
     chain.flatMap(id => turn.projectionFor(id).recentToolInvocations)
 
   lazy val recentTools: List[sigil.conversation.RecentToolInvocation] =
-    recentInvocations
+    capped(recentInvocations
       .distinctBy(inv => (inv.toolName, inv.argsHash))
       .sortBy(-_.invokedAt.value)
-      .take(Provider.RecentToolsPromptCap)
+      .take(Provider.RecentToolsPromptCap))
 
   lazy val duplicateGroups: List[((ToolName, String), List[sigil.conversation.RecentToolInvocation])] =
     capped(recentInvocations

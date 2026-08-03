@@ -30,6 +30,11 @@ enum GovernorVote {
 
   /** Publish `publish` at this boundary, then continue the loop
     * (`forceSynthesis = None`) or force the terminal synthesis
-    * iteration (`forceSynthesis = Some(reason)`). */
+    * iteration (`forceSynthesis = Some(reason)`).
+    *
+    * A vote is built before the loop knows whether an earlier governor
+    * already claimed the boundary, so `publish` should be a deferred
+    * Task — nothing it allocates or timestamps is valid unless the loop
+    * runs it. */
   case Intervene(publish: Task[Unit], forceSynthesis: Option[ForcedSynthesisReason])
 }
