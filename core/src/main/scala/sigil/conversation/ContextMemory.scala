@@ -8,6 +8,7 @@ import rapid.Unique
 import sigil.SpaceId
 import sigil.SpaceId.given
 import sigil.conversation.MemoryType.given
+import sigil.embedding.EmbeddingRef
 import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.participant.ParticipantId.given
@@ -98,6 +99,17 @@ case class ContextMemory(fact: String,
                            * keeps its own). Empty for memories written outside
                            * any conversation (seeding, app-side writes). */
                          sourceEventIds: List[Id[Event]] = Nil,
+                         /** Provenance for this record's point in
+                           * [[sigil.vector.VectorIndex]] — stamped by the
+                           * framework's index paths, cleared when the point is
+                           * evicted. `None` means "no live point": either
+                           * vector search isn't wired, or the record has never
+                           * been indexed, or its point was deleted. Compared
+                           * against `fact` and the live
+                           * [[sigil.embedding.EmbeddingProvider]] by
+                           * [[sigil.maintenance.EmbeddingReconcileTask]] to
+                           * find rows whose vector drifted from the store. */
+                         embedding: Option[EmbeddingRef] = None,
                          created: Timestamp = Timestamp(),
                          modified: Timestamp = Timestamp(),
                          _id: Id[ContextMemory] = ContextMemory.id())
@@ -117,6 +129,24 @@ case class ContextMemory(fact: String,
     validUntil.isEmpty &&
       status == MemoryStatus.Approved &&
       !expiresAt.exists(_.value <= now.value)
+
+  /** The embedding space this record's live vector point belongs to,
+    * or [[EmbeddingRef.Unindexed]] when it holds no point built from
+    * the `fact` it currently carries. Purely document-local, so it can
+    * be indexed: comparing it to the running provider's identity turns
+    * "never indexed", "text drifted since indexing", and "embedder
+    * changed" into one inequality. */
+  def embeddingIdentity: String =
+    embedding.filter(_.contentHash == EmbeddingRef.hash(fact)).map(_.identity).getOrElse(EmbeddingRef.Unindexed)
+
+  /** `true` when a drifted vector point on this record is worth
+    * re-embedding. Archived versions, non-Approved records, and empty
+    * facts hold no point by design, and an expiring memory's point
+    * outlives its usefulness anyway — sweeping any of them would spend
+    * embedding calls on rows no retrieval can reach, and (for the
+    * evicted ones) fight the eviction that cleared the stamp. */
+  def embeddingReconcilable: Boolean =
+    fact.nonEmpty && validUntil.isEmpty && status == MemoryStatus.Approved && expiresAt.isEmpty
 }
 
 object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConversion[ContextMemory] {
@@ -136,6 +166,16 @@ object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConvers
     * project as `None`. Backs the opt-in expiry sweep
     * ([[Sigil.expiredMemorySweepInterval]]). */
   val expiresAtValue: I[Option[Long]] = field.index("expiresAtValue", _.expiresAt.map(_.value))
+
+  /** Projections of [[ContextMemory.embeddingIdentity]] and
+    * [[ContextMemory.embeddingReconcilable]]. Together they let
+    * [[sigil.maintenance.EmbeddingReconcileTask]] find every drifted
+    * row with a single indexed query — `embeddingIdentity !== <live
+    * provider identity> && embeddingReconcilable === true` — which
+    * matches nothing at all when the index is in sync, so the sweep
+    * costs one empty query rather than a scan. */
+  val embeddingIdentity: I[String] = field.index("embeddingIdentity", _.embeddingIdentity)
+  val embeddingReconcilable: I[Boolean] = field.index("embeddingReconcilable", _.embeddingReconcilable)
 
   /** Tokenized full-text index over key + label + summary + fact +
     * keywords. Backs `find_capability`'s BM25-scored memory search

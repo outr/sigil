@@ -23,6 +23,10 @@ case class OpenAICompatibleEmbeddingProvider(apiKey: String,
                                              model: String,
                                              dimensions: Int) extends EmbeddingProvider {
 
+  /** The model name is the identity that matters here — one endpoint
+    * serves several mutually incompatible embedding spaces. */
+  override def id: String = model
+
   override def embed(text: String): Task[Vector[Double]] = {
     val body = obj("model" -> str(model), "input" -> str(text))
     postJson(baseUrl.withPath("/v1/embeddings"), body).flatMap { json =>

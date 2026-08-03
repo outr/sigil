@@ -11,6 +11,15 @@ import rapid.Task
  * Implementations are expected to be thread-safe.
  */
 trait EmbeddingProvider {
+  /** Stable identifier for the embedding space this provider produces
+    * vectors in. Two providers sharing an `id` and [[dimensions]] must
+    * produce comparable vectors; changing the underlying model MUST
+    * change the `id`, because [[EmbeddingRef]] uses it to detect that a
+    * persisted vector point was built by a different embedder and needs
+    * recomputing. Defaults to the implementation's simple class name —
+    * providers parameterised by model name override to include it. */
+  def id: String = getClass.getSimpleName.stripSuffix("$")
+
   /** Embed a single text into a vector of length [[dimensions]]. */
   def embed(text: String): Task[Vector[Double]]
 

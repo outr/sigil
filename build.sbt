@@ -53,7 +53,10 @@ ThisBuild / githubRepository := "sigil"
 ThisBuild / scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
-  "-unchecked"
+  "-unchecked",
+  // fabric's `RW.gen` inlines once per field; the widest records here
+  // (ContextMemory) exceed the 32 default.
+  "-Xmax-inlines", "64"
 )
 // Per-forked-JVM heap. Local default is generous; CI (a 4-vCPU / 16 GB
 // runner driving several concurrent forks) overrides via env so the

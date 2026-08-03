@@ -5,6 +5,7 @@ import lightdb.time.Timestamp
 import rapid.Task
 import sigil.conversation.{ContextMemory, Conversation, MemorySource, MemoryStatus, UpsertMemoryResult}
 import sigil.db.Model
+import sigil.embedding.EmbeddingRef
 import sigil.event.Event
 import sigil.vector.{VectorPoint, VectorPointId}
 
@@ -52,9 +53,7 @@ trait MemoryOps { this: Sigil =>
   def persistMemory(memory: ContextMemory): Task[ContextMemory] =
     validateCoreContextCap(memory).flatMap { _ =>
       enrichMemoryClassification(memory, memory.createdBy.toList).flatMap { enriched =>
-        withDB(_.memories.transaction(_.upsert(enriched))).flatMap { stored =>
-          indexMemory(stored).map(_ => stored)
-        }
+        withDB(_.memories.transaction(_.upsert(enriched))).flatMap(indexMemory)
       }
     }
 
@@ -89,7 +88,9 @@ trait MemoryOps { this: Sigil =>
 
   private def upsertMemoryByKeyImpl(memory: ContextMemory): Task[UpsertMemoryResult] =
     upsertMemoryByKeyWrite(memory).flatMap { result =>
-      indexMemory(result.memory).flatMap(_ => settleArchivedVersion(result)).map(_ => result)
+      indexMemory(result.memory).flatMap { stamped =>
+        settleArchivedVersion(result).map(_ => result.withMemory(stamped))
+      }
     }
 
   /** A `Versioned` write archives the prior record — its vector point
@@ -175,10 +176,10 @@ trait MemoryOps { this: Sigil =>
     withDB(_.memories.transaction(_.upsert(stamped))).flatMap { stored =>
       val reconcile =
         if (stored.isRecallable(now)) indexMemory(stored)
-        else evictMemoryPoint(stored._id)
-      reconcile.map { _ =>
+        else evictMemoryPoint(stored)
+      reconcile.map { settled =>
         invalidateAllMemoryRetrievals()
-        stored
+        settled
       }
     }
   }
@@ -489,36 +490,69 @@ trait MemoryOps { this: Sigil =>
   protected final def vectorWired: Boolean =
     embeddingProvider.dimensions > 0 && (vectorIndex ne sigil.vector.NoOpVectorIndex)
 
-  /** Embed a memory's `fact` and upsert it into [[vectorIndex]]. No-op
+  /** Embed a memory's `fact`, upsert it into [[vectorIndex]], and stamp
+    * the record with the resulting [[EmbeddingRef]] so the store knows
+    * exactly which text and which embedder the live point was built
+    * from. Returns the stamped record. No-op (returns `m` unchanged)
     * when vector search isn't wired or the fact is empty; vector
     * failures are logged and swallowed so a persist never fails on an
-    * index hiccup. */
-  private final def indexMemory(m: ContextMemory): Task[Unit] =
-    if (!vectorWired || m.fact.isEmpty) Task.unit
+    * index hiccup — and the record then stays unstamped, which is
+    * precisely what [[sigil.maintenance.EmbeddingReconcileTask]] later
+    * picks up. */
+  private final def indexMemory(m: ContextMemory): Task[ContextMemory] =
+    if (!vectorWired || m.fact.isEmpty) Task.pure(m)
     else embeddingProvider.embed(m.fact).flatMap { vec =>
-      vectorIndex.upsert(memoryVectorPoint(m, vec))
+      vectorIndex.upsert(memoryVectorPoint(m, vec)).flatMap { _ =>
+        val stamped = m.copy(embedding = Some(EmbeddingRef.forText(embeddingProvider, m.fact)))
+        withDB(_.memories.transaction(_.upsert(stamped)))
+      }
     }.handleError { e =>
-      Task(scribe.warn(s"Vector index failed for memory ${m._id.value}: ${e.getMessage}"))
+      Task {
+        scribe.warn(s"Vector index failed for memory ${m._id.value}: ${e.getMessage}")
+        m
+      }
     }
 
   /** Re-embed and re-index a memory — the entry point for the write
     * surfaces on [[Sigil]] that bring a record back INTO the
-    * recallable set (approval). */
-  protected final def reindexMemory(m: ContextMemory): Task[Unit] = indexMemory(m)
+    * recallable set (approval), and for
+    * [[sigil.maintenance.EmbeddingReconcileTask]]'s drift repair.
+    * Returns the record with its refreshed provenance stamp. */
+  final def reindexMemory(m: ContextMemory): Task[ContextMemory] = indexMemory(m)
 
-  /** Remove a memory's point from [[vectorIndex]]. No-op when vector
-    * search isn't wired; failures are logged and swallowed so a store
-    * write never fails on an index hiccup. Every path that takes a
-    * record out of the recallable set (archive on version, reject,
-    * hard delete) routes through here — a point left behind keeps the
-    * record reachable through [[Sigil.searchMemories]]'s candidate
-    * pool, which is the only retrieval leg the store-side gate can't
-    * pre-filter. */
+  /** Remove a memory's point from [[vectorIndex]] and clear the
+    * record's [[ContextMemory.embedding]] stamp — the stamp asserts a
+    * live point exists, so it must not outlive one. No-op when vector
+    * search isn't wired (no point, and no stamp could have been
+    * written); failures are logged and swallowed so a store write never
+    * fails on an index hiccup. Every path that takes a record out of
+    * the recallable set (archive on version, reject, hard delete)
+    * routes through here — a point left behind keeps the record
+    * reachable through [[Sigil.searchMemories]]'s candidate pool, which
+    * is the only retrieval leg the store-side gate can't pre-filter. */
   protected final def evictMemoryPoint(id: Id[ContextMemory]): Task[Unit] =
     if (!vectorWired) Task.unit
-    else vectorIndex.delete(VectorPointId(id.value)).handleError { e =>
-      Task(scribe.warn(s"Vector delete failed for memory ${id.value}: ${e.getMessage}"))
-    }
+    else vectorIndex.delete(VectorPointId(id.value))
+      .flatMap(_ => clearEmbeddingStamp(id))
+      .handleError { e =>
+        Task(scribe.warn(s"Vector delete failed for memory ${id.value}: ${e.getMessage}"))
+      }
+
+  /** Record-carrying overload of [[evictMemoryPoint]] — returns the
+    * record as the store now holds it, stamp cleared. */
+  protected final def evictMemoryPoint(m: ContextMemory): Task[ContextMemory] =
+    evictMemoryPoint(m._id).map(_ => if (vectorWired) m.copy(embedding = None) else m)
+
+  /** Drop the provenance stamp from a record that no longer has a
+    * point. Silently skips a row that is already unstamped or has been
+    * hard-deleted. */
+  private final def clearEmbeddingStamp(id: Id[ContextMemory]): Task[Unit] =
+    withDB(_.memories.transaction { tx =>
+      tx.get(id).flatMap {
+        case Some(m) if m.embedding.nonEmpty => tx.upsert(m.copy(embedding = None)).unit
+        case _                               => Task.unit
+      }
+    })
 
   /** Build the [[VectorPoint]] for a memory — shared by the single and
     * batched index paths so the payload shape stays in one place. */
@@ -536,19 +570,30 @@ trait MemoryOps { this: Sigil =>
 
   /** Embed and index a list of memories with a single batched embedding
     * request and a single batched vector upsert — the bulk equivalent
-    * of [[indexMemory]]. Memories with an empty `fact` are skipped.
-    * No-op when vector search isn't wired; failures are logged and
-    * swallowed so a bulk persist never fails on an index hiccup. */
-  private final def indexMemoriesBatch(memories: List[ContextMemory]): Task[Unit] = {
+    * of [[indexMemory]], provenance stamps included. Memories with an
+    * empty `fact` are skipped and returned untouched. No-op when vector
+    * search isn't wired; failures are logged and swallowed so a bulk
+    * persist never fails on an index hiccup. Returns the records in
+    * input order. */
+  private final def indexMemoriesBatch(memories: List[ContextMemory]): Task[List[ContextMemory]] = {
     val indexable = memories.filter(_.fact.nonEmpty)
-    if (!vectorWired || indexable.isEmpty) Task.unit
+    if (!vectorWired || indexable.isEmpty) Task.pure(memories)
     else embeddingProvider.embedBatch(indexable.map(_.fact)).flatMap { vectors =>
       val points = indexable.iterator.zip(vectors.iterator).map { case (m, vec) =>
         memoryVectorPoint(m, vec)
       }.toList
-      vectorIndex.upsertBatch(points)
+      vectorIndex.upsertBatch(points).flatMap { _ =>
+        val stamps = indexable.iterator.map(m => m._id -> EmbeddingRef.forText(embeddingProvider, m.fact)).toMap
+        val stamped = memories.map(m => stamps.get(m._id).fold(m)(ref => m.copy(embedding = Some(ref))))
+        withDB(_.memories.transaction { tx =>
+          Task.sequence(stamped.filter(m => stamps.contains(m._id)).map(tx.upsert)).map(_ => stamped)
+        })
+      }
     }.handleError { e =>
-      Task(scribe.warn(s"Vector index failed for memory batch (${indexable.size} records): ${e.getMessage}"))
+      Task {
+        scribe.warn(s"Vector index failed for memory batch (${indexable.size} records): ${e.getMessage}")
+        memories
+      }
     }
   }
 
@@ -582,11 +627,10 @@ trait MemoryOps { this: Sigil =>
         }
       }
     }).flatMap { written =>
-      val stored = written.map(_._1)
       val archived = written.flatMap(_._2)
-      indexMemoriesBatch(stored)
-        .flatMap(_ => Task.sequence(archived.map(evictMemoryPoint)))
-        .map { _ =>
+      indexMemoriesBatch(written.map(_._1))
+        .flatMap(stored => Task.sequence(archived.map(id => evictMemoryPoint(id))).map(_ => stored))
+        .map { stored =>
           if (archived.nonEmpty) invalidateAllMemoryRetrievals()
           stored
         }

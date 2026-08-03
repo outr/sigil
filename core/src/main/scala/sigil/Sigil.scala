@@ -5267,9 +5267,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           tx.upsert(updated).map(_ => Some(updated))
       }
     }).flatMap {
-      case Some(updated) => reindexMemory(updated).map { _ =>
+      case Some(updated) => reindexMemory(updated).map { indexed =>
         invalidateAllMemoryRetrievals()
-        Some(updated)
+        Some(indexed)
       }
       case None => Task.pure(None)
     }
@@ -10275,8 +10275,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     List(
       sigil.maintenance.StoredFileExpirationSweep(storedFileExpirationInterval),
       sigil.maintenance.OrphanStagingConversationSweep(orphanStagingSweepInterval, orphanStagingCutoff),
-      sigil.maintenance.MemoryAccessFlushTask(memoryAccessFlushInterval)
+      sigil.maintenance.MemoryAccessFlushTask(memoryAccessFlushInterval),
+      sigil.maintenance.EmbeddingReconcileTask(embeddingReconcileInterval)
     )
+
+  /** Cadence for [[sigil.maintenance.EmbeddingReconcileTask]] — how
+    * often the framework checks the memory store against the vector
+    * index for drifted points. Default: 1 hour. The check is a single
+    * indexed query that matches nothing when the index is in sync, and
+    * the task no-ops entirely when vector search isn't wired, so the
+    * default costs nothing to leave on. */
+  def embeddingReconcileInterval: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(1).hour
 
   /** Cadence for [[sigil.maintenance.OrphanStagingConversationSweep]] —
     * how often the framework reaps abandoned staging conversations
