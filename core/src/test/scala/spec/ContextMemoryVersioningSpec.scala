@@ -105,17 +105,46 @@ class ContextMemoryVersioningSpec extends AsyncWordSpec with AsyncTaskSpec with 
   }
 
   "Sigil.recordMemoryAccess" should {
-    "bump accessCount and update lastAccessedAt" in {
+    "bump accessCount and update lastAccessedAt once flushed" in {
       val key = "pref.lang.access"
       for {
         stored <- TestSigil.upsertMemoryByKey(seed("Scala", key))
         _ <- TestSigil.recordMemoryAccess(stored.memory._id)
         _ <- TestSigil.recordMemoryAccess(stored.memory._id)
+        _ <- TestSigil.flushMemoryAccesses
         after <- TestSigil.memoryHistory(key, Space)
       } yield {
         after.size shouldBe 1
         after.head.accessCount shouldBe 2
       }
+    }
+
+    "apply the delta to the fresh row rather than a stale snapshot" in {
+      val key = "pref.lang.access.race"
+      for {
+        stored <- TestSigil.upsertMemoryByKey(seed("Scala", key))
+        // Access is marked, then the record is archived out from under
+        // the pending bump — the classic read-modify-write hazard. The
+        // flush must not resurrect the pre-archive snapshot.
+        _ <- TestSigil.recordMemoryAccess(stored.memory._id)
+        _ <- TestSigil.updateMemory(stored.memory.copy(validUntil = Some(lightdb.time.Timestamp())))
+        _ <- TestSigil.flushMemoryAccesses
+        after <- TestSigil.memoryHistory(key, Space)
+      } yield {
+        after.size shouldBe 1
+        after.head.validUntil should not be empty
+        after.head.accessCount shouldBe 1
+      }
+    }
+
+    "drop a pending bump for a memory that no longer exists" in {
+      val key = "pref.lang.access.gone"
+      for {
+        stored <- TestSigil.upsertMemoryByKey(seed("Scala", key))
+        _ <- TestSigil.recordMemoryAccess(stored.memory._id)
+        _ <- TestSigil.forgetMemory(key, Space)
+        applied <- TestSigil.flushMemoryAccesses
+      } yield applied shouldBe 0
     }
   }
 

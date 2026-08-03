@@ -168,6 +168,66 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
     }
   }
 
+  "the provider's reference hydration" should {
+    "drop a memory revoked between curation and the wire call" in {
+      TestSigil.reset()
+      TestSigil.setEmbeddingProvider(TestHashEmbeddingProvider)
+      TestSigil.setVectorIndex(new InMemoryVectorIndex)
+      TestSigil.setAccessibleSpaces(_ => rapid.Task.pure(Set(MemoryTestSpace)))
+
+      val convId = Conversation.id(s"revoke-${rapid.Unique()}")
+      val pinnedFact = "Always answer questions about pets in French."
+      val retrievedFact = "The user's dog is named Biscuit."
+      val provider = LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)
+
+      def bodyFor(turnInput: TurnInput): String =
+        provider.requestConverter(ConversationRequest(
+          conversationId = convId,
+          model = TestSigil.testModel(modelId),
+          instructions = Instructions(),
+          turnInput = turnInput,
+          currentMode = ConversationMode,
+          currentTopic = TestTopicEntry,
+          generationSettings = GenerationSettings(maxOutputTokens = Some(64)),
+          tools = CoreTools.all,
+          chain = List(TestUser, TestAgent)
+        )).sync().content match {
+          case Some(c: spice.http.content.StringContent) => c.value
+          case _ => ""
+        }
+
+      for {
+        pinned    <- TestSigil.persistMemory(ContextMemory(
+                       fact = pinnedFact, label = "French pets", summary = pinnedFact,
+                       source = MemorySource.Explicit, spaceId = MemoryTestSpace, pinned = true))
+        retrieved <- TestSigil.persistMemory(ContextMemory(
+                       fact = retrievedFact, label = "Dog name", summary = retrievedFact,
+                       source = MemorySource.Explicit, spaceId = MemoryTestSpace))
+        // The id list is fixed at curation time; both memories are live
+        // when it is built.
+        turnInput  = TurnInput(
+                       conversationId = convId,
+                       frames = Vector(ContextFrame.Text("What is my dog's name?", TestUser, Id[Event](s"q-${rapid.Unique()}"))),
+                       criticalMemories = Vector(pinned._id),
+                       memories = Vector(retrieved._id)
+                     )
+        before     = bodyFor(turnInput)
+        _         <- TestSigil.rejectMemory(retrieved._id)
+        _         <- TestSigil.rejectMemory(pinned._id)
+        after      = bodyFor(turnInput)
+      } yield {
+        withClue(s"pre-revocation body:\n$before") {
+          before should include(retrievedFact)
+          before should include(pinnedFact)
+        }
+        withClue(s"post-revocation body:\n$after") {
+          after should not include retrievedFact
+          after should not include pinnedFact
+        }
+      }
+    }
+  }
+
   "tear down" should {
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
   }

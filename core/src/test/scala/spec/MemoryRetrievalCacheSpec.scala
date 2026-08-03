@@ -105,5 +105,81 @@ class MemoryRetrievalCacheSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         cache.peek(b) shouldBe None
       }
     }
+
+    "stale every conversation's entry on invalidateAll" in {
+      val cache = new MemoryRetrievalCache
+      val a = Conversation.id("conv-epoch-a")
+      val b = Conversation.id("conv-epoch-b")
+      val calls = new AtomicInteger(0)
+      def compute(version: Int) = Task { calls.incrementAndGet(); withMems(s"v$version") }
+      for {
+        _ <- cache.getOrCompute(a, compute(1))
+        _ <- cache.getOrCompute(b, compute(1))
+        _  = calls.get() shouldBe 2
+        _  = cache.invalidateAll()
+        _  = cache.peek(a) shouldBe None
+        _  = cache.peek(b) shouldBe None
+        reA <- cache.getOrCompute(a, compute(2))
+        reB <- cache.getOrCompute(b, compute(2))
+        // Post-bump entries stay hot: the epoch invalidates once, not forever.
+        again <- cache.getOrCompute(a, compute(3))
+      } yield {
+        calls.get() shouldBe 4
+        reA.memories.map(_.value) shouldBe Vector("v2")
+        reB.memories.map(_.value) shouldBe Vector("v2")
+        again shouldBe reA
+      }
+    }
+
+    "compute once when concurrent misses race for the same conversation" in {
+      val cache = new MemoryRetrievalCache
+      val convId = Conversation.id("conv-inflight")
+      val calls = new AtomicInteger(0)
+      val started = new java.util.concurrent.CountDownLatch(1)
+      // The compute blocks until every racer has entered getOrCompute,
+      // so a get-then-compute-then-put cache would run it N times.
+      val compute = Task {
+        calls.incrementAndGet()
+        started.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        withMems("shared")
+      }
+      for {
+        fibers  <- Task.sequence((1 to 8).toList.map(_ => cache.getOrCompute(convId, compute).start))
+        _       <- Task(started.countDown())
+        results <- Task.sequence(fibers.map(_.join))
+      } yield {
+        calls.get() shouldBe 1
+        results.foreach(_.memories.map(_.value) shouldBe Vector("shared"))
+        succeed
+      }
+    }
+
+    "bound the entry count and evict the least-recently-computed" in {
+      val cache = new MemoryRetrievalCache(maxEntries = 4)
+      val ids = (1 to 10).toList.map(i => Conversation.id(s"conv-bound-$i"))
+      Task.sequence(ids.map(id => cache.getOrCompute(id, Task.pure(withMems(id.value))))).map { _ =>
+        cache.size should be <= 4
+        // The newest writes survive; the oldest were evicted.
+        cache.peek(ids.last) shouldBe Symbol("defined")
+        cache.peek(ids.head) shouldBe None
+      }
+    }
+
+    "release the in-flight slot when a compute fails so the next call retries" in {
+      val cache = new MemoryRetrievalCache
+      val convId = Conversation.id("conv-inflight-fail")
+      val calls = new AtomicInteger(0)
+      for {
+        failed <- cache.getOrCompute(convId, Task {
+                    calls.incrementAndGet()
+                    throw new RuntimeException("retrieval boom")
+                  }).attempt
+        second <- cache.getOrCompute(convId, Task { calls.incrementAndGet(); withMems("recovered") })
+      } yield {
+        failed.isFailure shouldBe true
+        calls.get() shouldBe 2
+        second.memories.map(_.value) shouldBe Vector("recovered")
+      }
+    }
   }
 }

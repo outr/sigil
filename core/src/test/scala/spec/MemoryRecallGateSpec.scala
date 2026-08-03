@@ -238,6 +238,105 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
   }
 
+  "the cached retrieval" should {
+    "stop surfacing a memory rejected mid-burst" in {
+      wire(Set(MemoryTestSpace))
+      val convId = Conversation.id(s"burst-${rapid.Unique()}")
+      val frames = Vector(ContextFrame.Text("What is my favorite fruit?", TestUser, Id[Event](s"q-${rapid.Unique()}")))
+      val retriever = StandardMemoryRetriever(limit = 5)
+      def retrieveOnce = retriever.retrieve(TestSigil, convId, frames, List(TestUser, TestAgent))
+      for {
+        m       <- seed("The user's favorite fruit is mango.", MemoryTestSpace)
+        first   <- retrieveOnce
+        cachedA <- retrieveOnce
+        _       <- TestSigil.rejectMemory(m._id)
+        // Same conversation, no new user message: the burst would keep
+        // serving the cached id set without a write-driven invalidation.
+        after   <- retrieveOnce
+      } yield {
+        first.memories should contain(m._id)
+        cachedA.memories should contain(m._id)
+        after.memories should not contain m._id
+      }
+    }
+
+    "keep a superseded version out of the surfaced set after a mid-burst version bump" in {
+      wire(Set(MemoryTestSpace))
+      val convId = Conversation.id(s"burst-ver-${rapid.Unique()}")
+      val frames = Vector(ContextFrame.Text("Which indentation do I prefer?", TestUser, Id[Event](s"q-${rapid.Unique()}")))
+      val retriever = StandardMemoryRetriever(limit = 5)
+      def base(fact: String) = ContextMemory(
+        fact = fact, label = "indent", summary = fact,
+        source = MemorySource.Explicit, spaceId = MemoryTestSpace, key = Some("pref.indent.burst"))
+      for {
+        first  <- TestSigil.upsertMemoryByKey(base("The user prefers tabs for indentation."))
+        before <- retriever.retrieve(TestSigil, convId, frames, List(TestUser, TestAgent))
+        second <- TestSigil.upsertMemoryByKey(base("The user prefers spaces for indentation."))
+        after  <- retriever.retrieve(TestSigil, convId, frames, List(TestUser, TestAgent))
+      } yield {
+        before.memories should contain(first.memory._id)
+        after.memories should not contain first.memory._id
+        after.memories should contain(second.memory._id)
+      }
+    }
+  }
+
+  "the archive paths" should {
+    "leave only the current version's point in the vector index across repeated versioning" in {
+      val index = wire(Set(MemoryTestSpace))
+      def base(fact: String) = ContextMemory(
+        fact = fact, label = "target", summary = fact,
+        source = MemorySource.Explicit, spaceId = MemoryTestSpace, key = Some("ops.target"))
+      for {
+        v1 <- TestSigil.upsertMemoryByKey(base("The deploy target is us-east-1."))
+        v2 <- TestSigil.upsertMemoryByKey(base("The deploy target is eu-west-2."))
+        v3 <- TestSigil.upsertMemoryByKey(base("The deploy target is ap-south-1."))
+        vec <- TestHashEmbeddingProvider.embed("The deploy target is us-east-1.")
+        hits <- index.search(vec, 20, Map("kind" -> "memory", "spaceId" -> MemoryTestSpace.value))
+      } yield {
+        val indexed = hits.flatMap(_.payload.get("memoryId")).toSet
+        indexed should contain(v3.memory._id.value)
+        indexed should not contain v1.memory._id.value
+        indexed should not contain v2.memory._id.value
+      }
+    }
+
+    "drop a rejected memory's point and restore it on approval" in {
+      val index = wire(Set(MemoryTestSpace))
+      for {
+        m        <- seed("The office wifi password is hunter2.", MemoryTestSpace)
+        vec      <- TestHashEmbeddingProvider.embed(m.fact)
+        before   <- index.search(vec, 10, Map("kind" -> "memory"))
+        _        <- TestSigil.rejectMemory(m._id)
+        rejected <- index.search(vec, 10, Map("kind" -> "memory"))
+        _        <- TestSigil.approveMemory(m._id)
+        approved <- index.search(vec, 10, Map("kind" -> "memory"))
+      } yield {
+        before.flatMap(_.payload.get("memoryId")) should contain(m._id.value)
+        rejected.flatMap(_.payload.get("memoryId")) should not contain m._id.value
+        approved.flatMap(_.payload.get("memoryId")) should contain(m._id.value)
+      }
+    }
+  }
+
+  "keyed provenance" should {
+    "stay bounded across many refreshes of the same slot" in {
+      wire(Set(MemoryTestSpace))
+      val fact = "The build runs on JDK 21."
+      def refresh(i: Int) = TestSigil.upsertMemoryByKey(ContextMemory(
+        fact = fact, label = "jdk", summary = fact,
+        source = MemorySource.Explicit, spaceId = MemoryTestSpace, key = Some("build.jdk"),
+        sourceEventIds = List(Id[Event](s"evt-$i"))))
+      Task.sequence((1 to 260).toList.map(refresh)).map { results =>
+        val last = results.last.memory
+        last.sourceEventIds.size shouldBe sigil.MemoryOps.MaxSourceEventIds
+        // Order-preserving tail: the most recent refreshes survive.
+        last.sourceEventIds.last shouldBe Id[Event]("evt-260")
+        last.sourceEventIds should not contain Id[Event]("evt-1")
+      }
+    }
+  }
+
   "tear down" should {
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
   }

@@ -223,7 +223,17 @@ case class StandardContextCurator(sigil: Sigil,
         // re-fetch what it already saw).
         externalizedBlock   = blockResult.copy(frames = externalizedFrames)
         _             <- control.step("Retrieving memories")
+        // Memory retrieval is an enrichment, not a precondition: a
+        // Lucene / vector / embedding hiccup degrades the turn to
+        // "no memories surfaced", it never kills it.
         memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, externalizedBlock.frames, chain)
+                           .handleError { e =>
+                             Task {
+                               scribe.warn(s"StandardContextCurator: memory retrieval failed for " +
+                                 s"${conversationId.value} (${e.getClass.getSimpleName}: ${e.getMessage}) — continuing without memories")
+                               MemoryRetrievalResult(memories = Vector.empty, criticalMemories = Vector.empty)
+                             }
+                           }
         // Pull persisted summaries — compression-time records from
         // earlier turns + any narrative summaries an app's UX
         // generated explicitly via `MemoryContextCompressor.compressHierarchical`.
@@ -729,7 +739,11 @@ case class StandardContextCurator(sigil: Sigil,
   }
 
   /** Resolve the criticalMemories / memories id buckets from a
-    * [[MemoryRetrievalResult]] to full records via the DB. */
+    * [[MemoryRetrievalResult]] to full records via the DB. The ids may
+    * come from a cached retrieval computed earlier in the burst, so
+    * the full recall gate ([[ContextMemory.isRecallable]]) re-applies
+    * here — a memory rejected or superseded mid-burst stops
+    * contributing to the budget as well as to the prompt. */
   private def resolveMemoriesAndSummaries(memResult: MemoryRetrievalResult): Task[(Vector[ContextMemory], Vector[ContextMemory])] = {
     val now = lightdb.time.Timestamp()
     // Sigil bug #170 — both id buckets share one memories transaction.
@@ -741,8 +755,8 @@ case class StandardContextCurator(sigil: Sigil,
         crit    <- Task.sequence(memResult.criticalMemories.toList.map(tx.get))
         regular <- Task.sequence(memResult.memories.toList.map(tx.get))
       } yield (
-        crit.flatten.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).toVector,
-        regular.flatten.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).toVector
+        crit.flatten.iterator.filter(_.isRecallable(now)).toVector,
+        regular.flatten.iterator.filter(_.isRecallable(now)).toVector
       )
     })
   }

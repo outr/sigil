@@ -685,9 +685,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def findCapabilitiesMemoriesMaxResults: Int = 10
 
   /** Memory discovery for `find_capability`. BM25 search over the
-    * [[sigil.conversation.ContextMemory]] `searchText` index, post-
-    * filtered by space affinity (`spaceId == GlobalSpace` OR caller
-    * has access). Returns the top
+    * [[sigil.conversation.ContextMemory]] `searchText` index. Space
+    * affinity (`GlobalSpace` plus the caller's accessible spaces) and
+    * the `Approved` status are compiled into the Lucene query so the
+    * scope applies BEFORE the relevance cut — a large multi-tenant
+    * store can't crowd the caller's own matches out of the candidate
+    * window. The rest of the recall gate
+    * ([[sigil.conversation.ContextMemory.isRecallable]] — current
+    * version + expiry) is applied on the small result. Returns the top
     * [[findCapabilitiesMemoriesMaxResults]] hits, each as a
     * (memory, BM25 score) pair. Apps override for vector / hybrid
     * scoring or alternate filters. */
@@ -695,6 +700,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     import lightdb.Sort
     import lightdb.filter.*
     val tokens = request.keywords.toLowerCase.split("\\s+").filter(_.nonEmpty).toList
+    val spaces = request.callerSpaces + GlobalSpace
     if (tokens.isEmpty) Task.pure(Nil)
     else withDB(_.memories.transaction { tx =>
       tx.query
@@ -702,15 +708,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           val keywordClauses = tokens.map { kw =>
             FilterClause(ContextMemory.searchText.exactly(kw), Condition.Should, None)
           }
-          Filter.Multi(minShould = 1, filters = keywordClauses)
+          val spaceClauses = spaces.toList.map { space =>
+            FilterClause(ContextMemory.spaceIdValue === space.value, Condition.Should, None)
+          }
+          Filter.Multi(minShould = 1, filters = keywordClauses) &&
+            Filter.Multi(minShould = 1, filters = spaceClauses) &&
+            (ContextMemory.statusName === MemoryStatus.Approved.toString)
         }
         .scored
         .sort(Sort.BestMatch())
         .limit(findCapabilitiesMemoriesMaxResults * 2)
         .toList
     }).map { memories =>
+      val now = Timestamp()
       memories
-        .filter(m => m.spaceId == GlobalSpace || request.callerSpaces.contains(m.spaceId))
+        .filter(_.isRecallable(now))
         .take(findCapabilitiesMemoriesMaxResults)
         // BM25 score is already implicit in the order; surface a simple
         // descending integer so memory matches mix sensibly with tool /
@@ -3731,13 +3743,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // -- memory list vocabulary (sigil #292) --
       // Viewer-scoped (createdBy = fromViewer). Apps wanting wider
       // visibility override `handleNotice` to run their own query.
+      // `pinned` pushes into Lucene via the indexed boolean; creator,
+      // type, location, and the substring match are projections the
+      // index can't express and run in memory. `limit` deliberately
+      // stays post-filter — cutting before the viewer scope would
+      // return someone else's rows' worth of empty slots. Superseded
+      // versions are dropped so a versioned key shows once. `Pending`
+      // records deliberately survive: this is the owner's own inbox,
+      // and a memory awaiting approval is exactly what a review UI
+      // needs to show, so the status half of the recall gate is
+      // bypassed on purpose here.
       case r: sigil.signal.RequestMemoryList =>
-        withDB(_.memories.transaction(_.query.toList)).flatMap { all =>
+        withDB(_.memories.transaction { tx =>
+          import lightdb.filter.*
+          val base = tx.query
+          r.pinned.fold(base)(p => base.filter(_ => ContextMemory.pinned === p)).toList
+        }).flatMap { all =>
           val q = r.query.map(_.toLowerCase).filter(_.nonEmpty)
           val filtered = all
+            .filter(_.validUntil.isEmpty)
             .filter(_.createdBy.exists(_.value == fromViewer.value))
             .filter(m => r.memoryType.forall(_ == m.memoryType))
-            .filter(m => r.pinned.forall(_ == m.pinned))
             .filter(m => !r.hasLocation || m.location.isDefined)
             .filter(m => q.forall(needle =>
               m.fact.toLowerCase.contains(needle) ||
@@ -5150,6 +5176,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def invalidateMemoryRetrievalCache(conversationId: Id[Conversation]): Unit =
     memoryRetrievalCache.invalidate(conversationId)
 
+  /** Invalidate every conversation's cached retrieval. Fired by the
+    * memory write paths that can change what is recallable — reject /
+    * approve, forget, a keyed upsert that archives a prior version,
+    * an in-place mutation (pin / unpin / move), and consolidation
+    * merges. A `ContextMemory` carries no conversation mapping the
+    * cache could invert, so the write bumps a global epoch instead;
+    * every conversation recomputes its retrieval on the next turn.
+    * O(1) — a single atomic increment. */
+  def invalidateAllMemoryRetrievals(): Unit =
+    memoryRetrievalCache.invalidateAll()
+
   /** All versions of a keyed memory in `spaceId`, chronologically
     * (oldest first by `created`). */
   def memoryHistory(key: String, spaceId: SpaceId): Task[List[ContextMemory]] =
@@ -5174,7 +5211,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   /** Transition a memory from `Pending` → `Approved`. Returns the
     * updated record, or `None` if the id isn't found. No-op if the
-    * memory is already approved. */
+    * memory is already approved. An approval re-indexes the record so
+    * semantic search sees it again, and drops every cached retrieval
+    * so the memory can surface on the next turn. */
   def approveMemory(id: Id[ContextMemory]): Task[Option[ContextMemory]] =
     withDB(_.memories.transaction { tx =>
       tx.get(id).flatMap {
@@ -5184,10 +5223,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           val updated = m.copy(status = MemoryStatus.Approved, modified = Timestamp())
           tx.upsert(updated).map(_ => Some(updated))
       }
-    })
+    }).flatMap {
+      case Some(updated) => reindexMemory(updated).map { _ =>
+        invalidateAllMemoryRetrievals()
+        Some(updated)
+      }
+      case None => Task.pure(None)
+    }
 
   /** Transition a memory to `Rejected` (kept on disk for lineage, but
-    * hidden from retrievers). Use [[forgetMemory]] for hard delete. */
+    * hidden from retrievers). Removes the record's vector point so a
+    * semantic search can't resurrect it, and drops every cached
+    * retrieval so a mid-burst rejection takes effect on the next turn.
+    * Use [[forgetMemory]] for hard delete. */
   def rejectMemory(id: Id[ContextMemory]): Task[Option[ContextMemory]] =
     withDB(_.memories.transaction { tx =>
       tx.get(id).flatMap {
@@ -5196,12 +5244,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           val updated = m.copy(status = MemoryStatus.Rejected, modified = Timestamp())
           tx.upsert(updated).map(_ => Some(updated))
       }
-    })
+    }).flatMap {
+      case Some(updated) => evictMemoryPoint(updated._id).map { _ =>
+        invalidateAllMemoryRetrievals()
+        Some(updated)
+      }
+      case None => Task.pure(None)
+    }
 
   /** Hard-delete every version of a keyed memory in `spaceId`. Returns
     * the number of records removed. Also removes corresponding points
     * from the vector index so semantic search doesn't return stale
-    * hits. */
+    * hits, and drops every cached retrieval so the forgotten memory
+    * stops rendering on the next turn. */
   def forgetMemory(key: String, spaceId: SpaceId): Task[Int] =
     if (key.isEmpty) Task.pure(0)
     else memoryHistory(key, spaceId).flatMap { versions =>
@@ -5216,47 +5271,99 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             Task(scribe.warn(s"Vector delete failed during forgetMemory(key=$key): ${e.getMessage}"))
               .map(_ => removed)
           }
+      }.map { removed =>
+        if (removed > 0) invalidateAllMemoryRetrievals()
+        removed
       }
     }
+
+  /** Pending `accessCount` / `lastAccessedAt` bumps, accumulated in
+    * memory and drained by [[flushMemoryAccesses]]. Retrieval marks
+    * access on every fresh compute; writing that straight through
+    * would cost a store commit (and, on the default Lucene backend, an
+    * fsync) per turn purely for a ranking signal. */
+  private val pendingMemoryAccesses: java.util.concurrent.ConcurrentHashMap[Id[ContextMemory], (Int, Long)] =
+    new java.util.concurrent.ConcurrentHashMap[Id[ContextMemory], (Int, Long)]()
 
   /** Bump `accessCount` and `lastAccessedAt` on a memory. Called by
     * retrieval paths (`semantic_search`, MemoryRetriever) so apps can
     * implement LRU-based retention without Sigil needing its own
-    * pruner. */
+    * pruner. The bump accumulates in memory and lands on the next
+    * [[flushMemoryAccesses]] — see [[recordMemoryAccesses]] for the
+    * durability contract. */
   def recordMemoryAccess(id: Id[ContextMemory]): Task[Unit] =
-    withDB(_.memories.transaction { tx =>
-      tx.get(id).flatMap {
-        case None => Task.unit
-        case Some(m) =>
-          val updated = m.copy(
-            accessCount = m.accessCount + 1,
-            lastAccessedAt = Timestamp()
-          )
-          tx.upsert(updated).unit
-      }
-    })
+    recordMemoryAccesses(List(id))
 
-  /** Batched [[recordMemoryAccess]] — one transaction bumps
-    * `accessCount` / `lastAccessedAt` for every id. Missing ids are
-    * skipped; failures are logged and swallowed (access marking is a
-    * feedback signal, never worth failing a retrieval over). The
-    * retrieval pipeline's Record stage fires this on a background
-    * task for the turn's surfaced memories. */
+  /**
+   * Batched [[recordMemoryAccess]] — accumulates the bumps in memory
+   * rather than opening a write transaction per retrieval.
+   *
+   * `accessCount` / `lastAccessedAt` are a retrieval-ranking feedback
+   * signal, not conversation state: a store commit per fresh
+   * retrieval bought durability nobody needs at the cost of an fsync
+   * on the hot path, and the read-modify-write of whole documents
+   * raced every concurrent memory mutation (a consolidation archive
+   * or a reject landing between the read and the write was silently
+   * reverted by the stale snapshot).
+   *
+   * Accumulated bumps are drained by [[flushMemoryAccesses]] — on the
+   * [[sigil.maintenance.MemoryAccessFlushTask]] cadence
+   * ([[memoryAccessFlushInterval]], default 60s) and once more during
+   * [[shutdown]]. The flush applies each delta with `tx.modify`, so
+   * the mutation lands on the FRESH row and touches only the two
+   * access fields. A process killed between flushes loses at most one
+   * interval's worth of access counts; the memories themselves are
+   * unaffected.
+   */
   def recordMemoryAccesses(ids: Seq[Id[ContextMemory]]): Task[Unit] =
     if (ids.isEmpty) Task.unit
-    else {
-      val now = Timestamp()
-      withDB(_.memories.transaction { tx =>
-        Task.sequence(ids.distinct.toList.map { id =>
-          tx.get(id).flatMap {
-            case None => Task.unit
-            case Some(m) => tx.upsert(m.copy(accessCount = m.accessCount + 1, lastAccessedAt = now)).unit
-          }
-        }).unit
-      }).handleError { e =>
-        Task(scribe.warn(s"recordMemoryAccesses failed for ${ids.size} memories: ${e.getMessage}"))
+    else Task {
+      val now = Timestamp().value
+      ids.distinct.foreach { id =>
+        pendingMemoryAccesses.merge(id, (1, now), (a, b) => (a._1 + b._1, math.max(a._2, b._2)))
       }
     }
+
+  /** How often [[sigil.maintenance.MemoryAccessFlushTask]] drains the
+    * accumulated `accessCount` / `lastAccessedAt` bumps to the store.
+    * Shorter means fresher reinforcement signal at the cost of more
+    * commits; longer means a crash loses more counts. Default 60s. */
+  def memoryAccessFlushInterval: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(60).seconds
+
+  /** Drain the accumulated access bumps into the store. Returns the
+    * number of memories updated. Each delta is applied with
+    * `tx.modify` against the current row and touches only
+    * `accessCount` / `lastAccessedAt`, so a concurrent archive,
+    * reject, or re-scope is never clobbered. Missing ids are dropped.
+    * Failures are logged and swallowed — access marking is a feedback
+    * signal, never worth failing anything over. */
+  def flushMemoryAccesses: Task[Int] = Task.defer {
+    val drained = {
+      val builder = List.newBuilder[(Id[ContextMemory], (Int, Long))]
+      pendingMemoryAccesses.keySet().forEach { id =>
+        Option(pendingMemoryAccesses.remove(id)).foreach(delta => builder += (id -> delta))
+      }
+      builder.result()
+    }
+    if (drained.isEmpty) Task.pure(0)
+    else withDB(_.memories.transaction { tx =>
+      Task.sequence(drained.map { case (id, (count, at)) =>
+        tx.modify(id) {
+          case Some(m) => Task.pure(Some(m.copy(
+            accessCount = m.accessCount + count,
+            lastAccessedAt = Timestamp(math.max(m.lastAccessedAt.value, at))
+          )))
+          case None => Task.pure(None)
+        }.map(_.fold(0)(_ => 1))
+      }).map(_.sum)
+    }).handleError { e =>
+      Task {
+        scribe.warn(s"flushMemoryAccesses failed for ${drained.size} memories: ${e.getMessage}")
+        0
+      }
+    }
+  }
 
   /** Load all summaries for a conversation, oldest-first. */
   def summariesFor(conversationId: Id[Conversation]): Task[List[ContextSummary]] =
@@ -8147,6 +8254,35 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     new AgentRunawayException(s"Agent ${agent.id.value} $cause $convPart", reason)
   }
 
+  /** Cached `(expiry, names)` for [[mutatingToolNames]]. */
+  private val mutatingToolNamesCache: java.util.concurrent.atomic.AtomicReference[(Long, Set[String])] =
+    new java.util.concurrent.atomic.AtomicReference((0L, Set.empty[String]))
+
+  /** How long [[mutatingToolNames]] holds its snapshot before
+    * re-reading the tool catalog. A tool's effect profile is a
+    * compile-time property of its spec — the only churn is a
+    * registration / de-registration, so a few minutes of staleness
+    * only ever mis-labels a brand-new tool's first turns. */
+  def mutatingToolNamesTtlMs: Long = 5 * 60 * 1000L
+
+  /** Names of every persisted tool whose effect profile mutates,
+    * memoized for [[mutatingToolNamesTtlMs]]. The per-turn extraction
+    * pathway needs this to decide whether a settled turn changed
+    * external state; decoding the whole catalog per turn made a
+    * hot-path cost out of a value that changes only when the tool
+    * registry does. Lenient decode — a de-registered tool's stale row
+    * must not abort extraction. */
+  def mutatingToolNames: Task[Set[String]] = Task.defer {
+    val now = System.currentTimeMillis()
+    val (expiry, cached) = mutatingToolNamesCache.get()
+    if (now < expiry) Task.pure(cached)
+    else withDB(_.tools.transaction(_.jsonStream.toList)).map(Sigil.decodeToolsLeniently).map { toolRows =>
+      val names = toolRows.iterator.filter(_.spec.profile.effect.mutates).map(_.name.value).toSet
+      mutatingToolNamesCache.set((now + mutatingToolNamesTtlMs, names))
+      names
+    }
+  }
+
   /** Bug #149 — assemble the per-turn extractor's `(userMessage,
     * agentResponse)` arguments from the conversation's events since
     * the turn started, and fire `memoryExtractor.extract`. Runs once
@@ -8197,12 +8333,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
       val settledMutations: Task[List[sigil.tool.ToolName]] =
         if (successfulInvokes.isEmpty) Task.pure(Nil)
-        // Lenient read — a de-registered tool's stale row must not
-        // abort post-turn extraction.
-        else withDB(_.tools.transaction(_.jsonStream.toList)).map(Sigil.decodeToolsLeniently).map { toolRows =>
-          val toolsByName = toolRows.iterator.map(t => t.name.value -> t).toMap
+        else mutatingToolNames.map { mutating =>
           successfulInvokes.iterator
-            .filter(ti => toolsByName.get(ti.toolName.value).exists(_.spec.profile.effect.mutates))
+            .filter(ti => mutating.contains(ti.toolName.value))
             .map(_.toolName)
             .toList
             .distinct
@@ -10118,7 +10251,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def maintenanceTasks: List[sigil.maintenance.MaintenanceTask] =
     List(
       sigil.maintenance.StoredFileExpirationSweep(storedFileExpirationInterval),
-      sigil.maintenance.OrphanStagingConversationSweep(orphanStagingSweepInterval, orphanStagingCutoff)
+      sigil.maintenance.OrphanStagingConversationSweep(orphanStagingSweepInterval, orphanStagingCutoff),
+      sigil.maintenance.MemoryAccessFlushTask(memoryAccessFlushInterval)
     )
 
   /** Cadence for [[sigil.maintenance.OrphanStagingConversationSweep]] —
@@ -10351,6 +10485,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // subsequent teardown.
     onShutdown.handleError { t =>
       Task { scribe.warn(s"Sigil shutdown: onShutdown failed: ${t.getMessage}"); () }
+    }.flatMap { _ =>
+      // Land the accumulated retrieval-access bumps before the store
+      // closes — otherwise a clean shutdown loses the interval's
+      // reinforcement signal the same way a kill would.
+      if (!instanceStarted.get()) Task.unit
+      else flushMemoryAccesses.unit.handleError { t =>
+        Task { scribe.warn(s"Sigil shutdown: flushMemoryAccesses failed: ${t.getMessage}"); () }
+      }
     }.flatMap { _ =>
       Task { memoryRetrievalCache.clear(); hub.close() }
     }.flatMap { _ =>

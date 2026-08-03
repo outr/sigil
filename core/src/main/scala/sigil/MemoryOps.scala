@@ -5,6 +5,7 @@ import lightdb.time.Timestamp
 import rapid.Task
 import sigil.conversation.{ContextMemory, Conversation, MemorySource, MemoryStatus, UpsertMemoryResult}
 import sigil.db.Model
+import sigil.event.Event
 import sigil.vector.{VectorPoint, VectorPointId}
 
 /**
@@ -65,13 +66,15 @@ trait MemoryOps { this: Sigil =>
    *     (label, summary, keywords, memoryType, confidence, pinned,
    *     extraContext, modeAffinity, expiresAt, justification,
    *     location, modified) in place — `sourceEventIds` unions the
-   *     prior record's ids with the new extraction's — keep same
+   *     prior record's ids with the new extraction's, keeping the
+   *     [[MemoryOps.MaxSourceEventIds]] most recent — keep same
    *     `_id` and the original `conversationId` / `validFrom`.
    *     Returns the refreshed record.
    *   - If the prior memory's `fact` differs → archive the prior
-   *     (`validUntil = now`, `supersededBy = new._id`) and insert the
-   *     new memory with `supersedes = prior._id`, `validFrom = now`.
-   *     Returns the new record.
+   *     (`validUntil = now`, `supersededBy = new._id`, vector point
+   *     evicted) and insert the new memory with
+   *     `supersedes = prior._id`, `validFrom = now`. Returns the new
+   *     record.
    *
    * Empty `key` is rejected — un-keyed memories must use
    * [[persistMemory]] (the single-shot path; no versioning).
@@ -86,8 +89,19 @@ trait MemoryOps { this: Sigil =>
 
   private def upsertMemoryByKeyImpl(memory: ContextMemory): Task[UpsertMemoryResult] =
     upsertMemoryByKeyWrite(memory).flatMap { result =>
-      indexMemory(result.memory).map(_ => result)
+      indexMemory(result.memory).flatMap(_ => settleArchivedVersion(result)).map(_ => result)
     }
+
+  /** A `Versioned` write archives the prior record — its vector point
+    * must go with it or semantic search keeps returning the superseded
+    * text, and every cached retrieval must recompute so the stale
+    * version stops rendering mid-burst. The other write outcomes leave
+    * the recallable set alone. */
+  private def settleArchivedVersion(result: UpsertMemoryResult): Task[Unit] = result match {
+    case UpsertMemoryResult.Versioned(_, archived) =>
+      evictMemoryPoint(archived._id).map(_ => invalidateAllMemoryRetrievals())
+    case _ => Task.unit
+  }
 
   /** The DB-write half of [[upsertMemoryByKeyImpl]] — applies the
     * versioning rules and persists, but does NOT index. The single
@@ -118,7 +132,7 @@ trait MemoryOps { this: Sigil =>
                   expiresAt = memory.expiresAt,
                   justification = memory.justification,
                   location = memory.location,
-                  sourceEventIds = (prior.sourceEventIds ++ memory.sourceEventIds).distinct,
+                  sourceEventIds = MemoryOps.boundedProvenance(prior.sourceEventIds, memory.sourceEventIds),
                   modified = Timestamp()
                 )
                 tx.upsert(refreshed).map(_ => UpsertMemoryResult.Refreshed(refreshed))
@@ -142,16 +156,30 @@ trait MemoryOps { this: Sigil =>
 
   /**
    * Persist an in-place mutation of an existing memory record and
-   * refresh its vector-index entry so the payload metadata (space,
-   * fact text) stays consistent with the store. Skips classification
-   * and the pinned-cap hook — intended for metadata mutations
-   * (pin / unpin / move), not for new facts; those go through
-   * [[persistMemory]] / [[upsertMemoryByKey]].
+   * reconcile its vector-index entry with the mutation's outcome: a
+   * still-recallable record is re-indexed so the payload metadata
+   * (space, fact text) stays consistent with the store; a record the
+   * mutation took OUT of the recallable set (archived, rejected,
+   * expired) has its point deleted instead, so semantic search can't
+   * resurrect it — and the embedding call the re-index would have
+   * spent is skipped. Either way every cached retrieval is dropped so
+   * the change lands on the next turn.
+   *
+   * Skips classification and the pinned-cap hook — intended for
+   * metadata mutations (pin / unpin / move / archive), not for new
+   * facts; those go through [[persistMemory]] / [[upsertMemoryByKey]].
    */
   def updateMemory(memory: ContextMemory): Task[ContextMemory] = {
-    val stamped = memory.copy(modified = Timestamp())
+    val now = Timestamp()
+    val stamped = memory.copy(modified = now)
     withDB(_.memories.transaction(_.upsert(stamped))).flatMap { stored =>
-      indexMemory(stored).map(_ => stored)
+      val reconcile =
+        if (stored.isRecallable(now)) indexMemory(stored)
+        else evictMemoryPoint(stored._id)
+      reconcile.map { _ =>
+        invalidateAllMemoryRetrievals()
+        stored
+      }
     }
   }
 
@@ -473,6 +501,25 @@ trait MemoryOps { this: Sigil =>
       Task(scribe.warn(s"Vector index failed for memory ${m._id.value}: ${e.getMessage}"))
     }
 
+  /** Re-embed and re-index a memory — the entry point for the write
+    * surfaces on [[Sigil]] that bring a record back INTO the
+    * recallable set (approval). */
+  protected final def reindexMemory(m: ContextMemory): Task[Unit] = indexMemory(m)
+
+  /** Remove a memory's point from [[vectorIndex]]. No-op when vector
+    * search isn't wired; failures are logged and swallowed so a store
+    * write never fails on an index hiccup. Every path that takes a
+    * record out of the recallable set (archive on version, reject,
+    * hard delete) routes through here — a point left behind keeps the
+    * record reachable through [[Sigil.searchMemories]]'s candidate
+    * pool, which is the only retrieval leg the store-side gate can't
+    * pre-filter. */
+  protected final def evictMemoryPoint(id: Id[ContextMemory]): Task[Unit] =
+    if (!vectorWired) Task.unit
+    else vectorIndex.delete(VectorPointId(id.value)).handleError { e =>
+      Task(scribe.warn(s"Vector delete failed for memory ${id.value}: ${e.getMessage}"))
+    }
+
   /** Build the [[VectorPoint]] for a memory — shared by the single and
     * batched index paths so the payload shape stays in one place. */
   private final def memoryVectorPoint(m: ContextMemory, vec: Vector[Double]): VectorPoint =
@@ -529,14 +576,26 @@ trait MemoryOps { this: Sigil =>
       validateCoreContextCap(memory).flatMap { _ =>
         enrichMemoryClassification(memory, memory.createdBy.toList).flatMap { enriched =>
           if (enriched.key.exists(_.nonEmpty))
-            upsertMemoryByKeyWrite(enriched).map(_.memory)
+            upsertMemoryByKeyWrite(enriched).map(r => (r.memory, archivedOf(r)))
           else
-            withDB(_.memories.transaction(_.upsert(enriched)))
+            withDB(_.memories.transaction(_.upsert(enriched))).map(m => (m, None))
         }
       }
-    }).flatMap { stored =>
-      indexMemoriesBatch(stored).map(_ => stored)
+    }).flatMap { written =>
+      val stored = written.map(_._1)
+      val archived = written.flatMap(_._2)
+      indexMemoriesBatch(stored)
+        .flatMap(_ => Task.sequence(archived.map(evictMemoryPoint)))
+        .map { _ =>
+          if (archived.nonEmpty) invalidateAllMemoryRetrievals()
+          stored
+        }
     }
+
+  private def archivedOf(result: UpsertMemoryResult): Option[Id[ContextMemory]] = result match {
+    case UpsertMemoryResult.Versioned(_, archived) => Some(archived._id)
+    case _                                         => None
+  }
 
   /**
    * Bulk-persist equivalent of [[persistMemoryFor]] /
@@ -554,4 +613,20 @@ trait MemoryOps { this: Sigil =>
     if (memories.isEmpty) Task.pure(Nil)
     else Task.sequence(memories.map(m => enrich(m, chain, conversationId)))
       .flatMap(persistMemories)
+}
+
+object MemoryOps {
+  /** Ceiling on a memory's `sourceEventIds`. A long-lived keyed slot
+    * refreshed on every turn would otherwise accumulate one id per
+    * refresh forever — thousands of ids on a record whose value is a
+    * single sentence. The most recent ids are the useful ones (the
+    * exchange that last restated the fact), so the union keeps the
+    * tail. */
+  val MaxSourceEventIds: Int = 200
+
+  /** Union a memory's prior provenance with a fresh extraction's,
+    * preserving order and keeping the most recent
+    * [[MaxSourceEventIds]]. */
+  def boundedProvenance(prior: List[Id[Event]], fresh: List[Id[Event]]): List[Id[Event]] =
+    (prior ++ fresh).distinct.takeRight(MaxSourceEventIds)
 }

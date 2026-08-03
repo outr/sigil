@@ -58,7 +58,7 @@ case object SemanticSearchTool extends Tool {
             m.status == MemoryStatus.Approved &&
               (input.includeHistory || m.validUntil.isEmpty)
           }
-          Task.sequence(filtered.map(m => ctx.sigil.recordMemoryAccess(m._id)))
+          ctx.sigil.recordMemoryAccesses(filtered.map(_._id))
             .map(_ => SemanticSearchOutput(
               query    = input.query,
               memories = filtered.map(toHit),
