@@ -21,11 +21,12 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint}
  * fallback; the default fallback keeps existing behavior intact when
  * the vector path can't help.
  *
- * Index population: apps call [[indexTool]] / [[indexAll]] to upsert
- * tool description embeddings into the vector index under
- * `kind=tool`. Sigil's `StaticToolSyncUpgrade` is the natural place to
- * call `indexAll` at app startup; runtime tool additions (marketplace
- * installs, MCP discovery) call `indexTool`.
+ * Index population is app-driven — the framework never calls it.
+ * [[indexAll]] bulk-indexes whatever is in `SigilDB.tools` and is
+ * idempotent, so the usual wiring is one call after `Sigil.instance`
+ * completes (by which point `StaticToolSyncUpgrade` has synced the
+ * static roster into the store). Runtime tool additions — marketplace
+ * installs, MCP discovery, `createTool` — call [[indexTool]].
  */
 final class EmbeddingBackedToolFinder(sigil: Sigil,
                                       extraIO: List[ToolIO[?, ?]],

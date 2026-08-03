@@ -8,7 +8,10 @@ import rapid.Task
  * Production apps use [[DbToolFinder]] instead.
  *
  * Filtering uses [[DiscoveryFilter]] — same semantics as the DB-backed
- * finder, but inline.
+ * finder, but inline. [[byName]] is exact-match, matching
+ * [[DbToolFinder]]'s indexed lookup: a tool name resolved
+ * case-insensitively here but not in production is a seam that only
+ * shows up after deploy.
  */
 case class InMemoryToolFinder(tools: List[Tool]) extends ToolFinder {
 
@@ -23,5 +26,5 @@ case class InMemoryToolFinder(tools: List[Tool]) extends ToolFinder {
   }
 
   override def byName(name: ToolName): Task[Option[Tool]] =
-    Task(tools.find(_.name.value.equalsIgnoreCase(name.value)))
+    Task(tools.find(_.name == name))
 }

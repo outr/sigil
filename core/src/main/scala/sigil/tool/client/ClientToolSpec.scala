@@ -28,6 +28,10 @@ import fabric.rw.*
  *     declared by the client. Defaults describe a typical UI
  *     interaction: not destructive to external state, but not
  *     `readOnly` either (triggering navigation is an effect).
+ *   - `consequence` — what a `destructive` call actually does, in the
+ *     client's own words ("Deletes the selected board and its cards").
+ *     Rendered to the agent ahead of the call; when omitted the
+ *     framework substitutes a stub naming the tool.
  */
 case class ClientToolSpec(name: String,
                           description: String,
@@ -35,4 +39,5 @@ case class ClientToolSpec(name: String,
                           inputSchema: Json = obj(),
                           expectsResult: Boolean = false,
                           readOnly: Boolean = false,
-                          destructive: Boolean = false) derives RW
+                          destructive: Boolean = false,
+                          consequence: Option[String] = None) derives RW

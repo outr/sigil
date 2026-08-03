@@ -826,10 +826,14 @@ trait Provider extends Service with ModelResolver {
     // change_mode-loop failure mode in the field. Keeping the
     // advertised names means the agent can act on what the prompt
     // tells it is available; truly unused catalog bulk still drops.
-    val essentials = Set("respond", "find_capability", "stop", "change_mode", "no_response",
-      "respond_options", "activate_skill")
+    // The respond members come from the family's own membership set, so
+    // a card / options variant can never be shed off the wire while the
+    // prompt still advertises it.
+    val essentials: Set[_root_.sigil.tool.ToolName] =
+      _root_.sigil.tool.core.RespondFamilyTool.names ++
+        Set("find_capability", "stop", "change_mode", "activate_skill").map(_root_.sigil.tool.ToolName.internal)
     val keep: _root_.sigil.tool.ToolName => Boolean = n =>
-      essentials.contains(n.value) || initial.preservedToolNames.contains(n)
+      essentials.contains(n) || initial.preservedToolNames.contains(n)
     if (estimateOf(current) > limit && current.tools.exists(t => !keep(t.schema.name))) {
       val trimmed = current.tools.filter(t => keep(t.schema.name))
       current = current.copy(roster = ToolRoster(trimmed))

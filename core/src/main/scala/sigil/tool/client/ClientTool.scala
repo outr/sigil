@@ -82,7 +82,12 @@ object ClientTool {
       if (clientSpec.keywords.nonEmpty) clientSpec.keywords
       else Set(clientSpec.name)
     val effect =
-      if (clientSpec.destructive) Effect.Destructive(MutationTargeting.none, "DESTRUCTIVE.")
+      if (clientSpec.destructive)
+        Effect.Destructive(
+          MutationTargeting.none,
+          clientSpec.consequence.filterNot(_.isBlank)
+            .getOrElse(s"Destructive client-side action: `${name.value}`.")
+        )
       else if (clientSpec.readOnly) Effect.ReadOnly(Freshness.Stable)
       else Effect.Mutating(MutationTargeting.none)
     ToolSpec(
