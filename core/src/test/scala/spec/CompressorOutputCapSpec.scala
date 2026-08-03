@@ -131,7 +131,7 @@ class CompressorOutputCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         maxSummaryTokens    = 2048,
         maxExtractionTokens = 1024
       )
-      val frames = (0 until 4).toVector.map(i => textFrame(s"utterance $i", s"ev-$i"))
+      val frames = (0 until 4).toVector.map(i => textFrame(s"I bought a new laptop for $$2400 and I prefer the 16-inch model, message $i.", s"ev-$i"))
       for {
         _ <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), Stream.emits(frames), convId)
       } yield {
@@ -166,7 +166,7 @@ class CompressorOutputCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       )
       for {
         _ <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent),
-                                  Stream.emits(Vector(textFrame("utterance", "ev-0"))), convId)
+                                  Stream.emits(Vector(textFrame("I bought a new laptop for $2400 and I prefer the 16-inch model.", "ev-0"))), convId)
       } yield {
         val seen = provider.seenMaxOutput.get()
         seen should contain(Some(128))
@@ -190,7 +190,7 @@ class CompressorOutputCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       TestSigil.setProvider(Task.pure(provider))
 
       val compressor = SummaryOnlyCompressor(maxSummaryTokens = 1500)
-      val frames = (0 until 3).toVector.map(i => textFrame(s"line $i", s"e-$i"))
+      val frames = (0 until 3).toVector.map(i => textFrame(s"I bought a new laptop for $$2400 and I prefer the 16-inch model, line $i.", s"e-$i"))
       for {
         _ <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), Stream.emits(frames), convId)
       } yield {

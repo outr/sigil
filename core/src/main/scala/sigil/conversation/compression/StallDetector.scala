@@ -345,7 +345,7 @@ object StallDetector {
     case Some(j) => canonicalize(j).toString
     case None =>
       r.invoke.outcome match {
-        case ToolOutcome.Failure(reason, _) => "FAIL:" + reason
+        case ToolOutcome.Failure(reason, _) => "FAIL:" + stripCounters(reason)
         case _ if r.invoke.summary.nonEmpty => r.invoke.summary
         case _ =>
           r.resultMessage match {
@@ -355,13 +355,20 @@ object StallDetector {
                 case ResponseContent.Markdown(t) => t
               }.mkString("\n").trim
               m.disposition match {
-                case _: sigil.event.MessageDisposition.Failure => "FAIL:" + text
+                case _: sigil.event.MessageDisposition.Failure => "FAIL:" + stripCounters(text)
                 case sigil.event.MessageDisposition.Success    => text
               }
             case None => "<pending>"
           }
       }
   }
+
+  /** Failure texts often embed a running counter ("called 4 times…",
+    * "attempt 3 of 5") — the framework's own duplicate-call and refusal
+    * intercepts do exactly this. Two failures for the SAME input that
+    * differ only in such numerals are the same stall, not a legitimate
+    * re-query, so failure fingerprints compare with digits collapsed. */
+  private def stripCounters(text: String): String = text.replaceAll("\\d+", "#")
 
   /** True when the call's output carries no information.
     * Recognises empty arrays / objects / `null`, an empty-string
