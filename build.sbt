@@ -31,7 +31,7 @@ val lsp4jDebugVersion: String = "1.0.0"
 
 val jtokkitVersion: String = "1.1.0"
 
-val twelveMonkeysVersion: String = "3.13.1"
+val twelveMonkeysVersion: String = "3.14.0"
 
 val scalatestVersion: String = "3.2.20"
 
