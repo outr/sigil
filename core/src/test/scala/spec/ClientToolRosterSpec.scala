@@ -11,13 +11,12 @@ import sigil.tool.ToolName
 import sigil.tool.client.ClientToolSpec
 
 /**
- * Registered client tools reach the effective roster WITHOUT a
- * `find_capability` round-trip — including on hosts that suppress
- * discovery entirely. Registration is conversation-scoped explicit
- * intent, so the names join the policy fold as extras (the semantics
- * of an explicit `ToolPolicy.Active` overlay): they survive
- * `ActiveOnly`, `Exclusive`, and `None`, and leave with
- * unregistration.
+ * Dual-path client-tool surfacing. Discovery-enabled hosts reach
+ * registered client tools through `find_capability` (they join the
+ * discovery catalog for their conversation); hosts whose policy fold
+ * leaves no discovery path get them injected into the roster directly.
+ * Either way, an explicit conversation-scoped registration is
+ * reachable — and leaves with unregistration.
  */
 class ClientToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -58,40 +57,46 @@ class ClientToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     }
 
-    "survive Exclusive and None policies (explicit registration outranks mode lockdown)" in {
+    "inject under None (no discovery path) but defer to discovery under Exclusive (find_capability retained)" in {
       val convId = freshConv()
       for {
         _ <- TestSigil.clientTools.register(convId, "tab-r2", List(clientSpec("open_widget_editor")))
         exclusive <- rosterFor(convId, ToolPolicy.Exclusive(List(ToolName("respond"))))
         none <- rosterFor(convId, ToolPolicy.None)
       } yield {
-        exclusive should contain("open_widget_editor")
+        exclusive should contain("find_capability")
+        exclusive should not contain "open_widget_editor"
         none should contain("open_widget_editor")
       }
     }
 
     "leave the roster on unregistration" in {
       val convId = freshConv()
+      val policy = ToolPolicy.ActiveOnly(List(ToolName("respond")))
       for {
         _ <- TestSigil.clientTools.register(convId, "tab-r3", List(clientSpec("open_widget_editor")))
-        before <- rosterFor(convId, ToolPolicy.Standard)
+        before <- rosterFor(convId, policy)
         _ <- TestSigil.clientTools.deregisterSession("tab-r3")
-        after <- rosterFor(convId, ToolPolicy.Standard)
+        after <- rosterFor(convId, policy)
       } yield {
         before should contain("open_widget_editor")
         after should not contain "open_widget_editor"
       }
     }
 
-    "remain present on discovery-enabled hosts too — always-on, not discovery-gated" in {
+    "stay discovery-gated on discovery-enabled hosts — findable and resolvable, not pre-injected" in {
       val convId = freshConv()
       for {
         _ <- TestSigil.clientTools.register(convId, "tab-r4", List(clientSpec("open_widget_editor")))
         names <- rosterFor(convId, ToolPolicy.Standard)
+        found <- TestSigil.findCapabilities(sigil.tool.DiscoveryRequest(
+          keywords = "open widget editor", chain = List(TestUser, TestAgent),
+          mode = sigil.provider.ConversationMode, callerSpaces = Set.empty, conversationId = Some(convId)))
         resolved <- TestSigil.resolveToolFor(convId, ToolName("open_widget_editor"))
       } yield {
         names should contain("find_capability")
-        names should contain("open_widget_editor")
+        names should not contain "open_widget_editor"
+        found.map(_.name) should contain("open_widget_editor")
         resolved should not be empty
       }
     }
@@ -101,7 +106,7 @@ class ClientToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val otherConv = freshConv()
       for {
         _ <- TestSigil.clientTools.register(convId, "tab-r5", List(clientSpec("open_widget_editor")))
-        other <- rosterFor(otherConv, ToolPolicy.Standard)
+        other <- rosterFor(otherConv, ToolPolicy.ActiveOnly(List(ToolName("respond"))))
       } yield other should not contain "open_widget_editor"
     }
   }

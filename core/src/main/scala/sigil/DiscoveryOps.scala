@@ -540,12 +540,13 @@ trait DiscoveryOps { this: Sigil =>
                            * narrowing). */
                          recentlyUsedTools: Set[sigil.tool.ToolName] = Set.empty,
                          /** UI-registered client tools for the turn's
-                           * conversation. Unioned into the policy fold's
-                           * extras — the semantics of an explicit
-                           * `ToolPolicy.Active(names)` overlay — so an
-                           * explicit registration takes effect without a
-                           * `find_capability` round-trip, on every host
-                           * including discovery-suppressed ones. */
+                           * conversation. When the policy fold leaves
+                           * `find_capability` OUT of the roster (the
+                           * discovery-suppressed host shape), these join
+                           * the extras directly — an explicit
+                           * registration must be reachable on every host.
+                           * Discovery-enabled hosts reach them through
+                           * `find_capability` instead. */
                          clientToolNames: List[sigil.tool.ToolName] = Nil): List[sigil.tool.ToolName] = {
     import sigil.tool.core.{
       ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool, RespondOptionsTool
@@ -571,7 +572,7 @@ trait DiscoveryOps { this: Sigil =>
                            includesFindCapability: Boolean,
                            includesBaseline: Boolean,
                            pureDiscovery: Boolean)
-    val initial = PolicyState(clientToolNames, includesFindCapability = true, includesBaseline = true, pureDiscovery = false)
+    val initial = PolicyState(Nil, includesFindCapability = true, includesBaseline = true, pureDiscovery = false)
 
     def apply(s: PolicyState, p: ToolPolicy): PolicyState = p match {
       case ToolPolicy.Standard           => s
@@ -594,7 +595,15 @@ trait DiscoveryOps { this: Sigil =>
     // `start_metals` adds those names; `Exclusive` / `None` from a
     // user-installed overlay can also restrict, mirroring the
     // mode-side semantics.
-    val state = overlays.foldLeft(apply(apply(initial, agent.tools), mode.tools))(apply)
+    val folded = overlays.foldLeft(apply(apply(initial, agent.tools), mode.tools))(apply)
+    // Dual-path client-tool surfacing: discovery-enabled hosts reach
+    // registered client tools through `find_capability` (they join the
+    // discovery catalog for their conversation); only when the fold
+    // leaves NO discovery path does the roster carry them directly —
+    // an explicit registration must be reachable on every host shape.
+    val state =
+      if (folded.includesFindCapability) folded
+      else folded.copy(extras = folded.extras ++ clientToolNames)
     val essentials     = if (state.pureDiscovery) pureDiscoveryEssentials else fullEssentials
     val findCapability = if (state.includesFindCapability) List(FindCapabilityTool.schema.name) else Nil
     val baselineFull   = if (state.includesBaseline) agent.toolNames else Nil

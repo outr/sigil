@@ -429,9 +429,9 @@ Each entry names the fix.
 
 `MoveMemoryInput.newSpace` (and `fromSpace`) are `String` — the target space's `value` — resolved server-side against the caller's accessible spaces. In 1.3 they were typed `SpaceId` fields, which required the model to construct a discriminated union and made the tool's schema depend on the app's registered space subtypes. A miss returns a recoverable failure listing the accessible values.
 
-### Client tools are always-on, not discovery-gated
+### Client tools reach both host shapes
 
-UI-registered client tools (`RegisterClientTools`) join the effective roster directly — the semantics of an explicit `ToolPolicy.Active` overlay — surviving `ActiveOnly`, `Exclusive`, and `None` mode policies, and no longer require `find_capability` in the roster to surface. Hosts that suppress discovery get registered client tools without workarounds; discovery-enabled hosts see them in the wire roster every turn instead of behind a discovery hop.
+UI-registered client tools (`RegisterClientTools`) are reachable on every host: discovery-enabled hosts find them through `find_capability` (unchanged), and hosts whose effective roster carries no `find_capability` (`ToolPolicy.ActiveOnly` / `None`, or an override that filters it) now get them injected into the roster directly. Discovery-first hosts see no roster change; discovery-off hosts no longer need a `conversationToolOverlays` workaround.
 
 ### Schema-ergonomics rule is enforced at boot
 
