@@ -7,7 +7,7 @@ val rapidVersion: String = "2.9.9"
 
 val spiceVersion: String = "1.10.8"
 
-val profigVersion: String = "3.7.1"
+val profigVersion: String = "3.8.0"
 
 val scribeVersion: String = "3.19.0"
 
@@ -56,7 +56,8 @@ ThisBuild / scalacOptions ++= Seq(
   "-unchecked",
   // fabric's `RW.gen` inlines once per field; the widest records here
   // (ContextMemory) exceed the 32 default.
-  "-Xmax-inlines", "64"
+  "-Xmax-inlines",
+  "64"
 )
 // Per-forked-JVM heap. Local default is generous; CI (a 4-vCPU / 16 GB
 // runner driving several concurrent forks) overrides via env so the
