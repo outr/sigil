@@ -429,6 +429,10 @@ Each entry names the fix.
 
 `MoveMemoryInput.newSpace` (and `fromSpace`) are `String` — the target space's `value` — resolved server-side against the caller's accessible spaces. In 1.3 they were typed `SpaceId` fields, which required the model to construct a discriminated union and made the tool's schema depend on the app's registered space subtypes. A miss returns a recoverable failure listing the accessible values.
 
+### Client tools are always-on, not discovery-gated
+
+UI-registered client tools (`RegisterClientTools`) join the effective roster directly — the semantics of an explicit `ToolPolicy.Active` overlay — surviving `ActiveOnly`, `Exclusive`, and `None` mode policies, and no longer require `find_capability` in the roster to surface. Hosts that suppress discovery get registered client tools without workarounds; discovery-enabled hosts see them in the wire roster every turn instead of behind a discovery hop.
+
 ### Schema-ergonomics rule is enforced at boot
 
 The required-union rule runs in the boot completeness pass against the final registered polymorphic state, not at `ToolIO.derived` construction — a union's shape depends on which subtypes the app registers, so construction-time verdicts were registration-order-dependent. `ToolIO.withSchema` / `dynamic*` remain the recorded opt-outs. Practically: an app tool with a required `SpaceId`-style union field now fails at startup with a named violation instead of a class-initialization error at first touch.

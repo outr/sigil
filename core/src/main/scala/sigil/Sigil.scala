@@ -1166,7 +1166,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
         recentlyUsed = context.turnInput.projectionFor(agent.id).recentToolInvocations
           .iterator.map(_.toolName).toSet
         effectiveNames = effectiveToolNames(
-          agent, context.conversation.currentMode, suggested, overlays.map(_.policy), recentlyUsed
+          agent, context.conversation.currentMode, suggested, overlays.map(_.policy), recentlyUsed,
+          clientToolNames = clientTools.toolsFor(context.conversation.id).map(_.name)
         ).distinct
         rawTools    <- Task.sequence(effectiveNames.map(n => resolveToolFor(context.conversation.id, n))).map(_.flatten.toVector)
         // Sigil #378 — `record_consent` is a no-op unless some tool in

@@ -538,7 +538,15 @@ trait DiscoveryOps { this: Sigil =>
                            * non-conversation callers (e.g. `DelegateTaskTool`'s
                            * up-front roster build) leave it empty (no
                            * narrowing). */
-                         recentlyUsedTools: Set[sigil.tool.ToolName] = Set.empty): List[sigil.tool.ToolName] = {
+                         recentlyUsedTools: Set[sigil.tool.ToolName] = Set.empty,
+                         /** UI-registered client tools for the turn's
+                           * conversation. Unioned into the policy fold's
+                           * extras — the semantics of an explicit
+                           * `ToolPolicy.Active(names)` overlay — so an
+                           * explicit registration takes effect without a
+                           * `find_capability` round-trip, on every host
+                           * including discovery-suppressed ones. */
+                         clientToolNames: List[sigil.tool.ToolName] = Nil): List[sigil.tool.ToolName] = {
     import sigil.tool.core.{
       ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool, RespondOptionsTool
     }
@@ -563,7 +571,7 @@ trait DiscoveryOps { this: Sigil =>
                            includesFindCapability: Boolean,
                            includesBaseline: Boolean,
                            pureDiscovery: Boolean)
-    val initial = PolicyState(Nil, includesFindCapability = true, includesBaseline = true, pureDiscovery = false)
+    val initial = PolicyState(clientToolNames, includesFindCapability = true, includesBaseline = true, pureDiscovery = false)
 
     def apply(s: PolicyState, p: ToolPolicy): PolicyState = p match {
       case ToolPolicy.Standard           => s
