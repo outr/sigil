@@ -19,7 +19,10 @@ val scalapassVersion: String = "1.4.2"
 
 val awsS3Version: String = "2.46.21"
 
-val robobrowserVersion: String = "2.3.5"
+// 2.4.0 adds `RoboBrowserConfig.virtualDisplay` (Xvfb-backed headful sessions)
+// and the `robobrowser-stream` artifact `sigil-browser-stream` wraps. The
+// `browser` module tracks the same version so cdp doesn't split across the two.
+val robobrowserVersion: String = "2.4.0-SNAPSHOT"
 
 val commonmarkVersion: String = "0.29.0"
 
@@ -135,7 +138,7 @@ val docNoLinkWarnings: Seq[Setting[?]] = Seq(
 )
 
 lazy val root = (project in file("."))
-  .aggregate(core, secrets, script, mcp, tooling, metals, debug, browser, all, benchmark, docs)
+  .aggregate(core, secrets, script, mcp, tooling, metals, debug, browser, streamBrowser, all, benchmark, docs)
   .settings(
     name := "sigil",
     publish / skip := true
@@ -335,7 +338,7 @@ lazy val debug = (project in file("debug"))
  * version` line. No source of its own; the POM carries the transitive deps.
  */
 lazy val all = (project in file("all"))
-  .dependsOn(core, secrets, script, mcp, metals, tooling, debug, browser)
+  .dependsOn(core, secrets, script, mcp, metals, tooling, debug, browser, streamBrowser)
   .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-all",
@@ -373,6 +376,43 @@ lazy val browser = (project in file("browser"))
         name = test.name,
         tests = Seq(test),
         runPolicy = Tests.SubProcess(ForkOptions())
+      )
+    }
+  )
+
+/**
+ * WebRTC preview streaming for `sigil-browser` conversations. Split from
+ * `browser` because `robobrowser-stream` drags in the GStreamer JNA bindings
+ * (and expects native GStreamer + Xvfb at runtime) — apps that only automate a
+ * headless browser must not pay that. The CDP-screencast fallback lives here
+ * too, so a consumer wires one module and gets both rungs of the ladder.
+ */
+lazy val streamBrowser = (project in file("browser-stream"))
+  .dependsOn(browser % "compile->compile;test->test")
+  .settings(docNoLinkWarnings *)
+  .settings(
+    name := "sigil-browser-stream",
+    libraryDependencies ++= Seq(
+      ("com.outr" %% "robobrowser-stream" % robobrowserVersion)
+        .exclude("com.outr", "spice-client_3")
+        .exclude("com.outr", "spice-client-netty_3")
+        .exclude("com.outr", "spice-server-undertow_3")
+        .exclude("com.outr", "rapid-core_3"),
+      "org.scalatest" %% "scalatest" % scalatestVersion % Test,
+      "com.outr" %% "rapid-test" % rapidVersion % Test,
+      "com.outr" %% "spice-server-undertow" % spiceVersion % Test
+    ),
+    fork := true,
+    Test / parallelExecution := true,
+    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
+    Test / testGrouping := (Test / definedTests).value.map { test =>
+      Tests.Group(
+        name = test.name,
+        tests = Seq(test),
+        // Xvfb and the GStreamer element registry are discovered through the
+        // ambient environment (PATH, GST_PLUGIN_PATH, XDG_RUNTIME_DIR), so the
+        // per-suite fork inherits it rather than booting bare.
+        runPolicy = Tests.SubProcess(ForkOptions().withEnvVars(sys.env))
       )
     }
   )

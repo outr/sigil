@@ -1,0 +1,25 @@
+package sigil.browser.stream
+
+import fabric.rw.*
+import lightdb.id.Id
+import robobrowser.stream.SignalMessage
+import sigil.conversation.Conversation
+import sigil.signal.ConversationNotice
+
+/**
+ * Server→client half of the WebRTC signaling vocabulary: an offer, an
+ * ICE candidate, an error, or a bye produced by the conversation's
+ * [[PreviewStreamSession.WebRtc]] session.
+ *
+ * A [[sigil.signal.ConversationNotice]], so it reaches only the viewers
+ * subscribed to `conversationId` — a preview offer is meaningless (and
+ * unwanted) in a sibling conversation's view. Transient like every
+ * notice: a viewer that reconnects mid-negotiation asks for a fresh
+ * stream rather than replaying a stale offer.
+ *
+ * The client answers with [[PreviewSignalReply]] carrying the same
+ * `streamId`.
+ */
+final case class PreviewSignal(conversationId: Id[Conversation],
+                               streamId: String,
+                               message: SignalMessage) extends ConversationNotice derives RW

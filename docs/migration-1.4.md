@@ -539,3 +539,14 @@ The required-union rule runs in the boot completeness pass against the final reg
   drifted and no-ops entirely without vector wiring. A custom `EmbeddingProvider` should
   override `def id: String` to include its model name — the default is the class simple name,
   which cannot detect a model swap.
+- **Browser preview streaming.** The new `sigil-browser-stream` module adds
+  `StreamBrowserSigil` on top of `BrowserSigil`: `previewStreamFor(conversationId)` starts a
+  live preview of the conversation's browser on a dedicated headful, virtual-display browser,
+  leaving the headless automation browsers untouched. It returns a WebRTC session (hardware
+  H.264, viewer input over the session's DataChannel) where GStreamer and a display are
+  available, and falls back to the CDP screencast on the same browser where they aren't —
+  `streamFallbackToScreencast = false` turns the degradation into a `StreamUnavailableException`
+  instead. WebRTC signaling rides the notice vocabulary (`PreviewSignal` out,
+  `PreviewSignalReply` in, both conversation-scoped), so no new transport is needed. GStreamer
+  stays out of every other module's dependency graph; see `browser-stream/README.md` for the
+  runtime requirements.
