@@ -65,21 +65,25 @@ class PreviewStreamFallbackSpec extends AnyWordSpec with Matchers with BeforeAnd
       }
       TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should contain (screencast.streamId)
 
-      // Chrome buffers only a handful of frames before an un-acked
-      // screencast stalls; 24 in a row can only arrive if each one was
-      // acked as it landed.
-      val frames = screencast.frames.take(24).toList.timeout(2.minutes).sync()
-      frames should have size 24
-      frames.foreach { f =>
-        f.dataBase64 should not be empty
-        f.metadata.deviceWidth should be > 0.0
+      try {
+        // Chrome buffers only a handful of frames before an un-acked
+        // screencast stalls; 24 in a row can only arrive if each one was
+        // acked as it landed.
+        val frames = screencast.frames.take(24).toList.timeout(2.minutes).sync()
+        frames should have size 24
+        frames.foreach { f =>
+          f.dataBase64 should not be empty
+          f.metadata.deviceWidth should be > 0.0
+        }
+        // Frames reach the consumer in the order they were stamped — the
+        // CDP dispatcher can deliver two concurrently.
+        frames.map(_.sequence).sliding(2).foreach {
+          case List(a, b) => b should be > a
+          case _ => ()
+        }
+      } finally {
+        screencast.stop.sync()
       }
-      frames.map(_.sequence).sliding(2).foreach {
-        case List(a, b) => b should be > a
-        case _ => ()
-      }
-
-      screencast.stop.sync()
       TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should not contain screencast.streamId
       // The stream completes rather than parking forever on an empty queue.
       screencast.frames.toList.timeout(30.seconds).sync() shouldBe empty

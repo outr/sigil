@@ -190,8 +190,10 @@ trait StreamBrowserSigil extends BrowserSigil {
           .handleError(t => Task(scribe.warn(s"Stopping screencast preview $streamId failed: ${t.getMessage}")))
           .map { _ =>
             controller.deregister(streamId)
-            queue.clear()
-            queue.offer(None)
+            queue.synchronized {
+              queue.clear()
+              queue.offer(None)
+            }
             ()
           }
       } else Task.unit
@@ -199,7 +201,11 @@ trait StreamBrowserSigil extends BrowserSigil {
 
     val preview = PreviewStreamSession.Screencast(convId, streamId, frames, stop)
     controller.browser.screencast.start(
-      onFrame = frame => {
+      // Chrome's frames arrive on the CDP dispatcher, which is free to
+      // deliver two concurrently. Stamping and enqueueing under one lock
+      // is what makes `sequence` match the order a consumer pulls in;
+      // doing them separately lets a later frame overtake an earlier one.
+      onFrame = frame => queue.synchronized {
         val next = Some(PreviewFrame(frame.data, frame.metadata, sequence.incrementAndGet()))
         if (!queue.offer(next)) {
           queue.poll()
