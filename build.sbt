@@ -1,11 +1,11 @@
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "1.4.0-SNAPSHOT"
+ThisBuild / version := "1.4.0-SNAPSHOT1"
 
 ThisBuild / scalaVersion := "3.8.4"
 
 val rapidVersion: String = "2.9.9"
 
-val spiceVersion: String = "1.10.8"
+val spiceVersion: String = "1.10.9-SNAPSHOT"
 
 val profigVersion: String = "3.7.1"
 
@@ -19,7 +19,7 @@ val scalapassVersion: String = "1.4.2"
 
 val awsS3Version: String = "2.46.21"
 
-val robobrowserVersion: String = "2.3.5"
+val robobrowserVersion: String = "2.4.0-SNAPSHOT"
 
 val commonmarkVersion: String = "0.29.0"
 
