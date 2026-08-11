@@ -690,23 +690,8 @@ trait AgentLoopOps { this: Sigil =>
                                    * publishes once and outer-level handlers
                                    * skip the duplicate publish on re-throw. */
                                  failurePublished: java.util.concurrent.atomic.AtomicBoolean,
-                                 /** Sigil bug #125 — when `true`, this is the
-                                   * forced-synthesis turn invoked by the
-                                   * cap-hit soft-stop. The loop runs ONE
-                                   * iteration with `tool_choice: respond` and
-                                   * exits regardless of `shouldIterate`. A
-                                   * subsequent cap-hit while this flag is
-                                   * already true falls back to the hard
-                                   * [[AgentRunawayException]] throw — at that
-                                   * point the soft path has genuinely
-                                   * exhausted. */
+//
                                  forceResponseSynthesis: Boolean = false,
-                                 /** Sigil bug #198 — which condition triggered
-                                   * the forced-synthesis turn. Threaded so the
-                                   * [[AgentRunawayException]] message describes
-                                   * the actual cause (cap-hit vs no-tool-call
-                                   * vs stall) instead of misattributing every
-                                   * forced-synthesis failure as cap exhaustion. */
                                  forcedReason: Option[ForcedSynthesisReason] = None,
                                  /** Sigil #257 — count of consecutive
                                    * full-roster retries already spent on
@@ -716,14 +701,6 @@ trait AgentLoopOps { this: Sigil =>
                                    * doesn't pass it); bounded by
                                    * [[noToolCallRetryLimit]]. */
                                  noToolCallRetries: Int = 0,
-                                 /** Sigil bug #226 — the per-agent-loop
-                                   * `find_capability` cache. Shared across
-                                   * every iteration of THIS loop so the agent
-                                   * doesn't re-discover within the same task;
-                                   * cleared at loop release by virtue of the
-                                   * reference going out of scope, so a new
-                                   * `runAgent` call starts with a fresh empty
-                                   * map. */
                                  discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]],
                                  /** Turn-scoped read-tool result cache
                                    * (canonical key → cached read). Created once per
@@ -785,16 +762,6 @@ trait AgentLoopOps { this: Sigil =>
       val fallback: Task[Unit] =
         if (skipFallback || userVisibleSeen.get()) Task.unit
         else synthesizeFallbackRespond(agent, convId)
-      // Sigil #301 — projection.suggestedTools is NOT cleared at turn
-      // end. Discoveries from `find_capability` persist across turn
-      // boundaries (replaced only by the next find_capability call) so
-      // a multi-turn task that branches through a respond_options
-      // clarification still has its discovered action-tool roster on
-      // the follow-up turn. Conversation-boundary isolation is
-      // preserved by projections being per-conversation. Replaces the
-      // bug #169 per-turn clear that drove the change_mode-loop
-      // failure mode (Sage wire log 2026-05-28 10:33:53 → 10:34:04).
-      //
       // Post-release trigger recheck: a message landing between the
       // loop's final trigger check and the claim release found the
       // claim held, bailed at the gate, and would otherwise be
@@ -973,12 +940,6 @@ trait AgentLoopOps { this: Sigil =>
           scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
           buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, claimedTimestamp = claimed.timestamp, isGreeting = greeting && iteration == 1, discoveredCapabilitiesRef = discoveredCapabilitiesRef, toolResultCacheRef = toolResultCacheRef, healedThisTurn = Some(healedThisTurn)).flatMap {
             case (rawCtx, triggers) =>
-              // Sigil bug #125 — propagate the cap-hit soft-stop flag
-              // through the TurnContext so runAgentTurn → ConversationRequest →
-              // Provider's tool_choice all reflect it.
-              // Sigil #413 — after a context-overflow recovery, carry the
-              // emergency refit factor so this iteration's input is force-
-              // compacted under the wire window before the request ships.
               // Thread the claim's tool-cancellation token so in-flight
               // tool executions can cooperate with Stop via
               // `ctx.checkpoint`.
@@ -1100,10 +1061,7 @@ trait AgentLoopOps { this: Sigil =>
               // `takeWhile(!force)` above only fires at element boundaries —
               // while a tool is mid-execution no element is in flight, so the
               // flag isn't observed until the tool returns (the worst case being
-              // the tool's own timeout). Racing cancels the drain fiber the
-              // moment force flips (rapid's `Fiber.cancel` interrupts the carrier
-              // thread, aborting an interruptible blocking op / parked await),
-              // and the post-drain `stopFlag.exists(_.requested)` branch settles
+              // the tool's own timeout). The post-drain `stopFlag.exists(_.requested)` branch settles
               // any dangling invoke + terminates cleanly. `race` returns the
               // waiter's result and discards the cancelled drain's
               // InterruptedException, so no error surfaces.
@@ -1145,14 +1103,6 @@ trait AgentLoopOps { this: Sigil =>
           if (stopFlag.exists(_.requested))
             settleDanglingToolInvokes(convId, agent.id).flatMap(_ => Task(terminate(skipFallback = true)))
           else if (forceResponseSynthesis) {
-            // Sigil bug #125 — the cap-hit soft-stop ran. With
-            // `tool_choice: respond` the model SHOULD have called
-            // respond on this iteration. If it did
-            // (`userVisibleSeen = true`), release the claim and
-            // exit cleanly. If it didn't (very weak / non-
-            // instruction-following local models), the soft path
-            // has genuinely exhausted — raise the hard throw so the
-            // calling fiber's failure handler sees it.
             if (userVisibleSeen.get())
               Task(terminate())
             else
@@ -1481,16 +1431,7 @@ trait AgentLoopOps { this: Sigil =>
           // unavailable, hub closed, missing topic, etc.) doesn't mask
           // the original error.
           //
-          // Sigil bug #200 — `publishFailureMessage` is CAS-gated so an
-          // exception that propagates up through N recursion levels only
-          // surfaces ONE Failure Message in the chat instead of N
-          // identical bubbles. The inner-most handler wins the publish;
-          // outer handlers re-throw silently. `scribe.error` stays per-
-          // level (stack-trace shape differs per recursion depth and is
-          // diagnostically useful in operator logs); `terminate()` stays
-          // per-level (already idempotent). `Task.error(t)` stays
-          // per-level so the failure still propagates to the fiber's
-          // error boundary.
+            //
           scribe.error(s"runAgent failed for ${agent.id.value} in ${convId.value}", t)
           val publishOnce: Task[Unit] =
             if (failurePublished.compareAndSet(false, true))
@@ -1523,11 +1464,6 @@ trait AgentLoopOps { this: Sigil =>
     }
   }
 
-  /** Sigil bug #198 — assemble an [[AgentRunawayException]] whose
-    * message describes the actual failure mode rather than always
-    * misattributing to "hit maxAgentIterations". Reason carries the
-    * trigger condition (`CapHit` / `NoToolCall` / `StallIntervention`);
-    * `iteration` is the actual loop counter at throw time. */
 
   private final def buildRunawayException(agent: AgentParticipant,
                                           conv: Conversation,

@@ -73,14 +73,14 @@ trait WorkflowSigil extends Sigil {
     * that handle without threading it through Strider's engine. */
   WorkflowHost.set(this)
 
- /** Register the framework-shipped workflow triggers + step inputs.
+  /** Register the framework-shipped workflow triggers + step inputs.
     * Runs inside [[Sigil.polymorphicRegistrations]] (via the
     * [[Sigil.mixinPolymorphicRegistrations]] hook) AFTER the framework
     * leaf polytypes (WorkType, Mode, SpaceId, ...) are registered —
     * forcing a subtype's `RW.def` before its referenced leaf polytypes
-    * are populated caches an empty polytype state in a lazy val (sigil
-    * bug #18). `TriggerStepInput` references the `WorkflowTrigger`
-    * polytype registered in the same block, so triggers register first. */
+    * are populated caches an empty polytype state in a lazy val.
+    * `TriggerStepInput` references the `WorkflowTrigger` polytype
+    * registered in the same block, so triggers register first. */
   override protected def mixinPolymorphicRegistrations: Task[Unit] =
     super.mixinPolymorphicRegistrations.flatMap { _ =>
       Task {
@@ -129,7 +129,7 @@ trait WorkflowSigil extends Sigil {
   }
 
   // Worker delegation tasks come from the base `Sigil.activeTasksFor`
-  // (worker sub-conversations + AgentState, sigil #327); this override
+  // (worker sub-conversations + AgentState); this override
   // adds the GENERAL Strider workflow runs (scheduled / triggered /
   // multi-step templates) tied to the conversation.
   override def activeTasksFor(conversationId: Id[sigil.conversation.Conversation])
@@ -226,4 +226,3 @@ trait WorkflowSigil extends Sigil {
     * decide whether disposal is even needed. */
   @volatile private var _workflowManagerStarted: Boolean = false
 }
-

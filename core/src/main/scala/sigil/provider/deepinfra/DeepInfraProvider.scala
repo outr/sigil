@@ -16,7 +16,6 @@ import scala.concurrent.duration.*
  * Llama, Qwen, and other open-weight models on vLLM / SGLang
  * upstream. Function calling and streaming SSE both supported.
  *
-*
  *
  * Schemas pass through [[StrictSchema.stripUnsupportedKeys]] —
  * conservative dialect-friendly shape; no `strict: true` since
@@ -60,12 +59,6 @@ case class DeepInfraProvider(apiKey: String,
     // wire body via honorsStrict.
     schemaDialect = SchemaDialect.OpenAIStrict,
     honorsStrict = false,
-    // Sigil bug #173 — DeepInfra's documented `tool_choice` set is
-    // {"auto", "none"}; "required" and the function-form aren't in
-    // their tool-calling docs. Express forced-call via documented
-    // `response_format: json_schema` instead (sigil's structure-first
-    // contract IS forced-call for every turn with tools, so this is
-    // the load-bearing knob).
     forcedCallShape = OpenAIChatCompletions.ForcedCallShape.ResponseFormatJsonSchema,
     // DeepInfra exposes the canonical OpenAI `reasoning_effort` field
     // on /v1/openai/chat/completions and honors `none | low | medium |
@@ -76,9 +69,6 @@ case class DeepInfraProvider(apiKey: String,
     // GenerationSettings.reasoningMode (Auto/On/Off) + optional
     // Effort into the right `reasoning_effort` value.
     reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
-    // #360 — extend the idle timeout for reasoning requests so the
-    // reasoning→answer silence gap doesn't cut a slow-but-alive planner
-    // at the 120s base.
     reasoningIdleTimeout = Some(6.minutes),
     multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm
   )

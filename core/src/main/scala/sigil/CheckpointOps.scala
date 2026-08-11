@@ -192,14 +192,7 @@ trait CheckpointOps { this: Sigil =>
                       "editing again cannot tell you whether anything is fixed. VERIFY the current state (compile, run " +
                       "diagnostics) before touching those targets again."))
               else sigil.conversation.compression.StallDetector.Signal.Empty
-            // Sigil bug #124 — fold the objective stall signal into the
-            // reflector's self-assessment. The agent's `meaningfulProgress`
-            // self-report is necessary but not sufficient; if the
-            // StallDetector spots an identical-call streak or empty-
-            // payload streak, the persisted checkpoint records
-            // `meaningfulProgress = false` regardless of what the agent
-            // said, and `stuckOn` carries the detector's reason so the
-            // intervention message names the loop concretely.
+            // fold the objective stall signal into the
             //
             // The mechanical evidence cuts the other way too: settled
             // successful invocations of destructive-annotated tools in
@@ -811,11 +804,6 @@ trait CheckpointOps { this: Sigil =>
     taskBlock + historyBlock + mutationsLine + priorBlock + ask
   }
 
-  /** Sigil bug #282 — return the agent's most recent
-    * [[sigil.event.ProgressCheckpoint]] status text for this
-    * conversation, formatted with stuck-on + remaining-steps when
-    * present. Best-effort — failures fall through to None rather than
-    * aborting the failure-publish path. */
   private[sigil] final def latestCheckpointStatus(agentId: ParticipantId,
                                            convId: Id[Conversation]): Task[Option[String]] =
     withDB(_.conversationEvents(convId)).map { events =>

@@ -49,26 +49,12 @@ object TestSigil extends Sigil {
 
   override def testMode: Boolean = true
 
-  /**
-   * Sigil #313 — TestSigil runs every spec in
-   * [[sigil.heal.HealingMode.Strict]] so any new corruption shape
-   * the framework's tests inadvertently start producing is caught
-   * loudly rather than silently patched over. Specs that need to
-   * exercise the heal-and-retry path override this via
-   * [[setHealingMode]].
-   */
   private val healingModeRef =
     new java.util.concurrent.atomic.AtomicReference[sigil.heal.HealingMode](sigil.heal.HealingMode.Strict)
   override def healingMode: sigil.heal.HealingMode = healingModeRef.get()
   def setHealingMode(mode: sigil.heal.HealingMode): Unit = healingModeRef.set(mode)
   def resetHealingMode(): Unit = healingModeRef.set(sigil.heal.HealingMode.Strict)
 
-  /**
-   * Sigil #277 — tests use synthetic pre-registered models; skip the
-   * OpenRouter network round-trip at boot. Specs that genuinely need
-   * the live OpenRouter catalog (none today) would override back to
-   * `true`.
-   */
   override def loadOpenRouterModels: Boolean = false
 
   /**
@@ -83,9 +69,7 @@ object TestSigil extends Sigil {
    *
    * The fallback (step 3) keeps `test-all.sh` working on any
    * developer's machine or CI box, regardless of whether a local
-   * llama.cpp happens to be running — previously the env var pointed
-   * at a stale `localhost:8081` and the LlamaCpp specs failed at
-   * provider construction.
+   * llama.cpp happens to be running.
    */
   lazy val llamaCppHost: URL = {
     val configured: Option[URL] = sys.env.get("SIGIL_LLAMACPP_HOST")
@@ -141,9 +125,7 @@ object TestSigil extends Sigil {
   /**
    * Poll until the agent's self-loop for `convId` has released its claim — the
    * `agentlock:` AgentState event settles to `Complete` when the loop's
-   * `releaseClaim` runs, a deterministic "the loop finished" signal. Replaces
-   * fixed `Task.sleep`s in async self-loop assertions so a slow / contended CI
-   * runner can't snapshot mid-loop (the source of the timing-flake cluster).
+   * `releaseClaim` runs, a deterministic "the loop finished" signal.
    * Falls through after `timeout` so a turn that never claims doesn't hang.
    */
   def awaitSettled(convId: lightdb.id.Id[sigil.conversation.Conversation],
@@ -161,7 +143,7 @@ object TestSigil extends Sigil {
   }
 
   /**
-   * Spec hook for sigil bug #172 — invoke the boot-time stale-Active
+   * Spec hook for invoke the boot-time stale-Active
    * reconciliation against the already-open DB.
    */
   def runStaleActiveReconciliation(): rapid.Task[Unit] =
@@ -178,10 +160,6 @@ object TestSigil extends Sigil {
     super.staticTools ++ (List(
       sigil.tool.core.ChangeModeTool,
       sigil.tool.provider.PinComplexityTool,
-      // Deprecated standalone respond-family tools (sigil bug #157)
-      // — kept registered here so specs that exercise the legacy
-      // by-name dispatch path (e.g. PostRespondContextSpec) still
-      // resolve them through `findTools`.
       sigil.tool.core.RespondOptionsTool,
       sigil.tool.core.NoResponseTool,
       SendSlackMessageTool,
@@ -241,7 +219,7 @@ object TestSigil extends Sigil {
     List(TestCodingMode, TestSkilledMode, WebResearchMode, TestModeAlpha)
 
   /**
-   * Registers the test-only [[ConversationStatus]] subtypes (sigil #386):
+   * Registers the test-only [[ConversationStatus]] subtypes:
    * a plain marker and a data-carrying one (proving payload-bearing
    * statuses still answer a `key`-category query).
    */
@@ -325,7 +303,7 @@ object TestSigil extends Sigil {
     new AtomicReference[Option[Set[String]]](None)
 
   /**
-   * Sigil #286 — per-spec override of `narrowRosterByRecentUse`.
+   * per-spec override of `narrowRosterByRecentUse`.
    * `None` (default) uses the framework default (`false`); `Some(b)`
    * forces the flag. Used by IntraTurnNarrowingSpec to exercise both
    * sides without mutating shared TestSigil state across tests.
@@ -334,7 +312,7 @@ object TestSigil extends Sigil {
     new AtomicReference[Option[Boolean]](None)
 
   /**
-   * #357 — per-spec override of `pinCoversAuxiliaryCalls`. `None`
+   * per-spec override of `pinCoversAuxiliaryCalls`. `None`
    * (default) uses the framework default (`false`, cost-first);
    * `Some(b)` forces the flag. Used by PinnedModelSpec to exercise
    * both sides of `auxModelFor` without mutating shared state.
@@ -346,11 +324,6 @@ object TestSigil extends Sigil {
 
   override def modelResolver: sigil.provider.ModelResolver = new sigil.provider.ModelResolver {
     override def resolve(modelId: Id[Model]): Option[sigil.provider.ProviderModel] = {
-      // Sigil #277 — auto-register a synthetic Model record for any
-      // modelId a spec resolves through the framework boundary. Specs
-      // declare `private val modelId = Model.id("test", "<spec-shape>")`
-      // and never explicitly call `cache.merge`; this fallback keeps
-      // every per-spec id resolvable without changing each spec.
       if (cache.find(modelId).isEmpty) testModel(modelId)
       // The swappable provider is constructed as a by-name Task (specs
       // call `setProvider(...)`); resolve is synchronous, so run it here.
@@ -360,7 +333,7 @@ object TestSigil extends Sigil {
   }
 
   /**
-   * Sigil #277 — auto-register an agent's nominal modelId before the
+   * auto-register an agent's nominal modelId before the
    * framework's `runAgentTurn` path resolves it against the registry.
    * Specs declare per-spec model ids that aren't in `knownTestModels`;
    * registering at this entry-point keeps every per-spec id resolvable
@@ -372,7 +345,7 @@ object TestSigil extends Sigil {
   }
 
   /**
-   * Sigil #277 — auto-register every agent participant's modelId on
+   * auto-register every agent participant's modelId on
    * conversation creation. Specs that go through
    * [[sigil.Sigil.newConversation]] get every agent's nominal modelId
    * resolvable at the per-turn boundary without needing to call
@@ -392,7 +365,7 @@ object TestSigil extends Sigil {
   }
 
   /**
-   * Sigil #277 — auto-register the joining agent's modelId on
+   * auto-register the joining agent's modelId on
    * `addParticipant` (late-join path).
    */
   override def addParticipant(conversationId: Id[sigil.conversation.Conversation],
@@ -499,7 +472,7 @@ object TestSigil extends Sigil {
 
   /**
    * Per-test cap override — specs exercising the iteration-cap
-   * soft-stop (sigil bug #125) tighten the cap so the soft-stop
+   * soft-stop tighten the cap so the soft-stop
    * fires within a reasonable test window. `resetMaxAgentIterations`
    * reverts to the framework default.
    */
@@ -512,7 +485,7 @@ object TestSigil extends Sigil {
 
   /**
    * Per-test override for the no-tool-call recovery retry budget
-   * (sigil #257 / #273). Default at the framework level is 3 retries
+   * Default at the framework level is 3 retries
    * before forced-synthesis; specs asserting on specific call counts
    * pin the budget here to keep their assertions stable across
    * framework default bumps.
@@ -525,8 +498,7 @@ object TestSigil extends Sigil {
   def resetNoToolCallRetryLimit(): Unit = noToolCallRetryLimitRef.set(None)
 
   /**
-   * Per-test override for the progress-checkpoint cadence (sigil
-   * bug #133). Specs exercising the stall-intervention forced-
+   * Per-test override for the progress-checkpoint cadence. Specs exercising the stall-intervention forced-
    * synthesis path lower this to 1-2 iterations so the checkpoint
    * fires within a reasonable test window without driving the
    * default 15-iteration cadence. `resetProgressCheckpointInterval`
@@ -625,7 +597,7 @@ object TestSigil extends Sigil {
 
   /**
    * Per-test [[Sigil.activeToolchains]] override — specs that
-   * exercise the toolchain-boost ranker (#85) wire which
+   * exercise the toolchain-boost ranker wire which
    * toolchains are "active" without spawning a real Metals /
    * BSP / etc. session. `None` reverts to the framework
    * default `Set.empty`.
@@ -641,7 +613,7 @@ object TestSigil extends Sigil {
    */
   def onPutInformation(f: Information => Unit): Unit = putInformationRef.set(f)
 
-  // Sigil #393 — stub external-image fetching so specs are deterministic and
+  // stub external-image fetching so specs are deterministic and
   // never hit the network. Default: no external image is fetchable.
   private val fetchExternalImageRef =
     new java.util.concurrent.atomic.AtomicReference[String => Task[Option[(Array[Byte], String)]]](_ => Task.pure(None))
@@ -717,8 +689,7 @@ object TestSigil extends Sigil {
 
   /**
    * Install a `resolveProviderStrategy` resolver — specs exercising
-   * provider routing (bug #41 size-aware candidate picking, etc.)
-   * wire a custom strategy here. Default returns `None` (no
+   * provider routing wire a custom strategy here. Default returns `None` (no
    * strategy → routedModelFor falls back to its `fallback` arg).
    */
   def setResolveProviderStrategy(f: SpaceId => Task[Option[sigil.provider.ProviderStrategy]]): Unit =
@@ -782,14 +753,14 @@ object TestSigil extends Sigil {
   def information: InMemoryInformation = informationRef.get()
 
   /**
-   * Sigil #277 — the default synthetic Model record used by specs that
+   * the default synthetic Model record used by specs that
    * don't care about a specific model id. Tests that DO care call
    * [[testModel]] with their preferred id.
    */
   val defaultTestModel: Model = syntheticTestModel(Model.id("test", "model"))
 
   /**
-   * Sigil #277 — pre-seeded synthetic Model records for the test model
+   * pre-seeded synthetic Model records for the test model
    * ids that ship with the framework's own specs. Each carries
    * conservative defaults (32K context, zero pricing) so any
    * cost / budget heuristic that reads the registered Model record
@@ -866,7 +837,7 @@ object TestSigil extends Sigil {
     deleteRecursive(dbPath)
     Profig.merge(obj("sigil" -> obj("dbPath" -> str(dbPath.toString))))
     instance.sync()
-    // Sigil #277 — seed the model registry with the synthetic test
+    // seed the model registry with the synthetic test
     // model fixtures every spec relies on. The registry is in-memory
     // (`cache.merge` is a fast Task), so we re-merge per-suite without
     // racing with anything else.
@@ -998,7 +969,7 @@ case object MemoryTestSpace extends SpaceId {
 }
 
 /**
- * Test-only [[ConversationStatus]] — a plain lifecycle marker (sigil #386).
+ * Test-only [[ConversationStatus]] — a plain lifecycle marker.
  */
 case object TestSavedStatus extends ConversationStatus {
   val key: String = "test-saved"
@@ -1006,7 +977,7 @@ case object TestSavedStatus extends ConversationStatus {
 
 /**
  * Test-only data-carrying [[ConversationStatus]] — proves a payload-bearing
- * status still answers a category (`key`) query (sigil #386).
+ * status still answers a category (`key`) query.
  */
 case class TestCompletedStatus(at: Long) extends ConversationStatus derives RW {
   val key: String = "test-completed"

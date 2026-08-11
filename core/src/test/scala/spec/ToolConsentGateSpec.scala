@@ -29,8 +29,8 @@ import sigil.tool.core.RecordConsentTool
 import sigil.tool.model.{RecordConsentInput, ResponseContent}
 
 /**
- * Coverage for sigil bug #83 — tools that declare
- * `requiresUserConsent = true` are gated by the orchestrator
+ * Coverage for tools that declare
+ * `requiresUserConsent = true` and are gated by the orchestrator
  * until a [[ToolApproval]] event records the user's decision
  * for `(toolName, conversationId)`.
  *
@@ -109,8 +109,7 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   ToolInput.register(RW.static(GatedInput("")), RW.static(FreeInput("")))
 
-  // Sigil bug #160 — `record_consent` validates `toolName` against
-  // the registry, so the spec's in-test `GatedTool` / `FreeTool` need
+  // The spec's in-test `GatedTool` / `FreeTool` need
   // to be discoverable for the dispatch paths that record consent
   // via the real tool. Override the finder so byName succeeds for
   // both; cleared in tear-down so other specs see the default
@@ -175,8 +174,8 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         ctx = turnContextFor(conv)
         // Drive record_consent through dispatchAtomic so the
         // orchestrator stamps `origin` on the Tool-role
-        // confirmation Message (#84). Direct `execute` bypasses
-        // origin-stamping and trips the framework's #64 invariant.
+        // confirmation Message. Direct `execute` bypasses
+        // origin-stamping and trips the framework's invariant.
         recordSignals <- dispatch(
           RecordConsentTool,
           RecordConsentInput(toolName = GatedTool.name.value, approved = true, reason = Some("user said yes")),

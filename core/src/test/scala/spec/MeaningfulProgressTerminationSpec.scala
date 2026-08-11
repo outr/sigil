@@ -105,10 +105,8 @@ class MeaningfulProgressTerminationSpec extends AsyncWordSpec with AsyncTaskSpec
              content        = Vector(ResponseContent.Text("Do the thing")),
              state          = EventState.Complete
            ))
-      // Pre-publish a ProgressCheckpoint into the conversation — the
-      // bug #282 enrichment is supposed to surface its status text in
-      // the Failure Message body. Mirrors what
-      // [[Sigil.runProgressCheckpoint]] writes at iteration boundaries.
+       // Pre-publish a ProgressCheckpoint into the conversation — mirrors what
+       // [[Sigil.runProgressCheckpoint]] writes at iteration boundaries.
       _ <- TestSigil.publish(ProgressCheckpoint(
              participantId        = TestAgent,
              conversationId       = convId,

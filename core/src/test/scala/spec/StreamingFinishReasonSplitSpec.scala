@@ -8,29 +8,6 @@ import sigil.provider.wire.OpenAIChatCompletions
 import sigil.provider.wire.OpenAIChatCompletions.{Config, StreamState}
 import sigil.tool.ToolRoster
 
-/**
- * Sigil bug #228 — OpenAI-compatible proxies (observed: OpenRouter
- * forwarding Kimi K2.5/K2.6 via Chutes) can split the end-of-stream
- * notification across TWO SSE chunks:
- *
- *   chunk 1: `finish_reason: tool_calls` (no usage)
- *   chunk 2: `finish_reason: tool_calls` (re-announced) + `usage` block
- *   [DONE]
- *
- * Neither chunk carries new tool-call argument data — chunk 2's
- * purpose is to attach the `usage` followup. Sigil's wire decoder
- * used to call `state.acc.complete()` on every `finish_reason` chunk
- * regardless of whether the run had already settled, so the
- * orchestrator received the same `ToolCallComplete` twice and the
- * orchestrator's defensive dedupe fired a noisy warning every time.
- *
- * The fix guards the completion-emitting branch on
- * `state.pendingDone.isEmpty`. The second chunk's usage block still
- * flows through (the `usage` handler runs after the `finish_reason`
- * branch and is unaffected by the guard); the duplicate completion
- * is suppressed at the wire layer where the context is rich enough
- * to recognise the usage-followup shape.
- */
 class StreamingFinishReasonSplitSpec extends AnyWordSpec with Matchers {
 
   private val cfg: Config = Config(

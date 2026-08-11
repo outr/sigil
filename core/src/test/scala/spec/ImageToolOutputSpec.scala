@@ -9,17 +9,6 @@ import sigil.signal.EventState
 import sigil.tool.{ImageQuality, ImageToolOutput, ToolName}
 import spice.net.URL
 
-/**
- * Sigil bug #280 — framework-shipped [[ImageToolOutput]] lifts the image
- * URL into the rendered frame's `images` list so providers' image-content
- * rendering path (Anthropic / OpenAI / Google) carries the pixels into
- * the agent's next-turn visual context.
- *
- * Before this support, tools producing images had no way to put them
- * into the agent's prompt — the agent received the URL stringified as
- * plain text inside the tool result's content. With the lift, the
- * agent's next turn actually sees the image.
- */
 class ImageToolOutputSpec extends AnyWordSpec with Matchers {
 
   private val convId   = sigil.conversation.Conversation.id("img-test-conv")
@@ -50,8 +39,6 @@ class ImageToolOutputSpec extends AnyWordSpec with Matchers {
       toolFrame.state match {
         case ToolCallState.Complete(content, images) =>
           content shouldBe "Preview of /pages/x"
-          // #382 — FrameBuilder stamps the quality tier onto the URL as the
-          // `_q` carrier; the underlying storage URL round-trips via strip.
           images.map(ImageQuality.strip) shouldBe List(sampleUrl)
           images.map(ImageQuality.fromUrl) shouldBe List(ImageQuality.Low)
         case other => fail(s"expected Complete state, got $other")

@@ -21,36 +21,6 @@ import spice.http.HttpRequest
 import java.util.concurrent.atomic
 import scala.concurrent.duration.*
 
-/**
- * Sigil bug #275 — repeated non-terminal tool calls must NOT trip
- * `AgentRunawayException` with the misleading "no tool call" attribution.
- * Pre-fix the runaway counter incremented on every iteration that didn't
- * produce a re-trigger event under `TriggerFilter`'s view, but a successful
- * non-terminal tool call's `ToolInvoke` (`role = Standard`, `participantId
- * = agent.id`) is excluded by both rules — so a productive multi-tool
- * turn looked identical to a turn where the model emitted no `tool_use`
- * at all.
- *
- * The fix adds an `iterationHadToolCall` flag set in the agent loop's
- * signal drain when any non-internal `ToolInvoke` flows past. The
- * `shouldIterate` decision short-circuits to `true` whenever that flag
- * is set — the next iteration reads the tool's result and decides what
- * to do. The cap (`maxAgentIterations`) still bounds runaway spirals.
- *
- * Drives a stubborn provider that emits `change_mode` (a non-terminal
- * tool already in the framework's static roster) every call. Asserts:
- *
- *   1. The loop reaches `maxAgentIterations` worth of provider calls
- *      (5 in this spec) BEFORE giving up — pre-fix it would have given
- *      up after 2 (noToolCallRetryLimit=1 in the old default), or after
- *      4 with the bumped default of 3.
- *   2. Any AgentRunaway failure attributes to `CapHit`, never `NoToolCall`.
- *
- * `change_mode` is settable to `"conversation"` (the current mode) — a
- * no-op switch, so the loop never actually changes state. The stubbornness
- * is deliberate: nothing breaks the cycle except the cap, which is the
- * legitimate path through the runaway.
- */
 class NonTerminalToolLoopSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
                               with org.scalatest.BeforeAndAfterAll {
   TestSigil.initFor(getClass.getSimpleName)

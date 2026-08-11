@@ -5,17 +5,6 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.ToolPolicy
 
-/**
- * Sigil bug #268 — `static const` shortcut accessors for empty case-objects
- * must use the leaf case name as a Dart identifier, never the dotted JSON
- * discriminator (`ToolPolicy.Standard` → `standard`, not `toolPolicy.Standard`
- * which is invalid Dart syntax).
- *
- * Triggered when fabric 1.29 switched polymorphic dispatch keys to the
- * class-chain form (`ParentEnum.CaseName`). The wire `"type"` field VALUES
- * embedded in `fromJson` dispatchers correctly carry the chain; the
- * accessor identifier names must strip back down to the leaf.
- */
 class DartGeneratorStaticAccessorSpec extends AnyWordSpec with Matchers {
 
   private val ToolPolicyWire: (String, fabric.define.Definition) =
@@ -45,7 +34,6 @@ class DartGeneratorStaticAccessorSpec extends AnyWordSpec with Matchers {
       source should include("static const ToolPolicy standard = ToolPolicyStandard();")
       source should include("static const ToolPolicy pureDiscovery = ToolPolicyPureDiscovery();")
 
-      // No accessor identifier may contain a `.` — that was the #268 bug.
       val dottedAccessor = """static const \w+ [a-zA-Z]+\.[a-zA-Z]""".r
       withClue(s"found a dotted static-const accessor in tool_policy.dart:\n$source\n") {
         dottedAccessor.findFirstIn(source) shouldBe scala.None

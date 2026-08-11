@@ -190,16 +190,8 @@ object Orchestrator {
         Task { capturedError.set(Some(t)); () }
       }
       .guarantee(Task.defer {
-        // Sigil bug #190 — corruption-resistance invariant: every
-        // ToolInvoke this orchestrator emitted must reach Complete +
-        // have at least one paired result event by the time the
-        // stream terminates. `guarantee` runs at termination on every
-        // path: clean Stop, outer error, inner-Concat error, fiber
-        // cancellation. Replaces the old `onErrorFinalize`-only
-        // approach that silently missed inner-stream errors and left
-        // ToolInvokes Active in the durable event log, which then
-        // poisoned subsequent turns via the wire renderer's dangling-
-        // tool-call fallback.
+        // guarantee runs at termination on every path: clean Stop, outer
+        // error, inner-Concat error, fiber cancellation.
         reconcileInflight
       })
   }
@@ -404,8 +396,6 @@ object Orchestrator {
         // Complete settle). The flag isn't load-bearing for any
         // framework-internal logic — it's a hint for client UIs.
         val isInternal = RespondFamilyTool.containsRaw(active.toolName)
-        // Sigil bug #204 — emit the deferred ToolInvoke NOW with
-        // parsed `input` populated, then the settle delta.
         val deferredInvoke: ToolInvoke = ToolInvoke(
           toolName       = ToolName.internal(active.toolName),
           participantId  = caller,

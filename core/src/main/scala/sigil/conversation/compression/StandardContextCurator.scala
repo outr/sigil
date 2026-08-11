@@ -17,10 +17,7 @@ import sigil.tokenize.{HeuristicTokenizer, JtokkitTokenizer, Tokenizer}
 import sigil.tool.Freshness
 
 /**
- * Default [[ContextCurator]]. Bug #26 — sources frames from
- * `db.events` (via [[sigil.event.Event.contextFrame]]) and
- * per-participant projections from `db.participantProjections`
- * directly; no longer materializes a `ConversationView` projection.
+ * Default [[ContextCurator]].
  *
  * Per-turn pipeline:
  *
@@ -110,7 +107,7 @@ case class StandardContextCurator(sigil: Sigil,
                                     * they're just skipped on the hot path so the
                                     * curator doesn't try to summarize the entire
                                     * history every turn. `Int.MaxValue` disables the
-                                    * cap (legacy behaviour). Bug #144. */
+                                    * cap (legacy behaviour). */
                                   maxFramesPerTurn: Int = 5000,
                                   /** When `true`, the curator pulls persisted
                                     * `ContextSummary` records via
@@ -123,7 +120,7 @@ case class StandardContextCurator(sigil: Sigil,
                                     * without re-paying the compression cost.
                                     * Default `true`; apps that don't use the
                                     * persisted-summary pathway can disable to
-                                    * skip the per-turn DB read. Bug #144. */
+                                    * skip the per-turn DB read. */
                                   loadPersistedSummaries: Boolean = true,
                                   /** Optional detector for the
                                     * "paraphrase without action" failure
@@ -145,11 +142,6 @@ case class StandardContextCurator(sigil: Sigil,
       label = "Building turn context",
       conversationId = Some(conversationId)
     ) { control =>
-      // Bug #60 — visibility for the in-loop work between user turn
-      // arrival and chat/completions dispatch. Curate fires every
-      // turn; on a fresh conversation it's sub-second (the Notice
-      // flickers — fine), after a bulk import it's the user-
-      // perceptible window the activity bar needs to surface.
       val elide: Set[String] = sigil.staticTools.iterator
         .collect { case t if t.freshness.contains(Freshness.Volatile) => t.name.value }
         .toSet
@@ -383,7 +375,7 @@ case class StandardContextCurator(sigil: Sigil,
         // The persisted-summary section is always rendered when
         // budget allows. When the budget gets tight the curator
         // sheds it BEFORE frame compression (cheaper, app-authored
-        // — sheds preserve frames). Bug #144.
+        // — sheds preserve frames).
         def tokensOf(t: TurnInput, framesArg: Vector[ContextFrame], summariesArg: Vector[ContextSummary]): Int =
           TokenEstimator.estimateCuratorSections(
             frames = framesArg,
@@ -526,7 +518,7 @@ case class StandardContextCurator(sigil: Sigil,
                   if (escalate) sigil.elisionPressureStreaks.remove(tentative.conversationId)
                   summaryOpt match {
                     case Some(summary) =>
-                      // Bug #147 — advance the conversation's
+                      // advance the conversation's
                       // `clearedAt` watermark to the timestamp of
                       // the LAST shed frame's source event so the
                       // next turn's `framesFor` filters them out.
@@ -564,7 +556,7 @@ case class StandardContextCurator(sigil: Sigil,
     } yield out
 
   /** Resolve persisted-summary ids on `TurnInput.summaries` to full
-    * records via the DB. Bug #144 — the curator's budget-gate math
+    * records via the DB. the curator's budget-gate math
     * needs the rendered token cost of every summary in the tentative
     * TurnInput; without resolution the gate under-counts and the
     * provider sees a request that's bigger than the budget computed. */

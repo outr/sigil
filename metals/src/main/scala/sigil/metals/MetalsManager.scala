@@ -62,15 +62,14 @@ final class MetalsManager(host: MetalsSigil) {
     * output. `onLogLine` is the per-line callback supplied by the
     * caller — typically [[StartMetalsTool]] threading
     * `TurnContext.toolLog` — so streaming Metals output reaches the
-    * chat chip via [[sigil.event.ToolLog]] events (bug #69).
+    * chat chip via [[sigil.event.ToolLog]] events.
     *
     * `processRef` and `stderrDrainerRef` are both `Option` so a
     * placeholder Entry can be inserted into the map BEFORE the
-    * spawn completes (sigil bug #94). Concurrent `ensureRunning`
-    * callers see the placeholder and await `ready` instead of
-    * starting a duplicate spawn. The owner (the caller whose
-    * lambda inserted the placeholder) populates these fields as
-    * the subprocess comes up.
+    * spawn completes. Concurrent `ensureRunning` callers see the
+    * placeholder and await `ready` instead of starting a duplicate
+    * spawn. The owner (the caller whose lambda inserted the
+    * placeholder) populates these fields as the subprocess comes up.
     *
     * `ready` resolves with `workspaceKey` once the subprocess is
     * alive, the LSP handshake has completed, and the rendezvous
@@ -125,7 +124,7 @@ final class MetalsManager(host: MetalsSigil) {
    * collapse onto one spawn: [[ConcurrentHashMap.computeIfAbsent]]
    * inserts a placeholder Entry atomically, and only the caller
    * whose lambda ran owns the spawn pipeline. Other callers receive
-   * the same placeholder and await its `ready` future. Sigil bug #94.
+   * the same placeholder and await its `ready` future.
    *
    * Returns the server name [[sigil.mcp.McpManager]] consumers
    * reference (`metals-<hash>`).
@@ -244,8 +243,7 @@ final class MetalsManager(host: MetalsSigil) {
     * for an already-inserted placeholder Entry, populating its
     * `processRef`, `stderrDrainerRef`, and `endpoint` fields as it
     * goes and resolving `entry.ready` with the workspaceKey on
-    * success. Sigil bug #94 — only the caller that placed the
-    * placeholder reaches here. */
+    * success. Only the caller that placed the placeholder reaches here. */
   private def spawnAndResolve(entry: Entry): Task[String] = Task.defer {
     val workspace = entry.workspace
     val name      = entry.workspaceKey
@@ -254,24 +252,8 @@ final class MetalsManager(host: MetalsSigil) {
         s"MetalsManager: workspace $workspace is not a directory"
       ))
     } else {
-      // Sigil bug #99 — reconcile a stale `metals.mv.db`. If a prior
-      // Metals process was killed mid-import (SIGKILL, OOM, crash,
-      // user manually killing duplicates), Metals' on-disk H2 db
-      // keeps the import status at "Started." Every subsequent
-      // Metals startup reads this status, sees Started, logs
-      // "skipping build import with status 'Started'", and sits
-      // idle forever — `.bloop/` never generated, every `lsp_*`
-      // dependency hangs. Recovery today is manual. Self-heal:
-      // before launching, if no Sigil-managed peer process is
-      // alive for this workspace, wipe the H2 db so the new Metals
-      // starts with a clean Pending status and re-imports.
       MetalsHealthCheck.reconcileStaleImportStatus(workspace, hasLivePeer(workspace))
       ensureBackgroundFibers()
-      // Bug #68 — wrap startup in a `runAsFrameworkWorkflow` so the
-      // activity bar shows what's happening (replaces the silent
-      // 30s deadline with subprocess-monitored progress). The
-      // workflow's CancellationToken kills the subprocess if a
-      // user invokes `cancel_framework_workflow`.
       host.runAsFrameworkWorkflow(
         workflowType   = "metals-startup",
         label          = s"Starting Metals for ${workspace.getFileName}",
@@ -302,10 +284,9 @@ final class MetalsManager(host: MetalsSigil) {
               entry.stderrDrainerRef  = Some(stderrDrainer)
               entry.lastUsedMs        = System.currentTimeMillis()
 
-              // Bug #70 — drive the LSP handshake via lsp4j's
-              // Launcher. Metals only does work after `initialize`
-              // + `initialized` land; bug #70 was that we'd
-              // spawned the subprocess without ever sending them.
+              // Drive the LSP handshake via lsp4j's Launcher. Metals
+              // only does work after `initialize` + `initialized` land;
+              // otherwise we'd spawn the subprocess without ever sending them.
               startLspLauncher(entry, name, entry.onLogLine, entry.onStatus).flatMap { _ =>
                 control.step("Metals LSP initialize complete; waiting for endpoint")
                   .flatMap(_ => waitForReady(entry, control, tail))
@@ -431,7 +412,7 @@ final class MetalsManager(host: MetalsSigil) {
     * is handled by `cancel_framework_workflow` — the workflow
     * surfaces in the activity bar with progress notices, the
     * user cancels, the cancellation token kills the subprocess.
-    * Bug #68. */
+    */
   private def waitForReady(entry: Entry,
                            control: sigil.FrameworkWorkflowControl,
                            tail: java.util.concurrent.LinkedBlockingDeque[String]): Task[String] = {

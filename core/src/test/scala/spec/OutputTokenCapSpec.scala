@@ -4,24 +4,6 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.{GenerationSettings, OutputTokenCap}
 
-/**
- * Sigil bug #276 — resolve `max_tokens` from the Model registry instead
- * of letting consumers hardcode model-specific ceilings.
- *
- * Three properties verified at the type level (the AnthropicProvider
- * runtime resolution is exercised by [[LlamaCppProviderSpec]] / live
- * provider specs against real model records):
- *
- *   1. [[OutputTokenCap.ModelMax]] is the default — no caller has to
- *      think about ceilings unless they actually want one.
- *   2. The deprecated `maxOutputTokens: Option[Int]` shim resolves
- *      through [[GenerationSettings.effectiveCap]] to the same typed
- *      shape, so pre-fix call sites keep their behaviour during the
- *      deprecation window.
- *   3. [[GenerationSettings.tightenedTo]] preserves a tighter caller-
- *      supplied cap (idempotent) and lowers a looser one — the
- *      paraphrase-loop / forced-synthesis tightener depends on this.
- */
 class OutputTokenCapSpec extends AnyWordSpec with Matchers {
 
   "GenerationSettings.outputTokenCap (sigil #276)" should {

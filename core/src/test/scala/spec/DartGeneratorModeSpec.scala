@@ -90,11 +90,6 @@ class DartGeneratorModeSpec extends AnyWordSpec with Matchers {
       }
     }
 
-    // Sigil bug #218 → #220 — single-word Mode names route through the same
-    // Scala-FQN-derived class naming as hyphenated ones. The test mode
-    // `TestSingleWordMode` (wire name `"singleword"`) emits as
-    // `class TestSingleWordMode` (not `class Singleword`, which would risk
-    // shadowing any entity class named `Singleword`).
     "use the Scala class FQN for single-word Mode discriminators too" in {
       val files = generate()
       val classFile = files.find(_.fileName == "test_single_word_mode.dart")

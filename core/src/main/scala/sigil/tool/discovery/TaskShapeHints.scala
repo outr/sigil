@@ -3,7 +3,7 @@ package sigil.tool.discovery
 import sigil.tool.ToolName
 
 /**
- * Sigil bug #283 — synthesise [[TaskShapeHint]]s from the COMPOSITION
+ * Synthesise [[TaskShapeHint]]s from the COMPOSITION
  * of a `find_capability` result set plus the original query.
  *
  * The hints exist because BM25 ranking on its own can't recognise

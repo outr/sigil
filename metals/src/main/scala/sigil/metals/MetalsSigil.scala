@@ -124,7 +124,7 @@ trait MetalsSigil extends Sigil with McpSigil {
   }
 
   /**
-   * Sigil bug #85 — when Metals is running for the conversation's
+   * When Metals is running for the conversation's
    * workspace, surface `lsp` + `bsp` toolchains so
    * [[sigil.Sigil.findCapabilities]] boosts LSP / BSP tools above
    * generic verbs (grep, glob, execute_script) for inspection-

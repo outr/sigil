@@ -87,15 +87,6 @@ private[orchestrator] object OrphanSettlement {
                                      recoverable: Boolean = false): List[Signal] = {
     val signals = state.activeCalls.values.toList.flatMap { active =>
       val isInternal = RespondFamilyTool.containsRaw(active.toolName)
-      // Sigil bug #204 — ToolInvoke emission is deferred to
-      // `ToolCallComplete` so the normal path can stamp `input`. For
-      // active calls that never reached Complete (stream abort,
-      // validator rejection mid-call), synthesize the ToolInvoke
-      // here with `input = None` so the closeDelta and pairedFailure
-      // have a real target to refer to — otherwise the corruption-
-      // resistance invariant (#190) breaks: the closeDelta's target
-      // would silently no-op against a non-existent event, and the
-      // pairedFailure's `origin` would dangle.
       val synthInvoke: Signal = ToolInvoke(
         toolName       = ToolName.internal(active.toolName),
         participantId  = caller,
@@ -105,14 +96,6 @@ private[orchestrator] object OrphanSettlement {
         state          = EventState.Active,
         internal       = isInternal
       )
-      // Sigil #265 — the orphan settle is one [[ToolDelta]] folding
-      // input + state = Complete + outcome = Failure(reason, recoverable)
-      // onto the invoke in a single update. The
-      // agent reads the failure on its next iteration via the invoke's
-      // own settled `outcome`/`summary`. Bug #51 — `error = Some(...)`
-      // surfaces the provider-side diagnostic so client chips render
-      // "(invalid args: …)" instead of the "(input pending)" placeholder
-      // reserved for genuinely-mid-flight calls.
       val reason = reasonFor(active)
       val settleDelta: Signal = ToolDelta(
         target         = active.invokeId,
@@ -130,7 +113,7 @@ private[orchestrator] object OrphanSettlement {
   }
 
   /**
-   * Sigil bug #171 — settle the in-flight streaming Message that was
+   * Settle the in-flight streaming Message that was
    * started during respond-family `ContentBlockDelta` flow when the
    * tool call ultimately failed (parse error, mid-stream throw). Emits
    * a terminal `MessageDelta(state=Complete, disposition=Failure)` so

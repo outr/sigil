@@ -85,7 +85,6 @@ trait LifecycleOps { this: Sigil =>
     for {
       _ <- polymorphicRegistrations
       _ <- logger.info("Sigil initializing...")
-      // Fail startup on a section list the curator can't act on.
       _ = ContextSections.shedCascade(contextSections)
       _ <- Task(Profig.initConfiguration())
       _ = instanceStarted.set(true)
@@ -107,19 +106,7 @@ trait LifecycleOps { this: Sigil =>
         directory = directory,
         storeManager = collectionStore,
         appUpgrades = List(
-          // Sigil #294 — rescue boot for pre-#265 databases by
-          // nulling `Message.contextFrame` rows that still carry
-          // the retired `ToolResult` discriminator. Runs first so
-          // the static-tool / static-skill upgrades (which stream
-          // their own poly-typed records) can't trip the same
-          // dead-discriminator path on a downstream collection.
           new sigil.upgrade.ContextFrameToolResultMigrationUpgrade,
-          // Sigil #374 — rescue boot for databases whose stored
-          // `ToolInvoke.output` names a renamed/removed `ToolOutput`
-          // subtype: rewrite the orphaned block to `UnknownToolOutput`
-          // (lossless) so the typed events read can't abort startup.
-          // Runs after the ContextFrame migration so a dead-ToolResult
-          // frame on a ToolInvoke row is already nulled.
           new sigil.upgrade.ToolOutputReconcileUpgrade,
           new sigil.tool.StaticToolSyncUpgrade(resolvedStaticTools),
           new sigil.skill.StaticSkillSyncUpgrade(staticSkills)
@@ -141,32 +128,6 @@ trait LifecycleOps { this: Sigil =>
     } yield inst
   }.singleton
 
-  /** Sigil bug #172 — at every boot, reconcile any `Event` left at
-    * `state = Active` in `db.events`. A process exit mid-turn (crash,
-    * OOM, SIGKILL, container eviction) strands the in-flight event:
-    * UIs render Messages stuck Active as forever-loading bubbles;
-    * ToolInvokes left Active block subsequent agent logic that
-    * checks "is the agent busy?".
-    *
-    * Bug #171 fixed the in-flight orphan case forward (parse-failure
-    * settle). This is the catch-up for orphans from prior process
-    * exits AND for future hard-crash orphans that bypass #171's
-    * reconciliation point.
-    *
-    * Reconciliation rules:
-    *   - `Message` → state Complete, disposition Failure(recoverable
-    *     = false) with an ErrorContext explaining "stale from prior
-    *     session". Content preserved (whatever partial streamed text
-    *     was persisted) so the user can see what was lost.
-    *   - `AgentState` → state Complete AND activity Idle, so the agent's
-    *     stranded turn lock settles to a true terminal and UIs keying the
-    *     busy indicator off `activity` don't stay stuck "thinking" (#399).
-    *   - All other Event types → state Complete via `.withState`.
-    *
-    * Runs synchronously before WS / Notice ingress opens (placed
-    * between `db.init` and the model-refresh / maintenance-task
-    * fibers), so there are no live subscribers to confuse with the
-    * recovery writes. One bulk transaction per bug #170's pattern. */
   /** Test-only hook to trigger boot-time reconciliation against the
     * already-opened DB without re-creating the Sigil instance. */
   protected[sigil] def runStaleActiveReconciliationTask: Task[Unit] =
@@ -193,11 +154,6 @@ trait LifecycleOps { this: Sigil =>
                   ))
                 )
               )
-            // Sigil #399 — an AgentState lock carries TWO fields. `.withState`
-            // only resets `state`; a crash-stranded lock left
-            // (Complete, Thinking) keeps UIs (which key the busy indicator off
-            // `activity`) stuck "thinking" with a dead Stop button. Reset both
-            // to the true terminal: Complete + Idle.
             case a: sigil.event.AgentState =>
               a.copy(state = sigil.signal.EventState.Complete, activity = sigil.signal.AgentActivity.Idle)
             case other => other.withState(sigil.signal.EventState.Complete)
@@ -242,7 +198,7 @@ trait LifecycleOps { this: Sigil =>
   }
 
   /**
-   * Sigil #277 — boot-time model-catalog load + refresh.
+   * Boot-time model-catalog load + refresh.
    *
    * Flow:
    *   1. Read the persisted `db.models` snapshot, seed the in-memory
@@ -279,8 +235,8 @@ trait LifecycleOps { this: Sigil =>
   /** One-shot blocking refresh from OpenRouter. Delegates to the
     * boot-safe (sigil, db) overload of [[OpenRouter.refreshModels]] so
     * the boot fiber doesn't re-enter [[withDB]] — that would await the
-    * in-flight `Sigil.instance.singleton` against itself and deadlock
-    * (sigil bug #281). Post-boot callers use the public 1-arg overload
+    * in-flight `Sigil.instance.singleton` against itself and deadlock.
+    * Post-boot callers use the public 1-arg overload
     * which resolves the db via `withDB` normally. */
   private def blockingRefresh(db: DB, hadPriorCache: Boolean): Task[Unit] =
     OpenRouter.refreshModels(this, db).handleError { e =>
@@ -407,7 +363,7 @@ trait LifecycleOps { this: Sigil =>
     * **Don't call from inside `Sigil.instance`'s init for-comp.** The
     * `instance` task is `.singleton`-memoised; `withDB` re-entering
     * during init awaits the in-flight resolution against itself and
-    * deadlocks silently (sigil bug #281). Boot-path code receives the
+    * deadlocks silently. Boot-path code receives the
     * `db` as a parameter — pass it through directly. See
     * [[OpenRouter.refreshModels]]'s `(sigil, db)` overload for the
     * canonical pattern. */

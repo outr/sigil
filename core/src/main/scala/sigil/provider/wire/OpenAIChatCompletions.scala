@@ -126,7 +126,7 @@ object OpenAIChatCompletions {
       * still honored. */
     treatAutoAsReasoningOff: Boolean = false,
 
-    /** Sigil #360 — per-chunk idle/read timeout to use for a *reasoning*
+    /** Per-chunk idle/read timeout to use for a *reasoning*
       * request (reasoning policy active AND `reasoningMode != Off`), in
       * place of the provider's base `tokenIdleTimeout`. Reasoning models
       * (Kimi K2.6, o-series, Qwen3 thinking) can fall silent for a while
@@ -515,7 +515,7 @@ object OpenAIChatCompletions {
       }
     })
 
-  /** Sigil #360 — does this call engage the model's reasoning phase? True
+  /** Does this call engage the model's reasoning phase? True
     * when the provider forwards a reasoning policy AND the request hasn't
     * explicitly turned reasoning off. `Auto` counts (the model/template
     * default may reason), so the extended idle timeout is applied
@@ -841,7 +841,7 @@ object OpenAIChatCompletions {
           }
         }
       }
-      // Sigil bug #192 — accept either OpenAI's canonical
+      // accept either OpenAI's canonical
       // `reasoning_content` OR OpenRouter's `reasoning` field. The
       // OpenRouter wire shape (observed via Io Net upstream serving
       // moonshotai/kimi-k2.6) streams reasoning fragments under
@@ -884,7 +884,7 @@ object OpenAIChatCompletions {
         // DeepInfra streams `tool_calls: null` on no-tool-call deltas
         // (the role: "assistant" warmup chunk emits it before any
         // content). DO and OpenAI omit the field entirely. Both shapes
-        // are wire-spec valid — null-guard so we tolerate both. Sigil
+        // are wire-spec valid — null-guard so we tolerate both.
         if (!tcs.isNull) {
           tcs.asVector.foreach { tc =>
             val index   = tc.get("index").map(_.asInt).getOrElse(0)
@@ -1040,7 +1040,7 @@ object OpenAIChatCompletions {
                             * disables the watchdog (master switch — the
                             * dead-on-arrival budget below is off too). */
                           val streamingSilenceTimeoutMs: Long = 0L,
-                          /** Sigil #258 — shorter line-silence budget (ms)
+                          /** shorter line-silence budget (ms)
                             * applied before the stream has produced any
                             * meaningful event (a dead-on-arrival upstream
                             * that has sent nothing). Once content appears,
@@ -1057,7 +1057,7 @@ object OpenAIChatCompletions {
                           val streamingKeepaliveOnlyTimeoutMs: Long = 0L) {
     var pendingDone: Option[StopReason] = None
 
-    /** Sigil #360 — set when the `[DONE]` SSE marker is dispatched (the
+    /** set when the `[DONE]` SSE marker is dispatched (the
       * normal terminal). [[closeStream]] consults it at connection-close
       * to tell a clean end-of-stream from a mid-flight truncation: a
       * stream that closes WITHOUT `[DONE]` never ran [[flushDone]], so a
@@ -1123,7 +1123,7 @@ object OpenAIChatCompletions {
       * the watchdog arms it at stream start. */
     @volatile var lastLineNanos: Long = -1L
 
-    /** Sigil #258 — flips `true` the first time the stream produces a
+    /** flips `true` the first time the stream produces a
       * meaningful event. While `false`, the watchdog uses the shorter
       * [[streamingDeadOnArrivalTimeoutMs]] budget. Volatile: read by
       * the watchdog fiber. */
@@ -1225,7 +1225,7 @@ object OpenAIChatCompletions {
         Vector.empty
     }
 
-    /** Sigil #360 — run once when the line stream terminates, regardless
+    /** run once when the line stream terminates, regardless
       * of `[DONE]`. The empty-turn / failure detectors all hang off
       * `[DONE]` ([[flushDone]] via `onDone`) or a `finish_reason` chunk;
       * a gateway that drops the socket mid-flight carries neither. Such a

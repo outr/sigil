@@ -34,8 +34,7 @@ import sigil.tool.{Tool, ToolRoster}
  *                       per invocation; never persisted.
  */
 case class ConversationRequest(conversationId: Id[Conversation],
-                               /** Sigil #277 — required Model record, not
-                                 * `Id[Model]`. Resolved from
+                               /** Model record resolved from
                                  * [[sigil.cache.ModelRegistry]] at the runtime
                                  * boundary (`Sigil.runAgentLoop`); unregistered
                                  * ids throw [[UnregisteredModelException]]
@@ -52,14 +51,14 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                chain: List[ParticipantId] = Nil,
                                roles: List[sigil.role.Role] = Nil,
                                isGreeting: Boolean = false,
-                               /** Sigil bug #125 — when `true`, the framework
+                               /** When `true`, the framework
                                  * forces the provider's tool_choice to
                                  * `respond` so the model must synthesize a
                                  * reply on this turn. Set by the iteration-cap
                                  * soft-stop path. */
                                forceResponseSynthesis: Boolean = false,
                                discoveredCapabilities: Map[String, DiscoveredCapability] = Map.empty,
-                               /** Sigil bug #281 follow-up — the LIVE atomic
+                               /** The LIVE atomic
                                  * reference behind [[discoveredCapabilities]],
                                  * threaded through from the agent loop's
                                  * `TurnContext.discoveredCapabilitiesRef`.
@@ -69,17 +68,7 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                  * [[sigil.TurnContext.recordDiscovery]] so the
                                  * NEXT iteration's `runAgentTurn` sees the
                                  * discovered tools both in the system prompt
-                                 * section AND in the wire-roster.
-                                 *
-                                 * Without this shared ref, the orchestrator's
-                                 * fresh `TurnContext` would carry its own
-                                 * empty ref — writes from tool dispatch never
-                                 * reached the agent loop's view, so
-                                 * `find_capability` → next-turn invoke was
-                                 * broken: matches were rendered in the prompt
-                                 * once (from the snapshot) but the discovered
-                                 * tool wasn't in the wire `tools` array, and
-                                 * the model couldn't call what wasn't there. */
+                                 * section AND in the wire-roster. */
                                discoveredCapabilitiesRef: java.util.concurrent.atomic.AtomicReference[Map[String, DiscoveredCapability]] =
                                  new java.util.concurrent.atomic.AtomicReference(Map.empty[String, DiscoveredCapability]),
                                /** TURN-scoped cache of settled read-tool results,
@@ -99,7 +88,7 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                  * execute so a retry can't double-submit. */
                                toolResultCacheRef: java.util.concurrent.atomic.AtomicReference[Map[String, sigil.tool.CachedToolRead]] =
                                  new java.util.concurrent.atomic.AtomicReference(Map.empty[String, sigil.tool.CachedToolRead]),
-                               /** Sigil #304 — turn-start wall-clock threaded through
+                               /** Turn-start wall-clock threaded through
                                  * from [[sigil.TurnContext.turnStartedAt]] for the
                                  * orchestrator's duplicate-call cap to scope its
                                  * count to "invocations made during THIS turn"
@@ -118,7 +107,7 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                requestId: Id[ProviderRequest] = Id())
   extends ProviderRequest {
 
-  /** Sigil #274 — the wire-advertised tool roster. When
+  /** The wire-advertised tool roster. When
     * [[forceResponseSynthesis]] is set, the roster is restricted to the
     * respond family so the model MUST emit one of those terminal calls.
     * Both the wire path ([[sigil.provider.Provider.translate]]) and the
