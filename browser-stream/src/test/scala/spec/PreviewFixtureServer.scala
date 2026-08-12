@@ -12,17 +12,27 @@ import spice.net.ContentType
  * so the preview specs need something repainting every frame to prove
  * frames actually flow (and keep flowing past Chrome's un-acked-frame
  * ceiling).
+ *
+ * It also declares a viewport and a narrow breakpoint, so a render target
+ * that implies a phone can be shown to have actually laid the page out as
+ * one (`window.mobile`) rather than merely cropping a desktop render.
  */
 final class PreviewFixtureServer {
 
   private val html: String =
     """<!doctype html>
       |<html lang="en">
-      |<head><title>Preview fixture</title></head>
+      |<head><title>Preview fixture</title>
+      |<meta name="viewport" content="width=device-width, initial-scale=1">
+      |<style>@media (max-width: 500px) { #bar { background: #fa4 } }</style>
+      |</head>
       |<body style="margin:0;background:#101014;color:#f0f0f0;font:48px monospace">
       |  <div id="clock">starting</div>
       |  <div id="bar" style="height:80px;width:0;background:#4af"></div>
       |  <script>
+      |    Object.defineProperty(window, 'mobile', {
+      |      get: () => window.matchMedia('(max-width: 500px)').matches
+      |    });
       |    let n = 0;
       |    setInterval(() => {
       |      n = (n + 7) % 100;

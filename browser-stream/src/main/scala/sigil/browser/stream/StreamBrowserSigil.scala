@@ -4,6 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.{Stream, Task}
 import robobrowser.display.VirtualDisplayConfig
+import robobrowser.event.ScreencastFrameEvent
 import robobrowser.stream.{SignalMessage, StreamConfig, StreamUnavailable, StreamUnavailableException, Stream as RoboStream}
 import robobrowser.{RoboBrowser, RoboBrowserConfig}
 import sigil.browser.BrowserSigil
@@ -108,15 +109,48 @@ trait StreamBrowserSigil extends BrowserSigil {
   def previewFrameQuality: Int = 70
 
   /**
+   * The launch config for a preview browser that will serve `config`.
+   *
+   * A stream renders and captures a rectangle *within* its virtual
+   * display, and Xvfb refuses to resize a running display, so the display
+   * is sized once at launch to the larger of [[streamBrowserConfig]]'s
+   * size and the request, per dimension. The requested target then fits
+   * by construction, and so does any later
+   * [[resizePreview]] back up to the configured size — which is what
+   * makes a portrait preview able to become a landscape one without
+   * relaunching the browser.
+   */
+  def streamBrowserConfigFor(config: StreamConfig): RoboBrowserConfig = {
+    val base = streamBrowserConfig
+    base.virtualDisplay match {
+      case Some(display) =>
+        base.copy(virtualDisplay = Some(display.copy(
+          width = math.max(display.width, config.width.getOrElse(0)),
+          height = math.max(display.height, config.height.getOrElse(0))
+        )))
+      case None => base
+    }
+  }
+
+  /**
    * Resolve the per-conversation [[StreamBrowserController]], launching
    * the preview browser on first call. Concurrent callers see the same
    * controller — the loser of the race disposes its own browser.
    */
-  final def streamBrowserController(convId: Id[Conversation]): Task[StreamBrowserController] = Task.defer {
+  final def streamBrowserController(convId: Id[Conversation]): Task[StreamBrowserController] =
+    streamBrowserController(convId, StreamConfig())
+
+  /** As [[streamBrowserController]], sizing a *freshly launched* browser's
+    * virtual display to `config`'s render target. An already-running
+    * browser keeps the display it has; a target within it is served as a
+    * capture region, and a larger one fails loudly rather than silently
+    * cropping. */
+  final def streamBrowserController(convId: Id[Conversation],
+                                    config: StreamConfig): Task[StreamBrowserController] = Task.defer {
     Option(StreamBrowserSigil.controllers.get(convId.value)) match {
       case Some(existing) if !existing.isDisposed => Task.pure(existing)
       case _ =>
-        RoboBrowser(streamBrowserConfig).flatMap { browser =>
+        RoboBrowser(streamBrowserConfigFor(config)).flatMap { browser =>
           val fresh = new StreamBrowserController(convId, browser)
           val winner = StreamBrowserSigil.controllers.compute(convId.value, (_, prior) =>
             if (prior != null && !prior.isDisposed) prior else fresh
@@ -155,10 +189,17 @@ trait StreamBrowserSigil extends BrowserSigil {
    *
    * Each call yields an independent session, so several viewers can
    * watch one conversation.
+   *
+   * `config.width`/`height` request a render size: the page lays out at
+   * exactly that size and exactly that rectangle is captured, so a
+   * `390x844` request previews a portrait, mobile-layout page on either
+   * rung. A browser launched by this call gets a virtual display sized to
+   * the request; an existing one serves any target that fits inside the
+   * display it already has.
    */
   def previewStreamFor(convId: Id[Conversation],
                        config: StreamConfig = StreamConfig()): Task[PreviewStreamSession] =
-    streamBrowserController(convId).flatMap { controller =>
+    streamBrowserController(convId, config).flatMap { controller =>
       Task(RoboStream(controller.browser).availability).flatMap {
         case None => startWebRtcPreview(controller, config)
         case Some(reason) if streamFallbackToScreencast =>
@@ -175,7 +216,10 @@ trait StreamBrowserSigil extends BrowserSigil {
     val convId = controller.conversationId
     RoboStream(controller.browser).start(config).flatMap { session =>
       val preview = PreviewStreamSession.WebRtc(convId, PreviewStreamSession.newStreamId(), session)
-      controller.register(preview)
+      // A resize renegotiates: the fresh offer rides the same signaling
+      // listener attached just below, so the viewer answers it exactly as
+      // it answered the first one.
+      controller.register(preview, (width, height) => session.resize(width, height))
       // `connect` flushes anything the session emitted while it was
       // starting — the offer fires from webrtcbin moments after PLAYING,
       // typically before this call lands.
@@ -217,26 +261,69 @@ trait StreamBrowserSigil extends BrowserSigil {
     }
 
     val preview = PreviewStreamSession.Screencast(convId, streamId, frames, stop)
-    controller.browser.screencast.start(
-      // Chrome's frames arrive on the CDP dispatcher, which is free to
-      // deliver two concurrently. Stamping and enqueueing under one lock
-      // is what makes `sequence` match the order a consumer pulls in;
-      // doing them separately lets a later frame overtake an earlier one.
-      onFrame = frame => queue.synchronized {
-        val next = Some(PreviewFrame(frame.data, frame.metadata, sequence.incrementAndGet()))
-        if (!queue.offer(next)) {
-          queue.poll()
-          queue.offer(next)
-          ()
-        }
-      },
-      format = previewFrameFormat,
-      quality = previewFrameQuality,
-      maxWidth = config.maxWidth,
-      maxHeight = config.maxHeight
-    ).map { _ =>
-      controller.register(preview)
+
+    // Chrome's frames arrive on the CDP dispatcher, which is free to
+    // deliver two concurrently. Stamping and enqueueing under one lock
+    // is what makes `sequence` match the order a consumer pulls in;
+    // doing them separately lets a later frame overtake an earlier one.
+    val enqueue: ScreencastFrameEvent => Unit = frame => queue.synchronized {
+      val next = Some(PreviewFrame(frame.data, frame.metadata, sequence.incrementAndGet()))
+      if (!queue.offer(next)) {
+        queue.poll()
+        queue.offer(next)
+        ()
+      }
+    }
+
+    // The screencast rung has no display capture to crop, so the render
+    // target is applied where the page is laid out: device-metrics
+    // emulation makes Chrome report the target as the frames' device size
+    // and resolve responsive CSS against it, which is what makes a
+    // portrait target a portrait mobile capture here too. Restarting the
+    // screencast re-issues `Page.startScreencast` with the new bounds and
+    // keeps feeding the same queue, so `frames` survives a resize.
+    def capture(width: Option[Int], height: Option[Int]): Task[Unit] = {
+      val layout = (width, height) match {
+        case (Some(w), Some(h)) => controller.browser.setViewportSize(w, h)
+        case _ => Task.unit
+      }
+      layout.flatMap(_ => controller.browser.screencast.start(
+        onFrame = enqueue,
+        format = previewFrameFormat,
+        quality = previewFrameQuality,
+        maxWidth = config.maxWidth,
+        maxHeight = config.maxHeight
+      ))
+    }
+
+    capture(config.width, config.height).map { _ =>
+      controller.register(preview, (width, height) => capture(Some(width), Some(height)))
       preview
+    }
+  }
+
+  /**
+   * Resize a conversation's live preview(s) to `width` x `height`.
+   *
+   * A WebRTC session rebuilds its pipeline against the new size and emits
+   * a fresh offer, which reaches the viewer as a [[PreviewSignal]] on the
+   * same stream id it is already answering on — no new session, no
+   * re-subscribe. A screencast session re-lays the page out and restarts
+   * capture behind the same [[PreviewStreamSession.Screencast.frames]]
+   * stream, so its consumer keeps pulling from the stream it has.
+   *
+   * A conversation with no live preview is a warn and a no-op: there is
+   * nothing to resize, and the next [[previewStreamFor]] carries the size
+   * the caller wants anyway.
+   */
+  final def resizePreview(convId: Id[Conversation], width: Int, height: Int): Task[Unit] = Task.defer {
+    val controller = Option(StreamBrowserSigil.controllers.get(convId.value))
+    controller.toList.flatMap(c => c.sessions.flatMap(s => c.resizer(s.streamId))) match {
+      case Nil => Task {
+        scribe.warn(s"resizePreview(${width}x$height) for ${convId.value}: no live preview session — ignored")
+        ()
+      }
+      case resizers => Task.sequence(resizers.map(_.apply(width, height))).unit
     }
   }
 

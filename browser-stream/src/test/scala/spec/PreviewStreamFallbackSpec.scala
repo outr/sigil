@@ -3,7 +3,7 @@ package spec
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import robobrowser.stream.{StreamUnavailable, StreamUnavailableException}
+import robobrowser.stream.{StreamConfig, StreamUnavailable, StreamUnavailableException}
 import sigil.browser.stream.{PreviewStreamSession, StreamBrowserIdleReaper}
 import sigil.conversation.Conversation
 
@@ -87,6 +87,55 @@ class PreviewStreamFallbackSpec extends AnyWordSpec with Matchers with BeforeAnd
       TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should not contain screencast.streamId
       // The stream completes rather than parking forever on an empty queue.
       screencast.frames.toList.timeout(30.seconds).sync() shouldBe empty
+    }
+
+    "honour a portrait render target so the fallback is a phone capture too" in {
+      if (!chromeAvailable) cancel("Chrome/Chromium not installed — live browser test")
+
+      val controller = TestStreamBrowserSigil.streamBrowserController(convId).sync()
+      controller.run(_.navigate(fixture.url)).sync()
+
+      val session = TestStreamBrowserSigil.previewStreamFor(convId, StreamConfig(
+        width = Some(390), height = Some(844)
+      )).sync()
+      val screencast = session match {
+        case s: PreviewStreamSession.Screencast => s
+        case other => fail(s"expected a screencast fallback, got $other")
+      }
+
+      try {
+        // Device-metrics emulation is what makes this a phone render
+        // rather than a cropped desktop one: the page's own media queries
+        // resolve against the target
+        controller.run(_.eval("return window.innerWidth + 'x' + window.innerHeight"))
+          .map(_("result")("value").asString).sync() shouldBe "390x844"
+        controller.run(_.eval("return window.mobile"))
+          .map(_("result")("value").asBoolean).sync() shouldBe true
+
+        val frames = screencast.frames.take(4).toList.timeout(2.minutes).sync()
+        frames should have size 4
+        frames.foreach { f =>
+          f.metadata.deviceWidth shouldBe 390.0
+          f.metadata.deviceHeight shouldBe 844.0
+        }
+
+        // Restarting capture behind the same frame stream: the consumer
+        // keeps pulling from the stream it already has
+        TestStreamBrowserSigil.resizePreview(convId, 1024, 768).sync()
+        controller.run(_.eval("return window.innerWidth + 'x' + window.innerHeight"))
+          .map(_("result")("value").asString).sync() shouldBe "1024x768"
+
+        val resized = screencast.frames.dropWhile(_.metadata.deviceWidth != 1024.0)
+          .take(2).toList.timeout(2.minutes).sync()
+        resized should have size 2
+        resized.foreach { f =>
+          f.metadata.deviceWidth shouldBe 1024.0
+          f.metadata.deviceHeight shouldBe 768.0
+        }
+      } finally {
+        screencast.stop.sync()
+        controller.run(_.clearViewportOverride()).sync()
+      }
     }
 
     "raise StreamUnavailableException instead of degrading when the fallback is disabled" in {

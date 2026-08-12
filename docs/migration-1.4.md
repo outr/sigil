@@ -550,3 +550,17 @@ The required-union rule runs in the boot completeness pass against the final reg
   `PreviewSignalReply` in, both conversation-scoped), so no new transport is needed. GStreamer
   stays out of every other module's dependency graph; see `browser-stream/README.md` for the
   runtime requirements.
+- **Preview sizing and live resize.** A preview's resolution is a per-stream choice rather than
+  the virtual display's: `StreamConfig.width`/`height` set the size the page lays out at and the
+  exact rectangle that is streamed, so a `390x844` request previews a portrait, mobile-layout
+  page with no letterboxing on either rung (a WebRTC session crops its display capture; the
+  screencast applies the same size as a device-metrics override). `maxWidth`/`maxHeight` keep
+  their old meaning as an encode-time downscale on top. `resizePreview(conversationId, width,
+  height)` changes the size mid-preview — a WebRTC session renegotiates and its new offer arrives
+  as another `PreviewSignal` on the same `streamId`, so viewers answer it over the plumbing they
+  already have; a screencast session restarts capture behind the same `frames` stream. Apps that
+  built their own resize by stopping and restarting a preview can drop it. Sizing a *fresh*
+  preview browser now grows its virtual display to cover both the request and
+  `streamBrowserConfig`'s configured size, since Xvfb refuses to resize a running display; apps
+  that override `streamBrowserConfig` with a deliberately small display should size it to the
+  largest preview they will ask for.

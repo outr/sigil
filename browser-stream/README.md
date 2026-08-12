@@ -31,6 +31,22 @@ untouched. `streamBrowserConfig` defaults to `BrowserSigil.browserConfig` made
 headful with a 1080p `virtualDisplay`; override it for a different resolution or
 launch flags.
 
+## Preview size
+
+`StreamConfig.width`/`height` pick the size the preview renders and captures at,
+independently of the display behind it: the page lays out at exactly that size
+and exactly that rectangle is streamed, so `previewStreamFor(convId,
+StreamConfig(width = Some(390), height = Some(844)))` gives a portrait,
+mobile-layout preview with no letterboxing — on both rungs, since a WebRTC
+session crops its display capture to the target while the screencast applies the
+same size as a device-metrics override. `resizePreview(convId, width, height)`
+changes it mid-preview: a WebRTC session renegotiates and its fresh offer arrives
+as another `PreviewSignal` on the stream id the viewer is already answering on,
+and a screencast session restarts capture behind the same `frames` stream. With
+no live preview it warns and does nothing. A browser launched for a sized request
+gets a display large enough for both the request and `streamBrowserConfig`'s own
+size (Xvfb can't resize a running display), so resizing back up later still fits.
+
 ## The fallback ladder
 
 `previewStreamFor` consults `robobrowser`'s availability probe and picks a rung:

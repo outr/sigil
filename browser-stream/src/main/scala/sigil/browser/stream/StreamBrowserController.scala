@@ -25,6 +25,8 @@ final class StreamBrowserController private[stream] (val conversationId: Id[Conv
 
   private val _sessions: ConcurrentHashMap[String, PreviewStreamSession] =
     new ConcurrentHashMap[String, PreviewStreamSession]()
+  private val _resizers: ConcurrentHashMap[String, PreviewResize] =
+    new ConcurrentHashMap[String, PreviewResize]()
   @volatile private var _lastTouchMs: Long = System.currentTimeMillis()
   private val _disposed: AtomicBoolean = new AtomicBoolean(false)
 
@@ -42,13 +44,19 @@ final class StreamBrowserController private[stream] (val conversationId: Id[Conv
 
   def session(streamId: String): Option[PreviewStreamSession] = Option(_sessions.get(streamId))
 
-  private[stream] def register(session: PreviewStreamSession): Unit = {
+  /** How a live session changes the size it renders and captures at, when
+    * it was started against a resizable rung. */
+  def resizer(streamId: String): Option[PreviewResize] = Option(_resizers.get(streamId))
+
+  private[stream] def register(session: PreviewStreamSession, resize: PreviewResize): Unit = {
     _sessions.put(session.streamId, session)
+    _resizers.put(session.streamId, resize)
     touch()
   }
 
   private[stream] def deregister(streamId: String): Unit = {
     _sessions.remove(streamId)
+    _resizers.remove(streamId)
     touch()
   }
 
@@ -68,6 +76,7 @@ final class StreamBrowserController private[stream] (val conversationId: Id[Conv
     if (_disposed.compareAndSet(false, true)) {
       val live = sessions
       _sessions.clear()
+      _resizers.clear()
       Task.sequence(live.map { s =>
         s.stop.handleError { t =>
           Task {
