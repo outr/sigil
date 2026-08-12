@@ -60,6 +60,10 @@ object TestStreamBrowserSigil extends Sigil with StreamBrowserSigil {
   private val fallbackRef: AtomicBoolean = new AtomicBoolean(true)
 
   override def streamBrowserConfig: RoboBrowserConfig = previewConfigRef.get()
+
+  /** The framework's unoverridden default — the clean-capture profile
+    * specs assert against this, not the per-test override above. */
+  lazy val defaultStreamBrowserConfig: RoboBrowserConfig = super.streamBrowserConfig
   override def streamFallbackToScreencast: Boolean = fallbackRef.get()
 
   def usePreviewConfig(config: RoboBrowserConfig): Unit = previewConfigRef.set(config)

@@ -108,3 +108,7 @@ Two limitations inherited from the streaming layer: bitrate is fixed at
 For pipeline-level debugging — encoder probes, `GST_DEBUG` traces, the reference
 viewer page — see `STREAMING.md` and the "Live streaming (WebRTC)" section in the
 `robobrowser` repository. This module does not duplicate them.
+
+## Clean capture by default
+
+`streamBrowserConfig` ships a clean-capture profile: the save-password bubble is suppressed at the profile level (`passwordManager = false` — no `--enable-automation`, so no automation infobar), `--test-type` hides the infobar and first-run/security prompts, Translate and PasswordLeakDetection features are off, and crash-restore/first-run/default-browser bubbles are suppressed. Display capture records everything Chrome draws — without this, any page that submits a form paints Chrome UI into the stream. Override `streamBrowserConfig` to relax any of it; the pooled headless automation browsers are untouched.

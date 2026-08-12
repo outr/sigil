@@ -63,7 +63,24 @@ trait StreamBrowserSigil extends BrowserSigil {
   def streamBrowserConfig: RoboBrowserConfig = {
     val base = browserConfig
     base.copy(
-      browserConfig = base.browserConfig.copy(headless = false),
+      browserConfig = base.browserConfig.copy(
+        headless = false,
+        // Clean-capture profile: display capture records everything
+        // Chrome draws, so suppress Chrome's own in-content UI. The
+        // save-password bubble is killed at the profile level
+        // (passwordManager = false — no CLI switch does this without
+        // dragging in the automation infobar; --incognito does NOT
+        // suppress it), --test-type hides the infobar and first-run
+        // prompts, and the remaining bubbles (translate offers,
+        // breach-check dialogs, session-restore) go via features and
+        // switches. Overridable like everything else here.
+        passwordManager = false,
+        testType = true,
+        disableFeatures = (base.browserConfig.disableFeatures ++
+          List("Translate", "PasswordLeakDetection")).distinct,
+        extraArgs = (base.browserConfig.extraArgs ++
+          List("--hide-crash-restore-bubble", "--no-first-run", "--no-default-browser-check")).distinct
+      ),
       virtualDisplay = base.virtualDisplay.orElse(Some(VirtualDisplayConfig()))
     )
   }
