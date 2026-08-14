@@ -112,7 +112,8 @@ object CoreSignals {
     summon[RW[ServiceLogSignal]],
     summon[RW[ThinkingChunk]],
     summon[RW[HealingActivityNotice]],
-    summon[RW[SuggestedReplies]]
+    summon[RW[SuggestedReplies]],
+    summon[RW[TurnPhases]]
   )
 
   val all: List[RW[? <: Signal]] = events ++ deltas ++ notices
