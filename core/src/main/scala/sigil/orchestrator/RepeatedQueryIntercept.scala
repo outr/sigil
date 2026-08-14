@@ -49,10 +49,8 @@ private[orchestrator] object RepeatedQueryIntercept {
                                    caller: ParticipantId,
                                    topicId: lightdb.id.Id[Topic]): Task[Option[List[Signal]]] = {
     val normalized = Orchestrator.normalizeQuery(keywords)
-    sigil.withDB(_.conversationEvents(convId)).map { allEvents =>
-      val convEvents = allEvents
-        .filter(_.conversationId == convId)
-        .sortBy(_.timestamp.value)
+    sigil.withDB(_.conversationEventsConsistent(convId)).map { allEvents =>
+      val convEvents = allEvents.sortBy(_.timestamp.value)
       val lastUserIdx = convEvents.lastIndexWhere {
         case m: Message => !m.participantId.isInstanceOf[_root_.sigil.participant.AgentParticipantId]
         case _          => false

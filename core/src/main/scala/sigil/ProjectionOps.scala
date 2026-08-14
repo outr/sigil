@@ -293,10 +293,9 @@ trait ProjectionOps { this: Sigil =>
     * surface "is this tool approved in this conversation?" UX. */
   def latestToolApproval(toolName: sigil.tool.ToolName,
                          conversationId: Id[Conversation]): Task[Option[sigil.event.ToolApproval]] =
-    withDB(_.eventsTransaction(conversationId)(_.list)).map { events =>
+    withDB(_.conversationEventsConsistent(conversationId)).map { events =>
       events.iterator
         .collect { case ta: sigil.event.ToolApproval => ta }
-        .filter(_.conversationId == conversationId)
         .filter(_.toolName == toolName)
         .toList
         .sortBy(_.timestamp.value)
@@ -313,40 +312,43 @@ trait ProjectionOps { this: Sigil =>
   def framesFor(conversationId: Id[Conversation]): Task[Vector[ContextFrame]] =
     withDB(_.conversations.transaction(_.get(conversationId))).flatMap { convOpt =>
       val watermark = convOpt.flatMap(_.clearedAt).map(_.value).getOrElse(0L)
-      withDB(_.eventsTransaction(conversationId) { tx =>
-        tx.list.flatMap { all =>
-          val events = all.iterator
-            .filter(_.conversationId == conversationId)
-            .filter(_.timestamp.value > watermark)
-            .filter(_.state == EventState.Complete)
-            .toVector
-            .sortBy(_.timestamp.value)
-          // Self-heal fossilized placeholders: a ToolCall frame rendered
-          // while the invoke's outcome was still Pending (`resultPending`)
-          // whose row has SINCE settled means the settle-time rewrite was
-          // missed — recompute from the row (pure) and persist, so the
-          // "result raced past the prompt" marker can never outlive the
-          // real result it stood in for.
-          val heals = Vector.newBuilder[Event]
-          val frames = events.flatMap { ev =>
-            ev.contextFrame match {
-              case Some(tc: ContextFrame.ToolCall) if tc.resultPending =>
-                ev match {
-                  case ti: ToolInvoke if ti.outcome != sigil.event.ToolOutcome.Pending =>
-                    val fresh = FrameBuilder.computeFrame(ti)
-                    heals += ti.withContextFrame(fresh)
-                    fresh
-                  case _ => ev.contextFrame
-                }
-              case other => other
-            }
+      withDB(_.conversationEventsConsistent(conversationId)).flatMap { all =>
+        val events = all.iterator
+          .filter(_.timestamp.value > watermark)
+          .filter(_.state == EventState.Complete)
+          .toVector
+          .sortBy(_.timestamp.value)
+        // Self-heal fossilized placeholders: a ToolCall frame rendered
+        // while the invoke's outcome was still Pending (`resultPending`)
+        // whose row has SINCE settled means the settle-time rewrite was
+        // missed — recompute from the row (pure) and persist, so the
+        // "result raced past the prompt" marker can never outlive the
+        // real result it stood in for.
+        val heals = Vector.newBuilder[Event]
+        val frames = events.flatMap { ev =>
+          ev.contextFrame match {
+            case Some(tc: ContextFrame.ToolCall) if tc.resultPending =>
+              ev match {
+                case ti: ToolInvoke if ti.outcome != sigil.event.ToolOutcome.Pending =>
+                  val fresh = FrameBuilder.computeFrame(ti)
+                  heals += ti.withContextFrame(fresh)
+                  fresh
+                case _ => ev.contextFrame
+              }
+            case other => other
           }
-          val persistHeals = heals.result().foldLeft(Task.unit) { (acc, ev) =>
-            acc.flatMap(_ => tx.upsert(ev).unit)
-          }.handleError(_ => Task.unit)
-          persistHeals.map(_ => frames)
         }
-      })
+        val healed = heals.result()
+        val persistHeals =
+          if (healed.isEmpty) Task.unit
+          else withDB { db =>
+            db.eventsTransaction(conversationId) { tx =>
+              healed.foldLeft(Task.unit)((acc, ev) => acc.flatMap(_ => tx.upsert(ev).unit))
+                .map(_ => healed.foreach(db.recordRecentEvent))
+            }
+          }.handleError(_ => Task.unit)
+        persistHeals.map(_ => frames)
+      }
     }
 
   /**
@@ -537,7 +539,7 @@ trait ProjectionOps { this: Sigil =>
    * filters the curator's rolling-window input. Bug #147.
    */
   def advanceClearedAt(conversationId: Id[Conversation], at: Timestamp): Task[Unit] =
-    withDB(_.eventsTransaction(conversationId)(_.list)).flatMap { evs =>
+    withDB(_.conversationEventsConsistent(conversationId)).flatMap { evs =>
       // #316 — a budget shed may never advance the watermark to or past
       // the current user task. `framesFor` keeps frames with
       // `timestamp > clearedAt`, so capping strictly below the most-
@@ -550,8 +552,7 @@ trait ProjectionOps { this: Sigil =>
       // directly and is intentionally unaffected by this cap.
       val taskTs: Option[Long] = evs.iterator.collect {
         case m: sigil.event.Message
-          if m.conversationId == conversationId
-          && m.role == sigil.event.MessageRole.Standard
+          if m.role == sigil.event.MessageRole.Standard
           && !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] => m.timestamp.value
       }.maxOption
       val capped = taskTs match {

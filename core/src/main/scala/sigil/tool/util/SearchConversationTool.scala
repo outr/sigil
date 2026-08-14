@@ -118,9 +118,8 @@ case object SearchConversationTool extends Tool {
                    topicId: Option[lightdb.id.Id[sigil.conversation.Topic]],
                    limit: Int,
                    page: Int): Task[List[Event]] =
-    context.sigil.withDB(_.eventsTransaction(targetConvId)(_.list)).map { all =>
+    context.sigil.withDB(_.conversationEventsConsistent(targetConvId)).map { all =>
       val filtered = all
-        .filter(_.conversationId == targetConvId)
         .filter(e => topicId.forall(_ == e.topicId))
         .sortBy(_.timestamp.value)
       val offset = math.max(0, page) * math.max(1, limit)

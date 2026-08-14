@@ -75,9 +75,9 @@ trait RoutingOps { this: Sigil =>
     * orchestrator hasn't yet stamped any agent Message (e.g. the
     * agent's only emissions so far are tool results). */
   def lastUsedModel(conversationId: Id[Conversation]): Task[Option[Id[Model]]] =
-    withDB(_.eventsTransaction(conversationId)(_.list)).map { events =>
+    withDB(_.conversationEventsConsistent(conversationId)).map { events =>
       events.iterator
-        .collect { case m: sigil.event.Message if m.conversationId == conversationId => m }
+        .collect { case m: sigil.event.Message => m }
         .filter(_.modelId.isDefined)
         .toList
         .sortBy(-_.timestamp.value)

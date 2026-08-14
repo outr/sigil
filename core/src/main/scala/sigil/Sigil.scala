@@ -1013,9 +1013,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
     // The latest user-authored Message — classifier input + the
     // debounce anchor for the routing-fallback notice.
     val latestUserMessage: Task[Option[sigil.event.Message]] =
-      withDB(_.eventsTransaction(conv._id)(_.list)).map { evs =>
+      withDB(_.conversationEventsConsistent(conv._id)).map { evs =>
         evs.iterator
-          .collect { case m: sigil.event.Message if m.conversationId == conv._id => m }
+          .collect { case m: sigil.event.Message => m }
           .filter(m => !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId])
           .filter(_.role == sigil.event.MessageRole.Standard)
           .toList
@@ -1124,13 +1124,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
                  if (skipReasons.isEmpty) "(no skip reasons recorded)"
                  else skipReasons.map { case (id, why) => s"  - ${id.value}: $why" }.mkString("\n")
                val alreadyEmittedTask: Task[Boolean] =
-                 withDB(_.eventsTransaction(context.conversation._id)(_.list)).map { evs =>
+                 withDB(_.conversationEventsConsistent(context.conversation._id)).map { evs =>
                    val userTs = userMsg.map(_.timestamp.value).getOrElse(0L)
                    evs.exists {
                      case m: sigil.event.Message =>
-                       m.conversationId == context.conversation._id &&
-                         m.source.contains("routing-fallback") &&
-                         m.timestamp.value >= userTs
+                       m.source.contains("routing-fallback") && m.timestamp.value >= userTs
                      case _ => false
                    }
                  }.handleError(_ => Task.pure(false))
@@ -2140,7 +2138,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
     * invoke reads "running as task X" forever and the continuation the
     * agent is waiting on never comes. Best-effort. */
   private[sigil] final def reconcileLostDetachedTools(conversationId: Id[Conversation]): Task[Unit] =
-    withDB(_.eventsTransaction(conversationId)(_.list)).flatMap { events =>
+    withDB(_.conversationEventsConsistent(conversationId)).flatMap { events =>
       val lost = events.collect {
         case ti: ToolInvoke
           if ti.detached

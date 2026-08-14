@@ -560,11 +560,8 @@ trait CheckpointOps { this: Sigil =>
   protected final def loadProgressContext(convId: Id[Conversation],
                                           agentId: ParticipantId): Task[ProgressContext] =
     withDB { db =>
-      db.conversationEvents(convId).flatMap { all =>
-        val convEvents = all.iterator
-          .collect { case e: Event if e.conversationId == convId => e }
-          .toList
-          .sortBy(_.timestamp.value)
+      db.conversationEventsConsistent(convId).flatMap { all =>
+        val convEvents = all.sortBy(_.timestamp.value)
         // #320 — the objective is the most-recent substantive (non-
         // continuation) user message, NOT the latest turn. A bare
         // "Proceed" advances the task; it isn't the task. Render the
@@ -705,11 +702,8 @@ trait CheckpointOps { this: Sigil =>
     * both [[evaluateStall]] and [[evaluateHardStall]] evaluate. */
   private final def loadStallRecords(convId: Id[Conversation],
                                      agentId: ParticipantId): Task[List[sigil.conversation.compression.StallDetector.CallRecord]] =
-    withDB(_.conversationEvents(convId)).map { all =>
-      val convEvents = all.iterator
-        .collect { case e: Event if e.conversationId == convId => e }
-        .toList
-        .sortBy(_.timestamp.value)
+    withDB(_.conversationEventsConsistent(convId)).map { all =>
+      val convEvents = all.sortBy(_.timestamp.value)
       // Resolve the prior-checkpoint timestamp as the lower bound,
       // falling back to the most recent user Message when no prior
       // checkpoint exists, falling back to 0 otherwise.
@@ -806,7 +800,7 @@ trait CheckpointOps { this: Sigil =>
 
   private[sigil] final def latestCheckpointStatus(agentId: ParticipantId,
                                            convId: Id[Conversation]): Task[Option[String]] =
-    withDB(_.conversationEvents(convId)).map { events =>
+    withDB(_.conversationEventsConsistent(convId)).map { events =>
       events.collect {
         case cp: sigil.event.ProgressCheckpoint if cp.participantId == agentId => cp
       }.maxByOption(_.timestamp.value).map { cp =>

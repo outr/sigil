@@ -353,25 +353,28 @@ trait PublishOps { this: Sigil =>
       event.origin match {
         case None => Task.unit
         case Some(invokeId) =>
-          withDB(_.eventsTransaction(event.conversationId) { tx =>
-            tx.get(invokeId).flatMap {
-              case Some(ti: ToolInvoke) =>
-                ti.contextFrame match {
-                  // Settle the invoke's frame from its paired Tool-role result under the shared
-                  // pairing rule ([[FrameBuilder.settlesPairedCall]]). The pending clause covers
-                  // the refuse paths (duplicate-call cap, tool-fan-out cap, …) whose
-                  // `toolDeltaPrefix` already flipped the frame to Complete with the "raced past"
-                  // placeholder before the paired Failure Message arrives — without this that
-                  // placeholder stuck and told the agent to retry a call the framework
-                  // deliberately refused.
-                  case Some(tc: ContextFrame.ToolCall)
-                      if FrameBuilder.settlesPairedCall(tc, Some(ti.outcome)) =>
-                    tx.upsert(ti.withContextFrame(Some(FrameBuilder.settledPairedFrame(tc, event)))).unit
-                  case _ => Task.unit
-                }
-              case _ => Task.unit
+          withDB { db =>
+            db.eventsTransaction(event.conversationId) { tx =>
+              tx.get(invokeId).flatMap {
+                case Some(ti: ToolInvoke) =>
+                  ti.contextFrame match {
+                    // Settle the invoke's frame from its paired Tool-role result under the shared
+                    // pairing rule ([[FrameBuilder.settlesPairedCall]]). The pending clause covers
+                    // the refuse paths (duplicate-call cap, tool-fan-out cap, …) whose
+                    // `toolDeltaPrefix` already flipped the frame to Complete with the "raced
+                    // past" placeholder before the paired Failure Message arrives — without this
+                    // that placeholder stuck and told the agent to retry a call the framework
+                    // deliberately refused.
+                    case Some(tc: ContextFrame.ToolCall)
+                        if FrameBuilder.settlesPairedCall(tc, Some(ti.outcome)) =>
+                      val settled = ti.withContextFrame(Some(FrameBuilder.settledPairedFrame(tc, event)))
+                      tx.upsert(settled).map(_ => db.recordRecentEvent(settled))
+                    case _ => Task.unit
+                  }
+                case _ => Task.unit
+              }
             }
-          })
+          }
       }
     case _ => Task.unit
   }

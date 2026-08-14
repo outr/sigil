@@ -40,12 +40,11 @@ private[orchestrator] object RacedResultLookup {
                                 toolName: String,
                                 argsHash: String,
                                 turnStartMs: Long): Task[Option[(ToolOutcome, String)]] =
-    sigil.withDB(_.eventsTransaction(convId)(_.list)).map { events =>
+    sigil.withDB(_.conversationEventsConsistent(convId)).map { events =>
       events.iterator
         .collect {
           case ti: ToolInvoke
-            if ti.conversationId == convId
-              && ti.toolName.value == toolName
+            if ti.toolName.value == toolName
               && ti.timestamp.value >= turnStartMs
               && ti.state == _root_.sigil.signal.EventState.Complete
               && ti.outcome != ToolOutcome.Pending

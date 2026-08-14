@@ -185,18 +185,82 @@ abstract class SigilDB(override val directory: Option[Path],
 
   /**
    * All events for `conversationId`, scoped by the `conversationId` index — NOT a whole-store
-   * `_.list`. Runs through [[eventsTransaction]], so when a [[withBatchedEvents]] scope is open it
-   * executes on that same transaction and sees the turn's still-uncommitted writes (including
-   * direct frame-attach upserts) exactly as `_.list` did — just without materializing every event
-   * of every conversation into memory.
+   * `_.list`, so the read costs one conversation rather than every event the deployment ever
+   * wrote.
    *
-   * Mid-turn decision logic (refusal-challenge, repeated-query intercept, self-heal, stall
-   * detection) previously read `eventsTransaction(convId)(_.list)` then filtered by id — loading the
-   * entire events store on each check. This bounds that footprint to one conversation while keeping
-   * identical read-your-writes semantics.
+   * Committed-only: the query reads a search reader materialized once per transaction, so inside
+   * an open [[withBatchedEvents]] scope it does NOT see that iteration's own writes. That is the
+   * right read for the narrow case of asking what the conversation looked like BEFORE the turn —
+   * the founding-turn topic sweep, which pairs it with the turn's own in-memory event log. Every
+   * other caller wants [[conversationEventsConsistent]], and the distinction is not academic: a
+   * mid-turn reader on this method silently loses the tail it is asking about.
    */
   def conversationEvents(conversationId: Id[Conversation]): Task[List[Event]] =
     eventsTransaction(conversationId)(_.query.filter(_ => Event.conversationId === conversationId.value).toList)
+
+  /**
+   * Size of the [[recentEvents]] window: how many recent events it keeps per conversation, and
+   * how many conversations it tracks.
+   *
+   * The window has to cover the staleness of one search reader — a single [[withBatchedEvents]]
+   * scope, which writes tens of distinct events — so 64 leaves a wide margin. Both bounds are
+   * caps, not reservations: only recently-touched conversations hold anything, and the
+   * least-recently-used conversation is evicted past the second bound. Sized so the worst case
+   * stays a few tens of megabytes even when every resident event is large; apps with unusual
+   * iteration shapes or tighter memory budgets override.
+   */
+  protected def recentEventWindow: Int = 64
+  protected def recentEventConversations: Int = 128
+
+  /** In-process window of recently-written events, merged over the indexed read by
+    * [[conversationEventsConsistent]]. Maintained by [[write]]. */
+  private lazy val recentEvents: RecentEventOverlay = new RecentEventOverlay(recentEventWindow, recentEventConversations)
+
+  /**
+   * All events for `conversationId`, with the read-your-writes guarantee a whole-store `_.list`
+   * gave, at the cost of an indexed query over one conversation rather than a decode of every
+   * event in the store.
+   *
+   * [[conversationEvents]] alone is not a drop-in replacement for that scan. `_.list` reads the
+   * key-value side and is immediately consistent; the indexed query reads a search reader
+   * materialized once per transaction and never refreshed while that transaction stays open.
+   * Inside a [[withBatchedEvents]] scope the reader therefore predates the iteration's own
+   * writes, and a scoped read silently loses the turn's tail — which is precisely what mid-turn
+   * decision logic (trigger checks, stall detection, checkpoint cutoffs) is asking about.
+   * Merging [[recentEvents]] over the indexed result closes the gap: every write through
+   * [[write]] lands in the window first, so whatever the reader is too old to see is supplied
+   * from memory, the window's version winning on id.
+   *
+   * Kept distinct from [[conversationEvents]] rather than folded into it: one caller — the
+   * founding-turn topic sweep — genuinely wants the pre-turn picture, and reads it alongside the
+   * turn's own in-memory event log.
+   */
+  def conversationEventsConsistent(conversationId: Id[Conversation]): Task[List[Event]] =
+    conversationEvents(conversationId).map { indexed =>
+      // Guard on conversationId as well as the window key: `mergeStagingIntoMain` rewrites an
+      // event's conversation in place, so a window entry can outlive its key's ownership of it.
+      val overlay = recentEvents.recent(conversationId).filter(_.conversationId == conversationId)
+      if (overlay.isEmpty) indexed
+      else {
+        val byId = scala.collection.mutable.LinkedHashMap.empty[Id[Event], Event]
+        indexed.foreach(e => byId.put(e._id, e))
+        overlay.foreach(e => byId.put(e._id, e))
+        byId.values.toList
+      }
+    }
+
+  /** Record `event` into the [[recentEvents]] window without writing it.
+    *
+    * The window wins on id when [[conversationEventsConsistent]] merges, so a framework path that
+    * mutates an event row through a raw transaction rather than [[write]] — the paired-tool-frame
+    * settle, the fossilized-placeholder self-heal, the agent claim — has to say so, or the window
+    * goes on serving the version it last saw. Called alongside the upsert, never in place of it. */
+  def recordRecentEvent(event: Event): Unit = recentEvents.record(event.conversationId, event)
+
+  /** Drop `conversationId` from the [[recentEvents]] window. Called by the conversation-delete
+    * and staging-merge cascades, whose bulk rewrites move or remove rows wholesale and would
+    * otherwise leave the window describing rows that no longer exist under that id. */
+  def forgetRecentEvents(conversationId: Id[Conversation]): Unit = recentEvents.forget(conversationId)
 
   /**
    * Apply a [[Signal]] to the events store. Events insert; Deltas
@@ -208,11 +272,12 @@ abstract class SigilDB(override val directory: Option[Path],
    * routes to the right batched transaction (when one is active)
    * by conversation id alone — see [[eventsTransaction]].
    *
-   * When a [[withBatchedEvents]] scope is active for the signal's
-   * conversation the written event is also recorded into that
-   * scope's [[BatchedEventScope.inFlight]] accumulator — the
-   * post-delta-applied event for a Delta — so the iteration's
-   * still-uncommitted live edge is visible to [[eventsFor]] page 0.
+   * The written event — the post-delta-applied one for a Delta — is
+   * also recorded into the [[recentEvents]] window, and, when a
+   * [[withBatchedEvents]] scope is active for the signal's
+   * conversation, into that scope's [[BatchedEventScope.inFlight]]
+   * accumulator, so the iteration's still-uncommitted live edge is
+   * visible to [[sigil.Sigil.eventsFor]] page 0.
    */
   def apply(signal: Signal): Task[Unit] = write(signal).unit
 
@@ -247,10 +312,12 @@ abstract class SigilDB(override val directory: Option[Path],
     case _: sigil.signal.Notice => Task.pure(None)
   }
 
-  /** Record `event` into the batched scope's accumulator when one is active for
-    * `conversationId`, then hand it back as the written row. */
+  /** Record `event` into the batched scope's accumulator (when one is active for
+    * `conversationId`) and into the [[recentEvents]] window, then hand it back as the written
+    * row. */
   private def recordWritten(conversationId: Id[Conversation], event: Event): Option[Event] = {
     batchedEventTx.get(conversationId).foreach(_.record(event))
+    recentEvents.record(conversationId, event)
     Some(event)
   }
 
