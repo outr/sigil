@@ -66,12 +66,12 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     }
   }
 
-  /** Sigil #398 — the chat-completions wire (OpenAI-compatible, e.g. Fable via
-    * OpenRouter) streams assistant prose as `TextDelta`, NOT `ContentBlockDelta`.
-    * No Message is born during the stream, so #392's settle didn't fire and the
-    * prose hit the `_plain_text_reply` drop. The Done handler must mint + commit
-    * the Message from `plainTextBuffer` — but only for a forced-tool_choice
-    * rejecter (a model on `auto`), distinguishing it from bug #75 drift. */
+  /** The chat-completions wire (OpenAI-compatible) streams assistant prose as
+    * `TextDelta`, not `ContentBlockDelta`. For a forced-tool_choice rejecter —
+    * a model running on `auto`, whose prose is its committed answer rather
+    * than drift under a forced tool call — the orchestrator births the Message
+    * on the first chunk and streams it, so this wire settles exactly like the
+    * block wire above. */
   private final class NakedTextChatCompletionsProvider extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -193,7 +193,7 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       }
     }
 
-    "challenge without minting on the chat-completions wire, then commit the repeat (forced-tool_choice rejecter)" in {
+    "stream and commit each prose reply on the chat-completions wire (forced-tool_choice rejecter)" in {
       // The model ran on `auto` (its forced tool_choice was downgraded),
       // so its plain-text reply is a genuine answer — not drift.
       Provider.recordForcedToolChoiceRejection(rejecterModelId)
@@ -207,16 +207,16 @@ class NakedTextTerminalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           case ti: sigil.event.ToolInvoke if ti.toolName.value == Orchestrator.TurnDecisionToolName => ti
         }
         challenges should have size 2
-        // The buffered prose was NOT minted on the challenged calls —
-        // only the past-budget repeat committed, so the user sees exactly
-        // one bubble. The challenge diagnostics carried the dropped text
-        // for the model to re-wrap.
+        // The prose streamed live on every call, so — exactly as on the
+        // block wire above — each iteration's text settles Complete and
+        // user-visible. Text the user watched arrive is never retracted.
         val replies = evs.collect {
           case m: Message if m.participantId == TestAgent && m.role == MessageRole.Standard
                           && m.state == EventState.Complete && m.isSuccess => m
         }
-        replies should have size 1
-        replies.head.content.collect { case t: ResponseContent.Text => t.text }.mkString should include("Use Huron Test")
+        replies should have size 3
+        replies.foreach(
+          _.content.collect { case t: ResponseContent.Text => t.text }.mkString should include("Use Huron Test"))
         // The prose was NOT routed to the `_plain_text_reply` drop diagnostic.
         evs.collect { case ti: sigil.event.ToolInvoke if ti.toolName.value == "_plain_text_reply" => ti } shouldBe empty
       }
