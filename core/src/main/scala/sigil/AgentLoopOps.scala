@@ -567,6 +567,10 @@ trait AgentLoopOps { this: Sigil =>
       // We won the claim. Register a StopFlag for this claim so any
       // Stop events published against this agent can interrupt.
       stopFlags.put(claim._id, new StopFlag)
+      // Open the turn's latency accounting from the triggering event's
+      // publish instant, so the first phase measures what the publish
+      // pipeline spent before the agent could claim.
+      openTurnPhases(conv._id, trigger.map(_.timestamp.value).getOrElse(claim.timestamp.value))
       // Open the turn's event log for the founding-turn topic
       // sweep, seeded with the claim row (written via tx.modify,
       // so the publish hook never sees it).
@@ -988,6 +992,7 @@ trait AgentLoopOps { this: Sigil =>
     // of these scribe.debug calls is negligible compared to the
     // turn's actual work; volume is ~3 lines per iteration.
     scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration enter")
+    markTurnIteration(convId)
     // Batch this iteration's `events` writes into one transaction so
     // the Lucene-indexed event store commits once per iteration
     // instead of once per streamed Delta. `iterationStep` is a
@@ -1104,11 +1109,16 @@ trait AgentLoopOps { this: Sigil =>
                   // no-tool-call branch terminates instead of re-requesting the
                   // same prose (the Fable/Mythos 5 dupe loop).
                   case md: sigil.signal.MessageDelta if md.terminalReply =>
-                    Task { userVisibleSeen.set(true); () }
+                    Task {
+                      userVisibleSeen.set(true)
+                      markTurnPhase(convId, TurnPhase.StreamEndToTerminal)
+                      ()
+                    }
                   case td: ToolDelta if td.state.contains(EventState.Complete)
                                      && activeUserVisibleInvokes.containsKey(td.target) =>
                     Task {
                       userVisibleSeen.set(true)
+                      markTurnPhase(convId, TurnPhase.StreamEndToTerminal)
                       // Bug #74 — `respond(endsTurn = false)` keeps the
                       // turn open. The settled delta carries the parsed
                       // input; flip the continue flag when it's a
@@ -2072,6 +2082,7 @@ trait AgentLoopOps { this: Sigil =>
         conversationId = claimed.conversationId,
         activity = Some(AgentActivity.Idle),
         state = Some(EventState.Complete))))
+      .flatMap(_ => closeTurnPhases(claimed.conversationId, claimed.agentId))
       .flatMap(_ => cleanup)
       .handleError(t => cleanup.flatMap(_ => Task.error(t)))
   }
@@ -2204,6 +2215,7 @@ trait AgentLoopOps { this: Sigil =>
         }
       }
       chain = buildChain(triggerEvents, agent)
+      _ = markTurnPhase(conv._id, TurnPhase.ClaimToRouting)
       // Sigil bug #205 — resolve the actually-routed model up-front so
       // the curator's budget gate sees the right context window. The
       // agent's nominal `modelId` is frequently a small-context default
@@ -2213,6 +2225,7 @@ trait AgentLoopOps { this: Sigil =>
       // `agent.modelId` triggers aggressive compression that strips
       // context the routed model would have comfortably accepted.
       routedModelId <- resolveRoutedModelId(agent, conv, chain, claimedId)
+      _ = markTurnPhase(conv._id, TurnPhase.Routing)
       // Sigil #277 — resolve the routed id to a registered Model record.
       // Cache miss throws UnregisteredModelException at the boundary
       // (instead of silently falling through per-fact defaults later).
@@ -2226,6 +2239,7 @@ trait AgentLoopOps { this: Sigil =>
       // `find_capability` still get per-space baseline context with no
       // wiring, and skill edits apply on the very next iteration.
       alwaysOn      <- alwaysOnSkillsFor(conv)
+      _ = markTurnPhase(conv._id, TurnPhase.ContextAssembly)
     } yield {
       val triggers: Stream[Event] = Stream.emits(triggerEvents)
       val ctx = TurnContext(

@@ -4,7 +4,7 @@ import fabric.*
 import fabric.io.JsonFormatter
 import lightdb.id.Id
 import rapid.{Stream, Task}
-import sigil.Sigil
+import sigil.{Sigil, TurnPhase}
 import sigil.conversation.{ContextFrame, ToolCallState}
 import sigil.db.Model
 import sigil.diagnostics.RequestProfiler
@@ -302,7 +302,23 @@ trait Provider extends Service with ModelResolver {
               else safe
             Stream.force(
               admitToWindow(request.modelId, estimateRequest(routed))
-                .map(_ => callWithTransientRetry(routed))
+                .map { _ =>
+                  // Turn-phase boundary: everything up to here is the
+                  // framework's dispatch cost, and every provider event
+                  // advances the model-stream boundary so the phase after
+                  // it measures what the framework spends once the model
+                  // has stopped talking. Only a conversation request marks
+                  // — the auxiliary one-shot calls this method also serves
+                  // (classifier, extractor, topic shift) must leave the
+                  // running turn's accounting alone.
+                  convId match {
+                    case None => callWithTransientRetry(routed)
+                    case Some(id) =>
+                      sigil.markTurnPhase(id, TurnPhase.DispatchToWire)
+                      callWithTransientRetry(routed)
+                        .evalTap(_ => Task(sigil.markTurnPhase(id, TurnPhase.ModelStream)))
+                  }
+                }
             )
           case Left(reason) => Stream.force(Task.error(reason))
         }

@@ -54,7 +54,8 @@ import java.util.concurrent.atomic.AtomicReference
 
 trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with CheckpointOps with HealingOps
   with DirectiveOps with RoutingOps with DiscoveryOps with AgentLoopOps with TopicOps with ConversationOps
-  with PublishOps with ProjectionOps with RetrievalOps with RegistrationOps with LifecycleOps {
+  with PublishOps with ProjectionOps with RetrievalOps with RegistrationOps with LifecycleOps
+  with TurnPhaseOps {
 
   /**
    * The concrete [[SigilDB]] type this Sigil uses. Defaults to
