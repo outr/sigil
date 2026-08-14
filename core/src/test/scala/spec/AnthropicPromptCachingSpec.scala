@@ -37,21 +37,27 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
     )
   )
 
-  private def requestFor(input: TurnInput): ProviderRequest =
+  private def requestFor(input: TurnInput,
+                         topic: sigil.conversation.TopicEntry = TestTopicEntry,
+                         priorTopics: List[sigil.conversation.TopicEntry] = Nil): ProviderRequest =
     ConversationRequest(
       conversationId = conversationId,
       model = TestSigil.testModel(Model.id("anthropic", "claude-haiku-4-5")),
       instructions = Instructions(),
       turnInput = input,
       currentMode = ConversationMode,
-      currentTopic = TestTopicEntry,
+      currentTopic = topic,
+      previousTopics = priorTopics,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50)),
       tools = CoreTools.all,
       chain = List(TestUser, TestAgent)
     )
 
-  private def render(provider: AnthropicProvider, input: TurnInput): (Json, Map[String, String]) = {
-    val httpReq = provider.requestConverter(requestFor(input)).sync()
+  private def render(provider: AnthropicProvider,
+                     input: TurnInput,
+                     topic: sigil.conversation.TopicEntry = TestTopicEntry,
+                     priorTopics: List[sigil.conversation.TopicEntry] = Nil): (Json, Map[String, String]) = {
+    val httpReq = provider.requestConverter(requestFor(input, topic, priorTopics)).sync()
     val body = httpReq.content match {
       case Some(c: spice.http.content.StringContent) => fabric.io.JsonParser(c.value)
       case _                                         => obj()
@@ -83,7 +89,8 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
     "snap the history breakpoint to a step boundary (not the volatile last message)" in {
       val (body, _) = render(provider, multiTurnInput)
       val messages = body("messages").asVector
-      messages.size shouldBe 3
+      // Three history frames plus the trailing volatile-context message.
+      messages.size shouldBe 4
       // History breakpoints are snapped to fixed step boundaries so the marked
       // block stays put across turns (the previous size-2 anchor advanced every
       // turn and busted the cache). For a 3-message history both snap to index
@@ -119,6 +126,42 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
       // The near breakpoint tracks close to the tail (within one near-step),
       // so most of the history is cached and only a small tail is volatile.
       marked.max should be >= (messages.size - 1 - 8)
+    }
+
+    "keep every breakpoint-covered block byte-identical across consecutive turns" in {
+      val renamedTopic = sigil.conversation.TopicEntry(
+        id      = TestTopicEntry.id,
+        label   = "Refined subject after progress",
+        summary = "The subject sharpened as the conversation went on."
+      )
+      val nextTurn = TurnInput(
+        conversationId = conversationId,
+        frames = multiTurnInput.frames ++ Vector(
+          ContextFrame.Text("second agent reply", TestAgent, Id[Event]("seed-4")),
+          ContextFrame.Text("follow-up user message", TestUser, Id[Event]("seed-5"))
+        )
+      )
+      val (first, _)  = render(provider, multiTurnInput)
+      val (second, _) = render(provider, nextTurn, renamedTopic, List(TestTopicEntry))
+
+      // Breakpoints sit at the end of the tool roster and on the system
+      // block — both must survive an ordinary turn's topic churn intact.
+      second("tools") shouldBe first("tools")
+      second("system") shouldBe first("system")
+
+      // The shared history, cache_control placement included, may only be
+      // extended — never rewritten.
+      val sharedFirst = first("messages").asVector.dropRight(1) // drop volatile tail
+      sharedFirst.zipWithIndex.foreach { case (m, i) =>
+        withClue(s"message[$i] diverged between consecutive turns: ") {
+          second("messages").asVector(i) shouldBe m
+        }
+      }
+
+      // Sanity — the churn really did happen, it just landed in the tail.
+      val tail = second("messages").asVector.last("content").asVector.map(_("text").asString).mkString
+      tail should include("Refined subject after progress")
+      tail should include("Previous topics in this conversation")
     }
 
     "send the extended-cache-ttl beta header" in {

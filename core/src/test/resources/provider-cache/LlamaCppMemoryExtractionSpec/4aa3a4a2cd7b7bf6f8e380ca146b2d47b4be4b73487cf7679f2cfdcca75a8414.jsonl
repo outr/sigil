@@ -1,5 +1,5 @@
-{"requestHash":"4aa3a4a2cd7b7bf6f8e380ca146b2d47b4be4b73487cf7679f2cfdcca75a8414","recordedAt":1785681655809}
-{"callId":"b6ba74d6b","toolName":"extract_memories","type":"ProviderEvent.ToolCallStart"}
-{"callId":"b6ba74d6b","call":{"type":"decoded","name":"extract_memories","args":{"memories":[{"content":"User prefers dark-mode interfaces in every app.","label":"Preferred interface theme","key":"user.preferred_interface_theme","tags":["preference","ui"]},{"content":"Deployment target is staging.us-east-1.","label":"Deployment target","key":"project.deploy_target","tags":["infrastructure"]}]}},"type":"ProviderEvent.ToolCallComplete"}
+{"requestHash":"4aa3a4a2cd7b7bf6f8e380ca146b2d47b4be4b73487cf7679f2cfdcca75a8414","recordedAt":1786672453528}
+{"callId":"7cba6c859","toolName":"extract_memories","type":"ProviderEvent.ToolCallStart"}
+{"callId":"7cba6c859","call":{"type":"decoded","name":"extract_memories","args":{"memories":[{"content":"[test-user] prefers dark-mode interfaces in every app.","label":"Preferred interface theme","key":"test-user.preferred_theme","tags":["preference"]},{"content":"The deployment target is staging.us-east-1.","label":"Deployment target","key":"test-user.deploy_target","tags":["infrastructure"]}]}},"type":"ProviderEvent.ToolCallComplete"}
 {"usage":{"promptTokens":1144,"completionTokens":108,"totalTokens":1252,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

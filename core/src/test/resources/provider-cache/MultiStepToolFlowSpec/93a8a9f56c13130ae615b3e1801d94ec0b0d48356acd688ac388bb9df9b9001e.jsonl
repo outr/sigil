@@ -1,0 +1,5 @@
+{"requestHash":"93a8a9f56c13130ae615b3e1801d94ec0b0d48356acd688ac388bb9df9b9001e","recordedAt":1786672450721}
+{"callId":"1cd6e5697","toolName":"get_magic_number","type":"ProviderEvent.ToolCallStart"}
+{"callId":"1cd6e5697","call":{"type":"decoded","name":"get_magic_number","args":{}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":3621,"completionTokens":15,"totalTokens":3636,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

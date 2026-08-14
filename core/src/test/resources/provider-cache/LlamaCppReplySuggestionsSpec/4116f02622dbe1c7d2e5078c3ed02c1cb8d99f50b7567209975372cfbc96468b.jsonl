@@ -1,0 +1,50 @@
+{"requestHash":"4116f02622dbe1c7d2e5078c3ed02c1cb8d99f50b7567209975372cfbc96468b","recordedAt":1786672462968}
+{"text":"You","type":"ProviderEvent.TextDelta"}
+{"text":" can","type":"ProviderEvent.TextDelta"}
+{"text":" reverse","type":"ProviderEvent.TextDelta"}
+{"text":" a","type":"ProviderEvent.TextDelta"}
+{"text":" List","type":"ProviderEvent.TextDelta"}
+{"text":" in","type":"ProviderEvent.TextDelta"}
+{"text":" Scala","type":"ProviderEvent.TextDelta"}
+{"text":" using","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" `","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":10,"totalTokens":10,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"reverse","type":"ProviderEvent.TextDelta"}
+{"text":"`","type":"ProviderEvent.TextDelta"}
+{"text":" method","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" like","type":"ProviderEvent.TextDelta"}
+{"text":" `","type":"ProviderEvent.TextDelta"}
+{"text":"my","type":"ProviderEvent.TextDelta"}
+{"text":"List","type":"ProviderEvent.TextDelta"}
+{"text":".reverse","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":20,"totalTokens":20,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"`.","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"callId":"75d6f43bd","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":21,"totalTokens":21,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"75d6f43bd","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"75d6f43bd","text":"You","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" can","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" reverse","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" List","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" in","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" Scala","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" using","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" `","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":"reverse","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":"`","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" method","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" like","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":" `","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":"my","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":"List","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":".reverse","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","text":"`.","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"75d6f43bd","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Scala List Reverse","topicSummary":"Answering how to reverse a List in Scala","content":"You can reverse a List in Scala using the `reverse` method, like `myList.reverse`.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":3544,"completionTokens":140,"totalTokens":3684,"isEstimated":false,"cacheReadTokens":3496,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

@@ -1,0 +1,5 @@
+{"requestHash":"eab76db8ecd6ebc3fe6d68c0e55be38511292d96f1c72bdaef1357ddaeb4f10f","recordedAt":1786672456464}
+{"callId":"e375f7d2e","toolName":"suggest_reply","type":"ProviderEvent.ToolCallStart"}
+{"callId":"e375f7d2e","call":{"type":"decoded","name":"suggest_reply","args":{"suggestions":["Great, thanks."]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":502,"completionTokens":33,"totalTokens":535,"isEstimated":false,"cacheReadTokens":362,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

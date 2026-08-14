@@ -97,22 +97,19 @@ object ContextSections {
       )
     }
 
-  /** Tools that need runtime context (e.g. `change_mode` enumerating
+  /** The active mode's identity and description only — the topic lines
+    * render separately in the volatile tail. Mode changes on an explicit
+    * `change_mode`, which is a deliberate act; the topic label and
+    * summary are rewritten as the conversation progresses, and carrying
+    * them here cold-invalidated the cacheable prefix on ordinary turns.
+    *
+    * Tools that need runtime context (e.g. `change_mode` enumerating
     * the available modes) override `Tool.descriptionFor` to fold that
     * context into their own description, so this stays free of
     * per-tool special cases. */
   private val modeBlock: ContextSection =
     section(ProfileSection.ModeBlock, Placement.StablePrefix) { c =>
-      Some(s"Current mode: ${c.request.currentMode} — ${c.request.currentMode.description}\n" +
-        s"Current topic: \"${c.request.currentTopic.label}\" — ${c.request.currentTopic.summary}\n")
-    }
-
-  private val previousTopics: ContextSection =
-    entrySection(ProfileSection.PreviousTopics, Placement.StablePrefix) { c =>
-      if (c.request.previousTopics.isEmpty) None
-      else Some(SectionBody.Entries(
-        header = "Previous topics in this conversation:\n",
-        lines  = c.capped(c.request.previousTopics.toList).map(t => s"  - \"${t.label}\" — ${t.summary}\n")))
+      Some(s"Current mode: ${c.request.currentMode} — ${c.request.currentMode.description}\n")
     }
 
   /** The discovery block teaches discovery-first behaviour generically —
@@ -152,11 +149,18 @@ object ContextSections {
         }))
     }
 
+  /** Pinned directives hold the stable prefix deliberately: the set
+    * changes only when someone pins or unpins, so the invalidation is
+    * one acknowledged event rather than per-turn churn. Rendering them
+    * ahead of the message history is also what gives them the standing
+    * the name implies. */
   private val criticalMemories: ContextSection =
     section(ProfileSection.CriticalMemories, Placement.StablePrefix) { c =>
       if (c.resolved.criticalMemories.isEmpty) None
       else Some(CriticalMemoriesHeader + c.resolved.criticalMemories.map(memoryLine).mkString)
     }
+
+  // ---- volatile tail (per-turn, excluded from the cacheable prefix) ----
 
   /** Drops the Information entries the turn's frames never reference —
     * a catalog line nothing points at is pure overhead. */
@@ -165,15 +169,36 @@ object ContextSections {
     t.copy(information = t.information.filter(i => referenced.contains(i.id.value)))
   }
 
+  /** The conversation's active subject, rewritten whenever a `respond`
+    * refines or switches it. Every rewrite would otherwise shift the
+    * leading bytes of the system prompt and cost the whole request its
+    * cache hit. */
+  private val currentTopic: ContextSection =
+    section(ProfileSection.CurrentTopic, Placement.VolatileTail) { c =>
+      Some(s"\nCurrent topic: \"${c.request.currentTopic.label}\" — ${c.request.currentTopic.summary}\n")
+    }
+
+  /** Grows on every topic shift, so it rides behind the history for the
+    * same reason [[currentTopic]] does. */
+  private val previousTopics: ContextSection =
+    entrySection(ProfileSection.PreviousTopics, Placement.VolatileTail) { c =>
+      if (c.request.previousTopics.isEmpty) None
+      else Some(SectionBody.Entries(
+        header = "Previous topics in this conversation:\n",
+        lines  = c.capped(c.request.previousTopics.toList).map(t => s"  - \"${t.label}\" — ${t.summary}\n")))
+    }
+
+  /** The catalog accrues as the turn's frames externalize content, so
+    * it changes across ordinary turns and belongs behind the history.
+    * The shed cascade is placement-agnostic — it edits the `TurnInput`
+    * the renderer reads, not the rendered position. */
   private val information: ContextSection =
-    section(ProfileSection.Information, Placement.StablePrefix, shedStage = Some(2),
+    section(ProfileSection.Information, Placement.VolatileTail, shedStage = Some(2),
       shed = Some(shedUnreferencedInformation)) { c =>
       if (c.turn.information.isEmpty) None
       else Some("\n== Referenced content (look up by id) ==\n" +
         c.turn.information.map(i => s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n").mkString)
     }
-
-  // ---- volatile tail (per-turn, excluded from the cacheable prefix) ----
 
   /** Summaries ride the volatile tail because the rolling intra-turn
     * compaction stream updates them mid-turn; rendered ahead of the
@@ -307,11 +332,12 @@ object ContextSections {
   val all: List[ContextSection] = List(
     toolFramingPrefix,
     modeBlock,
-    previousTopics,
     instructions,
     roles,
     activeSkills,
     criticalMemories,
+    currentTopic,
+    previousTopics,
     information,
     summaries,
     memories,

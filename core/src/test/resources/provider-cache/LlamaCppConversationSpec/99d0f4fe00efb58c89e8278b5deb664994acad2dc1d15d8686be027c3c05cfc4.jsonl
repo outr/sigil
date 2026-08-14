@@ -1,0 +1,80 @@
+{"requestHash":"99d0f4fe00efb58c89e8278b5deb664994acad2dc1d15d8686be027c3c05cfc4","recordedAt":1786672494670}
+{"callId":"c170ccef2","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"c170ccef2","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"c170ccef2","text":"Great","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"!","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" I","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"'m","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" now","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" in","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" coding","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" mode","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" for","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" your","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" Scala","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" project","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" Let","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"'s","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" start","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" with","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" design","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" phase","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"\n","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"\nWhat","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" would","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" you","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" like","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" build","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"?","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" Please","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" describe","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":":","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"\n-","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" The","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" main","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" functionality","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" or","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" problem","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" you","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"'re","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" solving","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"\n-","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" Any","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" specific","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" requirements","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" or","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" constraints","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"\n-","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" Preferred","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" design","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" patterns","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" or","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" architecture","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" (","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"if","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" any","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":")","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"\n","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"\nOnce","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" we","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" have","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" clear","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" design","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" we","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":"'ll","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" move","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" implementation","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" and","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" then","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":" testing","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c170ccef2","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Scala Project Development","topicSummary":"Starting a Scala project with design, implementation, and testing phases","content":"Great! I'm now in coding mode for your Scala project. Let's start with the design phase.\n\nWhat would you like to build? Please describe:\n- The main functionality or problem you're solving\n- Any specific requirements or constraints\n- Preferred design patterns or architecture (if any)\n\nOnce we have a clear design, we'll move to implementation and then testing.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4211,"completionTokens":154,"totalTokens":4365,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

@@ -1,5 +1,5 @@
-{"requestHash":"3a91f057e65195b9002a4498509da52b1ece34d29ec65a3da9b8dead3723eb81","recordedAt":1785681686359}
-{"callId":"6275b6844","toolName":"extract_memories","type":"ProviderEvent.ToolCallStart"}
-{"callId":"6275b6844","call":{"type":"decoded","name":"extract_memories","args":{"memories":[{"content":"User's first name is Matt.","label":"First name","key":"user.first_name","tags":["identity","name"]},{"content":"User's last name is Hicks.","label":"Last name","key":"user.last_name","tags":["identity","name"]},{"content":"User's email address is matt@outr.com.","label":"Email address","key":"user.email","tags":["identity","contact"]},{"content":"User is 46 years old.","label":"Age","key":"user.age","tags":["identity"]}]}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":1059,"completionTokens":172,"totalTokens":1231,"isEstimated":false,"cacheReadTokens":942,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"requestHash":"3a91f057e65195b9002a4498509da52b1ece34d29ec65a3da9b8dead3723eb81","recordedAt":1786672465996}
+{"callId":"0df2e652d","toolName":"extract_memories","type":"ProviderEvent.ToolCallStart"}
+{"callId":"0df2e652d","call":{"type":"decoded","name":"extract_memories","args":{"memories":[{"content":"User's first name is Matt.","label":"First name","key":"user.first_name","tags":["identity","name"]},{"content":"User's last name is Hicks.","label":"Last name","key":"user.last_name","tags":["identity","name"]},{"content":"User's email address is matt@outr.com.","label":"Email address","key":"user.email","tags":["identity","contact"]},{"content":"User is 46 years old.","label":"Age","key":"user.age","tags":["identity","demographics"]}]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":1059,"completionTokens":176,"totalTokens":1235,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

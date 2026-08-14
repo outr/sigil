@@ -153,9 +153,9 @@ class CompactPromptShapeSpec extends AnyWordSpec with Matchers {
       tail.linesIterator.count(_.startsWith("earlier turn summary")) shouldBe PromptShape.Compact.summaryCap.get
     }
 
-    "cap previous topics in the stable prefix" in {
-      val prefix = render(PromptShape.Compact, Placement.StablePrefix)
-      prefix.linesIterator.count(_.trim.startsWith("- \"topic ")) shouldBe PromptShape.Compact.entryCap.get
+    "cap previous topics in the volatile tail" in {
+      val tail = render(PromptShape.Compact, Placement.VolatileTail)
+      tail.linesIterator.count(_.trim.startsWith("- \"topic ")) shouldBe PromptShape.Compact.entryCap.get
     }
 
     "never drop a pinned directive" in {

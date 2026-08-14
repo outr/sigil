@@ -1,0 +1,12 @@
+{"requestHash":"d709df56259d5c4b6a52374ebbff021ffb31caa70aa308c2046f708b9efd3a07","recordedAt":1786672484193}
+{"text":"blue","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1,"totalTokens":1,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"3853b2fc4","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"3853b2fc4","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"3853b2fc4","text":"blue","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3853b2fc4","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3853b2fc4","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Test Topic","topicSummary":"User shared their favorite color.","content":"blue.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4139,"completionTokens":75,"totalTokens":4214,"isEstimated":false,"cacheReadTokens":3882,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

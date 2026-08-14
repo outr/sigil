@@ -1,0 +1,110 @@
+{"requestHash":"a38325493e143d014c7954c6916bf4d5d113a3b635ec03c8593344e81604b361","recordedAt":1786672506247}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"text":" asking","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" knowledge","type":"ProviderEvent.ThinkingDelta"}
+{"text":" question","type":"ProviderEvent.ThinkingDelta"}
+{"text":" about","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Python","type":"ProviderEvent.ThinkingDelta"}
+{"text":"'s","type":"ProviderEvent.ThinkingDelta"}
+{"text":" G","type":"ProviderEvent.ThinkingDelta"}
+{"text":"IL","type":"ProviderEvent.ThinkingDelta"}
+{"text":" and","type":"ProviderEvent.ThinkingDelta"}
+{"text":" how","type":"ProviderEvent.ThinkingDelta"}
+{"text":" it","type":"ProviderEvent.ThinkingDelta"}
+{"text":" affects","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":19,"totalTokens":19,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" concurrent","type":"ProviderEvent.ThinkingDelta"}
+{"text":" threads","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" They","type":"ProviderEvent.ThinkingDelta"}
+{"text":" want","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" one","type":"ProviderEvent.ThinkingDelta"}
+{"text":" short","type":"ProviderEvent.ThinkingDelta"}
+{"text":" sentence","type":"ProviderEvent.ThinkingDelta"}
+{"text":" answer","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" This","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" factual","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Q","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":39,"totalTokens":39,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"&A","type":"ProviderEvent.ThinkingDelta"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"text":" doesn","type":"ProviderEvent.ThinkingDelta"}
+{"text":"'t","type":"ProviderEvent.ThinkingDelta"}
+{"text":" require","type":"ProviderEvent.ThinkingDelta"}
+{"text":" any","type":"ProviderEvent.ThinkingDelta"}
+{"text":" tool","type":"ProviderEvent.ThinkingDelta"}
+{"text":" calls","type":"ProviderEvent.ThinkingDelta"}
+{"text":" -","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" can","type":"ProviderEvent.ThinkingDelta"}
+{"text":" answer","type":"ProviderEvent.ThinkingDelta"}
+{"text":" this","type":"ProviderEvent.ThinkingDelta"}
+{"text":" from","type":"ProviderEvent.ThinkingDelta"}
+{"text":" my","type":"ProviderEvent.ThinkingDelta"}
+{"text":" knowledge","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":58,"totalTokens":58,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Let","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" provide","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" concise","type":"ProviderEvent.ThinkingDelta"}
+{"text":" answer","type":"ProviderEvent.ThinkingDelta"}
+{"text":" about","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Python","type":"ProviderEvent.ThinkingDelta"}
+{"text":"'s","type":"ProviderEvent.ThinkingDelta"}
+{"text":" G","type":"ProviderEvent.ThinkingDelta"}
+{"text":"IL","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":71,"totalTokens":71,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"51ac4201f","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"51ac4201f","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"51ac4201f","text":"Python","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":"'s","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" G","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":"IL","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" prevents","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" multiple","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" threads","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" from","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" executing","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" Python","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" bytecode","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" simultaneously","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" so","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" true","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" parallel","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":"ism","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" requires","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" releasing","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" G","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":"IL","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" (","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":"via","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" C","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" extensions","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" or","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" multiprocessing","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":")","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" or","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" using","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" multiple","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" processes","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" instead","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" of","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":" threads","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"51ac4201f","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Python GIL and Concurrency","topicSummary":"Understanding Python's Global Interpreter Lock impact on threads","content":"Python's GIL prevents multiple threads from executing Python bytecode simultaneously, so true parallelism requires releasing the GIL (via C extensions or multiprocessing) or using multiple processes instead of threads.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4187,"completionTokens":192,"totalTokens":4379,"isEstimated":false,"cacheReadTokens":4128,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}
