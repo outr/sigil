@@ -573,11 +573,13 @@ The required-union rule runs in the boot completeness pass against the final reg
   page with no letterboxing on either rung (a WebRTC session crops its display capture; the
   screencast applies the same size as a device-metrics override). `maxWidth`/`maxHeight` keep
   their old meaning as an encode-time downscale on top. `resizePreview(conversationId, width,
-  height)` changes the size mid-preview — a WebRTC session renegotiates and its new offer arrives
-  as another `PreviewSignal` on the same `streamId`, so viewers answer it over the plumbing they
-  already have; a screencast session restarts capture behind the same `frames` stream. Apps that
-  built their own resize by stopping and restarting a preview can drop it. Sizing a *fresh*
-  preview browser now grows its virtual display to cover both the request and
-  `streamBrowserConfig`'s configured size, since Xvfb refuses to resize a running display; apps
+  height)` changes the size mid-preview — a WebRTC session reconfigures its live pipeline, so
+  there is no renegotiation and no second `PreviewSignal`: the viewer's peer connection stays
+  connected and its `<video>` keeps rendering the same track at the new resolution, which H.264
+  carries in-band. A screencast session restarts capture behind the same `frames` stream. Apps
+  that built their own resize by stopping and restarting a preview can drop it, and viewers need
+  no re-answer path for a resize. Sizing a *fresh* preview browser now grows its virtual display
+  to cover both the request and `streamBrowserConfig`'s configured size, since Xvfb refuses to
+  resize a running display; apps
   that override `streamBrowserConfig` with a deliberately small display should size it to the
   largest preview they will ask for.

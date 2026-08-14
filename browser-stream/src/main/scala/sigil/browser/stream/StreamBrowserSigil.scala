@@ -240,9 +240,8 @@ trait StreamBrowserSigil extends BrowserSigil {
     val convId = controller.conversationId
     RoboStream(controller.browser).start(config).flatMap { session =>
       val preview = PreviewStreamSession.WebRtc(convId, PreviewStreamSession.newStreamId(), session)
-      // A resize renegotiates: the fresh offer rides the same signaling
-      // listener attached just below, so the viewer answers it exactly as
-      // it answered the first one.
+      // A resize reconfigures the live pipeline, so this listener carries
+      // exactly one offer for the session's whole lifetime.
       controller.register(preview, (width, height) => session.resize(width, height))
       // `connect` flushes anything the session emitted while it was
       // starting — the offer fires from webrtcbin moments after PLAYING,
@@ -329,12 +328,14 @@ trait StreamBrowserSigil extends BrowserSigil {
   /**
    * Resize a conversation's live preview(s) to `width` x `height`.
    *
-   * A WebRTC session rebuilds its pipeline against the new size and emits
-   * a fresh offer, which reaches the viewer as a [[PreviewSignal]] on the
-   * same stream id it is already answering on — no new session, no
-   * re-subscribe. A screencast session re-lays the page out and restarts
-   * capture behind the same [[PreviewStreamSession.Screencast.frames]]
-   * stream, so its consumer keeps pulling from the stream it has.
+   * A WebRTC session reconfigures its live pipeline against the new size:
+   * no renegotiation, no second offer, no [[PreviewSignal]] at all. The
+   * peer connection the viewer already has stays up and its `<video>`
+   * simply starts rendering the same track at the new resolution, which
+   * H.264 carries in-band. A screencast session re-lays the page out and
+   * restarts capture behind the same
+   * [[PreviewStreamSession.Screencast.frames]] stream, so its consumer
+   * keeps pulling from the stream it has.
    *
    * A conversation with no live preview is a warn and a no-op: there is
    * nothing to resize, and the next [[previewStreamFor]] carries the size

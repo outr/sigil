@@ -17,10 +17,10 @@ import scala.jdk.CollectionConverters.*
  *
  * A portrait request lays the page out as a phone and streams video of
  * exactly that shape — the display it runs on is a bound, not the
- * resolution. Resizing mid-preview renegotiates: the fresh offer arrives
- * as a second [[PreviewSignal]] on the *same* stream id, so a viewer
- * answers it over the plumbing it already has rather than tearing the
- * preview down and asking for a new one.
+ * resolution. Resizing mid-preview reconfigures the live pipeline: the
+ * page relays out and the stats carry the new size, but the session
+ * signals no second offer, so a viewer keeps rendering the track it
+ * already negotiated rather than re-answering or re-subscribing.
  *
  * Self-skips (with the reason) when the host can't stream.
  */
@@ -101,7 +101,7 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
 
   "previewStreamFor with a portrait render target" should {
 
-    "stream the target's own shape and renegotiate on resizePreview" in {
+    "stream the target's own shape and resize in place, without renegotiating" in {
       skipReason.foreach(reason => cancel(s"Skipping live preview resize test: $reason"))
 
       val controller = TestStreamBrowserSigil
@@ -140,13 +140,9 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
         evalString("window.innerWidth + 'x' + window.innerHeight") shouldBe "1280x820"
         evalBoolean("window.mobile") shouldBe false
 
-        // The renegotiation offer arrives on the stream id the viewer is
-        // already answering on — same PreviewSignal plumbing, no new session
-        val renegotiated = awaitOffers(webRtc.streamId, atLeast = 2, timeoutMs = 60_000)
-        renegotiated should have size 2
-        renegotiated(1) should include("m=video")
-        renegotiated(1) should include("m=application")
-        renegotiated(1) should not be renegotiated.head
+        // The pipeline was reconfigured, not rebuilt: no second offer, so
+        // the viewer's peer connection is never asked to re-handshake
+        awaitOffers(webRtc.streamId, atLeast = 2, timeoutMs = 5_000) should have size 1
 
         TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should contain(webRtc.streamId)
 
@@ -195,6 +191,8 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
         clamped.width shouldBe 1600
         clamped.height shouldBe 1000
         TestStreamBrowserSigil.previewStreamsFor(growConv).map(_.streamId) should contain(webRtc.streamId)
+        // Two resizes, still the one offer the viewer answered at start
+        awaitOffers(webRtc.streamId, atLeast = 2, timeoutMs = 5_000) should have size 1
       } finally {
         webRtc.stop.sync()
         TestStreamBrowserSigil.disposeStreamBrowserController(growConv).sync()
