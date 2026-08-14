@@ -128,3 +128,7 @@ viewer page — see `STREAMING.md` and the "Live streaming (WebRTC)" section in 
 ## Clean capture by default
 
 `streamBrowserConfig` ships a clean-capture profile: the save-password bubble is suppressed at the profile level (`passwordManager = false` — no `--enable-automation`, so no automation infobar), `--test-type` hides the infobar and first-run/security prompts, Translate and PasswordLeakDetection features are off, and crash-restore/first-run/default-browser bubbles are suppressed. Display capture records everything Chrome draws — without this, any page that submits a form paints Chrome UI into the stream. Override `streamBrowserConfig` to relax any of it; the pooled headless automation browsers are untouched.
+
+## Display envelopes
+
+`StreamConfig.maxWidth`/`maxHeight` size the virtual display's framebuffer envelope at browser launch (per-dimension max with the configured display and the initial render target), while `width`/`height` set the initial render within it. Declare the largest pane you'll ever show (fullscreen) as the max and the current pane as the target: `resizePreview` then grows freely up to the envelope, and a request beyond it is clamped and served at the envelope size with a warning — the client's video element scales it — rather than aborting the stream. RandR cannot grow a running Xvfb framebuffer, so the envelope is a launch-time decision.

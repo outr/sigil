@@ -429,6 +429,10 @@ Each entry names the fix.
 
 `MoveMemoryInput.newSpace` (and `fromSpace`) are `String` — the target space's `value` — resolved server-side against the caller's accessible spaces. In 1.3 they were typed `SpaceId` fields, which required the model to construct a discriminated union and made the tool's schema depend on the app's registered space subtypes. A miss returns a recoverable failure listing the accessible values.
 
+### Preview display envelopes honour StreamConfig.maxWidth/maxHeight
+
+The stream browser's framebuffer is sized from the declared `maxWidth`/`maxHeight` (falling back to the render target), so a preview that starts small can grow to fullscreen via `resizePreview` without a relaunch; targets beyond the envelope are clamped and served with a warning instead of aborting. Consumers that pre-allocated an oversized display as a workaround can pass the envelope as `max*` and the real pane as `width`/`height`.
+
 ### Client tools reach both host shapes
 
 UI-registered client tools (`RegisterClientTools`) are reachable on every host: discovery-enabled hosts find them through `find_capability` (unchanged), and hosts whose effective roster carries no `find_capability` (`ToolPolicy.ActiveOnly` / `None`, or an override that filters it) now get them injected into the roster directly. Discovery-first hosts see no roster change; discovery-off hosts no longer need a `conversationToolOverlays` workaround.

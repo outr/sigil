@@ -158,6 +158,49 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
       }
     }
 
+    "grow past the first render target within a max-declared envelope, and clamp beyond it" in {
+      skipReason.foreach(reason => cancel(s"Skipping live preview resize test: $reason"))
+
+      val growConv = Conversation.id(s"resize-grow-${rapid.Unique()}")
+      TestStreamBrowserSigil.withDB(_.conversations.transaction(_.upsert(
+        Conversation(_id = growConv, topics = List(TestTopicEntry))))).sync()
+      // First pane is portrait-small, but the declared max sizes the
+      // framebuffer envelope up front — the later landscape grow that
+      // used to raise DisplayResizeUnsupportedException just works.
+      val controller = TestStreamBrowserSigil
+        .streamBrowserController(growConv, StreamConfig(
+          width = Some(390), height = Some(844),
+          maxWidth = Some(1600), maxHeight = Some(1000)
+        )).sync()
+      controller.run(_.navigate(fixture.url)).sync()
+      controller.browser.virtualDisplay.map(_.width).get should be >= 1600
+      controller.browser.virtualDisplay.map(_.height).get should be >= 1000
+
+      val session = TestStreamBrowserSigil.previewStreamFor(growConv, StreamConfig(
+        width = Some(390), height = Some(844), maxFps = 30
+      )).sync()
+      val webRtc = session match {
+        case w: PreviewStreamSession.WebRtc => w
+        case other => fail(s"expected a WebRTC session, got $other")
+      }
+      try {
+        TestStreamBrowserSigil.resizePreview(growConv, 1600, 1000).sync()
+        val grown = webRtc.stats.sync()
+        grown.width shouldBe 1600
+        grown.height shouldBe 1000
+
+        // Beyond the envelope: clamped and served, never aborted.
+        TestStreamBrowserSigil.resizePreview(growConv, 3840, 2160).sync()
+        val clamped = webRtc.stats.sync()
+        clamped.width shouldBe 1600
+        clamped.height shouldBe 1000
+        TestStreamBrowserSigil.previewStreamsFor(growConv).map(_.streamId) should contain(webRtc.streamId)
+      } finally {
+        webRtc.stop.sync()
+        TestStreamBrowserSigil.disposeStreamBrowserController(growConv).sync()
+      }
+    }
+
     "warn and do nothing when no preview is live" in {
       skipReason.foreach(reason => cancel(s"Skipping live preview resize test: $reason"))
 

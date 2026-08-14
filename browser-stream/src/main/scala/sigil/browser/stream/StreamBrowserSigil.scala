@@ -124,12 +124,36 @@ trait StreamBrowserSigil extends BrowserSigil {
     val base = streamBrowserConfig
     base.virtualDisplay match {
       case Some(display) =>
+        // The framebuffer envelope honours maxWidth/maxHeight when the
+        // request declares them: "render at width x height now, but the
+        // display must accommodate growth up to the max" — a preview
+        // that starts in a small pane and later goes fullscreen never
+        // needs a browser relaunch. Fallback order per dimension:
+        // configured display, declared max, requested render target.
         base.copy(virtualDisplay = Some(display.copy(
-          width = math.max(display.width, config.width.getOrElse(0)),
-          height = math.max(display.height, config.height.getOrElse(0))
+          width = List(display.width, config.maxWidth.getOrElse(0), config.width.getOrElse(0)).max,
+          height = List(display.height, config.maxHeight.getOrElse(0), config.height.getOrElse(0)).max
         )))
       case None => base
     }
+  }
+
+  /** Clamp a requested render target to the live display's framebuffer
+    * envelope. RandR cannot grow a running Xvfb framebuffer, so a
+    * target beyond it (a 4K fullscreen pane against a smaller
+    * envelope) is served at the envelope size — the client's video
+    * element scales it — rather than aborting the stream. */
+  private def clampToEnvelope(controller: StreamBrowserController,
+                              width: Int,
+                              height: Int): (Int, Int) = {
+    val (envW, envH) = controller.displaySize
+    val (w, h) = (math.min(width, envW), math.min(height, envH))
+    if (w != width || h != height) {
+      scribe.warn(
+        s"resizePreview target ${width}x$height exceeds the display envelope ${envW}x$envH; " +
+          s"serving ${w}x$h — allocate a larger envelope via StreamConfig.maxWidth/maxHeight at stream start.")
+    }
+    (w, h)
   }
 
   /**
@@ -318,12 +342,13 @@ trait StreamBrowserSigil extends BrowserSigil {
    */
   final def resizePreview(convId: Id[Conversation], width: Int, height: Int): Task[Unit] = Task.defer {
     val controller = Option(StreamBrowserSigil.controllers.get(convId.value))
+    val (w, h) = controller.map(clampToEnvelope(_, width, height)).getOrElse((width, height))
     controller.toList.flatMap(c => c.sessions.flatMap(s => c.resizer(s.streamId))) match {
       case Nil => Task {
         scribe.warn(s"resizePreview(${width}x$height) for ${convId.value}: no live preview session — ignored")
         ()
       }
-      case resizers => Task.sequence(resizers.map(_.apply(width, height))).unit
+      case resizers => Task.sequence(resizers.map(_.apply(w, h))).unit
     }
   }
 

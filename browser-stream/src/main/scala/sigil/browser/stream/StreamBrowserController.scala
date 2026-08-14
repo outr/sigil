@@ -30,6 +30,11 @@ final class StreamBrowserController private[stream] (val conversationId: Id[Conv
   @volatile private var _lastTouchMs: Long = System.currentTimeMillis()
   private val _disposed: AtomicBoolean = new AtomicBoolean(false)
 
+  /** The browser's virtual-display framebuffer size — the envelope no
+    * render target can exceed (RandR cannot grow a running Xvfb). */
+  def displaySize: (Int, Int) =
+    browser.virtualDisplay.map(d => (d.width, d.height)).getOrElse((Int.MaxValue, Int.MaxValue))
+
   /** Run a block against the live browser, marking the controller
     * touched so the idle reaper doesn't claim it mid-action. */
   def run[A](f: RoboBrowser => Task[A]): Task[A] =
