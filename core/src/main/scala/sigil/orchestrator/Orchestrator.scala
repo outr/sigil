@@ -204,6 +204,45 @@ object Orchestrator {
     * routes ContentBlock events to the most recently started tool —
     * which is `activeCalls.lastOption.map(_._2)`). */
 
+  /**
+   * Resolve the id every content delta of this call targets, birthing
+   * the in-flight `Message` on the first one. `activeMessageId` may
+   * already hold a `ThinkingDelta`-reserved id (so `ThinkingChunk.target`
+   * matches the settled Message without the Message existing yet), so
+   * the `activeMessageCreated` flag — not id presence — gates creation.
+   * Returns the Message to emit ahead of the delta, if this call
+   * birthed it.
+   */
+  private def openStreamingMessage(state: State,
+                                   caller: ParticipantId,
+                                   convId: Id[Conversation],
+                                   topicId: Id[Topic],
+                                   request: ConversationRequest,
+                                   modelDisplayName: Option[String]): (Option[Message], Id[Event]) =
+    if (state.activeMessageCreated) {
+      (None, state.activeMessageId.getOrElse {
+        val id = Event.id()
+        state.activeMessageId = Some(id)
+        id
+      })
+    } else {
+      val id = state.activeMessageId.getOrElse(Event.id())
+      state.activeMessageId = Some(id)
+      state.activeMessageCreated = true
+      state.lastUserVisibleMessageId = Some(id)
+      val msg = Message(
+        participantId = caller,
+        conversationId = convId,
+        topicId = topicId,
+        content = Vector.empty,
+        modelId = Some(request.modelId),
+        modelDisplayName = modelDisplayName,
+        _id = id,
+        state = EventState.Active
+      )
+      (Some(msg), id)
+    }
+
   private def translate(event: ProviderEvent,
                         sigil: Sigil,
                         request: ConversationRequest,
@@ -274,34 +313,7 @@ object Orchestrator {
         val kind = state.currentKind.getOrElse(ContentKind.Text)
         state.currentBuffer.append(text)
         state.turnBuffer.append(text)
-        // Emit the Message on the first content delta — `activeMessageId`
-        // may already be set by a prior `ThinkingDelta` (which reserves
-        // the id so `ThinkingChunk.target` matches the settled Message
-        // without "birthing" the Message), so the flag — not id presence
-        // — gates Message creation.
-        val (createMessageSignal, msgId) = if (state.activeMessageCreated) {
-          (None, state.activeMessageId.getOrElse {
-            val id = Event.id()
-            state.activeMessageId = Some(id)
-            id
-          })
-        } else {
-          val id = state.activeMessageId.getOrElse(Event.id())
-          state.activeMessageId = Some(id)
-          state.activeMessageCreated = true
-          state.lastUserVisibleMessageId = Some(id)
-          val msg = Message(
-            participantId = caller,
-            conversationId = convId,
-            topicId = topicId,
-            content = Vector.empty,
-            modelId = Some(request.modelId),
-            modelDisplayName = modelDisplayName,
-            _id = id,
-            state = EventState.Active
-          )
-          (Some(msg), id)
-        }
+        val (createMessageSignal, msgId) = openStreamingMessage(state, caller, convId, topicId, request, modelDisplayName)
         val delta = MessageDelta(
           target = msgId,
           conversationId = convId,
@@ -1200,12 +1212,32 @@ object Orchestrator {
         }
 
       case ProviderEvent.TextDelta(text) =>
-        // Bug #75 — accumulate plain-text fragments so the Done
-        // handler can produce a diagnostic if the model never
-        // wrapped them in a tool call. Don't emit anything here —
-        // the diagnostic is post-stream.
+        // Accumulate plain-text fragments for the outcome governors: on
+        // a turn that ran with a forced tool choice this prose is drift,
+        // and it is dropped post-stream with a diagnostic rather than
+        // shown to the user.
         state.plainTextBuffer.append(text)
-        Stream.empty
+        if (!Provider.rejectsForcedToolChoice(request.modelId)) Stream.empty
+        else {
+          // The model's forced tool choice was demoted to `auto`, so
+          // prose is its committed answer — the same standing the
+          // `ContentBlockDelta` wire's text carries. Birth the Message on
+          // the first chunk and stream the rest, so a reply that skips
+          // the respond tool still reaches subscribers as it is
+          // generated instead of landing whole at turn end. The settle
+          // (terminal or challenged) is the governors' call and reads
+          // the same `currentBuffer` the block wire fills.
+          state.currentBuffer.append(text)
+          state.turnBuffer.append(text)
+          state.currentKind = Some(ContentKind.Text)
+          val (createMessageSignal, msgId) = openStreamingMessage(state, caller, convId, topicId, request, modelDisplayName)
+          val delta = MessageDelta(
+            target = msgId,
+            conversationId = convId,
+            content = Some(MessageContentDelta(kind = ContentKind.Text, complete = false, delta = text))
+          )
+          Stream.emits(createMessageSignal.toList ::: List(delta))
+        }
       case ProviderEvent.ThinkingDelta(text) =>
         // Forward reasoning text to consumers as a transient
         // `ThinkingChunk` Notice so live UIs can render a tail of the

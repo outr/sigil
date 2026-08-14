@@ -37,13 +37,16 @@ import sigil.tool.model.ResponseContent
   *     settles Complete either way: WITHOUT `terminalReply` on the
   *     challenge path (a visible progress message; the turn continues),
   *     WITH it on the commit path.
-  *   - `TextDelta` (OpenAI-compatible chat-completions) — buffered with
-  *     no Message born, and only meaningful for a model in the
-  *     forced-tool_choice rejecter memo (one that actually ran on `auto`;
-  *     any other model's prose on this wire is drift and belongs to
-  *     [[PlainTextReplyGovernor]]). Nothing is minted on the challenge
-  *     path — the challenge carries the dropped text so the model can
-  *     re-wrap it — and the commit path mints and settles terminally.
+  *   - `TextDelta` (OpenAI-compatible chat-completions) — only meaningful
+  *     for a model in the forced-tool_choice rejecter memo (one that
+  *     actually ran on `auto`; any other model's prose on this wire is
+  *     drift and belongs to [[PlainTextReplyGovernor]]). For such a model
+  *     the orchestrator streams the prose into a born Message, so the
+  *     verdict is the same as the block wire's above. Prose that never
+  *     streamed — the memo was recorded after this stream began — settles
+  *     through the mint path: nothing is minted on the challenge path (the
+  *     challenge carries the dropped text so the model can re-wrap it),
+  *     and the commit path mints and settles terminally.
   */
 final class TurnDecisionGovernor extends OutcomeGovernor {
   override def name: String = "turn-decision"
