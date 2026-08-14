@@ -708,6 +708,26 @@ object TestSigil extends Sigil {
   def resetReplySuggestions(): Unit = replySuggestionsRef.set(None)
 
   /**
+   * Per-test pre-persist gate. Runs inside `publish`'s inbound
+   * transform chain — before the signal is persisted or broadcast —
+   * so a spec can act at an exact point in the framework's pipeline
+   * (notably: while an agent claim is still held, since the terminal
+   * Idle `AgentStateDelta` publishes before the claim is released).
+   * The signal itself is never rewritten. Default is a no-op.
+   */
+  private val inboundGateRef = new AtomicReference[Signal => Task[Unit]](_ => Task.unit)
+  def setInboundGate(f: Signal => Task[Unit]): Unit = inboundGateRef.set(f)
+  def resetInboundGate(): Unit = inboundGateRef.set(_ => Task.unit)
+
+  private object InboundGate extends sigil.pipeline.InboundTransform {
+    override def apply(signal: Signal, self: Sigil): Task[Signal] =
+      inboundGateRef.get().apply(signal).map(_ => signal)
+  }
+
+  override def inboundTransforms: List[sigil.pipeline.InboundTransform] =
+    super.inboundTransforms :+ InboundGate
+
+  /**
    * Reset every mutable hook to its default. Call from `beforeEach`
    * (or inline at the start of a test) to guarantee isolation from
    * prior tests within the same suite.
@@ -732,6 +752,7 @@ object TestSigil extends Sigil {
     pinCoversAuxiliaryCallsOverride.set(None)
     currentParticipantRef.set(p => Task.pure(p))
     replySuggestionsRef.set(None)
+    inboundGateRef.set(_ => Task.unit)
   }
 
   override def currentParticipant(persisted: Participant): Task[Participant] =

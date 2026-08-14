@@ -527,6 +527,7 @@ trait ConversationOps { this: Sigil =>
       // viewers see the pulse while the SignalHub is still wired
       // (and before the conversation's records are wiped).
       _ <- publish(sigil.signal.ConversationDeleted(conversationId))
+      _ <- Task(clearPendingTriggers(conversationId))
       _ <- withDB(_.conversations.transaction(_.delete(conversationId)))
       _ <- withDB { db =>
              db.events.transaction { tx =>

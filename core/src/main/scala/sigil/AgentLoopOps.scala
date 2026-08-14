@@ -115,6 +115,53 @@ trait AgentLoopOps { this: Sigil =>
   }
   private[sigil] final val activeClaims: ConcurrentHashMap[Id[Event], ActiveClaimEntry] = new ConcurrentHashMap()
 
+  /** External triggers that lost the claim race, keyed by the same
+    * lock id as [[activeClaims]] and holding the instant the newest
+    * such trigger was recorded. Written by `tryFire` when
+    * `putIfAbsent` finds a live claim; consumed by the release path
+    * immediately AFTER `activeClaims.remove` — the instant a new claim
+    * can be won — so a publisher either wins the claim itself or
+    * leaves a marker the releasing turn is guaranteed to see.
+    *
+    * The handoff exists because the release path's DB recheck can only
+    * recover a trigger NEWER than the loop's last iteration boundary,
+    * while fan-out wakes on triggers regardless of timestamp: a message
+    * stamped before that boundary (built at transport ingress, then
+    * published while the turn was ending) is woken on by fan-out,
+    * declined by the live claim, and invisible to the recheck. The
+    * marker carries no timestamp condition and no storage read, so the
+    * recovery no longer depends on either.
+    *
+    * The stored value is the RECORDING instant, not the trigger's own
+    * timestamp: a marker is spent once an iteration starts after it was
+    * recorded (that iteration's context contains the trigger, which is
+    * already persisted by the time the marker is written), and arrival
+    * order is what that reflects — the trigger's own timestamp is
+    * precisely the field the strand proves can't be trusted for it.
+    *
+    * Process-local, exactly like [[activeClaims]] — a multi-replica
+    * deployment already routes a conversation to one instance. */
+  private final val pendingTriggers: ConcurrentHashMap[Id[Event], java.lang.Long] = new ConcurrentHashMap()
+
+  /** Drop any pending-trigger markers for `conversationId` — the
+    * conversation is gone (or explicitly stopped), so nothing may
+    * re-fire from it. */
+  private[sigil] final def clearPendingTriggers(conversationId: Id[Conversation]): Unit = {
+    import scala.jdk.CollectionConverters.*
+    pendingTriggers.keySet().iterator().asScala
+      .filter(_.value.endsWith(s":${conversationId.value}"))
+      .toList
+      .foreach(pendingTriggers.remove)
+  }
+
+  /** Spend the claim's marker if it was recorded before `cutoff` — the
+    * start of an iteration that therefore builds its context with the
+    * trigger already in it. Without this the release path would fire a
+    * second turn for work the loop itself just handled. */
+  private final def spendPendingTrigger(lockId: Id[Event], cutoff: Long): Unit =
+    pendingTriggers.computeIfPresent(lockId, (_, recordedAt) =>
+      if (recordedAt.longValue() < cutoff) null else recordedAt)
+
   /** Per-turn event log for the founding-turn topic sweep, keyed by
     * conversation (one live claim per conversation by design). Created
     * when `tryFire` wins a claim — seeded with the claim row itself —
@@ -394,7 +441,7 @@ trait AgentLoopOps { this: Sigil =>
         val fire: Task[Unit] = {
           val tasks: List[Task[Unit]] = conv.participants.collect {
             case agent: AgentParticipant if shouldWake(agent, event, conv) =>
-              tryFire(agent, conv)
+              tryFire(agent, conv, trigger = Some(event))
           }
           Task.sequence(tasks).unit
         }
@@ -454,7 +501,31 @@ trait AgentLoopOps { this: Sigil =>
    */
   def currentParticipant(persisted: Participant): Task[Participant] = Task.pure(persisted)
 
-  private final def tryFire(agent: AgentParticipant, conv: Conversation, greeting: Boolean = false): Task[Unit] = {
+  /** Claim-race loser bookkeeping: note an EXTERNAL trigger that found
+    * the claim held, so the holder's release path re-fires for it.
+    * Non-external triggers (the turn's own tool tail) leave nothing —
+    * they are the holder's own work, not a reason to start a turn. */
+  private final def recordPendingTrigger(agent: AgentParticipant,
+                                         conv: Conversation,
+                                         lockId: Id[Event],
+                                         trigger: Option[Event]): Task[Unit] =
+    trigger.filter(isExternalTrigger(agent, _)) match {
+      case None => Task.unit
+      case Some(_) =>
+        pendingTriggers.merge(lockId, java.lang.Long.valueOf(System.currentTimeMillis()),
+          (a, b) => if (a.longValue() >= b.longValue()) a else b)
+        // The claim can be released between the failed `putIfAbsent`
+        // and this write, leaving the marker behind the release's
+        // read. Consuming it here — only once the claim is already
+        // gone — closes that ordering hole.
+        if (activeClaims.containsKey(lockId) || pendingTriggers.remove(lockId) == null) Task.unit
+        else tryFire(agent, conv, trigger = trigger)
+    }
+
+  private final def tryFire(agent: AgentParticipant,
+                            conv: Conversation,
+                            greeting: Boolean = false,
+                            trigger: Option[Event] = None): Task[Unit] = {
     val lockId = agentStateLockId(agent.id, conv._id)
     val claim = AgentState(
       agentId = agent.id,
@@ -478,12 +549,14 @@ trait AgentLoopOps { this: Sigil =>
     if (convHardExhausted) notifyBudgetExhausted(agent, conv)
     else {
     // The in-memory registry is the gate (see [[activeClaims]]); the
-    // row write below is the durable projection. Losing here is
-    // fine: the holder's loop picks the triggering event up at its
-    // next iteration boundary, or the release-time recheck re-fires.
+    // row write below is the durable projection. Losing here is fine:
+    // the holder's loop picks the triggering event up at its next
+    // iteration boundary, and an external trigger that lost the race
+    // leaves a [[pendingTriggers]] marker the holder's release path
+    // consumes.
     val won = activeClaims.putIfAbsent(lockId,
       new ActiveClaimEntry(claim.timestamp.value, conversationCostAtClaim = conv.cost)) == null
-    if (!won) Task.unit
+    if (!won) recordPendingTrigger(agent, conv, lockId, trigger)
     else withDB(_.events.transaction(_.modify(lockId) {
       // Unconditional overwrite: the registry decided ownership. A
       // row still Active here is a fossil (a crashed process's claim
@@ -762,33 +835,43 @@ trait AgentLoopOps { this: Sigil =>
       val fallback: Task[Unit] =
         if (skipFallback || userVisibleSeen.get()) Task.unit
         else synthesizeFallbackRespond(agent, convId)
-      // Post-release trigger recheck: a message landing between the
-      // loop's final trigger check and the claim release found the
+      // Post-release recovery for a message that landed between the
+      // loop's final trigger check and the claim release: it found the
       // claim held, bailed at the gate, and would otherwise be
-      // STRANDED until the next unrelated trigger. Capture the last
-      // boundary the loop's checks covered (before cleanup drops the
-      // registry entry), release, then re-fire if an EXTERNAL trigger
-      // (someone else's message — the strand shape) arrived after it.
+      // STRANDED until the next unrelated trigger. The
+      // [[pendingTriggers]] marker such a publisher leaves is the
+      // primary path; the store recheck backs it up for anything that
+      // reached the DB without going through a declined `tryFire`.
+      // Capture the last boundary the loop's checks covered (before
+      // cleanup drops the registry entry) for that recheck.
       // Deliberately not `newTriggersExist`: that also counts the
       // turn's own Tool-role tail, which lands after the final
       // iteration's boundary on every tool-calling turn and would
       // re-fire a spurious LLM iteration per turn. Skipped when the
       // conversation is stop-latched — the user's Stop means stopped.
-      // Best-effort: a recheck failure never breaks the release.
+      // Best-effort: a recovery failure never breaks the release.
       val lastCheckedAt = Option(activeClaims.get(claimed._id))
         .map(_.lastTriggerCheckAt)
         .getOrElse(claimed.timestamp.value)
       fallback.flatMap(_ => releaseClaim(claimed)).flatMap { _ =>
-        if (stopLatches.containsKey(convId)) Task.unit
-        else withDB(_.conversations.transaction(_.get(convId))).flatMap {
-          case Some(conv) =>
-            externalTriggersExist(agent, conv, sinceTimestamp = Timestamp(lastCheckedAt)).flatMap {
-              case true  => tryFire(agent, conv)
-              case false => Task.unit
-            }
-          case None => Task.unit
-        }.handleError(t => Task(scribe.warn(
-          s"post-release trigger recheck failed for ${agent.id.value}/${convId.value}: ${t.getMessage}")))
+        // Strictly after `releaseClaim`'s `activeClaims.remove`: a
+        // publisher that reached the gate while the claim was live
+        // either wins the free claim itself now, or left the marker
+        // this consumes.
+        if (stopLatches.containsKey(convId)) Task(clearPendingTriggers(convId))
+        else {
+          val handedOff = pendingTriggers.remove(claimed._id) != null
+          withDB(_.conversations.transaction(_.get(convId))).flatMap {
+            case Some(conv) if handedOff => tryFire(agent, conv)
+            case Some(conv) =>
+              externalTriggersExist(agent, conv, sinceTimestamp = Timestamp(lastCheckedAt)).flatMap {
+                case true  => tryFire(agent, conv)
+                case false => Task.unit
+              }
+            case None => Task.unit
+          }.handleError(t => Task(scribe.warn(
+            s"post-release trigger recheck failed for ${agent.id.value}/${convId.value}: ${t.getMessage}")))
+        }
       }
     }
     // Snapshot the start of THIS iteration. The next iteration uses this as
@@ -800,6 +883,10 @@ trait AgentLoopOps { this: Sigil =>
     // than this.
     val thisIterationStart = Timestamp(Nowish())
     Option(activeClaims.get(claimed._id)).foreach(_.lastTriggerCheckAt = thisIterationStart.value)
+    // This iteration reads the conversation as it stands now, so any
+    // trigger already recorded as pending is folded into its context —
+    // the release path must not re-fire for it.
+    spendPendingTrigger(claimed._id, System.currentTimeMillis())
     // The cap-hit, no-tool-call, and stall-intervention branches each
     // recover by running ONE more iteration with `forceResponseSynthesis`
     // pinning `tool_choice` to the respond family. The recursive call is
@@ -2202,26 +2289,29 @@ trait AgentLoopOps { this: Sigil =>
                    && TriggerFilter.isTriggerFor(agent, e))
     }
 
-  /** Like [[newTriggersExist]] but only counts triggers authored by
-    * someone OTHER than the running agent. Used after a turn the agent
-    * ended with a user-visible terminal tool: the turn's own emitted
-    * events (the reply `Message`, the terminal tool's `ToolResults`)
-    * must not keep the loop alive — only a genuine external message
-    * that landed mid-turn should. */
+  /** Whether `e` is a trigger for `agent` authored by someone OTHER
+    * than the agent itself. The turn's own emitted events (the reply
+    * `Message`, the terminal tool's `ToolResults`) must never keep the
+    * loop alive or leave a re-fire marker — only genuine external work
+    * may. A detached tool's completion is agent-attributed (the agent
+    * made the call) but IS external work arriving, so it counts;
+    * without it a completion landing mid-turn would evaporate with the
+    * turn and the agent would never see the result. */
+  private final def isExternalTrigger(agent: AgentParticipant, e: Event): Boolean =
+    (e.participantId != agent.id
+      || e.source.contains(sigil.orchestrator.Orchestrator.DetachedContinuationSource)) &&
+      TriggerFilter.isTriggerFor(agent, e)
+
+  /** Like [[newTriggersExist]] but only counts triggers that satisfy
+    * [[isExternalTrigger]]. Used after a turn the agent ended with a
+    * user-visible terminal tool. */
   private final def externalTriggersExist(agent: AgentParticipant,
                                           conv: Conversation,
                                           sinceTimestamp: Timestamp): Task[Boolean] =
     withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
       all.exists(e => e.conversationId == conv._id
                    && e.timestamp.value > sinceTimestamp.value
-                   // A detached tool's completion trigger is agent-
-                   // attributed (the agent made the call) but is
-                   // genuinely EXTERNAL work arriving — without this, a
-                   // completion landing mid-turn evaporates with the
-                   // turn and the agent never sees the result.
-                   && (e.participantId != agent.id
-                       || e.source.contains(sigil.orchestrator.Orchestrator.DetachedContinuationSource))
-                   && TriggerFilter.isTriggerFor(agent, e))
+                   && isExternalTrigger(agent, e))
     }
 
   private final def buildChain(triggers: List[Event], agent: AgentParticipant): List[ParticipantId] = {
