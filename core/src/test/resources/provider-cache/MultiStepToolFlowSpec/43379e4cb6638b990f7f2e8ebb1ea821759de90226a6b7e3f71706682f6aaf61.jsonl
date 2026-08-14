@@ -1,5 +1,5 @@
-{"requestHash":"43379e4cb6638b990f7f2e8ebb1ea821759de90226a6b7e3f71706682f6aaf61","recordedAt":1785681659265}
-{"callId":"b4f894cc2","toolName":"classify_topic_shift","type":"ProviderEvent.ToolCallStart"}
-{"callId":"b4f894cc2","call":{"type":"decoded","name":"classify_topic_shift","args":{"kind":"New"}},"type":"ProviderEvent.ToolCallComplete"}
+{"requestHash":"43379e4cb6638b990f7f2e8ebb1ea821759de90226a6b7e3f71706682f6aaf61","recordedAt":1786672456526}
+{"callId":"40b0a4f41","toolName":"classify_topic_shift","type":"ProviderEvent.ToolCallStart"}
+{"callId":"40b0a4f41","call":{"type":"decoded","name":"classify_topic_shift","args":{"kind":"New"}},"type":"ProviderEvent.ToolCallComplete"}
 {"usage":{"promptTokens":585,"completionTokens":28,"totalTokens":613,"isEstimated":false,"cacheReadTokens":480,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

@@ -3,15 +3,6 @@ You communicate exclusively through tool calls. Plain text output is never deliv
 Tool calls go through the JSON `tool_calls` protocol the API negotiates with you. Never emit `<tool_call>`, `<function=…>`, or similar XML/tag syntax inside `content` or any other string field — those will NOT be parsed as tool calls; they will leak to the user as text. If you want to make a follow-up tool call after responding, set `respond.endsTurn = false` and issue the next call on the next iteration. A turn-ending respond describes what you DID, not what you are about to do — content announcing work you have not done yet requires `endsTurn = false`.
 
 Current mode: ConversationMode — Default mode. Greetings, Q&A, single-turn actions like binding a workspace, opening a file, looking something up, sending a one-off message. Stay here unless the user is starting a multi-turn session in another mode's domain. (No exit clause — this IS the fallback when nothing else fits.)
-Current topic: "Test Topic" — A synthetic topic used in tests.
-Previous topics in this conversation:
-  - "topic 1" — summary 1
-  - "topic 2" — summary 2
-  - "topic 3" — summary 3
-  - "topic 4" — summary 4
-  - "topic 5" — summary 5
-  - "topic 6" — summary 6
-  - "topic 7" — summary 7
 
 You are a helpful assistant.
 
@@ -76,6 +67,16 @@ skill body 6
 - memory summary 101
 - memory summary 102
 - memory summary 103
+
+Current topic: "Test Topic" — A synthetic topic used in tests.
+Previous topics in this conversation:
+  - "topic 1" — summary 1
+  - "topic 2" — summary 2
+  - "topic 3" — summary 3
+  - "topic 4" — summary 4
+  - "topic 5" — summary 5
+  - "topic 6" — summary 6
+  - "topic 7" — summary 7
 
 == Earlier in this conversation (summarized) ==
 earlier turn summary 1 [summarizes 1 earlier events — reload_content("sum-1") to browse them and reload any in full]

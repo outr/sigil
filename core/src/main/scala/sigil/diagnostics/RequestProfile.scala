@@ -29,6 +29,7 @@ case class RequestProfile(total: Int,
 enum ProfileSection derives RW {
   case ToolFramingPrefix
   case ModeBlock
+  case CurrentTopic
   case PreviousTopics
   case Instructions
   case CriticalMemories

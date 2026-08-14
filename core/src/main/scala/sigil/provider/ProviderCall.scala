@@ -16,10 +16,11 @@ import sigil.tool.{Tool, ToolRoster}
  * format (OpenAI chat-completions, Anthropic messages, etc.) inside
  * `Provider.call`. They never see [[ProviderRequest]] directly.
  *
- * @param system             pre-rendered system prompt (mode line, topic
- *                           lines, instructions, memories, summaries,
- *                           skills, tool hints, extra context — all
- *                           assembled by the shared translation pass)
+ * @param system             pre-rendered stable half of the system prompt
+ *                           (mode line, instructions, roles, skills,
+ *                           pinned directives) — the span a prompt cache
+ *                           keys on. The per-turn half lives on
+ *                           [[ProviderCall.systemVolatile]].
  * @param messages           the conversational message log in the
  *                           framework-neutral [[ProviderMessage]] form;
  *                           empty for a OneShot whose user prompt is the
@@ -82,11 +83,13 @@ case class ProviderCall(/** Sigil #277 — required Model record. Wire
                           * caller doesn't construct via `runAgentTurn` (e.g.
                           * `OneShotRequest` consumers). */
                         preservedToolNames: Set[sigil.tool.ToolName] = Set.empty,
-                        /** Per-turn volatile context (Recently used
-                          * tools / Repeated tool calls / Suggested
-                          * tools / Capabilities discovered /
-                          * Conversation context / Participant context /
-                          * Memories / Greeting hint). Prompt caches key
+                        /** Per-turn volatile context (Current topic /
+                          * Previous topics / Referenced content /
+                          * Summaries / Memories / Recently used tools /
+                          * Repeated tool calls / Suggested tools /
+                          * Capabilities discovered / Conversation
+                          * context / Participant context / Greeting
+                          * hint). Prompt caches key
                           * on a byte-stable request PREFIX, so this
                           * churning segment must ride BEHIND every
                           * cacheable span — full-history-replay

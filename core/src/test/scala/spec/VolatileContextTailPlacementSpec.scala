@@ -159,10 +159,15 @@ class VolatileContextTailPlacementSpec extends AnyWordSpec with Matchers {
       bodyA("messages").asVector.last should not equal bodyB("messages").asVector.last
     }
 
-    "append no tail message when there is no volatile content" in {
+    "carry only the topic block in the tail when no other volatile source exists" in {
       val bare = TurnInput(conversationId = convId, frames = baseFrames)
       val body = renderBody(provider, bare)
-      body("messages").asVector.size shouldBe baseFrames.size
+      val messages = body("messages").asVector
+      messages.size shouldBe baseFrames.size + 1
+      val tailText = messages.last("content").asVector.map(_("text").asString).mkString
+      tailText should include("Current topic:")
+      tailText should not include "== Suggested tools =="
+      tailText should not include "== Recently used tools =="
     }
   }
 

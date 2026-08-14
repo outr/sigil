@@ -1,0 +1,5 @@
+{"requestHash":"920863f6c5e4ab50caf314b9ed16e31bd76c2b27aa6c64e4f864076a055cda6b","recordedAt":1786672467976}
+{"callId":"e01fdd3cf","toolName":"suggest_reply","type":"ProviderEvent.ToolCallStart"}
+{"callId":"e01fdd3cf","call":{"type":"decoded","name":"suggest_reply","args":{"suggestions":["Can you show me an example with a list of strings?","What if I need to reverse it in place?","I'll try it out now"]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":564,"completionTokens":58,"totalTokens":622,"isEstimated":false,"cacheReadTokens":362,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

@@ -1,0 +1,12 @@
+{"requestHash":"061081592d495585b1ca5a6eb6fe8dccfb0c2d6a38679be090c7287291952a71","recordedAt":1786672480545}
+{"callId":"2d0f4589f","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"2d0f4589f","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"2d0f4589f","text":"Your","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2d0f4589f","text":" favorite","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2d0f4589f","text":" color","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2d0f4589f","text":" is","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2d0f4589f","text":" blue","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2d0f4589f","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2d0f4589f","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Test Topic","topicSummary":"User shared their favorite color.","content":"Your favorite color is blue.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":3929,"completionTokens":89,"totalTokens":4018,"isEstimated":false,"cacheReadTokens":3882,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

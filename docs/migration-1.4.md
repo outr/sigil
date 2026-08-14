@@ -478,6 +478,19 @@ The required-union rule runs in the boot completeness pass against the final reg
   5 for `Minimal`). Lowest-scored matches drop first; at least one always survives. A
   small-context model now gets a roster that fits with room to act instead of a truncated one.
 
+- **Cross-turn prompt caching is now effective.** The system prompt's stable half used to carry
+  the `Current topic:` line, the `Previous topics` list, and the `Referenced content` catalog —
+  all of which change on ordinary turns, so the leading bytes of every request differed from the
+  previous turn's and providers re-wrote the whole prefix instead of reading it from cache. Those
+  three sections moved to the volatile tail (`ProfileSection.CurrentTopic` is a new discriminator
+  split out of `ModeBlock`); the stable half now holds the mode line, instructions, roles, active
+  skills, and pinned directives, which change only on deliberate acts. Nothing is added or
+  removed from a prompt — the same text renders in a different position — but the prompt bytes
+  changed once, so recorded fixtures and any golden-file assertions over the rendered prompt need
+  re-recording. Apps overriding `Sigil.contextSections` should re-check their own sections'
+  `Placement` against the same rule: anything that varies across ordinary turns belongs in the
+  tail.
+
 ## 5. New opt-in capabilities worth adopting
 
 - **`ModelProfile` for small models.** `def modelProfileFor(model: Model): ModelProfile` on

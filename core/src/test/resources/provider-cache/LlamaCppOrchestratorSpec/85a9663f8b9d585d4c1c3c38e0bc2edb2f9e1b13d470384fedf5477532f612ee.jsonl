@@ -1,0 +1,80 @@
+{"requestHash":"85a9663f8b9d585d4c1c3c38e0bc2edb2f9e1b13d470384fedf5477532f612ee","recordedAt":1786672512886}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" wants","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" switch","type":"ProviderEvent.ThinkingDelta"}
+{"text":" topics","type":"ProviderEvent.ThinkingDelta"}
+{"text":" from","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Roman","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Empire","type":"ProviderEvent.ThinkingDelta"}
+{"text":" History","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" TypeScript","type":"ProviderEvent.ThinkingDelta"}
+{"text":" generics","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" and","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":22,"totalTokens":22,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" they","type":"ProviderEvent.ThinkingDelta"}
+{"text":" want","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" one","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-s","type":"ProviderEvent.ThinkingDelta"}
+{"text":"entence","type":"ProviderEvent.ThinkingDelta"}
+{"text":" explanation","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" This","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" knowledge","type":"ProviderEvent.ThinkingDelta"}
+{"text":" question","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" can","type":"ProviderEvent.ThinkingDelta"}
+{"text":" answer","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":42,"totalTokens":42,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" directly","type":"ProviderEvent.ThinkingDelta"}
+{"text":" without","type":"ProviderEvent.ThinkingDelta"}
+{"text":" needing","type":"ProviderEvent.ThinkingDelta"}
+{"text":" any","type":"ProviderEvent.ThinkingDelta"}
+{"text":" tools","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"callId":"bf9ca1d13","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":51,"totalTokens":51,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"bf9ca1d13","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"bf9ca1d13","text":"Type","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":"Script","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" generics","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" are","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" feature","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" that","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" allows","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" you","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" write","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" reusable","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" type","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":"-safe","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" code","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" by","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" creating","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" functions","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" and","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" classes","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" that","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" work","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" with","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" any","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" data","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" type","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" while","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" preserving","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" type","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":" information","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"bf9ca1d13","call":{"type":"decoded","name":"respond","args":{"topicLabel":"TypeScript Generics","topicSummary":"Explaining TypeScript generics in one sentence","content":"TypeScript generics are a feature that allows you to write reusable, type-safe code by creating functions and classes that work with any data type while preserving type information.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4184,"completionTokens":146,"totalTokens":4330,"isEstimated":false,"cacheReadTokens":4128,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}
