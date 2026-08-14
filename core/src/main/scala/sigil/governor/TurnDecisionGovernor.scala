@@ -117,10 +117,8 @@ final class TurnDecisionGovernor extends OutcomeGovernor {
   /** Challenges already issued since the last user-authored Message —
     * the per-user-turn budget. */
   private def challengeCount(host: Sigil, convId: Id[Conversation]): Task[Int] =
-    host.withDB(_.conversationEvents(convId)).map { allEvents =>
-      val convEvents = allEvents
-        .filter(_.conversationId == convId)
-        .sortBy(_.timestamp.value)
+    host.withDB(_.conversationEventsConsistent(convId)).map { allEvents =>
+      val convEvents = allEvents.sortBy(_.timestamp.value)
       val lastUserIdx = convEvents.lastIndexWhere {
         case m: Message => !m.participantId.isInstanceOf[AgentParticipantId]
         case _          => false

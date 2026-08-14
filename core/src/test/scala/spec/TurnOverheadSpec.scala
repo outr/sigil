@@ -61,32 +61,31 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private val ProviderDelay: FiniteDuration = 200.millis
 
   /** Events written into unrelated conversations before the loaded
-    * measurement. Large enough that a whole-store scan is unmistakable,
-    * small enough to seed in a few seconds. */
-  private val UnrelatedEvents: Int = 4000
+    * measurement. Large enough that a per-turn whole-store scan costs
+    * more than the run-to-run noise in the measurement, small enough to
+    * seed in a few seconds. */
+  private val UnrelatedEvents: Int = 20000
 
   /**
    * How much a store full of unrelated history may multiply one turn's
    * overhead.
    *
-   * This SHOULD be 1.0 — a turn reads one conversation, so history in
-   * others is not its business. It isn't: several per-turn reads scan the
-   * whole `events` store and filter by conversation in memory, so the
-   * turn pays for every event the deployment ever wrote. Measured here at
-   * 4000 unrelated events the overhead grows roughly 1.5×, which
-   * extrapolates to the seconds-scale fixed overhead reported from
-   * production stores.
+   * A turn reads one conversation, so history in others is not its
+   * business and the honest answer is 1.0. The bound sits just above it
+   * to absorb run-to-run variance — the two measurements share whatever
+   * load the host is under, but they are still separate samples.
    *
-   * The bound is set where it catches a step change rather than where the
-   * framework should be, and tightening it is the acceptance test for
-   * scoping those reads. Doing so is not a drop-in swap to the indexed
-   * `SigilDB.conversationEvents`: a whole-store `_.list` reads the
-   * key-value side and is immediately consistent, while the indexed query
-   * reads a search index that refreshes asynchronously, so mid-turn
-   * decision logic (stall detection, workflow step threading) silently
-   * loses the turn's own tail.
+   * Every per-turn read is scoped to the conversation. Doing that is not
+   * a drop-in swap to `SigilDB.conversationEvents`: a whole-store
+   * `_.list` reads the key-value side and is immediately consistent,
+   * while the indexed query reads a search reader materialized once per
+   * transaction, so inside an agent-loop iteration it cannot see that
+   * iteration's own writes — and mid-turn decision logic (trigger checks,
+   * stall detection, checkpoint cutoffs) is asking about exactly that
+   * tail. `SigilDB.conversationEventsConsistent` is the read that closes
+   * the gap, and this bound is what holds the scoping honest.
    */
-  private val ScalingTolerance: Double = 3.0
+  private val ScalingTolerance: Double = 1.3
 
   /** Warm turns per measurement; the median is reported. */
   private val MeasuredTurns: Int = 5

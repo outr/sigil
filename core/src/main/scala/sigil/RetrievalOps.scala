@@ -393,12 +393,10 @@ trait RetrievalOps { this: Sigil =>
                                        query: String,
                                        topicId: Option[Id[Topic]],
                                        limit: Int): Task[List[Event]] =
-    withDB(_.eventsTransaction(conversationId)(_.list)).map { all =>
+    withDB(_.conversationEventsConsistent(conversationId)).map { all =>
       val needle = query.toLowerCase
       all.filter { e =>
-        e.conversationId == conversationId &&
-          topicId.forall(e.topicId == _) &&
-          eventSearchText(e).toLowerCase.contains(needle)
+        topicId.forall(e.topicId == _) && eventSearchText(e).toLowerCase.contains(needle)
       }.take(limit)
     }
 

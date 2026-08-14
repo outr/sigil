@@ -242,7 +242,7 @@ trait PublishOps { this: Sigil =>
       validateEventInvariants(signal).flatMap { _ =>
       applyInboundTransforms(signal).flatMap { resolved =>
         for {
-          _ <- withDB(_.apply(resolved))
+          written <- withDB(_.write(resolved, inlineContextFrame))
           // Feed the founding-turn topic sweep's per-claim event log
           // (no-op when no claim is live for the conversation).
           _ <- Task {
@@ -262,7 +262,7 @@ trait PublishOps { this: Sigil =>
                    case _ => ()
                  }
                }
-          _ <- attachContextFrameOnSettle(resolved)
+          _ <- settlePairedToolFrame(written)
           _ <- updateConversationProjection(resolved)
           _ <- updateView(resolved)
           _ <- maybeApplyModeSkill(resolved)
@@ -314,103 +314,69 @@ trait PublishOps { this: Sigil =>
     case _ => Task.unit
   }
 
-  /** When a published [[Signal]] settles an Event to
-    * `EventState.Complete` (atomic Complete event OR Delta whose
-    * application yields a Complete state), compute the event's
-    * [[sigil.conversation.ContextFrame]] via
-    * [[FrameBuilder.computeFrame]] and write it back to `db.events`.
-    * Idempotent — recomputing on an event that already carries a
-    * frame is a no-op (we skip the write if the frame matches).
+  /** Compute an Event's [[sigil.conversation.ContextFrame]] and inline it on the row about to be
+    * persisted. Handed to `SigilDB.write` so the frame lands in the write that persists the
+    * event; reading the row back and rewriting it instead costs a second full row write whose
+    * search-index commit dominates everything else the publish path does.
     *
-    * Bug #26 — settle-time frame inlining is the source-of-truth path
-    * for prompt construction; the curator queries
-    * `event.contextFrame.isDefined` against `db.events` instead of
-    * walking a separate frames Vector projection. */
-  private final def attachContextFrameOnSettle(signal: Signal): Task[Unit] = {
-    val targetOpt: Option[(Id[Conversation], Id[Event])] = signal match {
-      case e: Event if e.state == EventState.Complete =>
-        Some(e.conversationId -> e._id)
-      case d: sigil.signal.Delta =>
-        Some(d.conversationId -> d.target.asInstanceOf[Id[Event]])
-      case _ => None
+    * `computeFrame` is a pure function of the event's current state, so recomputing on every
+    * write keeps the inlined frame honest as that state moves on — a ToolDelta folding `output` /
+    * `outcome` onto a ToolInvoke flips its frame from Active to Complete, a settling MessageDelta
+    * replaces a streaming Message's content. Non-Complete events and well-formed Tool-role events
+    * project to no frame of their own; the latter settle their parent invoke's frame instead, via
+    * [[settlePairedToolFrame]].
+    *
+    * Inlining is the source-of-truth path for prompt construction: the curator queries
+    * `event.contextFrame.isDefined` against `db.events` rather than walking a separate frames
+    * projection. */
+  private final def inlineContextFrame(event: Event): Event =
+    FrameBuilder.computeFrame(event) match {
+      case Some(frame) if !event.contextFrame.contains(frame) => event.withContextFrame(Some(frame))
+      case _                                                  => event
     }
-    targetOpt match {
-      case None => Task.unit
-      case Some((conversationId, eventId)) =>
-        withDB(_.eventsTransaction(conversationId) { tx =>
-          tx.get(eventId).flatMap {
-            case None => Task.unit
-            case Some(event) if event.state != EventState.Complete => Task.unit
-            case Some(event) =>
-              val frame = FrameBuilder.computeFrame(event)
-              // Sigil #261/#265 — write whenever computeFrame disagrees
-              // with the inlined frame. `computeFrame` is a pure
-              // function of the event's current state, so any
-              // disagreement means the durable state has moved on (a
-              // ToolDelta folded `output` / `outcome` onto a
-              // ToolInvoke, flipping its frame from Active to
-              // Complete; a settling MessageDelta replaced a
-              // streaming Message's content; …) and the inline frame
-              // must follow. Pre-#265 the framework guarded with a
-              // hard "never replace" rule because the cross-event
-              // pair-update was the only legitimate mutation —
-              // collapsing the tool transaction into a single
-              // stateful invoke removed that constraint.
-              val ownWrite: Task[Unit] = frame match {
-                case None                                 => Task.unit
-                case Some(f) if event.contextFrame.contains(f) => Task.unit
-                case Some(f)                              => tx.upsert(event.withContextFrame(Some(f))).unit
-              }
-              // Sigil #261 — when a ToolResults settles, fold its
-              // content into the prior ToolInvoke's inlined ToolCall
-              // frame so the projection carries the full tool
-              // transaction in one frame. Pair adjacency on the wire
-              // is then guaranteed by construction, regardless of what
-              // else interleaved between the invoke and the result.
-              // Sigil #263 — pair-update fires on ANY Tool-role event
-              // with an `origin`, not just `ToolResults`. The orchestrator
-              // surfaces tool-input parse failures via a Tool-role
-              // `Message` (`disposition = Failure`, `origin =
-              // Some(invokeId)`) — same shape `settleOrphanToolInvoke`
-              // emits for stream-abort orphans. Narrowing pair-update
-              // to `ToolResults` left those failures unpaired, so the
-              // ToolInvoke stayed Active and `renderFrames` complained
-              // about dangling tool_calls. Generalising over the
-              // Tool-role+origin shape closes that hole and keeps the
-              // invariant honest: every event the framework attributes
-              // to a parent tool call settles its frame.
-              val pairUpdate: Task[Unit] = event match {
-                case e: Event if e.role == MessageRole.Tool =>
-                  e.origin match {
-                    case Some(invokeId) =>
-                      tx.get(invokeId).flatMap {
-                        case Some(ti: ToolInvoke) =>
-                          ti.contextFrame match {
-                            // Settle the invoke's frame from its paired Tool-role
-                            // result under the shared pairing rule
-                            // ([[FrameBuilder.settlesPairedCall]]). The pending
-                            // clause covers the refuse paths (duplicate-call cap,
-                            // tool-fan-out cap, …) whose `toolDeltaPrefix` already
-                            // flipped the frame to Complete with the #354 "raced
-                            // past" placeholder before the paired Failure Message
-                            // arrives — without this, that placeholder stuck and
-                            // told the agent to retry a call the framework
-                            // deliberately refused.
-                            case Some(tc: ContextFrame.ToolCall)
-                                if FrameBuilder.settlesPairedCall(tc, Some(ti.outcome)) =>
-                              tx.upsert(ti.withContextFrame(Some(FrameBuilder.settledPairedFrame(tc, e)))).unit
-                            case _ => Task.unit
-                          }
-                        case _ => Task.unit
-                      }
-                    case None => Task.unit
+
+  /** Fold a settled Tool-role event's payload into the inlined `ContextFrame.ToolCall` of the
+    * ToolInvoke it names as `origin`, so the projection carries the whole tool transaction in one
+    * frame and pair adjacency on the wire holds by construction regardless of what interleaved
+    * between the invoke and its result.
+    *
+    * Fires on ANY Tool-role event carrying an `origin`, not just `ToolResults`: the orchestrator
+    * surfaces tool-input parse failures as a Tool-role `Message` (`disposition = Failure`), the
+    * same shape `settleOrphanToolInvoke` emits for stream-abort orphans. Narrowing to
+    * `ToolResults` leaves those unpaired and strands the invoke Active.
+    *
+    * Takes the row `SigilDB.write` actually persisted — the inserted Event, or a Delta's
+    * post-application Event — so nothing has to be read back to decide whether there is pairing
+    * work to do. */
+  private final def settlePairedToolFrame(written: Option[Event]): Task[Unit] = written match {
+    case Some(event) if event.state == EventState.Complete && event.role == MessageRole.Tool =>
+      event.origin match {
+        case None => Task.unit
+        case Some(invokeId) =>
+          withDB { db =>
+            db.eventsTransaction(event.conversationId) { tx =>
+              tx.get(invokeId).flatMap {
+                case Some(ti: ToolInvoke) =>
+                  ti.contextFrame match {
+                    // Settle the invoke's frame from its paired Tool-role result under the shared
+                    // pairing rule ([[FrameBuilder.settlesPairedCall]]). The pending clause covers
+                    // the refuse paths (duplicate-call cap, tool-fan-out cap, …) whose
+                    // `toolDeltaPrefix` already flipped the frame to Complete with the "raced
+                    // past" placeholder before the paired Failure Message arrives — without this
+                    // that placeholder stuck and told the agent to retry a call the framework
+                    // deliberately refused.
+                    case Some(tc: ContextFrame.ToolCall)
+                        if FrameBuilder.settlesPairedCall(tc, Some(ti.outcome)) =>
+                      val settled = ti.withContextFrame(Some(FrameBuilder.settledPairedFrame(tc, event)))
+                      tx.upsert(settled).map(_ => db.recordRecentEvent(settled))
+                    case _ => Task.unit
                   }
                 case _ => Task.unit
               }
-              ownWrite.flatMap(_ => pairUpdate)
+            }
           }
-        })
-    }
+      }
+    case _ => Task.unit
   }
 
   /**

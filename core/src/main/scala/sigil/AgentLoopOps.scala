@@ -331,7 +331,7 @@ trait AgentLoopOps { this: Sigil =>
     * so a co-resident agent's in-flight calls in the same conversation
     * are untouched. Idempotent — a clean turn leaves nothing pending. */
   def settleDanglingToolInvokes(conversationId: Id[Conversation], caller: ParticipantId): Task[Unit] =
-    withDB(_.conversationEvents(conversationId)).flatMap { events =>
+    withDB(_.conversationEventsConsistent(conversationId)).flatMap { events =>
       val dangling = events.collect {
         case ti: ToolInvoke
           if ti.participantId == caller
@@ -451,7 +451,7 @@ trait AgentLoopOps { this: Sigil =>
         // supervisor↔worker exchange with a hard turn budget.
         val agentIds: Set[ParticipantId] = conv.participants.collect { case a: AgentParticipant => (a.id: ParticipantId) }.toSet
         if (!isDirectedWorkerConversation(conv)) fire
-        else withDB(_.eventsTransaction(conv._id)(_.list)).flatMap { evs =>
+        else withDB(_.conversationEventsConsistent(conv._id)).flatMap { evs =>
           val agentMessages = evs.count {
             case m: Message => agentIds.contains(m.participantId)
             case _          => false
@@ -557,13 +557,15 @@ trait AgentLoopOps { this: Sigil =>
     val won = activeClaims.putIfAbsent(lockId,
       new ActiveClaimEntry(claim.timestamp.value, conversationCostAtClaim = conv.cost)) == null
     if (!won) recordPendingTrigger(agent, conv, lockId, trigger)
-    else withDB(_.events.transaction(_.modify(lockId) {
-      // Unconditional overwrite: the registry decided ownership. A
-      // row still Active here is a fossil (a crashed process's claim
-      // — the registry died with it); claiming over it IS the
-      // recovery.
-      case _ => Task.pure(Some(claim))
-    })).flatMap { _ =>
+    else withDB { db =>
+      db.events.transaction(_.modify(lockId) {
+        // Unconditional overwrite: the registry decided ownership. A
+        // row still Active here is a fossil (a crashed process's claim
+        // — the registry died with it); claiming over it IS the
+        // recovery.
+        case _ => Task.pure(Some(claim))
+      }).map(_ => db.recordRecentEvent(claim))
+    }.flatMap { _ =>
       // We won the claim. Register a StopFlag for this claim so any
       // Stop events published against this agent can interrupt.
       stopFlags.put(claim._id, new StopFlag)
@@ -1661,9 +1663,8 @@ trait AgentLoopOps { this: Sigil =>
                                       config: ReplySuggestionsConfig,
                                       turnStartTimestamp: Timestamp): Task[Unit] = {
     val convId = conv._id
-    withDB(_.conversationEvents(convId)).flatMap { all =>
+    withDB(_.conversationEventsConsistent(convId)).flatMap { all =>
       val convEvents = all.iterator
-        .filter(_.conversationId == convId)
         .filter(_.state == EventState.Complete)
         .toVector
         .sortBy(_.timestamp.value)
@@ -1789,9 +1790,8 @@ trait AgentLoopOps { this: Sigil =>
   private final def firePostTurnExtraction(agent: AgentParticipant,
                                            convId: Id[Conversation],
                                            turnStartTimestamp: Timestamp): Task[Unit] =
-    withDB(_.conversationEvents(convId)).flatMap { all =>
+    withDB(_.conversationEventsConsistent(convId)).flatMap { all =>
       val convEvents = all.iterator
-        .filter(_.conversationId == convId)
         .filter(_.state == EventState.Complete)
         .toVector
         .sortBy(_.timestamp.value)
@@ -2185,10 +2185,9 @@ trait AgentLoopOps { this: Sigil =>
                                    new AtomicReference(Map.empty),
                                  healedThisTurn: Option[java.util.concurrent.atomic.AtomicBoolean] = None): Task[(TurnContext, Stream[Event])] =
     for {
-      triggerEvents <- withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
+      triggerEvents <- withDB(_.conversationEventsConsistent(conv._id)).map { all =>
         all.view
-          .filter(e => e.conversationId == conv._id
-                    && e.timestamp.value > sinceTimestamp.value
+          .filter(e => e.timestamp.value > sinceTimestamp.value
                     && TriggerFilter.isTriggerFor(agent, e)
                     && visibilityAllows(e.visibility, agent.id))
           .toList
@@ -2297,10 +2296,8 @@ trait AgentLoopOps { this: Sigil =>
   private final def newTriggersExist(agent: AgentParticipant,
                                      conv: Conversation,
                                      sinceTimestamp: Timestamp): Task[Boolean] =
-    withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
-      all.exists(e => e.conversationId == conv._id
-                   && e.timestamp.value > sinceTimestamp.value
-                   && TriggerFilter.isTriggerFor(agent, e))
+    withDB(_.conversationEventsConsistent(conv._id)).map { all =>
+      all.exists(e => e.timestamp.value > sinceTimestamp.value && TriggerFilter.isTriggerFor(agent, e))
     }
 
   /** Whether `e` is a trigger for `agent` authored by someone OTHER
@@ -2322,10 +2319,8 @@ trait AgentLoopOps { this: Sigil =>
   private final def externalTriggersExist(agent: AgentParticipant,
                                           conv: Conversation,
                                           sinceTimestamp: Timestamp): Task[Boolean] =
-    withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
-      all.exists(e => e.conversationId == conv._id
-                   && e.timestamp.value > sinceTimestamp.value
-                   && isExternalTrigger(agent, e))
+    withDB(_.conversationEventsConsistent(conv._id)).map { all =>
+      all.exists(e => e.timestamp.value > sinceTimestamp.value && isExternalTrigger(agent, e))
     }
 
   private final def buildChain(triggers: List[Event], agent: AgentParticipant): List[ParticipantId] = {

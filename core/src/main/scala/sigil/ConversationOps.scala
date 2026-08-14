@@ -469,6 +469,9 @@ trait ConversationOps { this: Sigil =>
       _          <- rewriteMemories
       _          <- rewriteSummaries
       _          <- withDB(_.conversations.transaction(_.delete(staging)))
+      // The rewrite moved rows out from under the staging id without going
+      // through the write path, so the recent-event window has to be told.
+      _          <- withDB(db => Task(db.forgetRecentEvents(staging)))
       _          <- notifyHistoryImported(target, eventCount)
     } yield eventCount
   }
@@ -507,6 +510,7 @@ trait ConversationOps { this: Sigil =>
              }
            }
       _ <- withDB(_.conversations.transaction(_.delete(staging)))
+      _ <- withDB(db => Task(db.forgetRecentEvents(staging)))
     } yield ()
 
   /**
@@ -537,6 +541,10 @@ trait ConversationOps { this: Sigil =>
                  .drain
              }
            }
+      // The delete went straight to the store, so the recent-event window
+      // still describes rows that are gone. Clear it after, not before, or a
+      // publish racing the cascade repopulates it.
+      _ <- withDB(db => Task(db.forgetRecentEvents(conversationId)))
       _ <- withDB { db =>
              db.participantProjections.transaction { tx =>
                tx.query.filter(_.conversationId === conversationId).toList.flatMap { projections =>

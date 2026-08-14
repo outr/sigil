@@ -57,10 +57,8 @@ private[orchestrator] object RefusalChallengeIntercept {
     // Exclusive) there is no such tool, so an informed refusal is the only
     // option — never challenge it.
     if (!findCapabilityAvailable || !sigil.refusalDetector.isRefusal(content)) Task.pure(None)
-    else sigil.withDB(_.conversationEvents(convId)).map { allEvents =>
-      val convEvents = allEvents
-        .filter(_.conversationId == convId)
-        .sortBy(_.timestamp.value)
+    else sigil.withDB(_.conversationEventsConsistent(convId)).map { allEvents =>
+      val convEvents = allEvents.sortBy(_.timestamp.value)
       // "Last user message" = most recent non-agent participantId on
       // a Message event. Agent-only conversations (delegated workers
       // with no human in the chain) skip the challenge — no user
