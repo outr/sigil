@@ -214,27 +214,45 @@ abstract class SigilDB(override val directory: Option[Path],
    * post-delta-applied event for a Delta — so the iteration's
    * still-uncommitted live edge is visible to [[eventsFor]] page 0.
    */
-  def apply(signal: Signal): Task[Unit] = signal match {
+  def apply(signal: Signal): Task[Unit] = write(signal).unit
+
+  /**
+   * [[apply]], returning the row actually written — the inserted Event, or the
+   * post-application Event for a Delta — and letting the caller shape that row before it lands.
+   *
+   * `prepareRow` runs on the row about to be persisted, after a Delta has been applied to its
+   * target. It is the seam that lets [[sigil.Sigil.publish]] inline an event's
+   * [[sigil.conversation.ContextFrame]] projection into the same write that persists the event,
+   * rather than reading the row back and rewriting it — a second full row write whose search-index
+   * commit costs more than everything else in the publish path combined. Persistence policy stays
+   * here; projection policy stays in the pipeline.
+   *
+   * `None` for a Notice (transient, never persisted) and for a Delta whose target row is missing.
+   */
+  def write(signal: Signal, prepareRow: Event => Event = identity): Task[Option[Event]] = signal match {
     case e: Event =>
-      countUnbatchedWrite(e.conversationId)
-        .flatMap(_ => eventsTransaction(e.conversationId)(_.insert(e)).unit)
-        .map(_ => recordInFlight(e.conversationId, e))
+      val row = prepareRow(e)
+      countUnbatchedWrite(row.conversationId)
+        .flatMap(_ => eventsTransaction(row.conversationId)(_.insert(row)).unit)
+        .map(_ => recordWritten(row.conversationId, row))
     case d: Delta =>
       countUnbatchedWrite(d.conversationId).flatMap(_ => eventsTransaction(d.conversationId) { tx =>
         tx.get(d.target.asInstanceOf[Id[Event]]).flatMap {
           case Some(target) =>
-            val updated = d(target)
-            tx.upsert(updated).map(_ => recordInFlight(d.conversationId, updated))
-          case None => Task.unit
+            val updated = prepareRow(d(target))
+            tx.upsert(updated).map(_ => recordWritten(d.conversationId, updated))
+          case None => Task.pure(None)
         }
       })
-    case _: sigil.signal.Notice => Task.unit
+    case _: sigil.signal.Notice => Task.pure(None)
   }
 
-  /** Record `event` into the batched scope's accumulator when one
-    * is active for `conversationId`; no-op otherwise. */
-  private def recordInFlight(conversationId: Id[Conversation], event: Event): Unit =
+  /** Record `event` into the batched scope's accumulator when one is active for
+    * `conversationId`, then hand it back as the written row. */
+  private def recordWritten(conversationId: Id[Conversation], event: Event): Option[Event] = {
     batchedEventTx.get(conversationId).foreach(_.record(event))
+    Some(event)
+  }
 
   /** Tick the write-commit counter for an `apply` that will open
     * its own fresh transaction (no [[withBatchedEvents]] scope to
