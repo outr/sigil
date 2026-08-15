@@ -166,6 +166,7 @@ object TestSigil extends Sigil {
       sigil.tool.util.SleepTool,
       sigil.tool.util.LookupTool,
       GetMagicNumberTool,
+      ProbeReadTool,
       ProgressEmittingTool,
       EagerActiveLatchTool,
       SlowCooperativeTool,

@@ -482,6 +482,22 @@ The required-union rule runs in the boot completeness pass against the final reg
   5 for `Minimal`). Lowest-scored matches drop first; at least one always survives. A
   small-context model now gets a roster that fits with room to act instead of a truncated one.
 
+- **Intra-turn compaction is sized against the routed model and reads its slice chronologically.**
+  The iteration-boundary fold used to derive its threshold — and the model it sent the
+  summarization consult to — from the agent's *nominal* `modelId`, and it handed the compactor a
+  **newest-first** slice that also included frameless control events. Three consequences on a
+  long turn: a small nominal default armed folding on a turn actually routed to a roomy model
+  (and after a mid-turn tier escalation the nominal was not even the tier in play); tail-shaped
+  invariants such as `CompactionInvariant.RecentTail` protected the *oldest* events instead of
+  the newest, so each iteration's fresh tool result was folded away right after the model read it
+  once; and the size estimate re-counted events an earlier fold had already subsumed, latching
+  the predicate true for the rest of the turn. Now `Sigil.compressionTriggerTokens` is consulted
+  with the model the turn routes to, `MemoryContextCompressor.compressCovering` receives that
+  same id as `callerModelId`, and `IntraTurnCompactor.shouldCompact` / `selectFoldable` receive
+  the turn's **frame-bearing events, oldest-first**, with `estimatedTokens` counting only what is
+  not already summarized. Apps with a custom `IntraTurnCompactor` should re-check any
+  position-dependent logic (`turnEvents.head` / `.last` / `takeRight`) against the documented
+  chronological order; apps using the shipped `StandardIntraTurnCompactor` need no change.
 - **Cross-turn prompt caching is now effective.** The system prompt's stable half used to carry
   the `Current topic:` line, the `Previous topics` list, and the `Referenced content` catalog —
   all of which change on ordinary turns, so the leading bytes of every request differed from the
