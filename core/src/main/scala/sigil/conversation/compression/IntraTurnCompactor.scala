@@ -39,16 +39,24 @@ import sigil.tool.ToolName
 trait IntraTurnCompactor {
   /** Decide whether to fire compression at this iteration boundary.
     *
-    * @param turnEvents events accumulated since this user turn began
-    *                   (events after the most recent user-author Message)
+    * @param turnEvents the turn's prompt-bearing events in
+    *                   chronological (oldest-first) order — everything
+    *                   since the agent's claim that renders a
+    *                   [[sigil.conversation.ContextFrame]]. Frameless
+    *                   control events are excluded: they cost the wire
+    *                   nothing and must not displace real content from
+    *                   a tail-shaped invariant.
     * @param estimatedTokens heuristic estimate of the wire-token cost
-    *                        of those events, courtesy of the framework
-    *                        (so apps don't re-tokenize)
+    *                        of the events NOT already subsumed by a
+    *                        persisted summary — the cost the next
+    *                        prompt will actually pay, courtesy of the
+    *                        framework (so apps don't re-tokenize)
     * @param threshold per-iteration cost threshold above which the
     *                  framework considers folding worthwhile; derived
-    *                  from the model's `contextLength` and
-    *                  `inputTokensPerMinute` via
-    *                  [[sigil.Sigil.compressionTriggerTokens]] */
+    *                  via [[sigil.Sigil.compressionTriggerTokens]] from
+    *                  the `contextLength` / `inputTokensPerMinute` of
+    *                  the model this turn ROUTES to, which after a
+    *                  mid-turn escalation is not the agent's nominal */
   def shouldCompact(turnEvents: Vector[Event], estimatedTokens: Long, threshold: Long): Boolean
 
   /** Pick a foldable subset of `turnEvents` — the framework will

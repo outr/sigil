@@ -988,6 +988,11 @@ trait AgentLoopOps { this: Sigil =>
     // `_cap_reached`, …) carry `internal = true` and don't count;
     // they're not signals that the model is following the protocol.
     val iterationHadToolCall = new java.util.concurrent.atomic.AtomicBoolean(false)
+    // The model this iteration actually routed to (pin / classifier /
+    // mid-turn escalation resolved). Captured off the built TurnContext
+    // so the boundary's compaction decision is sized against the window
+    // the prompt was built for, not the agent's nominal default.
+    val routedModelId = new java.util.concurrent.atomic.AtomicReference[Id[Model]](agent.modelId)
     // Bug #57 — diagnostic logging at iteration boundaries so a
     // future repro of "agent parks at thinking" can be localised
     // by reading the server log for missing exit lines. The cost
@@ -1046,6 +1051,7 @@ trait AgentLoopOps { this: Sigil =>
                 case Some(flag) => ctx1.copy(cancellation = Some(flag.cancellation))
                 case None       => ctx1
               }
+              routedModelId.set(ctx.model._id)
               scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext done; dispatching agent.process")
               // Wrap the agent's signal stream with a force-stop check so a
               // Stop(force=true) mid-iteration terminates the stream promptly.
@@ -1297,7 +1303,7 @@ trait AgentLoopOps { this: Sigil =>
                 // smaller. The helper is a no-op when no compaction is
                 // needed.
                 def continueLoop: Task[Unit] =
-                  maybeIntraTurnCompact(agent, convId, claimed)
+                  maybeIntraTurnCompact(agent, convId, claimed, routedModelId.get())
                     .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
                       userVisibleSeen = userVisibleSeen,
                       turnExtractorFired = turnExtractorFired,
@@ -1866,6 +1872,25 @@ trait AgentLoopOps { this: Sigil =>
     * shrinking the per-iteration cost without touching the durable
     * event log.
     *
+    * The decision is computed from what the NEXT prompt will actually
+    * carry, against the model that will actually receive it:
+    *
+    *   - the slice is the turn's frame-bearing events, oldest-first —
+    *     the order every [[sigil.conversation.compression.CompactionInvariant]]
+    *     reads ([[sigil.conversation.compression.CompactionInvariant.RecentTail]]
+    *     protects the END of the vector, the claim anchor is found from
+    *     the START). Frameless control events render nothing, so
+    *     counting them would both inflate the estimate and let them
+    *     occupy the protected tail in place of the results the agent
+    *     just read;
+    *   - events an earlier fold already subsumed are excluded from the
+    *     estimate — they are no longer in the prompt, and counting them
+    *     would latch the predicate true for the rest of the turn;
+    *   - the threshold and the summarizing model come from `routedModelId`
+    *     — the model this turn actually routes to. The agent's nominal id
+    *     is frequently a small-context default, and after a mid-turn tier
+    *     escalation it is not even the tier in play.
+    *
     * Best-effort: a failure inside the compactor or compressor is
     * logged at WARN and swallowed — the agent loop continues with
     * the un-folded history (degraded but functional). The compactor
@@ -1873,20 +1898,20 @@ trait AgentLoopOps { this: Sigil =>
     * predicate returns true AND there's foldable content. */
   private final def maybeIntraTurnCompact(agent: AgentParticipant,
                                           convId: Id[Conversation],
-                                          claimed: AgentState): Task[Unit] = Task.defer {
+                                          claimed: AgentState,
+                                          routedModelId: Id[Model]): Task[Unit] = Task.defer {
     val compactor = intraTurnCompactor
     eventsFor(convId, minTimestamp = Some(claimed.timestamp)).flatMap { page =>
-      // Sort oldest-first so selectFoldable's "drop the oldest" logic
-      // matches the conversation's natural order. eventsFor returns
-      // newest-first.
-      val turnEvents = page.events.toVector.reverse
+      val turnEvents = page.events.toVector.filter(_.contextFrame.nonEmpty)
       if (turnEvents.isEmpty) Task.unit
-      else {
+      else summariesFor(convId).flatMap { summaries =>
+        val alreadyFolded = summaries.iterator.flatMap(_.coversEventIds).toSet
         val estimated = turnEvents.iterator
+          .filterNot(e => alreadyFolded.contains(e._id))
           .map(e => sigil.tokenize.HeuristicTokenizer.count(eventTextForHeuristic(e)))
           .sum
           .toLong
-        val threshold = compressionTriggerTokens(agent.modelId)
+        val threshold = compressionTriggerTokens(routedModelId)
         if (!compactor.shouldCompact(turnEvents, estimated, threshold)) Task.unit
         else {
           val ctx = _root_.sigil.conversation.compression.TurnEventsContext(
@@ -1903,7 +1928,7 @@ trait AgentLoopOps { this: Sigil =>
             else intraTurnCompressor
               .compressCovering(
                 sigil           = this,
-                callerModelId   = agent.modelId,
+                callerModelId   = routedModelId,
                 chain           = List(agent.id),
                 frames          = coveredFrames,
                 conversationId  = convId,
@@ -1930,7 +1955,14 @@ trait AgentLoopOps { this: Sigil =>
         case other => other.toString
       }.mkString(" ")
     case ti: ToolInvoke =>
-      s"${ti.toolName.value} ${ti.input.fold("")(_.toString)}"
+      // A settled invoke carries its own result; on the unified shape
+      // that result IS the bulk of the exchange's wire cost, so an
+      // estimate that reads only the call side under-counts a
+      // tool-heavy turn by most of its weight.
+      s"${ti.toolName.value} ${ti.input.fold("")(_.toString)} ${ti.output match {
+        case sigil.tool.ToolOutput.Pending => ""
+        case out                           => out.toString
+      }}"
     case other => other.toString
   }
 
