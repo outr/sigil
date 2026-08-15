@@ -567,6 +567,32 @@ The required-union rule runs in the boot completeness pass against the final reg
   `PreviewSignalReply` in, both conversation-scoped), so no new transport is needed. GStreamer
   stays out of every other module's dependency graph; see `browser-stream/README.md` for the
   runtime requirements.
+- **Viewer-addressed previews.** `previewStreamFor(conversationId, viewer)` (and the
+  `(conversationId, viewer, config)` form) starts a session owned by one `ParticipantId`. Its
+  signaling is addressed rather than broadcast: every `PreviewSignal` the session produces
+  carries the new `forViewer: Option[ParticipantId]` field, rides the framework's targeted
+  channel (`publishTo`) instead of `publish`, and is withheld from every other viewer by
+  `StreamBrowserSigil.canSee`. Like every other targeted notice it does not appear on the
+  unfiltered `signals` firehose — consume `signalsFor(viewer)` to relay it. Ownership also
+  gates the reply path: `routePreviewSignal(reply, viewer)` applies a `PreviewSignalReply` to an
+  owned session only when `viewer` is its owner, and the one-argument
+  `routePreviewSignal(reply)` — the unattributed ingress path — now refuses owned sessions
+  outright; both warn and leave the session untouched instead of applying a stranger's answer.
+  The replying viewer comes from `handleNotice`'s `fromViewer`, i.e. from the connection that
+  delivered the notice, so it is not something a client can assert about itself.
+  `previewStreamOwner(conversationId, streamId)` reads a live session's owner back.
+
+  Use this shape whenever more than one person can watch a conversation. Previously every
+  session's offer reached every viewer of the conversation, so two watchers would answer the
+  same offer and fight over one session; each addressed session now negotiates independently
+  against the same preview browser. Apps that shipped a single-active-viewer guard to work
+  around that can drop it.
+
+  The existing `previewStreamFor(conversationId, config)` is unchanged and still broadcasts —
+  `forViewer` defaults to `None`, `canSee` passes an unaddressed signal for everyone, and an
+  unowned session still accepts any viewer's reply. Single-viewer consumers need no change.
+  Anything that pattern-matches `PreviewSignal` positionally must account for the new fourth
+  field.
 - **Preview sizing and live resize.** A preview's resolution is a per-stream choice rather than
   the virtual display's: `StreamConfig.width`/`height` set the size the page lays out at and the
   exact rectangle that is streamed, so a `390x844` request previews a portrait, mobile-layout

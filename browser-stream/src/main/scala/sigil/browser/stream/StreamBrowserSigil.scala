@@ -11,7 +11,7 @@ import sigil.browser.BrowserSigil
 import sigil.conversation.Conversation
 import sigil.maintenance.MaintenanceTask
 import sigil.participant.ParticipantId
-import sigil.signal.Notice
+import sigil.signal.{Notice, Signal}
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import java.util.concurrent.{ConcurrentHashMap, LinkedBlockingQueue}
@@ -42,8 +42,10 @@ import scala.jdk.CollectionConverters.*
  * WebRTC signaling rides the notice vocabulary: the framework publishes
  * [[PreviewSignal]] for every offer / ICE candidate / error / bye the
  * session produces, and routes the viewer's [[PreviewSignalReply]] back
- * into it. Screencast previews involve no signaling — a consumer forwards
- * [[PreviewFrame]]s over whatever transport it already has.
+ * into it. A session started for a named viewer signals only that
+ * viewer, and only that viewer's replies are applied to it. Screencast
+ * previews involve no signaling — a consumer forwards [[PreviewFrame]]s
+ * over whatever transport it already has.
  *
  * See `browser-stream/README.md` for the runtime requirements (GStreamer
  * plugin sets, an H.264 encoder, Xvfb, and TURN reality-checks).
@@ -203,6 +205,11 @@ trait StreamBrowserSigil extends BrowserSigil {
   final def previewStreamsFor(convId: Id[Conversation]): List[PreviewStreamSession] =
     Option(StreamBrowserSigil.controllers.get(convId.value)).map(_.sessions).getOrElse(Nil)
 
+  /** The viewer a live session belongs to, or `None` for a session
+    * started through the broadcast overload of [[previewStreamFor]]. */
+  final def previewStreamOwner(convId: Id[Conversation], streamId: String): Option[ParticipantId] =
+    Option(StreamBrowserSigil.controllers.get(convId.value)).flatMap(_.owner(streamId))
+
   /**
    * Start a preview of this conversation's browser, launching it if
    * needed. Returns a [[PreviewStreamSession.WebRtc]] when the WebRTC
@@ -212,7 +219,11 @@ trait StreamBrowserSigil extends BrowserSigil {
    * unavailability reason is raised as [[StreamUnavailableException]]).
    *
    * Each call yields an independent session, so several viewers can
-   * watch one conversation.
+   * watch one conversation. Sessions started here are unaddressed: their
+   * signaling broadcasts to the whole conversation and any viewer's
+   * reply is applied to them, which is only safe when one viewer watches
+   * at a time. Serving several viewers at once means addressing each
+   * session to its owner — see the overload taking a `viewer`.
    *
    * `config.width`/`height` request a render size: the page lays out at
    * exactly that size and exactly that rectangle is captured, so a
@@ -223,38 +234,112 @@ trait StreamBrowserSigil extends BrowserSigil {
    */
   def previewStreamFor(convId: Id[Conversation],
                        config: StreamConfig = StreamConfig()): Task[PreviewStreamSession] =
+    startPreview(convId, None, config)
+
+  /**
+   * Start a preview owned by `viewer`, at the default render size.
+   *
+   * See the three-argument overload for the ownership semantics.
+   */
+  def previewStreamFor(convId: Id[Conversation], viewer: ParticipantId): Task[PreviewStreamSession] =
+    startPreview(convId, Some(viewer), StreamConfig())
+
+  /**
+   * Start a preview owned by `viewer` — the shape to use whenever more
+   * than one person can watch a conversation.
+   *
+   * The session is addressed: every [[PreviewSignal]] it produces
+   * carries `forViewer = Some(viewer)`, is delivered over the
+   * framework's targeted-notice channel, and is withheld from every
+   * other viewer by [[canSee]]. The viewer therefore sees exactly one
+   * offer — its own — and learns the session's `streamId` from it, so a
+   * second watcher can neither answer this session's offer nor be
+   * confused by it. Symmetrically, [[routePreviewSignal]] applies a
+   * [[PreviewSignalReply]] to an owned session only when the replying
+   * viewer is its owner; anyone else's reply is dropped with a warning,
+   * leaving the session untouched.
+   *
+   * Ownership is per session, not per conversation: several viewers can
+   * each hold their own addressed session against the same conversation
+   * (and the same preview browser) at once, negotiating and tearing down
+   * independently.
+   *
+   * Otherwise identical to the broadcast overload — same ladder, same
+   * fallback policy, same `config` semantics.
+   */
+  def previewStreamFor(convId: Id[Conversation],
+                       viewer: ParticipantId,
+                       config: StreamConfig): Task[PreviewStreamSession] =
+    startPreview(convId, Some(viewer), config)
+
+  private def startPreview(convId: Id[Conversation],
+                           owner: Option[ParticipantId],
+                           config: StreamConfig): Task[PreviewStreamSession] =
     streamBrowserController(convId, config).flatMap { controller =>
       Task(RoboStream(controller.browser).availability).flatMap {
-        case None => startWebRtcPreview(controller, config)
+        case None => startWebRtcPreview(controller, config, owner)
         case Some(reason) if streamFallbackToScreencast =>
           Task {
             scribe.info(s"WebRTC preview unavailable for ${convId.value} (${reason.message}) — " +
               "falling back to the CDP screencast")
-          }.flatMap(_ => startScreencastPreview(controller, config))
+          }.flatMap(_ => startScreencastPreview(controller, config, owner))
         case Some(reason) => Task.error(StreamUnavailableException(reason))
       }
     }
 
+  /**
+   * Deliver a session's outbound signaling.
+   *
+   * An addressed signal rides `publishTo`, the framework's established
+   * targeted-notice channel: the hub hands it only to subscribers
+   * registered at that viewer, so it never reaches a sibling watcher's
+   * `signalsFor` stream — and, as with every other targeted notice
+   * (viewer-state snapshots, tool-list replies), not the unfiltered
+   * `signals` firehose either. An unaddressed signal broadcasts through
+   * `publish` exactly as before.
+   */
+  final def publishPreviewSignal(signal: PreviewSignal): Task[Unit] = signal.forViewer match {
+    case Some(viewer) => publishTo(viewer, signal)
+    case None => publish(signal)
+  }
+
+  /**
+   * Withhold an addressed [[PreviewSignal]] from every viewer but its
+   * addressee. `publishPreviewSignal` already routes an addressed signal
+   * to one subscriber; enforcing the same rule here makes `forViewer`
+   * authoritative on any path a signal can take — a consumer that
+   * relays or republishes one cannot widen its audience by accident.
+   */
+  override def canSee(signal: Signal, viewer: ParticipantId): Boolean = signal match {
+    case preview: PreviewSignal => preview.forViewer.forall(_ == viewer) && super.canSee(preview, viewer)
+    case other => super.canSee(other, viewer)
+  }
+
   private def startWebRtcPreview(controller: StreamBrowserController,
-                                 config: StreamConfig): Task[PreviewStreamSession] = {
+                                 config: StreamConfig,
+                                 owner: Option[ParticipantId]): Task[PreviewStreamSession] = {
     val convId = controller.conversationId
     RoboStream(controller.browser).start(config).flatMap { session =>
       val preview = PreviewStreamSession.WebRtc(convId, PreviewStreamSession.newStreamId(), session)
       // A resize reconfigures the live pipeline, so this listener carries
       // exactly one offer for the session's whole lifetime.
-      controller.register(preview, (width, height) => session.resize(width, height))
+      controller.register(preview, (width, height) => session.resize(width, height), owner)
       // `connect` flushes anything the session emitted while it was
       // starting — the offer fires from webrtcbin moments after PLAYING,
-      // typically before this call lands.
+      // typically before this call lands. The streamId is minted above,
+      // so no signal can ever name an id the framework has not formed;
+      // an owner that receives the offer before this Task yields
+      // identifies it by `forViewer` and reads the id off the offer.
       session.connect { message =>
         if (message == SignalMessage.Bye) controller.deregister(preview.streamId)
-        publish(PreviewSignal(convId, preview.streamId, message)).startUnit()
+        publishPreviewSignal(PreviewSignal(convId, preview.streamId, message, owner)).startUnit()
       }.map(_ => preview)
     }
   }
 
   private def startScreencastPreview(controller: StreamBrowserController,
-                                     config: StreamConfig): Task[PreviewStreamSession] = {
+                                     config: StreamConfig,
+                                     owner: Option[ParticipantId]): Task[PreviewStreamSession] = {
     val convId = controller.conversationId
     val streamId = PreviewStreamSession.newStreamId()
     val queue = new LinkedBlockingQueue[Option[PreviewFrame]](math.max(1, previewFrameBuffer))
@@ -320,13 +405,15 @@ trait StreamBrowserSigil extends BrowserSigil {
     }
 
     capture(config.width, config.height).map { _ =>
-      controller.register(preview, (width, height) => capture(Some(width), Some(height)))
+      controller.register(preview, (width, height) => capture(Some(width), Some(height)), owner)
       preview
     }
   }
 
   /**
-   * Resize a conversation's live preview(s) to `width` x `height`.
+   * Resize every live preview of a conversation to `width` x `height` —
+   * each viewer's session included, since the size is a property of the
+   * shared page and the browser behind it, not of one watcher's view.
    *
    * A WebRTC session reconfigures its live pipeline against the new size:
    * no renegotiation, no second offer, no [[PreviewSignal]] at all. The
@@ -354,18 +441,47 @@ trait StreamBrowserSigil extends BrowserSigil {
   }
 
   /**
-   * Route a viewer's signaling message into the session it addresses.
+   * Route an unattributed signaling message into the session it
+   * addresses — for ingress paths that cannot name the replying viewer.
+   *
+   * A session owned by a viewer is never touched this way: without an
+   * attributed replier there is nothing to check ownership against, so
+   * the reply is warned about and dropped. Route those through the
+   * overload taking the viewer.
+   */
+  final def routePreviewSignal(reply: PreviewSignalReply): Task[Unit] =
+    applyPreviewSignal(reply, None)
+
+  /**
+   * Route `viewer`'s signaling message into the session it addresses.
    * `bye` stops any session kind; answers and ICE candidates only mean
    * something to a WebRTC session. An unknown `streamId` is warned about
    * and dropped — the viewer's session was reaped, and it should ask for
    * a fresh stream.
+   *
+   * A session owned by another viewer is left untouched: its `streamId`
+   * is not a capability anyone else can spend, so a reply from a
+   * non-owner is warned about and dropped rather than applied. Sessions
+   * started through the broadcast overload of [[previewStreamFor]] have
+   * no owner and accept any viewer's reply, as before.
    */
-  final def routePreviewSignal(reply: PreviewSignalReply): Task[Unit] = Task.defer {
+  final def routePreviewSignal(reply: PreviewSignalReply, viewer: ParticipantId): Task[Unit] =
+    applyPreviewSignal(reply, Some(viewer))
+
+  private def applyPreviewSignal(reply: PreviewSignalReply,
+                                 from: Option[ParticipantId]): Task[Unit] = Task.defer {
     val controller = Option(StreamBrowserSigil.controllers.get(reply.conversationId.value))
+    val owner = controller.flatMap(_.owner(reply.streamId))
     controller.flatMap(_.session(reply.streamId)) match {
       case None => Task {
         scribe.warn(s"PreviewSignalReply for unknown stream ${reply.streamId} " +
           s"in conversation ${reply.conversationId.value} — ignored")
+        ()
+      }
+      case Some(_) if owner.nonEmpty && owner != from => Task {
+        scribe.warn(s"PreviewSignalReply for stream ${reply.streamId} from " +
+          s"${from.map(_.value).getOrElse("an unattributed sender")} — the session belongs to " +
+          s"${owner.get.value}; ignored")
         ()
       }
       case Some(session) => reply.message match {
@@ -383,7 +499,7 @@ trait StreamBrowserSigil extends BrowserSigil {
   }
 
   override def handleNotice(notice: Notice, fromViewer: ParticipantId): Task[Unit] = notice match {
-    case reply: PreviewSignalReply => routePreviewSignal(reply)
+    case reply: PreviewSignalReply => routePreviewSignal(reply, fromViewer)
     case other => super.handleNotice(other, fromViewer)
   }
 

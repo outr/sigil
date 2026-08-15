@@ -26,7 +26,10 @@ sealed trait PreviewStreamSession {
 
   /** Session identifier — the address half of [[PreviewSignal]] /
     * [[PreviewSignalReply]]. Unique per session, not per conversation:
-    * a conversation may be previewed by several viewers at once. */
+    * a conversation may be previewed by several viewers at once. It
+    * names a session rather than authorising it — a session started for
+    * a viewer answers only to that viewer, whoever holds the id (see
+    * [[StreamBrowserSigil.previewStreamFor]]). */
   def streamId: String
 
   /** Idempotent teardown of this session only. */
