@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import robobrowser.stream.SignalMessage
 import sigil.browser.stream.{PreviewSignal, PreviewSignalReply}
 import sigil.conversation.Conversation
-import sigil.participant.ParticipantId
+import sigil.participant.{ParticipantId, WorkerParticipantId}
 import sigil.signal.Signal
 
 /**
@@ -47,6 +47,14 @@ class PreviewSignalNoticeSpec extends AnyWordSpec with Matchers {
         val inbound: Signal = PreviewSignalReply(convId, "stream-1", message)
         signalRW.write(signalRW.read(inbound)) shouldBe inbound
       }
+    }
+
+    "carry a viewer-addressed signal's addressee across the wire" in {
+      // A registered ParticipantId subtype — an addressed signal is only
+      // as serializable as the id it names.
+      val addressee = WorkerParticipantId("preview-owner")
+      val addressed: Signal = PreviewSignal(convId, "stream-1", messages.head, Some(addressee))
+      signalRW.write(signalRW.read(addressed)) shouldBe addressed
     }
 
     "be registered in the framework's notice roster" in {

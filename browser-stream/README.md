@@ -19,7 +19,7 @@ class MyAppSigil extends StreamBrowserSigil {
 }
 
 // Anywhere a viewer opens the preview panel:
-sigil.previewStreamFor(conversationId).map {
+sigil.previewStreamFor(conversationId, viewer).map {
   case s: PreviewStreamSession.WebRtc     => // negotiate over PreviewSignal / PreviewSignalReply
   case s: PreviewStreamSession.Screencast => // push s.frames over your own transport
 }
@@ -74,14 +74,31 @@ WebRTC signaling rides the notice vocabulary rather than a bespoke socket — th
 same shape as the client-tools transport. The server always offers; the viewer
 answers; ICE trickles both ways.
 
-- **Server → client:** `PreviewSignal(conversationId, streamId, message)` is
-  published for every `Offer` / `Ice` / `Error` / `Bye` the session produces. It
-  is a `ConversationNotice`, so it reaches only the viewers subscribed to that
-  conversation.
+- **Server → client:** `PreviewSignal(conversationId, streamId, message,
+  forViewer)` is published for every `Offer` / `Ice` / `Error` / `Bye` the
+  session produces. It is a `ConversationNotice`, so it reaches only the viewers
+  subscribed to that conversation.
 - **Client → server:** `PreviewSignalReply(conversationId, streamId, message)`
   arrives over the normal inbound-notice path (`SessionBridge` →
   `Sigil.handleNotice`) and is routed into the addressed session. `Bye` stops any
   session; an unknown `streamId` is warned about and dropped.
+
+## Who a session belongs to
+
+`previewStreamFor(convId, viewer)` starts a session **owned** by that viewer, and
+that is the shape to use whenever more than one person can watch a conversation.
+Its signals carry `forViewer = Some(viewer)`, go out over the framework's
+targeted-notice channel, and are withheld from everyone else — so each watcher
+sees exactly one offer, its own, and learns the `streamId` from it. Replies are
+gated the same way: `routePreviewSignal` applies a reply to an owned session only
+when it came from the owner (attribution comes from the connection the notice
+arrived on, not from the notice's contents), so nobody can answer or `Bye`
+someone else's preview. Because targeted notices bypass the unfiltered `signals`
+firehose, relay them from `signalsFor(viewer)`.
+
+`previewStreamFor(convId)` without a viewer keeps broadcast semantics — every
+watcher sees the offer and any of them can answer it. That is fine for a
+single-viewer consumer and wrong for a shared one.
 
 `message` is `robobrowser.stream.SignalMessage` end to end — typed on both sides
 of the wire, never a loose JSON blob. A browser viewer is about a hundred lines

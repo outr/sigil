@@ -4,6 +4,7 @@ import lightdb.id.Id
 import rapid.Task
 import robobrowser.RoboBrowser
 import sigil.conversation.Conversation
+import sigil.participant.ParticipantId
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -27,6 +28,8 @@ final class StreamBrowserController private[stream] (val conversationId: Id[Conv
     new ConcurrentHashMap[String, PreviewStreamSession]()
   private val _resizers: ConcurrentHashMap[String, PreviewResize] =
     new ConcurrentHashMap[String, PreviewResize]()
+  private val _owners: ConcurrentHashMap[String, ParticipantId] =
+    new ConcurrentHashMap[String, ParticipantId]()
   @volatile private var _lastTouchMs: Long = System.currentTimeMillis()
   private val _disposed: AtomicBoolean = new AtomicBoolean(false)
 
@@ -53,15 +56,25 @@ final class StreamBrowserController private[stream] (val conversationId: Id[Conv
     * it was started against a resizable rung. */
   def resizer(streamId: String): Option[PreviewResize] = Option(_resizers.get(streamId))
 
-  private[stream] def register(session: PreviewStreamSession, resize: PreviewResize): Unit = {
+  /** The viewer a session was started for, when it was started through
+    * the viewer-addressed [[StreamBrowserSigil.previewStreamFor]]
+    * overload. `None` is a broadcast session — its signaling reaches the
+    * whole conversation and any viewer may answer it. */
+  def owner(streamId: String): Option[ParticipantId] = Option(_owners.get(streamId))
+
+  private[stream] def register(session: PreviewStreamSession,
+                               resize: PreviewResize,
+                               owner: Option[ParticipantId]): Unit = {
     _sessions.put(session.streamId, session)
     _resizers.put(session.streamId, resize)
+    owner.foreach(o => _owners.put(session.streamId, o))
     touch()
   }
 
   private[stream] def deregister(streamId: String): Unit = {
     _sessions.remove(streamId)
     _resizers.remove(streamId)
+    _owners.remove(streamId)
     touch()
   }
 
@@ -82,6 +95,7 @@ final class StreamBrowserController private[stream] (val conversationId: Id[Conv
       val live = sessions
       _sessions.clear()
       _resizers.clear()
+      _owners.clear()
       Task.sequence(live.map { s =>
         s.stop.handleError { t =>
           Task {
