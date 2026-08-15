@@ -453,6 +453,21 @@ The required-union rule runs in the boot completeness pass against the final reg
   now settles its `ToolInvoke` with `ToolOutcome.Success` instead of leaving it `Pending`. A
   *refused* dispatch settles no outcome. Knobs: `maxIdenticalToolCallsInWindow` (3),
   `maxRacedReissues` (2), `maxToolCallsPerResponse` (8), `recentToolInvocationsLimit` (20).
+- **One recent-invocation entry per dispatch.** A tool call reaches the participant projection
+  twice — once when its `ToolInvoke` settles to `Complete` with a still-`Pending` outcome, once
+  when the executor folds the real outcome on — and each pass used to append its own
+  `RecentToolInvocation`. The window now carries one entry per dispatch: `RecentToolInvocation`
+  gained `invokeId: Option[Id[Event]]` (defaults `None`; rows persisted by 1.3 keep it empty and
+  fall off the window normally), and the settling pass updates the matching entry in place,
+  keeping its position. Apps reading `ParticipantProjection.recentToolInvocations` see the true
+  dispatch count where they previously saw double, so any app-side threshold calibrated against
+  the inflated stream needs halving. The prompt's "Repeated tool calls" digest reports the real
+  repeat count — and a call made once renders no digest at all, where before every single call
+  was announced back to the model as a `2x` repeat, so prompt bytes for turns containing a tool
+  call changed and any recorded provider fixtures over them need re-recording. The framework's
+  own thresholds are unchanged: `maxIdenticalToolCallsInWindow` still refuses the Nth identical
+  call, and `maxRacedReissues` now redirects after N genuinely raced re-issues rather than after
+  one.
 - **Workflow steps honor gates and publish emitted events.** A `SigilJobStep` dispatches through
   `ToolExecutor.executeCollected` with `GateContext.Gated`, so preconditions and consent
   genuinely gate a workflow step. The tool's drained `ctx.emit` events publish through

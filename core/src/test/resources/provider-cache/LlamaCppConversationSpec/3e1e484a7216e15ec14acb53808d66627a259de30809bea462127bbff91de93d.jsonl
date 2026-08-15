@@ -1,0 +1,105 @@
+{"requestHash":"3e1e484a7216e15ec14acb53808d66627a259de30809bea462127bbff91de93d","recordedAt":1786835262813}
+{"callId":"1222a3941","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"1222a3941","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"1222a3941","text":"Great","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"!","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" I","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"'m","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" now","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" in","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" coding","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" mode","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" for","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" your","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" Scala","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" project","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" Let","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"'s","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" start","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" with","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" design","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" phase","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"\n","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"\nWhat","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" would","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" you","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" like","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" build","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"?","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" Please","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" describe","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":":","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"\n-","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" The","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" main","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" functionality","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" or","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" problem","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" you","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"'re","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" solving","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"\n-","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" Any","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" specific","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" requirements","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" or","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" constraints","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"\n-","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" Preferred","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" Scala","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" features","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" (","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"e","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":".g","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":".,","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" Cats","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" Effect","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" Z","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"IO","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" Ak","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"ka","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" etc","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":".)","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"\n-","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" Any","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" existing","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" code","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"base","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" or","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" project","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" structure","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" work","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" with","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"\n","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"\nOnce","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" I","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" understand","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" scope","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" we","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":"'ll","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" design","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" architecture","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" then","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" implement","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" it","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" and","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" finally","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" write","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":" tests","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"1222a3941","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Scala Project Development","topicSummary":"Starting a Scala project with design, implementation, and testing phases","content":"Great! I'm now in coding mode for your Scala project. Let's start with the design phase.\n\nWhat would you like to build? Please describe:\n- The main functionality or problem you're solving\n- Any specific requirements or constraints\n- Preferred Scala features (e.g., Cats Effect, ZIO, Akka, etc.)\n- Any existing codebase or project structure to work with\n\nOnce I understand the scope, we'll design the architecture, then implement it, and finally write tests.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4093,"completionTokens":180,"totalTokens":4273,"isEstimated":false,"cacheReadTokens":3988,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

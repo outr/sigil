@@ -19,9 +19,11 @@ import sigil.tool.ToolName
  *     the slot is restored. Lets agents "remember" the skill they had
  *     loaded for a mode without re-discovering it.
  *   - `recentToolInvocations` — pushed onto the head when a `ToolInvoke`
- *     from this participant completes. Each entry carries a canonical
- *     argument hash plus a short preview so the prompt renderer can
- *     warn the agent when it re-issues an identical call
+ *     from this participant completes, then updated in place when that
+ *     same invoke's outcome settles: one entry per dispatch, in
+ *     dispatch order. Each entry carries a canonical argument hash plus
+ *     a short preview so the prompt renderer can warn the agent when it
+ *     re-issues an identical call
  *   - `suggestedTools` — folded from a settling `ToolInvoke`'s
  *     `suggestedNextTools` plus pagination navigators auto-promoted
  *     when the invoke's typed output is a paginated result
