@@ -168,6 +168,14 @@ trait ProjectionOps { this: Sigil =>
         // logical call repeats. Keep the most-recent
         // `recentToolInvocationsLimit` entries; older fall off the
         // tail.
+        //
+        // A dispatch reaches this path twice — the invoke reaches
+        // `Complete` while its outcome is still Pending, then again when
+        // the executor's settling delta folds the real outcome on. Both
+        // carry the same invoke id, so the second pass updates that entry
+        // in place (holding its position) rather than adding a second one.
+        // Keyed by invoke, not by (toolName, argsHash): two genuinely
+        // distinct calls with identical args stay distinct entries.
         // #354 — a slow tool whose large result raced past the frame
         // settles Complete with a `Pending` outcome (the agent saw a
         // placeholder, not the result). Record `resulted = false` so the
@@ -189,7 +197,8 @@ trait ProjectionOps { this: Sigil =>
             argsPreview = sigil.tool.ToolInputCanonicalizer.argsPreview(in),
             invokedAt   = ti.timestamp,
             resulted    = resulted,
-            failed      = failed
+            failed      = failed,
+            invokeId    = Some(ti._id)
           )
           case None => sigil.conversation.RecentToolInvocation(
             toolName    = ti.toolName,
@@ -197,11 +206,15 @@ trait ProjectionOps { this: Sigil =>
             argsPreview = "",
             invokedAt   = ti.timestamp,
             resulted    = resulted,
-            failed      = failed
+            failed      = failed,
+            invokeId    = Some(ti._id)
           )
         }
         updateProjection(ti.conversationId, ti.participantId) { proj =>
-          val recent = (invocation :: proj.recentToolInvocations).take(recentToolInvocationsLimit)
+          val existing = proj.recentToolInvocations.indexWhere(_.invokeId.contains(ti._id))
+          val recent =
+            if (existing >= 0) proj.recentToolInvocations.updated(existing, invocation)
+            else (invocation :: proj.recentToolInvocations).take(recentToolInvocationsLimit)
           val suggested =
             if (nextTools.isEmpty) proj.suggestedTools
             else (proj.suggestedTools ++ nextTools).distinct

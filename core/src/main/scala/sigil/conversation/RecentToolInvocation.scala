@@ -1,7 +1,9 @@
 package sigil.conversation
 
 import fabric.rw.*
+import lightdb.id.Id
 import lightdb.time.Timestamp
+import sigil.event.Event
 import sigil.tool.ToolName
 
 /**
@@ -41,10 +43,21 @@ import sigil.tool.ToolName
  *                    orchestrator refuses the duplicate but does NOT escalate
  *                    the tier on it (a stronger model issues the same call and
  *                    hits the same failure; sigil #371). Defaults `false`.
+ * @param invokeId    the originating [[sigil.event.ToolInvoke]]'s id. One
+ *                    dispatch owns exactly one entry: the invoke reaches
+ *                    `Complete` before its outcome settles, and the later
+ *                    settle UPDATES this entry in place rather than adding a
+ *                    second one — every consumer counts entries, so a second
+ *                    entry would double the repeat count the prompt reports
+ *                    and let a placeholder that never raced trip the
+ *                    raced-reissue redirect. `None` on rows persisted before
+ *                    the id was recorded; those never match and fall off the
+ *                    window normally.
  */
 case class RecentToolInvocation(toolName: ToolName,
                                 argsHash: String,
                                 argsPreview: String,
                                 invokedAt: Timestamp,
                                 resulted: Boolean = true,
-                                failed: Boolean = false) derives RW
+                                failed: Boolean = false,
+                                invokeId: Option[Id[Event]] = None) derives RW
