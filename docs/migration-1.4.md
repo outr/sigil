@@ -590,6 +590,19 @@ The required-union rule runs in the boot completeness pass against the final reg
   re-recording. Apps overriding `Sigil.contextSections` should re-check their own sections'
   `Placement` against the same rule: anything that varies across ordinary turns belongs in the
   tail.
+- **A rejected sampling parameter is learned, not re-discovered.** When a model answers HTTP 400
+  with the deprecated-sampling-parameter marker, the self-heal that strips `temperature` / `top_p`
+  and retries now also records the rejection in a process-wide memo on the `Provider` companion
+  (`Provider.recordRejectedSamplingParam` / `rejectsSamplingParam`, keyed by model id and
+  parameter name). The pre-flight omits a memoized parameter before the wire call, so the
+  400-then-strip round-trip is paid once per model per process instead of on every call —
+  including framework consults. There is no new `Model` field and no persisted state: the memo is
+  in-memory and re-learned after a restart, which is what the catalog's `supportedParameters`
+  path already covers durably. The one app-visible change is that `Sigil.supportsParameter` now
+  answers `false` for a parameter the model has been directly observed rejecting, whatever the
+  catalog claims. Apps that override `supportsParameter` and want the same precedence should
+  consult `Provider.rejectsSamplingParam` first; apps using the shipped implementation need no
+  change.
 
 ## 5. New opt-in capabilities worth adopting
 
