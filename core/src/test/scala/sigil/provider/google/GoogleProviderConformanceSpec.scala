@@ -32,6 +32,9 @@ class GoogleProviderConformanceSpec extends AbstractProviderConformanceSpec {
     """data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"conformance_optionals","args":{"title":"t"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":7,"totalTokenCount":18}}"""
   ))
 
+  // A `text` part and a `functionCall` part in the same candidate stream.
+  override protected def proseWithToolTurnEvents: Vector[ProviderEvent] = toolTurnEvents
+
   override protected def midStreamErrorOutcome: Either[Throwable, Vector[ProviderEvent]] =
     try Right(parseAll(List(
       """data: {"error":{"code":429,"message":"quota exhausted","status":"RESOURCE_EXHAUSTED"}}"""
