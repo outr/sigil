@@ -226,6 +226,7 @@ object FrameBuilder {
           sourceEventId = ti._id,
           visibility = ti.visibility,
           wireCallId = ti.callId,
+          completionId = ti.completionId,
           internal = ti.internal,
           state = callState,
           // The Complete content above was rendered from a Pending
@@ -410,7 +411,7 @@ object FrameBuilder {
     * the model to emit them. Images are reduced to a short alt-text placeholder
     * so a `data:` URL or base64 bytes don't bloat the prompt (image bytes ride
     * the provider's own multimodal channel, not the frame text). */
-  private def renderContentText(content: Vector[ResponseContent]): String =
+  private[sigil] def renderContentText(content: Vector[ResponseContent]): String =
     sigil.render.MarkdownRenderer.render(content.map {
       case ResponseContent.Image(_, alt)         => ResponseContent.Text(imagePlaceholder(alt))
       case ResponseContent.ImageBytes(_, _, alt) => ResponseContent.Text(imagePlaceholder(alt))

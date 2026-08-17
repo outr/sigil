@@ -325,8 +325,36 @@ case class GoogleProvider(apiKey: String,
       }
   }
 
-  private def renderContents(messages: Vector[ProviderMessage]): Vector[Json] =
-    messages.flatMap {
+  /** Gemini answers a batch of parallel `functionCall` parts with the
+    * matching `functionResponse` parts on ONE user turn. A lone result
+    * renders exactly as it always has (a one-part user turn). */
+  private def renderContents(messages: Vector[ProviderMessage]): Vector[Json] = {
+    val out = Vector.newBuilder[Json]
+    var i = 0
+    while (i < messages.length) {
+      messages(i) match {
+        case _: ProviderMessage.ToolResult =>
+          var n = 1
+          while (i + n < messages.length && messages(i + n).isInstanceOf[ProviderMessage.ToolResult]) n += 1
+          val parts = (i until i + n).map { k =>
+            val result = messages(k).asInstanceOf[ProviderMessage.ToolResult]
+            obj("functionResponse" -> obj(
+              "name" -> str(result.toolCallId), // Gemini keys responses by name, not id
+              "response" -> obj("output" -> str(result.content))
+            ))
+          }
+          out += obj("role" -> str("user"), "parts" -> arr(parts*))
+          i += n
+        case other =>
+          out ++= renderContent(other)
+          i += 1
+      }
+    }
+    out.result()
+  }
+
+  private def renderContent(message: ProviderMessage): Vector[Json] =
+    message match {
       case ProviderMessage.System(content) =>
         // Mid-conversation system frames — fold into a user message with a marker.
         Vector(obj("role" -> str("user"), "parts" -> arr(obj("text" -> str(s"[system] $content")))))
@@ -362,14 +390,9 @@ case class GoogleProvider(apiKey: String,
         }
         Vector(obj("role" -> str("model"), "parts" -> arr(parts.result()*)))
 
-      case ProviderMessage.ToolResult(toolCallId, content) =>
-        Vector(obj(
-          "role" -> str("user"),
-          "parts" -> arr(obj("functionResponse" -> obj(
-            "name" -> str(toolCallId), // Gemini keys responses by name, not id
-            "response" -> obj("output" -> str(content))
-          )))
-        ))
+      case _: ProviderMessage.ToolResult =>
+        // Handled by the batch-merging walk in `renderContents`.
+        Vector.empty
 
      case _: ProviderMessage.Reasoning =>
         // Provider-specific reasoning state from another provider's turn

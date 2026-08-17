@@ -5,7 +5,8 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
-import sigil.conversation.{Conversation, TurnInput}
+import sigil.conversation.{ContextFrame, Conversation, FrameBuilder, ToolCallState, TurnInput}
+import sigil.event.ToolInvoke
 import sigil.db.Model
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
@@ -132,6 +133,45 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         _ <- Orchestrator.process(TestSigil, new PingProvider(tool), request, conv).toList
       } yield withClue(s"cache keys=${cacheRef.get().keys}: ") {
         counter.get() shouldBe 1 // second iteration served from cache
+      }
+    }
+
+    "hand the served iteration the SAME result the executed iteration produced" in {
+      // A served call that settles with an outcome but no payload leaves the
+      // model reading an empty result for a call it just re-issued — the
+      // strongest possible invitation to issue it a third time. The served
+      // invoke must replay the original's payload so both render identically.
+      val counter = new AtomicInteger(0)
+      val tool = new CountingTool(ToolName("ping_served"), ro = true, counter)
+      val cacheRef = new AtomicReference(Map.empty[String, CachedToolRead])
+      val convId = Conversation.id(s"dedup-served-${rapid.Unique()}")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
+      val request = requestFor(convId, tool, cacheRef)
+      def iterate: Task[Unit] =
+        Orchestrator.process(TestSigil, new PingProvider(tool), request, conv).toList.flatMap { signals =>
+          signals.foldLeft(Task.unit)((acc, signal) => acc.flatMap(_ => TestSigil.publish(signal).map(_ => ())))
+        }
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- iterate
+        _ <- iterate
+        events <- TestSigil.withDB(_.conversationEventsConsistent(convId))
+      } yield {
+        val rendered = events.collect {
+          case ti: ToolInvoke if ti.toolName == tool.name =>
+            FrameBuilder.computeFrame(ti).collect {
+              case tc: ContextFrame.ToolCall =>
+                tc.state match {
+                  case ToolCallState.Complete(content, _) => content
+                  case ToolCallState.Active               => "(active)"
+                }
+            }.getOrElse("(no frame)")
+        }.toList
+        withClue(s"rendered results across the two iterations: $rendered: ") {
+          rendered.size shouldBe 2
+          rendered.distinct.size shouldBe 1
+          rendered.head should include("ping-result")
+        }
       }
     }
 
