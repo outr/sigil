@@ -14,7 +14,7 @@ import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopPro
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.information.{InMemoryInformation, Information}
 import sigil.participant.{AgentParticipantId, Participant, ParticipantId}
-import sigil.provider.{Mode, Provider}
+import sigil.provider.{ContextFeature, ContextFeatures, FeatureId, Mode, Provider}
 import sigil.signal.Signal
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.{InMemoryToolFinder, Resolution, Tool, ToolContext, ToolFinder, ToolIO, ToolInput}
@@ -48,6 +48,9 @@ object TestSigil extends Sigil {
     new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
 
   override def testMode: Boolean = true
+
+  /** The features every spec renders with, unless it swaps them. */
+  private val DefaultContextFeatures: List[ContextFeature] = ContextFeatures.all
 
   private val healingModeRef =
     new java.util.concurrent.atomic.AtomicReference[sigil.heal.HealingMode](sigil.heal.HealingMode.Strict)
@@ -720,6 +723,22 @@ object TestSigil extends Sigil {
   def setInboundGate(f: Signal => Task[Unit]): Unit = inboundGateRef.set(f)
   def resetInboundGate(): Unit = inboundGateRef.set(_ => Task.unit)
 
+  /**
+   * Per-test [[sigil.provider.ContextFeature]] registry. Specs that
+   * exercise a feature of their own swap the list; everything else
+   * runs against the framework defaults.
+   */
+  private val contextFeaturesRef = new AtomicReference[List[ContextFeature]](DefaultContextFeatures)
+  private val disabledFeaturesRef = new AtomicReference[Set[FeatureId]](Set.empty)
+  override def contextFeatures: List[ContextFeature] = contextFeaturesRef.get()
+  override def disabledFeatures: Set[FeatureId] = disabledFeaturesRef.get()
+  def setContextFeatures(features: List[ContextFeature]): Unit = contextFeaturesRef.set(features)
+  def setDisabledFeatures(ids: Set[FeatureId]): Unit = disabledFeaturesRef.set(ids)
+  def resetContextFeatures(): Unit = {
+    contextFeaturesRef.set(DefaultContextFeatures)
+    disabledFeaturesRef.set(Set.empty)
+  }
+
   private object InboundGate extends sigil.pipeline.InboundTransform {
     override def apply(signal: Signal, self: Sigil): Task[Signal] =
       inboundGateRef.get().apply(signal).map(_ => signal)
@@ -754,6 +773,7 @@ object TestSigil extends Sigil {
     currentParticipantRef.set(p => Task.pure(p))
     replySuggestionsRef.set(None)
     inboundGateRef.set(_ => Task.unit)
+    resetContextFeatures()
   }
 
   override def currentParticipant(persisted: Participant): Task[Participant] =

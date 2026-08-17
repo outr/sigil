@@ -85,7 +85,7 @@ trait LifecycleOps { this: Sigil =>
     for {
       _ <- polymorphicRegistrations
       _ <- logger.info("Sigil initializing...")
-      _ = ContextSections.shedCascade(contextSections)
+      _ = ContextSections.shedCascade(resolvedContextSections)
       _ <- Task(Profig.initConfiguration())
       _ = instanceStarted.set(true)
       config = Profig("sigil").as[Config]

@@ -37,7 +37,7 @@ import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentPart
 import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
-import sigil.provider.{ContextSection, ContextSections, InstructionTier, ModelProfile, PromptShape, Reliability, ResolvedReferences}
+import sigil.provider.{ContextFeature, ContextFeatures, ContextSection, ContextSections, FeatureId, InstructionTier, ModelProfile, PromptShape, Reliability, ResolvedReferences}
 import sigil.service.Service
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
@@ -237,6 +237,53 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
    * without a `shed` effect fails startup.
    */
   def contextSections: List[ContextSection] = ContextSections.all
+
+  /**
+   * The registered [[sigil.provider.ContextFeature]]s — the packaging
+   * layer over [[contextSections]] for context that is computed per
+   * turn, may consult a live source, and ships toggleable by an open
+   * id. Framework features come first; apps append their own:
+   *
+   * {{{
+   * override def contextFeatures: List[ContextFeature] =
+   *   super.contextFeatures ++ List(ErpConnectivityFeature(erp))
+   * }}}
+   *
+   * Enabled features are evaluated exactly once per request and compile
+   * into sections appended to [[contextSections]], so the renderer, the
+   * profiler, the shed cascade, and `context_breakdown` see them as
+   * sections like any other.
+   */
+  def contextFeatures: List[ContextFeature] = ContextFeatures.all
+
+  /**
+   * Feature ids that must not contribute. A disabled feature compiles
+   * to no section at all, so the request is byte-for-byte what it was
+   * before the feature existed rather than carrying an empty one.
+   */
+  def disabledFeatures: Set[FeatureId] = Set.empty
+
+  /**
+   * Whether a registered feature contributes. The default honours the
+   * feature's own `defaultEnabled` unless [[disabledFeatures]] names
+   * it; apps override to switch on a module's opt-in feature, or to
+   * gate one on their own configuration.
+   */
+  def featureEnabled(feature: ContextFeature): Boolean =
+    feature.defaultEnabled && !disabledFeatures.contains(feature.id)
+
+  /** The features actually contributing, in registration order. */
+  final def enabledContextFeatures: List[ContextFeature] = contextFeatures.filter(featureEnabled)
+
+  /**
+   * [[contextSections]] plus the sections the enabled features compile
+   * to — the list every consumer reads. `contextSections` stays the
+   * declaration of the prompt's fixed layout; features append to it, so
+   * an app that replaces that layout wholesale still gets its
+   * registered features.
+   */
+  final def resolvedContextSections: List[ContextSection] =
+    contextSections ++ ContextFeatures.sections(enabledContextFeatures)
 
   /**
    * Resolve the ids on `TurnInput.criticalMemories` / `.memories` /
