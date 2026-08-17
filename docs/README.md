@@ -33,22 +33,23 @@ provider registry, a tool finder, and (optionally) participant / memory-space
 polymorphic registrations. A minimal instance looks like this:
 
 ```scala mdoc:silent
-import lightdb.id.Id
+import java.nio.file.Path
 import lightdb.store.CollectionManager
 import lightdb.upgrade.DatabaseUpgrade
-import rapid.Task
 import sigil.Sigil
-import sigil.db.{DefaultSigilDB, Model, SigilDB}
-import sigil.participant.ParticipantId
-import sigil.provider.Provider
+import sigil.db.{DefaultSigilDB, SigilDB}
+import sigil.provider.{ModelResolver, Provider}
+import sigil.provider.anthropic.AnthropicProvider
 
 object MySigil extends Sigil {
   type DB = SigilDB
 
-  override protected def buildDB(directory: Option[java.nio.file.Path],
+  override protected def buildDB(directory: Option[Path],
                                  storeManager: CollectionManager,
                                  appUpgrades: List[DatabaseUpgrade]): DB =
     new DefaultSigilDB(directory, storeManager, appUpgrades)
+
+  private lazy val myProvider: Provider = AnthropicProvider(sys.env("ANTHROPIC_API_KEY"), this)
 
   // Single backend: a Provider is itself a ModelResolver. Multiple
   // backends: `ProviderRegistry(List(llamaCpp, anthropic, cloudflare))`,
