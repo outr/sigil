@@ -35,11 +35,15 @@ import scala.concurrent.duration.*
 class CheckpointNoneFailsafeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers with BeforeAndAfterAll {
   TestSigil.initFor(getClass.getSimpleName)
   TestSigil.setProgressCheckpointInterval(2)
-  TestSigil.setHardStallIdenticalCallLimit(0) // isolate the checkpoint path
+  // Isolate the checkpoint path: the model-independent hard stall and the
+  // duplicate-call cap's refusal bound would each end this turn on their own.
+  TestSigil.setHardStallIdenticalCallLimit(0)
+  TestSigil.setDuplicateRefusalLimit(0)
 
   override protected def afterAll(): Unit = {
     TestSigil.resetProgressCheckpointInterval()
     TestSigil.resetHardStallIdenticalCallLimit()
+    TestSigil.resetDuplicateRefusalLimit()
     super.afterAll()
   }
 

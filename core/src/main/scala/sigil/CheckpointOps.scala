@@ -691,6 +691,47 @@ trait CheckpointOps { this: Sigil =>
         .reason
     }.handleError(_ => Task.pure(None))
 
+  /** Refusal-loop check — how many times ONE (tool, canonical args) group
+    * has been refused by the duplicate-call cap with nothing dispatched in
+    * between, for the group with the most such refusals. The cap detects the
+    * repeat but can only answer it with another refusal, and the refusal
+    * re-triggers the loop; past [[duplicateRefusalLimit]] the model has read
+    * the corrective as many times as it is going to and the turn is wrapped
+    * up instead.
+    *
+    * The count runs from the turn's most recent DISPATCHED call, so an agent
+    * that reads a refusal and goes on to do real work is never terminated for
+    * the refusals behind it — only one that has stopped doing anything else.
+    * Groups by the same canonical args hash the cap itself uses, so the two
+    * always agree on what "the same call" means. Cheap (one event read, no
+    * LLM); best-effort. */
+  private[sigil] final def evaluateDuplicateRefusalLoop(convId: Id[Conversation],
+                                                        agentId: ParticipantId,
+                                                        turnStartMs: Long): Task[Option[(String, Int)]] =
+    if (duplicateRefusalLimit <= 0) Task.pure(None)
+    else withDB(_.conversationEventsConsistent(convId)).map { events =>
+      val turnInvokes = events.collect {
+        case ti: sigil.event.ToolInvoke
+          if ti.participantId == agentId &&
+             ti.timestamp.value >= turnStartMs &&
+             !ti.internal => ti
+      }.sortBy(_.timestamp.value)
+      val trailing = turnInvokes.reverse.takeWhile(_.refusal.nonEmpty)
+      trailing.iterator
+        .collect {
+          case ti if ti.refusal.contains(sigil.event.DispatchRefusal.DuplicateCap) =>
+            (ti.toolName.value, ti.input.map(sigil.tool.ToolInputCanonicalizer.argsHash).getOrElse(""))
+        }
+        .toList
+        .groupBy(identity)
+        .view
+        .map { case ((name, _), group) => name -> group.size }
+        .toList
+        .sortBy(-_._2)
+        .headOption
+        .filter(_._2 >= duplicateRefusalLimit)
+    }.handleError(_ => Task.pure(None))
+
   private final def evaluateStall(convId: Id[Conversation],
                                   agentId: ParticipantId): Task[sigil.conversation.compression.StallDetector.Signal] =
     loadStallRecords(convId, agentId)

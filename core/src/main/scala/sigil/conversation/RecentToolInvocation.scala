@@ -43,6 +43,14 @@ import sigil.tool.ToolName
  *                    orchestrator refuses the duplicate but does NOT escalate
  *                    the tier on it (a stronger model issues the same call and
  *                    hits the same failure; sigil #371). Defaults `false`.
+ * @param refusal     set when the framework declined to dispatch this call
+ *                    rather than running it (see
+ *                    [[sigil.event.DispatchRefusal]]). Such an entry is
+ *                    `resulted = false` like a raced one, but for the
+ *                    opposite reason — nothing ran and nothing is coming —
+ *                    so the raced-reissue redirect must skip it and the
+ *                    duplicate-call cap counts it as a refusal already
+ *                    served rather than as a call still owed an answer.
  * @param invokeId    the originating [[sigil.event.ToolInvoke]]'s id. One
  *                    dispatch owns exactly one entry: the invoke reaches
  *                    `Complete` before its outcome settles, and the later
@@ -60,4 +68,5 @@ case class RecentToolInvocation(toolName: ToolName,
                                 invokedAt: Timestamp,
                                 resulted: Boolean = true,
                                 failed: Boolean = false,
+                                refusal: Option[sigil.event.DispatchRefusal] = None,
                                 invokeId: Option[Id[Event]] = None) derives RW

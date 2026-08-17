@@ -1598,6 +1598,9 @@ trait AgentLoopOps { this: Sigil =>
       case ForcedSynthesisReason.BudgetCeiling =>
         s"crossed its hard spend ceiling at iteration $iteration and the forced wrap-up turn also " +
           s"failed to call `respond`. Check LLM behavior; the spend gate held either way."
+      case ForcedSynthesisReason.DuplicateRefusalLoop =>
+        s"kept re-issuing a call the duplicate-call cap had already refused, and the forced wrap-up " +
+          s"turn at iteration $iteration also failed to call `respond`. Check LLM behavior."
     }
     new AgentRunawayException(s"Agent ${agent.id.value} $cause $convPart", reason)
   }

@@ -52,6 +52,10 @@ enum Directive derives RW {
   /** The iteration cap was reached; synthesize from what's gathered. */
   case CapReached(cap: Int)
 
+  /** The same call was re-issued past the duplicate-call cap's refusal
+    * bound; the turn is being wrapped up. */
+  case DuplicateRefusalLoop(toolName: String, refusals: Int)
+
   /** A `respond` refused the user without consulting the catalog. */
   case RefusalChallenge
 
@@ -101,6 +105,7 @@ enum Directive derives RW {
     case StallAskUser            => Directive.StallDetectedName
     case StallAskSupervisor      => Directive.StallDetectedName
     case _: CapReached           => Directive.CapReachedName
+    case _: DuplicateRefusalLoop => Directive.RefusalLoopName
     case RefusalChallenge        => Directive.RefusalChallengeName
     case _: TurnDecisionRequired => Orchestrator.TurnDecisionToolName
     case _: RepeatedQueryIntercept => Directive.RepeatedQueryInterceptName
@@ -163,6 +168,13 @@ enum Directive derives RW {
       s"You've reached the iteration cap ($cap turns) for this user request. " +
         "Synthesize a response NOW from what you've gathered so far — call `respond` with " +
         "your findings. Do not call any more discovery / read / search tools."
+
+    case DuplicateRefusalLoop(toolName, refusals) =>
+      s"You have re-issued `$toolName` with identical arguments after it was refused $refusals " +
+        "times this turn. Repeating it cannot produce a different result and nothing else has " +
+        "advanced. Stop calling it and call `respond` NOW with what you already have — an honest " +
+        "partial answer, including what you could not determine and why. Use `respond_options` " +
+        "instead if you need the user to choose a direction."
 
     case RefusalChallenge =>
       "Your previous `respond` refused the user without first calling `find_capability` (see the " +
@@ -232,6 +244,7 @@ object Directive {
   val RepeatedQueryInterceptName: String = "_repeated_query_intercept"
   val StallDetectedName: String = "_stall_detected"
   val CapReachedName: String = "_cap_reached"
+  val RefusalLoopName: String = "_refusal_loop"
 
   /** Wire names of the directives whose frames survive the curator's
     * stale-internal-frame shed. Membership source for consumers that

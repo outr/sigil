@@ -606,6 +606,18 @@ object TestSigil extends Sigil {
   def resetHardStallIdenticalCallLimit(): Unit = hardStallLimitRef.set(None)
 
   /**
+   * Settable per-group refusal bound. Specs that deliberately run a long
+   * identical-call streak to exercise a DIFFERENT guard set it to 0 so the
+   * turn isn't wrapped up before that guard is reached.
+   */
+  private val duplicateRefusalLimitRef =
+    new java.util.concurrent.atomic.AtomicReference[Option[Int]](None)
+  override def duplicateRefusalLimit: Int =
+    duplicateRefusalLimitRef.get().getOrElse(super.duplicateRefusalLimit)
+  def setDuplicateRefusalLimit(n: Int): Unit = duplicateRefusalLimitRef.set(Some(n))
+  def resetDuplicateRefusalLimit(): Unit = duplicateRefusalLimitRef.set(None)
+
+  /**
    * Per-test ToolFinder override — specs that need a synthetic
    * tool catalog (consent gate, toolchain boost, etc.) install
    * one without touching the persisted DB tools. `None` reverts

@@ -36,6 +36,10 @@ enum ForcedSynthesisReason {
   case NoToolCall
   /** Progress-checkpoint intervention. */
   case StallIntervention
+  /** One (tool, args) group was refused by the duplicate-call cap past
+    * its refusal bound — the model kept re-issuing a call the framework
+    * had already convicted, so the turn was wrapped up. */
+  case DuplicateRefusalLoop
   /** The turn (or conversation) crossed its hard spend ceiling —
     * the forced turn wraps up with a spend-and-state report. */
   case BudgetCeiling
