@@ -243,6 +243,65 @@ object Orchestrator {
       (Some(msg), id)
     }
 
+  /**
+   * Settle the prose the model spoke alongside its tool calls as a
+   * preamble Message, ahead of the invoke, and reset the streaming-
+   * Message slot for the tool dispatch that follows.
+   *
+   * Both wire families reach the same durable record by different
+   * routes. Block-wire prose (Anthropic / Google / Responses) already
+   * streamed into a born Message, but its per-chunk deltas are
+   * `complete = false` and wire-only, so the block is flushed here —
+   * without that the Message settles empty and the narration is lost
+   * from the transcript the next iteration reads. Chat-completions
+   * prose only buffered: birthing it on arrival would surface the
+   * forced-tool_choice drift [[sigil.governor.PlainTextReplyGovernor]]
+   * exists to drop, so its Message is born at this boundary, where a
+   * tool call has proven the text was narration rather than drift. That
+   * field also carries reasoning the backend mis-split out of
+   * `reasoning_content`, which [[ReasoningResidue]] separates out — a
+   * fragment that was only a thinking-block tail commits nothing.
+   *
+   * `supersededByReply` marks a completion that calls a respond-family
+   * tool: that call publishes the turn's reply itself, so prose beside
+   * it is the model saying its answer twice rather than narrating a
+   * plan, and committing it would put the same words in two bubbles.
+   *
+   * With nothing to commit the block branch still settles a born
+   * Message and the buffered branch is a no-op, preserving a
+   * `ThinkingDelta`-reserved id for the tool call to adopt.
+   */
+  private def commitPreamble(state: State,
+                             supersededByReply: Boolean,
+                             caller: ParticipantId,
+                             convId: Id[Conversation],
+                             topicId: Id[Topic],
+                             request: ConversationRequest,
+                             modelDisplayName: Option[String]): List[Signal] = {
+    val signals: List[Signal] =
+      if (state.activeMessageCreated) {
+        val flush = OrphanSettlement.closeCurrentBlock(state, convId)
+        val settle = state.activeMessageId.toList.map(id =>
+          StateDelta(target = id, conversationId = convId, state = EventState.Complete))
+        if (supersededByReply) settle else flush ::: settle
+      } else if (!supersededByReply && ReasoningResidue.spoken(state.preambleBuffer.toString)) {
+        val text = ReasoningResidue.strip(state.preambleBuffer.toString)
+        val (created, msgId) = openStreamingMessage(state, caller, convId, topicId, request, modelDisplayName)
+        created.toList ::: List[Signal](MessageDelta(
+          target             = msgId,
+          conversationId     = convId,
+          contentReplacement = Some(Vector(ResponseContent.Text(text))),
+          state              = Some(EventState.Complete)
+        ))
+      } else Nil
+    state.preambleBuffer.clear()
+    if (state.activeMessageCreated) {
+      state.activeMessageId = None
+      state.activeMessageCreated = false
+    }
+    signals
+  }
+
   private def translate(event: ProviderEvent,
                         sigil: Sigil,
                         request: ConversationRequest,
@@ -286,21 +345,20 @@ object Orchestrator {
         // preserving the corruption-resistance invariant.
         val invokeId = Event.id()
         state.activeCalls(callId) = ActiveCall(toolName, invokeId)
-        // Preserve a thinking-reserved `activeMessageId` so the atomic
-        // tool can adopt it via `TurnContext.currentMessageId`,
-        // ensuring `ThinkingChunk.target` matches the eventual settled
-        // Message id even on tool-call-only respond paths. A streaming
-        // Message that was already born (`activeMessageCreated`) DOES
-        // get cleared — the tool call boundary opens a new tool
-        // dispatch and the prior streaming Message is settled elsewhere.
-        if (state.activeMessageCreated) {
-          state.activeMessageId = None
-          state.activeMessageCreated = false
-        }
+        // This boundary is where prose the model spoke before acting
+        // becomes a preamble Message: the tool call is what proves the
+        // text was narration. `commitPreamble` settles it and clears
+        // the streaming-Message slot for the dispatch that follows,
+        // while preserving a thinking-reserved `activeMessageId` so the
+        // atomic tool can adopt it via `TurnContext.currentMessageId`
+        // and `ThinkingChunk.target` still matches the eventual settled
+        // Message id on tool-call-only respond paths.
+        if (RespondFamilyTool.containsRaw(toolName)) state.sawReplyCall = true
+        val preamble = commitPreamble(state, state.sawReplyCall, caller, convId, topicId, request, modelDisplayName)
         state.currentKind = None
         state.currentArg = None
         state.sawAnyToolCall = true
-        Stream.empty
+        Stream.emits(preamble)
 
       case ProviderEvent.ContentBlockStart(_, blockType, arg) =>
         // Close the previous block if one was open, then start tracking the new kind.
@@ -1290,8 +1348,16 @@ object Orchestrator {
         // and it is dropped post-stream with a diagnostic rather than
         // shown to the user.
         state.plainTextBuffer.append(text)
-        if (!Provider.rejectsForcedToolChoice(request.modelId)) Stream.empty
-        else {
+        if (!Provider.rejectsForcedToolChoice(request.modelId)) {
+          // Hold the prose rather than discarding it. A tool call later
+          // in this completion makes it narration, and `commitPreamble`
+          // settles it ahead of the invoke exactly as the block wire's
+          // preamble settles; a completion that never calls a tool
+          // leaves it undrained, and the drop plus its diagnostic stay
+          // the outcome governors' call.
+          state.preambleBuffer.append(text)
+          Stream.empty
+        } else {
           // The model's forced tool choice was demoted to `auto`, so
           // prose is its committed answer — the same standing the
           // `ContentBlockDelta` wire's text carries. Birth the Message on
@@ -1446,6 +1512,19 @@ object Orchestrator {
         // activeCalls) and the frame renderer surfaces the misleading
         // "tool's executeResult — please report it" framework error
         // instead.
+        //
+        // Prose that landed AFTER the completion's last tool call is the
+        // same narration as a preamble, only later in the stream, and it
+        // settles the same way — otherwise where in the completion the
+        // model chose to speak would decide whether its words survive.
+        // Held back while a call is still unsettled: a truncated call's
+        // in-flight text belongs to the orphan path's diagnosis below.
+        val trailingProse: List[Signal] =
+          if (state.sawAnyToolCall && state.activeCalls.isEmpty &&
+            (ReasoningResidue.spoken(state.preambleBuffer.toString) ||
+              (state.activeMessageCreated && state.currentBuffer.nonEmpty)))
+            commitPreamble(state, state.sawReplyCall, caller, convId, topicId, request, modelDisplayName)
+          else Nil
         val orphanedCalls = state.activeCalls.values.toList
         val reasonFor: ActiveCall => String = stopReason match {
           case StopReason.MaxTokens =>
@@ -1504,7 +1583,7 @@ object Orchestrator {
               case OutcomeVerdict.Emit(additional) => emitted ++ additional
             })
           }
-        Stream.force(governed.map(votes => Stream.emits(closeOrphan ++ votes)))
+        Stream.force(governed.map(votes => Stream.emits(trailingProse ++ closeOrphan ++ votes)))
       case ProviderEvent.Error(msg)                       =>
         // Bug #50 — surface the provider/validator failure as a
         // Tool-role Message so the agent's next iteration sees a

@@ -115,6 +115,27 @@ private[orchestrator] final class State(val dialect: SchemaDialect = SchemaDiale
   val plainTextBuffer: StringBuilder = new StringBuilder
   var sawAnyToolCall: Boolean = false
 
+  /** Chat-completions prose not yet accounted for by a Message. The
+    * wire delivers assistant narration and tool calls in one
+    * completion, and which of the two the prose was — a preamble the
+    * model spoke before acting, or drift under a forced tool choice —
+    * is only knowable once the completion reveals whether a tool call
+    * follows. So the text is held here instead of being born on
+    * arrival, and `Orchestrator.commitPreamble` drains it into a
+    * settled Message at the first tool call; a completion that never
+    * calls one leaves it undrained and the outcome governors decide
+    * from [[plainTextBuffer]]. Block-wire prose needs no equivalent —
+    * it births its Message on arrival and is committed from
+    * [[currentBuffer]]. */
+  val preambleBuffer: StringBuilder = new StringBuilder
+
+  /** Whether this completion called a respond-family tool — the tools
+    * that publish the turn's user-visible reply. Prose the model spoke
+    * in the same completion is then its answer said twice, not a
+    * narrated plan, and committing it would put the same words in two
+    * bubbles; `Orchestrator.commitPreamble` drops it. */
+  var sawReplyCall: Boolean = false
+
   /** Bug #87 — keys (toolName + canonical args JSON) of atomic tool
     * calls already dispatched this turn. When the model emits
     * multiple `function_call`s in one completion that share a key

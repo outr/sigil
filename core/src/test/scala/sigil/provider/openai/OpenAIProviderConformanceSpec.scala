@@ -36,6 +36,17 @@ class OpenAIProviderConformanceSpec extends AbstractProviderConformanceSpec {
     """data: {"type":"response.completed","response":{"id":"resp_conf1","status":"completed","usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18}}}"""
   ))
 
+  // A `message` output item narrating the plan, then the `function_call`
+  // item — the shape a model takes when it speaks before acting.
+  override protected def proseWithToolTurnEvents: Vector[ProviderEvent] = parseAll(List(
+    """data: {"type":"response.created","response":{"id":"resp_conf2"}}""",
+    """data: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg_conf2","role":"assistant"}}""",
+    """data: {"type":"response.output_text.delta","delta":"Working on it."}""",
+    """data: {"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"fc_conf2","call_id":"call_conf2","name":"conformance_optionals"}}""",
+    """data: {"type":"response.function_call_arguments.delta","delta":"{\"title\":\"t\"}"}""",
+    """data: {"type":"response.completed","response":{"id":"resp_conf2","status":"completed","usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18}}}"""
+  ))
+
   override protected def midStreamErrorOutcome: Either[Throwable, Vector[ProviderEvent]] =
     try Right(parseAll(List(
       """data: {"type":"error","error":{"code":"server_error","message":"upstream exploded mid-stream"}}"""

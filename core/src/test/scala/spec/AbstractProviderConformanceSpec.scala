@@ -99,6 +99,16 @@ trait AbstractProviderConformanceSpec extends AnyWordSpec with Matchers {
     * see. */
   protected def toolTurnEvents: Vector[ProviderEvent]
 
+  /** The narration a completion speaks alongside its tool call. */
+  protected val conformancePreamble: String = "Working on it."
+
+  /** Parse this wire's canonical speak-then-call completion: assistant
+    * narration and one complete tool call in the SAME completion. The
+    * orchestrator settles that narration as a preamble Message ahead of
+    * the invoke, so a wire that drops `content` once `tool_calls` are
+    * present loses the model's stated plan from its own transcript. */
+  protected def proseWithToolTurnEvents: Vector[ProviderEvent]
+
   /** Parse this wire's canonical mid-stream inline-error fixture.
     * `Left` when the parser throws (the standard
     * [[ProviderStreamException]] path); `Right` with the emitted events
@@ -269,6 +279,24 @@ trait AbstractProviderConformanceSpec extends AnyWordSpec with Matchers {
         usageIdx should be > completeIdx
         doneIdx should be > usageIdx
         doneIdx shouldBe (events.size - 1)
+      }
+    }
+
+    "carry prose spoken alongside a tool call, ahead of the call's completion" in {
+      val events = proseWithToolTurnEvents
+      val textAt = events.zipWithIndex.collect {
+        case (ProviderEvent.TextDelta(t), i)            => (i, t)
+        case (ProviderEvent.ContentBlockDelta(_, t), i) => (i, t)
+      }
+      val completeIdx = events.indexWhere(_.isInstanceOf[ProviderEvent.ToolCallComplete])
+      withClue(s"event sequence: $events: ") {
+        withClue("the narration never reached the orchestrator: ") {
+          textAt.map(_._2).mkString should include(conformancePreamble)
+        }
+        completeIdx should be >= 0
+        withClue("narration must precede the call it introduces: ") {
+          textAt.head._1 should be < completeIdx
+        }
       }
     }
 

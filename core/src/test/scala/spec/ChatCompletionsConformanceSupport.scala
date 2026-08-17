@@ -32,6 +32,10 @@ trait ChatCompletionsConformanceSupport { this: AbstractProviderConformanceSpec 
     "data: [DONE]"
   ))
 
+  // This wire's canonical tool-call turn already speaks before it calls:
+  // `delta.content` and `delta.tool_calls` ride the same completion.
+  override protected def proseWithToolTurnEvents: Vector[ProviderEvent] = toolTurnEvents
+
   override protected def midStreamErrorOutcome: Either[Throwable, Vector[ProviderEvent]] =
     try Right(parseAll(List(
       """data: {"choices":[{"delta":{"content":"partial"}}]}""",
