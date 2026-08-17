@@ -77,8 +77,8 @@ object TestSigil extends Sigil {
 
   /**
    * Host the LlamaCpp test specs hit. Resolution order:
-   *   1. `SIGIL_LLAMACPP_HOST` env var IF that host accepts a TCP
-   *      connection within the probe window — lets local-dev runs
+   *   1. `SIGIL_LLAMACPP_HOST` env var IF that host answers the
+   *      OpenAI-compatible model listing — lets local-dev runs
    *      against a developer's own llama.cpp server (the default
    *      `/etc/environment` setting on the maintainer's machine).
    *   2. `sigil.llamacpp.host` profig key when set.
@@ -89,40 +89,55 @@ object TestSigil extends Sigil {
    * developer's machine or CI box, regardless of whether a local
    * llama.cpp happens to be running.
    */
-  lazy val llamaCppHost: URL = {
-    val configured: Option[URL] = sys.env.get("SIGIL_LLAMACPP_HOST")
-      .flatMap(URL.get(_).toOption)
-      .orElse {
-        val path = Profig("sigil.llamacpp.host")
-        if (path.exists()) scala.util.Try(path.as[URL]).toOption else None
-      }
-    val voidcraft: URL = url"https://llama.voidcraft.ai"
-    configured match {
-      case Some(host) if hostReachable(host) => host
-      case Some(stale) =>
-        scribe.warn(s"TestSigil.llamaCppHost: configured host $stale is unreachable; falling back to $voidcraft")
-        voidcraft
-      case None => voidcraft
+  lazy val llamaCppHost: URL = resolveLlamaCppHost(configuredLlamaCppHost, url"https://llama.voidcraft.ai")
+
+  /** The operator-supplied host override, if any — env var first, then Profig. */
+  private[spec] def configuredLlamaCppHost: Option[URL] = sys.env.get("SIGIL_LLAMACPP_HOST")
+    .flatMap(URL.get(_).toOption)
+    .orElse {
+      val path = Profig("sigil.llamacpp.host")
+      if (path.exists()) scala.util.Try(path.as[URL]).toOption else None
     }
+
+  /**
+   * Select between an operator-supplied `configured` host and the public
+   * `fallback`, warning when a configured host fails its health check.
+   */
+  private[spec] def resolveLlamaCppHost(configured: Option[URL], fallback: URL): URL = configured match {
+    case Some(host) if hostHealthy(host) => host
+    case Some(unhealthy) =>
+      scribe.warn(s"TestSigil.llamaCppHost: configured host $unhealthy is not serving /v1/models; falling back to $fallback")
+      fallback
+    case None => fallback
   }
 
   /**
-   * Open a TCP socket to `url`'s host:port with a 1-second timeout.
-   * Used to fast-skip `SIGIL_LLAMACPP_HOST` overrides that point at a
-   * stale local server so test runs don't wait for okhttp's default
-   * connection timeout × N tests.
+   * `GET /v1/models` against `url`, treating any 2xx as healthy.
+   *
+   * A bare TCP connect is not enough: an unrelated service squatting on
+   * the port accepts the socket and then 404s every `/v1` call, so the
+   * host passes the probe and every live suite fails on raw HTTP 404s
+   * instead of degrading to the public endpoint. Asking for the endpoint
+   * the suites actually use makes the probe answer the question that
+   * matters — "is a llama.cpp server behind this port?" — rather than
+   * "is anything listening?".
    */
-  private def hostReachable(url: URL): Boolean = {
-    val port = url.port
-    val socket = new java.net.Socket()
+  private[spec] def hostHealthy(url: URL): Boolean =
     try {
-      socket.connect(new java.net.InetSocketAddress(url.host, port), 1000)
-      true
+      val connection = java.net.URI.create(url.withPath("/v1/models").toString).toURL
+        .openConnection()
+        .asInstanceOf[java.net.HttpURLConnection]
+      try {
+        connection.setRequestMethod("GET")
+        connection.setConnectTimeout(1000)
+        connection.setReadTimeout(1000)
+        val status = connection.getResponseCode
+        status >= 200 && status < 300
+      } finally
+        scala.util.Try(connection.disconnect())
     } catch {
       case _: Throwable => false
-    } finally
-      scala.util.Try(socket.close())
-  }
+    }
 
   /**
    * Per-conversation workspace overrides for tests that exercise

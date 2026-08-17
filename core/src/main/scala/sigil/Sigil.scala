@@ -2829,9 +2829,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
    *
    * Apps that want a stricter posture (fail-closed, "if we don't know
    * the model don't send the param") override this hook.
+   *
+   * A parameter the model has been directly observed rejecting is always
+   * unsupported, whatever the catalog claims — an upstream that still
+   * lists a deprecated sampling parameter is wrong, and the 400 it
+   * answered with is the better evidence.
    */
   def supportsParameter(modelId: Id[Model], parameterName: String): Boolean =
-    cache.find(modelId) match {
+    if (Provider.rejectsSamplingParam(modelId, parameterName)) false
+    else cache.find(modelId) match {
       case Some(model) if model.supportedParameters.nonEmpty =>
         model.supportedParameters.contains(parameterName)
       case _ => true

@@ -296,10 +296,16 @@ trait Provider extends Service with ModelResolver {
             // so we don't re-pay the #387 400-then-downgrade round-trip on
             // every agent-loop iteration. The respond family is always in the
             // roster, so Auto still lets the agent act.
-            val routed =
+            // Sampling params get the same treatment: a model already known
+            // to reject `temperature` / `top_p` has them omitted here rather
+            // than re-paying the 400-then-strip round-trip per call. Applied
+            // centrally so it holds for every provider, not only the ones
+            // whose renderers consult the catalog.
+            val routed = Provider.omitRejectedSamplingParams(
               if (safe.toolChoice.isForced && Provider.rejectsForcedToolChoice(safe.model._id))
                 safe.copy(toolChoice = ToolChoice.Auto)
               else safe
+            )
             Stream.force(
               admitToWindow(request.modelId, estimateRequest(routed))
                 .map { _ =>
@@ -565,6 +571,12 @@ trait Provider extends Service with ModelResolver {
                 // deprecated for this model." Strips temperature AND topP (the
                 // whole category, so the API doesn't 400 again on top_p). At most
                 // one strip per call; composes with the tool_choice downgrade.
+                // Remember the rejection so later calls (this turn's remaining
+                // iterations, every framework consult, and every future turn)
+                // omit the parameters up front instead of re-paying this
+                // round-trip. The 400 itself is the evidence — the retry's
+                // outcome doesn't change what the model just refused.
+                Provider.SamplingParameterNames.foreach(Provider.recordRejectedSamplingParam(currentCall.model._id, _))
                 scribe.warn(
                   s"Sigil #390 — model ${currentCall.model._id.value} rejected a deprecated sampling " +
                     s"parameter; stripping temperature/topP and retrying once"
@@ -1802,6 +1814,54 @@ object Provider {
     * that retries the same call once with `temperature` / `topP` stripped. */
   def isDeprecatedSamplingParam(t: Throwable): Boolean =
     messageChainContains(t, DeprecatedSamplingParamMarker)
+
+  /** Process-wide memo of models observed to reject a sampling parameter.
+    * The self-heal above is stateless per call, so without this EVERY call
+    * to such a model re-pays the 400-then-strip round-trip — once per
+    * agent-loop iteration, plus once per framework consult (topic
+    * classifier, memory extractor). The catalog can't gate it proactively
+    * when it's cold or when the upstream still lists the parameter as
+    * supported, so the honest signal is the directly-observed rejection:
+    * trip the memo on the first 400, then omit the parameter up front on
+    * every later call. Model-keyed (rejection is a property of the model,
+    * not the provider instance) and shared across all providers.
+    * In-memory: re-discovered once per process after restart, which is
+    * what the durable catalog path is for. */
+  private val rejectedSamplingParams: java.util.Set[String] =
+    java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+
+  private def samplingMemoKey(modelId: Id[Model], parameterName: String): String =
+    s"${modelId.value} $parameterName"
+
+  /** Record that `modelId` rejected `parameterName` (e.g. `"temperature"`,
+    * `"top_p"`). Idempotent. */
+  def recordRejectedSamplingParam(modelId: Id[Model], parameterName: String): Unit = {
+    rejectedSamplingParams.add(samplingMemoKey(modelId, parameterName))
+    ()
+  }
+
+  /** Whether `modelId` is known (this process) to reject `parameterName`. */
+  def rejectsSamplingParam(modelId: Id[Model], parameterName: String): Boolean =
+    rejectedSamplingParams.contains(samplingMemoKey(modelId, parameterName))
+
+  /** The sampling parameters the self-heal strips as a category — a model
+    * that deprecates one of them deprecates the other, and stripping both
+    * at once keeps the retry from 400ing again on the sibling. */
+  val SamplingParameterNames: Set[String] = Set("temperature", "top_p")
+
+  /** Drop from `call` every sampling parameter this model has already been
+    * observed to reject, so the wasted round-trip is paid once per model
+    * per process rather than on every call. */
+  private[provider] def omitRejectedSamplingParams(call: ProviderCall): ProviderCall = {
+    val settings = call.generationSettings
+    val dropTemperature = settings.temperature.isDefined && rejectsSamplingParam(call.model._id, "temperature")
+    val dropTopP = settings.topP.isDefined && rejectsSamplingParam(call.model._id, "top_p")
+    if (!dropTemperature && !dropTopP) call
+    else call.copy(generationSettings = settings.copy(
+      temperature = if (dropTemperature) None else settings.temperature,
+      topP = if (dropTopP) None else settings.topP
+    ))
+  }
 
   /** Case-insensitively test whether `t` or any throwable in its cause chain
     * carries `needle` in its message — cycle-guarded, so it works regardless
