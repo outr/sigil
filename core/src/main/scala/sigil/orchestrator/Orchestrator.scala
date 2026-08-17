@@ -5,7 +5,7 @@ import lightdb.time.Timestamp
 import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
-import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome}
+import sigil.event.{DispatchRefusal, Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome}
 import sigil.governor.{OutcomeVerdict, TurnOutcome}
 import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, ProviderImage, SchemaDialect, StopReason, XmlToolCallSanitizer}
@@ -434,14 +434,19 @@ object Orchestrator {
         // exactly the loop those intercepts exist to end.
         //
         // A REFUSED dispatch is not one of them and keeps the `Pending`
-        // outcome its sibling refusal (the duplicate-call cap below)
-        // already carries: no tool ran, so nothing settled. `Success`
-        // there is read by every consumer of the durable row as a tool
-        // that ran and changed state — the progress checkpoint counts
-        // exactly that as its mutation evidence, and a turn whose every
-        // call is refused would report meaningful progress forever.
+        // outcome: no tool ran, so nothing settled. `Success` there is
+        // read by every consumer of the durable row as a tool that ran
+        // and changed state — the progress checkpoint counts exactly
+        // that as its mutation evidence, and a turn whose every call is
+        // refused would report meaningful progress forever. It carries a
+        // [[DispatchRefusal]] instead, which is what separates it from
+        // the raced Pending it would otherwise be indistinguishable from.
         val settledPrefix: List[Signal] = toolDeltaPrefix.map {
           case td: ToolDelta => td.copy(outcome = Some(ToolOutcome.Success))
+          case other         => other
+        }
+        def refusedPrefix(refusal: DispatchRefusal): List[Signal] = toolDeltaPrefix.map {
+          case td: ToolDelta => td.copy(refusal = Some(refusal))
           case other         => other
         }
         // A call the framework answers from its own records settles with the
@@ -659,7 +664,7 @@ object Orchestrator {
                     visibility     = MessageVisibility.Agents,
                     origin         = Some(invokeId)
                   )
-                  return Stream.emits(toolDeltaPrefix ::: List[Signal](
+                  return Stream.emits(refusedPrefix(DispatchRefusal.PerResponseCap) ::: List[Signal](
                     capMsg,
                     StateDelta(target = capMsg._id, conversationId = convId, state = EventState.Complete)
                   ))
@@ -698,13 +703,18 @@ object Orchestrator {
                 // notice) so it stops losing the race.
                 val racedReissueLimit = sigil.maxRacedReissues
                 if (racedReissueLimit > 0) {
+                  // A REFUSED prior never raced — nothing ran, so no result is
+                  // on its way. Counting refusals here would let this redirect
+                  // pre-empt the very cap that produced them and answer a call
+                  // that never started with "your result arrived late".
                   val racedPrior = request.turnInput
                     .projectionFor(caller)
                     .recentToolInvocations
                     .count(inv => inv.toolName.value == toolName
                                && inv.argsHash == canonicalHash
                                && inv.invokedAt.value >= turnStartMs
-                               && !inv.resulted)
+                               && !inv.resulted
+                               && inv.refusal.isEmpty)
                   if (racedPrior >= racedReissueLimit) {
                     // Sigil #420 — the refusal must tell the truth about the
                     // raced call, not guess. "Raced" only means the result
@@ -756,7 +766,7 @@ object Orchestrator {
                           visibility     = MessageVisibility.Agents,
                           origin         = Some(invokeId)
                         )
-                        Stream.emits(toolDeltaPrefix ::: List[Signal](
+                        Stream.emits(refusedPrefix(DispatchRefusal.RacedReissue) ::: List[Signal](
                           racedMsg,
                           StateDelta(target = racedMsg._id, conversationId = convId, state = EventState.Complete)
                         ))
@@ -779,8 +789,23 @@ object Orchestrator {
                              // roster-restriction spiral.
                              && inv.resulted)
                 val priorIdentical = matchingPrior.size
-                if (priorIdentical >= identicalLimit - 1) {
-                  val attemptedCount = priorIdentical + 1
+                // Refusals of THIS group already served this turn. A refused
+                // dispatch produces no result, so it never joins
+                // `matchingPrior`; counting refusals separately is what keeps
+                // the arithmetic moving instead of parking one short of the
+                // limit forever. The group is convicted once — from the first
+                // refusal on every identical call is refused — while the count
+                // the agent reads keeps climbing and the refusal bound
+                // ([[sigil.Sigil.duplicateRefusalLimit]]) ends the turn.
+                val refusedPrior = request.turnInput
+                  .projectionFor(caller)
+                  .recentToolInvocations
+                  .count(inv => inv.toolName.value == toolName
+                             && inv.argsHash == canonicalHash
+                             && inv.invokedAt.value >= turnStartMs
+                             && inv.refusal.contains(DispatchRefusal.DuplicateCap))
+                if (priorIdentical >= identicalLimit - 1 || refusedPrior > 0) {
+                  val attemptedCount = priorIdentical + refusedPrior + 1
                   val preview = _root_.sigil.tool.ToolInputCanonicalizer.argsPreview(input)
                   val previewText = if (preview.nonEmpty) s" `$preview`" else ""
                   // Sigil #371 — a duplicate-call loop whose prior identical
@@ -793,31 +818,36 @@ object Orchestrator {
                   // same small/weak model that produced the duplicate
                   // keeps producing it. Bump the per-turn complexity
                   // tier so the next iteration routes to a more capable
-                  // model that can actually reason its way out. The
-                  // escalation is one-shot per call site: keeps
-                  // climbing each time the cap fires, clamps at the
-                  // top tier. Synchronous so the Failure body can
-                  // mention the new tier in its didactic text. Apps
-                  // that don't want the auto-bump set
-                  // `escalateOnDuplicateCallCap = false`.
+                  // model that can actually reason its way out.
+                  // Synchronous so the Failure body can mention the new
+                  // tier in its didactic text. Apps that don't want the
+                  // auto-bump set `escalateOnDuplicateCallCap = false`.
+                  //
+                  // Once per group per turn: the FIRST refusal escalates,
+                  // and the repeats that follow it re-state the refusal
+                  // without laddering the tier. A model that re-issues the
+                  // same call five times is not five separate signals that
+                  // a stronger model is needed.
+                  val firstRefusalOfGroup = refusedPrior == 0
                   val (newTier, escalated) =
-                    if (sigil.escalateOnDuplicateCallCap && !seamLoop)
+                    if (sigil.escalateOnDuplicateCallCap && !seamLoop && firstRefusalOfGroup)
                       sigil.requestEscalation(convId, reason = s"duplicate-call cap on `$toolName`").sync()
                     else (_root_.sigil.provider.Complexity.Medium, false)
                   val escalationText =
                     if (escalated)
                       s" Next iteration will run on the ${newTier.toString} tier — re-read this " +
                         "Failure and pick a different next move."
-                    else if (seamLoop)
+                    else if (seamLoop && firstRefusalOfGroup)
                       s" `$toolName` keeps failing on these exact args — a different model won't change " +
                         "that. Switch tool or arguments, or ask the user for direction."
-                    else if (sigil.escalateOnDuplicateCallCap)
+                    else if (sigil.escalateOnDuplicateCallCap && firstRefusalOfGroup)
                       " Already on the top tier — if you can't make progress, call `respond_options` " +
                         "asking the user for direction."
                     else ""
+                  val priorAttempts = priorIdentical + refusedPrior
                   val body =
                     s"Refused to dispatch `$toolName` -- you have already called this tool with " +
-                      s"these exact args $priorIdentical times in the recent window (this would " +
+                      s"these exact args $priorAttempts times in the recent window (this would " +
                       s"be call #$attemptedCount).$previewText The result will not change. Try a " +
                       "different approach: narrow the pattern, switch to a different tool, or ask " +
                       "the user for clarification." + escalationText
@@ -832,7 +862,7 @@ object Orchestrator {
                     visibility     = MessageVisibility.Agents,
                     origin         = Some(invokeId)
                   )
-                  return Stream.emits(toolDeltaPrefix ::: List[Signal](
+                  return Stream.emits(refusedPrefix(DispatchRefusal.DuplicateCap) ::: List[Signal](
                     capMsg,
                     StateDelta(target = capMsg._id, conversationId = convId, state = EventState.Complete)
                   ))

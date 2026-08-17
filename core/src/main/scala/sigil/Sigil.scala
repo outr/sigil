@@ -17,7 +17,7 @@ import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
-import sigil.governor.{BudgetDirective, BudgetGovernor, CheckpointIntervention, GovernorContext}
+import sigil.governor.{BudgetDirective, BudgetGovernor, CheckpointIntervention, DuplicateRefusalGovernor, GovernorContext}
 import sigil.governor.{DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
   ProgressGovernor, TurnDecisionGovernor, TurnGovernor}
 import sigil.transport.SignalTransport
@@ -2440,7 +2440,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
     * chance first. 0 disables. */
   protected def hardStallIdenticalCallLimit: Int = 6
 
+  /** How many times ONE (tool, canonical args) group may be refused by the
+    * duplicate-call cap in a single turn before the framework stops refusing
+    * and ends the turn through forced synthesis.
+    *
+    * A refusal is a Tool-role Failure, so it re-triggers the agent loop: a
+    * model that re-issues the same call regardless spends every remaining
+    * iteration collecting refusals. The cap stays the detector — this is the
+    * bound on how long detection alone is allowed to run before the turn is
+    * wrapped up with whatever the agent has. Small by design: the first
+    * refusal carries the corrective note and the tier escalation, the second
+    * proves the model isn't reading it. 0 (or negative) disables the
+    * termination, restoring refuse-forever. */
+  protected[sigil] def duplicateRefusalLimit: Int = 2
+
   private lazy val budgetGovernor: BudgetGovernor = new BudgetGovernor(this)
+  private lazy val duplicateRefusalGovernor: DuplicateRefusalGovernor = new DuplicateRefusalGovernor(this)
   private lazy val progressGovernor: ProgressGovernor = new ProgressGovernor(this)
 
   /** The guards consulted at every agent-loop iteration boundary, in
@@ -2450,7 +2465,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
     * The default order puts the spend budget ahead of the progress
     * checkpoint: a dollar-a-minute turn must not wait for a checkpoint
     * interval, and the checkpoint's LLM reflection must not be paid for
-    * at a boundary the budget gate already claimed.
+    * at a boundary the budget gate already claimed. The refusal-loop
+    * backstop goes last: by the time it can fire, the agent has already
+    * read two refusals, and every richer guard ahead of it keeps the
+    * boundaries it would have claimed anyway.
     *
     * Apps override to append their own guards, drop a built-in, or
     * reorder. Append (`super.turnGovernors :+ mine`) unless preemption
@@ -2458,7 +2476,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
     * boundaries ahead of every one of them, the hard spend ceiling
     * included. The iteration cap and the orchestrator's mid-stream
     * intercepts are NOT governors — see [[TurnGovernor]] for why. */
-  protected def turnGovernors: List[TurnGovernor] = List(budgetGovernor, progressGovernor)
+  protected def turnGovernors: List[TurnGovernor] =
+    List(budgetGovernor, progressGovernor, duplicateRefusalGovernor)
 
   private lazy val plainTextReplyGovernor: PlainTextReplyGovernor = new PlainTextReplyGovernor
   private lazy val degenerateGenerationGovernor: DegenerateGenerationGovernor = new DegenerateGenerationGovernor()

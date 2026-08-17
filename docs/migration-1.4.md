@@ -479,6 +479,30 @@ The required-union rule runs in the boot completeness pass against the final reg
   now settles its `ToolInvoke` with `ToolOutcome.Success` instead of leaving it `Pending`. A
   *refused* dispatch settles no outcome. Knobs: `maxIdenticalToolCallsInWindow` (3),
   `maxRacedReissues` (2), `maxToolCallsPerResponse` (8), `recentToolInvocationsLimit` (20).
+- **A refused dispatch is marked, and refusals of one call group are bounded.** A dispatch the
+  framework declines still leaves its `ToolInvoke` outcome `Pending` (no tool ran), which used to
+  make it indistinguishable from a call whose result raced past the frame. `ToolInvoke`,
+  `ToolDelta`, and `RecentToolInvocation` gained `refusal: Option[sigil.event.DispatchRefusal]`
+  (`DuplicateCap` / `PerResponseCap` / `RacedReissue`; defaults `None`, so existing construction
+  sites and persisted rows are unaffected) naming which guard answered. Two counters read it: the
+  raced-reissue redirect now skips refused entries — it fired on calls that never ran and
+  pre-empted the duplicate cap after two refusals — and the duplicate cap counts its own prior
+  refusals, so its count no longer freezes one short of the limit. Consequences: the cap keeps
+  refusing a convicted `(tool, args)` group for the rest of the turn, the tier escalation rides
+  the FIRST refusal of a group only (repeats no longer ladder tiers), and the count the refusal
+  reports back to the model climbs instead of repeating "2 times" forever.
+
+  After `duplicateRefusalLimit` (new `protected[sigil]` knob on `Sigil`, default 2) refusals of
+  one group in a turn, the new `DuplicateRefusalGovernor` — appended last to the default
+  `turnGovernors` list, so every other guard still claims the boundaries it claimed before —
+  ends the turn through forced synthesis instead of refusing again. The agent gets
+  `Directive.DuplicateRefusalLoop(toolName, refusals)` (new wire name `_refusal_loop`) and one
+  respond-pinned wrap-up iteration. Previously a model that ignored the corrective collected one
+  refusal per iteration until `maxAgentIterations` threw. Apps that
+  override `turnGovernors` with an explicit list must add `duplicateRefusalGovernor` (or accept
+  refuse-forever); setting `duplicateRefusalLimit = 0` disables the termination.
+  `ForcedSynthesisReason` gained `DuplicateRefusalLoop` and `Directive` gained the matching case —
+  additive, but exhaustive matches over either need a new branch.
 - **Parallel tool calls replay as one exchange per call.** A completion that fires several tool
   calls at once is replayed as an assistant turn per call, each answered by its own result. A
   1.4.0-SNAPSHOT build briefly grouped them into a single assistant turn (behind a

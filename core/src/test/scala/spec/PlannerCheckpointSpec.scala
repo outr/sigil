@@ -53,6 +53,7 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     TestSigil.resetMaxAgentIterations()
     TestSigil.resetPlannerModelId()
     TestSigil.resetPlannerCadence()
+    TestSigil.resetDuplicateRefusalLimit()
     super.afterAll()
   }
 
@@ -281,6 +282,13 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "trust an on_track verdict over mechanical stall signals" in {
       TestSigil.setPlannerModelId(oversightModelId)
+      // This scenario deliberately runs an identical-read streak long enough
+      // for the planner's second consult to fire on the anomaly, which means
+      // running past the duplicate-call cap's per-group refusal bound. That
+      // bound would otherwise wrap the turn up first — it is a different
+      // guard with its own coverage, and what is under test here is which
+      // verdict governs the CHECKPOINT.
+      TestSigil.setDuplicateRefusalLimit(0)
       // Two extra repeats vs the original scenario: the duplicate-call
       // cap now refuses cache-served identical reads earlier (they
       // settle as real results), which pushes the identical-refusal
@@ -294,6 +302,7 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         convId <- seedConv("ontrack")
         _ <- runTurn(provider, convId, "Fetch the magic numbers until done.")
         events <- eventsOf(convId)
+        _ = TestSigil.resetDuplicateRefusalLimit()
       } yield {
         val checkpoints = events.collect { case c: ProgressCheckpoint => c }.sortBy(_.iterationCount)
         withClue(s"main=${provider.mainCalls.get()} planner=${provider.plannerCalls.get()} " +

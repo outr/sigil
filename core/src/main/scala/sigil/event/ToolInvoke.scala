@@ -105,6 +105,13 @@ case class ToolInvoke(toolName: ToolName,
                         * invokes whose background fiber died with the
                         * process. */
                       detached: Boolean = false,
+                      /** Set when the framework declined to dispatch this
+                        * call — the duplicate-call cap, the per-response
+                        * cap, or the raced-reissue redirect. No tool ran,
+                        * so `outcome` stays `Pending`; this names which
+                        * guard answered instead. `None` for every call the
+                        * framework actually dispatched. */
+                      refusal: Option[DispatchRefusal] = None,
                       /** Set when the settled result's rendered form exceeded
                         * the inline threshold and was bounded for the
                         * model-facing channel. `output` stays the real typed

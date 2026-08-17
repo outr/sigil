@@ -190,6 +190,10 @@ trait ProjectionOps { this: Sigil =>
           case _: sigil.event.ToolOutcome.Failure => true
           case _                                  => false
         }
+        // A dispatch the framework REFUSED settles Pending like a raced one
+        // but means the opposite — nothing ran and no result is coming. The
+        // marker rides through so the cap counts its own refusals and the
+        // raced-reissue redirect skips them.
         val invocation = ti.input match {
           case Some(in) => sigil.conversation.RecentToolInvocation(
             toolName    = ti.toolName,
@@ -198,6 +202,7 @@ trait ProjectionOps { this: Sigil =>
             invokedAt   = ti.timestamp,
             resulted    = resulted,
             failed      = failed,
+            refusal     = ti.refusal,
             invokeId    = Some(ti._id)
           )
           case None => sigil.conversation.RecentToolInvocation(
@@ -207,6 +212,7 @@ trait ProjectionOps { this: Sigil =>
             invokedAt   = ti.timestamp,
             resulted    = resulted,
             failed      = failed,
+            refusal     = ti.refusal,
             invokeId    = Some(ti._id)
           )
         }

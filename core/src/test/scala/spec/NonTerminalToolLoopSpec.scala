@@ -104,14 +104,15 @@ class NonTerminalToolLoopSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         // With the fix the loop runs to maxAgentIterations (5) before
         // the cap forces synthesis.
         //
-        // Any AgentRunaway message that DID land must attribute to
-        // CapHit, never NoToolCall — the cap-hit reason includes
-        // "maxAgentIterations"; the narrowed NoToolCall reason
-        // includes "zero `tool_use` blocks".
+        // Any AgentRunaway message that DID land must never attribute to
+        // NoToolCall — its narrowed reason includes "zero `tool_use`
+        // blocks", and every iteration here emitted one. Which terminal
+        // guard ended the turn instead (the iteration cap, or the
+        // duplicate-call cap's refusal bound — this model re-issues one
+        // identical call) is not what this spec is about.
         val misattributions = runawayFailures.flatMap { msg =>
           val reason = msg.failureReason.getOrElse("")
-          val ok = reason.contains("maxAgentIterations") && !reason.contains("zero `tool_use` blocks")
-          if (ok) None else Some(reason)
+          if (reason.contains("zero `tool_use` blocks")) Some(reason) else None
         }
         withClue(s"calls=$calls; misattributions=$misattributions\n") {
           calls should be >= 5

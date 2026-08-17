@@ -77,7 +77,13 @@ case class ToolDelta(target: Id[Event],
                       * stays the real value; the bounded head rides
                       * `summary`. `None` means no change.
                       */
-                     overflow: Option[sigil.tool.OverflowPointer] = None)
+                     overflow: Option[sigil.tool.OverflowPointer] = None,
+                     /**
+                      * Folded onto [[sigil.event.ToolInvoke.refusal]] when a
+                      * framework guard declines the dispatch. `None` means no
+                      * change — a refusal is never unset.
+                      */
+                     refusal: Option[sigil.event.DispatchRefusal] = None)
   extends Delta derives RW {
 
   /**
@@ -95,6 +101,7 @@ case class ToolDelta(target: Id[Event],
       val nextOutcome = outcome.getOrElse(t.outcome)
       val nextDetached = detached.getOrElse(t.detached)
       val nextOverflow = overflow.orElse(t.overflow)
+      val nextRefusal = refusal.orElse(t.refusal)
       t.copy(
         input = nextInput,
         state = nextState,
@@ -103,7 +110,8 @@ case class ToolDelta(target: Id[Event],
         output = nextOutput,
         outcome = nextOutcome,
         detached = nextDetached,
-        overflow = nextOverflow
+        overflow = nextOverflow,
+        refusal = nextRefusal
       )
     case other => other
   }
