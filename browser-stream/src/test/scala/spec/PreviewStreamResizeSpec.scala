@@ -3,7 +3,7 @@ package spec
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import robobrowser.stream.{SignalMessage, StreamConfig}
+import robobrowser.stream.{RenderSize, ResizeBehavior, SignalMessage, StreamConfig}
 import robobrowser.stream.gst.GstEngine
 import sigil.browser.stream.{PreviewSignal, PreviewStreamSession}
 import sigil.conversation.Conversation
@@ -15,12 +15,18 @@ import scala.jdk.CollectionConverters.*
  * Per-stream render targets on the WebRTC rung, end to end on a real
  * headful Chrome under Xvfb.
  *
- * A portrait request lays the page out as a phone and streams video of
- * exactly that shape — the display it runs on is a bound, not the
- * resolution. Resizing mid-preview reconfigures the live pipeline: the
- * page relays out and the stats carry the new size, but the session
+ * A portrait request lays the page out as a phone and streams exactly
+ * that shape — the display it runs on is a bound, not the resolution.
+ * Resizing mid-preview reconfigures the live pipeline: the page relays
+ * out and the stats' render size carries the new target, but the session
  * signals no second offer, so a viewer keeps rendering the track it
  * already negotiated rather than re-answering or re-subscribing.
+ *
+ * The transmitted frame is a separate number from the render target and
+ * is asserted per encoder branch: a software branch re-pins its encoder
+ * so the frame becomes the target, while a hardware branch holds a fixed
+ * encode canvas for the session's lifetime and borders the target into
+ * it. The render-target assertions read the same on both.
  *
  * Self-skips (with the reason) when the host can't stream.
  */
@@ -130,10 +136,17 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
         first should not be empty
         first.head should include("m=video")
 
+        // The render target is what was asked for, and it keeps its own shape.
+        // This used to be asserted on stats.width/height, which is the
+        // transmitted frame — the same number only while every encoder was
+        // re-pinned per resize. A hardware branch holds its encode canvas fixed
+        // and borders the target into it, so "what was asked for" now has its
+        // own field and the frame size is asserted per branch below.
         val portrait = webRtc.stats.sync()
-        portrait.width shouldBe 390
-        portrait.height shouldBe 844
-        portrait.height should be > portrait.width
+        val behavior = portrait.resizeBehavior
+        portrait.renderSize shouldBe RenderSize(390, 844)
+        portrait.placement.content.height should be > portrait.placement.content.width
+        val transmittedAtPortrait = RenderSize(portrait.width, portrait.height)
 
         TestStreamBrowserSigil.resizePreview(convId, 1280, 820).sync()
 
@@ -147,8 +160,14 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
         TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should contain(webRtc.streamId)
 
         val landscape = webRtc.stats.sync()
-        landscape.width shouldBe 1280
-        landscape.height shouldBe 820
+        landscape.renderSize shouldBe RenderSize(1280, 820)
+        RenderSize(landscape.width, landscape.height) shouldBe (behavior match {
+          case ResizeBehavior.Reconfigure => RenderSize(1280, 820)
+          // The encoder was never asked to change, so the viewer keeps decoding
+          // the frame shape it negotiated — there is nothing for a per-resolution
+          // surface pool to accept silently and then ignore
+          case ResizeBehavior.FixedCanvas => transmittedAtPortrait
+        })
       } finally {
         webRtc.stop.sync()
       }
@@ -180,16 +199,24 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
         case other => fail(s"expected a WebRTC session, got $other")
       }
       try {
+        // The envelope bounds the render target — the number the caller asked
+        // for. It used to be read off stats.width/height, which is the
+        // transmitted frame; on a fixed-canvas branch that frame is the canvas
+        // and says nothing about what the pane was resized to.
         TestStreamBrowserSigil.resizePreview(growConv, 1600, 1000).sync()
         val grown = webRtc.stats.sync()
-        grown.width shouldBe 1600
-        grown.height shouldBe 1000
+        grown.renderSize shouldBe RenderSize(1600, 1000)
 
         // Beyond the envelope: clamped and served, never aborted.
         TestStreamBrowserSigil.resizePreview(growConv, 3840, 2160).sync()
         val clamped = webRtc.stats.sync()
-        clamped.width shouldBe 1600
-        clamped.height shouldBe 1000
+        clamped.renderSize shouldBe RenderSize(1600, 1000)
+        // Whatever the branch, the frame the viewer negotiated is still the
+        // frame it is receiving after two resizes
+        RenderSize(clamped.width, clamped.height) shouldBe (clamped.resizeBehavior match {
+          case ResizeBehavior.Reconfigure => RenderSize(1600, 1000)
+          case ResizeBehavior.FixedCanvas => RenderSize(grown.width, grown.height)
+        })
         TestStreamBrowserSigil.previewStreamsFor(growConv).map(_.streamId) should contain(webRtc.streamId)
         // Two resizes, still the one offer the viewer answered at start
         awaitOffers(webRtc.streamId, atLeast = 2, timeoutMs = 5_000) should have size 1
