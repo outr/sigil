@@ -70,43 +70,48 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       out.collect { case t: ContextFrame.Text => t.content } shouldBe Vector("looking up tools", "got it")
     }
 
-    "elide earlier find_capability pairs but keep the most-recent (regression for bug #44)" in {
+    "elide earlier find_capability pairs but keep the most-recent" in {
       // Three find_capability calls in chronological order — the
-      // agent searched, then searched again, then searched again.
-      // Without the preserve-latest fix, the optimizer strips all
-      // three, the agent loses the discovery on its next turn,
-      // calls find_capability AGAIN, and loops forever.
+      // agent searched, then searched again, then searched again —
+      // and then a fresh user message opened the next turn, putting
+      // all three on the prior-turn side of the boundary. Without the
+      // preserve-latest rule the optimizer strips all three, the agent
+      // loses the discovery on its next turn, calls find_capability
+      // AGAIN, and loops forever.
       val c1 = Id[Event]("fc-old-1")
       val c2 = Id[Event]("fc-old-2")
       val c3 = Id[Event]("fc-latest")
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"a\"]}",   c1, TestUser, c1,
+        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"a\"]}",   c1, TestAgent, c1,
           state = ToolCallState.Complete("old result 1")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"b\"]}",   c2, TestUser, c2,
+        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"b\"]}",   c2, TestAgent, c2,
           state = ToolCallState.Complete("old result 2")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"c\"]}",   c3, TestUser, c3,
-          state = ToolCallState.Complete("latest result"))
+        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"c\"]}",   c3, TestAgent, c3,
+          state = ToolCallState.Complete("latest result")),
+        textFrame("next ask")
       )
       val out = opt.optimize(frames, Set("find_capability"))
       out.collect { case tc: ContextFrame.ToolCall => tc.callId } shouldBe Vector(c3)
     }
 
     "preserve the latest pair PER tool name independently" in {
-      // find_capability and change_mode interleaved — the elider
-      // must keep the latest of each, not just the latest of all.
+      // find_capability and change_mode interleaved in a prior turn —
+      // the elider must keep the latest of each, not just the latest
+      // of all.
       val fc1 = Id[Event]("fc-old")
       val cm1 = Id[Event]("cm-old")
       val fc2 = Id[Event]("fc-latest")
       val cm2 = Id[Event]("cm-latest")
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fc1, TestUser, fc1,
+        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fc1, TestAgent, fc1,
           state = ToolCallState.Complete("old")),
-        ContextFrame.ToolCall(ToolName("change_mode"),     "{}", cm1, TestUser, cm1,
+        ContextFrame.ToolCall(ToolName("change_mode"),     "{}", cm1, TestAgent, cm1,
           state = ToolCallState.Complete("old mode")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fc2, TestUser, fc2,
+        ContextFrame.ToolCall(ToolName("find_capability"), "{}", fc2, TestAgent, fc2,
           state = ToolCallState.Complete("latest")),
-        ContextFrame.ToolCall(ToolName("change_mode"),     "{}", cm2, TestUser, cm2,
-          state = ToolCallState.Complete("latest mode"))
+        ContextFrame.ToolCall(ToolName("change_mode"),     "{}", cm2, TestAgent, cm2,
+          state = ToolCallState.Complete("latest mode")),
+        textFrame("next ask")
       )
       val out = opt.optimize(frames, Set("find_capability", "change_mode"))
       out.collect { case tc: ContextFrame.ToolCall => tc.callId }.toSet shouldBe Set(fc2, cm2)
@@ -228,23 +233,48 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       kept shouldBe Set(fcOldB, fcCur1, fcCur2)
     }
 
-    "fall back to legacy global behaviour when no currentTurnSource is supplied" in {
-      // Three find_capability calls, no boundary supplied. The
-      // optimizer should keep ONLY the latest globally (the existing
-      // bug-#44 behaviour for callers that don't pass a boundary).
+    "keep every pair when no turn boundary exists to prove one is stale" in {
+      // No turn-opening frame anywhere — an agent-only conversation
+      // (a delegated worker's scratchpad) or a caller handing over a
+      // bare tool trail. Nothing here can be shown to belong to a
+      // finished turn, so nothing is dropped: eliding on a boundary
+      // that was never found is how a turn's own results disappear.
       val c1 = Id[Event]("fc-1")
       val c2 = Id[Event]("fc-2")
       val c3 = Id[Event]("fc-3")
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", c1, TestUser, c1,
+        ContextFrame.ToolCall(ToolName("find_capability"), "{}", c1, TestAgent, c1,
           state = ToolCallState.Complete("1")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", c2, TestUser, c2,
+        ContextFrame.ToolCall(ToolName("find_capability"), "{}", c2, TestAgent, c2,
           state = ToolCallState.Complete("2")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", c3, TestUser, c3,
+        ContextFrame.ToolCall(ToolName("find_capability"), "{}", c3, TestAgent, c3,
           state = ToolCallState.Complete("3"))
       )
       val out = opt.optimize(frames, Set("find_capability"), None)
-      out.collect { case tc: ContextFrame.ToolCall => tc.callId } shouldBe Vector(c3)
+      out.collect { case tc: ContextFrame.ToolCall => tc.callId } shouldBe Vector(c1, c2, c3)
+    }
+
+    "keep every within-turn pair when the running agent heads the chain" in {
+      // The chain's head is the AGENT on every iteration whose
+      // triggers are the agent's own tool results — which is every
+      // iteration after the first. An agent id can never mark where
+      // the turn began: its prose is emitted mid-turn, and taking it
+      // as the boundary drops the turn's own tool pairs.
+      val userMsg = Id[Event]("user-msg")
+      val a = Id[Event]("call-a")
+      val b = Id[Event]("call-b")
+      val c = Id[Event]("call-c")
+      val frames = Vector[ContextFrame](
+        ContextFrame.Text("run the probes", TestUser, userMsg),
+        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":\"a\"}", a, TestAgent, a,
+          state = ToolCallState.Complete("a")),
+        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":\"b\"}", b, TestAgent, b,
+          state = ToolCallState.Complete("b")),
+        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":\"c\"}", c, TestAgent, c,
+          state = ToolCallState.Complete("c"))
+      )
+      val out = opt.optimize(frames, Set("find_capability"), Some(TestAgent))
+      out.collect { case tc: ContextFrame.ToolCall => tc.callId } shouldBe Vector(a, b, c)
     }
 
     "preserve within-turn calls even when other turn participants speak (multi-agent case)" in {

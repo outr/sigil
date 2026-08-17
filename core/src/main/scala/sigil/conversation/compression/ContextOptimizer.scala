@@ -27,19 +27,17 @@ trait ContextOptimizer {
     * empty so callers that don't pass a set behave like a pure
     * "consecutive cleanup" pass with no pair-stripping.
     *
-    * `currentTurnSource` — when set, marks the participant
-    * whose most-recent Text frame begins the *current* agent turn.
-    * Implementations MUST NOT elide tool-pair frames that occurred
-    * AFTER that boundary, regardless of freshness. The agent's
-    * within-turn iteration history (multiple `find_capability` /
-    * `change_mode` calls during a single user-driven turn) stays
-    * fully visible so the model can recognise it's already tried
-    * something. Elision only applies to pairs from prior turns.
-    *
-    * `None` falls back to the legacy "elide every earlier pair per
-    * tool name regardless of position" behaviour for backward
-    * compatibility with optimizer callers that don't have a notion of
-    * turn source. */
+    * `currentTurnSource` — when set to a non-agent participant,
+    * narrows the turn boundary to that participant's most-recent Text
+    * frame. Otherwise the boundary is the most-recent Text frame from
+    * ANY non-agent participant; an agent id is ignored, since agent
+    * prose is emitted mid-turn and cannot mark where the turn began.
+    * Implementations MUST NOT elide tool-pair frames at or after that
+    * boundary, regardless of freshness: the agent's within-turn
+    * iteration history — including every sibling of a parallel batch,
+    * which shares one tool name — stays fully visible. Elision
+    * applies only to pairs from prior turns, and only when a boundary
+    * exists to prove a pair belongs to one. */
   def optimize(frames: Vector[ContextFrame],
                elideToolNames: Set[String] = Set.empty,
                currentTurnSource: Option[ParticipantId] = None): Vector[ContextFrame]

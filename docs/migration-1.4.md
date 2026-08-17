@@ -510,6 +510,31 @@ The required-union rule runs in the boot completeness pass against the final reg
   Anthropic/Gemini result merging); that grouping measurably worsened re-issue behavior in the
   field and has been withdrawn along with those fields. Nothing to migrate unless you read
   `completionId` off an invoke or frame — it no longer exists.
+- **The current turn's tool pairs are never collapsed.** `ContextOptimizer.optimize`'s
+  `currentTurnSource` used to be taken at face value as "the participant whose last Text frame
+  opened this turn". The agent-loop chain heads with the AGENT on every iteration whose triggers
+  are its own tool results — every iteration after the first — so the boundary landed at the
+  agent's last piece of prose, or nowhere, and the turn's own pairs fell on the droppable side of
+  the line. For a tool declaring `Freshness.Volatile` that collapsed the turn's history to one
+  pair per tool NAME: a parallel batch of same-named calls lost every sibling but the newest, and
+  the model rationally re-asked for the results it could no longer see, one per iteration, until
+  the duplicate cap or the iteration ceiling ended the turn. The boundary is now the most-recent
+  Text frame from a NON-agent participant (`currentTurnSource` narrows it to one participant only
+  when that id is itself non-agent), and when no such frame exists — an agent-only worker
+  scratchpad — nothing is collapsed at all: a pair that cannot be proven stale is kept. Prior
+  turns still collapse to the latest pair per name, unchanged. Apps with a custom
+  `ContextOptimizer` should apply the same rule; apps that called `optimize(frames, elide, None)`
+  directly and relied on the old global "keep latest per name" now get every pair back.
+- **A delivered tool result never reverts to the "raced past the prompt" placeholder.** An
+  invoke's inlined `ContextFrame` is re-projected on every write to its row. Re-projection reads
+  the invoke alone, so for a call whose payload lives on its paired Tool-role event — every
+  refused dispatch, every synthetic diagnostic — the fresh projection was the placeholder, and any
+  later write to that row installed it over the delivered text. The usage report that closes a
+  provider stream folds onto the turn's last settled invoke and did exactly that. Re-projection is
+  now monotonic on the result channel (`FrameBuilder.reprojected`): it upgrades a pending pair to
+  its real payload, and never downgrades a settled one. The placeholder now means only what it
+  says — the result has not arrived yet — so an agent reading it is not being told to re-issue a
+  call whose answer it already holds.
 - **A served duplicate carries the original's result.** When the framework answers a re-issued call
   from its own records — a turn-cache hit, or same-completion duplicate inlining — the served
   invoke now settles with the *original call's typed payload* (`sigil.tool.ToolSettlePayload`,

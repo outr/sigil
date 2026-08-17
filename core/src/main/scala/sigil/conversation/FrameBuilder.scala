@@ -329,6 +329,41 @@ object FrameBuilder {
     frame.state == ToolCallState.Active || frame.resultPending ||
       invokeOutcome.contains(ToolOutcome.Pending)
 
+  /**
+   * The frame a row should carry after `event`'s current state is
+   * re-projected, given the frame it already carries.
+   *
+   * [[computeFrame]] reads the invoke row alone, so it renders the
+   * "result hasn't landed" placeholder for any call whose payload
+   * lives on a paired Tool-role event rather than on the invoke's own
+   * `output` / `outcome` — a refused dispatch, a synthetic diagnostic,
+   * a result that settled its parent through the pairing path. Any
+   * later write to that row (a usage fold, a topic restamp) would then
+   * replace the delivered payload with the placeholder, telling the
+   * agent a result it already has never arrived.
+   *
+   * Re-projection is therefore monotonic on the result channel: it may
+   * upgrade a pending pair to its real payload, never downgrade a
+   * settled one back to pending. Everything else the fresh frame
+   * carries is adopted.
+   */
+  private[sigil] def reprojected(event: Event): Option[ContextFrame] =
+    computeFrame(event).map { fresh =>
+      (event.contextFrame, fresh) match {
+        case (Some(prev: ContextFrame.ToolCall), next: ContextFrame.ToolCall)
+            if next.resultPending && !prev.resultPending && carriesResult(prev) =>
+          next.copy(state = prev.state, resultPending = false)
+        case _ => fresh
+      }
+    }
+
+  /** Whether a frame's settled state holds something the model can
+    * read — the payload worth protecting from re-projection. */
+  private def carriesResult(frame: ContextFrame.ToolCall): Boolean = frame.state match {
+    case ToolCallState.Complete(content, images) => content.trim.nonEmpty || images.nonEmpty
+    case ToolCallState.Active                    => false
+  }
+
   /** Apply a settled Tool-role event's payload to `frame` — the shared
     * transition every pairing path performs once it decides to fold. */
   private[sigil] def settledPairedFrame(frame: ContextFrame.ToolCall, event: Event): ContextFrame.ToolCall = {
