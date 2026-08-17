@@ -37,16 +37,42 @@ launch flags.
 independently of the display behind it: the page lays out at exactly that size
 and exactly that rectangle is streamed, so `previewStreamFor(convId,
 StreamConfig(width = Some(390), height = Some(844)))` gives a portrait,
-mobile-layout preview with no letterboxing — on both rungs, since a WebRTC
-session crops its display capture to the target while the screencast applies the
-same size as a device-metrics override. `resizePreview(convId, width, height)`
-changes it mid-preview: a WebRTC session reconfigures its live pipeline — no
-renegotiation, no second `PreviewSignal`, the viewer's peer connection stays up
-and simply keeps rendering the same track at the new resolution — and a
-screencast session restarts capture behind the same `frames` stream. With
-no live preview it warns and does nothing. A browser launched for a sized request
-gets a display large enough for both the request and `streamBrowserConfig`'s own
-size (Xvfb can't resize a running display), so resizing back up later still fits.
+mobile-layout preview — on both rungs, since a WebRTC session crops its display
+capture to the target while the screencast applies the same size as a
+device-metrics override. `resizePreview(convId, width, height)` changes it
+mid-preview: a WebRTC session reconfigures its live pipeline — no renegotiation,
+no second `PreviewSignal`, the viewer's peer connection stays up and simply keeps
+rendering the track it already has — and a screencast session restarts capture
+behind the same `frames` stream. With no live preview it warns and does nothing.
+A browser launched for a sized request gets a display large enough for both the
+request and `streamBrowserConfig`'s own size (Xvfb can't resize a running
+display), so resizing back up later still fits.
+
+### Render size vs. transmitted frame
+
+On a WebRTC preview these are two different numbers, and which one a consumer
+wants is usually the render size:
+
+- **`WebRtc.stats.renderSize`** is the render target — what was asked for, what
+  the page laid out at, what was captured. Always exactly the requested pane.
+- **`WebRtc.stats.width`/`height`** is the frame actually transmitted, i.e. what
+  the viewer's `video.videoWidth`/`videoHeight` report.
+
+They are equal on a software-encoded stream, which re-pins its encoder to every
+new render target. They are **not** equal on a hardware-encoded one: those
+branches hold a fixed encode canvas for the session's lifetime (a hardware
+encoder's surface pool is per-resolution, and re-pinning a playing one is
+driver-dependent — some drivers accept the change silently and keep sending the
+launch resolution forever), and scale each render target into that canvas with
+black border where the aspects differ. `WebRtc.stats.placement` gives the content
+sub-rectangle and offset for a consumer that wants to crop the border away, and
+the session pushes the same placement to the viewer as a `placement` field on the
+input DataChannel's throttled frame stamp, carried on the first stamp after it
+changes.
+
+So: read `stats.renderSize` to answer "what size is the preview", `stats.width`/
+`height` to answer "what is the decoder seeing", and `stats.placement` to map
+between them. See robobrowser's `STREAMING.md` for the per-branch detail.
 
 ## The fallback ladder
 

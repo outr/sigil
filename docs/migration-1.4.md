@@ -429,6 +429,14 @@ Each entry names the fix.
 
 `MoveMemoryInput.newSpace` (and `fromSpace`) are `String` — the target space's `value` — resolved server-side against the caller's accessible spaces. In 1.3 they were typed `SpaceId` fields, which required the model to construct a discriminated union and made the tool's schema depend on the app's registered space subtypes. A miss returns a recoverable failure listing the accessible values.
 
+### Preview render size and transmitted frame are separate numbers
+
+`WebRtc.stats.width`/`height` is the **transmitted frame** — what the viewer's `video.videoWidth`/`videoHeight` report. It is no longer always the render target. Read `stats.renderSize` for the size the preview was asked to render at, and `stats.placement` for where that target sits inside the transmitted frame (content sub-rectangle, offset, `bordered`); `stats.resizeBehavior` says which regime a session is in.
+
+A software-encoded session (`ResizeBehavior.Reconfigure`) re-pins its encoder on every resize, so the two numbers stay equal — unchanged behaviour. A hardware-encoded one (`ResizeBehavior.FixedCanvas`, i.e. VA-API or NVENC) now holds a fixed encode canvas for the session's lifetime and borders each render target into it. That closes a silent failure: a hardware encoder's surface pool is allocated per resolution, and re-pinning a playing one is a driver decision — some drivers accepted the new caps, reported the new size through every server-side surface, and kept transmitting the launch resolution for the rest of the session, which only the viewer could see.
+
+So: anything asserting or displaying `stats.width`/`height` as "the preview's size" should move to `stats.renderSize`. A consumer that presents the video and wants the border cropped away uses `stats.placement`; the session also pushes the same placement to the viewer as a `placement` field on the input DataChannel's throttled frame stamp, carried on the first stamp after it changes, which on a fixed-canvas session is the only signal that the page behind the video changed shape. Input coordinates are unaffected — they still arrive in transmitted-frame pixels and are mapped back through the placement server-side.
+
 ### Preview display envelopes honour StreamConfig.maxWidth/maxHeight
 
 The stream browser's framebuffer is sized from the declared `maxWidth`/`maxHeight` (falling back to the render target), so a preview that starts small can grow to fullscreen via `resizePreview` without a relaunch; targets beyond the envelope are clamped and served with a warning instead of aborting. Consumers that pre-allocated an oversized display as a workaround can pass the envelope as `max*` and the real pane as `width`/`height`.
@@ -650,13 +658,13 @@ The required-union rule runs in the boot completeness pass against the final reg
 - **Preview sizing and live resize.** A preview's resolution is a per-stream choice rather than
   the virtual display's: `StreamConfig.width`/`height` set the size the page lays out at and the
   exact rectangle that is streamed, so a `390x844` request previews a portrait, mobile-layout
-  page with no letterboxing on either rung (a WebRTC session crops its display capture; the
+  page on either rung (a WebRTC session crops its display capture; the
   screencast applies the same size as a device-metrics override). `maxWidth`/`maxHeight` keep
   their old meaning as an encode-time downscale on top. `resizePreview(conversationId, width,
   height)` changes the size mid-preview — a WebRTC session reconfigures its live pipeline, so
   there is no renegotiation and no second `PreviewSignal`: the viewer's peer connection stays
-  connected and its `<video>` keeps rendering the same track at the new resolution, which H.264
-  carries in-band. A screencast session restarts capture behind the same `frames` stream. Apps
+  connected and its `<video>` keeps rendering the track it already has. A screencast session
+  restarts capture behind the same `frames` stream. Apps
   that built their own resize by stopping and restarting a preview can drop it, and viewers need
   no re-answer path for a resize. Sizing a *fresh* preview browser now grows its virtual display
   to cover both the request and `streamBrowserConfig`'s configured size, since Xvfb refuses to
