@@ -26,6 +26,14 @@ import sigil.tool.{CachedToolRead, DecodeError, DecodedCall, Freshness, GateCont
  * read.
  */
 private[orchestrator] final class State(val dialect: SchemaDialect = SchemaDialect.Identity) {
+  /** Identity of the completion this accumulator is draining. One
+    * `State` is built per provider stream, so every tool call stamped
+    * with this value was emitted together — which is what lets the
+    * frame renderer replay the batch as the single assistant turn the
+    * model produced rather than a run of separate exchanges. */
+  val completionId: _root_.sigil.provider.CompletionId =
+    _root_.sigil.provider.CompletionId(rapid.Unique())
+
   /** Tool calls in flight, keyed by the provider's `CallId`. OpenAI
     * (and Anthropic with `parallel_tool_use: true`) interleave
     * deltas for multiple calls inside one turn; the orchestrator
@@ -135,6 +143,14 @@ private[orchestrator] final class State(val dialect: SchemaDialect = SchemaDiale
     * pointing the agent at a `call_id` reference it can't
     * dereference from inside its prompt. */
   val dispatchedResultContent: scala.collection.mutable.Map[lightdb.id.Id[Event], Vector[ResponseContent]] =
+    scala.collection.mutable.Map.empty
+
+  /** The typed settle each dispatched call folded onto its invoke,
+    * keyed by that invoke's id. A duplicate served from here settles
+    * with the original's own payload, so its frame renders exactly
+    * what the original's rendered — the model that re-asks reads the
+    * same answer rather than a differently-shaped one. */
+  val dispatchedSettle: scala.collection.mutable.Map[lightdb.id.Id[Event], _root_.sigil.tool.ToolSettlePayload] =
     scala.collection.mutable.Map.empty
 
   /** #369 — count of non-essential (action) tool calls dispatched in THIS

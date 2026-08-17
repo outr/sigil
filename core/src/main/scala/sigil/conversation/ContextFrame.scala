@@ -103,6 +103,12 @@ enum ContextFrame derives RW {
                   * `previous_response_id` state remembers. `None` for
                   * synthetic / framework-emitted calls. */
                 wireCallId: Option[String] = None,
+                /** Denormalized from `ToolInvoke.completionId`. Consecutive
+                  * frames sharing a value were emitted by one completion and
+                  * render as a single assistant turn carrying every call,
+                  * answered by every result — the batch the model actually
+                  * produced. `None` renders as a standalone call. */
+                completionId: Option[sigil.provider.CompletionId] = None,
                 /** Sigil #385 — denormalized from `ToolInvoke.internal`. A
                   * framework-internal synthetic diagnostic (`_stall_detected`,
                   * `_refusal_challenge`, `_cap_reached`, …) must NOT render as

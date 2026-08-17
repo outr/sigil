@@ -94,7 +94,10 @@ private[orchestrator] object OrphanSettlement {
         topicId        = topicId,
         _id            = active.invokeId,
         state          = EventState.Active,
-        internal       = isInternal
+        internal       = isInternal,
+        // The call was emitted by the completion this accumulator drained, so
+        // an orphan settled out of a batch still replays inside that batch.
+        completionId   = Some(state.completionId)
       )
       val reason = reasonFor(active)
       val settleDelta: Signal = ToolDelta(

@@ -453,6 +453,29 @@ The required-union rule runs in the boot completeness pass against the final reg
   now settles its `ToolInvoke` with `ToolOutcome.Success` instead of leaving it `Pending`. A
   *refused* dispatch settles no outcome. Knobs: `maxIdenticalToolCallsInWindow` (3),
   `maxRacedReissues` (2), `maxToolCallsPerResponse` (8), `recentToolInvocationsLimit` (20).
+- **Parallel tool calls replay as the batch the model emitted.** A completion that fires several
+  tool calls at once is now rendered back as ONE assistant turn carrying every call, followed by
+  every result, with nothing interleaved — previously each call became its own assistant turn
+  answered by its own result, so a batch of three replayed as three separate exchanges the model
+  never had, and models responded by re-issuing each call of the batch individually, one per
+  iteration. `ToolInvoke` gained `completionId: Option[CompletionId]` (stamped by the orchestrator
+  from the provider stream that emitted the call) and `ContextFrame.ToolCall` denormalizes it;
+  both default `None`, so rows and frames persisted by earlier versions render exactly as before —
+  one call per turn, which is the correct shape for a call that genuinely stood alone. The
+  Anthropic and Gemini renderers now answer a batch in a single user turn (Anthropic *requires*
+  every `tool_use` of an assistant turn to be answered in the immediately following user message);
+  a lone result renders byte-identically to before. **Recorded provider fixtures whose turns
+  contain a parallel batch must be re-recorded** — their request bytes change by design. Fixtures
+  over turns with no parallel batch are unaffected; if one of those invalidates, the batching has
+  leaked into single-call rendering and is a bug.
+- **A served duplicate carries the original's result.** When the framework answers a re-issued call
+  from its own records — a turn-cache hit, or same-completion duplicate inlining — the served
+  invoke now settles with the *original call's typed payload* (`sigil.tool.ToolSettlePayload`,
+  carried on `CachedToolRead.settle`), so its rendered result is identical to the first call's.
+  Previously those paths settled the outcome without the payload, and the served content was
+  dropped: the model re-asked and read `(no result)` for a call that had in fact succeeded, which
+  reinforced asking again. `CachedToolRead` gained `settle: Option[ToolSettlePayload] = None` —
+  additive, existing construction sites compile unchanged.
 - **One recent-invocation entry per dispatch.** A tool call reaches the participant projection
   twice — once when its `ToolInvoke` settles to `Complete` with a still-`Pending` outcome, once
   when the executor folds the real outcome on — and each pass used to append its own

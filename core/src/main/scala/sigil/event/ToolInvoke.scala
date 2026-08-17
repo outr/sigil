@@ -63,6 +63,13 @@ case class ToolInvoke(toolName: ToolName,
                          * for synthetic / framework-emitted invokes (no
                          * upstream call_id to roundtrip). */
                       callId: Option[String] = None,
+                      /** The provider completion this call arrived on. Calls
+                        * sharing a value were emitted together in one
+                        * completion and are replayed to the model as one
+                        * assistant turn. `None` for framework synthetics and
+                        * for rows written before the field existed — those
+                        * render as standalone calls. */
+                      completionId: Option[sigil.provider.CompletionId] = None,
                       /** Per-call token cost. Folded by [[sigil.signal.ToolDelta]]
                         * when the provider emits its trailing
                         * [[sigil.provider.ProviderEvent.Usage]] and the turn

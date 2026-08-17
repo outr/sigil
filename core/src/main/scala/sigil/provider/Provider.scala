@@ -1490,6 +1490,51 @@ trait Provider extends Service with ModelResolver {
       arr.toVector
     }
 
+    // A tool-result's images ride as a follow-up user message so the
+    // model actually sees them; normalizeStoredImages inlines any
+    // internal-storage URLs as bytes downstream. The producing tool's
+    // quality rides each URL as `_q` — strip it and carry it typed so
+    // the downscale/detail downstream uses it. The caption stays
+    // ADJACENT to the image: hoisting a bare image to its own message
+    // leaves N image tools as a pile of anonymous pictures the model
+    // can't map back to a label, which revives the re-view loop.
+    def imageMessageFor(content: String, images: List[spice.net.URL]): Option[ProviderMessage] =
+      if (images.isEmpty) None
+      else {
+        val imageBlocks: Vector[MessageContent] = images.map(u =>
+          MessageContent.Image(_root_.sigil.tool.ImageQuality.strip(u),
+            quality = _root_.sigil.tool.ImageQuality.fromUrl(u))).toVector
+        val labeled =
+          if (content.trim.nonEmpty) MessageContent.Text(content) +: imageBlocks
+          else imageBlocks
+        Some(ProviderMessage.User(labeled))
+      }
+
+    // A call belongs to a replayable batch when the running agent made
+    // it as an ordinary tool call. Framework synthetics render as
+    // out-of-band system notes, and the respond family merges an
+    // adjacent Text frame into its own assistant message — neither
+    // shape survives being folded into a sibling's turn.
+    def batchable(tc: ContextFrame.ToolCall): Boolean =
+      agentId.contains(tc.participantId) && !tc.internal && !atomicContentToolNames.contains(tc.toolName)
+
+    /** Number of consecutive frames from `start` that one completion
+      * emitted together. `1` for a call that stood alone. */
+    def batchRun(start: Int): Int = merged(start) match {
+      case first: ContextFrame.ToolCall if batchable(first) && first.completionId.isDefined =>
+        var n = 1
+        var scanning = true
+        while (scanning && start + n < merged.length) {
+          merged(start + n) match {
+            case next: ContextFrame.ToolCall if batchable(next) && next.completionId == first.completionId =>
+              n += 1
+            case _ => scanning = false
+          }
+        }
+        n
+      case _ => 1
+    }
+
    // Walk with explicit index so we can consume the optional
     // adjacent `Text` frame that follows an atomic-content
     // `ToolCall` (the respond family's
@@ -1538,6 +1583,46 @@ trait Provider extends Service with ModelResolver {
           }
           i += 1
 
+        case tc: ContextFrame.ToolCall if batchable(tc) && batchRun(i) > 1 =>
+          // Several calls from ONE completion. The model emitted them as a
+          // single assistant turn and expects them answered as one — replaying
+          // them as separate exchanges rewrites its batch into a conversation
+          // it never had, and it responds by re-issuing each call singly. Emit
+          // one assistant message carrying every call, then every result, with
+          // nothing interleaved: that also satisfies the stricter wire
+          // contracts (Anthropic requires each assistant turn's `tool_use` ids
+          // to be answered in the immediately following user message).
+          val run = batchRun(i)
+          val calls = (i until i + run).map(merged(_).asInstanceOf[ContextFrame.ToolCall]).toList
+          val wireIds = calls.map(c => Provider.portableToolCallId(c.wireCallId.getOrElse(c.callId.value)))
+          wireIds.foreach(invokesSeen.add)
+          out += ProviderMessage.Assistant(
+            content = "",
+            toolCalls = calls.zip(wireIds).map { case (c, id) =>
+              ToolCallMessage(id = id, name = c.toolName.value, argsJson = c.argsJson)
+            }
+          )
+          val batchImages = Vector.newBuilder[ProviderMessage]
+          calls.zip(wireIds).foreach { case (c, id) =>
+            c.state match {
+              case ToolCallState.Complete(content, images) =>
+                out += ProviderMessage.ToolResult(toolCallId = id, content = content)
+                imageMessageFor(content, images).foreach(batchImages += _)
+                resultsSeen.add(id)
+              case ToolCallState.Active =>
+                pendingToolCallIds.add(id)
+                pendingOrphans.update(id, _root_.sigil.heal.CorruptionEvidence.MissingToolResult(
+                  invokeId = c.sourceEventId,
+                  callId   = id,
+                  toolName = c.toolName.value
+                ))
+            }
+          }
+          // Images trail the completed batch rather than each result, so the
+          // run of tool results answering the assistant turn stays unbroken.
+          batchImages.result().foreach(out += _)
+          i += run
+
         case tc: ContextFrame.ToolCall if agentId.contains(tc.participantId) =>
           // wireCallId carries the provider's wire identifier
            // (e.g. OpenAI's `call_<hash>`). Renderers prefer it so the
@@ -1584,28 +1669,7 @@ trait Provider extends Service with ModelResolver {
           tc.state match {
             case ToolCallState.Complete(content, images) =>
               out += ProviderMessage.ToolResult(toolCallId = wireId, content = content)
-              // Tool-result images ride as a follow-up user message so
-              // the model actually sees them; normalizeStoredImages
-              // inlines any internal-storage URLs as bytes downstream.
-              if (images.nonEmpty) {
-                // Sigil #382 — the producing tool's quality rides each
-                // URL as `_q`; strip it and carry it typed so the
-                // downscale/detail downstream uses it.
-                val imageBlocks: Vector[MessageContent] = images.map(u =>
-                  MessageContent.Image(_root_.sigil.tool.ImageQuality.strip(u),
-                    quality = _root_.sigil.tool.ImageQuality.fromUrl(u))).toVector
-                // Sigil #391 — keep the caption ADJACENT to the image. Hoisting
-                // a bare image to its own message (caption stranded back in the
-                // tool_result) turned N image tools into a pile of anonymous
-                // pictures the model couldn't map to a gid/label — reviving the
-                // #280 re-view loop (observed: 32 uncaptioned image messages,
-                // 0 in tool_results, agent re-viewing to re-anchor). One short
-                // text block per image restores the image→caption mapping.
-                val labeled =
-                  if (content.trim.nonEmpty) MessageContent.Text(content) +: imageBlocks
-                  else imageBlocks
-                out += ProviderMessage.User(labeled)
-              }
+              imageMessageFor(content, images).foreach(out += _)
               resultsSeen.add(wireId)
             case ToolCallState.Active =>
               // No result yet — only happens for mid-turn debug

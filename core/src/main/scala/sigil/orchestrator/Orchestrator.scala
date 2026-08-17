@@ -418,6 +418,7 @@ object Orchestrator {
           internal       = isInternal,
           input          = Some(input),
           callId         = Some(callId.value),
+          completionId   = Some(state.completionId),
           modelId        = Some(request.modelId)
         )
         val toolDeltaPrefix: List[Signal] = List(deferredInvoke, ToolDelta(
@@ -443,6 +444,25 @@ object Orchestrator {
         val settledPrefix: List[Signal] = toolDeltaPrefix.map {
           case td: ToolDelta => td.copy(outcome = Some(ToolOutcome.Success))
           case other         => other
+        }
+        // A call the framework answers from its own records settles with the
+        // ORIGINAL call's payload, so its frame renders exactly what the
+        // original's rendered. Settling the outcome alone leaves the invoke
+        // Complete-but-empty and the served content is dropped on the floor —
+        // the agent re-asks and reads "(no result)", which is the strongest
+        // possible invitation to ask yet again.
+        def servedPrefix(payload: Option[_root_.sigil.tool.ToolSettlePayload]): List[Signal] = payload match {
+          case Some(p) =>
+            toolDeltaPrefix.map {
+              case td: ToolDelta => td.copy(
+                output   = Some(p.output),
+                outcome  = Some(p.outcome),
+                summary  = p.summary,
+                overflow = p.overflow
+              )
+              case other => other
+            }
+          case None => settledPrefix
         }
         // Local def so `return` statements inside the streaming /
         // atomic branches (refusal challenge, repeated-query intercept)
@@ -859,7 +879,7 @@ object Orchestrator {
                     visibility     = MessageVisibility.Agents,
                     origin         = Some(invokeId)
                   )
-                  return Stream.emits(settledPrefix ::: List[Signal](
+                  return Stream.emits(servedPrefix(state.dispatchedSettle.get(firstInvokeId)) ::: List[Signal](
                     dupeMsg,
                     StateDelta(target = dupeMsg._id, conversationId = convId, state = EventState.Complete)
                   ))
@@ -907,7 +927,7 @@ object Orchestrator {
                       visibility     = MessageVisibility.Agents,
                       origin         = Some(invokeId)
                     )
-                    return Stream.emits(settledPrefix ::: List[Signal](
+                    return Stream.emits(servedPrefix(cached.settle) ::: List[Signal](
                       cacheMsg,
                       StateDelta(target = cacheMsg._id, conversationId = convId, state = EventState.Complete)
                     ))
@@ -1043,6 +1063,17 @@ object Orchestrator {
                             }
                           }.getOrElse("")
                       }
+                      // Capture the typed settle alongside the rendered text so a
+                      // served duplicate can replay the ORIGINAL payload onto its
+                      // own invoke rather than re-deriving a differently-shaped
+                      // rendering of it.
+                      val payload = _root_.sigil.tool.ToolSettlePayload(
+                        output   = td.output.getOrElse(_root_.sigil.tool.ToolOutput.Pending),
+                        outcome  = td.outcome.getOrElse(ToolOutcome.Success),
+                        summary  = td.summary,
+                        overflow = td.overflow
+                      )
+                      state.dispatchedSettle(invokeId) = payload
                       if (rendered.nonEmpty) {
                         val settledContent = Vector(ResponseContent.Text(rendered))
                         state.dispatchedResultContent(invokeId) = settledContent
@@ -1050,13 +1081,26 @@ object Orchestrator {
                         // cache so a later iteration's identical call is served
                         // from here instead of re-executing.
                         cacheFreshness.foreach { f =>
-                          request.toolResultCacheRef.updateAndGet(_ + (argsKey -> CachedToolRead(settledContent, f)))
+                          request.toolResultCacheRef.updateAndGet(
+                            _ + (argsKey -> CachedToolRead(settledContent, f, Some(payload))))
                         }
                       }
                     case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) =>
                       state.dispatchedResultContent(invokeId) = m.content
+                      // The settle arrived as the paired Message rather than a
+                      // typed delta; carry its text so a served duplicate still
+                      // settles with content instead of an empty result.
+                      val payload = _root_.sigil.tool.ToolSettlePayload(
+                        output   = _root_.sigil.tool.TextToolOutput(
+                          _root_.sigil.conversation.FrameBuilder.renderContentText(m.content)),
+                        outcome  = ToolOutcome.Success,
+                        summary  = None,
+                        overflow = None
+                      )
+                      state.dispatchedSettle(invokeId) = payload
                       cacheFreshness.foreach { f =>
-                        request.toolResultCacheRef.updateAndGet(_ + (argsKey -> CachedToolRead(m.content, f)))
+                        request.toolResultCacheRef.updateAndGet(
+                          _ + (argsKey -> CachedToolRead(m.content, f, Some(payload))))
                       }
                     case _ =>
                   }

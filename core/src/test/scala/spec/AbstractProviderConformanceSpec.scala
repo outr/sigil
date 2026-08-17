@@ -18,6 +18,7 @@ import sigil.provider.{
   ProviderStreamException,
   SchemaDialect,
   StrictSchema,
+  ToolCallMessage,
   ToolChoice
 }
 import sigil.tool.ToolContext
@@ -156,10 +157,19 @@ trait AbstractProviderConformanceSpec extends AnyWordSpec with Matchers {
       case _                                         => ""
     }
 
-  private def callWith(toolChoice: ToolChoice, tools: Vector[Tool]): ProviderCall = ProviderCall(
+  protected def wireBodyFor(messages: Vector[ProviderMessage], tools: Vector[Tool]): String =
+    providerInstance.httpRequestFor(callWith(ToolChoice.Auto, tools, messages)).sync().content match {
+      case Some(c: spice.http.content.StringContent) => c.value
+      case _                                         => ""
+    }
+
+  private def callWith(toolChoice: ToolChoice,
+                       tools: Vector[Tool],
+                       messages: Vector[ProviderMessage] =
+                         Vector(ProviderMessage.User(Vector(MessageContent.Text("conformance turn"))))): ProviderCall = ProviderCall(
     model = TestSigil.testModel(modelId),
     system = "conformance system",
-    messages = Vector(ProviderMessage.User(Vector(MessageContent.Text("conformance turn")))),
+    messages = messages,
     roster = ToolRoster(tools),
     builtInTools = Set.empty,
     toolChoice = toolChoice,
@@ -299,6 +309,45 @@ trait AbstractProviderConformanceSpec extends AnyWordSpec with Matchers {
     "render a valid body for ToolChoice.None" in {
       val body = wireBody(ToolChoice.None, corpus)
       noException should be thrownBy fabric.io.JsonParser(body)
+    }
+
+    "ship a parallel tool-call batch as one turn answered as a unit" in {
+      // A completion that fired three calls at once reaches every provider as
+      // ONE Assistant carrying all three, followed by their three results. No
+      // wire format may drop a call, drop a result, or interleave them back
+      // into single-call exchanges: the model reads an interleaved replay as a
+      // history it never produced and re-issues each call of the batch singly.
+      val calls = List("alpha", "bravo", "charlie")
+      val messages = Vector[ProviderMessage](
+        ProviderMessage.User(Vector(MessageContent.Text("conformance batch turn"))),
+        ProviderMessage.Assistant(
+          content = "",
+          toolCalls = calls.map(c => ToolCallMessage(
+            id = s"call_$c",
+            name = optionalsTool.name.value,
+            argsJson = s"""{"required":"BATCH_ARG_${c.toUpperCase}"}"""
+          ))
+        )
+      ) ++ calls.map(c => ProviderMessage.ToolResult(s"call_$c", s"BATCH_RESULT_${c.toUpperCase}")).toVector
+
+      val body = wireBodyFor(messages, corpus)
+      noException should be thrownBy fabric.io.JsonParser(body)
+
+      val argMarkers = calls.map(c => s"BATCH_ARG_${c.toUpperCase}")
+      val resultMarkers = calls.map(c => s"BATCH_RESULT_${c.toUpperCase}")
+      argMarkers.foreach(m => withClue(s"call $m never reached the wire: ")(body should include(m)))
+      resultMarkers.foreach { m =>
+        withClue(s"result $m never reached the wire: ")(body should include(m))
+        withClue(s"result $m rendered more than once: ") {
+          m.r.findAllMatchIn(body).size shouldBe 1
+        }
+      }
+
+      val lastCallAt = argMarkers.map(body.indexOf).max
+      val firstResultAt = resultMarkers.map(body.indexOf).min
+      withClue("the batch's results were interleaved with its calls rather than answering it as a unit: ") {
+        lastCallAt should be < firstResultAt
+      }
     }
 
     "never ship strict:true when forcing a call over an open-JSON-only roster" in {
