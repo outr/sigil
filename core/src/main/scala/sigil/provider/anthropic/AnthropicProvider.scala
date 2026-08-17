@@ -390,38 +390,8 @@ case class AnthropicProvider(apiKey: String,
     } else rendered
   }
 
-  /** Anthropic requires every `tool_use` block of an assistant turn to be
-    * answered by a `tool_result` in the ONE user message that immediately
-    * follows it. A batch's results therefore share a message; a lone result
-    * renders exactly as it always has (a one-block user message). */
-  private def renderMessageBlocks(messages: Vector[ProviderMessage]): Vector[Json] = {
-    val out = Vector.newBuilder[Json]
-    var i = 0
-    while (i < messages.length) {
-      messages(i) match {
-        case _: ProviderMessage.ToolResult =>
-          var n = 1
-          while (i + n < messages.length && messages(i + n).isInstanceOf[ProviderMessage.ToolResult]) n += 1
-          val blocks = (i until i + n).map { k =>
-            val result = messages(k).asInstanceOf[ProviderMessage.ToolResult]
-            obj(
-              "type" -> str("tool_result"),
-              "tool_use_id" -> str(result.toolCallId),
-              "content" -> str(result.content)
-            )
-          }
-          out += obj("role" -> str("user"), "content" -> arr(blocks*))
-          i += n
-        case other =>
-          out ++= renderMessageBlock(other)
-          i += 1
-      }
-    }
-    out.result()
-  }
-
-  private def renderMessageBlock(message: ProviderMessage): Vector[Json] =
-    message match {
+  private def renderMessageBlocks(messages: Vector[ProviderMessage]): Vector[Json] =
+    messages.flatMap {
       case ProviderMessage.System(content) =>
         // Anthropic has no system role mid-conversation. Encode as a
         // user message with a marker prefix — matches the pattern the
@@ -469,9 +439,15 @@ case class AnthropicProvider(apiKey: String,
         }
         Vector(obj("role" -> str("assistant"), "content" -> arr(blocks.result()*)))
 
-      case _: ProviderMessage.ToolResult =>
-        // Handled by the batch-merging walk in `renderMessageBlocks`.
-        Vector.empty
+      case ProviderMessage.ToolResult(toolCallId, content) =>
+        Vector(obj(
+          "role" -> str("user"),
+          "content" -> arr(obj(
+            "type" -> str("tool_result"),
+            "tool_use_id" -> str(toolCallId),
+            "content" -> str(content)
+          ))
+        ))
 
       case _: ProviderMessage.Reasoning =>
         // Provider-specific reasoning state from another provider's turn

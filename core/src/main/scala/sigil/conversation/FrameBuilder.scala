@@ -226,7 +226,6 @@ object FrameBuilder {
           sourceEventId = ti._id,
           visibility = ti.visibility,
           wireCallId = ti.callId,
-          completionId = ti.completionId,
           internal = ti.internal,
           state = callState,
           // The Complete content above was rendered from a Pending

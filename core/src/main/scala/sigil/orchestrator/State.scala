@@ -26,14 +26,6 @@ import sigil.tool.{CachedToolRead, DecodeError, DecodedCall, Freshness, GateCont
  * read.
  */
 private[orchestrator] final class State(val dialect: SchemaDialect = SchemaDialect.Identity) {
-  /** Identity of the completion this accumulator is draining. One
-    * `State` is built per provider stream, so every tool call stamped
-    * with this value was emitted together — which is what lets the
-    * frame renderer replay the batch as the single assistant turn the
-    * model produced rather than a run of separate exchanges. */
-  val completionId: _root_.sigil.provider.CompletionId =
-    _root_.sigil.provider.CompletionId(rapid.Unique())
-
   /** Tool calls in flight, keyed by the provider's `CallId`. OpenAI
     * (and Anthropic with `parallel_tool_use: true`) interleave
     * deltas for multiple calls inside one turn; the orchestrator

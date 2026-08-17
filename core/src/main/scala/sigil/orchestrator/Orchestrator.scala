@@ -418,7 +418,6 @@ object Orchestrator {
           internal       = isInternal,
           input          = Some(input),
           callId         = Some(callId.value),
-          completionId   = Some(state.completionId),
           modelId        = Some(request.modelId)
         )
         val toolDeltaPrefix: List[Signal] = List(deferredInvoke, ToolDelta(
