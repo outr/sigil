@@ -375,6 +375,24 @@ Each entry names the fix.
   the request + resolved references separately.
 - **`sigil.tool.model.ContextSectionKind` deleted.** *Fix:* use `ProfileSection`, now the
   single section discriminator.
+- **`ProfileSection` gained an open case, `Feature(id: FeatureId)`**, carrying a registered
+  `ContextFeature`'s contribution (§5). It is therefore no longer a simple Scala 3 enum: the
+  compiler-generated `values` / `valueOf` are replaced by hand-written equivalents on the
+  companion, with `values` keeping its `Array[ProfileSection]` type and listing the closed
+  cases only — `Feature` is open and not enumerable. A `match` over `ProfileSection` needs a
+  case for it. The wire form is unchanged: every existing case still serializes as
+  `"ProfileSection.<Name>"`, a feature's as `"ProfileSection.Feature:<id>"`, and a
+  `Map[ProfileSection, Int]` still rides fabric's array of `{key, value}` pairs, so
+  transported `RequestProfile`s read back as before. *Fix:* where a report enumerated
+  `ProfileSection.values`, enumerate the sections a run actually produced
+  (`profile.sections.keys`) so registered features are included —
+  `RequestProfileReport` now does.
+- **The section list every consumer reads is `Sigil.resolvedContextSections`**, which is
+  `contextSections` plus the sections the enabled features compile to. `contextSections`
+  keeps its meaning as the app's declaration of the fixed layout. *Fix:* app code that
+  passed `sigil.contextSections` to `RequestProfiler` or `ContextSections.shedCascade`
+  should pass `resolvedContextSections` instead, or it will account for a prompt the
+  framework does not send.
 
 ### Startup
 
@@ -602,6 +620,70 @@ The required-union rule runs in the boot completeness pass against the final reg
   `render: SectionContext => Option[String]`, and the matching `shed: TurnInput => TurnInput`.
   Declaring a `shedStage` without a `shed` fails startup, so the renderer and the shedder can't
   drift apart.
+- **Context features.** `ContextFeature` is the composition and lifecycle layer over
+  `contextSections`: a registered, per-turn contribution with an open `FeatureId`, a
+  `Task`-based `compute(ctx: SectionContext): Task[List[FeatureBody]]`, and the same
+  `placement` / `shedStage` / `shed` / `budget` vocabulary a section has.
+
+  ```scala
+  case class ErpConnectivityFeature(erp: Erp) extends ContextFeature {
+    val id: FeatureId = FeatureId("erpConnectivity")
+    def placement: Placement = Placement.VolatileTail
+    def compute(ctx: SectionContext): Task[List[FeatureBody]] = erp.status.map {
+      case Erp.Down => List(FeatureBody.prose(
+        "\nThe ERP connection is currently down. Say so instead of retrying.\n"))
+      case Erp.Up   => Nil
+    }
+  }
+
+  override def contextFeatures: List[ContextFeature] =
+    super.contextFeatures ++ List(ErpConnectivityFeature(erp))
+  ```
+
+  Features compile down to `ContextSection`s appended to `contextSections`, so the renderer,
+  the wire profiler, the curator's shed cascade, and `context_breakdown` see them as sections
+  — there is no second taxonomy to keep in sync, and nothing escapes budget or shed
+  accounting. The effects run exactly once per request, upstream of rendering, and the
+  compiled sections are pure readers of the memoized result, so a live lookup costs one call
+  per turn no matter how many consumers render the request. A feature that throws contributes
+  nothing for that turn rather than costing the turn. One feature may emit several blocks and
+  place them independently (`FeatureBody.prose(text).at(Placement.StablePrefix)`); all of them
+  report under the one feature id in the profiler. This is also the shape for a published
+  module to ship the context its tools need alongside the tools themselves — one import, still
+  individually toggleable and profiler-visible.
+- **`CurrentDateFeature` ships enabled.** Every request's volatile tail now carries:
+
+  ```
+  == Current date and time ==
+  Today is Saturday, March 14, 2026, 15:09 UTC.
+  Base ALL date and time reasoning on the value above — it is authoritative and current. …
+  ```
+
+  A model with no clock does not decline to answer date questions — it states a date from
+  recall and computes deadlines from it, which is how an invented "today" becomes a
+  confident, wrong delivery date and then a false escalation about someone else's system. The
+  directive is as load-bearing as the value.
+
+  It renders in the `VolatileTail`, so the cacheable stable prefix stays byte-stable across
+  turns, and it never sheds — losing the clock under context pressure would reinstate invented
+  dates on exactly the largest turns. The instant is read through an injectable `Clock` and
+  formatted in UTC with `Locale.US`, so neither the host's timezone nor its locale can change
+  the rendered day.
+
+  - *Apps that hand-rolled a date section:* delete it and the `contextSections` override that
+    installed it, and take the framework default. A hand-rolled section also had to piggyback
+    on some existing `ProfileSection` (typically `ExtraContext`), muddying that section's
+    profiler attribution; the framework feature reports under
+    `ProfileSection.Feature(CurrentDateFeature.Id)`.
+  - *To turn it off:* `override def disabledFeatures: Set[FeatureId] = Set(CurrentDateFeature.Id)`.
+    A disabled feature compiles to no section at all, so the request is byte-for-byte what it
+    was before the feature existed.
+  - *To pin the clock* (deterministic replays, simulated time):
+    `override def contextFeatures = List(CurrentDateFeature(Clock.fixed(instant, ZoneOffset.UTC)))`.
+  - **Recorded provider fixtures invalidate once.** The date line is part of the system prompt
+    and the system prompt is part of the request-cache key, so every VCR fixture whose request
+    carries a system prompt needs re-recording after upgrading. Pin the clock in the test
+    harness first — otherwise the key moves every minute and no fixture ever replays again.
 - **Reply suggestions.** `replySuggestions: Option[ReplySuggestionsConfig]` (default `None`).
   Set it and every turn that settles with a user-visible reply fires a cheap background
   consult predicting what the person types next, delivered as a transient
