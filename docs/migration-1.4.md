@@ -590,6 +590,34 @@ The required-union rule runs in the boot completeness pass against the final reg
   re-recording. Apps overriding `Sigil.contextSections` should re-check their own sections'
   `Placement` against the same rule: anything that varies across ordinary turns belongs in the
   tail.
+- **Prose spoken alongside a tool call now survives the turn, on every wire.** A model that
+  narrates its plan and calls a tool in one completion used to lose the narration on every
+  provider: the chat-completions wire (`ProviderEvent.TextDelta`) dropped it outright, and the
+  block wire (Anthropic / Google / OpenAI Responses, `ProviderEvent.ContentBlockDelta`) streamed
+  it to subscribers but settled the Message empty, because a streaming content delta is
+  `complete = false` and only `complete = true` deltas persist. Either way the words never
+  reached a `ContextFrame` and the next iteration could not read back what the model had just
+  said it would do. Both wires now settle a **preamble Message ahead of the invoke**, carrying
+  that prose, which renders into subsequent iterations' history and is visible to users.
+
+  Three guards keep the change from surfacing text that was never speech:
+
+  - Prose beside a **respond-family call** (`respond`, `respond_options`, `respond_card`,
+    `respond_cards`, `no_response`) is still dropped — that call publishes the turn's reply
+    itself, so the prose is the answer said twice, not a narrated plan.
+  - Prose in a completion with **no tool call at all** is untouched: it remains drift for a
+    forced `tool_choice` (`PlainTextReplyGovernor` drops it with a diagnostic) or the committed
+    answer for a model in the forced-tool_choice rejecter memo (`TurnDecisionGovernor`).
+  - Reasoning a backend mis-split out of `reasoning_content` into `content` — llama.cpp serving
+    Qwen leaves the thinking tail and its `</think>` tag there — is stripped by the new
+    `sigil.orchestrator.ReasoningResidue`, and a fragment that was only residue commits nothing.
+
+  Migration impact: apps rendering a conversation may see one additional user-visible
+  agent `Message` per turn in which the model narrated before calling an action tool, and the
+  wire request for any turn AFTER such a turn carries an extra assistant message. Recorded
+  provider fixtures need re-recording only for turns whose recorded completion actually carried
+  prose alongside a non-respond tool call; Sigil's own committed llama.cpp fixtures needed none.
+  No public type changed.
 
 ## 5. New opt-in capabilities worth adopting
 
