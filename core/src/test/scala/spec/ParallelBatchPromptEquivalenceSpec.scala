@@ -137,8 +137,30 @@ class ParallelBatchPromptEquivalenceSpec extends AnyWordSpec with Matchers {
     Files.writeString(outDir.resolve(name), text)
   }
 
+  /** Every probe called so far answered by its own result, in order.
+    * Equivalence alone is satisfied by two prompts corrupted the same
+    * way; completeness is what says the prompt is right. */
+  private def assertComplete(label: String, call: ProviderCall, rendered: String): Unit = {
+    val calls = call.messages.collect { case a: ProviderMessage.Assistant => a.toolCalls }.flatten
+    val byId = call.messages.collect { case ProviderMessage.ToolResult(id, content) => id -> content }.toMap
+    withClue(s"$label issued ${calls.map(_.argsJson)}, expected one call per probe\n$rendered\n") {
+      calls.count(_.name == ProbeReadTool.name.value) shouldBe probes.size
+    }
+    probes.foreach { probe =>
+      val id = calls.find(_.argsJson.contains(s""""$probe"""")).map(_.id)
+      withClue(s"$label has no call for '$probe'\n$rendered\n") {
+        id shouldBe defined
+      }
+      val content = byId.getOrElse(id.get, "")
+      withClue(s"$label answered '$probe' with '$content'\n$rendered\n") {
+        content should include(ProbeReadTool.resultTextFor(probe))
+        content should not include "result did not reach this turn"
+      }
+    }
+  }
+
   "the prompt replaying settled tool calls" should {
-    "read identically whether the calls arrived in one batch or one per iteration" in {
+    "carry every call with its own result, however the calls arrived" in {
       val batched = runTurn("equiv-batched", n =>
         if (n == 1) probes.zipWithIndex.map { case (p, i) => CallId(s"batch-$i") -> p } else Nil)
       val serial = runTurn("equiv-serial", n =>
@@ -150,6 +172,9 @@ class ParallelBatchPromptEquivalenceSpec extends AnyWordSpec with Matchers {
       val afterSerial = render(serial(probes.size))
       dump("after-batch.txt", afterBatch)
       dump("after-serial.txt", afterSerial)
+
+      assertComplete("the batched turn", batched(1), afterBatch)
+      assertComplete("the serial turn", serial(probes.size), afterSerial)
 
       withClue(s"dumps written under ${outDir.toAbsolutePath}\n") {
         afterBatch shouldBe afterSerial

@@ -201,6 +201,7 @@ object TestSigil extends Sigil {
       GetMagicNumberTool,
       ProbeReadTool,
       CachedProbeReadTool,
+      LiveProbeReadTool,
       ProgressEmittingTool,
       EagerActiveLatchTool,
       SlowCooperativeTool,

@@ -319,18 +319,20 @@ trait PublishOps { this: Sigil =>
     * event; reading the row back and rewriting it instead costs a second full row write whose
     * search-index commit dominates everything else the publish path does.
     *
-    * `computeFrame` is a pure function of the event's current state, so recomputing on every
-    * write keeps the inlined frame honest as that state moves on — a ToolDelta folding `output` /
-    * `outcome` onto a ToolInvoke flips its frame from Active to Complete, a settling MessageDelta
-    * replaces a streaming Message's content. Non-Complete events and well-formed Tool-role events
-    * project to no frame of their own; the latter settle their parent invoke's frame instead, via
-    * [[settlePairedToolFrame]].
+    * Re-projection runs on every write, so the inlined frame stays honest as that state moves on
+    * — a ToolDelta folding `output` / `outcome` onto a ToolInvoke flips its frame from Active to
+    * Complete, a settling MessageDelta replaces a streaming Message's content. It goes through
+    * [[FrameBuilder.reprojected]] rather than `computeFrame` so a write carrying nothing about the
+    * result — a usage fold landing on the turn's last settled invoke — cannot replace a payload
+    * the pairing path already delivered with the "result hasn't landed" placeholder. Non-Complete
+    * events and well-formed Tool-role events project to no frame of their own; the latter settle
+    * their parent invoke's frame instead, via [[settlePairedToolFrame]].
     *
     * Inlining is the source-of-truth path for prompt construction: the curator queries
     * `event.contextFrame.isDefined` against `db.events` rather than walking a separate frames
     * projection. */
   private final def inlineContextFrame(event: Event): Event =
-    FrameBuilder.computeFrame(event) match {
+    FrameBuilder.reprojected(event) match {
       case Some(frame) if !event.contextFrame.contains(frame) => event.withContextFrame(Some(frame))
       case _                                                  => event
     }
