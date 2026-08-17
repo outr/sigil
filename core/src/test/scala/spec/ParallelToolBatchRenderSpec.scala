@@ -10,25 +10,26 @@ import sigil.db.Model
 import sigil.event.Event
 import sigil.provider.anthropic.AnthropicProvider
 import sigil.provider.deepseek.DeepSeekProvider
-import sigil.provider.{CompletionId, ConversationMode, ConversationRequest, GenerationSettings, Instructions, Provider}
+import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions, Provider}
 import sigil.tool.ToolName
 import sigil.tool.core.CoreTools
 
 /**
- * A completion that emits several tool calls at once must be replayed to
- * the model as the batch it was: ONE assistant turn carrying every
- * `tool_use` / `tool_call`, answered by the results of exactly those
- * calls before anything else intervenes.
+ * A completion that emits several tool calls at once must reach the wire
+ * intact: every call present exactly once, every call answered by a
+ * result carrying its own id and its own content, and no call left
+ * without its answer immediately behind it.
  *
- * Rendering the batch as a run of interleaved single-call exchanges
- * rewrites history into something the model never produced — it reads as
- * "you asked one thing, got one answer, then asked the next" — and the
- * model responds by re-issuing each call of the batch individually.
+ * Each call replays as its own assistant turn followed by its own
+ * result. Grouping the batch into a single assistant turn carrying every
+ * call was tried and withdrawn — it measurably worsened re-issue
+ * behavior in the field — so these cases pin the pairing and attribution
+ * invariants, which hold whatever the grouping.
  *
  * Covered for both wire families that ship: Anthropic's content-block
  * messages and the OpenAI chat-completions `tool_calls` / `role: "tool"`
- * shape, since the batching decision is made upstream of either in the
- * shared frame renderer.
+ * shape, since the decision is made upstream of either in the shared
+ * frame renderer.
  */
 class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
 
@@ -51,9 +52,6 @@ class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
     ("call_charlie", "ARGS_MARKER_CHARLIE", "RESULT_MARKER_CHARLIE")
   )
 
-  /** All three calls arrived on one completion. */
-  private val completionId = CompletionId("completion-parallel-batch")
-
   private def batchFrames: Vector[ContextFrame] = {
     val calls = batch.map { case (wireId, argsMarker, resultMarker) =>
       val callId = Id[Event](s"invoke-$wireId")
@@ -64,7 +62,6 @@ class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
         participantId = TestAgent,
         sourceEventId = callId,
         wireCallId = Some(wireId),
-        completionId = Some(completionId),
         state = ToolCallState.Complete(resultMarker)
       )
     }
@@ -116,24 +113,25 @@ class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
       }
     }
 
-    "carry every tool_use of the batch on ONE assistant message" in {
-      val callCarrying = messages.filter(m => roleOf(m) == "assistant" && blocksOf(m, "tool_use").nonEmpty)
-      withClue(s"the batch was split across ${callCarrying.size} assistant messages: ") {
-        callCarrying.size shouldBe 1
+    "carry every call of the batch exactly once" in {
+      val useIds = messages.flatMap(m => blocksOf(m, "tool_use")).flatMap(_.get("id").map(_.asString))
+      withClue(s"a call was rendered more than once: $useIds ") {
+        useIds.distinct.size shouldBe useIds.size
       }
-      blocksOf(callCarrying.head, "tool_use").size shouldBe 3
     }
 
-    "answer that assistant message in the IMMEDIATELY following user message" in {
-      val idx = messages.indexWhere(m => roleOf(m) == "assistant" && blocksOf(m, "tool_use").nonEmpty)
-      idx should be >= 0
-      val useIds = blocksOf(messages(idx), "tool_use").flatMap(_.get("id").map(_.asString)).toSet
-      val next = messages.lift(idx + 1)
-      withClue("no message follows the tool_use assistant message: ")(next shouldBe defined)
-      roleOf(next.get) shouldBe "user"
-      val answeredIds = blocksOf(next.get, "tool_result").flatMap(_.get("tool_use_id").map(_.asString)).toSet
-      withClue(s"ids $useIds not all answered by the immediately following user message ($answeredIds): ") {
-        useIds.diff(answeredIds) shouldBe empty
+    "answer each assistant turn's tool_use ids in the IMMEDIATELY following user message" in {
+      messages.zipWithIndex.foreach { case (m, idx) =>
+        val useIds = blocksOf(m, "tool_use").flatMap(_.get("id").map(_.asString)).toSet
+        if (useIds.nonEmpty) {
+          val next = messages.lift(idx + 1)
+          withClue(s"assistant message $idx ($useIds) is followed by ${next.map(roleOf).getOrElse("nothing")}: ") {
+            next.map(roleOf) shouldBe Some("user")
+            val answered = blocksOf(next.get, "tool_result").flatMap(_.get("tool_use_id").map(_.asString)).toSet
+            useIds.diff(answered) shouldBe empty
+            answered.diff(useIds) shouldBe empty
+          }
+        }
       }
     }
 
@@ -175,22 +173,26 @@ class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
       }
     }
 
-    "carry every tool_call of the batch on ONE assistant message" in {
-      val callCarrying = messages.filter(m => roleOf(m) == "assistant" && m.get("tool_calls").isDefined)
-      withClue(s"the batch was split across ${callCarrying.size} assistant messages: ") {
-        callCarrying.size shouldBe 1
+    "carry every call of the batch exactly once" in {
+      val callIds = messages.flatMap { m =>
+        m.get("tool_calls").toVector.flatMap(_.asVector).flatMap(_.get("id").map(_.asString))
       }
-      callCarrying.head.get("tool_calls").map(_.asVector.size) shouldBe Some(3)
+      withClue(s"a call was rendered more than once: $callIds ") {
+        callIds.distinct.size shouldBe callIds.size
+      }
     }
 
-    "follow that assistant message with the batch's results and nothing else" in {
-      val idx = messages.indexWhere(m => roleOf(m) == "assistant" && m.get("tool_calls").isDefined)
-      idx should be >= 0
-      val following = messages.slice(idx + 1, idx + 1 + 3)
-      withClue(s"expected 3 tool results after the batch, got roles ${following.map(roleOf)}: ") {
-        following.map(roleOf) shouldBe Vector("tool", "tool", "tool")
+    "follow each assistant turn with the results of exactly its own calls" in {
+      messages.zipWithIndex.foreach { case (m, idx) =>
+        val callIds = m.get("tool_calls").toVector.flatMap(_.asVector).flatMap(_.get("id").map(_.asString))
+        if (callIds.nonEmpty) {
+          val following = messages.slice(idx + 1, idx + 1 + callIds.size)
+          withClue(s"assistant message $idx ($callIds) is followed by roles ${following.map(roleOf)}: ") {
+            following.map(roleOf) shouldBe Vector.fill(callIds.size)("tool")
+            following.flatMap(_.get("tool_call_id").map(_.asString)) shouldBe callIds
+          }
+        }
       }
-      following.flatMap(_.get("tool_call_id").map(_.asString)) should contain theSameElementsAs batch.map(_._1)
     }
 
     "keep each result attributed to its own call" in {

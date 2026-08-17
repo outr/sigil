@@ -461,21 +461,13 @@ The required-union rule runs in the boot completeness pass against the final reg
   now settles its `ToolInvoke` with `ToolOutcome.Success` instead of leaving it `Pending`. A
   *refused* dispatch settles no outcome. Knobs: `maxIdenticalToolCallsInWindow` (3),
   `maxRacedReissues` (2), `maxToolCallsPerResponse` (8), `recentToolInvocationsLimit` (20).
-- **Parallel tool calls replay as the batch the model emitted.** A completion that fires several
-  tool calls at once is now rendered back as ONE assistant turn carrying every call, followed by
-  every result, with nothing interleaved — previously each call became its own assistant turn
-  answered by its own result, so a batch of three replayed as three separate exchanges the model
-  never had, and models responded by re-issuing each call of the batch individually, one per
-  iteration. `ToolInvoke` gained `completionId: Option[CompletionId]` (stamped by the orchestrator
-  from the provider stream that emitted the call) and `ContextFrame.ToolCall` denormalizes it;
-  both default `None`, so rows and frames persisted by earlier versions render exactly as before —
-  one call per turn, which is the correct shape for a call that genuinely stood alone. The
-  Anthropic and Gemini renderers now answer a batch in a single user turn (Anthropic *requires*
-  every `tool_use` of an assistant turn to be answered in the immediately following user message);
-  a lone result renders byte-identically to before. **Recorded provider fixtures whose turns
-  contain a parallel batch must be re-recorded** — their request bytes change by design. Fixtures
-  over turns with no parallel batch are unaffected; if one of those invalidates, the batching has
-  leaked into single-call rendering and is a bug.
+- **Parallel tool calls replay as one exchange per call.** A completion that fires several tool
+  calls at once is replayed as an assistant turn per call, each answered by its own result. A
+  1.4.0-SNAPSHOT build briefly grouped them into a single assistant turn (behind a
+  `ToolInvoke.completionId` / `ContextFrame.ToolCall.completionId` field and matching
+  Anthropic/Gemini result merging); that grouping measurably worsened re-issue behavior in the
+  field and has been withdrawn along with those fields. Nothing to migrate unless you read
+  `completionId` off an invoke or frame — it no longer exists.
 - **A served duplicate carries the original's result.** When the framework answers a re-issued call
   from its own records — a turn-cache hit, or same-completion duplicate inlining — the served
   invoke now settles with the *original call's typed payload* (`sigil.tool.ToolSettlePayload`,
