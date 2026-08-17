@@ -1,0 +1,5 @@
+{"requestHash":"2f6571b65c1adb913989b6307ad6f386b5f1157595589034ade9aca05dd4816a","recordedAt":1786984061485}
+{"callId":"e1a6f262e","toolName":"suggest_reply","type":"ProviderEvent.ToolCallStart"}
+{"callId":"e1a6f262e","call":{"type":"decoded","name":"suggest_reply","args":{"suggestions":["Can you show me how to do that without creating a new list?","What if I need to reverse it in place?","I'm confused about the syntax, can you explain it more?"]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":566,"completionTokens":67,"totalTokens":633,"isEstimated":false,"cacheReadTokens":362,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

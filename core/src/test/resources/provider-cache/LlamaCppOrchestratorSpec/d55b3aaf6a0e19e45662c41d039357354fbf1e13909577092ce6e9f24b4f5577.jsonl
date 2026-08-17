@@ -1,0 +1,148 @@
+{"requestHash":"d55b3aaf6a0e19e45662c41d039357354fbf1e13909577092ce6e9f24b4f5577","recordedAt":1786984082326}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"text":" asking","type":"ProviderEvent.ThinkingDelta"}
+{"text":" for","type":"ProviderEvent.ThinkingDelta"}
+{"text":" information","type":"ProviderEvent.ThinkingDelta"}
+{"text":" about","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" history","type":"ProviderEvent.ThinkingDelta"}
+{"text":" of","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Roman","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Empire","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" specifically","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":22,"totalTokens":22,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" brief","type":"ProviderEvent.ThinkingDelta"}
+{"text":" two","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-s","type":"ProviderEvent.ThinkingDelta"}
+{"text":"entence","type":"ProviderEvent.ThinkingDelta"}
+{"text":" overview","type":"ProviderEvent.ThinkingDelta"}
+{"text":" of","type":"ProviderEvent.ThinkingDelta"}
+{"text":" its","type":"ProviderEvent.ThinkingDelta"}
+{"text":" founding","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" This","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" knowledge","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-based","type":"ProviderEvent.ThinkingDelta"}
+{"text":" question","type":"ProviderEvent.ThinkingDelta"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":43,"totalTokens":43,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" can","type":"ProviderEvent.ThinkingDelta"}
+{"text":" answer","type":"ProviderEvent.ThinkingDelta"}
+{"text":" from","type":"ProviderEvent.ThinkingDelta"}
+{"text":" my","type":"ProviderEvent.ThinkingDelta"}
+{"text":" own","type":"ProviderEvent.ThinkingDelta"}
+{"text":" knowledge","type":"ProviderEvent.ThinkingDelta"}
+{"text":" -","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" don","type":"ProviderEvent.ThinkingDelta"}
+{"text":"'t","type":"ProviderEvent.ThinkingDelta"}
+{"text":" need","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" use","type":"ProviderEvent.ThinkingDelta"}
+{"text":" any","type":"ProviderEvent.ThinkingDelta"}
+{"text":" tools","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":60,"totalTokens":60,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" for","type":"ProviderEvent.ThinkingDelta"}
+{"text":" this","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Let","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" provide","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" concise","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" accurate","type":"ProviderEvent.ThinkingDelta"}
+{"text":" two","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-s","type":"ProviderEvent.ThinkingDelta"}
+{"text":"entence","type":"ProviderEvent.ThinkingDelta"}
+{"text":" overview","type":"ProviderEvent.ThinkingDelta"}
+{"text":" of","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":77,"totalTokens":77,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Roman","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Empire","type":"ProviderEvent.ThinkingDelta"}
+{"text":"'s","type":"ProviderEvent.ThinkingDelta"}
+{"text":" founding","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"callId":"a56a0390c","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":85,"totalTokens":85,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"a56a0390c","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"a56a0390c","text":"The","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" Roman","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" Empire","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" was","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" founded","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" in","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" 2","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":"7","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" BCE","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" when","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" Roman","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" Senate","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" granted","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" Oct","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":"avian","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" title","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" of","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" August","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":"us","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" marking","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" end","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" of","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" Roman","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" Republic","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" and","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" beginning","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" of","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" imperial","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" rule","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" under","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" first","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" emperor","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" This","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" transition","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" followed","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" century","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" of","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" civil","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" wars","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" and","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" political","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" instability","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" with","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" August","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":"us","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" consolid","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":"ating","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" power","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" while","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" maintaining","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" appearance","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" of","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" republican","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":" institutions","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a56a0390c","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Roman Empire History","topicSummary":"Overview of Roman Empire founding","content":"The Roman Empire was founded in 27 BCE when the Roman Senate granted Octavian the title of Augustus, marking the end of the Roman Republic and the beginning of imperial rule under the first emperor. This transition followed a century of civil wars and political instability, with Augustus consolidating power while maintaining the appearance of republican institutions.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4285,"completionTokens":223,"totalTokens":4508,"isEstimated":false,"cacheReadTokens":4128,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

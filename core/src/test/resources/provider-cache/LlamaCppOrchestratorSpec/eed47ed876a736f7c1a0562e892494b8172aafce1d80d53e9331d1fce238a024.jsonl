@@ -1,0 +1,77 @@
+{"requestHash":"eed47ed876a736f7c1a0562e892494b8172aafce1d80d53e9331d1fce238a024","recordedAt":1786984093654}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"text":" asking","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" explain","type":"ProviderEvent.ThinkingDelta"}
+{"text":" TypeScript","type":"ProviderEvent.ThinkingDelta"}
+{"text":" generics","type":"ProviderEvent.ThinkingDelta"}
+{"text":" in","type":"ProviderEvent.ThinkingDelta"}
+{"text":" one","type":"ProviderEvent.ThinkingDelta"}
+{"text":" short","type":"ProviderEvent.ThinkingDelta"}
+{"text":" sentence","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" This","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":20,"totalTokens":20,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" knowledge","type":"ProviderEvent.ThinkingDelta"}
+{"text":" question","type":"ProviderEvent.ThinkingDelta"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"text":" doesn","type":"ProviderEvent.ThinkingDelta"}
+{"text":"'t","type":"ProviderEvent.ThinkingDelta"}
+{"text":" require","type":"ProviderEvent.ThinkingDelta"}
+{"text":" any","type":"ProviderEvent.ThinkingDelta"}
+{"text":" tool","type":"ProviderEvent.ThinkingDelta"}
+{"text":" calls","type":"ProviderEvent.ThinkingDelta"}
+{"text":" -","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" can","type":"ProviderEvent.ThinkingDelta"}
+{"text":" answer","type":"ProviderEvent.ThinkingDelta"}
+{"text":" this","type":"ProviderEvent.ThinkingDelta"}
+{"text":" directly","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":42,"totalTokens":42,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" from","type":"ProviderEvent.ThinkingDelta"}
+{"text":" my","type":"ProviderEvent.ThinkingDelta"}
+{"text":" knowledge","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"callId":"3589e7c22","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":47,"totalTokens":47,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"3589e7c22","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"3589e7c22","text":"Type","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":"Script","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" generics","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" are","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" feature","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" that","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" allows","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" you","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" create","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" reusable","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" components","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" (","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":"functions","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" classes","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" interfaces","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":")","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" that","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" work","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" with","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" multiple","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" data","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" types","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" while","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" maintaining","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" type","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":" safety","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"3589e7c22","call":{"type":"decoded","name":"respond","args":{"topicLabel":"TypeScript Generics","topicSummary":"Explanation of TypeScript generics","content":"TypeScript generics are a feature that allows you to create reusable components (functions, classes, interfaces) that work with multiple data types while maintaining type safety.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4286,"completionTokens":140,"totalTokens":4426,"isEstimated":false,"cacheReadTokens":4128,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

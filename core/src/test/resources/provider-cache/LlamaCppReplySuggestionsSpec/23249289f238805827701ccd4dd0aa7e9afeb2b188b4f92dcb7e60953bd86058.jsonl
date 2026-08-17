@@ -1,0 +1,22 @@
+{"requestHash":"23249289f238805827701ccd4dd0aa7e9afeb2b188b4f92dcb7e60953bd86058","recordedAt":1786984049705}
+{"text":"The","type":"ProviderEvent.TextDelta"}
+{"text":" capital","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" France","type":"ProviderEvent.TextDelta"}
+{"text":" is","type":"ProviderEvent.TextDelta"}
+{"text":" Paris","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"callId":"2eaa9c70e","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":8,"totalTokens":8,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"2eaa9c70e","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"2eaa9c70e","text":"The","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2eaa9c70e","text":" capital","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2eaa9c70e","text":" of","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2eaa9c70e","text":" France","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2eaa9c70e","text":" is","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2eaa9c70e","text":" Paris","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2eaa9c70e","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"2eaa9c70e","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Test Topic","topicSummary":"User asked a simple factual question about the capital of France.","content":"The capital of France is Paris.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":3644,"completionTokens":104,"totalTokens":3748,"isEstimated":false,"cacheReadTokens":3496,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}
