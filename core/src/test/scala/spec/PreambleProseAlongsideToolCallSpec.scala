@@ -42,6 +42,10 @@ import scala.concurrent.duration.*
  *
  * The assertions are deliberately identical for both: one behaviour, not a
  * per-wire dialect.
+ *
+ * Two shapes that are NOT narration are pinned alongside: reasoning a backend
+ * mis-split into the prose field, and prose beside a respond-family call,
+ * which is the model's answer said twice.
  */
 class PreambleProseAlongsideToolCallSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
