@@ -14,7 +14,7 @@ import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopPro
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.information.{InMemoryInformation, Information}
 import sigil.participant.{AgentParticipantId, Participant, ParticipantId}
-import sigil.provider.{ContextFeature, ContextFeatures, FeatureId, Mode, Provider}
+import sigil.provider.{ContextFeature, CurrentDateFeature, FeatureId, Mode, Provider}
 import sigil.signal.Signal
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.{InMemoryToolFinder, Resolution, Tool, ToolContext, ToolFinder, ToolIO, ToolInput}
@@ -49,8 +49,23 @@ object TestSigil extends Sigil {
 
   override def testMode: Boolean = true
 
+  /**
+   * The instant every spec's prompt reads as "now" — Saturday, March
+   * 14, 2026, 15:09 UTC. A mid-day instant so no timezone arithmetic in
+   * a spec can land it on an adjacent day, and a date that is neither
+   * today nor plausibly today, so a rendered prompt that somehow picked
+   * up the host clock reads as obviously wrong rather than passing.
+   *
+   * Pinning it is what makes rendered prompts byte-deterministic across
+   * runs: the date rides the system prompt, and the system prompt is
+   * part of the recorded-fixture cache key, so a live clock would mint a
+   * new key every minute and no fixture would ever replay.
+   */
+  val PinnedInstant: java.time.Instant = java.time.Instant.parse("2026-03-14T15:09:00Z")
+  val PinnedClock: java.time.Clock = java.time.Clock.fixed(PinnedInstant, java.time.ZoneOffset.UTC)
+
   /** The features every spec renders with, unless it swaps them. */
-  private val DefaultContextFeatures: List[ContextFeature] = ContextFeatures.all
+  private val DefaultContextFeatures: List[ContextFeature] = List(CurrentDateFeature(PinnedClock))
 
   private val healingModeRef =
     new java.util.concurrent.atomic.AtomicReference[sigil.heal.HealingMode](sigil.heal.HealingMode.Strict)

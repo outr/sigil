@@ -1,38 +1,47 @@
 package spec
 
 import lightdb.id.Id
+import lightdb.time.Timestamp
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
-import sigil.conversation.{Conversation, Topic}
+import sigil.conversation.{Conversation, Topic, TurnInput}
 import sigil.db.Model
 import sigil.event.Message
 import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
-import sigil.provider.{CallId, GenerationSettings, Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
+import sigil.provider.*
 import sigil.signal.{AgentActivity, AgentStateDelta, EventState, Signal}
 import sigil.tool.core.{CoreTools, RespondTool}
 import sigil.tool.model.{RespondInput, ResponseContent}
 import spice.http.HttpRequest
 
-import java.time.format.DateTimeFormatter
-import java.time.{Instant, ZoneOffset}
-import java.util.Locale
+import java.time.{Clock, Instant, ZoneId, ZoneOffset, ZonedDateTime}
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 /**
- * The framework renders no clock, so a model asked what day it is has
- * nothing to read and answers from recall — confidently, and wrong.
- * This spec pins the absence: a real turn's rendered request carries
- * today's date in no form anywhere in the system prompt.
+ * A model with no clock does not decline to answer date questions — it
+ * states a date from recall and computes deadlines from it. The feature
+ * puts the real date in every request, and says the value is the only
+ * one to reason from.
+ *
+ * The clock is pinned here (as it is for every spec, via
+ * [[TestSigil.PinnedClock]]) so the assertions can be the exact rendered
+ * text rather than a shape.
  */
 class CurrentDateFeatureSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "current-date")
   TestSigil.testModel(modelId)
+
+  /** The text the pinned clock renders — the whole section, exactly. */
+  private val expectedBlock: String =
+    "\n== Current date and time ==\n" +
+      "Today is Saturday, March 14, 2026, 15:09 UTC.\n" +
+      CurrentDateFeature.Directive
 
   private final class CapturingProvider extends Provider {
     val calls = new ConcurrentLinkedQueue[ProviderCall]()
@@ -115,27 +124,68 @@ class CurrentDateFeatureSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       throw new IllegalStateException("no provider call captured"))
   }.singleton
 
-  /** Every spelling of today a model could recognise as the date. */
-  private def todaySpellings: List[String] = {
-    val utc = Instant.now().atZone(ZoneOffset.UTC)
-    List(
-      utc.toLocalDate.toString,
-      DateTimeFormatter.ofPattern("EEEE", Locale.US).format(utc),
-      DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US).format(utc),
-      DateTimeFormatter.ofPattern("MMMM", Locale.US).format(utc) + " " + utc.getDayOfMonth,
-      utc.getYear.toString
-    )
-  }
-
-  "A rendered request today" should {
-    "carry no current date anywhere in the system prompt" in {
+  "A rendered request" should {
+    "carry the current date and the directive to reason only from it" in {
       runTurn.map { call =>
-        val rendered = call.systemCombined
-        withClue(s"rendered system prompt:\n$rendered\n") {
-          todaySpellings.foreach(spelling => rendered should not include spelling)
-          succeed
+        withClue(s"rendered system prompt:\n${call.systemCombined}\n") {
+          call.systemCombined should include(expectedBlock)
         }
       }
     }
+
+    "carry the clock in the volatile tail, never in the cacheable prefix" in {
+      runTurn.map { call =>
+        call.systemVolatile should include(expectedBlock)
+        call.system should not include "Today is"
+      }
+    }
+  }
+
+  "The rendered section" should {
+    "read the instant in UTC whatever zone the clock carries" in {
+      val chicagoLateNight = ZonedDateTime.of(2026, 3, 14, 23, 30, 0, 0, ZoneId.of("America/Chicago")).toInstant
+      val feature = CurrentDateFeature(Clock.fixed(chicagoLateNight, ZoneId.of("America/Chicago")))
+      val ctx = ContextFeatures.evaluate(List(feature), sectionContext).sync()
+      val rendered = ContextSections.render(ContextFeatures.sections(List(feature)), Placement.VolatileTail, ctx)
+      rendered should include("Today is Sunday, March 15, 2026, 04:30 UTC.")
+      rendered should not include "March 14"
+    }
+
+    "state the day, the date, and the time to the minute" in {
+      CurrentDateFeature.render(Instant.parse("2026-03-14T15:09:00Z")) shouldBe expectedBlock
+    }
+  }
+
+  "A moving clock" should {
+    "change the volatile tail and leave the cacheable prefix byte-identical" in {
+      def rendered(instant: String): (String, String) = {
+        val feature = CurrentDateFeature(Clock.fixed(Instant.parse(instant), ZoneOffset.UTC))
+        val sections = ContextSections.all ++ ContextFeatures.sections(List(feature))
+        val ctx = ContextFeatures.evaluate(List(feature), sectionContext).sync()
+        (ContextSections.render(sections, Placement.StablePrefix, ctx),
+          ContextSections.render(sections, Placement.VolatileTail, ctx))
+      }
+      val (prefixA, tailA) = rendered("2026-03-14T15:09:00Z")
+      val (prefixB, tailB) = rendered("2026-03-15T09:41:00Z")
+      prefixB shouldBe prefixA
+      tailB should not be tailA
+      tailB should include("Today is Sunday, March 15, 2026, 09:41 UTC.")
+    }
+  }
+
+  private def sectionContext: SectionContext = {
+    val request = ConversationRequest(
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      generationSettings = GenerationSettings(),
+      tools = CoreTools.all,
+      chain = List(TestUser, TestAgent)
+    )
+    SectionContext(request, ResolvedReferences(Vector.empty, Vector.empty, Vector.empty),
+      discoveredCapabilitiesPromptCap = 25, now = Timestamp().value)
   }
 }

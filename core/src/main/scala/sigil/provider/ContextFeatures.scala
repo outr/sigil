@@ -13,7 +13,7 @@ import sigil.diagnostics.ProfileSection
 object ContextFeatures {
 
   /** Framework features, in emission order. */
-  val all: List[ContextFeature] = Nil
+  val all: List[ContextFeature] = List(CurrentDateFeature())
 
   /**
    * Compile features into the sections the renderer, the profiler, the
