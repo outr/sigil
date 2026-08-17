@@ -447,7 +447,7 @@ case class StandardContextCurator(sigil: Sigil,
           tent
         }
         else {
-          sectionShedCascade(ContextSections.shedCascade(sigil.contextSections), tent, resolvedSummaries) match {
+          sectionShedCascade(ContextSections.shedCascade(sigil.resolvedContextSections), tent, resolvedSummaries) match {
             case Right(fitted)            => Task.pure(fitted)
             case Left(afterSectionSheds)  =>
               resolveElisionProtectedIds(tentative.conversationId, frames).flatMap { elisionProtected =>

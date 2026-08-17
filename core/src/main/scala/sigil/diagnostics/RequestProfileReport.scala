@@ -25,7 +25,11 @@ object RequestProfileReport {
     val totals = profiles.map(_.total).sorted
     val grandTotal = totals.sum.toDouble.max(1.0)
 
-    val sectionStats: List[SectionStat] = ProfileSection.values.toList.flatMap { section =>
+    // Driven by the sections the run actually produced rather than a
+    // fixed enumeration, so a registered feature's contribution reports
+    // alongside the closed cases.
+    val observedSections: List[ProfileSection] = profiles.flatMap(_.sections.keys).distinct.toList
+    val sectionStats: List[SectionStat] = observedSections.flatMap { section =>
       val values = profiles.map(_.sections.getOrElse(section, 0)).filter(_ > 0)
       if (values.isEmpty) None
       else {

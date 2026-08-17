@@ -1060,36 +1060,41 @@ trait Provider extends Service with ModelResolver {
       }
       // One SectionContext per turn, shared by the renderer and the
       // profiler: the same `now`, the same derived lazy vals, one pass
-      // of the section renderers each.
-      val sectionContext = SectionContext(
+      // of the section renderers each. Registered features are computed
+      // into it here — the single evaluation point for the whole
+      // request, so a feature that consults a live source pays once no
+      // matter how many consumers render.
+      val baseSectionContext = SectionContext(
         request = c,
         resolved = resolved,
         discoveredCapabilitiesPromptCap = sigil.discoveredCapabilitiesPromptCap,
         promptShape = sigil.modelProfileFor(c.model).promptShape
       )
-      val renderedSystem = renderSystem(sectionContext)
-      val providerCall = ProviderCall(
-        model = c.model,
-        system = renderedSystem.stable,
-        systemVolatile = renderedSystem.volatile,
-        messages = messages,
-        roster = c.roster,
-        // Sigil #375 — built-in/server tools (web_search, …) bypass the
-        // `effectiveTools` roster filter, so on a forced-synthesis turn
-        // they'd reappear as a non-terminal escape hatch on the very
-        // turn meant to force a terminal `respond`. Drop them for that
-        // turn so the only callable tool is the pinned respond family.
-        builtInTools = if (c.forceResponseSynthesis) Set.empty else c.builtInTools,
-        toolChoice = toolChoice,
-        generationSettings = gen,
-        currentMode = c.currentMode,
-        conversationId = Some(c.conversationId),
-        agentId = agentId,
-        previousResponseId = previousResponseId,
-        priorMessageCount = priorMessageCount,
-        preservedToolNames = preserved
-      )
-      emitWireProfile(sectionContext, agentId).map(_ => providerCall)
+      ContextFeatures.evaluate(sigil.enabledContextFeatures, baseSectionContext).flatMap { sectionContext =>
+        val renderedSystem = renderSystem(sectionContext)
+        val providerCall = ProviderCall(
+          model = c.model,
+          system = renderedSystem.stable,
+          systemVolatile = renderedSystem.volatile,
+          messages = messages,
+          roster = c.roster,
+          // Sigil #375 — built-in/server tools (web_search, …) bypass the
+          // `effectiveTools` roster filter, so on a forced-synthesis turn
+          // they'd reappear as a non-terminal escape hatch on the very
+          // turn meant to force a terminal `respond`. Drop them for that
+          // turn so the only callable tool is the pinned respond family.
+          builtInTools = if (c.forceResponseSynthesis) Set.empty else c.builtInTools,
+          toolChoice = toolChoice,
+          generationSettings = gen,
+          currentMode = c.currentMode,
+          conversationId = Some(c.conversationId),
+          agentId = agentId,
+          previousResponseId = previousResponseId,
+          priorMessageCount = priorMessageCount,
+          preservedToolNames = preserved
+        )
+        emitWireProfile(sectionContext, agentId).map(_ => providerCall)
+      }
     }
 
   // Sigil #274 — `filterToolsForForcedSynthesis` moved to
@@ -1136,7 +1141,7 @@ trait Provider extends Service with ModelResolver {
       agentId match {
         case Some(pid) =>
           val c = ctx.request
-          val profile = RequestProfiler.profile(ctx, tokenizer, sigil, sigil.contextSections)
+          val profile = RequestProfiler.profile(ctx, tokenizer, sigil, sigil.resolvedContextSections)
           sigil.publish(WireRequestProfile(c.conversationId, c.modelId, pid, profile))
         case None => Task.unit
       }
@@ -1396,7 +1401,7 @@ trait Provider extends Service with ModelResolver {
   }
 
   private def renderSystem(ctx: SectionContext): RenderedSystem = {
-    val sections = sigil.contextSections
+    val sections = sigil.resolvedContextSections
 
     // Mirror the duplicate-call insertion to the backend log so
     // forensics questions ("did the duplicate-call detector fire?")

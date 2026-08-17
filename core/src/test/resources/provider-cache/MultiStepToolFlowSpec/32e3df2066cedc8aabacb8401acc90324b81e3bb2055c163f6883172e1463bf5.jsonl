@@ -1,0 +1,14 @@
+{"requestHash":"32e3df2066cedc8aabacb8401acc90324b81e3bb2055c163f6883172e1463bf5","recordedAt":1786984048361}
+{"callId":"58f49b7ae","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"58f49b7ae","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"58f49b7ae","text":"The","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"58f49b7ae","text":" magic","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"58f49b7ae","text":" number","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"58f49b7ae","text":" is","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"58f49b7ae","text":" **","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"58f49b7ae","text":"4","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"58f49b7ae","text":"2","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"58f49b7ae","text":"**.","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"58f49b7ae","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Magic Number","topicSummary":"Retrieved the magic number from the system","content":"The magic number is **42**.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":3796,"completionTokens":93,"totalTokens":3889,"isEstimated":false,"cacheReadTokens":3559,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

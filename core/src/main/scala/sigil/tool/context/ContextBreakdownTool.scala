@@ -6,7 +6,7 @@ import sigil.tool.ToolContext
 import sigil.tokenize.HeuristicTokenizer
 import sigil.diagnostics.{ProfileSection, RequestProfiler}
 import sigil.participant.AgentParticipant
-import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, SectionContext}
+import sigil.provider.{ContextFeatures, ConversationRequest, GenerationSettings, Instructions, SectionContext}
 import sigil.tool.model.{ContextBreakdownOutput, ContextSectionBreakdown}
 import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, ToolName, ToolProfile, ToolSpec}
 
@@ -61,26 +61,28 @@ case object ContextBreakdownTool extends Tool {
     for {
       resolved <- sigil.resolveReferences(context.turnInput)
       roles    <- rolesTask
-    } yield {
-      val request = ConversationRequest(
-        conversationId     = conv.id,
-        model              = context.model,
-        instructions       = agent.map(_.instructions).getOrElse(Instructions()),
-        turnInput          = context.turnInput,
-        currentMode        = conv.currentMode,
-        currentTopic       = conv.currentTopic,
-        previousTopics     = conv.previousTopics,
-        generationSettings = GenerationSettings(),
-        chain              = context.chain,
-        roles              = roles
-      )
-      val sectionContext = SectionContext(
-        request                         = request,
+      // Features are computed here for the same reason the provider
+      // computes them before rendering: the breakdown must account for
+      // the bytes a real turn would carry, features included.
+      sectionContext <- ContextFeatures.evaluate(sigil.enabledContextFeatures, SectionContext(
+        request                         = ConversationRequest(
+          conversationId     = conv.id,
+          model              = context.model,
+          instructions       = agent.map(_.instructions).getOrElse(Instructions()),
+          turnInput          = context.turnInput,
+          currentMode        = conv.currentMode,
+          currentTopic       = conv.currentTopic,
+          previousTopics     = conv.previousTopics,
+          generationSettings = GenerationSettings(),
+          chain              = context.chain,
+          roles              = roles
+        ),
         resolved                        = resolved,
         discoveredCapabilitiesPromptCap = sigil.discoveredCapabilitiesPromptCap,
         promptShape                     = sigil.modelProfileFor(context.model).promptShape
-      )
-      val profile = RequestProfiler.profile(sectionContext, HeuristicTokenizer, sigil, sigil.contextSections)
+      ))
+    } yield {
+      val profile = RequestProfiler.profile(sectionContext, HeuristicTokenizer, sigil, sigil.resolvedContextSections)
       val sections = profile.sections.toList
         .sortBy { case (_, tokens) => -tokens }
         .map { case (id, tokens) => ContextSectionBreakdown(id, tokens, entryCount(id, sectionContext)) }

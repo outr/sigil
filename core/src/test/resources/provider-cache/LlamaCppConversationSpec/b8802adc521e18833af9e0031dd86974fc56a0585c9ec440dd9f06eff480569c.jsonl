@@ -1,0 +1,95 @@
+{"requestHash":"b8802adc521e18833af9e0031dd86974fc56a0585c9ec440dd9f06eff480569c","recordedAt":1786984075667}
+{"text":"blue","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1,"totalTokens":1,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Wait","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" user","type":"ProviderEvent.TextDelta"}
+{"text":" asked","type":"ProviderEvent.TextDelta"}
+{"text":" for","type":"ProviderEvent.TextDelta"}
+{"text":" one","type":"ProviderEvent.TextDelta"}
+{"text":" word","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" Let","type":"ProviderEvent.TextDelta"}
+{"text":" me","type":"ProviderEvent.TextDelta"}
+{"text":" correct","type":"ProviderEvent.TextDelta"}
+{"text":" that","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"blue","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":17,"totalTokens":17,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":17,"totalTokens":17,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Actually","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" need","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"text":" respond","type":"ProviderEvent.TextDelta"}
+{"text":" with","type":"ProviderEvent.TextDelta"}
+{"text":" just","type":"ProviderEvent.TextDelta"}
+{"text":" one","type":"ProviderEvent.TextDelta"}
+{"text":" word","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"blue","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":31,"totalTokens":31,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Let","type":"ProviderEvent.TextDelta"}
+{"text":" me","type":"ProviderEvent.TextDelta"}
+{"text":" just","type":"ProviderEvent.TextDelta"}
+{"text":" output","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" single","type":"ProviderEvent.TextDelta"}
+{"text":" word","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"blue","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":"'m","type":"ProviderEvent.TextDelta"}
+{"text":" over","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":44,"totalTokens":44,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"thinking","type":"ProviderEvent.TextDelta"}
+{"text":" this","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" The","type":"ProviderEvent.TextDelta"}
+{"text":" answer","type":"ProviderEvent.TextDelta"}
+{"text":" is","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"blue","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"No","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" need","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":57,"totalTokens":57,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" use","type":"ProviderEvent.TextDelta"}
+{"text":" a","type":"ProviderEvent.TextDelta"}
+{"text":" tool","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" Let","type":"ProviderEvent.TextDelta"}
+{"text":" me","type":"ProviderEvent.TextDelta"}
+{"text":" use","type":"ProviderEvent.TextDelta"}
+{"text":" respond","type":"ProviderEvent.TextDelta"}
+{"text":" with","type":"ProviderEvent.TextDelta"}
+{"text":" just","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" word","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"callId":"d1bac623a","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":70,"totalTokens":70,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"d1bac623a","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"d1bac623a","text":"blue","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"d1bac623a","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Test Topic","topicSummary":"User asked about their favorite color.","content":"blue","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4122,"completionTokens":153,"totalTokens":4275,"isEstimated":false,"cacheReadTokens":3882,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

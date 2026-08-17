@@ -7,7 +7,7 @@ import sigil.TurnContext
 import sigil.conversation.{ContextFrame, Conversation, TurnInput}
 import sigil.diagnostics.{ProfileSection, RequestProfiler}
 import sigil.event.Event
-import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions,
+import sigil.provider.{ContextFeatures, ConversationMode, ConversationRequest, GenerationSettings, Instructions,
   ResolvedReferences, SectionContext}
 import sigil.tokenize.HeuristicTokenizer
 import sigil.tool.ToolContext
@@ -58,24 +58,25 @@ class ContextBreakdownAccountingSpec extends AsyncWordSpec with AsyncTaskSpec wi
   /** The profile the framework itself would compute for this turn. The
     * turn references no memories or summaries, so the resolved set is
     * empty by construction. */
-  private def referenceProfile: Task[sigil.diagnostics.RequestProfile] =
-    Task {
-      val resolved = ResolvedReferences(Vector.empty, Vector.empty, Vector.empty)
-      val request = ConversationRequest(
-        conversationId = convId,
-        model = TestSigil.defaultTestModel,
-        instructions = Instructions(),
-        turnInput = turn,
-        currentMode = ConversationMode,
-        currentTopic = conversation.currentTopic,
-        previousTopics = conversation.previousTopics,
-        generationSettings = GenerationSettings(),
-        chain = List(TestUser, TestAgent)
-      )
-      val ctx = SectionContext(request, resolved, TestSigil.discoveredCapabilitiesPromptCap,
-        promptShape = TestSigil.modelProfileFor(TestSigil.defaultTestModel).promptShape)
-      RequestProfiler.profile(ctx, HeuristicTokenizer, TestSigil, TestSigil.contextSections)
+  private def referenceProfile: Task[sigil.diagnostics.RequestProfile] = {
+    val resolved = ResolvedReferences(Vector.empty, Vector.empty, Vector.empty)
+    val request = ConversationRequest(
+      conversationId = convId,
+      model = TestSigil.defaultTestModel,
+      instructions = Instructions(),
+      turnInput = turn,
+      currentMode = ConversationMode,
+      currentTopic = conversation.currentTopic,
+      previousTopics = conversation.previousTopics,
+      generationSettings = GenerationSettings(),
+      chain = List(TestUser, TestAgent)
+    )
+    val base = SectionContext(request, resolved, TestSigil.discoveredCapabilitiesPromptCap,
+      promptShape = TestSigil.modelProfileFor(TestSigil.defaultTestModel).promptShape)
+    ContextFeatures.evaluate(TestSigil.enabledContextFeatures, base).map { ctx =>
+      RequestProfiler.profile(ctx, HeuristicTokenizer, TestSigil, TestSigil.resolvedContextSections)
     }
+  }
 
   "context_breakdown" should {
 

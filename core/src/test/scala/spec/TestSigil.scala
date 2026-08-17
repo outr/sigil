@@ -14,7 +14,7 @@ import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopPro
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.information.{InMemoryInformation, Information}
 import sigil.participant.{AgentParticipantId, Participant, ParticipantId}
-import sigil.provider.{Mode, Provider}
+import sigil.provider.{ContextFeature, CurrentDateFeature, FeatureId, Mode, Provider}
 import sigil.signal.Signal
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.{InMemoryToolFinder, Resolution, Tool, ToolContext, ToolFinder, ToolIO, ToolInput}
@@ -48,6 +48,24 @@ object TestSigil extends Sigil {
     new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
 
   override def testMode: Boolean = true
+
+  /**
+   * The instant every spec's prompt reads as "now" — Saturday, March
+   * 14, 2026, 15:09 UTC. A mid-day instant so no timezone arithmetic in
+   * a spec can land it on an adjacent day, and a date that is neither
+   * today nor plausibly today, so a rendered prompt that somehow picked
+   * up the host clock reads as obviously wrong rather than passing.
+   *
+   * Pinning it is what makes rendered prompts byte-deterministic across
+   * runs: the date rides the system prompt, and the system prompt is
+   * part of the recorded-fixture cache key, so a live clock would mint a
+   * new key every minute and no fixture would ever replay.
+   */
+  val PinnedInstant: java.time.Instant = java.time.Instant.parse("2026-03-14T15:09:00Z")
+  val PinnedClock: java.time.Clock = java.time.Clock.fixed(PinnedInstant, java.time.ZoneOffset.UTC)
+
+  /** The features every spec renders with, unless it swaps them. */
+  private val DefaultContextFeatures: List[ContextFeature] = List(CurrentDateFeature(PinnedClock))
 
   private val healingModeRef =
     new java.util.concurrent.atomic.AtomicReference[sigil.heal.HealingMode](sigil.heal.HealingMode.Strict)
@@ -721,6 +739,22 @@ object TestSigil extends Sigil {
   def setInboundGate(f: Signal => Task[Unit]): Unit = inboundGateRef.set(f)
   def resetInboundGate(): Unit = inboundGateRef.set(_ => Task.unit)
 
+  /**
+   * Per-test [[sigil.provider.ContextFeature]] registry. Specs that
+   * exercise a feature of their own swap the list; everything else
+   * runs against the framework defaults.
+   */
+  private val contextFeaturesRef = new AtomicReference[List[ContextFeature]](DefaultContextFeatures)
+  private val disabledFeaturesRef = new AtomicReference[Set[FeatureId]](Set.empty)
+  override def contextFeatures: List[ContextFeature] = contextFeaturesRef.get()
+  override def disabledFeatures: Set[FeatureId] = disabledFeaturesRef.get()
+  def setContextFeatures(features: List[ContextFeature]): Unit = contextFeaturesRef.set(features)
+  def setDisabledFeatures(ids: Set[FeatureId]): Unit = disabledFeaturesRef.set(ids)
+  def resetContextFeatures(): Unit = {
+    contextFeaturesRef.set(DefaultContextFeatures)
+    disabledFeaturesRef.set(Set.empty)
+  }
+
   private object InboundGate extends sigil.pipeline.InboundTransform {
     override def apply(signal: Signal, self: Sigil): Task[Signal] =
       inboundGateRef.get().apply(signal).map(_ => signal)
@@ -755,6 +789,7 @@ object TestSigil extends Sigil {
     currentParticipantRef.set(p => Task.pure(p))
     replySuggestionsRef.set(None)
     inboundGateRef.set(_ => Task.unit)
+    resetContextFeatures()
   }
 
   override def currentParticipant(persisted: Participant): Task[Participant] =

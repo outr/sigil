@@ -14,12 +14,20 @@ import scala.util.chaining.scalaUtilChainingOps
  * profiler counting the same bytes: `findCapabilityAvailable` gates
  * three sections' wording, `wireToolNames` filters two, and `now`
  * anchors the relative timestamps in two.
+ *
+ * `featureBodies` carries the same guarantee for the effectful half:
+ * [[ContextFeatures.evaluate]] runs each enabled [[ContextFeature]]
+ * once and memoizes its blocks here, so every consumer that renders
+ * this context reads one result rather than re-running a live lookup.
+ * Empty when no features are registered, or when a context is built
+ * outside the request pipeline.
  */
 case class SectionContext(request: ConversationRequest,
                           resolved: ResolvedReferences,
                           discoveredCapabilitiesPromptCap: Int,
                           now: Long = System.currentTimeMillis(),
-                          promptShape: PromptShape = PromptShape.Full) {
+                          promptShape: PromptShape = PromptShape.Full,
+                          featureBodies: Map[FeatureId, List[FeatureBody]] = Map.empty) {
 
   /** Apply the prompt shape's general per-section entry cap to a
     * list-shaped section. `Full` caps nothing. */
