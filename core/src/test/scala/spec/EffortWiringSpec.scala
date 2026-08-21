@@ -166,7 +166,7 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
   }
 
   "LlamaCppProvider chat_template_kwargs" should {
-    val provider = LlamaCppProvider(url = url"http://localhost:8080", models = Nil, sigilRef = TestSigil)
+    val provider = LlamaCppProvider(url = url"http://localhost:8080", seedModels = Nil, sigilRef = TestSigil)
     val modelId = Model.id("qwen3.5-9b-q4_k_m")
 
     "omit chat_template_kwargs when reasoningMode=Auto (deployment default fires)" in {

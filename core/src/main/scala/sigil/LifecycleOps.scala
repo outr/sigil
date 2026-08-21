@@ -222,7 +222,7 @@ trait LifecycleOps { this: Sigil =>
     if (!loadOpenRouterModels) Task.unit
     else for {
       stored      <- db.models.get()
-      _           <- if (stored.list.nonEmpty) cache.replace(stored.list) else Task.unit
+      _           <- if (stored.list.nonEmpty) seedCatalogSnapshot(stored.list) else Task.unit
       isFresh     = stored.list.nonEmpty &&
                       (Timestamp().value - stored.refreshed.value) < modelRefreshInterval.toMillis
       _           <- if (isFresh) Task.unit else blockingRefresh(db, hadPriorCache = stored.list.nonEmpty)
@@ -231,6 +231,18 @@ trait LifecycleOps { this: Sigil =>
       latest      <- db.models.get()
       _           <- scheduleNextRefresh(db, latest.refreshed)
     } yield ()
+
+  /** Seed the registry's catalog slice from the persisted `db.models`
+    * snapshot.
+    *
+    * The snapshot mirrors the aggregate catalog only — llama.cpp and
+    * other backend-sourced models are deliberately never persisted —
+    * so it restores that one source. A provider that already seeded
+    * its own slice keeps it, whatever order boot ran in. */
+  private[sigil] def seedCatalogSnapshot(models: List[Model]): Task[Unit] =
+    cache.catalogSource.set(models).map { _ =>
+      scribe.info(s"Seeded the model catalog from the persisted snapshot — registry slices: ${cache.sliceSummary}")
+    }
 
   /** One-shot blocking refresh from OpenRouter. Delegates to the
     * boot-safe (sigil, db) overload of [[OpenRouter.refreshModels]] so

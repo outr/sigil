@@ -140,7 +140,7 @@ object BenchmarkSigil {
               .getOrElse(url"https://llama.voidcraft.ai")
             Task.pure(LlamaCppProvider(
               url = host,
-              models = Nil,
+              seedModels = Nil,
               sigilRef = self
             ))
           case other =>

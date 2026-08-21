@@ -33,8 +33,10 @@ object DigitalOcean {
     if (sigilModelId.startsWith(prefix)) sigilModelId.drop(prefix.length) else sigilModelId
   }
 
-  /** Fetch DO's hosted-model catalog from `GET /v1/models` and merge
-    * the entries into the registry under the `digitalocean/` namespace.
+  /** Fetch DO's hosted-model catalog from `GET /v1/models` into this
+    * endpoint's own slice of the registry, under the `digitalocean/`
+    * namespace. Re-running it swaps that slice — models DO retired
+    * disappear — and leaves every other source untouched.
     * DO's response follows the OpenAI list shape:
     * `{ "object": "list", "data": [ { "id": "kimi-k2.5", ... }, ... ] }`.
     * The framework keeps the entries small — DO doesn't publish pricing
@@ -100,8 +102,8 @@ object DigitalOcean {
           )
         }
       }
-      sigil.cache.merge(models).map { _ =>
-        logger.info(s"Refreshed DigitalOcean catalog with ${models.length} models.").sync()
+      sigil.cache.source(s"$Provider@${baseUrl.toString}").set(models).map { _ =>
+        logger.info(s"Refreshed DigitalOcean catalog with ${models.length} models — registry slices: ${sigil.cache.sliceSummary}").sync()
         models
       }
     }

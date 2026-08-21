@@ -239,19 +239,23 @@ object Cloudflare {
     (entries, response.resultInfo)
   }
 
-  /** Convenience boot helper — load + merge into the framework cache.
-    * Apps call this once on startup so the framework's pre-flight
-    * budget gate, routing strategy, and the post-#311 modelId
-    * boundary check on tool inputs all see a real [[Model]] record
-    * for every Workers AI deployment the app routes to. Returns the
-    * loaded list for apps that want to inspect / log it. */
+  /** Convenience boot helper — load this account's Workers AI catalog
+    * into its own slice of the framework registry. Apps call this once
+    * on startup so the framework's pre-flight budget gate, routing
+    * strategy, and the modelId boundary check on tool inputs all see a
+    * real [[Model]] record for every deployment the app routes to.
+    * Each account keeps its own slice; re-running swaps it and leaves
+    * every other source untouched. Returns the loaded list for apps
+    * that want to inspect / log it. */
   def refreshModels(sigil: Sigil,
                     accountId: String,
                     apiToken: String,
                     baseUrl: URL = url"https://api.cloudflare.com"): Task[List[Model]] =
     loadModels(accountId, apiToken, baseUrl).flatMap { models =>
-      sigil.cache.merge(models).map { _ =>
-        logger.info(s"Refreshed Cloudflare Workers AI catalog with ${models.length} models.").sync()
+      sigil.cache.source(s"$Provider@$accountId").set(models).map { _ =>
+        logger.info(
+          s"Refreshed Cloudflare Workers AI catalog with ${models.length} models — registry slices: ${sigil.cache.sliceSummary}"
+        ).sync()
         models
       }
     }

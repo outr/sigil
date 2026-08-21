@@ -17,7 +17,7 @@ import spice.net.url
  */
 class LlamaCppProviderConformanceSpec extends AbstractProviderConformanceSpec with ChatCompletionsConformanceSupport {
 
-  private lazy val provider = LlamaCppProvider(url = url"http://localhost:8081", models = Nil, sigilRef = TestSigil)
+  private lazy val provider = LlamaCppProvider(url = url"http://localhost:8081", seedModels = Nil, sigilRef = TestSigil)
 
   override protected def providerInstance: Provider = provider
 
