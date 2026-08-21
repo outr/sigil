@@ -149,15 +149,17 @@ object DeepInfra {
       }
     }
 
-  /** Convenience boot helper — load + merge into the framework cache.
-    * Apps call this once on startup so cost-tracking surfaces
-    * (`ConversationCostUpdated`, `cumulativeCost`) attribute spend
-    * to the right `Model.pricing`. Returns the loaded list for apps
-    * that want to inspect / log it. */
+  /** Convenience boot helper — load the catalog into this endpoint's
+    * own slice of the framework registry. Apps call this once on
+    * startup so cost-tracking surfaces (`ConversationCostUpdated`,
+    * `cumulativeCost`) attribute spend to the right `Model.pricing`.
+    * Re-running it swaps the slice and leaves every other source
+    * untouched. Returns the loaded list for apps that want to inspect
+    * / log it. */
   def refreshModels(sigil: Sigil, baseUrl: URL = url"https://api.deepinfra.com"): Task[List[Model]] =
     loadModels(baseUrl).flatMap { models =>
-      sigil.cache.merge(models).map { _ =>
-        logger.info(s"Refreshed DeepInfra catalog with ${models.length} models.").sync()
+      sigil.cache.source(s"$Provider@${baseUrl.toString}").set(models).map { _ =>
+        logger.info(s"Refreshed DeepInfra catalog with ${models.length} models — registry slices: ${sigil.cache.sliceSummary}").sync()
         models
       }
     }

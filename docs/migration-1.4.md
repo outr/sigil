@@ -394,6 +394,58 @@ Each entry names the fix.
   should pass `resolvedContextSections` instead, or it will account for a prompt the
   framework does not send.
 
+### Model registry
+
+- **`ModelRegistry` is federated — it composes sources instead of owning one map.** A
+  `ModelSource` maintains its own slice of the catalog (`name` + `models`, signalling
+  `sliceChanged()` when it swaps) and the registry folds every registered slice into one
+  composite index on change. Reads (`find`, `findTolerant`, `all`, `find(provider, model)`)
+  keep their signatures and stay a single `AtomicReference` deref — combination happens on
+  write, never on read. The structural payoff: refreshing one source can only ever evict that
+  source's own models, so an aggregate-catalog refresh can no longer wipe the models a local
+  provider registered from its backend.
+
+  Two built-in slices are registered by every registry, in this order: app side-loads
+  (`cache.appSource`, fed by `cache.merge`) and the aggregate catalog (`cache.catalogSource`,
+  fed by `OpenRouter.refreshModels` and the persisted `db.models` snapshot). Register your own
+  with `cache.register(source)`, or take a mutable one by name with
+  `cache.source("my-backend")`. `cache.sources` lists them in registration order and
+  `cache.sliceSummary` renders `name=count` per slice — the refresh log lines now print it.
+
+- **Precedence when two slices carry the same model id: the most recently registered source
+  wins.** With the built-in order above, a bare `cache.merge` fills what the catalog doesn't
+  carry (a local model, a private deployment) and the catalog stays authoritative for the ids it
+  does carry — the 1.3 outcome for a `merge` followed by a `replace`. Anything registered after
+  boot outranks both: a provider reading its own running backend (registered when the provider
+  is constructed), or an app source of curated overrides. Releasing an id — the owning source
+  swapping it out of its slice — uncovers the next-highest source's record.
+
+- **`cache.replace(models)` now swaps the catalog slice only** (it is `catalogSource.set`), and
+  `cache.merge(models)` writes the app side-load slice. Both signatures are unchanged. *Fix:*
+  none for the common cases — a call that meant "this is the whole catalog" still behaves that
+  way for catalog entries, and it no longer evicts provider- or app-registered models as a side
+  effect. If your app was relying on `replace` clearing everything, clear each slice explicitly.
+
+- **`OpenRouter.refreshModels(sigil, db, catalog: Task[List[Model]])`** is a new overload that
+  takes the catalog fetch instead of calling OpenRouter's endpoint — for apps mirroring the
+  catalog internally, and for tests that must not hit the network. The existing one- and
+  two-argument overloads are unchanged.
+
+- **`LlamaCppProvider.models` reads the registry live, like every other provider.** The frozen
+  `override val models` constructor parameter is now `seedModels`: the constructor seeds this
+  server's own slice (`provider.modelSource`, named per backend url so two servers can't
+  overwrite each other) and `models` composes off the registry from then on. A provider's view
+  and the registry the agent loop resolves against can no longer diverge. Re-seed after a server
+  reload with `provider.modelSource.set(models)`. *Fix:* positional construction
+  (`LlamaCppProvider(url, models, sigil)`) and `LlamaCppProvider(sigil, url)` are unaffected;
+  named arguments and `.copy(models = …)` become `seedModels`.
+
+- **`Cloudflare.refreshModels` / `DeepInfra.refreshModels` / `DigitalOcean.refreshModels` write
+  their own slice rather than merging into the shared map.** Each is keyed per endpoint
+  (account id / base url), so re-running one swaps that vendor's catalog — a retired deployment
+  disappears instead of lingering — and never touches another source. Signatures and return
+  values are unchanged.
+
 ### Startup
 
 - **`Sigil.staticTools` is read exactly once and memoized.** The framework's access path is

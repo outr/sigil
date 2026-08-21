@@ -138,7 +138,7 @@ object AgentDojoBankingBench {
         val host = Option(System.getenv("LLAMACPP_HOST")).filter(_.nonEmpty)
           .flatMap(s => URL.get(s, tldValidation = TLDValidation.Off).toOption)
           .getOrElse(url"https://llama.voidcraft.ai")
-        Task.pure(LlamaCppProvider(url = host, models = Nil, sigilRef = sigilRef))
+        Task.pure(LlamaCppProvider(url = host, seedModels = Nil, sigilRef = sigilRef))
       case _ =>
         Task.error(new IllegalArgumentException(s"Unknown provider prefix in model id '$modelArg'"))
     }

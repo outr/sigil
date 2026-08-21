@@ -27,7 +27,7 @@ class LlamaCppEstimateRequestSpec extends AnyWordSpec with Matchers {
   // Test-friendly subclass exposing the protected hook.
   private class ExposedProvider extends LlamaCppProvider(
     url        = url"http://127.0.0.1:1",
-    models     = Nil,
+    seedModels = Nil,
     sigilRef   = TestSigil
   ) {
     def measure(call: ProviderCall): Int = estimateRequest(call)

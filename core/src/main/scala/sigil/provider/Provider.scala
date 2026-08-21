@@ -88,16 +88,18 @@ trait Provider extends Service with ModelResolver {
 
   /**
    * Models available in this provider's namespace, read synchronously
-   * from [[sigil.cache.ModelRegistry]]. The registry is populated by
-   * [[sigil.controller.OpenRouter.refreshModels]] (run automatically
-   * on the background refresh interval, or manually by the app) —
-   * long-running apps see fresh metadata as it lands without
-   * reconstructing the provider, and the read is a single
-   * `AtomicReference` deref so this is safe to call on every request.
+   * from [[sigil.cache.ModelRegistry]]. The registry federates the
+   * aggregate catalog ([[sigil.controller.OpenRouter.refreshModels]],
+   * on the background refresh interval or on demand) with the slices
+   * providers seed from their own backends — long-running apps see
+   * fresh metadata as it lands without reconstructing the provider,
+   * and the read is a single `AtomicReference` deref so this is safe
+   * to call on every request.
    *
-   * Local providers like [[sigil.provider.llamacpp.LlamaCppProvider]]
-   * override with their own list (loaded from the running server,
-   * not openrouter).
+   * Every provider reads through the registry, including local ones
+   * like [[sigil.provider.llamacpp.LlamaCppProvider]] that seed their
+   * own slice from the running server: what the provider reports and
+   * what the agent loop resolves are the same records by construction.
    */
   def models: List[Model] = sigil.cache.find(provider = Some(providerKey))
 

@@ -2808,8 +2808,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
    * In-memory model registry — the canonical source of catalog
    * lookups. `Provider.models` and `isImageOnlyModel`-style hot paths
    * read it synchronously (single `AtomicReference` deref, no DB
-   * round-trip). Populated from disk on init and refreshed in the
-   * background per [[modelRefreshInterval]].
+   * round-trip).
+   *
+   * It federates independently-maintained slices: the aggregate
+   * catalog (restored from disk on init, refreshed in the background
+   * per [[modelRefreshInterval]]), each provider that reads models off
+   * its own backend, and the app's hand-registered records. A slice
+   * refresh only ever replaces its own entries.
    */
   final lazy val cache: ModelRegistry = new ModelRegistry
 

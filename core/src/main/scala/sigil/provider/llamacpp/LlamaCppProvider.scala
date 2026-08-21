@@ -6,6 +6,7 @@ import fabric.rw.valueRW
 import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.Sigil
+import sigil.cache.MutableModelSource
 import sigil.db.Model
 import sigil.provider.*
 import sigil.provider.wire.OpenAIChatCompletions
@@ -17,7 +18,15 @@ import spice.net.*
 import scala.concurrent.duration.*
 
 case class LlamaCppProvider(url: URL,
-                            override val models: List[Model],
+                            /** Models this server had loaded when the provider was
+                              * built. Seeds this provider's own slice of
+                              * [[sigil.cache.ModelRegistry]] at construction;
+                              * `models` then reads the registry live like every
+                              * other provider, so the provider's view of its
+                              * catalog can never diverge from the registry the
+                              * agent loop resolves against. Re-seed through
+                              * [[modelSource]] when the server reloads. */
+                            seedModels: List[Model],
                             sigilRef: Sigil,
                             /** Per-read idle timeout for the SSE stream. spice's
                               * okhttp client wires this through to okhttp's
@@ -29,6 +38,15 @@ case class LlamaCppProvider(url: URL,
                             tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
   override def `type`: ProviderType = ProviderType.LlamaCpp
   override val providerKey: String = LlamaCpp.Provider
+
+  /** This server's slice of the model registry. Owned by this provider
+    * instance (one slice per backend url, so two llama.cpp servers in
+    * the same app don't overwrite each other) and re-seedable: after a
+    * server restart loads a different model, `modelSource.set(...)`
+    * swaps the slice without disturbing any other source. */
+  val modelSource: MutableModelSource = sigilRef.cache.source(s"$providerKey@${url.toString}")
+
+  modelSource.set(seedModels).sync()
 
   override protected def sigil: Sigil = sigilRef
   override def schemaDialect: SchemaDialect = wireConfig.schemaDialect
@@ -259,16 +277,14 @@ case class LlamaCppProvider(url: URL,
 
 object LlamaCppProvider {
 
-  /** Construct a [[LlamaCppProvider]] and seed its model catalog
-    * into [[sigil.cache.ModelRegistry]]. The cache merge is the
-    * registry's contract for every provider that carries its own
-    * model list at construction — the curator and other consumers
-    * query the cache by id, so any model the provider can serve
-    * must be visible there before a turn runs against it. */
+  /** Construct a [[LlamaCppProvider]] from the model list the server
+    * currently has loaded. The constructor seeds that list into this
+    * provider's slice of [[sigil.cache.ModelRegistry]] — the curator
+    * and the agent loop resolve by id against the registry, so any
+    * model the provider can serve must be visible there before a turn
+    * runs against it. */
   def apply(sigil: Sigil, url: URL): Task[LlamaCppProvider] =
-    LlamaCpp.loadModels(url).flatMap { models =>
-      sigil.cache.merge(models).map(_ => LlamaCppProvider(url, models, sigil))
-    }
+    LlamaCpp.loadModels(url).map(models => LlamaCppProvider(url, models, sigil))
 
   /** Map any tool-call id from the wire to a 9-char alphanumeric, applied
     * at parse time so the framework stores the canonical form throughout.
