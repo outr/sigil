@@ -27,6 +27,10 @@ import sigil.tool.Tool
  * `samplingModelId`, refusing otherwise. Apps that want different
  * sampling semantics override this hook.
  *
+ * The sibling hook [[mcpClientFor]] supplies an app-owned
+ * [[McpClient]] for servers the framework's own transports can't
+ * reach; the default declines every config.
+ *
  * Cancellation wiring is automatic: on init the framework drains
  * `Sigil.signals` for `Stop` events targeting an agent and
  * propagates them through [[McpManager.cancelInFlight]] to send
@@ -50,10 +54,39 @@ trait McpSigil extends Sigil {
       case Some(modelId) => new ProviderSamplingHandler(this, config, modelId.asInstanceOf[lightdb.id.Id[sigil.db.Model]])
     }
 
+  /**
+   * Per-server [[McpClient]] factory, consulted before the framework's
+   * built-in transports. Returning `None` (the default, for every
+   * config) falls through to [[McpTransport.Stdio]] /
+   * [[McpTransport.HttpSse]].
+   *
+   * Both built-in transports assume the host can initiate — spawn a
+   * subprocess, or reach a URL. Apps override this hook for servers
+   * they reach some other way, e.g. a deployment whose MCP server runs
+   * on an end user's machine and is reachable only through a socket
+   * that machine opened outbound. Select on
+   * [[McpServerConfig.metadata]], which the app sets when it persists
+   * the config:
+   *
+   * {{{
+   * override protected def mcpClientFor(context: McpClientContext): Option[McpClient] =
+   *   context.config.metadata.get("route").filter(_ == "user-socket").map { _ =>
+   *     new TunnelledMcpClient(context.config, socketFor(context.config), context.samplingHandler, context.notificationListener)
+   *   }
+   * }}}
+   *
+   * Hand the context's `samplingHandler` and `notificationListener` to
+   * the client — see [[McpClientContext]] for what a client that drops
+   * them silently loses. [[McpTransport]] deliberately stays a closed
+   * two-case enum: it is a persisted wire shape, and an app's transport
+   * belongs in the app, not in the framework's enum.
+   */
+  protected def mcpClientFor(context: McpClientContext): Option[McpClient] = None
+
   /** The single per-Sigil MCP manager. Lazy so it only spins up when
     * MCP-touching code accesses it. */
   final lazy val mcpManager: McpManager =
-    new McpManager(this.asInstanceOf[Sigil { type DB <: SigilDB & McpCollections }], samplingHandlerFor)
+    new McpManager(this.asInstanceOf[Sigil { type DB <: SigilDB & McpCollections }], samplingHandlerFor, mcpClientFor)
 
   /** Tool finder that surfaces all MCP-server-side tools. Apps that
     * want to chain it with other finders compose at the

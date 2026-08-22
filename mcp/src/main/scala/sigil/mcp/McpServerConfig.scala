@@ -47,6 +47,15 @@ import sigil.db.Model
  *                          closed and the subprocess torn down. The
  *                          next call lazily reconnects and re-discovers
  *                          tools.
+ * @param metadata          app-owned key/value data the framework never
+ *                          interprets. This is where an app marks a
+ *                          config for its own [[McpClient]] (see
+ *                          [[McpSigil.mcpClientFor]]) and stashes
+ *                          whatever routing data that client needs —
+ *                          which end user's socket to tunnel through,
+ *                          for instance. Set server-side; the agent-
+ *                          facing `add_mcp_server` tool does not expose
+ *                          it.
  */
 case class McpServerConfig(name: String,
                            transport: McpTransport,
@@ -64,6 +73,7 @@ case class McpServerConfig(name: String,
                              * import still completes; apps tune per server. `0`
                              * disables the timeout. */
                            callTimeoutMs: Long = 5L * 60L * 1000L,
+                           metadata: Map[String, String] = Map.empty,
                            created: Timestamp = Timestamp(),
                            modified: Timestamp = Timestamp(),
                            _id: Id[McpServerConfig] = McpServerConfig.id())
