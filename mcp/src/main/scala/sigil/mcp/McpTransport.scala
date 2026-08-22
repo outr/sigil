@@ -16,6 +16,12 @@ import spice.net.URL
  *
  * Apps select per-server via [[McpServerConfig.transport]]. The
  * framework's [[McpClient]] dispatches on this case at connect time.
+ *
+ * The enum stays closed at these two: it is a persisted wire shape, and
+ * a transport only one app can speak doesn't belong in it. Apps reaching
+ * a server another way supply their own [[McpClient]] through
+ * [[McpSigil.mcpClientFor]], marking the config via
+ * [[McpServerConfig.metadata]].
  */
 enum McpTransport derives RW {
   case Stdio(command: String, args: List[String] = Nil)

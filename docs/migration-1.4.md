@@ -489,6 +489,19 @@ Each entry names the fix.
   one silently shadowing the other. `McpToolFinder` resolves once and threads the map through
   listing and by-name lookup. No app action required.
 
+- **`McpServerConfig` gained `metadata: Map[String, String] = Map.empty`** (after
+  `callTimeoutMs`, before `created`). App-owned data the framework never interprets. It is
+  additive and defaulted: rows persisted before the field existed decode with an empty map, and
+  named-argument construction is unaffected. The agent-facing `add_mcp_server` input is
+  unchanged — `metadata` is set server-side by the app, not by the model.
+
+- **`McpManager` gained a third constructor parameter**,
+  `customClientFor: McpClientContext => Option[McpClient] = _ => None`, defaulted so existing
+  two-argument construction still compiles. `McpSigil` wires it from the new `mcpClientFor`
+  hook. `McpManager.clientImplementationFor(config): McpClient` is the dispatch it performs
+  (app hook first, built-in transports otherwise) exposed for apps that want to inspect or
+  decorate the choice; it constructs only — connecting is still `McpClient.start`.
+
 ### Client tools
 
 - **`ClientToolSpec` gained `consequence: Option[String] = None`** (after `destructive`).
@@ -887,3 +900,30 @@ The required-union rule runs in the boot completeness pass against the final reg
   resize a running display; apps
   that override `streamBrowserConfig` with a deliberately small display should size it to the
   largest preview they will ask for.
+- **App-supplied MCP clients.** `McpSigil.mcpClientFor(context: McpClientContext): Option[McpClient]`
+  is consulted for every connection before the built-in transports; returning `None` (the
+  default, for every config) falls through to `Stdio` / `HttpSse` exactly as before. Override it
+  for a server the host can neither spawn nor dial — a deployment whose MCP server runs on an
+  end user's machine, reachable only through a socket that machine opened outbound, wants an
+  `McpClient` that tunnels JSON-RPC over it. Select on `McpServerConfig.metadata`, which the app
+  sets when it persists the config:
+
+  ```scala
+  override protected def mcpClientFor(context: McpClientContext): Option[McpClient] =
+    context.config.metadata.get("route").filter(_ == "user-socket").map { _ =>
+      new TunnelledMcpClient(context.config,
+                             socketFor(context.config),
+                             context.samplingHandler,
+                             context.notificationListener)
+    }
+  ```
+
+  `McpClientContext` carries the config plus the two collaborators the built-in clients are
+  constructed with: the per-server `SamplingHandler` (resolved by `samplingHandlerFor`) and the
+  `notificationListener` the manager uses to invalidate its tool / resource / prompt caches on
+  `notifications/*/list_changed`. Hand both to your client — one built from the config alone
+  can't answer `sampling/createMessage` and goes stale on server-side changes. New collaborators
+  are added to the context, so overriders don't re-signature.
+
+  `McpTransport` deliberately stays a closed two-case enum. It is a persisted wire shape, and a
+  transport only one app can speak belongs in that app rather than in the framework's enum.

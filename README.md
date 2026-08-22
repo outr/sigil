@@ -24,7 +24,7 @@ A Scala 3 framework for building multi-agent LLM conversations with tool use, ca
 
 ## Optional modules
 
-- **`sigil-mcp`** — MCP client with stdio + HTTP+SSE transports, persisted server registry, sampling handler, automatic cancellation wiring
+- **`sigil-mcp`** — MCP client with stdio + HTTP+SSE transports (plus an `mcpClientFor` hook for servers only the app can reach), persisted server registry, sampling handler, automatic cancellation wiring
 - **`sigil-tooling`** — LSP / BSP clients (lsp4j + bsp4j) for IDE-grade structural integration; long-lived language-server and build-server sessions, with exhaustive coverage of edit, navigation, and build-system RPCs
 - **`sigil-debug`** — DAP (Debug Adapter Protocol) client for interactive debugging — launch / attach, breakpoints, step / continue / pause, stack trace, scope / variable inspection, REPL evaluation; per-language adapter configs (debugpy, lldb-dap, delve, sbt-debug-bridge, …)
 - **`sigil-script`** — REPL-backed `ScalaScriptExecutor` + DB-persisted `ScriptTool`s for runtime-defined capabilities

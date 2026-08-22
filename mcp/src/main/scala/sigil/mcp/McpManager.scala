@@ -31,9 +31,17 @@ import scala.jdk.CollectionConverters.*
  *
  * The manager is only useful when the host's `SigilDB` mixes in
  * [[McpCollections]]. Apps wire it up via [[McpSigil]].
+ *
+ * @param customClientFor consulted before the built-in transports for
+ *                        every connection — the seam an app uses to
+ *                        reach a server the framework cannot dial
+ *                        itself. Wired from [[McpSigil.mcpClientFor]];
+ *                        the default declines every config, leaving the
+ *                        built-ins in charge.
  */
 final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
-                       samplingHandlerFor: McpServerConfig => SamplingHandler) {
+                       samplingHandlerFor: McpServerConfig => SamplingHandler,
+                       customClientFor: McpClientContext => Option[McpClient] = _ => None) {
 
   private val clients         = new ConcurrentHashMap[String, ClientEntry]()
   private val toolCache       = new ConcurrentHashMap[String, CachedTools]()
@@ -224,20 +232,34 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
     }
   }
 
+  /**
+   * The client this manager will use for `config` — the app's factory
+   * first, the built-in transports otherwise. Construction only; the
+   * connection is opened by [[McpClient.start]].
+   */
+  def clientImplementationFor(config: McpServerConfig): McpClient = {
+    val context = McpClientContext(config, samplingHandlerFor(config), notificationListenerFor(config))
+    customClientFor(context).getOrElse(builtInClientFor(context))
+  }
+
+  private def builtInClientFor(context: McpClientContext): McpClient = context.config.transport match {
+    case _: McpTransport.Stdio   => new StdioMcpClient(context.config, context.samplingHandler, context.notificationListener)
+    case _: McpTransport.HttpSse => new HttpSseMcpClient(context.config, context.samplingHandler, context.notificationListener)
+  }
+
+  /** Invalidate the relevant cache slice when the server signals it. */
+  private def notificationListenerFor(cfg: McpServerConfig): (String, Json) => Task[Unit] = (method, _) => Task {
+    method match {
+      case "notifications/tools/list_changed"     => toolCache.remove(cfg.name)
+      case "notifications/resources/list_changed" => resourceCache.remove(cfg.name)
+      case "notifications/prompts/list_changed"   => promptCache.remove(cfg.name)
+      case _                                      => ()
+    }
+    ()
+  }
+
   private def connectAndRegister(cfg: McpServerConfig): Task[McpClient] = Task.defer {
-    val notificationListener: (String, fabric.Json) => Task[Unit] = (method, _) => Task {
-      // Invalidate the relevant cache slice when the server signals it.
-      method match {
-        case "notifications/tools/list_changed"     => toolCache.remove(cfg.name)
-        case "notifications/resources/list_changed" => resourceCache.remove(cfg.name)
-        case "notifications/prompts/list_changed"   => promptCache.remove(cfg.name)
-        case _                                      => ()
-      }
-    }
-    val client: McpClient = cfg.transport match {
-      case _: McpTransport.Stdio   => new StdioMcpClient(cfg, samplingHandlerFor(cfg), notificationListener)
-      case _: McpTransport.HttpSse => new HttpSseMcpClient(cfg, samplingHandlerFor(cfg), notificationListener)
-    }
+    val client = clientImplementationFor(cfg)
     val entry = ClientEntry(client, new AtomicLong(System.currentTimeMillis()))
     clients.put(cfg.name, entry)
     ensureReaperStarted()
