@@ -86,7 +86,7 @@ trait LifecycleOps { this: Sigil =>
       _ <- polymorphicRegistrations
       _ <- logger.info("Sigil initializing...")
       _ = ContextSections.shedCascade(resolvedContextSections)
-      _ <- Task(Profig.initConfiguration())
+      _ <- Task(Profig.loadDefaults())
       _ = instanceStarted.set(true)
       config = Profig("sigil").as[Config]
       (directory, collectionStore) = config.postgres match {

@@ -13,7 +13,7 @@ import org.scalatest.{Args, Status, SucceededStatus, Suite}
 object QdrantLiveSupport {
   def baseUrl: Option[spice.net.URL] = {
     import fabric.rw.*
-    profig.Profig.initConfiguration()
+    profig.Profig.loadDefaults()
     profig.Profig("sigil.qdrant.url").opt[String].filter(_.nonEmpty)
       .flatMap(s => spice.net.URL.get(s).toOption)
   }
