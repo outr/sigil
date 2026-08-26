@@ -353,7 +353,13 @@ trait CheckpointOps { this: Sigil =>
         // than the sparse, anomaly-only path a frontier executor gets.
         if (cadenceDue && modelProfile.needsOversight)
           state.plannerAnomalyPending = true
-        if (!state.plannerAnomalyPending && state.plan.isDefined && !cadenceDue) Task.pure(None)
+        // A missing plan fires the first review immediately, but only
+        // ONCE unpaced: after a review that failed to yield a verdict
+        // (`lastPlannerIteration` advanced without a plan landing) the
+        // retry waits for the cadence tick / an anomaly, so a reply
+        // failure can't drive a planner consult at every boundary.
+        val firstReviewDue = state.plan.isEmpty && state.lastPlannerIteration == 0
+        if (!state.plannerAnomalyPending && !firstReviewDue && !cadenceDue) Task.pure(None)
         else withDB(_.conversations.transaction(_.get(convId))).flatMap {
           case None => Task.pure(None)
           case Some(conv) =>
@@ -363,7 +369,7 @@ trait CheckpointOps { this: Sigil =>
                 Some("An anomaly signal (stall heuristic, churn chain, or budget check-in) fired since the last planner review.")
               else None
             }
-            sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.PlannerVerdictInput](
+            sigil.tool.consult.ConsultTool.invokeRich[sigil.tool.consult.PlannerVerdictInput](
               sigil = this,
               modelId = plannerModel,
               chain = List(agent.id),
@@ -372,12 +378,26 @@ trait CheckpointOps { this: Sigil =>
               tool = sigil.tool.consult.PlannerVerdictTool,
               generationSettings = sigil.tool.consult.PlannerVerdictTool.consultSettings
             ).flatMap {
-              case Some(verdict) => applyPlannerVerdict(agent, conv, state, iteration, verdict)
-              case None =>
-                // No verdict from the planner — fall back to the
-                // objective signals rather than failing open: a stall /
-                // churn hit still persists a no-progress checkpoint and
-                // produces the cooperative intervention.
+              case sigil.tool.consult.ConsultOutcome.Parsed(verdict) =>
+                applyPlannerVerdict(agent, conv, state, iteration, verdict)
+              case outcome =>
+                // No verdict from the planner. Advance the review marker
+                // and drop the anomaly latch so the retry rides the next
+                // cadence tick / fresh anomaly instead of refiring (and
+                // likely failing identically) at every boundary, then
+                // fall back to the objective signals rather than failing
+                // open: a stall / churn hit still persists a no-progress
+                // checkpoint and produces the cooperative intervention.
+                state.lastPlannerIteration = iteration
+                state.plannerAnomalyPending = false
+                outcome match {
+                  case t: sigil.tool.consult.ConsultOutcome.Truncated =>
+                    scribe.warn(s"planner_verdict truncated for ${agent.id.value}/${convId.value} iter=$iteration" +
+                      t.completionTokens.map(c => s" ($c completion tokens)").getOrElse(""))
+                  case sigil.tool.consult.ConsultOutcome.Failed(cause) =>
+                    scribe.warn(s"planner_verdict consult failed for ${agent.id.value}/${convId.value} iter=$iteration: ${cause.getMessage}")
+                  case _ => () // NoOpinion; Unparseable already warned in invokeRich
+                }
                 anomalyReason match {
                   case Some(reason) =>
                     val checkpoint = sigil.event.ProgressCheckpoint(
@@ -426,14 +446,14 @@ trait CheckpointOps { this: Sigil =>
     state.lastPlannerIteration = iteration
     state.plannerAnomalyPending = false
     val returnedPhase = Some(verdict.currentPhase.trim).filter(_.nonEmpty)
-    val returnedPlan =
-      if (verdict.objective.trim.nonEmpty && verdict.doneCriteria.trim.nonEmpty)
-        Some(TurnPlan(
-          objective    = verdict.objective.trim,
-          constraints  = verdict.constraints.map(_.trim).filter(_.nonEmpty),
-          doneCriteria = verdict.doneCriteria.trim,
-          currentPhase = returnedPhase))
-      else None
+    val returnedPlan = for {
+      objective    <- verdict.objective.map(_.trim).filter(_.nonEmpty)
+      doneCriteria <- verdict.doneCriteria.map(_.trim).filter(_.nonEmpty)
+    } yield TurnPlan(
+      objective    = objective,
+      constraints  = verdict.constraints.map(_.trim).filter(_.nonEmpty),
+      doneCriteria = doneCriteria,
+      currentPhase = returnedPhase)
     val replan = verdict.verdict == "replan"
     val publishPlanTask = returnedPlan match {
       case Some(plan) if replan || state.plan.isEmpty =>
@@ -444,7 +464,7 @@ trait CheckpointOps { this: Sigil =>
         Task.unit
     }
     val deviating = verdict.verdict == "deviating"
-    val correction = Some(verdict.correction.trim).filter(_.nonEmpty)
+    val correction = verdict.correction.map(_.trim).filter(_.nonEmpty)
       .getOrElse("Re-read the plan and realign your next actions with its objective and done criteria.")
     val correctionTask =
       if (deviating)
@@ -484,18 +504,21 @@ trait CheckpointOps { this: Sigil =>
       |tool calls succeeded — judge whether the trajectory still leads to the objective.
       |
       |Verdicts:
-      |  - on_track — the work is converging on the done criteria. Echo the current plan
-      |    fields, refreshing currentPhase to where the work stands now. correction stays empty.
+      |  - on_track — the work is converging on the done criteria. Return only the verdict
+      |    and currentPhase (where the work stands now); omit correction and the plan fields
+      |    — the plan you were shown is retained for you.
       |  - deviating — the executor has lost the plot: undoing its own work, grinding on
       |    something outside the objective, or repeating work that cannot converge. Write a
-      |    concrete correction directive telling it what to do differently. Echo the plan.
+      |    concrete correction directive telling it what to do differently, plus
+      |    currentPhase. Omit the plan fields.
       |  - replan — the plan itself no longer fits what the task needs. Return the REVISED
-      |    objective / constraints / doneCriteria / currentPhase. correction stays empty.
+      |    objective / constraints / doneCriteria / currentPhase. Omit correction.
       |
       |On the first review there is no plan yet: derive one from the user's request and the
-      |work so far — objective (what the task delivers), constraints (hard boundaries the
-      |executor must not cross), doneCriteria (how anyone can tell the work is finished) —
-      |and return it with your verdict.""".stripMargin
+      |work so far — objective (what the task delivers, one to three sentences), constraints
+      |(hard boundaries the executor must not cross, short phrases), doneCriteria (how anyone
+      |can tell the work is finished) — and return it with your verdict. Keep every plan
+      |field concise; never quote the user's request verbatim.""".stripMargin
 
   /** Render the `_plan` directive the executor reads: the plan
     * artifact as an internal Tool-role message. */
@@ -542,8 +565,8 @@ trait CheckpointOps { this: Sigil =>
     val ask =
       s"The executor is at iteration $iteration. Deliver your verdict: on_track when this trajectory is " +
         "converging on the done criteria, deviating (with a concrete correction) when it is not, replan when " +
-        "the plan itself no longer fits. Populate the plan fields — fully on first review or replan, echoed " +
-        "with a refreshed currentPhase otherwise."
+        "the plan itself no longer fits. Return the plan fields only on first review or replan; otherwise " +
+        "return just your verdict and a refreshed currentPhase — the plan above is retained for you."
     taskBlock + planBlock + historyBlock + spendLine + anomalyLine + ask
   }
 

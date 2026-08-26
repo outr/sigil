@@ -29,10 +29,13 @@ case object PlannerVerdictTool extends Tool with FrameworkConsult {
       |when the plan itself no longer fits the task.
       |
       |`correction` is a concrete directive to the executor — required for "deviating",
-      |empty otherwise. The plan fields (`objective`, `constraints`, `doneCriteria`,
-      |`currentPhase`) must be fully populated on your first review and on "replan";
-      |otherwise echo the current plan, refreshing `currentPhase` to where the work
-      |stands now.""".stripMargin
+      |omitted otherwise. `currentPhase` is always required: one short line on where the
+      |work stands now.
+      |
+      |The plan fields (`objective`, `constraints`, `doneCriteria`) are returned ONLY on
+      |your first review (no plan exists yet) and on "replan" — keep them concise: the
+      |objective in one to three sentences, constraints as short phrases. On every other
+      |verdict omit them entirely; the plan you were shown is retained for you.""".stripMargin
 
   val spec: ToolSpec = ToolSpec(
     name = name,
@@ -45,10 +48,13 @@ case object PlannerVerdictTool extends Tool with FrameworkConsult {
     * so this WorkType is declarative only (no routing happens). */
   override def consultWorkType: WorkType = AnalysisWork
 
-  /** Output is a verdict plus the (possibly revised) plan fields.
-    * 512 tokens covers the structured payload with margin. */
+  /** Output is a verdict plus, on first review / replan only, the
+    * plan fields. The routine reply (verdict + correction + phase) is
+    * small; 1024 tokens leaves headroom for the plan-carrying replies
+    * so a detailed objective doesn't truncate the tool-call JSON
+    * mid-object. */
   override def consultSettings: GenerationSettings = GenerationSettings(
-    outputTokenCap = OutputTokenCap.Below(512),
+    outputTokenCap = OutputTokenCap.Below(1024),
     reasoningMode  = ReasoningMode.Off
   )
 

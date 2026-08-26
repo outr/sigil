@@ -80,10 +80,15 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   /** Scripted provider: planner consults answer from `verdicts` in
     * order (last repeats), reflector consults always claim progress,
     * and main-loop calls follow `mainShape` until `respondAfter` is
-    * exhausted, then respond with `endsTurn = true`. */
+    * exhausted, then respond with `endsTurn = true`. The first
+    * `plannerTruncations` planner consults close with
+    * `finish_reason: length` and no tool call — the truncated-reply
+    * shape bug #412 observed; `verdicts` indexes the calls after
+    * them. */
   private final class PlannerScriptProvider(respondAfter: Int,
                                             mainShape: MainShape,
-                                            verdicts: Vector[PlannerVerdictInput]) extends Provider {
+                                            verdicts: Vector[PlannerVerdictInput],
+                                            plannerTruncations: Int = 0) extends Provider {
     val totalCalls = new AtomicInteger(0)
     val mainCalls = new AtomicInteger(0)
     val plannerCalls = new AtomicInteger(0)
@@ -109,12 +114,15 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val emits: List[ProviderEvent] =
         if (input.tools.exists(_.name.value == "planner_verdict")) {
           val n = plannerCalls.incrementAndGet()
-          val v = verdicts.lift(n - 1).getOrElse(verdicts.last)
-          List(
-            ProviderEvent.ToolCallStart(callId, "planner_verdict"),
-            ProviderEvent.toolCall(callId, PlannerVerdictTool)(v),
-            ProviderEvent.Done(StopReason.Complete)
-          )
+          if (n <= plannerTruncations) List(ProviderEvent.Done(StopReason.MaxTokens))
+          else {
+            val v = verdicts.lift(n - 1 - plannerTruncations).getOrElse(verdicts.last)
+            List(
+              ProviderEvent.ToolCallStart(callId, "planner_verdict"),
+              ProviderEvent.toolCall(callId, PlannerVerdictTool)(v),
+              ProviderEvent.Done(StopReason.Complete)
+            )
+          }
         } else if (input.tools.exists(_.name.value == "report_progress")) {
           reflectorCalls.incrementAndGet()
           List(
@@ -154,25 +162,30 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     }
   }
 
+  /** A first-review-shaped verdict: plan fields populated (the review
+    * that creates the plan). */
   private def onTrack(phase: String): PlannerVerdictInput = PlannerVerdictInput(
     verdict      = "on_track",
-    correction   = "",
-    objective    = "Repair the extractor and verify the build.",
+    currentPhase = phase,
+    objective    = Some("Repair the extractor and verify the build."),
     constraints  = List("Do not revert prior fixes."),
-    doneCriteria = "Build compiles and tests pass.",
-    currentPhase = phase
+    doneCriteria = Some("Build compiles and tests pass.")
   )
 
+  /** A routine review per the post-#412 contract: verdict + phase
+    * only, plan fields omitted — the framework retains the plan. */
+  private def slimOnTrack(phase: String): PlannerVerdictInput =
+    PlannerVerdictInput(verdict = "on_track", currentPhase = phase)
+
   private def deviating(correction: String): PlannerVerdictInput =
-    onTrack("applying fixes").copy(verdict = "deviating", correction = correction)
+    onTrack("applying fixes").copy(verdict = "deviating", correction = Some(correction))
 
   private val replanned: PlannerVerdictInput = PlannerVerdictInput(
     verdict      = "replan",
-    correction   = "",
-    objective    = "Rewrite the extractor from scratch.",
+    currentPhase = "rewriting",
+    objective    = Some("Rewrite the extractor from scratch."),
     constraints  = Nil,
-    doneCriteria = "New extractor passes the regression suite.",
-    currentPhase = "rewriting"
+    doneCriteria = Some("New extractor passes the regression suite.")
   )
 
   private def makeAgent(): AgentParticipant =
@@ -342,6 +355,66 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           // iteration 6 — never once per boundary, let alone iteration.
           provider.plannerCalls.get() should (be >= 2 and be <= 3)
           provider.reflectorCalls.get() shouldBe 0
+        }
+      }
+    }
+
+    "retain the plan when a routine verdict omits the plan fields" in {
+      TestSigil.setPlannerModelId(oversightModelId)
+      TestSigil.setPlannerCadence(2)
+      val provider = new PlannerScriptProvider(
+        respondAfter = 4,
+        mainShape    = MainShape.DistinctMutations,
+        verdicts     = Vector(onTrack("phase 1"), slimOnTrack("phase 2"))
+      )
+      for {
+        convId <- seedConv("slim")
+        _ <- runTurn(provider, convId, "Repair the extractor.")
+        events <- eventsOf(convId)
+        _ = TestSigil.resetPlannerCadence()
+      } yield {
+        val checkpoints = events.collect { case c: ProgressCheckpoint => c }.sortBy(_.iterationCount)
+        withClue(s"planner=${provider.plannerCalls.get()} " +
+          s"checkpoints=${checkpoints.map(c => s"${c.currentStatus}/${c.remainingSteps}")}: ") {
+          provider.plannerCalls.get() should be >= 2
+          // The slim verdict created no new plan — the first review's
+          // stands, and its doneCriteria still backs the checkpoint.
+          invokesNamed(events, "_plan") should have size 1
+          val slim = checkpoints.find(_.currentStatus.contains("phase 2"))
+          slim should not be empty
+          slim.get.remainingSteps shouldBe "Build compiles and tests pass."
+          checkpoints.count(_.meaningfulProgress) shouldBe checkpoints.size
+          invokesNamed(events, "_planner_correction") shouldBe empty
+        }
+      }
+    }
+
+    "pace the retry onto the cadence tick when a planner reply truncates" in {
+      TestSigil.setPlannerModelId(oversightModelId)
+      TestSigil.setPlannerCadence(4)
+      val provider = new PlannerScriptProvider(
+        respondAfter       = 8,
+        mainShape          = MainShape.DistinctMutations,
+        verdicts           = Vector(onTrack("phase 1")),
+        plannerTruncations = 1
+      )
+      for {
+        convId <- seedConv("truncated")
+        _ <- runTurn(provider, convId, "Sweep every file and apply the rename.")
+        events <- eventsOf(convId)
+        _ = TestSigil.resetPlannerCadence()
+      } yield {
+        withClue(s"main=${provider.mainCalls.get()} planner=${provider.plannerCalls.get()}: ") {
+          // First review (iteration 2) truncates; without pacing the
+          // empty plan refires the consult at the very next boundary
+          // (iteration 4). With pacing the retry waits for the cadence
+          // tick (iteration 6), succeeds, and creates the plan.
+          provider.plannerCalls.get() shouldBe 2
+          invokesNamed(events, "_plan") should have size 1
+          // The executor's own work is untouched by the failed review.
+          provider.mainCalls.get() shouldBe 9
+          invokesNamed(events, "_stall_detected") shouldBe empty
+          invokesNamed(events, "_planner_correction") shouldBe empty
         }
       }
     }
