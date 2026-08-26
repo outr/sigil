@@ -86,7 +86,17 @@ trait LifecycleOps { this: Sigil =>
       _ <- polymorphicRegistrations
       _ <- logger.info("Sigil initializing...")
       _ = ContextSections.shedCascade(resolvedContextSections)
-      _ <- Task(Profig.loadDefaults())
+      // profig 3.8's `loadDefaults()` REPLACES the whole configuration
+      // with files + env + system properties, discarding anything merged
+      // programmatically before `instance` ran (an app's `sigil.dbPath`
+      // override, a per-suite test path). Capture the explicit
+      // configuration and re-merge it on top so defaults fill the gaps
+      // but never clobber deliberate settings.
+      _ <- Task {
+             val explicit = Profig.json
+             Profig.loadDefaults()
+             Profig.merge(explicit)
+           }
       _ = instanceStarted.set(true)
       config = Profig("sigil").as[Config]
       (directory, collectionStore) = config.postgres match {
