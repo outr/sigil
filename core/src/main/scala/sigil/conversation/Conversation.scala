@@ -6,6 +6,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Unique
 import sigil.{GlobalSpace, SpaceId}
+import sigil.SpaceId.given
 import sigil.participant.Participant
 import sigil.provider.{ConversationMode, Mode}
 
@@ -193,4 +194,12 @@ object Conversation extends RecordDocumentModel[Conversation] with JsonConversio
     * A `String` index (not the whole poly value) so a data-carrying status
     * still answers a category query. */
   val statusKey: I[String] = field.index("statusKey", _.status.key)
+
+  /** Index on the conversation's [[SpaceId]] so apps can list a
+    * space's conversations server-side (`space === MySpace(id)`) on
+    * every backend. Typed against the poly itself: the index term is
+    * the space's serialized form, which is exactly what the document
+    * column already holds, so SQL backends gain the index without a
+    * data migration and the embedded Lucene store gains the filter. */
+  val space: I[SpaceId] = field.index(_.space)
 }

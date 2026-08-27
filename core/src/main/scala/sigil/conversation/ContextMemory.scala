@@ -152,10 +152,10 @@ case class ContextMemory(fact: String,
 object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConversion[ContextMemory] {
   implicit override def rw: RW[ContextMemory] = RW.gen
 
-  // Indexed on string projections rather than the poly / enum types
-  // themselves: Lucene's filter backend can't generate equality checks
-  // for polymorphic records or Scala 3 enums. Queries compare against
-  // the projected string value.
+  // Indexed on string projections so callers can query by a space's
+  // `value` / a status's name without constructing the poly or enum
+  // instance (the retrieval paths carry `Set[SpaceId]` scopes, whose
+  // members may be app subtypes the framework can't name).
   val spaceIdValue: I[String] = field.index(_.spaceId.value)
   val key: I[Option[String]] = field.index(_.key)
   val statusName: I[String] = field.index(_.status.toString)

@@ -927,3 +927,16 @@ The required-union rule runs in the boot completeness pass against the final reg
 
   `McpTransport` deliberately stays a closed two-case enum. It is a persisted wire shape, and a
   transport only one app can speak belongs in that app rather than in the framework's enum.
+
+- **Indexed admin queries: `Conversation.space`, `Event.participantId`, `Event.eventType`.**
+  The three fields reporting and admin surfaces filter on are declared indexes now, typed
+  against the polys themselves — `Conversation.space === MySpace(id)`,
+  `Event.participantId === MyUserId(id)`, `Event.eventType === "Message"` (the subtype's simple
+  class name, i.e. the poly discriminator) — and grouping on `Event.participantId` works the
+  same way. The embedded RocksDB + Lucene backend can run these filters for the first time
+  (poly-typed equality on Lucene arrived in lightdb 4.48.0, which this release builds against),
+  so an app that kept whole-store in-memory fallbacks for dev mode deletes them; on SQL backends
+  the declarations sit on the existing columns with the same serialized text, so boot adds
+  `CREATE INDEX IF NOT EXISTS` and nothing else — no column change, no data migration. Apps
+  that reached these columns through LightDB's auto-registered `Field[Doc, Json]` handles and
+  hand-serialized the comparison value switch to the typed fields.
