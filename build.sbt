@@ -17,7 +17,7 @@ val striderVersion: String = "1.1.6"
 
 val scalapassVersion: String = "1.4.2"
 
-val awsS3Version: String = "2.46.21"
+val awsS3Version: String = "2.54.5"
 
 // 2.4.0 adds `RoboBrowserConfig.virtualDisplay` (Xvfb-backed headful sessions)
 // and the `robobrowser-stream` artifact `sigil-browser-stream` wraps. The
@@ -59,7 +59,8 @@ ThisBuild / scalacOptions ++= Seq(
   "-unchecked",
   // fabric's `RW.gen` inlines once per field; the widest records here
   // (ContextMemory) exceed the 32 default.
-  "-Xmax-inlines", "64"
+  "-Xmax-inlines",
+  "64"
 )
 // Per-forked-JVM heap. Local default is generous; CI (a 4-vCPU / 16 GB
 // runner driving several concurrent forks) overrides via env so the
