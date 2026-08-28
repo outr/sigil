@@ -37,7 +37,10 @@ case object SemanticSearchTool extends Tool {
   override val description =
     """Search persisted memories. Returns matches ranked by embedding similarity when a vector
       |index is wired (otherwise Lucene/substring fallback). Use to recall a previously stored
-      |fact before asking the user the same thing again. Returns
+      |fact before asking the user the same thing again. Phrase the query as the specific
+      |question or fact you need — not the conversation's general topic. If the results look
+      |thin or off-target, search again with reworded terms before concluding the memory
+      |doesn't exist. Returns
       |`{query, memories: [{memoryId, key?, label, summary, fact, pinned, archived, confidence, justification?}], count}`.""".stripMargin
   val spec: ToolSpec = ToolSpec(
     name = name,

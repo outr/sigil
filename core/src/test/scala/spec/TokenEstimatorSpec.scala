@@ -77,9 +77,14 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
         source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace
       )
-      val handleless = elided.copy(key = None)
-      TokenEstimator.estimateMemories(Vector(elided), HeuristicTokenizer) should be >
-        TokenEstimator.estimateMemories(Vector(handleless), HeuristicTokenizer)
+      // A keyless elided memory carries a handle too (via its record
+      // id), so the handle-free baseline is a memory that doesn't
+      // elide at all.
+      val keyless = elided.copy(key = None)
+      val nonEliding = elided.copy(fact = elided.summary)
+      val baseline = TokenEstimator.estimateMemories(Vector(nonEliding), HeuristicTokenizer)
+      TokenEstimator.estimateMemories(Vector(elided), HeuristicTokenizer) should be > baseline
+      TokenEstimator.estimateMemories(Vector(keyless), HeuristicTokenizer) should be > baseline
     }
   }
 

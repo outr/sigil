@@ -1,4 +1,4 @@
-{"requestHash":"1ca2b5eed28d9fc1d8941b21a5e89aaaf6728b6f89029347c758227348786080","recordedAt":1786984124166}
+{"requestHash":"6b0808cb5ea631c996d3f54f61f0ac9cdced2ed407c0e2883ba82ed6438b2393","recordedAt":1787960799920}
 {"text":"The","type":"ProviderEvent.ThinkingDelta"}
 {"text":" user","type":"ProviderEvent.ThinkingDelta"}
 {"text":" wants","type":"ProviderEvent.ThinkingDelta"}
@@ -50,19 +50,15 @@
 {"text":" for","type":"ProviderEvent.ThinkingDelta"}
 {"text":" capabilities","type":"ProviderEvent.ThinkingDelta"}
 {"usage":{"promptTokens":0,"completionTokens":64,"totalTokens":64,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"text":" that","type":"ProviderEvent.ThinkingDelta"}
-{"text":" can","type":"ProviderEvent.ThinkingDelta"}
-{"text":" help","type":"ProviderEvent.ThinkingDelta"}
-{"text":" me","type":"ProviderEvent.ThinkingDelta"}
-{"text":" list","type":"ProviderEvent.ThinkingDelta"}
-{"text":" and","type":"ProviderEvent.ThinkingDelta"}
-{"text":" find","type":"ProviderEvent.ThinkingDelta"}
+{"text":" related","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" finding","type":"ProviderEvent.ThinkingDelta"}
 {"text":" configuration","type":"ProviderEvent.ThinkingDelta"}
 {"text":" files","type":"ProviderEvent.ThinkingDelta"}
 {"text":".","type":"ProviderEvent.ThinkingDelta"}
 {"text":"\n","type":"ProviderEvent.ThinkingDelta"}
-{"callId":"d1d17fb98","toolName":"find_capability","type":"ProviderEvent.ToolCallStart"}
-{"usage":{"promptTokens":0,"completionTokens":77,"totalTokens":77,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"callId":"d1d17fb98","call":{"type":"decoded","name":"find_capability","args":{"keywords":"list files directory configuration"}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4443,"completionTokens":90,"totalTokens":4533,"isEstimated":false,"cacheReadTokens":4293,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"1cd00e604","toolName":"find_capability","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":74,"totalTokens":74,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"1cd00e604","call":{"type":"decoded","name":"find_capability","args":{"keywords":"list files directory configuration files"}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4760,"completionTokens":87,"totalTokens":4847,"isEstimated":false,"cacheReadTokens":4610,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

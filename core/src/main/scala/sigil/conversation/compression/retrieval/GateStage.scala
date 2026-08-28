@@ -21,7 +21,11 @@ case class GateStage() extends MemoryRetrievalStage {
   override def run(state: MemoryRetrievalState, ctx: MemoryRetrievalContext): Task[MemoryRetrievalState] = Task {
     def passes(m: ContextMemory): Boolean =
       !m.pinned && m.isRecallable(ctx.now) && GateStage.matchesMode(m, ctx.currentMode)
-    state.copy(lexical = state.lexical.filter(passes), vectorHits = state.vectorHits.filter(passes))
+    state.copy(
+      lexical = state.lexical.filter(passes),
+      vectorHits = state.vectorHits.filter(passes),
+      keywordHits = state.keywordHits.filter(passes)
+    )
   }
 }
 

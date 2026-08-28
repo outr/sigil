@@ -1,4 +1,4 @@
-{"requestHash":"e411d07c9d4113e135d7d2775030e971b3979389912ba68f3d213cbb67ffb093","recordedAt":1786984126565}
+{"requestHash":"32d455566f56e710829587013535d2ce27581cc407dc249959eb4acc576bb2e5","recordedAt":1787960802331}
 {"text":"The","type":"ProviderEvent.ThinkingDelta"}
 {"text":" user","type":"ProviderEvent.ThinkingDelta"}
 {"text":" wants","type":"ProviderEvent.ThinkingDelta"}
@@ -36,8 +36,8 @@
 {"text":" review","type":"ProviderEvent.ThinkingDelta"}
 {"text":".","type":"ProviderEvent.ThinkingDelta"}
 {"text":"\n","type":"ProviderEvent.ThinkingDelta"}
-{"callId":"c2e0e7f4a","toolName":"change_mode","type":"ProviderEvent.ToolCallStart"}
+{"callId":"0779dec19","toolName":"change_mode","type":"ProviderEvent.ToolCallStart"}
 {"usage":{"promptTokens":0,"completionTokens":39,"totalTokens":39,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"callId":"c2e0e7f4a","call":{"type":"decoded","name":"change_mode","args":{"mode":"coding","reason":"user wants to write a Scala function"}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4435,"completionTokens":82,"totalTokens":4517,"isEstimated":false,"cacheReadTokens":4293,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"0779dec19","call":{"type":"decoded","name":"change_mode","args":{"mode":"coding","reason":"user wants to write a Scala function"}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4752,"completionTokens":82,"totalTokens":4834,"isEstimated":false,"cacheReadTokens":4610,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

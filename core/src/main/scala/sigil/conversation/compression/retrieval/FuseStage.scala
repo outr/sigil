@@ -38,6 +38,13 @@ import sigil.vector.TemporalBoost
 case class FuseStage(rrfK: Int = 60,
                      lexicalWeight: Double = 2.0,
                      vectorWeight: Double = 1.0,
+                     /** Per-signal weight on the context keyword leg
+                       * (classifier keywords + topic label). Default
+                       * 1.0 — context should inform the ranking, never
+                       * outvote a direct match on the user's question
+                       * (whose lexical leg carries 2.0). `0.0` disables
+                       * the context contribution entirely. */
+                     keywordWeight: Double = 1.0,
                      recencyWeight: Double = FuseStage.DefaultRecencyWeight,
                      reinforcementWeight: Double = FuseStage.DefaultReinforcementWeight,
                      recencyHalfLifeMs: Long = FuseStage.DefaultRecencyHalfLifeMs) extends MemoryRetrievalStage {
@@ -48,7 +55,14 @@ case class FuseStage(rrfK: Int = 60,
   override val name: String = "fuse"
 
   override def run(state: MemoryRetrievalState, ctx: MemoryRetrievalContext): Task[MemoryRetrievalState] = Task {
-    state.copy(ranked = fuse(List(state.lexical -> lexicalWeight, state.vectorHits -> vectorWeight), ctx.now))
+    state.copy(ranked = fuse(
+      List(
+        state.lexical -> lexicalWeight,
+        state.vectorHits -> vectorWeight,
+        state.keywordHits -> keywordWeight
+      ),
+      ctx.now
+    ))
   }
 
   /** Accumulate weighted-RRF contributions per record (insertion

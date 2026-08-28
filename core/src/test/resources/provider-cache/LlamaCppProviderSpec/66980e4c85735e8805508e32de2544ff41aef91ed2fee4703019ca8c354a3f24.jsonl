@@ -1,4 +1,4 @@
-{"requestHash":"0096e28d7b4b4aeac59dd7ad4897b3faa167e1b1266c5aca15697abf07e07280","recordedAt":1786984109569}
+{"requestHash":"66980e4c85735e8805508e32de2544ff41aef91ed2fee4703019ca8c354a3f24","recordedAt":1787960785151}
 {"text":"The","type":"ProviderEvent.ThinkingDelta"}
 {"text":" user","type":"ProviderEvent.ThinkingDelta"}
 {"text":" is","type":"ProviderEvent.ThinkingDelta"}
@@ -48,10 +48,10 @@
 {"text":" requested","type":"ProviderEvent.ThinkingDelta"}
 {"text":".","type":"ProviderEvent.ThinkingDelta"}
 {"text":"\n","type":"ProviderEvent.ThinkingDelta"}
-{"callId":"73c4cdd63","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"074347156","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
 {"usage":{"promptTokens":0,"completionTokens":51,"totalTokens":51,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"callId":"73c4cdd63","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
-{"callId":"73c4cdd63","text":"4","type":"ProviderEvent.ContentBlockDelta"}
-{"callId":"73c4cdd63","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Math Question","topicSummary":"Simple arithmetic question","content":"4","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4440,"completionTokens":117,"totalTokens":4557,"isEstimated":false,"cacheReadTokens":4293,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"074347156","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"074347156","text":"4","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"074347156","call":{"type":"decoded","name":"respond","args":{"topicLabel":"Math Question","topicSummary":"User asked a simple arithmetic question","content":"4","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":[]}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4757,"completionTokens":120,"totalTokens":4877,"isEstimated":false,"cacheReadTokens":4610,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

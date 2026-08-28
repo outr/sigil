@@ -23,12 +23,16 @@ import sigil.provider.Mode
  *   - `memories`: top-K most relevant non-pinned memories, produced by
  *     the declared retrieval pipeline
  *     ([[sigil.conversation.compression.retrieval.MemoryRetrievalStage]]):
- *     Recall (lexical ∥ vector, space-pushed-down) → Gate (recallable +
- *     mode affinity) → Fuse (confidence-weighted RRF × recency ×
- *     reinforcement) → Rerank (optional) → Budget (count + token cap)
- *     → Record (access marking). The query signal is built from the
- *     active topic's `label` + `summary` + the conversation's
- *     `currentKeywords` plus the most recent non-agent message.
+ *     Recall (lexical ∥ vector ∥ keyword, space-pushed-down) → Gate
+ *     (recallable + mode affinity) → Fuse (confidence-weighted RRF ×
+ *     recency × reinforcement) → Rerank (optional) → Budget (count +
+ *     token cap) → Record (access marking). The question legs (vector
+ *     + lexical) run over the most recent non-agent message ALONE —
+ *     undiluted, so a specific factual question matches the memory
+ *     that answers it rather than the conversation's general theme.
+ *     The conversational context — the classifier's `currentKeywords`
+ *     plus the active topic's `label` — contributes through a separate
+ *     keyword leg with its own fusion weight ([[keywordWeight]]).
  *
  * Pinned memories are excluded from `memories` so they never double-
  * render — they already appear in the Pinned section.
@@ -41,10 +45,17 @@ import sigil.provider.Mode
  * Knobs:
  *   - [[limit]]: cap on retrieved-bucket returns per turn (pinned
  *     bucket is NOT subject to this cap).
- *   - [[queryFrom]]: optional override of the per-turn query text.
- *     The default builds from `topic.label + topic.summary +
- *     conversation.currentKeywords + lastNonAgentMessage`. Override
- *     for app-specific signal composition.
+ *   - [[queryFrom]]: optional override of the per-turn QUESTION text
+ *     (the vector + lexical legs' query). The default is
+ *     [[StandardMemoryRetriever.lastNonAgentMessage]] — the user's
+ *     latest message, alone. Override for app-specific signal
+ *     composition (e.g. an LLM query expander).
+ *   - [[contextTermsFrom]]: optional override of the context keyword
+ *     leg's terms. The default is the conversation's
+ *     `currentKeywords` plus the active topic's `label` tokens; the
+ *     topic `summary` is deliberately NOT query material — it
+ *     describes the conversation, not the question, and folding it
+ *     into any leg's query dilutes specific-fact retrieval.
  *   - [[includePinned]]: kill switch for the always-on pass.
  *   - [[rrfK]]: RRF smoothing constant (default 60, the standard).
  *     Higher means rankings further down still contribute meaningfully;
@@ -69,6 +80,7 @@ import sigil.provider.Mode
  */
 case class StandardMemoryRetriever(limit: Int = 5,
                                    queryFrom: Option[StandardMemoryRetriever.QueryBuilder] = None,
+                                   contextTermsFrom: Option[StandardMemoryRetriever.ContextTermsBuilder] = None,
                                    includePinned: Boolean = true,
                                    rrfK: Int = 60,
                                    /** Per-signal weight on the Lucene leg of RRF.
@@ -87,6 +99,11 @@ case class StandardMemoryRetriever(limit: Int = 5,
                                    /** Per-signal weight on the vector leg of RRF.
                                      * Default 1.0. Pair with `lexicalWeight`. */
                                    vectorWeight: Double = 1.0,
+                                   /** Per-signal weight on the context keyword leg
+                                     * (`currentKeywords` + topic label). Default 1.0
+                                     * — context informs the ranking without outvoting
+                                     * a direct question match; `0.0` disables it. */
+                                   keywordWeight: Double = 1.0,
                                    recencyWeight: Double = FuseStage.DefaultRecencyWeight,
                                    reinforcementWeight: Double = FuseStage.DefaultReinforcementWeight,
                                    recencyHalfLifeMs: Long = FuseStage.DefaultRecencyHalfLifeMs,
@@ -109,6 +126,7 @@ case class StandardMemoryRetriever(limit: Int = 5,
       rrfK = rrfK,
       lexicalWeight = lexicalWeight,
       vectorWeight = vectorWeight,
+      keywordWeight = keywordWeight,
       recencyWeight = recencyWeight,
       reinforcementWeight = reinforcementWeight,
       recencyHalfLifeMs = recencyHalfLifeMs,
@@ -129,19 +147,20 @@ case class StandardMemoryRetriever(limit: Int = 5,
       spaces       <- resolveSpaces(sigil, chain, conversationId)
       currentMode  <- currentModeOf(sigil, conversationId)
       criticals    <- if (includePinned) loadPinned(sigil, spaces, currentMode, now) else Task.pure(Vector.empty)
-      regular      <- buildQuery(sigil, conversationId, frames, chain).flatMap {
-        case None        => Task.pure(Vector.empty)
-        case Some(query) =>
+      regular      <- buildRecallInputs(sigil, conversationId, frames, chain).flatMap {
+        case None => Task.pure(Vector.empty)
+        case Some((question, terms)) =>
           val ctx = MemoryRetrievalContext(
             sigil = sigil,
             conversationId = conversationId,
-            query = query,
+            query = question,
             spaces = spaces,
             currentMode = currentMode,
             now = now,
             limit = limit,
             candidatePool = math.max(limit * 4, 10),
-            exclude = criticals.toSet
+            exclude = criticals.toSet,
+            contextTerms = terms
           )
           stages
             .foldLeft(Task.pure(MemoryRetrievalState())) { (acc, stage) =>
@@ -169,31 +188,39 @@ case class StandardMemoryRetriever(limit: Int = 5,
                             conversationId: lightdb.id.Id[sigil.conversation.Conversation]): Task[Set[SpaceId]] =
     sigilArg.accessibleSpaces(chain, conversationId).map(_ + GlobalSpace)
 
-  /** Compose the per-turn retrieval query. Caller-supplied
-    * [[queryFrom]] takes precedence; otherwise read the topic state
-    * from the conversation + the last non-agent message from frames. */
-  private def buildQuery(sigil: Sigil,
-                         conversationId: Id[Conversation],
-                         frames: Vector[ContextFrame],
-                         chain: List[ParticipantId]): Task[Option[String]] =
-    queryFrom match {
+  /** Compose the per-turn recall inputs: the question text and the
+    * context terms. `None` when neither yields anything (no user
+    * message, no keywords, no topic) — retrieval is skipped for the
+    * turn.
+    *
+    * The question is the user's latest message ALONE ([[queryFrom]]
+    * overrides). The context terms are the conversation's
+    * `currentKeywords` plus the active topic's `label` tokens
+    * ([[contextTermsFrom]] overrides); the topic `summary` is
+    * deliberately excluded — mixing it into any query biases recall
+    * toward the conversation's general theme and crowds out the
+    * memory that answers a specific question. */
+  private def buildRecallInputs(sigil: Sigil,
+                                conversationId: Id[Conversation],
+                                frames: Vector[ContextFrame],
+                                chain: List[ParticipantId]): Task[Option[(String, List[String])]] = {
+    val question = queryFrom.getOrElse(StandardMemoryRetriever.lastNonAgentMessage)(frames, chain)
+      .map(_.trim).filter(_.nonEmpty)
+    val termsTask = contextTermsFrom match {
       case Some(builder) => Task.pure(builder(frames, chain))
       case None          =>
         sigil.withDB(_.conversations.transaction(_.get(conversationId))).map {
-          case None => StandardMemoryRetriever.lastNonAgentMessage(frames, chain)
+          case None       => Nil
           case Some(conv) =>
-            val topic = conv.topics.lastOption
-            val parts = scala.collection.mutable.ListBuffer.empty[String]
-            topic.foreach { t =>
-              if (t.label.nonEmpty)   parts += t.label
-              if (t.summary.nonEmpty) parts += t.summary
-            }
-            if (conv.currentKeywords.nonEmpty) parts += conv.currentKeywords.mkString(" ")
-            StandardMemoryRetriever.lastNonAgentMessage(frames, chain).foreach(parts += _)
-            val joined = parts.iterator.map(_.trim).filter(_.nonEmpty).mkString(" ")
-            if (joined.nonEmpty) Some(joined) else None
+            val labelTerms = conv.topics.lastOption.toList.flatMap(_.label.split("\\s+"))
+            (conv.currentKeywords ++ labelTerms).iterator.map(_.trim).filter(_.nonEmpty).toList.distinct
         }
     }
+    termsTask.map { terms =>
+      if (question.isEmpty && terms.isEmpty) None
+      else Some((question.getOrElse(""), terms))
+    }
+  }
 
   /** Load every pinned memory in the supplied spaces. Pushes the
     * filter into Lucene via the indexed `pinned` boolean, the
@@ -234,6 +261,11 @@ object StandardMemoryRetriever {
     * the retrieval call for this turn. */
   type QueryBuilder = (Vector[ContextFrame], List[ParticipantId]) => Option[String]
 
+  /** Function that derives the context keyword leg's terms from the
+    * turn's frames + participant chain. Returning `Nil` skips the
+    * keyword leg for the turn. */
+  type ContextTermsBuilder = (Vector[ContextFrame], List[ParticipantId]) => List[String]
+
   /** The standard six-stage pipeline, assembled from the retriever's
     * knobs. Apps that want to swap one stage build on this — replace
     * the entry and pass the list as
@@ -242,6 +274,7 @@ object StandardMemoryRetriever {
                     rrfK: Int = 60,
                     lexicalWeight: Double = 2.0,
                     vectorWeight: Double = 1.0,
+                    keywordWeight: Double = 1.0,
                     recencyWeight: Double = FuseStage.DefaultRecencyWeight,
                     reinforcementWeight: Double = FuseStage.DefaultReinforcementWeight,
                     recencyHalfLifeMs: Long = FuseStage.DefaultRecencyHalfLifeMs,
@@ -254,6 +287,7 @@ object StandardMemoryRetriever {
       rrfK = rrfK,
       lexicalWeight = lexicalWeight,
       vectorWeight = vectorWeight,
+      keywordWeight = keywordWeight,
       recencyWeight = recencyWeight,
       reinforcementWeight = reinforcementWeight,
       recencyHalfLifeMs = recencyHalfLifeMs

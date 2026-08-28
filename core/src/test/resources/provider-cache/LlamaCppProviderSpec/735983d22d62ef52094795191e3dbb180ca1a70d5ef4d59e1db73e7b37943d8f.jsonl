@@ -1,4 +1,4 @@
-{"requestHash":"1b86e28c9111cb6fcc8167b85ddb903c32826849d5dd1d02073c49799cc0e379","recordedAt":1786984119451}
+{"requestHash":"735983d22d62ef52094795191e3dbb180ca1a70d5ef4d59e1db73e7b37943d8f","recordedAt":1787960795236}
 {"text":"The","type":"ProviderEvent.ThinkingDelta"}
 {"text":" user","type":"ProviderEvent.ThinkingDelta"}
 {"text":" wants","type":"ProviderEvent.ThinkingDelta"}
@@ -47,43 +47,46 @@
 {"text":"\n\n","type":"ProviderEvent.ThinkingDelta"}
 {"text":"This","type":"ProviderEvent.ThinkingDelta"}
 {"text":" is","type":"ProviderEvent.ThinkingDelta"}
-{"text":" a","type":"ProviderEvent.ThinkingDelta"}
-{"text":" request","type":"ProviderEvent.ThinkingDelta"}
+{"text":" an","type":"ProviderEvent.ThinkingDelta"}
+{"text":" action","type":"ProviderEvent.ThinkingDelta"}
 {"usage":{"promptTokens":0,"completionTokens":59,"totalTokens":59,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"text":" requires","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
 {"text":" to","type":"ProviderEvent.ThinkingDelta"}
 {"text":" present","type":"ProviderEvent.ThinkingDelta"}
 {"text":" options","type":"ProviderEvent.ThinkingDelta"}
 {"text":" to","type":"ProviderEvent.ThinkingDelta"}
 {"text":" the","type":"ProviderEvent.ThinkingDelta"}
 {"text":" user","type":"ProviderEvent.ThinkingDelta"}
-{"text":",","type":"ProviderEvent.ThinkingDelta"}
-{"text":" so","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
 {"text":" I","type":"ProviderEvent.ThinkingDelta"}
 {"text":" should","type":"ProviderEvent.ThinkingDelta"}
 {"text":" use","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
 {"text":" `","type":"ProviderEvent.ThinkingDelta"}
 {"text":"respond","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":77,"totalTokens":77,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":"_options","type":"ProviderEvent.ThinkingDelta"}
 {"text":"`","type":"ProviderEvent.ThinkingDelta"}
+{"text":" tool","type":"ProviderEvent.ThinkingDelta"}
 {"text":" to","type":"ProviderEvent.ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":76,"totalTokens":76,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"text":" create","type":"ProviderEvent.ThinkingDelta"}
-{"text":" clickable","type":"ProviderEvent.ThinkingDelta"}
-{"text":" controls","type":"ProviderEvent.ThinkingDelta"}
-{"text":" for","type":"ProviderEvent.ThinkingDelta"}
-{"text":" them","type":"ProviderEvent.ThinkingDelta"}
-{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" present","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" notification","type":"ProviderEvent.ThinkingDelta"}
+{"text":" options","type":"ProviderEvent.ThinkingDelta"}
+{"text":" they","type":"ProviderEvent.ThinkingDelta"}
+{"text":" can","type":"ProviderEvent.ThinkingDelta"}
 {"text":" choose","type":"ProviderEvent.ThinkingDelta"}
 {"text":" from","type":"ProviderEvent.ThinkingDelta"}
 {"text":".","type":"ProviderEvent.ThinkingDelta"}
 {"text":"\n\n","type":"ProviderEvent.ThinkingDelta"}
-{"text":"Let","type":"ProviderEvent.ThinkingDelta"}
-{"text":" me","type":"ProviderEvent.ThinkingDelta"}
-{"text":" structure","type":"ProviderEvent.ThinkingDelta"}
-{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
 {"text":" options","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":99,"totalTokens":99,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" should","type":"ProviderEvent.ThinkingDelta"}
+{"text":" be","type":"ProviderEvent.ThinkingDelta"}
 {"text":":","type":"ProviderEvent.ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":96,"totalTokens":96,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":"\n","type":"ProviderEvent.ThinkingDelta"}
 {"text":"-","type":"ProviderEvent.ThinkingDelta"}
 {"text":" Email","type":"ProviderEvent.ThinkingDelta"}
@@ -97,33 +100,40 @@
 {"text":"-","type":"ProviderEvent.ThinkingDelta"}
 {"text":" None","type":"ProviderEvent.ThinkingDelta"}
 {"text":" (","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":109,"totalTokens":109,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":"exclusive","type":"ProviderEvent.ThinkingDelta"}
 {"text":" option","type":"ProviderEvent.ThinkingDelta"}
 {"text":")","type":"ProviderEvent.ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":108,"totalTokens":108,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":"\n\n","type":"ProviderEvent.ThinkingDelta"}
 {"text":"Since","type":"ProviderEvent.ThinkingDelta"}
+{"text":" multiple","type":"ProviderEvent.ThinkingDelta"}
+{"text":" selections","type":"ProviderEvent.ThinkingDelta"}
+{"text":" are","type":"ProviderEvent.ThinkingDelta"}
+{"text":" allowed","type":"ProviderEvent.ThinkingDelta"}
+{"text":" but","type":"ProviderEvent.ThinkingDelta"}
 {"text":" None","type":"ProviderEvent.ThinkingDelta"}
-{"text":" cannot","type":"ProviderEvent.ThinkingDelta"}
-{"text":" be","type":"ProviderEvent.ThinkingDelta"}
-{"text":" combined","type":"ProviderEvent.ThinkingDelta"}
-{"text":" with","type":"ProviderEvent.ThinkingDelta"}
-{"text":" others","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"text":" exclusive","type":"ProviderEvent.ThinkingDelta"}
 {"text":",","type":"ProviderEvent.ThinkingDelta"}
 {"text":" I","type":"ProviderEvent.ThinkingDelta"}
-{"text":" should","type":"ProviderEvent.ThinkingDelta"}
+{"text":" need","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":130,"totalTokens":130,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
 {"text":" set","type":"ProviderEvent.ThinkingDelta"}
+{"text":" allow","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Multiple","type":"ProviderEvent.ThinkingDelta"}
+{"text":"=true","type":"ProviderEvent.ThinkingDelta"}
+{"text":" and","type":"ProviderEvent.ThinkingDelta"}
+{"text":" make","type":"ProviderEvent.ThinkingDelta"}
+{"text":" sure","type":"ProviderEvent.ThinkingDelta"}
+{"text":" None","type":"ProviderEvent.ThinkingDelta"}
+{"text":" has","type":"ProviderEvent.ThinkingDelta"}
 {"text":" exclusive","type":"ProviderEvent.ThinkingDelta"}
 {"text":"=true","type":"ProviderEvent.ThinkingDelta"}
-{"text":" for","type":"ProviderEvent.ThinkingDelta"}
-{"text":" the","type":"ProviderEvent.ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":128,"totalTokens":128,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"text":" None","type":"ProviderEvent.ThinkingDelta"}
-{"text":" option","type":"ProviderEvent.ThinkingDelta"}
 {"text":".","type":"ProviderEvent.ThinkingDelta"}
 {"text":"\n","type":"ProviderEvent.ThinkingDelta"}
-{"callId":"56b922431","toolName":"respond_options","type":"ProviderEvent.ToolCallStart"}
-{"usage":{"promptTokens":0,"completionTokens":132,"totalTokens":132,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"callId":"56b922431","call":{"type":"decoded","name":"respond_options","args":{"prompt":"Which notification channels do you want to enable? (Select all that apply)","options":[{"label":"Email","value":"email","description":"Receive notifications via email","exclusive":false},{"label":"SMS","value":"sms","description":"Receive notifications via text message","exclusive":false},{"label":"Push","value":"push","description":"Receive push notifications","exclusive":false},{"label":"None","value":"none","description":"Disable all notifications (exclusive option)","exclusive":true}],"allowMultiple":true}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4464,"completionTokens":289,"totalTokens":4753,"isEstimated":false,"cacheReadTokens":4293,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"44e337d24","toolName":"respond_options","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":147,"totalTokens":147,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"44e337d24","call":{"type":"decoded","name":"respond_options","args":{"prompt":"Which notification channels would you like to enable? (Multiple selections allowed)","options":[{"label":"Email","value":"email","description":"Receive notifications via email","exclusive":false},{"label":"SMS","value":"sms","description":"Receive notifications via text message","exclusive":false},{"label":"Push","value":"push","description":"Receive push notifications","exclusive":false},{"label":"None","value":"none","description":"Disable all notifications (exclusive option)","exclusive":true}],"allowMultiple":true}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4781,"completionTokens":298,"totalTokens":5079,"isEstimated":false,"cacheReadTokens":4610,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

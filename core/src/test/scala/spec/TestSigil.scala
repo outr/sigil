@@ -9,6 +9,7 @@ import sigil.event.Event
 import sigil.{Sigil, TurnContext}
 import sigil.conversation.{ActiveSkillSlot, Conversation, ConversationStatus, Topic, TopicEntry, TurnInput}
 import sigil.SpaceId
+import sigil.conversation.compression.MemoryDistiller
 import sigil.conversation.compression.extract.{MemoryExtractor, StandardMemoryExtractor}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
@@ -306,6 +307,7 @@ object TestSigil extends Sigil {
   private val curateRef = new AtomicReference[(Id[Conversation], Id[Model], List[ParticipantId]) => Task[TurnInput]](defaultCurate)
   private val wireInterceptorRef = new AtomicReference[spice.http.client.intercept.Interceptor](defaultWireInterceptor)
   private val memoryExtractorRef = new AtomicReference[MemoryExtractor](defaultMemoryExtractor)
+  private val memoryDistillerRef = new AtomicReference[Option[MemoryDistiller]](None)
   private val locationForRef = new AtomicReference[(ParticipantId, Id[Conversation]) => Task[Option[Place]]](defaultLocationFor)
   private val geocoderRef = new AtomicReference[Geocoder](defaultGeocoder)
   private val accessibleSpacesRef =
@@ -444,6 +446,7 @@ object TestSigil extends Sigil {
   override def wireInterceptor: spice.http.client.intercept.Interceptor = wireInterceptorRef.get()
 
   override def memoryExtractor: MemoryExtractor = memoryExtractorRef.get()
+  override def memoryDistiller: Option[MemoryDistiller] = memoryDistillerRef.get()
 
   override def locationFor(participantId: ParticipantId, conversationId: Id[Conversation]): Task[Option[Place]] =
     locationForRef.get().apply(participantId, conversationId)
@@ -705,6 +708,8 @@ object TestSigil extends Sigil {
    * Orchestrator's extraction hook wire a stub here.
    */
   def setMemoryExtractor(e: MemoryExtractor): Unit = memoryExtractorRef.set(e)
+  def setMemoryDistiller(d: MemoryDistiller): Unit = memoryDistillerRef.set(Some(d))
+  def resetMemoryDistiller(): Unit = memoryDistillerRef.set(None)
 
   /**
    * Install a capture hook — specs exercising the publish-time
@@ -807,6 +812,7 @@ object TestSigil extends Sigil {
     curateRef.set(defaultCurate)
     wireInterceptorRef.set(defaultWireInterceptor)
     memoryExtractorRef.set(defaultMemoryExtractor)
+    memoryDistillerRef.set(None)
     locationForRef.set(defaultLocationFor)
     geocoderRef.set(defaultGeocoder)
     memoryClassifierModelRef.set(None)

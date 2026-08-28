@@ -22,20 +22,31 @@ object ContextSections {
 
   /** Prompt rendering for a memory: the summary when set (the
     * compressed per-turn form), the full fact otherwise. When the
-    * summary elides a materially longer fact AND the memory has a
-    * referenceable key, the line carries its drill-down handle —
-    * `[full: lookup("<key>")]` — mirroring the summaries section's
-    * inline `reload_content("<id>")` convention. */
+    * summary elides a materially longer fact the line carries its
+    * drill-down handle — `[full: lookup("<key>")]`, falling back to
+    * the record id for keyless memories (`lookup` resolves both) —
+    * mirroring the summaries section's inline `reload_content("<id>")`
+    * convention. "Materially longer" is a small fixed margin: a
+    * handle on a fact the summary already carries verbatim would
+    * spend tokens pointing at nothing. */
   def memoryRenderText(m: ContextMemory): String =
     if (m.summary.trim.isEmpty) m.fact
-    else {
-      val handle = m.key match {
-        case Some(key) if m.fact.trim.length > m.summary.trim.length * 2 && m.fact.trim.length > 200 =>
-          s" [full: lookup(\"" + key + "\")]"
-        case _ => ""
-      }
-      m.summary + handle
-    }
+    else if (memoryElides(m)) {
+      val reference = m.key.getOrElse(m._id.value)
+      m.summary + " [full: lookup(\"" + reference + "\")]"
+    } else m.summary
+
+  /** `true` when the memory's render (its summary) elides materially
+    * more fact text than it shows — the condition under which the
+    * rendered line carries a `lookup` drill-down handle. */
+  def memoryElides(m: ContextMemory): Boolean =
+    m.summary.trim.nonEmpty &&
+      m.fact.trim != m.summary.trim &&
+      m.fact.trim.length > m.summary.trim.length + MemoryElisionMarginChars
+
+  /** Minimum character difference between fact and summary before the
+    * summary counts as eliding the fact. */
+  val MemoryElisionMarginChars: Int = 40
 
   /** One memory's rendered line, bullet and newline included. */
   def memoryLine(m: ContextMemory): String = s"- ${memoryRenderText(m)}\n"

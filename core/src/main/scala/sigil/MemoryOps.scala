@@ -52,7 +52,7 @@ trait MemoryOps { this: Sigil =>
     * non-empty keywords. */
   def persistMemory(memory: ContextMemory): Task[ContextMemory] =
     validateCoreContextCap(memory).flatMap { _ =>
-      enrichMemoryClassification(memory, memory.createdBy.toList).flatMap { enriched =>
+      enrichMemoryClassification(memory, memory.createdBy.toList).flatMap(applyDistillation).flatMap { enriched =>
         withDB(_.memories.transaction(_.upsert(enriched))).flatMap(indexMemory)
       }
     }
@@ -82,7 +82,7 @@ trait MemoryOps { this: Sigil =>
     if (!memory.key.exists(_.nonEmpty))
       Task.error(new IllegalArgumentException("upsertMemoryByKey requires Some(non-empty key); use persistMemory for un-keyed inserts"))
     else validateCoreContextCap(memory).flatMap { _ =>
-      enrichMemoryClassification(memory, memory.createdBy.toList).flatMap(upsertMemoryByKeyImpl)
+      enrichMemoryClassification(memory, memory.createdBy.toList).flatMap(applyDistillation).flatMap(upsertMemoryByKeyImpl)
     }
   }
 
@@ -123,7 +123,13 @@ trait MemoryOps { this: Sigil =>
               case Some(prior) if prior.fact == memory.fact =>
                 val refreshed = prior.copy(
                   label = memory.label,
-                  summary = memory.summary,
+                  // A re-extraction of an unchanged fact typically arrives
+                  // with `summary = fact` (the extractors' copy form); that
+                  // copy must not clobber a distilled one-liner the prior
+                  // version carries.
+                  summary =
+                    if (memory.summary.trim == memory.fact.trim && prior.summary.trim != prior.fact.trim) prior.summary
+                    else memory.summary,
                   keywords = memory.keywords,
                   memoryType = memory.memoryType,
                   confidence = memory.confidence,
@@ -134,6 +140,7 @@ trait MemoryOps { this: Sigil =>
                   justification = memory.justification,
                   location = memory.location,
                   sourceEventIds = MemoryOps.boundedProvenance(prior.sourceEventIds, memory.sourceEventIds),
+                  embeddedText = memory.embeddedText.orElse(prior.embeddedText),
                   modified = Timestamp()
                 )
                 tx.upsert(refreshed).map(_ => UpsertMemoryResult.Refreshed(refreshed))
@@ -330,6 +337,40 @@ trait MemoryOps { this: Sigil =>
     * is a single short-list response per memory, not a reasoning task. */
   def memoryClassifierModel: Option[Id[Model]] = None
 
+  /** Opt-in ingest-time distillation ([[sigil.conversation.compression.MemoryDistiller]]).
+    * When set, [[persistMemory]] / [[persistMemories]] consult it after
+    * classification and before the write: the distiller produces a
+    * genuine one-line `summary` (the per-turn render form) and
+    * optionally retrieval-optimized `embeddedText` for facts whose
+    * full text is too large to inject every turn. Default `None` —
+    * memories persist exactly as supplied. Runs at memory-creation
+    * time (a build-time cost), never on the turn hot path, so the
+    * shipped [[sigil.conversation.compression.ConsultMemoryDistiller]]
+    * may be wired to a strong model without affecting the runtime
+    * model. Failures are logged and the memory persists undistilled. */
+  def memoryDistiller: Option[sigil.conversation.compression.MemoryDistiller] = None
+
+  /** Apply [[memoryDistiller]] to a memory about to be written.
+    * Best-effort: a distiller failure logs a WARN and the memory
+    * persists as-is. */
+  private def applyDistillation(memory: ContextMemory): Task[ContextMemory] =
+    memoryDistiller match {
+      case None => Task.pure(memory)
+      case Some(distiller) =>
+        distiller.distill(this, memory).map {
+          case Some(d) => memory.copy(
+            summary = Some(d.summary.trim).filter(_.nonEmpty).getOrElse(memory.summary),
+            embeddedText = d.embeddingText.map(_.trim).filter(_.nonEmpty)
+          )
+          case None => memory
+        }.handleError { e =>
+          Task {
+            scribe.warn(s"memoryDistiller failed for memory ${memory._id.value}: ${e.getMessage} — persisting undistilled")
+            memory
+          }
+        }
+    }
+
   /** Run [[sigil.tool.consult.ClassifyMemoryTool]] against the memory's
     * content when [[memoryClassifierModel]] is set and the caller didn't
     * already supply keywords. Returns the input memory enriched with
@@ -500,10 +541,10 @@ trait MemoryOps { this: Sigil =>
     * precisely what [[sigil.maintenance.EmbeddingReconcileTask]] later
     * picks up. */
   private final def indexMemory(m: ContextMemory): Task[ContextMemory] =
-    if (!vectorWired || m.fact.isEmpty) Task.pure(m)
-    else embeddingProvider.embed(m.fact).flatMap { vec =>
+    if (!vectorWired || m.embeddingSource.isEmpty) Task.pure(m)
+    else embeddingProvider.embed(m.embeddingSource).flatMap { vec =>
       vectorIndex.upsert(memoryVectorPoint(m, vec)).flatMap { _ =>
-        val stamped = m.copy(embedding = Some(EmbeddingRef.forText(embeddingProvider, m.fact)))
+        val stamped = m.copy(embedding = Some(EmbeddingRef.forText(embeddingProvider, m.embeddingSource)))
         withDB(_.memories.transaction(_.upsert(stamped)))
       }
     }.handleError { e =>
@@ -564,7 +605,7 @@ trait MemoryOps { this: Sigil =>
         "kind" -> "memory",
         "memoryId" -> m._id.value,
         "spaceId" -> m.spaceId.value,
-        sigil.vector.HybridSearch.TextKey -> m.fact
+        sigil.vector.HybridSearch.TextKey -> m.embeddingSource
       )
     )
 
@@ -576,14 +617,14 @@ trait MemoryOps { this: Sigil =>
     * persist never fails on an index hiccup. Returns the records in
     * input order. */
   private final def indexMemoriesBatch(memories: List[ContextMemory]): Task[List[ContextMemory]] = {
-    val indexable = memories.filter(_.fact.nonEmpty)
+    val indexable = memories.filter(_.embeddingSource.nonEmpty)
     if (!vectorWired || indexable.isEmpty) Task.pure(memories)
-    else embeddingProvider.embedBatch(indexable.map(_.fact)).flatMap { vectors =>
+    else embeddingProvider.embedBatch(indexable.map(_.embeddingSource)).flatMap { vectors =>
       val points = indexable.iterator.zip(vectors.iterator).map { case (m, vec) =>
         memoryVectorPoint(m, vec)
       }.toList
       vectorIndex.upsertBatch(points).flatMap { _ =>
-        val stamps = indexable.iterator.map(m => m._id -> EmbeddingRef.forText(embeddingProvider, m.fact)).toMap
+        val stamps = indexable.iterator.map(m => m._id -> EmbeddingRef.forText(embeddingProvider, m.embeddingSource)).toMap
         val stamped = memories.map(m => stamps.get(m._id).fold(m)(ref => m.copy(embedding = Some(ref))))
         withDB(_.memories.transaction { tx =>
           Task.sequence(stamped.filter(m => stamps.contains(m._id)).map(tx.upsert)).map(_ => stamped)
@@ -619,7 +660,7 @@ trait MemoryOps { this: Sigil =>
     if (memories.isEmpty) Task.pure(Nil)
     else Task.sequence(memories.map { memory =>
       validateCoreContextCap(memory).flatMap { _ =>
-        enrichMemoryClassification(memory, memory.createdBy.toList).flatMap { enriched =>
+        enrichMemoryClassification(memory, memory.createdBy.toList).flatMap(applyDistillation).flatMap { enriched =>
           if (enriched.key.exists(_.nonEmpty))
             upsertMemoryByKeyWrite(enriched).map(r => (r.memory, archivedOf(r)))
           else

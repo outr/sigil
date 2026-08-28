@@ -1,4 +1,4 @@
-{"requestHash":"0670bb637fa4d9577e4ca62678db32d586f8927e37da158f154d66e39d02c419","recordedAt":1786984113987}
+{"requestHash":"bacbaa37992f511ffe4b4d258fb87b691269df086e55d45af01c89a8fb3c9fd1","recordedAt":1787960789628}
 {"text":"The","type":"ProviderEvent.ThinkingDelta"}
 {"text":" user","type":"ProviderEvent.ThinkingDelta"}
 {"text":" wants","type":"ProviderEvent.ThinkingDelta"}
@@ -52,8 +52,8 @@
 {"usage":{"promptTokens":0,"completionTokens":58,"totalTokens":58,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":".","type":"ProviderEvent.ThinkingDelta"}
 {"text":"\n","type":"ProviderEvent.ThinkingDelta"}
-{"callId":"ce6b91a73","toolName":"respond_options","type":"ProviderEvent.ToolCallStart"}
+{"callId":"a5b8f0982","toolName":"respond_options","type":"ProviderEvent.ToolCallStart"}
 {"usage":{"promptTokens":0,"completionTokens":59,"totalTokens":59,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"callId":"ce6b91a73","call":{"type":"decoded","name":"respond_options","args":{"prompt":"Which backend language would you like to use for your new web service?","options":[{"label":"Python","value":"python","description":"Great for data-heavy services, rapid development, and AI\/ML integration","exclusive":false},{"label":"Node.js","value":"nodejs","description":"JavaScript runtime, great for real-time apps and full-stack JavaScript","exclusive":false},{"label":"Go","value":"go","description":"High performance, concurrency, and simple deployment","exclusive":false}],"allowMultiple":false}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4454,"completionTokens":218,"totalTokens":4672,"isEstimated":false,"cacheReadTokens":4293,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"a5b8f0982","call":{"type":"decoded","name":"respond_options","args":{"prompt":"Which backend language would you like to use for your new web service?","options":[{"label":"Python","value":"python","description":"Great for data-heavy services, rapid development, and AI\/ML integration","exclusive":false},{"label":"Node.js","value":"nodejs","description":"JavaScript runtime, great for real-time apps and full-stack JavaScript","exclusive":false},{"label":"Go","value":"go","description":"High performance, concurrent, and great for microservices","exclusive":false}],"allowMultiple":false}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4771,"completionTokens":220,"totalTokens":4991,"isEstimated":false,"cacheReadTokens":4610,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

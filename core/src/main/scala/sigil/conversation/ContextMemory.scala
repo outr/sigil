@@ -99,6 +99,18 @@ case class ContextMemory(fact: String,
                            * keeps its own). Empty for memories written outside
                            * any conversation (seeding, app-side writes). */
                          sourceEventIds: List[Id[Event]] = Nil,
+                         /** Retrieval-optimized rewrite of `fact`, produced by
+                           * an ingest-time
+                           * [[sigil.conversation.compression.MemoryDistiller]]
+                           * (opt-in via `Sigil.memoryDistiller`). When set it
+                           * is what gets embedded into the vector index and
+                           * folded into the lexical `searchText` — a
+                           * self-contained rewrite whose vocabulary a question
+                           * can actually share. `fact` stays the record of
+                           * truth and is what `lookup` returns; rendering is
+                           * untouched. `None` (the default) embeds the raw
+                           * fact, exactly the pre-distillation behavior. */
+                         embeddedText: Option[String] = None,
                          /** Provenance for this record's point in
                            * [[sigil.vector.VectorIndex]] — stamped by the
                            * framework's index paths, cleared when the point is
@@ -130,14 +142,19 @@ case class ContextMemory(fact: String,
       status == MemoryStatus.Approved &&
       !expiresAt.exists(_.value <= now.value)
 
+  /** The text this record's vector point (and lexical index) is built
+    * from: the retrieval-optimized `embeddedText` when a distiller
+    * produced one, the raw `fact` otherwise. */
+  def embeddingSource: String = embeddedText.map(_.trim).filter(_.nonEmpty).getOrElse(fact)
+
   /** The embedding space this record's live vector point belongs to,
     * or [[EmbeddingRef.Unindexed]] when it holds no point built from
-    * the `fact` it currently carries. Purely document-local, so it can
-    * be indexed: comparing it to the running provider's identity turns
-    * "never indexed", "text drifted since indexing", and "embedder
-    * changed" into one inequality. */
+    * the [[embeddingSource]] it currently carries. Purely
+    * document-local, so it can be indexed: comparing it to the running
+    * provider's identity turns "never indexed", "text drifted since
+    * indexing", and "embedder changed" into one inequality. */
   def embeddingIdentity: String =
-    embedding.filter(_.contentHash == EmbeddingRef.hash(fact)).map(_.identity).getOrElse(EmbeddingRef.Unindexed)
+    embedding.filter(_.contentHash == EmbeddingRef.hash(embeddingSource)).map(_.identity).getOrElse(EmbeddingRef.Unindexed)
 
   /** `true` when a drifted vector point on this record is worth
     * re-embedding. Archived versions, non-Approved records, and empty
@@ -146,7 +163,7 @@ case class ContextMemory(fact: String,
     * embedding calls on rows no retrieval can reach, and (for the
     * evicted ones) fight the eviction that cleared the stamp. */
   def embeddingReconcilable: Boolean =
-    fact.nonEmpty && validUntil.isEmpty && status == MemoryStatus.Approved && expiresAt.isEmpty
+    embeddingSource.nonEmpty && validUntil.isEmpty && status == MemoryStatus.Approved && expiresAt.isEmpty
 }
 
 object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConversion[ContextMemory] {
@@ -190,7 +207,8 @@ object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConvers
   val searchText: lightdb.field.Field.Tokenized[ContextMemory] =
     field.tokenized("searchText", (m: ContextMemory) => {
       val k = m.key.getOrElse("")
-      s"$k ${m.label} ${m.summary} ${m.fact} ${m.keywords.mkString(" ")}"
+      val rewrite = m.embeddedText.getOrElse("")
+      s"$k ${m.label} ${m.summary} ${m.fact} $rewrite ${m.keywords.mkString(" ")}"
     })
 
   override def id(value: String = Unique()): Id[ContextMemory] = Id(value)

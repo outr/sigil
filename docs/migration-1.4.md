@@ -646,6 +646,26 @@ The required-union rule runs in the boot completeness pass against the final reg
 - **Consolidation is opt-in.** `MemoryConsolidationTask` is not in the default
   `maintenanceTasks`; it spends LLM calls and rewrites memory rows, so activation is an app
   decision. It also no-ops with a debug log unless vector search is wired.
+- **Passive recall queries the question, not the conversation.** `StandardMemoryRetriever`
+  no longer concatenates `topic label + topic summary + currentKeywords + last user message`
+  into one retrieval query — that composite biased both recall legs toward the conversation's
+  theme and crowded out the memory answering a specific factual question. The vector and
+  lexical legs now run over the last non-agent message alone; the conversational context
+  (classifier `currentKeywords` + topic-label tokens, never the summary) contributes through a
+  separate keyword leg fused at `keywordWeight` (default 1.0, `0.0` disables). `queryFrom` now
+  overrides only the question text; a new `contextTermsFrom` overrides the keyword terms.
+  Apps that relied on the old composite behavior reproduce it with
+  `queryFrom = Some(<composite builder>), keywordWeight = 0.0` — but shouldn't.
+- **`lookup` is core and conditionally advertised.** `LookupTool` moved from
+  `AllShippedTools` into `CoreTools.all` (remove any duplicate registration): the rendered
+  context names it — the `[full: lookup("…")]` handle on any memory whose summary materially
+  elides its fact (keyed or not; keyless handles use the record id), `Information[…]`
+  references — so it is always registered, and `Sigil.reconcileLookupTool` injects it into
+  the wire roster at request build whenever the turn's input carries memories or information.
+  The injection is ADD-ONLY: an explicitly-rostered `lookup` is never dropped (unlike
+  `record_consent`, the tool stays useful for keys the agent learned elsewhere).
+  `CoreTools.coreToolNames` deliberately excludes it so default rosters stay lean on turns
+  with nothing to look up.
 - **`find_capability` roster sizing.** The returned roster is sized to the running model:
   `min(ModelProfile.contextComfort, model.contextLength)` sets both a rendered-bytes budget and
   a count ceiling (3–25, further capped by `InstructionTier.rosterCountCeiling` — 8 for `Small`,
@@ -927,6 +947,18 @@ The required-union rule runs in the boot completeness pass against the final reg
 
   `McpTransport` deliberately stays a closed two-case enum. It is a persisted wire shape, and a
   transport only one app can speak belongs in that app rather than in the framework's enum.
+
+- **Ingest-time memory distillation.** `Sigil.memoryDistiller: Option[MemoryDistiller]` (default
+  `None`) runs at memory creation (`persistMemory` / `persistMemories` / `upsertMemoryByKey`),
+  after classification and before the write. The shipped
+  `ConsultMemoryDistiller(modelId, minFactChars = 400)` turns a long fact into a genuine
+  one-line `summary` — the injected per-turn form, with a `[full: lookup("…")]` handle back to
+  the verbatim fact — plus optional `ContextMemory.embeddedText`, a self-contained retrieval
+  rewrite that becomes what the vector point, embedding provenance stamp, and lexical
+  `searchText` are built from. Build-time cost: wire a strong model here without touching the
+  runtime model. Short facts and caller-authored summaries are skipped, and a keyed refresh
+  whose incoming summary is the extractors' `summary = fact` copy no longer clobbers a
+  distilled summary.
 
 - **Indexed admin queries: `Conversation.space`, `Event.participantId`, `Event.eventType`.**
   The three fields reporting and admin surfaces filter on are declared indexes now, typed

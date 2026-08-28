@@ -1361,7 +1361,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps with 
             currentTopic = context.conversation.currentTopic,
             previousTopics = context.conversation.previousTopics,
             generationSettings = effectiveSettings,
-            tools = tools,
+            tools = Sigil.reconcileLookupTool(tools, fittedTurnInput),
             builtInTools = agent.builtInTools ++ context.conversation.currentMode.builtInTools,
             chain = effectiveChain,
             roles = rolesResolved,
@@ -2981,6 +2981,26 @@ object Sigil {
     if (needsConsent) {
       if (tools.exists(_.schema.name == consent.schema.name)) tools else tools :+ consent
     } else tools.filterNot(_.schema.name == consent.schema.name)
+  }
+
+  /** `lookup` is registered always (`CoreTools.all`) and INJECTED into
+    * the wire roster whenever the turn's input carries memories or
+    * information: the rendered context then carries drill-down handles
+    * — `[full: lookup("…")]` on elided memories, `Information[…]`
+    * references — that name the tool, so it must be callable. ADD-ONLY,
+    * unlike `record_consent`'s reconcile: an explicitly-rostered
+    * `lookup` stays even on turns with nothing injected, because the
+    * tool remains useful for keys the agent learned elsewhere (history
+    * frames, prior discovery) — it is never the pure no-op that made
+    * dropping `record_consent` safe (#378). */
+  def reconcileLookupTool(tools: Vector[sigil.tool.Tool],
+                          turnInput: sigil.conversation.TurnInput): Vector[sigil.tool.Tool] = {
+    val lookup = sigil.tool.util.LookupTool
+    val needsLookup = turnInput.memories.nonEmpty ||
+      turnInput.criticalMemories.nonEmpty ||
+      turnInput.information.nonEmpty
+    if (needsLookup && !tools.exists(_.schema.name == lookup.schema.name)) tools :+ lookup
+    else tools
   }
 
   /** Sigil #290 — USD cost of a settled provider call from its

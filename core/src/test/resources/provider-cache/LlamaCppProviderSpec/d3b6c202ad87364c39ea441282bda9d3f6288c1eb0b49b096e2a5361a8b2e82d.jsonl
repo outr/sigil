@@ -1,4 +1,4 @@
-{"requestHash":"90299a6a4e2074934b1d0d0fac654d897df27588d926828a91528f7d8387b7e4","recordedAt":1786984121645}
+{"requestHash":"d3b6c202ad87364c39ea441282bda9d3f6288c1eb0b49b096e2a5361a8b2e82d","recordedAt":1787960797431}
 {"text":"The","type":"ProviderEvent.ThinkingDelta"}
 {"text":" user","type":"ProviderEvent.ThinkingDelta"}
 {"text":" wants","type":"ProviderEvent.ThinkingDelta"}
@@ -20,7 +20,7 @@
 {"text":" that","type":"ProviderEvent.ThinkingDelta"}
 {"text":" requires","type":"ProviderEvent.ThinkingDelta"}
 {"text":" a","type":"ProviderEvent.ThinkingDelta"}
-{"text":" capability","type":"ProviderEvent.ThinkingDelta"}
+{"text":" tool","type":"ProviderEvent.ThinkingDelta"}
 {"text":".","type":"ProviderEvent.ThinkingDelta"}
 {"text":" I","type":"ProviderEvent.ThinkingDelta"}
 {"text":" need","type":"ProviderEvent.ThinkingDelta"}
@@ -32,11 +32,11 @@
 {"text":" sending","type":"ProviderEvent.ThinkingDelta"}
 {"text":" Slack","type":"ProviderEvent.ThinkingDelta"}
 {"text":" messages","type":"ProviderEvent.ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":40,"totalTokens":40,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"usage":{"promptTokens":0,"completionTokens":39,"totalTokens":39,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"text":".","type":"ProviderEvent.ThinkingDelta"}
 {"text":"\n","type":"ProviderEvent.ThinkingDelta"}
-{"callId":"fd4f00eb7","toolName":"find_capability","type":"ProviderEvent.ToolCallStart"}
-{"usage":{"promptTokens":0,"completionTokens":41,"totalTokens":41,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
-{"callId":"fd4f00eb7","call":{"type":"decoded","name":"find_capability","args":{"keywords":"send slack channel message post update"}},"type":"ProviderEvent.ToolCallComplete"}
-{"usage":{"promptTokens":4445,"completionTokens":67,"totalTokens":4512,"isEstimated":false,"cacheReadTokens":4293,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"126788424","toolName":"find_capability","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":39,"totalTokens":39,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"126788424","call":{"type":"decoded","name":"find_capability","args":{"keywords":"send slack channel message post update"}},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4762,"completionTokens":67,"totalTokens":4829,"isEstimated":false,"cacheReadTokens":4610,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
 {"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

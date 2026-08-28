@@ -14,6 +14,7 @@ import sigil.tool.model.{
   RespondInput, RespondOptionsInput
 }
 import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
+import sigil.tool.util.LookupTool
 
 /**
  * The canonical set of framework-level tools every sigil agent
@@ -87,8 +88,17 @@ object CoreTools {
       RespondTool,
       RespondOptionsTool,
       FindCapabilityTool,
-      RecordConsentTool
+      RecordConsentTool,
+      LookupTool
     )
+  // `LookupTool` follows the `record_consent` pattern: registered and
+  // cataloged here (rendered context advertises it — the
+  // `[full: lookup("…")]` handle on elided memories, `Information[…]`
+  // references — so it must always be resolvable), but advertised in
+  // the per-turn roster only when the turn's input actually carries
+  // memories or information — `Sigil.reconcileLookupTool` adds or
+  // drops it at request build, so it is never a dead-end attractor on
+  // turns with nothing to look up.
   // Sigil #378/#380 — `RecordConsentTool` stays REGISTERED and cataloged
   // here (it's a still-used tool: the framework injects it whenever a
   // consent-gated tool is in scope), but it is NOT advertised in the
@@ -144,6 +154,7 @@ object CoreTools {
       // (caching layers, debug dumps, persisted projections) inspect
       // the events the consult call emitted.
       summon[RW[sigil.tool.consult.ExtractMemoriesInput]],
+      summon[RW[sigil.tool.consult.DistillMemoryInput]],
       summon[RW[sigil.tool.consult.SummarizationInput]],
       summon[RW[sigil.tool.consult.TopicClassifierInput]],
       summon[RW[sigil.tool.consult.ClassifyMemoryInput]],
@@ -167,7 +178,14 @@ object CoreTools {
       summon[RW[sigil.tool.UnknownToolInput]]
     )
 
-  val coreToolNames: List[sigil.tool.ToolName] = all.map(_.schema.name).toList
+  /** The default advertised roster names. `lookup` is deliberately
+    * excluded: it is registered (in [[all]]) and injected per-turn by
+    * `Sigil.reconcileLookupTool` whenever the turn's input carries
+    * memories or information, so a default roster stays lean on turns
+    * with nothing to look up. Apps that want it unconditionally add
+    * the name themselves. */
+  val coreToolNames: List[sigil.tool.ToolName] =
+    all.iterator.map(_.schema.name).filterNot(_ == LookupTool.schema.name).toList
 
  /** Names of the atomic content tools — those whose output IS the
     * agent's user-facing content rather than a tool result feeding
