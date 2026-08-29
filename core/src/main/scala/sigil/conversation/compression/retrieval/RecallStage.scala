@@ -4,6 +4,7 @@ import lightdb.Sort
 import lightdb.filter.*
 import rapid.Task
 import sigil.conversation.{ContextMemory, MemoryStatus}
+import sigil.vector.HybridSearch
 
 /**
  * Recall — runs the retrieval legs against the candidate pool:
@@ -13,9 +14,11 @@ import sigil.conversation.{ContextMemory, MemoryStatus}
  *     top-K cut; falls back to a space-scoped listing when vector
  *     search isn't wired).
  *   - Lexical (question): BM25 over `ContextMemory.searchText` with
- *     the question's tokens, with spaces, `pinned == false`, and
- *     `status == Approved` compiled into the Lucene query so a large
- *     multi-tenant store can't crowd in-space matches out of the pool.
+ *     the question's discriminative terms (punctuation normalized,
+ *     stopwords dropped — see [[tokensOf]]), with spaces,
+ *     `pinned == false`, and `status == Approved` compiled into the
+ *     Lucene query so a large multi-tenant store can't crowd in-space
+ *     matches out of the pool.
  *   - Keyword (context): the same BM25 shape over
  *     [[MemoryRetrievalContext.contextTerms]] — the classifier's
  *     conversation keywords plus the topic label — as its OWN leg.
@@ -51,16 +54,37 @@ case class RecallStage() extends MemoryRetrievalStage {
     )
   }
 
-  /** Whitespace tokens, lowercased, deduplicated, capped at
-    * [[RecallStage.MaxQueryTokens]] — one `Should` clause is built per
-    * token, and an oversized token list (a pasted artefact in the
-    * user's message) would otherwise compile into a clause count
-    * Lucene rejects outright (taking the turn with it). Past the cap
-    * the extra terms add noise, not recall. */
-  private def tokensOf(text: String): List[String] =
-    text.toLowerCase.split("\\s+").iterator
-      .map(_.trim).filter(_.nonEmpty)
-      .toList.distinct.take(RecallStage.MaxQueryTokens)
+  /** Query terms for a BM25 leg: tokenized the SAME way the indexed
+    * content is — punctuation split off and stopwords dropped (via
+    * [[sigil.vector.HybridSearch.tokenizeList]]) — then deduplicated
+    * and capped at [[RecallStage.MaxQueryTokens]].
+    *
+    * Both halves of that normalization are load-bearing for a
+    * naturally-phrased question. Splitting on whitespace alone leaves
+    * the one discriminative term carrying its punctuation
+    * (`"tobacco?"`), which no exact-term clause matches. Keeping
+    * stopwords ORs in near-universal function words (`where`, `do`,
+    * `you`, `your`), each matching thousands of unrelated facts — and
+    * at `lexicalWeight = 2.0` that flood outvotes a vector leg that
+    * ranked the answer first. "Where do you keep your tobacco?"
+    * reduces to `[keep, tobacco]`.
+    *
+    * A query of pure stopwords falls back to the punctuation-split
+    * tokens: a leg matching common words is weak, but a leg matching
+    * nothing gives up recall the fusion has no other source for.
+    *
+    * The cap bounds the clause count — one `Should` clause is built
+    * per token, and a pasted artefact in the user's message would
+    * otherwise compile into a clause count Lucene rejects outright
+    * (taking the turn with it). Past the cap the extra terms add
+    * noise, not recall. */
+  private[retrieval] def tokensOf(text: String): List[String] = {
+    val filtered = HybridSearch.tokenizeList(text)
+    val tokens =
+      if (filtered.nonEmpty) filtered
+      else text.toLowerCase.split("\\W+").iterator.filter(_.nonEmpty).toList
+    tokens.distinct.take(RecallStage.MaxQueryTokens)
+  }
 
   /** Lucene BM25 query over `ContextMemory.searchText`, OR-matching
     * the supplied tokens; result order is BM25 relevance. */
