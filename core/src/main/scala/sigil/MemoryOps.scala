@@ -527,8 +527,12 @@ trait MemoryOps { this: Sigil =>
 
   /** `true` when both [[embeddingProvider]] and [[vectorIndex]] are
     * non-NoOp — the flag the framework checks before auto-embedding on
-    * persist or attempting vector-backed search. */
-  protected final def vectorWired: Boolean =
+    * persist or attempting vector-backed search. Public so retrieval
+    * stages can skip the vector leg entirely when it isn't wired
+    * (the [[searchMemories]] fallback is an UNRANKED space listing —
+    * useful as a last resort for a direct caller, pure noise as a
+    * relevance leg inside the fusion). */
+  final def vectorWired: Boolean =
     embeddingProvider.dimensions > 0 && (vectorIndex ne sigil.vector.NoOpVectorIndex)
 
   /** Embed a memory's `fact`, upsert it into [[vectorIndex]], and stamp

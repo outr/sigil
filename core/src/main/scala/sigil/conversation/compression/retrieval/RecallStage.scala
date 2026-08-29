@@ -36,7 +36,11 @@ case class RecallStage() extends MemoryRetrievalStage {
   override def run(state: MemoryRetrievalState, ctx: MemoryRetrievalContext): Task[MemoryRetrievalState] = {
     val question = ctx.query.trim
     for {
-      vector <- if (question.isEmpty) Task.pure(Nil)
+      // The vector leg runs only when vector search is actually wired:
+      // `searchMemories` otherwise falls back to an UNRANKED
+      // space-scoped listing, which fused at vectorWeight would inject
+      // arbitrary-order noise the lexical leg already supersedes.
+      vector <- if (question.isEmpty || !ctx.sigil.vectorWired) Task.pure(Nil)
                 else ctx.sigil.searchMemories(question, ctx.spaces, ctx.candidatePool)
       lexical <- luceneHits(ctx, tokensOf(question))
       keyword <- luceneHits(ctx, tokensOf(ctx.contextTerms.mkString(" ")))

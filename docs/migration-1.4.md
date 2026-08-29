@@ -656,6 +656,13 @@ The required-union rule runs in the boot completeness pass against the final reg
   overrides only the question text; a new `contextTermsFrom` overrides the keyword terms.
   Apps that relied on the old composite behavior reproduce it with
   `queryFrom = Some(<composite builder>), keywordWeight = 0.0` — but shouldn't.
+  Two recall-noise defects fixed alongside: lightdb's `Filter.Multi && Filter.Multi`
+  combinator flattened two any-of groups under one `minShould` (so the lexical leg's token
+  group AND'd with the space group degenerated to space-only matching — every in-space
+  memory "matched" every query, in listing order; fixed in lightdb 4.48.0, which this
+  release builds against), and the pipeline's vector leg no longer runs when vector search
+  isn't wired (the `searchMemories` fallback is an unranked space listing — noise inside
+  the fusion, though still a sensible last resort for direct callers).
 - **`lookup` is core and conditionally advertised.** `LookupTool` moved from
   `AllShippedTools` into `CoreTools.all` (remove any duplicate registration): the rendered
   context names it — the `[full: lookup("…")]` handle on any memory whose summary materially

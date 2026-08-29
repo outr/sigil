@@ -26,6 +26,31 @@ Optional:
 | `--rerank-model MODEL` | Model id routed via sigil's provider (e.g. `openai/gpt-4o-mini`). |
 | `--rerank-pool N` | Candidate pool before rerank cuts to `--k` (default 20). |
 
+## MemoryArmsBench — arms-and-controls memory evaluation
+
+Self-contained (no dataset download, no Qdrant): a persona corpus answered by a small
+runtime model under five configurations, scored on the settled conversation trace.
+
+```sh
+sbt "benchmark/runMain bench.MemoryArmsBench [--limit N] [--arms baseline,passive,agentic,distilled,stuffed] [--report PATH] [--verbose]"
+```
+
+- **Arms**: `baseline` (no memory — the floor), `passive` (StandardMemoryRetriever injection),
+  `agentic` (`semantic_search` tool, no injection), `distilled` (passive over a
+  `ConsultMemoryDistiller`-ingested corpus), `stuffed` (every fact jammed into the user
+  message — the naive control the machinery must beat on tokens while matching on accuracy).
+- **Scoring**: answerable questions score accuracy (any-of gold substrings); an adversarial
+  tier of unanswerable questions scores hedging separately (heuristic marker match) — a
+  confident answer to a question the corpus can't answer is confabulation, not helpfulness.
+- **Isolation**: each arm seeds its corpus into its own `SpaceId` and only that space is
+  accessible during the arm — no cross-arm recall (the contamination class that quietly
+  flatters baselines).
+- **Runtime**: `SIGIL_LLAMACPP_HOST` (default the public endpoint) and
+  `SIGIL_LLAMACPP_MODEL`. With `OPENAI_API_KEY` set, the vector leg runs via
+  OpenAI-compatible embeddings + an in-memory index; without it, retrieval is lexical-only
+  and the report says so. `ARMS_DEBUG=1` prints the retrieval question, per-stage leg sizes,
+  and the curated injection per turn.
+
 ## Runners
 
 ```sh
