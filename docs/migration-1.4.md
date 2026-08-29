@@ -963,9 +963,21 @@ The required-union rule runs in the boot completeness pass against the final reg
   the verbatim fact — plus optional `ContextMemory.embeddedText`, a self-contained retrieval
   rewrite that becomes what the vector point, embedding provenance stamp, and lexical
   `searchText` are built from. Build-time cost: wire a strong model here without touching the
-  runtime model. Short facts and caller-authored summaries are skipped, and a keyed refresh
-  whose incoming summary is the extractors' `summary = fact` copy no longer clobbers a
-  distilled summary.
+  runtime model. Short facts, caller-authored summaries, and sources outside the distiller's
+  policy (`sources`, default `Explicit` + `Corpus`) are skipped, and a keyed refresh whose
+  incoming summary is the extractors' `summary = fact` copy no longer clobbers a distilled
+  summary.
+
+- **Corpus ingestion as atomic memories.** `Sigil.ingestCorpusMemories(passages, space,
+  modelId, chain)` is the 1:N counterpart of the distiller's 1:1 rewrite: each `(reference,
+  text)` passage goes through one extraction consult that splits it into self-contained
+  single-fact records — a sentence packing "cigars in the coal-scuttle, tobacco in a Persian
+  slipper" becomes two memories, so a small runtime model can't grab the wrong half at answer
+  time and each fact's embedding signals that fact alone. Records persist with
+  `source = MemorySource.Corpus` (a new enum case; old rows unaffected), `summary = fact`, and
+  the passage reference under `ContextKey.CorpusPassage` for provenance; keyed extractions
+  version through the keyed upsert, a failed passage is skipped and logged. Apps that
+  rewrote document chunks app-side before embedding replace that with this call.
 
 - **Indexed admin queries: `Conversation.space`, `Event.participantId`, `Event.eventType`.**
   The three fields reporting and admin surfaces filter on are declared indexes now, typed

@@ -25,8 +25,16 @@ enum MemoryArm {
 
   /** Passive recall over a corpus that was distilled at ingest
     * (`ConsultMemoryDistiller`): summaries render, retrieval text is
-    * embedded/indexed. Measures the ingest upgrade on top of Passive. */
+    * embedded/indexed. Measures the 1:1 ingest upgrade on top of
+    * Passive. */
   case Distilled
+
+  /** Passive recall over a corpus ingested through
+    * `Sigil.ingestCorpusMemories`: each dense passage split into
+    * atomic single-fact memories. Measures the 1:N ingest upgrade —
+    * the answer to a small model grabbing the wrong half of a dense
+    * clause. */
+  case Split
 
   /** Naive control: every corpus fact stuffed into the user message,
     * no retrieval machinery at all. The trivial substitute the

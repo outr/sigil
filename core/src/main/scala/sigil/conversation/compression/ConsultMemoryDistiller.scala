@@ -3,7 +3,7 @@ package sigil.conversation.compression
 import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
-import sigil.conversation.ContextMemory
+import sigil.conversation.{ContextMemory, MemorySource}
 import sigil.db.Model
 import sigil.tool.consult.{ConsultTool, DistillMemoryInput, DistillMemoryTool}
 
@@ -14,6 +14,11 @@ import sigil.tool.consult.{ConsultTool, DistillMemoryInput, DistillMemoryTool}
  * runtime model's cost.
  *
  * Skips (returns `None`, memory stored as-is):
+ *   - memories whose [[sigil.conversation.MemorySource]] is not in
+ *     [[sources]] — by default only deliberately written and
+ *     corpus-ingested records are distilled; per-turn extraction
+ *     (`Compression`) and human-authored (`UserInput`) memories are
+ *     already concise, and every rewrite costs a consult;
  *   - facts shorter than [[minFactChars]] — a short fact IS its own
  *     summary; a consult would spend a call to restate it;
  *   - memories whose caller already authored a `summary` distinct
@@ -24,12 +29,15 @@ import sigil.tool.consult.{ConsultTool, DistillMemoryInput, DistillMemoryTool}
  * hiccup.
  */
 case class ConsultMemoryDistiller(modelId: Id[Model],
-                                  minFactChars: Int = 400) extends MemoryDistiller {
+                                  minFactChars: Int = 400,
+                                  sources: Set[MemorySource] = Set(MemorySource.Explicit, MemorySource.Corpus))
+  extends MemoryDistiller {
 
   override def distill(sigil: Sigil, memory: ContextMemory): Task[Option[MemoryDistillation]] = {
     val fact = memory.fact.trim
     val summary = memory.summary.trim
-    if (fact.length < minFactChars) Task.pure(None)
+    if (!sources.contains(memory.source)) Task.pure(None)
+    else if (fact.length < minFactChars) Task.pure(None)
     else if (summary.nonEmpty && summary != fact) Task.pure(None)
     else {
       val labelLine = if (memory.label.trim.nonEmpty) s"Label: ${memory.label.trim}\n" else ""

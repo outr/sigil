@@ -121,7 +121,7 @@ object MemoryArmsBench {
     host.setArmSpace(space)
     val debug = sys.env.contains("ARMS_DEBUG")
     host.setRetriever(arm match {
-      case MemoryArm.Passive | MemoryArm.Distilled =>
+      case MemoryArm.Passive | MemoryArm.Distilled | MemoryArm.Split =>
         val base = StandardMemoryRetriever(
           limit = 5,
           queryFrom = Some { (frames, chain) =>
@@ -151,16 +151,20 @@ object MemoryArmsBench {
       case _ => NoOpMemoryRetriever
     })
 
-    // Seed the arm's corpus into its own space. The Distilled arm
-    // seeds through the consult distiller (the small runtime model —
-    // a deliberate worst case for the ingest upgrade).
+    // Seed the arm's corpus — dense passages, one memory each — into
+    // its own space. The Distilled and Split arms ingest through the
+    // small runtime model (a deliberate worst case for both upgrades).
+    val passageMemories = MemoryArmsCorpus.passages.map { case (_, text) => memory(text, space) }
     arm match {
       case MemoryArm.Passive | MemoryArm.Agentic =>
-        host.persistMemories(MemoryArmsCorpus.facts.map(memory(_, space))).sync()
+        host.persistMemories(passageMemories).sync()
       case MemoryArm.Distilled =>
         host.setDistiller(ConsultMemoryDistiller(modelId, minFactChars = 60))
-        host.persistMemories(MemoryArmsCorpus.facts.map(memory(_, space))).sync()
+        host.persistMemories(passageMemories).sync()
         host.clearDistiller()
+      case MemoryArm.Split =>
+        val atomic = host.ingestCorpusMemories(MemoryArmsCorpus.passages, space, modelId, List(ArmsBenchUser, ArmsBenchAgent)).sync()
+        if (verbose) println(s"  [$arm] ingested ${atomic.size} atomic memories from ${MemoryArmsCorpus.passages.size} passages")
       case MemoryArm.Baseline | MemoryArm.Stuffed => ()
     }
 
@@ -181,7 +185,7 @@ object MemoryArmsBench {
     val results = questions.map { q =>
       val text = arm match {
         case MemoryArm.Stuffed =>
-          s"Here is everything known about you:\n${MemoryArmsCorpus.facts.map("- " + _).mkString("\n")}\n\n${q.question}"
+          s"Here is everything known about you:\n${MemoryArmsCorpus.passages.map("- " + _._2).mkString("\n")}\n\n${q.question}"
         case _ => q.question
       }
       val trace = harness.runConversation(

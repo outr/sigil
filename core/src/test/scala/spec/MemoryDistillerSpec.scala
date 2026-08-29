@@ -118,6 +118,18 @@ class MemoryDistillerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       }
     }
 
+    "leave sources outside the distiller's policy untouched" in {
+      val before = provider.calls.get()
+      // Per-turn extraction output is concise by construction; the
+      // default policy distills only Explicit and Corpus records.
+      val extracted = corpusMemory(longFact).copy(source = MemorySource.Compression)
+      TestSigil.persistMemory(extracted).map { stored =>
+        provider.calls.get() shouldBe before
+        stored.summary shouldBe longFact
+        stored.embeddedText shouldBe None
+      }
+    }
+
     "respect a caller-authored summary" in {
       val before = provider.calls.get()
       val authored = corpusMemory(longFact).copy(summary = "Author wrote this line herself.")

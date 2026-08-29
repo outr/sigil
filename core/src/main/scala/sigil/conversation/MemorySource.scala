@@ -11,6 +11,10 @@ import fabric.rw.*
  *                     or by the per-turn extractor
  *   - `Explicit`    — written deliberately by the agent via a memory tool
  *   - `UserInput`   — authored or edited directly by a human via the app UI
+ *   - `Corpus`      — extracted from an ingested document passage by
+ *                     `Sigil.ingestCorpusMemories` (one atomic fact per
+ *                     record, provenance in
+ *                     [[ContextKey.CorpusPassage]])
  *
  * "Always loaded vs topical" is not an origin axis — it's a rendering
  * policy axis, captured by [[ContextMemory.pinned]]. A memory authored
@@ -21,4 +25,5 @@ enum MemorySource derives RW {
   case Compression
   case Explicit
   case UserInput
+  case Corpus
 }

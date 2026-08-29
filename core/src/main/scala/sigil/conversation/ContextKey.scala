@@ -42,6 +42,12 @@ object ContextKey {
     * the model's window. The agent decides what to do about it. */
   val BudgetWarning: ContextKey = internal("budgetWarning")
 
+  /** Provenance stamped on memories `Sigil.ingestCorpusMemories`
+    * extracts: the caller-supplied passage reference the fact came
+    * from, so a corpus-derived record can be traced to its source
+    * document even though no conversation event backs it. */
+  val CorpusPassage: ContextKey = internal("corpusPassage")
+
   /** This turn's context was elided under budget pressure — reads were
     * rewritten to stubs, so the agent can only narrate. Guards that
     * would challenge a narration back off when this is present. */

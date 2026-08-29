@@ -3,7 +3,7 @@ package sigil
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.conversation.{ContextMemory, Conversation, MemorySource, MemoryStatus, UpsertMemoryResult}
+import sigil.conversation.{ContextKey, ContextMemory, Conversation, MemorySource, MemoryStatus, UpsertMemoryResult}
 import sigil.db.Model
 import sigil.embedding.EmbeddingRef
 import sigil.event.Event
@@ -301,6 +301,72 @@ trait MemoryOps { this: Sigil =>
       }
     }
   }
+
+  /**
+   * Ingest document passages as ATOMIC memories — the 1:N counterpart
+   * of [[memoryDistiller]]'s 1:1 rewrite. Each passage goes through one
+   * extraction consult ([[sigil.tool.consult.ExtractMemoriesTool]]
+   * under [[MemoryOps.DefaultCorpusIngestSystemPrompt]]) that splits
+   * it into self-contained single-fact records: a passage packing
+   * several facts into one sentence becomes several memories, so a
+   * small runtime model can't grab the wrong half of a dense clause
+   * at answer time, and each fact's embedding signals that fact alone.
+   *
+   * Every record persists with `source = MemorySource.Corpus`,
+   * `summary = fact` (an atomic fact is its own render form), and the
+   * passage's `reference` under [[ContextKey.CorpusPassage]] in
+   * `extraContext` for provenance. Keyed extractions route through the
+   * versioned keyed upsert (a fact restated across passages refreshes
+   * rather than duplicates); keyless ones insert. The whole batch
+   * shares one embedding request per passage via [[persistMemories]].
+   * Runs at ingest — a build step — so `modelId` may be a strong model
+   * without touching the runtime model. A passage whose consult fails
+   * or yields nothing contributes no records (logged), never fails the
+   * ingest.
+   *
+   * `passages` pairs each text with a caller-chosen reference (a file
+   * path + chunk index, a document id, a URL — whatever the app can
+   * trace back to the origin).
+   */
+  def ingestCorpusMemories(passages: List[(String, String)],
+                           space: SpaceId,
+                           modelId: Id[Model],
+                           chain: List[sigil.participant.ParticipantId],
+                           systemPrompt: String = MemoryOps.DefaultCorpusIngestSystemPrompt): Task[List[ContextMemory]] =
+    Task.sequence(passages.map { case (reference, text) =>
+      val trimmed = text.trim
+      if (trimmed.isEmpty) Task.pure(Nil)
+      else sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ExtractMemoriesInput](
+        sigil = this,
+        modelId = modelId,
+        chain = chain,
+        systemPrompt = systemPrompt,
+        userPrompt = s"Passage ($reference):\n\n$trimmed",
+        tool = sigil.tool.consult.ExtractMemoriesTool
+      ).map {
+        case None => Nil
+        case Some(result) =>
+          result.memories.filter(_.content.trim.nonEmpty).map { m =>
+            val fact = m.content.trim
+            ContextMemory(
+              fact = fact,
+              label = if (m.label.trim.nonEmpty) m.label.trim else fact.take(48),
+              summary = fact,
+              source = MemorySource.Corpus,
+              spaceId = space,
+              key = m.key.map(_.trim).filter(_.nonEmpty),
+              keywords = m.tags.toVector,
+              createdBy = chain.lastOption,
+              extraContext = Map(ContextKey.CorpusPassage -> reference)
+            )
+          }
+      }.handleError { e =>
+        Task {
+          scribe.warn(s"ingestCorpusMemories: extraction failed for passage '$reference': ${e.getMessage} — skipping")
+          List.empty[ContextMemory]
+        }
+      }
+    }).flatMap(perPassage => persistMemories(perPassage.flatten))
 
   /** Internal helper — fold chain-derived `createdBy` + `location`
     * onto a memory without overwriting fields the caller already set. */
@@ -705,6 +771,24 @@ trait MemoryOps { this: Sigil =>
 }
 
 object MemoryOps {
+  /** System prompt for [[sigil.Sigil.ingestCorpusMemories]]'s
+    * extraction consult: turn one document passage into atomic,
+    * self-contained facts a small runtime model cannot misread. */
+  val DefaultCorpusIngestSystemPrompt: String =
+    """You convert a passage from a document into durable memories via the `extract_memories` tool.
+      |The passage is source material, NOT a conversation — there is no user speaking.
+      |
+      |Split the passage into ATOMIC facts: exactly ONE fact per memory, never two facts joined in
+      |one sentence. A sentence such as "his cigars in the coal-scuttle, his tobacco in a Persian
+      |slipper" yields TWO memories. Each `content` must be self-contained: name the subject
+      |explicitly (never "he" / "it" / "they"), state the relationship directly, keep names,
+      |numbers, and identifiers exactly as written. Prefer one or two plain sentences per fact.
+      |
+      |Give each memory a short `label`. Supply a `key` only for a durable identity slot whose
+      |value could change (a name, an address, a role); otherwise omit it. Leave `tags` for
+      |genuine categorization tokens. Include every concrete fact the passage states; omit
+      |narrative connective tissue and anything the passage does not actually say.""".stripMargin
+
   /** Ceiling on a memory's `sourceEventIds`. A long-lived keyed slot
     * refreshed on every turn would otherwise accumulate one id per
     * refresh forever — thousands of ids on a record whose value is a

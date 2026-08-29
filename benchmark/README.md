@@ -32,13 +32,17 @@ Self-contained (no dataset download, no Qdrant): a persona corpus answered by a 
 runtime model under five configurations, scored on the settled conversation trace.
 
 ```sh
-sbt "benchmark/runMain bench.MemoryArmsBench [--limit N] [--arms baseline,passive,agentic,distilled,stuffed] [--report PATH] [--verbose]"
+sbt "benchmark/runMain bench.MemoryArmsBench [--limit N] [--arms baseline,passive,agentic,distilled,split,stuffed] [--report PATH] [--verbose]"
 ```
 
+- **Corpus shape**: dense passages (three facts per paragraph — what document ingestion
+  actually produces), one memory per passage in every memory arm except `split`.
 - **Arms**: `baseline` (no memory — the floor), `passive` (StandardMemoryRetriever injection),
   `agentic` (`semantic_search` tool, no injection), `distilled` (passive over a
-  `ConsultMemoryDistiller`-ingested corpus), `stuffed` (every fact jammed into the user
-  message — the naive control the machinery must beat on tokens while matching on accuracy).
+  `ConsultMemoryDistiller` 1:1-rewritten corpus), `split` (passive over an
+  `ingestCorpusMemories` corpus — each passage split into atomic single-fact memories),
+  `stuffed` (every passage jammed into the user message — the naive control the machinery
+  must beat on tokens while matching on accuracy).
 - **Scoring**: answerable questions score accuracy (any-of gold substrings); an adversarial
   tier of unanswerable questions scores hedging separately (heuristic marker match) — a
   confident answer to a question the corpus can't answer is confabulation, not helpfulness.

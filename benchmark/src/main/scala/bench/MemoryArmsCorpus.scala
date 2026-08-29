@@ -44,6 +44,16 @@ object MemoryArmsCorpus {
     "Watson's service revolver accompanies them on dangerous cases at Holmes's request."
   )
 
+  /** The corpus as DENSE passages — three facts packed into one
+    * paragraph, the shape document ingestion actually produces. Every
+    * memory arm seeds these (one memory per passage) except `Split`,
+    * which runs them through `ingestCorpusMemories`. The reference
+    * pairs with the text as the passage's provenance. */
+  val passages: List[(String, String)] =
+    facts.grouped(3).zipWithIndex.map { case (group, i) =>
+      s"persona.txt#$i" -> group.mkString(" ")
+    }.toList
+
   val questions: List[ArmQuestion] = List(
     ArmQuestion("Where do you keep your tobacco?", List("persian slipper", "slipper"), answerable = true),
     ArmQuestion("Where do you keep your cigars?", List("coal-scuttle", "coal scuttle"), answerable = true),
