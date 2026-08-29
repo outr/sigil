@@ -35,7 +35,8 @@ import scala.concurrent.duration.*
  *
  * Usage:
  * {{{
- * sbt "benchmark/runMain bench.MemoryArmsBench [--limit N] [--arms baseline,passive,agentic,distilled,stuffed] [--report PATH]"
+ * sbt "benchmark/runMain bench.MemoryArmsBench [--limit N] [--arms baseline,passive,agentic,distilled,split,stuffed]
+ *      [--lexical-weights 0,1,2,4] [--vector-weight D] [--keyword-weight D] [--report PATH] [--verbose]"
  * }}}
  */
 object MemoryArmsBench {
@@ -45,15 +46,24 @@ object MemoryArmsBench {
                                           tokens: Long,
                                           searches: Int,
                                           correct: Boolean,
-                                          hedged: Boolean)
+                                          hedged: Boolean,
+                                          goldRetrieved: Boolean)
 
-  private final case class ArmResult(arm: MemoryArm, results: List[QuestionResult]) {
+  private final case class ArmResult(arm: MemoryArm, label: String, results: List[QuestionResult]) {
     private def answerable = results.filter(_.question.answerable)
     private def adversarial = results.filterNot(_.question.answerable)
     def accuracy: String = s"${answerable.count(_.correct)}/${answerable.size}"
+    /** recall@limit — did the gold fact reach the prompt at all? The
+      * metric the fusion weights move directly; answer accuracy sits
+      * downstream of it and adds the runtime model's variance. */
+    def recall: String = s"${answerable.count(_.goldRetrieved)}/${answerable.size}"
     def hedgedRate: String = s"${adversarial.count(_.hedged)}/${adversarial.size}"
     def meanTokens: Long = if (results.isEmpty) 0L else results.map(_.tokens).sum / results.size
     def searchCalls: Int = results.map(_.searches).sum
+  }
+
+  private final case class Weights(lexical: Double, vector: Double, keyword: Double) {
+    def label: String = f"lex=$lexical%.1f/vec=$vector%.1f/kw=$keyword%.1f"
   }
 
   def main(args: Array[String]): Unit = BenchmarkMain.guard {
@@ -65,6 +75,16 @@ object MemoryArmsBench {
         MemoryArm.values.find(_.toString.toLowerCase == n))
       case None => MemoryArm.values.toList
     }
+    // `--lexical-weights 0,1,2,4` sweeps the lexical leg's RRF weight,
+    // re-running every arm per value; vector / keyword weights are
+    // single-valued knobs held constant across the sweep.
+    val vectorWeight = argValue(args, "--vector-weight").flatMap(_.toDoubleOption).getOrElse(1.0)
+    val keywordWeight = argValue(args, "--keyword-weight").flatMap(_.toDoubleOption).getOrElse(1.0)
+    val weightSweep: List[Weights] = argValue(args, "--lexical-weights")
+      .map(_.split(',').toList.flatMap(_.trim.toDoubleOption))
+      .filter(_.nonEmpty)
+      .getOrElse(List(argValue(args, "--lexical-weight").flatMap(_.toDoubleOption).getOrElse(2.0)))
+      .map(l => Weights(l, vectorWeight, keywordWeight))
     val questions = MemoryArmsCorpus.questions.take(math.max(limit, 1))
 
     profig.Profig("sigil.dbPath").store(s"db/bench/memory-arms-${System.currentTimeMillis()}")
@@ -94,10 +114,16 @@ object MemoryArmsBench {
     println(s"host: $llamaHost  model: $modelName  vector: ${if (vectorWired) "embeddings + in-memory index" else "OFF (lexical-only)"}")
     println(s"questions: ${questions.size} (${questions.count(_.answerable)} answerable + ${questions.count(!_.answerable)} adversarial)  arms: ${arms.mkString(", ")}\n")
 
-    val results = arms.map { arm =>
-      val r = runArm(host, arm, modelId, questions, verbose)
-      println(render(List(r), vectorWired))
-      r
+    if (weightSweep.size > 1) println(s"weight sweep: ${weightSweep.map(_.label).mkString("  ")}\n")
+
+    // Arms that don't run the retriever are weight-invariant — run them
+    // once (under the first weight) rather than once per sweep value.
+    val results = weightSweep.zipWithIndex.flatMap { case (weights, i) =>
+      arms.filter(arm => i == 0 || usesRetriever(arm)).map { arm =>
+        val r = runArm(host, arm, modelId, questions, verbose, weights)
+        println(render(List(r), vectorWired))
+        r
+      }
     }
 
     val table = render(results, vectorWired)
@@ -116,14 +142,20 @@ object MemoryArmsBench {
                      arm: MemoryArm,
                      modelId: Id[Model],
                      questions: List[ArmQuestion],
-                     verbose: Boolean): ArmResult = {
-    val space = ArmSpace(arm.toString.toLowerCase)
+                     verbose: Boolean,
+                     weights: Weights): ArmResult = {
+    // One space per (arm, weight) — a sweep re-seeds, and keyless facts
+    // would otherwise duplicate inside a shared space.
+    val space = ArmSpace(s"${arm.toString.toLowerCase}-${weights.label.replaceAll("[^a-z0-9]+", "-")}")
     host.setArmSpace(space)
     val debug = sys.env.contains("ARMS_DEBUG")
     host.setRetriever(arm match {
       case MemoryArm.Passive | MemoryArm.Distilled | MemoryArm.Split =>
         val base = StandardMemoryRetriever(
           limit = 5,
+          lexicalWeight = weights.lexical,
+          vectorWeight = weights.vector,
+          keywordWeight = weights.keyword,
           queryFrom = Some { (frames, chain) =>
             val q = StandardMemoryRetriever.lastNonAgentMessage(frames, chain)
             if (debug) println(s"  [debug] retrieval question=${q.map(_.take(80))} (frames=${frames.size})")
@@ -199,18 +231,19 @@ object MemoryArmsBench {
         userMessages = List(text),
         perTurnTimeout = 180.seconds
       ).sync()
-      val result = score(q, trace)
+      val result = score(q, trace, host.lastInjected)
       if (verbose) {
         val flag = if (q.answerable) { if (result.correct) "OK  " else "MISS" }
                    else { if (result.hedged) "HEDGE" else "ASSERT" }
-        println(s"  [$arm] $flag ${q.question} -> ${result.reply.replaceAll("\\s+", " ").take(120)}")
+        val ret = if (!q.answerable) "" else if (result.goldRetrieved) " [gold retrieved]" else " [gold MISSING]"
+        println(s"  [$arm] $flag$ret ${q.question} -> ${result.reply.replaceAll("\\s+", " ").take(110)}")
       }
       result
     }
-    ArmResult(arm, results)
+    ArmResult(arm, weights.label, results)
   }
 
-  private def score(q: ArmQuestion, trace: ConversationTrace): QuestionResult = {
+  private def score(q: ArmQuestion, trace: ConversationTrace, injected: List[String]): QuestionResult = {
     val reply = trace.turns.headOption.map(_.replyText).getOrElse("")
     val lower = reply.toLowerCase
     val tokens = trace.turns.flatMap(_.events).collect {
@@ -223,18 +256,27 @@ object MemoryArmsBench {
       tokens = tokens,
       searches = searches,
       correct = q.answerable && q.gold.exists(lower.contains),
-      hedged = !q.answerable && MemoryArmsCorpus.hedgeMarkers.exists(lower.contains)
+      hedged = !q.answerable && MemoryArmsCorpus.hedgeMarkers.exists(lower.contains),
+      goldRetrieved = q.answerable && injected.exists { fact =>
+        val f = fact.toLowerCase
+        q.gold.exists(f.contains)
+      }
     )
   }
 
   private def render(results: List[ArmResult], vectorWired: Boolean): String = {
-    val header = "| arm | accuracy | hedged (adversarial) | mean tokens/turn | semantic_search calls |"
-    val sep = "|---|--:|--:|--:|--:|"
+    val header = "| arm | weights | recall@5 | accuracy | hedged (adversarial) | mean tokens/turn | semantic_search calls |"
+    val sep = "|---|---|--:|--:|--:|--:|--:|"
     val rows = results.map { r =>
-      s"| ${r.arm} | ${r.accuracy} | ${r.hedgedRate} | ${r.meanTokens} | ${r.searchCalls} |"
+      s"| ${r.arm} | ${r.label} | ${r.recall} | ${r.accuracy} | ${r.hedgedRate} | ${r.meanTokens} | ${r.searchCalls} |"
     }
     val note = if (vectorWired) "" else "\n_(vector leg off — lexical-only retrieval)_"
     (header :: sep :: rows).mkString("\n") + note
+  }
+
+  private def usesRetriever(arm: MemoryArm): Boolean = arm match {
+    case MemoryArm.Passive | MemoryArm.Distilled | MemoryArm.Split => true
+    case MemoryArm.Baseline | MemoryArm.Agentic | MemoryArm.Stuffed => false
   }
 
   private def memory(fact: String, space: ArmSpace): ContextMemory = ContextMemory(

@@ -61,6 +61,43 @@ REALTALK is genuinely the hardest memory benchmark in the row — real-world cha
 
 `preference_evidence` and `implicit_connection_evidence` weren't reached within the 5,000-question cap; their batches sit at `1_evidence` (1-conv cases) which the scorer skips, and the higher-evidence levels weren't fetched. The fully-loaded categories above still produce a 7,000-question run with real retrieval signal at every datapoint.
 
+## Memory arms — fusion-weight sweep (MemoryArmsBench)
+
+Small runtime model (`qwen3.5-9b-q4_k_m` via llama.cpp), OpenAI `text-embedding-3-small` +
+in-memory index, dense-passage persona corpus (8 passages / 24 facts), 10 answerable + 5
+adversarial questions, one run per cell (2026-08-29). `recall@5` = the gold fact reached the
+prompt; `accuracy` = the model's answer contained it. The retriever arms were swept over the
+lexical RRF weight with vector = keyword = 1.0; the run was stopped before the `lex=4` cells
+for `distilled` / `split`.
+
+| arm | lex weight | recall@5 | accuracy | hedged (adv.) |
+|---|--:|--:|--:|--:|
+| passive | 0.0 | 10/10 | 10/10 | 1/5 |
+| passive | 1.0 | 10/10 | 10/10 | 0/5 |
+| passive | **2.0 (default)** | 10/10 | 10/10 | 1/5 |
+| passive | 4.0 | 10/10 | 10/10 | 2/5 |
+| distilled | 0.0 | 9/10 | 9/10 | 2/5 |
+| distilled | 1.0 | 10/10 | 10/10 | 1/5 |
+| distilled | **2.0 (default)** | 10/10 | 9/10 | 3/5 |
+| split | 0.0 | **5/10** | 6/10 | 2/5 |
+| split | 1.0 | 10/10 | 10/10 | 1/5 |
+| split | **2.0 (default)** | 10/10 | 10/10 | 2/5 |
+| baseline (no memory) | — | — | 1/10 | 1/5 |
+| agentic (`semantic_search`, 9 calls) | — | — | 7/10 | 1/5 |
+| stuffed (control) | — | — | 10/10 | 2/5 |
+
+**Reading:** with the query tokenized like content (#415), the lexical leg never overrides a
+correct vector ranking — recall is 10/10 at every lexical weight ≥ 1 in every retriever arm.
+Dropping the leg (`lex = 0`, vector-only) is what hurts: on the atomic `split` corpus recall
+halves (5/10), because the discriminators the questions hinge on are proper nouns
+(`baritsu`, `Diogenes`, `Hudson`) that exact-term BM25 nails and embeddings blur across
+near-duplicate atomic facts. Weights 1.0, 2.0, and 4.0 are indistinguishable on this corpus;
+the remaining accuracy deltas at equal recall (distilled `lex=2`: 10/10 recall, 9/10 accuracy)
+are runtime-model reading variance. **Decision: `lexicalWeight = 2.0` stays.** The token
+column is uninformative at this corpus size (the ~3k system prompt dominates; `stuffed`
+costs the same as `passive`), and the hedging heuristic interacts badly with a roleplaying
+persona — both need a larger corpus before they mean anything.
+
 ## Tool use / function calling
 
 | Benchmark | Model | Sigil score | Published reference |

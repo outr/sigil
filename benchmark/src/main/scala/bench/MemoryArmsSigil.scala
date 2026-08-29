@@ -53,6 +53,13 @@ final class MemoryArmsSigil extends Sigil {
   private val retrieverRef = new AtomicReference[MemoryRetriever](NoOpMemoryRetriever)
   private val armSpaceRef = new AtomicReference[Option[SpaceId]](None)
   private val distillerRef = new AtomicReference[Option[MemoryDistiller]](None)
+  private val lastInjectedRef = new AtomicReference[List[String]](Nil)
+
+  /** Facts injected by the most recent `curate` — the retrieval-level
+    * observation the runner scores recall@k from. Answer accuracy
+    * conflates retrieval with the runtime model's reading of what it
+    * got; this isolates the half the fusion weights actually move. */
+  def lastInjected: List[String] = lastInjectedRef.get()
 
   def setProvider(p: Provider): Unit = providerRef.set(Some(p))
   def setEmbedding(e: EmbeddingProvider, v: VectorIndex): Unit = {
@@ -77,6 +84,9 @@ final class MemoryArmsSigil extends Sigil {
     StandardContextCurator(this, memoryRetriever = retrieverRef.get())
       .curate(conversationId, modelId, chain)
       .map { input =>
+        lastInjectedRef.set(input.memories.toList.flatMap { id =>
+          withDB(_.memories.transaction(_.get(id))).sync().map(_.fact)
+        })
         if (sys.env.contains("ARMS_DEBUG")) {
           println(s"  [debug] curated memories=${input.memories.size} critical=${input.criticalMemories.size} (vectorWired=$vectorWired) for ${conversationId.value}")
           input.memories.foreach { id =>

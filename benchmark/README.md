@@ -49,6 +49,11 @@ sbt "benchmark/runMain bench.MemoryArmsBench [--limit N] [--arms baseline,passiv
 - **Isolation**: each arm seeds its corpus into its own `SpaceId` and only that space is
   accessible during the arm — no cross-arm recall (the contamination class that quietly
   flatters baselines).
+- **Fusion sweep**: `--lexical-weights 0,1,2,4` re-runs the retriever arms (`passive`,
+  `distilled`, `split`) once per lexical RRF weight, each in its own space; `--vector-weight`
+  / `--keyword-weight` hold the other legs. The `recall@5` column is the retrieval-level
+  score — did the gold fact reach the prompt — which the weights move directly; accuracy
+  sits downstream of it and adds the runtime model's variance.
 - **Runtime**: `SIGIL_LLAMACPP_HOST` (default the public endpoint) and
   `SIGIL_LLAMACPP_MODEL`. With `OPENAI_API_KEY` set, the vector leg runs via
   OpenAI-compatible embeddings + an in-memory index; without it, retrieval is lexical-only
