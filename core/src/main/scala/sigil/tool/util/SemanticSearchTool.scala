@@ -53,6 +53,9 @@ case object SemanticSearchTool extends Tool {
 
   private def executeOutput(input: SemanticSearchInput, ctx: ToolContext): Task[SemanticSearchOutput] =
     resolveSpaces(input, ctx).flatMap { spaces =>
+      // Shape, not safety: `searchMemories` itself returns nothing for
+      // an empty scope. Short-circuiting here just yields the typed
+      // empty output without an embedding round-trip.
       if (spaces.isEmpty)
         Task.pure(SemanticSearchOutput(query = input.query, memories = Nil, count = 0))
       else

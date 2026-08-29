@@ -337,15 +337,24 @@ trait RetrievalOps { this: Sigil =>
    * [[ContextMemory.isRecallable]]). When not wired, fall back to the
    * space-scoped listing (relevance-unordered — callers that care
    * should override this method).
+   *
+   * An empty `spaces` set is an empty scope and yields an empty
+   * result on BOTH branches — the same contract as [[findMemories]].
+   * This primitive offers no "every space" read: a caller whose scope
+   * resolution came back empty must get nothing, not the whole
+   * store's memories across every tenant. A cross-scope read, should
+   * one ever be needed, is a separate entry point with its own
+   * authorization story.
    */
   def searchMemories(query: String,
                      spaces: Set[SpaceId],
                      limit: Int = 10): Task[List[ContextMemory]] =
-    if (!vectorWired) findMemories(spaces).map(_.take(limit))
+    if (spaces.isEmpty) Task.pure(Nil)
+    else if (!vectorWired) findMemories(spaces).map(_.take(limit))
     else embeddingProvider.embed(query).flatMap { vec =>
       val filter = sigil.vector.VectorQueryFilter(
         exact = Map("kind" -> "memory"),
-        anyOf = if (spaces.isEmpty) Map.empty else Map("spaceId" -> spaces.map(_.value))
+        anyOf = Map("spaceId" -> spaces.map(_.value))
       )
       vectorIndex.search(vec, limit = limit, filter = filter).flatMap { hits =>
         val ids = hits.flatMap(_.payload.get("memoryId")).map(Id[ContextMemory](_))
@@ -354,7 +363,7 @@ trait RetrievalOps { this: Sigil =>
             Task.sequence(ids.map(id => tx.get(id))).map { loaded =>
               val now = Timestamp()
               loaded.flatten
-                .filter(m => spaces.isEmpty || spaces.contains(m.spaceId))
+                .filter(m => spaces.contains(m.spaceId))
                 .filter(_.isRecallable(now))
             }
           }
