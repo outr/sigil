@@ -97,10 +97,16 @@ the exercise rather than a defect.
 
 **Failure anatomy** (12 representative failures re-run with diagnostics, at both budgets):
 
-| budget | gold coverage | outcome |
-|---|--:|---|
-| 5 memories | partial on multi-session / knowledge-update | evidence incomplete; model's answer correct *for what it held* |
-| 20 memories | ~100% | 3 of 12 flip to correct; **8 remain wrong with all evidence present** |
+| budget | gold coverage | failures recovered | mean tokens/question |
+|---|--:|--:|--:|
+| 5 memories | partial on multi-session / knowledge-update | — | 3,433 |
+| 20 memories | **91.7%** | **3 of 12 (25%)** | 3,907 (**+14%**) |
+
+The cost side is the surprise: quadrupling the injection budget raises tokens by only 14%,
+because injected memories are a small share of a prompt dominated by fixed system content.
+25% of failures recovered for 14% more tokens is a trade worth taking, and it means the
+default of 5 was leaving accuracy on the table cheaply. Extrapolated across the run's 236
+failures, budget alone is worth roughly +12 points before the temporal fix is counted.
 
 That separation is the actionable result. Budget fixes coverage; it does not fix
 comprehension. The residual is a small model failing to extract a specific fact from dense
