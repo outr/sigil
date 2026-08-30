@@ -49,6 +49,7 @@ object FailureReport {
                                failure: String,
                                judgeReasoning: String,
                                goldRetrieved: Boolean,
+                               goldCoverage: Double,
                                injected: List[String],
                                injectedSessions: List[String],
                                answerSessions: List[String])
@@ -84,6 +85,7 @@ object FailureReport {
           },
           judgeReasoning = j.get("judgeReasoning").map(_.asString).getOrElse(""),
           goldRetrieved = j.get("goldRetrieved").exists(_.asBoolean),
+          goldCoverage = j.get("goldCoverage").map(_.asDouble).getOrElse(if (j.get("goldRetrieved").exists(_.asBoolean)) 1.0 else 0.0),
           injected = strList(j, "injected"),
           injectedSessions = strList(j, "injectedSessions"),
           answerSessions = strList(j, "answerSessions")
@@ -103,7 +105,12 @@ object FailureReport {
     val grouped = failures.groupBy(_.failure)
 
     val sb = new StringBuilder
+    // Console gets the summary; the file gets the summary AND every
+    // failure in full. A dossier you can read months later beats a
+    // terminal scrollback, and the per-question detail is the whole
+    // point of keeping it.
     def out(s: String): Unit = { println(s); sb.append(s).append('\n') }
+    def file(s: String): Unit = sb.append(s).append('\n')
 
     out(s"# Failure report — $logPath")
     out("")
@@ -115,7 +122,8 @@ object FailureReport {
     out("|---|--:|--:|---|")
     grouped.toList.sortBy(-_._2.size).foreach { case (cls, rs) =>
       val where = cls match {
-        case "retrieval-miss" => "ingest granularity, --memories, fusion weights"
+        case "retrieval-miss" => "ranking — fusion weights, query composition"
+        case "retrieval-partial" => "injection budget — --memories, ingest granularity"
         case "comprehension-miss" => "memory rendering, prompt framing, model"
         case "temporal-no-timestamps" => "harness — run with timestamps"
         case "judge-no-verdict" => "judge (infrastructure, not a result)"
@@ -164,9 +172,57 @@ object FailureReport {
       }
     }
 
+    // Full dossier: every failure, grouped by class then category, with
+    // the question, the gold answer, what was actually answered, why the
+    // judge rejected it, and the evidence the model was holding.
+    if (reportPath.isDefined) {
+      file("")
+      file("---")
+      file("")
+      file("# Every failure, in detail")
+      file("")
+      grouped.toList.sortBy(-_._2.size).foreach { case (cls, rs) =>
+        file(s"## $cls (${rs.size})")
+        file("")
+        rs.groupBy(_.questionType).toList.sortBy(-_._2.size).foreach { case (cat, catRs) =>
+          file(s"### $cat (${catRs.size})")
+          file("")
+          catRs.sortBy(_.index).foreach { r =>
+            file(s"#### q${r.index}")
+            file("")
+            file(s"**Question**: ${r.question}")
+            file("")
+            file(s"**Gold answer**: ${r.gold}")
+            file("")
+            file(s"**Model answered**:")
+            file("")
+            file("> " + (if (r.answer.trim.isEmpty) "_(empty)_"
+                         else r.answer.trim.replaceAll("\r?\n", "\n> ")))
+            file("")
+            if (r.judgeReasoning.nonEmpty) { file(s"**Judge**: ${r.judgeReasoning}"); file("") }
+            file(f"**Gold coverage**: ${r.goldCoverage * 100}%.0f%% of answer sessions" +
+              (if (r.answerSessions.nonEmpty || r.injectedSessions.nonEmpty)
+                 s" — answer session(s) `${r.answerSessions.mkString(", ")}`, injected from `${r.injectedSessions.mkString(", ")}`"
+               else ""))
+            file("")
+            if (r.injected.nonEmpty) {
+              file("<details><summary>Evidence the model read</summary>")
+              file("")
+              r.injected.zipWithIndex.foreach { case (t, i) =>
+                file(s"${i + 1}. ${t.trim.replaceAll("\r?\n", " ")}")
+              }
+              file("")
+              file("</details>")
+              file("")
+            }
+          }
+        }
+      }
+    }
+
     reportPath.foreach { p =>
       java.nio.file.Files.writeString(java.nio.file.Path.of(p), sb.toString)
-      println(s"report written to $p")
+      println(s"\nfull dossier (${failures.size} failures) written to $p")
     }
     System.exit(0)
   }

@@ -72,6 +72,7 @@ object LongMemEvalQABench {
                                     correct: Boolean,
                                     judgeFailed: Boolean,
                                     goldRetrieved: Boolean,
+                                    goldCoverage: Double,
                                     tokens: Long,
                                     ingestMs: Long,
                                     turnMs: Long,
@@ -192,7 +193,7 @@ object LongMemEvalQABench {
             case e: Throwable =>
               println(s"  [$arm] ERROR  q$i ${e.getClass.getSimpleName}: ${e.getMessage.take(120)}")
               QaResult(i, "error", "", "", "", correct = false, judgeFailed = false,
-                goldRetrieved = false, tokens = 0L, ingestMs = 0L, turnMs = 0L, judgeMs = 0L,
+                goldRetrieved = false, goldCoverage = 0.0, tokens = 0L, ingestMs = 0L, turnMs = 0L, judgeMs = 0L,
                 memoryCount = 0, errored = true, failure = "harness-error",
                 judgeReasoning = s"${e.getClass.getSimpleName}: ${Option(e.getMessage).getOrElse("").take(200)}")
           }
@@ -335,9 +336,21 @@ object LongMemEvalQABench {
     val injectedList = host.lastInjected
     val injectedFacts = injectedList.toSet
     def stampedOf(date: String, text: String) = if (timestamps) LongMemEvalDates.prefix(date) + text else text
-    val goldRetrieved = turns.exists { case (sessId, date, text) =>
-      answerSessionIds.contains(sessId) && injectedFacts.contains(stampedOf(date, text))
-    }
+    // Coverage, not presence. A multi-session or knowledge-update
+    // question's answer is spread across SEVERAL answer sessions, and
+    // an "any answer session was injected" test calls it retrieved when
+    // the model is holding a fraction of what it needs — which then
+    // mislabels a retrieval-coverage failure as a comprehension one.
+    // The model reasoning correctly over half the evidence is not a
+    // comprehension failure.
+    val coveredSessions = turns.collect {
+      case (sessId, date, text)
+        if answerSessionIds.contains(sessId) && injectedFacts.contains(stampedOf(date, text)) => sessId
+    }.distinct
+    val goldCoverage =
+      if (answerSessionIds.isEmpty) 1.0
+      else coveredSessions.size.toDouble / answerSessionIds.size
+    val goldRetrieved = goldCoverage >= 1.0
     // Which sessions the injected evidence actually came from — next to
     // `answerSessions` this shows whether retrieval landed near the
     // answer or somewhere unrelated.
@@ -347,10 +360,10 @@ object LongMemEvalQABench {
 
     QaResult(index, questionType, question, gold, answer,
       correct = verdict.correct, judgeFailed = verdict.judgeFailed,
-      goldRetrieved = goldRetrieved, tokens = tokens,
+      goldRetrieved = goldRetrieved, goldCoverage = goldCoverage, tokens = tokens,
       ingestMs = ingestMs, turnMs = turnMs, judgeMs = judgeMs, memoryCount = turns.size,
       failure = classify(ArmQuestion0(questionType), verdict.correct, verdict.judgeFailed,
-        goldRetrieved, errored = false, timestamps = timestamps),
+        goldCoverage, errored = false, timestamps = timestamps),
       judgeReasoning = verdict.reasoning,
       injected = injectedList,
       injectedSessions = injectedSessions,
@@ -364,12 +377,16 @@ object LongMemEvalQABench {
     * Deriving it here means the failure list is grouped by cause
     * instead of being 276 answers to read one at a time. */
   private def classify(q: ArmQuestion0, correct: Boolean, judgeFailed: Boolean,
-                       goldRetrieved: Boolean, errored: Boolean, timestamps: Boolean): String =
+                       goldCoverage: Double, errored: Boolean, timestamps: Boolean): String =
     if (errored) "harness-error"
     else if (correct) ""
     else if (judgeFailed) "judge-no-verdict"
     else if (q.questionType == "temporal-reasoning" && !timestamps) "temporal-no-timestamps"
-    else if (!goldRetrieved) "retrieval-miss"
+    else if (goldCoverage <= 0.0) "retrieval-miss"
+    // Some of the answer arrived and some did not. Distinct from both
+    // neighbours: the retriever found the right region, the budget cut
+    // it short. Fix is injection budget / granularity, not ranking.
+    else if (goldCoverage < 1.0) "retrieval-partial"
     else "comprehension-miss"
 
   /** One JSONL line per judged answer: enough for a second judge to
@@ -389,6 +406,7 @@ object LongMemEvalQABench {
       "failure" -> str(r.failure),
       "judgeReasoning" -> str(r.judgeReasoning),
       "goldRetrieved" -> bool(r.goldRetrieved),
+      "goldCoverage" -> num(r.goldCoverage),
       "memoryCount" -> num(r.memoryCount),
       "tokens" -> num(r.tokens),
       "answerSessions" -> arr(r.answerSessions.map(str(_))*),

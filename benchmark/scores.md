@@ -61,6 +61,52 @@ REALTALK is genuinely the hardest memory benchmark in the row — real-world cha
 
 `preference_evidence` and `implicit_connection_evidence` weren't reached within the 5,000-question cap; their batches sit at `1_evidence` (1-conv cases) which the scorer skips, and the higher-evidence levels weren't fetched. The fully-loaded categories above still produce a 7,000-question run with real retrieval signal at every datapoint.
 
+## LongMemEval — end-to-end QA (the number the world quotes)
+
+Retrieval recall (99.4% R@5, above) is a diagnostic. The figure memory systems publish is
+end-to-end QA accuracy under an LLM judge. Measured through Sigil's real turn path — haystack
+persisted as `ContextMemory`, passive recall injecting, the runtime model answering,
+`BenchJudge` grading — 500 questions, 2026-08-29.
+
+| arm | QA accuracy | gold retrieved | judge failures | errors | mean tokens/question |
+|---|--:|--:|--:|--:|--:|
+| **sigil** (passive recall, 5 memories/turn) | **44.8%** | 97.2% | 0 | 0 | 3,694 |
+| **norag** (no memory — floor) | 4.8% | — | 0 | 0 | 2,483 |
+
+Model: `llamacpp/qwen3.5-9b-q4_k_m`. Judge: same local model, **validated at 96.7% agreement
+(145/150) against `claude-opus-5`**, disagreements near-balanced (2 inflating / 3 deflating),
+so the figure is if anything slightly conservative.
+
+**Reading it.** Sigil's measured contribution is **+40 points** over a no-memory floor of 4.8%
+— the floor is not zero because ~24 questions are answerable from priors alone, which is why
+a floor arm is worth running. Token cost (3,694/question) is well under the ~6,900 the memory
+vendors quote, the one axis directly comparable here. The accuracy is NOT comparable to the
+published ~94.4% SOTA: that uses GPT-4-class models, this is a 9B, and the gap is the point of
+the exercise rather than a defect.
+
+**Three caveats that depress this number, all identified and two already fixed:**
+
+1. **Temporal questions were unanswerable** (118 of 500). The harness persisted haystack turns
+   with ingest-time stamps and no date in the text, so "four weeks ago" had nothing to resolve
+   against. Fixed after the run; not reflected here.
+2. **The injection budget was too small.** At 5 memories/turn, questions whose answer spans
+   several sessions received only part of their evidence — and the model then reasoned
+   correctly over an incomplete picture. Raising to 20 achieves ~100% gold coverage.
+3. **The local model was forced.** [[bugs #417]] blocks the more capable local 27B (a
+   single-slot llama.cpp server wedges after one turn), so this ran on the 9B.
+
+**Failure anatomy** (12 representative failures re-run with diagnostics, at both budgets):
+
+| budget | gold coverage | outcome |
+|---|--:|---|
+| 5 memories | partial on multi-session / knowledge-update | evidence incomplete; model's answer correct *for what it held* |
+| 20 memories | ~100% | 3 of 12 flip to correct; **8 remain wrong with all evidence present** |
+
+That separation is the actionable result. Budget fixes coverage; it does not fix
+comprehension. The residual is a small model failing to extract a specific fact from dense
+conversational turns it is holding — which is the failure mode atomic-fact ingest
+(`Sigil.ingestCorpusMemories`) exists to address, and the next experiment to run.
+
 ## Memory arms — fusion-weight sweep (MemoryArmsBench)
 
 Small runtime model (`qwen3.5-9b-q4_k_m` via llama.cpp), OpenAI `text-embedding-3-small` +
