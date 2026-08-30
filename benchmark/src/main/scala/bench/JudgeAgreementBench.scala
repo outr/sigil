@@ -49,7 +49,8 @@ object JudgeAgreementBench {
                                   question: String,
                                   gold: String,
                                   answer: String,
-                                  localCorrect: Boolean)
+                                  localCorrect: Boolean,
+                                  arm: String)
 
   def main(args: Array[String]): Unit = BenchmarkMain.guard {
     val logPath = args.find(!_.startsWith("--")).getOrElse {
@@ -74,20 +75,33 @@ object JudgeAgreementBench {
           question = j("question").asString,
           gold = j("gold").asString,
           answer = j("answer").asString,
-          localCorrect = j("localCorrect").asBoolean
+          localCorrect = j("localCorrect").asBoolean,
+          arm = j.get("arm").map(_.asString).getOrElse("?")
         )
       }.toList
       // Skip records the local judge never actually decided — a judge
       // failure is a harness fault, not a verdict to agree with.
       .filter(_.answer.trim.nonEmpty)
 
+    // Drop any (arm, index) logged more than once: two runs writing one
+    // log means such a record has two different answers behind it and no
+    // way to tell which verdict belongs to which. Keyed on the PAIR, not
+    // the index — every arm legitimately logs the same indices, and
+    // keying on index alone silently discards every question a second
+    // arm had reached, biasing the sample toward whatever the trailing
+    // arm hadn't got to yet.
+    val seen = all.groupBy(r => (r.arm, r.index)).view.mapValues(_.size).toMap
+    val unique = all.filter(r => seen((r.arm, r.index)) == 1)
+    if (unique.size < all.size)
+      println(s"excluded ${all.size - unique.size} record(s) with duplicated indices")
+
     // Stratify so the sample carries both verdict classes in the
     // proportion the run produced. A sample drawn only from agreements
     // (the common case, if you take the head of the file) would report
     // a flattering rate that says nothing about the disputed calls.
-    val (correct, incorrect) = all.partition(_.localCorrect)
-    val take = math.min(sample, all.size)
-    val correctShare = math.round(take.toDouble * correct.size / math.max(all.size, 1)).toInt
+    val (correct, incorrect) = unique.partition(_.localCorrect)
+    val take = math.min(sample, unique.size)
+    val correctShare = math.round(take.toDouble * correct.size / math.max(unique.size, 1)).toInt
     val selected =
       (correct.take(correctShare) ++ incorrect.take(take - correctShare)).sortBy(_.index)
 
@@ -100,7 +114,7 @@ object JudgeAgreementBench {
     val reference = BenchJudge(modelId)
 
     println("\n=== Judge agreement ===")
-    println(s"log: $logPath   records: ${all.size}   sampled: ${selected.size}")
+    println(s"log: $logPath   records: ${unique.size} unique   sampled: ${selected.size}")
     println(s"reference judge: $judgeModelName\n")
 
     var agree = 0
