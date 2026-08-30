@@ -69,7 +69,11 @@ object LongMemEvalQABench {
                                     correct: Boolean,
                                     judgeFailed: Boolean,
                                     goldRetrieved: Boolean,
-                                    tokens: Long)
+                                    tokens: Long,
+                                    ingestMs: Long,
+                                    turnMs: Long,
+                                    judgeMs: Long,
+                                    memoryCount: Int)
 
   private final case class ArmSummary(arm: String, results: List[QaResult]) {
     def accuracy: Double = if (results.isEmpty) 0.0 else results.count(_.correct).toDouble / results.size
@@ -102,6 +106,11 @@ object LongMemEvalQABench {
     val reasoning = args.contains("--reasoning")
     val outputCap = RetrievalFlags.flagInt(args, "--max-output").getOrElse(if (reasoning) 4000 else 600)
     val turnTimeout = RetrievalFlags.flagInt(args, "--turn-timeout").getOrElse(600)
+    // Every judged record, appended as JSONL. This is the artifact
+    // `JudgeAgreementBench` re-judges with a stronger model — judging a
+    // stored (question, gold, answer) triple costs one cheap call and
+    // needs no re-run of the expensive part.
+    val judgeLog = RetrievalFlags.flagString(args, "--judge-log")
     val reportPath = RetrievalFlags.flagString(args, "--report")
     val arms = RetrievalFlags.flagString(args, "--arms")
       .map(_.split(',').toList.map(_.trim.toLowerCase).filter(_.nonEmpty))
@@ -152,10 +161,10 @@ object LongMemEvalQABench {
       val results = (0 until count).toList.map { i =>
         vectorIndex.clear()
         val r = runQuestion(host, judge, modelId, entries(i), i, arm, memoryLimit, reasoning, outputCap, turnTimeout)
-        if (verbose) {
-          val mark = if (r.judgeFailed) "JUDGE?" else if (r.correct) "OK  " else "MISS"
-          println(f"  [$arm] $mark%-6s q$i%-4d ${r.questionType}%-28s ${r.answer.replaceAll("\\s+", " ").take(90)}")
-        } else if ((i + 1) % 10 == 0) println(s"  [$arm] ${i + 1}/$count")
+        judgeLog.foreach(p => appendJudgeRecord(p, arm, r))
+        val mark = if (r.judgeFailed) "JUDGE?" else if (r.correct) "OK  " else "MISS"
+        println(f"  [$arm] $mark%-6s q$i%-4d mem=${r.memoryCount}%-5d ingest=${r.ingestMs / 1000}%4ds turn=${r.turnMs / 1000}%4ds judge=${r.judgeMs / 1000}%3ds" +
+          (if (verbose) f"  ${r.answer.replaceAll("\\s+", " ").take(80)}" else ""))
         r
       }
       val s = ArmSummary(arm, results)
@@ -206,6 +215,7 @@ object LongMemEvalQABench {
       session.asVector.toList.map(t => sessId -> t("content").asString)
     }.filter(_._2.trim.nonEmpty)
 
+    val ingestStart = System.currentTimeMillis()
     if (arm == "sigil") {
       val memories = turns.map { case (sessId, text) =>
         ContextMemory(
@@ -219,6 +229,7 @@ object LongMemEvalQABench {
       }
       host.persistMemories(memories).sync()
     }
+    val ingestMs = System.currentTimeMillis() - ingestStart
 
     val userText = arm match {
       case "longcontext" =>
@@ -240,6 +251,7 @@ object LongMemEvalQABench {
       )
     )
     val harness = new AgentBenchHarness(host, ArmsBenchUser)
+    val turnStart = System.currentTimeMillis()
     val trace = harness.runConversation(
       conversationFactory = id => Conversation(
         topics = List(TopicEntry(
@@ -254,9 +266,12 @@ object LongMemEvalQABench {
       perTurnTimeout = turnTimeout.seconds
     ).sync()
 
+    val turnMs = System.currentTimeMillis() - turnStart
     val answer = trace.turns.headOption.map(_.replyText).getOrElse("")
     val tokens = trace.turns.flatMap(_.events).collect { case m: Message => m.usage.totalTokens.toLong }.sum
+    val judgeStart = System.currentTimeMillis()
     val verdict = judge.judge(host, question, gold, answer).sync()
+    val judgeMs = System.currentTimeMillis() - judgeStart
     // Retrieval diagnostic: did text from an ANSWER session reach the
     // prompt? Read off the same injection the model saw.
     val injectedFacts = host.lastInjected.toSet
@@ -266,15 +281,37 @@ object LongMemEvalQABench {
 
     QaResult(index, questionType, question, gold, answer,
       correct = verdict.correct, judgeFailed = verdict.judgeFailed,
-      goldRetrieved = goldRetrieved, tokens = tokens)
+      goldRetrieved = goldRetrieved, tokens = tokens,
+      ingestMs = ingestMs, turnMs = turnMs, judgeMs = judgeMs, memoryCount = turns.size)
+  }
+
+  /** One JSONL line per judged answer: enough for a second judge to
+    * re-decide the same call without re-running retrieval or the model. */
+  private def appendJudgeRecord(path: String, arm: String, r: QaResult): Unit = {
+    val json = obj(
+      "index" -> num(r.index),
+      "arm" -> str(arm),
+      "questionType" -> str(r.questionType),
+      "question" -> str(r.question),
+      "gold" -> str(r.gold),
+      "answer" -> str(r.answer),
+      "localCorrect" -> bool(r.correct),
+      "judgeFailed" -> bool(r.judgeFailed)
+    )
+    val line = fabric.io.JsonFormatter.Compact(json) + "\n"
+    java.nio.file.Files.writeString(
+      java.nio.file.Path.of(path), line,
+      java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND)
   }
 
   private def render(summaries: List[ArmSummary]): String = {
-    val header = "| arm | QA accuracy | gold retrieved | judge failures | mean tokens/question |"
-    val sep = "|---|--:|--:|--:|--:|"
+    val header = "| arm | QA accuracy | gold retrieved | judge failures | mean tokens/question | mean ingest | mean turn |"
+    val sep = "|---|--:|--:|--:|--:|--:|--:|"
     val rows = summaries.map { s =>
       val retr = if (s.arm == "norag") "—" else f"${s.retrieval.getOrElse(0.0) * 100}%.1f%%"
-      f"| ${s.arm} | ${s.accuracy * 100}%.1f%% | $retr | ${s.judgeFailures} | ${s.meanTokens} |"
+      val meanIngest = if (s.results.isEmpty) 0L else s.results.map(_.ingestMs).sum / s.results.size / 1000
+      val meanTurn = if (s.results.isEmpty) 0L else s.results.map(_.turnMs).sum / s.results.size / 1000
+      f"| ${s.arm} | ${s.accuracy * 100}%.1f%% | $retr | ${s.judgeFailures} | ${s.meanTokens} | ${meanIngest}s | ${meanTurn}s |"
     }
     (header :: sep :: rows).mkString("\n")
   }
