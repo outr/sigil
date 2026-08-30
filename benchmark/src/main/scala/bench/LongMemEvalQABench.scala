@@ -61,6 +61,9 @@ import scala.io.{Codec, Source}
  */
 object LongMemEvalQABench {
 
+  /** The per-question facts `classify` needs. */
+  private final case class ArmQuestion0(questionType: String)
+
   private final case class QaResult(index: Int,
                                     questionType: String,
                                     question: String,
@@ -74,7 +77,13 @@ object LongMemEvalQABench {
                                     turnMs: Long,
                                     judgeMs: Long,
                                     memoryCount: Int,
-                                    errored: Boolean = false)
+                                    errored: Boolean = false,
+                                    /** Why it failed, derived — see [[classify]]. */
+                                    failure: String = "",
+                                    judgeReasoning: String = "",
+                                    injected: List[String] = Nil,
+                                    injectedSessions: List[String] = Nil,
+                                    answerSessions: List[String] = Nil)
 
   private final case class ArmSummary(arm: String, results: List[QaResult]) {
     def accuracy: Double = if (scored.isEmpty) 0.0 else scored.count(_.correct).toDouble / scored.size
@@ -161,11 +170,17 @@ object LongMemEvalQABench {
 
     val raw = Source.fromFile(new File(dataPath))(using Codec.UTF8).mkString
     val entries = JsonParser(raw).asVector
-    val count = math.min(entries.size, limit)
-    println(s"questions: $count of ${entries.size}\n")
+    // `--indices 12,84,301` re-runs exactly those questions — the
+    // iteration loop for a failure list: fix something, re-run only
+    // what failed, compare.
+    val indices: List[Int] = RetrievalFlags.flagString(args, "--indices")
+      .map(_.split(',').toList.flatMap(_.trim.toIntOption).filter(i => i >= 0 && i < entries.size))
+      .getOrElse((0 until math.min(entries.size, limit)).toList)
+    val count = indices.size
+    println(s"questions: $count of ${entries.size}${if (RetrievalFlags.flagString(args, "--indices").isDefined) " (selected)" else ""}\n")
 
     val summaries = arms.map { arm =>
-      val results = (0 until count).toList.map { i =>
+      val results = indices.map { i =>
         vectorIndex.clear()
         // Containment: a question that hangs or throws is recorded as a
         // failure and the run continues. A 500-question overnight job
@@ -178,7 +193,8 @@ object LongMemEvalQABench {
               println(s"  [$arm] ERROR  q$i ${e.getClass.getSimpleName}: ${e.getMessage.take(120)}")
               QaResult(i, "error", "", "", "", correct = false, judgeFailed = false,
                 goldRetrieved = false, tokens = 0L, ingestMs = 0L, turnMs = 0L, judgeMs = 0L,
-                memoryCount = 0, errored = true)
+                memoryCount = 0, errored = true, failure = "harness-error",
+                judgeReasoning = s"${e.getClass.getSimpleName}: ${Option(e.getMessage).getOrElse("").take(200)}")
           }
         judgeLog.foreach(p => appendJudgeRecord(p, arm, r))
         val mark = if (r.judgeFailed) "JUDGE?" else if (r.correct) "OK  " else "MISS"
@@ -316,17 +332,45 @@ object LongMemEvalQABench {
     val judgeMs = System.currentTimeMillis() - judgeStart
     // Retrieval diagnostic: did text from an ANSWER session reach the
     // prompt? Read off the same injection the model saw.
-    val injectedFacts = host.lastInjected.toSet
+    val injectedList = host.lastInjected
+    val injectedFacts = injectedList.toSet
+    def stampedOf(date: String, text: String) = if (timestamps) LongMemEvalDates.prefix(date) + text else text
     val goldRetrieved = turns.exists { case (sessId, date, text) =>
-      val stamped = if (timestamps) LongMemEvalDates.prefix(date) + text else text
-      answerSessionIds.contains(sessId) && injectedFacts.contains(stamped)
+      answerSessionIds.contains(sessId) && injectedFacts.contains(stampedOf(date, text))
     }
+    // Which sessions the injected evidence actually came from — next to
+    // `answerSessions` this shows whether retrieval landed near the
+    // answer or somewhere unrelated.
+    val injectedSessions = turns.collect {
+      case (sessId, date, text) if injectedFacts.contains(stampedOf(date, text)) => sessId
+    }.distinct
 
     QaResult(index, questionType, question, gold, answer,
       correct = verdict.correct, judgeFailed = verdict.judgeFailed,
       goldRetrieved = goldRetrieved, tokens = tokens,
-      ingestMs = ingestMs, turnMs = turnMs, judgeMs = judgeMs, memoryCount = turns.size)
+      ingestMs = ingestMs, turnMs = turnMs, judgeMs = judgeMs, memoryCount = turns.size,
+      failure = classify(ArmQuestion0(questionType), verdict.correct, verdict.judgeFailed,
+        goldRetrieved, errored = false, timestamps = timestamps),
+      judgeReasoning = verdict.reasoning,
+      injected = injectedList,
+      injectedSessions = injectedSessions,
+      answerSessions = answerSessionIds.toList)
   }
+
+  /** How a question failed. The distinction that matters for fixing
+    * it is whether the evidence ever reached the prompt: a retrieval
+    * miss is a retriever/ingest problem, a comprehension miss is a
+    * rendering/prompt/model problem, and they have disjoint fixes.
+    * Deriving it here means the failure list is grouped by cause
+    * instead of being 276 answers to read one at a time. */
+  private def classify(q: ArmQuestion0, correct: Boolean, judgeFailed: Boolean,
+                       goldRetrieved: Boolean, errored: Boolean, timestamps: Boolean): String =
+    if (errored) "harness-error"
+    else if (correct) ""
+    else if (judgeFailed) "judge-no-verdict"
+    else if (q.questionType == "temporal-reasoning" && !timestamps) "temporal-no-timestamps"
+    else if (!goldRetrieved) "retrieval-miss"
+    else "comprehension-miss"
 
   /** One JSONL line per judged answer: enough for a second judge to
     * re-decide the same call without re-running retrieval or the model. */
@@ -339,7 +383,19 @@ object LongMemEvalQABench {
       "gold" -> str(r.gold),
       "answer" -> str(r.answer),
       "localCorrect" -> bool(r.correct),
-      "judgeFailed" -> bool(r.judgeFailed)
+      "judgeFailed" -> bool(r.judgeFailed),
+      // Diagnostics — everything needed to decide WHY this question
+      // failed without re-running it.
+      "failure" -> str(r.failure),
+      "judgeReasoning" -> str(r.judgeReasoning),
+      "goldRetrieved" -> bool(r.goldRetrieved),
+      "memoryCount" -> num(r.memoryCount),
+      "tokens" -> num(r.tokens),
+      "answerSessions" -> arr(r.answerSessions.map(str(_))*),
+      "injectedSessions" -> arr(r.injectedSessions.map(str(_))*),
+      // The actual evidence the model read, truncated — the thing you
+      // look at first when a comprehension-miss is disputed.
+      "injected" -> arr(r.injected.map(t => str(t.take(400)))*)
     )
     val line = fabric.io.JsonFormatter.Compact(json) + "\n"
     java.nio.file.Files.writeString(
