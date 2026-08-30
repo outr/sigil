@@ -31,17 +31,9 @@ object LongMemEvalBench {
 
   private val Collection = "sigil-bench-longmemeval"
 
-  /** LongMemEval stamps: "2023/05/30 (Tue) 23:40" → epoch millis. */
-  private def parseDate(dateStr: String): Long = {
-    try {
-      val clean = dateStr.replaceAll("\\([A-Za-z]+\\)\\s*", "").trim
-      val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
-      val dt = java.time.LocalDateTime.parse(clean, fmt)
-      dt.atZone(java.time.ZoneId.of("UTC")).toInstant.toEpochMilli
-    } catch {
-      case _: Exception => System.currentTimeMillis()
-    }
-  }
+  /** Shared with the QA runner — see [[LongMemEvalDates]]. */
+  private def parseDate(dateStr: String): Long = LongMemEvalDates.parse(dateStr)
+
 
   /** `topResults` entries: `(sessionId, score, contentSnippet)`.
     * Content is the turn's actual text, truncated for report

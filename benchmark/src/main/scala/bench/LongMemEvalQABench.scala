@@ -109,6 +109,10 @@ object LongMemEvalQABench {
     val reasoning = args.contains("--reasoning")
     val outputCap = RetrievalFlags.flagInt(args, "--max-output").getOrElse(if (reasoning) 4000 else 600)
     val turnTimeout = RetrievalFlags.flagInt(args, "--turn-timeout").getOrElse(600)
+    // On by default: without it the temporal-reasoning category is
+    // unanswerable by construction. `--no-timestamps` reproduces the
+    // dateless behaviour for an A/B.
+    val timestamps = !args.contains("--no-timestamps")
     // Every judged record, appended as JSONL. This is the artifact
     // `JudgeAgreementBench` re-judges with a stronger model — judging a
     // stored (question, gold, answer) triple costs one cheap call and
@@ -153,7 +157,7 @@ object LongMemEvalQABench {
 
     println("\n=== LongMemEval — end-to-end QA ===")
     println(s"runtime+judge model: $modelName @ $llamaHost")
-    println(s"arms: ${arms.mkString(", ")}   memories/turn: $memoryLimit   reasoning: ${if (reasoning) "on" else "off"}   max output: $outputCap")
+    println(s"arms: ${arms.mkString(", ")}   memories/turn: $memoryLimit   timestamps: ${if (timestamps) "on" else "off"}   reasoning: ${if (reasoning) "on" else "off"}   max output: $outputCap")
 
     val raw = Source.fromFile(new File(dataPath))(using Codec.UTF8).mkString
     val entries = JsonParser(raw).asVector
@@ -168,7 +172,7 @@ object LongMemEvalQABench {
         // that dies on question 1 produces nothing; one that loses a
         // question produces 499 results and a visible error count.
         val r =
-          try runQuestion(host, judge, modelId, entries(i), i, arm, memoryLimit, reasoning, outputCap, turnTimeout)
+          try runQuestion(host, judge, modelId, entries(i), i, arm, memoryLimit, reasoning, outputCap, turnTimeout, timestamps)
           catch {
             case e: Throwable =>
               println(s"  [$arm] ERROR  q$i ${e.getClass.getSimpleName}: ${e.getMessage.take(120)}")
@@ -209,6 +213,7 @@ object LongMemEvalQABench {
                           reasoning: Boolean,
                           outputCap: Int,
                           turnTimeout: Int,
+                          timestamps: Boolean,
                           settleMs: Long = 2000L): QaResult = {
     val question = entry("question").asString
     val questionType = entry.get("question_type").map(_.asString).getOrElse("unknown")
@@ -216,6 +221,7 @@ object LongMemEvalQABench {
     val answerSessionIds = entry("answer_session_ids").asVector.map(_.asString).toSet
     val sessions = entry("haystack_sessions").asVector
     val sessionIds = entry("haystack_session_ids").asVector.map(_.asString)
+    val sessionDates = entry.get("haystack_dates").map(_.asVector.map(_.asString)).getOrElse(Vector.empty)
 
     val space = ArmSpace(s"lme-$arm-q$index")
     host.setArmSpace(space)
@@ -227,19 +233,30 @@ object LongMemEvalQABench {
     // The haystack, one memory per turn, tagged with its session so the
     // retrieval diagnostic can tell whether the ANSWER session's text is
     // what reached the prompt.
-    val turns: List[(String, String)] = sessions.zip(sessionIds).toList.flatMap { case (session, sessId) =>
-      session.asVector.toList.map(t => sessId -> t("content").asString)
-    }.filter(_._2.trim.nonEmpty)
+    // (sessionId, date, text). The date rides INTO the memory text —
+    // LongMemEval's temporal-reasoning questions ("four weeks ago")
+    // cannot be answered from evidence that dropped when it happened,
+    // so a store that discards the session stamp makes that category
+    // chance-level no matter how good retrieval is.
+    val turns: List[(String, String, String)] = sessions.zip(sessionIds).zipWithIndex.toList
+      .flatMap { case ((session, sessId), si) =>
+        val date = sessionDates.lift(si).getOrElse("")
+        session.asVector.toList.map(t => (sessId, date, t("content").asString))
+      }.filter(_._3.trim.nonEmpty)
 
     val ingestStart = System.currentTimeMillis()
     if (arm == "sigil") {
-      val memories = turns.map { case (sessId, text) =>
+      val memories = turns.map { case (sessId, date, text) =>
+        val stamped = if (timestamps) LongMemEvalDates.prefix(date) + text else text
         ContextMemory(
-          fact = text,
-          label = text.take(48),
-          summary = text,
+          fact = stamped,
+          label = stamped.take(48),
+          summary = stamped,
           source = MemorySource.Corpus,
           spaceId = space,
+          // The session's real time, not ingest time — the fusion
+          // stage's recency term and any temporal filter both read it.
+          created = lightdb.time.Timestamp(LongMemEvalDates.parse(date)),
           extraContext = Map(ContextKey.CorpusPassage -> sessId)
         )
       }
@@ -249,7 +266,9 @@ object LongMemEvalQABench {
 
     val userText = arm match {
       case "longcontext" =>
-        val haystack = turns.map { case (sessId, text) => s"[$sessId] $text" }.mkString("\n")
+        val haystack = turns.map { case (sessId, date, text) =>
+          s"[$sessId${if (date.nonEmpty) s" $date" else ""}] $text"
+        }.mkString("\n")
         s"Conversation history:\n$haystack\n\nQuestion: $question"
       case _ => question
     }
@@ -298,8 +317,9 @@ object LongMemEvalQABench {
     // Retrieval diagnostic: did text from an ANSWER session reach the
     // prompt? Read off the same injection the model saw.
     val injectedFacts = host.lastInjected.toSet
-    val goldRetrieved = turns.exists { case (sessId, text) =>
-      answerSessionIds.contains(sessId) && injectedFacts.contains(text)
+    val goldRetrieved = turns.exists { case (sessId, date, text) =>
+      val stamped = if (timestamps) LongMemEvalDates.prefix(date) + text else text
+      answerSessionIds.contains(sessId) && injectedFacts.contains(stamped)
     }
 
     QaResult(index, questionType, question, gold, answer,
