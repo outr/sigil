@@ -95,7 +95,7 @@ object MemoryArmsBench {
     val modelId = Model.id("llamacpp", modelName)
     val provider = LlamaCppProvider(URL.parse(llamaHost), Nil, host)
     host.setProvider(provider)
-    host.cache.merge(List(benchModel(modelId, modelName))).sync()
+    host.cache.merge(List(BenchModels.llamaCpp(modelId, modelName))).sync()
 
     val vectorWired = sys.env.get("OPENAI_API_KEY").filter(_.nonEmpty) match {
       case Some(key) =>
@@ -294,31 +294,4 @@ object MemoryArmsBench {
       case i if i >= 0 && i + 1 < args.length => Some(args(i + 1))
       case _ => None
     }
-
-  private def benchModel(modelId: Id[Model], modelName: String): Model = Model(
-    canonicalSlug = s"llamacpp/$modelName",
-    huggingFaceId = "",
-    name = modelName,
-    displayName = Some(modelName),
-    description = "",
-    contextLength = 32768L,
-    architecture = sigil.db.ModelArchitecture(
-      modality = "text->text",
-      inputModalities = List("text"),
-      outputModalities = List("text"),
-      tokenizer = "Unknown",
-      instructType = None
-    ),
-    pricing = sigil.db.ModelPricing(BigDecimal(0), BigDecimal(0), None, None),
-    topProvider = sigil.db.ModelTopProvider(Some(32768L), None, false),
-    perRequestLimits = None,
-    supportedParameters = Set.empty,
-    defaultParameters = sigil.db.ModelDefaultParameters(),
-    knowledgeCutoff = None,
-    expirationDate = None,
-    links = sigil.db.ModelLinks(""),
-    created = lightdb.time.Timestamp(),
-    modified = lightdb.time.Timestamp(),
-    _id = modelId
-  )
 }

@@ -106,6 +106,13 @@ final class MemoryArmsSigil extends Sigil {
 
   override def staticTools: List[sigil.tool.Tool] = super.staticTools :+ SemanticSearchTool
 
+  /** The benchmark-defined consult inputs. A consult's tool is never
+    * rostered, but its `ToolInput` subtype still has to round-trip
+    * through fabric's poly RW or the provider's tool-call decode fails
+    * with "Type not found". */
+  override def toolInputRegistrations: List[RW[? <: sigil.tool.ToolInput]] =
+    super.toolInputRegistrations :+ summon[RW[JudgeVerdictInput]]
+
   private lazy val wireLogPath: java.nio.file.Path = {
     val dir = java.nio.file.Path.of("target", "wire-logs")
     java.nio.file.Files.createDirectories(dir)

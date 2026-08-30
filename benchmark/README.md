@@ -26,6 +26,39 @@ Optional:
 | `--rerank-model MODEL` | Model id routed via sigil's provider (e.g. `openai/gpt-4o-mini`). |
 | `--rerank-pool N` | Candidate pool before rerank cuts to `--k` (default 20). |
 
+## LongMemEvalQABench — end-to-end QA (the number the world quotes)
+
+`LongMemEvalBench` measures retrieval recall (99.4% R@5). That is a diagnostic, not the
+figure memory systems publish: the published number (SOTA ~94.4% at ~6.9k tokens/query) is
+end-to-end QA accuracy under an LLM judge. This runner produces that — each question goes
+through Sigil's real turn path (haystack persisted as `ContextMemory`, passive recall
+injecting, the runtime model answering, `BenchJudge` grading), so the score reflects
+retriever + curator + prompt together.
+
+```sh
+sbt "benchmark/runMain bench.LongMemEvalQABench <longmemeval_s_cleaned.json> \
+     [--limit N] [--arms sigil,norag,longcontext] [--memories N] \
+     [--reasoning] [--max-output N] [--turn-timeout SECONDS] [--report PATH] [--verbose]"
+```
+
+- **Arms**: `sigil` (passive recall), `norag` (no memory — the floor), `longcontext` (the whole
+  haystack stuffed into the message: ~115k tokens/question, the control a memory system has to
+  beat; run it in full locally, sample it on a paid model).
+- **Columns**: QA accuracy (judged), gold-retrieved (retrieval diagnostic — did answer-session
+  text actually reach the prompt), judge failures (a judge that returned nothing is reported
+  separately, never silently scored), mean tokens/question (the cost axis the vendors quote).
+- **Isolation**: one `ArmSpace` per (arm, question); the vector index is cleared between
+  questions.
+- **Reasoning models**: OFF by default. Qwen3-family models on llama.cpp emit
+  `reasoning_content` before any answer, and unbounded reasoning against a modest output cap
+  ends in `finish_reason: length` with no content — the turn never settles. `--reasoning`
+  re-enables it with a larger budget.
+- **Judge**: local model via `ConsultTool.invoke` against `JudgeVerdictTool` (structured
+  verdict, not prose). Judging is a comparison against a supplied gold answer, not a recall
+  task, which is why a local model is a plausible stand-in for the GPT-4-class judges these
+  benchmarks specify — plausible, but to be measured: agreement validation against a stronger
+  judge is pending, so local-judge scores are provisional until it lands.
+
 ## MemoryArmsBench — arms-and-controls memory evaluation
 
 Self-contained (no dataset download, no Qdrant): a persona corpus answered by a small
