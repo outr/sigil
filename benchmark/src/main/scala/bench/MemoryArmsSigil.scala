@@ -83,17 +83,24 @@ final class MemoryArmsSigil extends Sigil {
                       chain: List[ParticipantId]): Task[TurnInput] =
     StandardContextCurator(this, memoryRetriever = retrieverRef.get())
       .curate(conversationId, modelId, chain)
-      .map { input =>
-        lastInjectedRef.set(input.memories.toList.flatMap { id =>
-          withDB(_.memories.transaction(_.get(id))).sync().map(_.fact)
-        })
-        if (sys.env.contains("ARMS_DEBUG")) {
-          println(s"  [debug] curated memories=${input.memories.size} critical=${input.criticalMemories.size} (vectorWired=$vectorWired) for ${conversationId.value}")
-          input.memories.foreach { id =>
-            withDB(_.memories.transaction(_.get(id))).sync().foreach(m => println(s"  [debug]   - ${m.fact.take(90)}"))
+      .flatMap { input =>
+        // Hydrate the injected memories INSIDE the task chain. An
+        // earlier version called `.sync()` here, once per memory, from
+        // inside the curate `map` — a blocking wait on a fiber that is
+        // itself mid-turn, which intermittently wedged the agent loop
+        // (the turn claimed, emitted nothing, and hit the harness
+        // timeout). Never block inside a Task the framework is already
+        // driving.
+        Task.sequence(input.memories.toList.map(id => withDB(_.memories.transaction(_.get(id)))))
+          .map { loaded =>
+            val facts = loaded.flatten.map(_.fact)
+            lastInjectedRef.set(facts)
+            if (sys.env.contains("ARMS_DEBUG")) {
+              println(s"  [debug] curated memories=${input.memories.size} critical=${input.criticalMemories.size} (vectorWired=$vectorWired) for ${conversationId.value}")
+              facts.foreach(f => println(s"  [debug]   - ${f.take(90)}"))
+            }
+            input
           }
-        }
-        input
       }
 
   override def accessibleSpaces(chain: List[ParticipantId]): Task[Set[SpaceId]] =
