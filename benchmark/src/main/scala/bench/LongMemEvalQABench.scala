@@ -73,16 +73,19 @@ object LongMemEvalQABench {
                                     ingestMs: Long,
                                     turnMs: Long,
                                     judgeMs: Long,
-                                    memoryCount: Int)
+                                    memoryCount: Int,
+                                    errored: Boolean = false)
 
   private final case class ArmSummary(arm: String, results: List[QaResult]) {
-    def accuracy: Double = if (results.isEmpty) 0.0 else results.count(_.correct).toDouble / results.size
+    def accuracy: Double = if (scored.isEmpty) 0.0 else scored.count(_.correct).toDouble / scored.size
     /** Retrieval diagnostic — meaningless for an arm that retrieves
       * nothing, hence the Option. */
     def retrieval: Option[Double] =
-      if (arm == "norag" || results.isEmpty) None
-      else Some(results.count(_.goldRetrieved).toDouble / results.size)
+      if (arm == "norag" || scored.isEmpty) None
+      else Some(scored.count(_.goldRetrieved).toDouble / scored.size)
     def judgeFailures: Int = results.count(_.judgeFailed)
+    def errors: Int = results.count(_.errored)
+    private def scored = results.filterNot(_.errored)
     def meanTokens: Long = if (results.isEmpty) 0L else results.map(_.tokens).sum / results.size
   }
 
@@ -160,7 +163,19 @@ object LongMemEvalQABench {
     val summaries = arms.map { arm =>
       val results = (0 until count).toList.map { i =>
         vectorIndex.clear()
-        val r = runQuestion(host, judge, modelId, entries(i), i, arm, memoryLimit, reasoning, outputCap, turnTimeout)
+        // Containment: a question that hangs or throws is recorded as a
+        // failure and the run continues. A 500-question overnight job
+        // that dies on question 1 produces nothing; one that loses a
+        // question produces 499 results and a visible error count.
+        val r =
+          try runQuestion(host, judge, modelId, entries(i), i, arm, memoryLimit, reasoning, outputCap, turnTimeout)
+          catch {
+            case e: Throwable =>
+              println(s"  [$arm] ERROR  q$i ${e.getClass.getSimpleName}: ${e.getMessage.take(120)}")
+              QaResult(i, "error", "", "", "", correct = false, judgeFailed = false,
+                goldRetrieved = false, tokens = 0L, ingestMs = 0L, turnMs = 0L, judgeMs = 0L,
+                memoryCount = 0, errored = true)
+          }
         judgeLog.foreach(p => appendJudgeRecord(p, arm, r))
         val mark = if (r.judgeFailed) "JUDGE?" else if (r.correct) "OK  " else "MISS"
         println(f"  [$arm] $mark%-6s q$i%-4d mem=${r.memoryCount}%-5d ingest=${r.ingestMs / 1000}%4ds turn=${r.turnMs / 1000}%4ds judge=${r.judgeMs / 1000}%3ds" +
@@ -193,7 +208,8 @@ object LongMemEvalQABench {
                           memoryLimit: Int,
                           reasoning: Boolean,
                           outputCap: Int,
-                          turnTimeout: Int): QaResult = {
+                          turnTimeout: Int,
+                          settleMs: Long = 2000L): QaResult = {
     val question = entry("question").asString
     val questionType = entry.get("question_type").map(_.asString).getOrElse("unknown")
     val gold = entry.get("answer").map(_.asString).getOrElse("")
@@ -267,6 +283,13 @@ object LongMemEvalQABench {
     ).sync()
 
     val turnMs = System.currentTimeMillis() - turnStart
+    // The llama.cpp provider admits one stream at a time. The harness
+    // returns when the turn's events settle, but the agent loop's tail
+    // (and any post-turn background work) can still hold the slot —
+    // a following call then queues behind it and the provider logs
+    // "stream slots busy (max=1)" before starving. Give the tail room
+    // to finish before the judge call.
+    Thread.sleep(settleMs)
     val answer = trace.turns.headOption.map(_.replyText).getOrElse("")
     val tokens = trace.turns.flatMap(_.events).collect { case m: Message => m.usage.totalTokens.toLong }.sum
     val judgeStart = System.currentTimeMillis()
@@ -305,13 +328,13 @@ object LongMemEvalQABench {
   }
 
   private def render(summaries: List[ArmSummary]): String = {
-    val header = "| arm | QA accuracy | gold retrieved | judge failures | mean tokens/question | mean ingest | mean turn |"
-    val sep = "|---|--:|--:|--:|--:|--:|--:|"
+    val header = "| arm | QA accuracy | gold retrieved | judge failures | errors | mean tokens/question | mean ingest | mean turn |"
+    val sep = "|---|--:|--:|--:|--:|--:|--:|--:|"
     val rows = summaries.map { s =>
       val retr = if (s.arm == "norag") "—" else f"${s.retrieval.getOrElse(0.0) * 100}%.1f%%"
       val meanIngest = if (s.results.isEmpty) 0L else s.results.map(_.ingestMs).sum / s.results.size / 1000
       val meanTurn = if (s.results.isEmpty) 0L else s.results.map(_.turnMs).sum / s.results.size / 1000
-      f"| ${s.arm} | ${s.accuracy * 100}%.1f%% | $retr | ${s.judgeFailures} | ${s.meanTokens} | ${meanIngest}s | ${meanTurn}s |"
+      f"| ${s.arm} | ${s.accuracy * 100}%.1f%% | $retr | ${s.judgeFailures} | ${s.errors} | ${s.meanTokens} | ${meanIngest}s | ${meanTurn}s |"
     }
     (header :: sep :: rows).mkString("\n")
   }
