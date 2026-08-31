@@ -37,36 +37,41 @@ import sigil.tool.ToolName
  * or "treat tool X as a sub-task-closed signal").
  */
 trait IntraTurnCompactor {
-  /** Decide whether to fire compression at this iteration boundary.
-    *
-    * @param turnEvents the turn's prompt-bearing events in
-    *                   chronological (oldest-first) order — everything
-    *                   since the agent's claim that renders a
-    *                   [[sigil.conversation.ContextFrame]]. Frameless
-    *                   control events are excluded: they cost the wire
-    *                   nothing and must not displace real content from
-    *                   a tail-shaped invariant.
-    * @param estimatedTokens heuristic estimate of the wire-token cost
-    *                        of the events NOT already subsumed by a
-    *                        persisted summary — the cost the next
-    *                        prompt will actually pay, courtesy of the
-    *                        framework (so apps don't re-tokenize)
-    * @param threshold per-iteration cost threshold above which the
-    *                  framework considers folding worthwhile; derived
-    *                  via [[sigil.Sigil.compressionTriggerTokens]] from
-    *                  the `contextLength` / `inputTokensPerMinute` of
-    *                  the model this turn ROUTES to, which after a
-    *                  mid-turn escalation is not the agent's nominal */
+
+  /**
+   * Decide whether to fire compression at this iteration boundary.
+   *
+   * @param turnEvents the turn's prompt-bearing events in
+   *                   chronological (oldest-first) order — everything
+   *                   since the agent's claim that renders a
+   *                   [[sigil.conversation.ContextFrame]]. Frameless
+   *                   control events are excluded: they cost the wire
+   *                   nothing and must not displace real content from
+   *                   a tail-shaped invariant.
+   * @param estimatedTokens heuristic estimate of the wire-token cost
+   *                        of the events NOT already subsumed by a
+   *                        persisted summary — the cost the next
+   *                        prompt will actually pay, courtesy of the
+   *                        framework (so apps don't re-tokenize)
+   * @param threshold per-iteration cost threshold above which the
+   *                  framework considers folding worthwhile; derived
+   *                  via [[sigil.Sigil.compressionTriggerTokens]] from
+   *                  the `contextLength` / `inputTokensPerMinute` of
+   *                  the model this turn ROUTES to, which after a
+   *                  mid-turn escalation is not the agent's nominal
+   */
   def shouldCompact(turnEvents: Vector[Event], estimatedTokens: Long, threshold: Long): Boolean
 
-  /** Pick a foldable subset of `turnEvents` — the framework will
-    * summarize their frames into one [[ContextSummary]] that subsumes
-    * the same ground in the next iteration's prompt. Return an empty
-    * list to skip compaction even when [[shouldCompact]] fired.
-    *
-    * Implementations should consult their [[CompactionInvariant]] set
-    * against `ctx` and drop only events not in the union of protected
-    * ids — never fold across an invariant. */
+  /**
+   * Pick a foldable subset of `turnEvents` — the framework will
+   * summarize their frames into one [[ContextSummary]] that subsumes
+   * the same ground in the next iteration's prompt. Return an empty
+   * list to skip compaction even when [[shouldCompact]] fired.
+   *
+   * Implementations should consult their [[CompactionInvariant]] set
+   * against `ctx` and drop only events not in the union of protected
+   * ids — never fold across an invariant.
+   */
   def selectFoldable(turnEvents: Vector[Event], ctx: TurnEventsContext): List[Id[Event]]
 }
 
@@ -93,24 +98,23 @@ trait IntraTurnCompactor {
  * Everything outside the protected union is foldable.
  */
 case class StandardIntraTurnCompactor(terminalTools: Set[ToolName] = Set.empty,
-                                       recentTailN: Int = 4,
-                                       invariants: List[CompactionInvariant] = CompactionInvariant.standard)
-    extends IntraTurnCompactor {
+                                      recentTailN: Int = 4,
+                                      invariants: List[CompactionInvariant] = CompactionInvariant.standard)
+  extends IntraTurnCompactor {
 
   private val tailInvariant = CompactionInvariant.RecentTail(recentTailN)
   private val effectiveInvariants = invariants :+ tailInvariant
 
-  override def shouldCompact(turnEvents: Vector[Event], estimatedTokens: Long, threshold: Long): Boolean = {
+  override def shouldCompact(turnEvents: Vector[Event], estimatedTokens: Long, threshold: Long): Boolean =
     if (turnEvents.size <= recentTailN) false
     else if (estimatedTokens >= threshold) true
     else turnEvents.lastOption match {
       case Some(m: Message) if m.role == MessageRole.Standard && m.content.nonEmpty => true
-      case Some(ti: ToolInvoke) if terminalTools.contains(ti.toolName)               => true
-      case _                                                                          => false
+      case Some(ti: ToolInvoke) if terminalTools.contains(ti.toolName) => true
+      case _ => false
     }
-  }
 
-  override def selectFoldable(turnEvents: Vector[Event], ctx: TurnEventsContext): List[Id[Event]] = {
+  override def selectFoldable(turnEvents: Vector[Event], ctx: TurnEventsContext): List[Id[Event]] =
     if (turnEvents.size <= recentTailN) Nil
     else {
       val protectedIds: Set[Id[Event]] =
@@ -120,5 +124,4 @@ case class StandardIntraTurnCompactor(terminalTools: Set[ToolName] = Set.empty,
         .map(_._id)
         .toList
     }
-  }
 }

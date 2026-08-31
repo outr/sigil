@@ -65,7 +65,9 @@ object TestSigil extends Sigil {
   val PinnedInstant: java.time.Instant = java.time.Instant.parse("2026-03-14T15:09:00Z")
   val PinnedClock: java.time.Clock = java.time.Clock.fixed(PinnedInstant, java.time.ZoneOffset.UTC)
 
-  /** The features every spec renders with, unless it swaps them. */
+  /**
+   * The features every spec renders with, unless it swaps them.
+   */
   private val DefaultContextFeatures: List[ContextFeature] = List(CurrentDateFeature(PinnedClock))
 
   private val healingModeRef =
@@ -92,7 +94,9 @@ object TestSigil extends Sigil {
    */
   lazy val llamaCppHost: URL = resolveLlamaCppHost(configuredLlamaCppHost, url"https://llama.voidcraft.ai")
 
-  /** The operator-supplied host override, if any — env var first, then Profig. */
+  /**
+   * The operator-supplied host override, if any — env var first, then Profig.
+   */
   private[spec] def configuredLlamaCppHost: Option[URL] = sys.env.get("SIGIL_LLAMACPP_HOST")
     .flatMap(URL.get(_).toOption)
     .orElse {
@@ -191,30 +195,31 @@ object TestSigil extends Sigil {
   // writes all of these into SigilDB.tools at startup; the default
   // DbToolFinder resolves by name from there.
   override def staticTools: List[Tool] =
-    super.staticTools ++ (List(
-      sigil.tool.core.ChangeModeTool,
-      sigil.tool.provider.PinComplexityTool,
-      sigil.tool.core.RespondOptionsTool,
-      sigil.tool.core.NoResponseTool,
-      SendSlackMessageTool,
-      sigil.tool.util.SleepTool,
-      sigil.tool.util.LookupTool,
-      GetMagicNumberTool,
-      ProbeReadTool,
-      CachedProbeReadTool,
-      LiveProbeReadTool,
-      ProgressEmittingTool,
-      EagerActiveLatchTool,
-      SlowCooperativeTool,
-      SlowStubbornTool,
-      DetachableSweepTool,
-      FastDetachableTool,
-      MutatingSpecTool,
-      VerifyingSpecTool,
-      sigil.tool.core.RequestEscalationTool,
-      sigil.tool.core.RequestDeescalationTool,
-      sigil.tool.core.SetBudgetTool
-    ): @annotation.nowarn("cat=deprecation"))
+    super.staticTools ++
+      (List(
+        sigil.tool.core.ChangeModeTool,
+        sigil.tool.provider.PinComplexityTool,
+        sigil.tool.core.RespondOptionsTool,
+        sigil.tool.core.NoResponseTool,
+        SendSlackMessageTool,
+        sigil.tool.util.SleepTool,
+        sigil.tool.util.LookupTool,
+        GetMagicNumberTool,
+        ProbeReadTool,
+        CachedProbeReadTool,
+        LiveProbeReadTool,
+        ProgressEmittingTool,
+        EagerActiveLatchTool,
+        SlowCooperativeTool,
+        SlowStubbornTool,
+        DetachableSweepTool,
+        FastDetachableTool,
+        MutatingSpecTool,
+        VerifyingSpecTool,
+        sigil.tool.core.RequestEscalationTool,
+        sigil.tool.core.RequestDeescalationTool,
+        sigil.tool.core.SetBudgetTool
+      ): @annotation.nowarn("cat=deprecation"))
 
   // ---- registration lists ----
 

@@ -12,10 +12,12 @@ import sigil.script.{ScalaScriptExecutor, ScriptCompileException}
  */
 class ScriptExecutorSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Bug #58 — the default `ScalaScriptExecutor` constructor now
-    * auto-detects classpath from the context `URLClassLoader` when
-    * `java.class.path` is incomplete (sbt 2 test workers, IDE
-    * runners, etc.). No explicit override needed in tests. */
+  /**
+   * Bug #58 — the default `ScalaScriptExecutor` constructor now
+   * auto-detects classpath from the context `URLClassLoader` when
+   * `java.class.path` is incomplete (sbt 2 test workers, IDE
+   * runners, etc.). No explicit override needed in tests.
+   */
   private def newExecutor(): ScalaScriptExecutor = new ScalaScriptExecutor
 
   "ScalaScriptExecutor" should {
@@ -116,7 +118,6 @@ class ScriptExecutorSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       executor.execute("1 + 1", Map.empty).sync() shouldBe "2"
       succeed
     }
-
 
     "return the trailing identifier when prior statements are side-effecting (bug #208)" in {
       val executor = newExecutor()

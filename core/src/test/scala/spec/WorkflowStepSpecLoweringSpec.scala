@@ -20,11 +20,22 @@ class WorkflowStepSpecLoweringSpec extends AnyWordSpec with Matchers {
   "WorkflowStepSpec.lower" should {
     "lower discovery-as-a-stage: a Job's output feeds a Loop; the body step nests, not top-level" in {
       val specs = List(
-        WorkflowStepSpec(id = "find", kind = WorkflowStepKind.Job, tool = Some("grep"),
-          arguments = Some(obj("pattern" -> str("bug #"), "path" -> str("/src"))), output = Some("hits")),
-        WorkflowStepSpec(id = "each", kind = WorkflowStepKind.Loop, over = Some("hits"),
-          itemVariable = Some("f"), bodyStepIds = List("act")),
-        WorkflowStepSpec(id = "act", kind = WorkflowStepKind.Job, tool = Some("echo_back"),
+        WorkflowStepSpec(
+          id = "find",
+          kind = WorkflowStepKind.Job,
+          tool = Some("grep"),
+          arguments = Some(obj("pattern" -> str("bug #"), "path" -> str("/src"))),
+          output = Some("hits")),
+        WorkflowStepSpec(
+          id = "each",
+          kind = WorkflowStepKind.Loop,
+          over = Some("hits"),
+          itemVariable = Some("f"),
+          bodyStepIds = List("act")),
+        WorkflowStepSpec(
+          id = "act",
+          kind = WorkflowStepKind.Job,
+          tool = Some("echo_back"),
           arguments = Some(obj("text" -> str("{{f}}"))))
       )
       WorkflowStepSpec.lower(specs) match {
@@ -55,7 +66,7 @@ class WorkflowStepSpecLoweringSpec extends AnyWordSpec with Matchers {
           ir.map(_.id) shouldBe List("fork")
           ir.head match {
             case p: ParallelStepInput => p.branches.map(_.map(_.id)) shouldBe List(List("a"), List("b"))
-            case other                => fail(s"expected ParallelStepInput, got: $other")
+            case other => fail(s"expected ParallelStepInput, got: $other")
           }
         case Left(errors) => fail(s"expected success, got: $errors")
       }
@@ -105,16 +116,35 @@ class WorkflowStepSpecLoweringSpec extends AnyWordSpec with Matchers {
     // so per-item edits never persist and `{{editedContents}}` can reach disk.
     "reject a step outside a loop that references the loop's itemVariable and a body output (#384)" in {
       val specs = List(
-        WorkflowStepSpec(id = "discover", kind = WorkflowStepKind.Job, tool = Some("grep"),
-          arguments = Some(obj("pattern" -> str("bug #"))), output = Some("bugFiles")),
-        WorkflowStepSpec(id = "editLoop", kind = WorkflowStepKind.Loop, over = Some("bugFiles"),
-          itemVariable = Some("filePath"), bodyStepIds = List("readFile", "editFile")),
-        WorkflowStepSpec(id = "readFile", kind = WorkflowStepKind.Job, tool = Some("read_file"),
-          arguments = Some(obj("path" -> str("{{filePath}}"))), output = Some("fileContents")),
-        WorkflowStepSpec(id = "editFile", kind = WorkflowStepKind.Job, prompt = Some("remove refs from {{fileContents}}"),
+        WorkflowStepSpec(
+          id = "discover",
+          kind = WorkflowStepKind.Job,
+          tool = Some("grep"),
+          arguments = Some(obj("pattern" -> str("bug #"))),
+          output = Some("bugFiles")),
+        WorkflowStepSpec(
+          id = "editLoop",
+          kind = WorkflowStepKind.Loop,
+          over = Some("bugFiles"),
+          itemVariable = Some("filePath"),
+          bodyStepIds = List("readFile", "editFile")),
+        WorkflowStepSpec(
+          id = "readFile",
+          kind = WorkflowStepKind.Job,
+          tool = Some("read_file"),
+          arguments = Some(obj("path" -> str("{{filePath}}"))),
+          output = Some("fileContents")),
+        WorkflowStepSpec(
+          id = "editFile",
+          kind = WorkflowStepKind.Job,
+          prompt = Some("remove refs from {{fileContents}}"),
           output = Some("editedContents")),
-        WorkflowStepSpec(id = "writeFile", kind = WorkflowStepKind.Job, tool = Some("write_file"),
-          arguments = Some(obj("path" -> str("{{filePath}}"), "content" -> str("{{editedContents}}"))))
+        WorkflowStepSpec(
+          id = "writeFile",
+          kind = WorkflowStepKind.Job,
+          tool = Some("write_file"),
+          arguments = Some(obj("path" -> str("{{filePath}}"), "content" -> str("{{editedContents}}")))
+        )
       )
       val errors = WorkflowStepSpec.lower(specs).left.toOption.getOrElse(Nil)
       withClue(s"errors=$errors: ") {
@@ -125,16 +155,35 @@ class WorkflowStepSpecLoweringSpec extends AnyWordSpec with Matchers {
 
     "accept the same plan once writeFile is moved INTO the loop body (#384)" in {
       val specs = List(
-        WorkflowStepSpec(id = "discover", kind = WorkflowStepKind.Job, tool = Some("grep"),
-          arguments = Some(obj("pattern" -> str("bug #"))), output = Some("bugFiles")),
-        WorkflowStepSpec(id = "editLoop", kind = WorkflowStepKind.Loop, over = Some("bugFiles"),
-          itemVariable = Some("filePath"), bodyStepIds = List("readFile", "editFile", "writeFile")),
-        WorkflowStepSpec(id = "readFile", kind = WorkflowStepKind.Job, tool = Some("read_file"),
-          arguments = Some(obj("path" -> str("{{filePath}}"))), output = Some("fileContents")),
-        WorkflowStepSpec(id = "editFile", kind = WorkflowStepKind.Job, prompt = Some("remove refs from {{fileContents}}"),
+        WorkflowStepSpec(
+          id = "discover",
+          kind = WorkflowStepKind.Job,
+          tool = Some("grep"),
+          arguments = Some(obj("pattern" -> str("bug #"))),
+          output = Some("bugFiles")),
+        WorkflowStepSpec(
+          id = "editLoop",
+          kind = WorkflowStepKind.Loop,
+          over = Some("bugFiles"),
+          itemVariable = Some("filePath"),
+          bodyStepIds = List("readFile", "editFile", "writeFile")),
+        WorkflowStepSpec(
+          id = "readFile",
+          kind = WorkflowStepKind.Job,
+          tool = Some("read_file"),
+          arguments = Some(obj("path" -> str("{{filePath}}"))),
+          output = Some("fileContents")),
+        WorkflowStepSpec(
+          id = "editFile",
+          kind = WorkflowStepKind.Job,
+          prompt = Some("remove refs from {{fileContents}}"),
           output = Some("editedContents")),
-        WorkflowStepSpec(id = "writeFile", kind = WorkflowStepKind.Job, tool = Some("write_file"),
-          arguments = Some(obj("path" -> str("{{filePath}}"), "content" -> str("{{editedContents}}"))))
+        WorkflowStepSpec(
+          id = "writeFile",
+          kind = WorkflowStepKind.Job,
+          tool = Some("write_file"),
+          arguments = Some(obj("path" -> str("{{filePath}}"), "content" -> str("{{editedContents}}")))
+        )
       )
       WorkflowStepSpec.lower(specs).isRight shouldBe true
     }
@@ -143,8 +192,12 @@ class WorkflowStepSpecLoweringSpec extends AnyWordSpec with Matchers {
       // `result` is produced both inside the loop body AND by a top-level step,
       // so a later top-level reference to it has a valid outer binding.
       val specs = List(
-        WorkflowStepSpec(id = "loop", kind = WorkflowStepKind.Loop, over = Some("xs"),
-          itemVariable = Some("x"), bodyStepIds = List("inner")),
+        WorkflowStepSpec(
+          id = "loop",
+          kind = WorkflowStepKind.Loop,
+          over = Some("xs"),
+          itemVariable = Some("x"),
+          bodyStepIds = List("inner")),
         WorkflowStepSpec(id = "inner", kind = WorkflowStepKind.Job, prompt = Some("use {{x}}"), output = Some("result")),
         WorkflowStepSpec(id = "outerProducer", kind = WorkflowStepKind.Job, prompt = Some("compute"), output = Some("result")),
         WorkflowStepSpec(id = "consume", kind = WorkflowStepKind.Job, prompt = Some("read {{result}}"))
@@ -156,10 +209,17 @@ class WorkflowStepSpecLoweringSpec extends AnyWordSpec with Matchers {
       val input = CreateWorkflowInput(
         name = "process-matches",
         steps = List(
-          WorkflowStepSpec(id = "find", kind = WorkflowStepKind.Job, tool = Some("grep"),
-            arguments = Some(obj("pattern" -> str("TODO"), "path" -> str("/src"))), output = Some("hits")),
+          WorkflowStepSpec(
+            id = "find",
+            kind = WorkflowStepKind.Job,
+            tool = Some("grep"),
+            arguments = Some(obj("pattern" -> str("TODO"), "path" -> str("/src"))),
+            output = Some("hits")),
           WorkflowStepSpec(id = "each", kind = WorkflowStepKind.Loop, over = Some("hits"), bodyStepIds = List("act")),
-          WorkflowStepSpec(id = "act", kind = WorkflowStepKind.Job, tool = Some("read_file"),
+          WorkflowStepSpec(
+            id = "act",
+            kind = WorkflowStepKind.Job,
+            tool = Some("read_file"),
             arguments = Some(obj("path" -> str("{{item}}"))))
         )
       )

@@ -60,18 +60,22 @@ object SessionBridge {
     java.util.Collections.newSetFromMap(new java.util.IdentityHashMap[AnyRef, java.lang.Boolean]())
   )
 
-  /** Default ephemeral handler: try to deserialize the payload as a
-    * [[Notice]] (the framework's wire vocabulary for client→server
-    * pulses). If it parses, dispatch to [[Sigil.handleNotice]]; if it
-    * doesn't, warn-log. Apps can override for non-Notice ephemeral
-    * traffic (heartbeats, ping/pong, debug telemetry). */
+  /**
+   * Default ephemeral handler: try to deserialize the payload as a
+   * [[Notice]] (the framework's wire vocabulary for client→server
+   * pulses). If it parses, dispatch to [[Sigil.handleNotice]]; if it
+   * doesn't, warn-log. Apps can override for non-Notice ephemeral
+   * traffic (heartbeats, ping/pong, debug telemetry).
+   */
   def noticeOrWarn(sigil: Sigil, viewer: ParticipantId): Json => Task[Unit] =
     noticeOrWarnLive(sigil, () => viewer)
 
-  /** Sigil #298 — variant of [[noticeOrWarn]] that reads the viewer
-    * via a callback on every invocation rather than capturing a
-    * snapshot at attach time. Used internally so a session's
-    * post-rebind viewer drives Notice dispatch. */
+  /**
+   * Sigil #298 — variant of [[noticeOrWarn]] that reads the viewer
+   * via a callback on every invocation rather than capturing a
+   * snapshot at attach time. Used internally so a session's
+   * post-rebind viewer drives Notice dispatch.
+   */
   private def noticeOrWarnLive(sigil: Sigil, viewerRef: () => ParticipantId): Json => Task[Unit] = json =>
     // Sigil #409 — await the polymorphic registry BEFORE decoding. App-defined
     // `Notice` subtypes (e.g. a client→server request pulse like
@@ -88,38 +92,44 @@ object SessionBridge {
           case scala.util.Success(n: Notice) =>
             val v = viewerRef()
             sigil.handleNotice(n, v)
-              .handleError(t => Task {
-                scribe.warn(s"SessionBridge: handleNotice failed for $v: ${t.getMessage}", t)
-              })
-         case scala.util.Success(other) =>
+              .handleError(t =>
+                Task {
+                  scribe.warn(s"SessionBridge: handleNotice failed for $v: ${t.getMessage}", t)
+                })
+          case scala.util.Success(other) =>
             Task(scribe.warn(
               s"SessionBridge: ephemeral payload deserialized to a non-Notice ${other.getClass.getName}: $json"))
           case scala.util.Failure(err) =>
             Task(scribe.warn(
-              s"SessionBridge: could not decode ephemeral payload as a Signal: ${err.getMessage} — $json", err))
+              s"SessionBridge: could not decode ephemeral payload as a Signal: ${err.getMessage} — $json",
+              err))
         }
       }
     }
 
-  /** Default replay budget for new sessions. 50 most recent Messages
-    * (plus any non-Message events that interleave with them) gives a
-    * fresh-connect / reconnect enough context that the user sees what
-    * was published while disconnected — including agent greetings
-    * fired before the wire connected. Apps tune via the `resume`
-    * parameter on [[attach]]. */
+  /**
+   * Default replay budget for new sessions. 50 most recent Messages
+   * (plus any non-Message events that interleave with them) gives a
+   * fresh-connect / reconnect enough context that the user sees what
+   * was published while disconnected — including agent greetings
+   * fired before the wire connected. Apps tune via the `resume`
+   * parameter on [[attach]].
+   */
   val DefaultResume: ResumeRequest = ResumeRequest.RecentMessages(50)
 
-  /** Wire a fresh session to `sigil`. Returns a `Task[SessionRebindHandle]`
-    * that completes once the outbound sink is attached and the inbound
-    * listeners are registered. The handle exposes `rebindViewer` for
-    * mid-session identity changes (sigil #298) and `detach` for
-    * teardown.
-    *
-    * Apps typically call `.start()` on the returned task inside their
-    * `onSession` callback so the session-handler doesn't block — but
-    * keeping the handle reachable (storing in a per-session map keyed
-    * by `clientId` or similar) is the path to invoke `rebindViewer`
-    * from the app's auth-complete flow. */
+  /**
+   * Wire a fresh session to `sigil`. Returns a `Task[SessionRebindHandle]`
+   * that completes once the outbound sink is attached and the inbound
+   * listeners are registered. The handle exposes `rebindViewer` for
+   * mid-session identity changes (sigil #298) and `detach` for
+   * teardown.
+   *
+   * Apps typically call `.start()` on the returned task inside their
+   * `onSession` callback so the session-handler doesn't block — but
+   * keeping the handle reachable (storing in a per-session map keyed
+   * by `clientId` or similar) is the path to invoke `rebindViewer`
+   * from the app's auth-complete flow.
+   */
   def attach[Info: RW](sigil: Sigil,
                        session: DurableSession[Id[Conversation], Signal, Info],
                        viewer: ParticipantId,
@@ -127,17 +137,17 @@ object SessionBridge {
                        onSessionEnd: (String, Id[Conversation]) => Task[Unit] = (_: String, _: Id[Conversation]) => Task.unit,
                        onEphemeral: Option[Json => Task[Unit]] = None,
                        resume: ResumeRequest = DefaultResume): Task[SessionRebindHandle] = {
-    val convId        = session.channelId
-    val sink          = new DurableSocketSink[Id[Conversation], Info](session)
+    val convId = session.channelId
+    val sink = new DurableSocketSink[Id[Conversation], Info](session)
     val conversations: Some[Set[Id[Conversation]]] = Some(Set(convId))
-    val viewerRef     = new AtomicReference[ParticipantId](viewer)
-    val handleRef     = new AtomicReference[SinkHandle](null)
-    val ephemeralFn   = onEphemeral.getOrElse(noticeOrWarnLive(sigil, () => viewerRef.get()))
+    val viewerRef = new AtomicReference[ParticipantId](viewer)
+    val handleRef = new AtomicReference[SinkHandle](null)
+    val ephemeralFn = onEphemeral.getOrElse(noticeOrWarnLive(sigil, () => viewerRef.get()))
 
     // Guard inbound listener registration against resume re-attachment.
-     // `protocol.eq` is the identity key — same protocol survives resume
-     // (spice re-binds the new WS listener onto the existing DurableSocket);
-     // a brand-new protocol is a genuinely fresh session that needs wiring.
+    // `protocol.eq` is the identity key — same protocol survives resume
+    // (spice re-binds the new WS listener onto the existing DurableSocket);
+    // a brand-new protocol is a genuinely fresh session that needs wiring.
     val protocolKey: AnyRef = session.protocol
     val firstAttachForThisProtocol: Boolean = wiredProtocols.add(protocolKey)
 
@@ -159,11 +169,13 @@ object SessionBridge {
           session.protocol.onEvent.attach { case (seq, signal) =>
             sigil
               .publish(signal)
-              .handleError(t => Task {
-                scribe.warn(
-                  s"SessionBridge: publish failed for inbound signal seq=$seq on ${convId}: ${t.getMessage}", t
-                )
-              })
+              .handleError(t =>
+                Task {
+                  scribe.warn(
+                    s"SessionBridge: publish failed for inbound signal seq=$seq on $convId: ${t.getMessage}",
+                    t
+                  )
+                })
               .start()
             ()
           }
@@ -171,9 +183,10 @@ object SessionBridge {
           // sigil.handleNotice. Apps can override with their own handler.
           session.protocol.onEphemeral.attach { json =>
             ephemeralFn(json)
-              .handleError(t => Task {
-                scribe.warn(s"SessionBridge: onEphemeral handler failed: ${t.getMessage}", t)
-              })
+              .handleError(t =>
+                Task {
+                  scribe.warn(s"SessionBridge: onEphemeral handler failed: ${t.getMessage}", t)
+                })
               .start()
             ()
           }
@@ -189,9 +202,10 @@ object SessionBridge {
           session.protocol.state.attach { st =>
             if (st == ProtocolState.Closed && ended.compareAndSet(false, true)) {
               onSessionEnd(session.clientId, convId)
-                .handleError(t => Task {
-                  scribe.warn(s"SessionBridge: onSessionEnd failed for clientId=${session.clientId} ${convId.value}: ${t.getMessage}", t)
-                })
+                .handleError(t =>
+                  Task {
+                    scribe.warn(s"SessionBridge: onSessionEnd failed for clientId=${session.clientId} ${convId.value}: ${t.getMessage}", t)
+                  })
                 .start()
             }
           }
@@ -210,9 +224,10 @@ object SessionBridge {
               val oldHandle = handleRef.get()
               val oldDetach: Task[Unit] =
                 if (oldHandle == null) Task.unit
-                else oldHandle.detach.handleError(t => Task {
-                  scribe.warn(s"SessionBridge: rebind detach failed for ${convId.value}: ${t.getMessage}", t)
-                })
+                else oldHandle.detach.handleError(t =>
+                  Task {
+                    scribe.warn(s"SessionBridge: rebind detach failed for ${convId.value}: ${t.getMessage}", t)
+                  })
               oldDetach.flatMap { _ =>
                 sigil.signalTransport.attach(
                   viewer = newViewer,
@@ -249,7 +264,8 @@ object SessionBridge {
           s"SessionBridge: attach failed for conversation=${convId.value} viewer=${viewer.value}: ${t.getMessage}",
           t
         )
-        try session.protocol.close() catch { case _: Throwable => () }
+        try session.protocol.close()
+        catch { case _: Throwable => () }
         // Return an inert handle — rebind / detach are no-ops on a
         // session whose attach already failed and whose protocol is
         // closed.

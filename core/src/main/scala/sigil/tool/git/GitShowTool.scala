@@ -13,10 +13,10 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExamp
  * structured hunks (the same shape as `git_diff format = "hunks"`).
  */
 final class GitShowTool(context: FileSystemContext) extends Tool {
-  type Input  = GitShowInput
+  type Input = GitShowInput
   type Output = GitShowOutput
   val io: ToolIO[GitShowInput, GitShowOutput] = ToolIO.derived[GitShowInput, GitShowOutput].withExamples(
-    ToolExample("Show HEAD",          GitShowInput(sha = "HEAD")),
+    ToolExample("Show HEAD", GitShowInput(sha = "HEAD")),
     ToolExample("Show a specific sha", GitShowInput(sha = "abc1234"))
   )
   override val name = ToolName("git_show")
@@ -47,15 +47,15 @@ final class GitShowTool(context: FileSystemContext) extends Tool {
 
   private def parseShow(stdout: String): GitShowOutput = stdout.split("\u001e", -1).toList match {
     case head :: tail =>
-      val parts    = head.split("\u0000", -1).padTo(5, "")
+      val parts = head.split("\u0000", -1).padTo(5, "")
       val diffPart = tail.headOption.getOrElse("")
       GitShowOutput.Found(
-        sha     = parts(0),
-        author  = parts(1),
-        date    = parts(2),
+        sha = parts(0),
+        author = parts(1),
+        date = parts(2),
         subject = parts(3),
-        body    = parts(4),
-        hunks   = GitOps.parseDiff(diffPart)
+        body = parts(4),
+        hunks = GitOps.parseDiff(diffPart)
       )
     case Nil =>
       GitShowOutput.Found(sha = "", author = "", date = "", subject = "", body = "", hunks = Nil)

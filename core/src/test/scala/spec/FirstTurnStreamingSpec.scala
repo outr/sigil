@@ -44,20 +44,23 @@ class FirstTurnStreamingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   private val modelId: Id[Model] = Model.id("test", "first-turn-streaming")
   TestSigil.testModel(modelId)
 
-  /** A model demoted to `auto` tool choice — the state in which prose
-    * is the model's committed answer rather than drift. */
+  /**
+   * A model demoted to `auto` tool choice — the state in which prose
+   * is the model's committed answer rather than drift.
+   */
   private val proseModelId: Id[Model] = Model.id("test", "first-turn-prose")
   TestSigil.testModel(proseModelId)
   Provider.recordForcedToolChoiceRejection(proseModelId)
 
-  private def replyChunks(label: String): List[String] =
-    (1 to 60).map(i => s"$label-chunk$i ").toList
+  private def replyChunks(label: String): List[String] = (1 to 60).map(i => s"$label-chunk$i ").toList
 
-  /** Streams the reply as 60 content chunks, then completes the
-    * `respond` call — the shape every chat-completions backend
-    * produces for a streamed tool call. Content varies per call so the
-    * in-turn duplicate-respond suppression never engages. */
-  private final class ChunkedRespondProvider extends Provider {
+  /**
+   * Streams the reply as 60 content chunks, then completes the
+   * `respond` call — the shape every chat-completions backend
+   * produces for a streamed tool call. Content varies per call so the
+   * in-turn duplicate-respond suppression never engages.
+   */
+  final private class ChunkedRespondProvider extends Provider {
     private val calls = new java.util.concurrent.atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -75,10 +78,10 @@ class FirstTurnStreamingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
             ProviderEvent.ContentBlockStart(callId, "Markdown", None)
           ) ::: chunks.map(c => ProviderEvent.ContentBlockDelta(callId, c)) ::: List[ProviderEvent](
             ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
-              topicLabel   = "Streaming",
+              topicLabel = "Streaming",
               topicSummary = "Streaming a reply",
-              content      = chunks.mkString,
-              endsTurn     = true
+              content = chunks.mkString,
+              endsTurn = true
             )),
             ProviderEvent.Done(StopReason.Complete)
           )
@@ -86,12 +89,14 @@ class FirstTurnStreamingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       }
   }
 
-  /** Streams the reply as 60 plain-text chunks with no tool call — what
-    * a model running on `auto` emits when the transcript holds no
-    * `respond` example yet. Every iteration answers the same way, so
-    * the naked-text challenge budget runs out and the prose commits as
-    * the turn's reply. */
-  private final class ChunkedProseProvider extends Provider {
+  /**
+   * Streams the reply as 60 plain-text chunks with no tool call — what
+   * a model running on `auto` emits when the transcript holds no
+   * `respond` example yet. Every iteration answers the same way, so
+   * the naked-text challenge budget runs out and the prose commits as
+   * the turn's reply.
+   */
+  final private class ChunkedProseProvider extends Provider {
     private val calls = new java.util.concurrent.atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -107,16 +112,19 @@ class FirstTurnStreamingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private def makeAgent(model: Id[Model]): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = model,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
-      generationSettings = GenerationSettings(maxOutputTokens = Some(400), temperature = Some(0.0)))
+      id = TestAgent,
+      modelId = model,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
+      generationSettings = GenerationSettings(maxOutputTokens = Some(400), temperature = Some(0.0))
+    )
 
-  /** A live `signalsFor` subscription that records what a wire client
-    * would receive, in arrival order. One per test so the turns of one
-    * test never see another's signals. */
-  private final class Recorder {
+  /**
+   * A live `signalsFor` subscription that records what a wire client
+   * would receive, in arrival order. One per test so the turns of one
+   * test never see another's signals.
+   */
+  final private class Recorder {
     private val recorded = new AtomicReference[Vector[Signal]](Vector.empty)
     @volatile private var running = true
     TestSigil.signalsFor(TestUser)
@@ -130,29 +138,31 @@ class FirstTurnStreamingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     def stop(): Unit = running = false
   }
 
-  /** Incremental content deltas observed for `convId`, and where the
-    * settled reply landed. The reply settles either as a
-    * `MessageDelta(contentReplacement, Complete)` or — on the atomic
-    * path — as a whole `Message` carrying its content. */
+  /**
+   * Incremental content deltas observed for `convId`, and where the
+   * settled reply landed. The reply settles either as a
+   * `MessageDelta(contentReplacement, Complete)` or — on the atomic
+   * path — as a whole `Message` carrying its content.
+   */
   private def trace(signals: Vector[Signal], convId: Id[Conversation]): TurnTrace = {
     val terminal = signals.zipWithIndex.collectFirst {
       case (m: Message, i)
-        if m.conversationId == convId && m.participantId == TestAgent &&
-          m.role == MessageRole.Standard && m.state == EventState.Complete && m.content.nonEmpty =>
+          if m.conversationId == convId && m.participantId == TestAgent &&
+            m.role == MessageRole.Standard && m.state == EventState.Complete && m.content.nonEmpty =>
         (i, "Message")
       case (d: MessageDelta, i)
-        if d.conversationId == convId && d.state.contains(EventState.Complete) &&
-          d.contentReplacement.exists(_.nonEmpty) =>
+          if d.conversationId == convId && d.state.contains(EventState.Complete) &&
+            d.contentReplacement.exists(_.nonEmpty) =>
         (i, "MessageDelta")
     }
     val deltaIndexes = signals.zipWithIndex.collect {
       case (d: MessageDelta, i) if d.conversationId == convId && d.content.exists(!_.complete) => i
     }
     TurnTrace(
-      deltas        = deltaIndexes.size,
-      firstDelta    = deltaIndexes.headOption.getOrElse(-1),
+      deltas = deltaIndexes.size,
+      firstDelta = deltaIndexes.headOption.getOrElse(-1),
       terminalIndex = terminal.map(_._1).getOrElse(-1),
-      terminalKind  = terminal.map(_._2).getOrElse("none")
+      terminalKind = terminal.map(_._2).getOrElse("none")
     )
   }
 
@@ -167,11 +177,11 @@ class FirstTurnStreamingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       .map(_.getOrElse(fail("conversation missing")))
       .flatMap { conv =>
         TestSigil.publish(Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = convId,
-          topicId        = conv.currentTopicId,
-          content        = Vector(ResponseContent.Text(text)),
-          state          = EventState.Complete))
+          topicId = conv.currentTopicId,
+          content = Vector(ResponseContent.Text(text)),
+          state = EventState.Complete))
       }
       .flatMap(_ => TestSigil.awaitSettled(convId, timeout = 30.seconds))
       .flatMap(_ => Task.sleep(300.millis))
@@ -183,13 +193,15 @@ class FirstTurnStreamingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val convId = Conversation.id(s"first-turn-respond-${rapid.Unique()}")
       val recorder = new Recorder
       for {
-        _  <- TestSigil.newConversation(createdBy = TestUser,
-                participants = List(makeAgent(modelId)), conversationId = convId)
-        _  =  recorder.take()
-        _  <- userTurn(convId, "Stream me the first answer.")
-        t1 =  trace(recorder.take(), convId)
-        _  <- userTurn(convId, "Stream me the second answer.")
-        t2 =  trace(recorder.take(), convId)
+        _ <- TestSigil.newConversation(
+          createdBy = TestUser,
+          participants = List(makeAgent(modelId)),
+          conversationId = convId)
+        _ = recorder.take()
+        _ <- userTurn(convId, "Stream me the first answer.")
+        t1 = trace(recorder.take(), convId)
+        _ <- userTurn(convId, "Stream me the second answer.")
+        t2 = trace(recorder.take(), convId)
       } yield {
         recorder.stop()
         withClue(s"turn 2 control case — $t2: ")(streamedBeforeSettling(t2))
@@ -202,16 +214,18 @@ class FirstTurnStreamingSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val convId = Conversation.id(s"first-turn-prose-${rapid.Unique()}")
       val recorder = new Recorder
       for {
-        _  <- TestSigil.newConversation(createdBy = TestUser,
-                participants = List(makeAgent(proseModelId)), conversationId = convId)
-        _  =  recorder.take()
-        _  <- userTurn(convId, "Stream me the opening answer.")
-        t1 =  trace(recorder.take(), convId)
+        _ <- TestSigil.newConversation(
+          createdBy = TestUser,
+          participants = List(makeAgent(proseModelId)),
+          conversationId = convId)
+        _ = recorder.take()
+        _ <- userTurn(convId, "Stream me the opening answer.")
+        t1 = trace(recorder.take(), convId)
         // Turn 2 — the same conversation now holds a settled reply, so
         // the model wraps this one in `respond`.
-        _  =  TestSigil.setProvider(Task.pure(new ChunkedRespondProvider))
-        _  <- userTurn(convId, "Stream me the follow-up answer.")
-        t2 =  trace(recorder.take(), convId)
+        _ = TestSigil.setProvider(Task.pure(new ChunkedRespondProvider))
+        _ <- userTurn(convId, "Stream me the follow-up answer.")
+        t2 = trace(recorder.take(), convId)
       } yield {
         recorder.stop()
         withClue(s"turn 2 control case — $t2: ")(streamedBeforeSettling(t2))

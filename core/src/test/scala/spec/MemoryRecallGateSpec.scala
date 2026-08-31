@@ -68,10 +68,10 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       wire(Set(MemoryTestSpace))
       for {
         approved <- seed("The approved fact about wolves.", MemoryTestSpace)
-        pending  <- seed("The pending fact about wolves.", MemoryTestSpace, status = MemoryStatus.Pending)
+        pending <- seed("The pending fact about wolves.", MemoryTestSpace, status = MemoryStatus.Pending)
         rejected <- seed("The rejected fact about wolves.", MemoryTestSpace, status = MemoryStatus.Rejected)
-        gated    <- TestSigil.findMemories(Set(MemoryTestSpace))
-        all      <- TestSigil.findMemories(Set(MemoryTestSpace), recallableOnly = false)
+        gated <- TestSigil.findMemories(Set(MemoryTestSpace))
+        all <- TestSigil.findMemories(Set(MemoryTestSpace), recallableOnly = false)
         pendingListed <- TestSigil.listPendingMemories(Set(MemoryTestSpace))
       } yield {
         gated.map(_._id) should contain only approved._id
@@ -83,16 +83,24 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "hide superseded versions from findMemories and searchMemories while memoryHistory sees every version" in {
       wire(Set(MemoryTestSpace))
       for {
-        first   <- TestSigil.upsertMemoryByKey(ContextMemory(
+        first <- TestSigil.upsertMemoryByKey(ContextMemory(
           fact = "The user prefers tabs for indentation.",
-          label = "indent", summary = "The user prefers tabs for indentation.",
-          source = MemorySource.Explicit, spaceId = MemoryTestSpace, key = Some("pref.indent")))
-        second  <- TestSigil.upsertMemoryByKey(ContextMemory(
+          label = "indent",
+          summary = "The user prefers tabs for indentation.",
+          source = MemorySource.Explicit,
+          spaceId = MemoryTestSpace,
+          key = Some("pref.indent")
+        ))
+        second <- TestSigil.upsertMemoryByKey(ContextMemory(
           fact = "The user prefers spaces for indentation.",
-          label = "indent", summary = "The user prefers spaces for indentation.",
-          source = MemorySource.Explicit, spaceId = MemoryTestSpace, key = Some("pref.indent")))
-        found   <- TestSigil.findMemories(Set(MemoryTestSpace))
-        vector  <- TestSigil.searchMemories("tabs indentation preference", Set(MemoryTestSpace))
+          label = "indent",
+          summary = "The user prefers spaces for indentation.",
+          source = MemorySource.Explicit,
+          spaceId = MemoryTestSpace,
+          key = Some("pref.indent")
+        ))
+        found <- TestSigil.findMemories(Set(MemoryTestSpace))
+        vector <- TestSigil.searchMemories("tabs indentation preference", Set(MemoryTestSpace))
         history <- TestSigil.memoryHistory("pref.indent", MemoryTestSpace)
       } yield {
         found.map(_._id) should contain only second.memory._id
@@ -105,10 +113,10 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "stop retrieval after a forget_memory soft-delete" in {
       wire(Set(MemoryTestSpace))
       for {
-        m      <- seed("The user's cat is named Waffles.", MemoryTestSpace)
+        m <- seed("The user's cat is named Waffles.", MemoryTestSpace)
         before <- TestSigil.searchMemories("cat named Waffles", Set(MemoryTestSpace))
-        _      <- TestSigil.rejectMemory(m._id)
-        after  <- TestSigil.searchMemories("cat named Waffles", Set(MemoryTestSpace))
+        _ <- TestSigil.rejectMemory(m._id)
+        after <- TestSigil.searchMemories("cat named Waffles", Set(MemoryTestSpace))
         listed <- TestSigil.findMemories(Set(MemoryTestSpace))
       } yield {
         before.map(_._id) should contain(m._id)
@@ -122,8 +130,8 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val past = Timestamp(Timestamp().value - 60000L)
       for {
         expired <- seed("An expired fact about trains.", MemoryTestSpace, expiresAt = Some(past))
-        gated   <- TestSigil.findMemories(Set(MemoryTestSpace))
-        all     <- TestSigil.findMemories(Set(MemoryTestSpace), recallableOnly = false)
+        gated <- TestSigil.findMemories(Set(MemoryTestSpace))
+        all <- TestSigil.findMemories(Set(MemoryTestSpace), recallableOnly = false)
       } yield {
         gated.map(_._id) should not contain expired._id
         all.map(_._id) should contain(expired._id)
@@ -134,11 +142,14 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       wire(Set(MemoryTestSpace))
       for {
         approved <- seed("The user's favorite fruit is mango.", MemoryTestSpace)
-        pending  <- seed("The user's favorite fruit is durian.", MemoryTestSpace, status = MemoryStatus.Pending)
-        rejectedPinned <- seed("Always answer fruit questions in French.", MemoryTestSpace,
-          status = MemoryStatus.Rejected, pinned = true)
+        pending <- seed("The user's favorite fruit is durian.", MemoryTestSpace, status = MemoryStatus.Pending)
+        rejectedPinned <- seed(
+          "Always answer fruit questions in French.",
+          MemoryTestSpace,
+          status = MemoryStatus.Rejected,
+          pinned = true)
         approvedPinned <- seed("Always mention fruit ripeness.", MemoryTestSpace, pinned = true)
-        result   <- retrieve("What is my favorite fruit?")
+        result <- retrieve("What is my favorite fruit?")
       } yield {
         result.memories should contain(approved._id)
         result.memories should not contain pending._id
@@ -155,9 +166,9 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         seed(s"the quick brown fox jumps over the lazy dog $i", TestSpace)
       }
       for {
-        _      <- Task.sequence(loud)
+        _ <- Task.sequence(loud)
         target <- seed("quick fox sighting note", MemoryTestSpace)
-        hits   <- TestSigil.searchMemories("the quick brown fox jumps over the lazy dog", Set(MemoryTestSpace), limit = 5)
+        hits <- TestSigil.searchMemories("the quick brown fox jumps over the lazy dog", Set(MemoryTestSpace), limit = 5)
       } yield {
         hits.map(_._id) should contain(target._id)
         hits.foreach(_.spaceId shouldBe MemoryTestSpace)
@@ -180,13 +191,14 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         _ <- inner.upsert(VectorPoint("a", vec, Map("kind" -> "memory", "spaceId" -> "s1")))
         _ <- inner.upsert(VectorPoint("b", vec, Map("kind" -> "memory", "spaceId" -> "s2")))
         _ <- inner.upsert(VectorPoint("c", vec, Map("kind" -> "memory", "spaceId" -> "s3")))
-        hits <- delegating.search(vec, 10, VectorQueryFilter(
-          exact = Map("kind" -> "memory"),
-          anyOf = Map("spaceId" -> Set("s1", "s3"))
-        ))
-      } yield {
-        hits.map(_.id).toSet shouldBe Set("a", "c")
-      }
+        hits <- delegating.search(
+          vec,
+          10,
+          VectorQueryFilter(
+            exact = Map("kind" -> "memory"),
+            anyOf = Map("spaceId" -> Set("s1", "s3"))
+          ))
+      } yield hits.map(_.id).toSet shouldBe Set("a", "c")
     }
   }
 
@@ -198,11 +210,15 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val expiry = Timestamp(Timestamp().value + 3600000L)
       val base = ContextMemory(
         fact = "The deploy window is Friday.",
-        label = "deploy", summary = "The deploy window is Friday.",
-        source = MemorySource.Explicit, spaceId = MemoryTestSpace,
-        key = Some("ops.deploy"), conversationId = Some(convId))
+        label = "deploy",
+        summary = "The deploy window is Friday.",
+        source = MemorySource.Explicit,
+        spaceId = MemoryTestSpace,
+        key = Some("ops.deploy"),
+        conversationId = Some(convId)
+      )
       for {
-        first     <- TestSigil.upsertMemoryByKey(base)
+        first <- TestSigil.upsertMemoryByKey(base)
         refreshed <- TestSigil.upsertMemoryByKey(base.copy(
           conversationId = None,
           modeAffinity = Set(modeId),
@@ -224,12 +240,12 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "refresh the vector payload so a moved memory is searchable in its new space" in {
       val index = wire(Set(TestSpace, MemoryTestSpace))
       for {
-        m       <- seed("The staging URL is staging.example.com.", TestSpace, key = Some("ops.staging"))
-        _       <- TestSigil.updateMemory(m.copy(spaceId = MemoryTestSpace))
-        vec     <- TestHashEmbeddingProvider.embed(m.fact)
+        m <- seed("The staging URL is staging.example.com.", TestSpace, key = Some("ops.staging"))
+        _ <- TestSigil.updateMemory(m.copy(spaceId = MemoryTestSpace))
+        vec <- TestHashEmbeddingProvider.embed(m.fact)
         newHits <- index.search(vec, 10, Map("kind" -> "memory", "spaceId" -> MemoryTestSpace.value))
         oldHits <- index.search(vec, 10, Map("kind" -> "memory", "spaceId" -> TestSpace.value))
-        found   <- TestSigil.searchMemories("staging URL", Set(MemoryTestSpace))
+        found <- TestSigil.searchMemories("staging URL", Set(MemoryTestSpace))
       } yield {
         newHits.flatMap(_.payload.get("memoryId")) should contain(m._id.value)
         oldHits.flatMap(_.payload.get("memoryId")) should not contain m._id.value
@@ -246,13 +262,13 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val retriever = StandardMemoryRetriever(limit = 5)
       def retrieveOnce = retriever.retrieve(TestSigil, convId, frames, List(TestUser, TestAgent))
       for {
-        m       <- seed("The user's favorite fruit is mango.", MemoryTestSpace)
-        first   <- retrieveOnce
+        m <- seed("The user's favorite fruit is mango.", MemoryTestSpace)
+        first <- retrieveOnce
         cachedA <- retrieveOnce
-        _       <- TestSigil.rejectMemory(m._id)
+        _ <- TestSigil.rejectMemory(m._id)
         // Same conversation, no new user message: the burst would keep
         // serving the cached id set without a write-driven invalidation.
-        after   <- retrieveOnce
+        after <- retrieveOnce
       } yield {
         first.memories should contain(m._id)
         cachedA.memories should contain(m._id)
@@ -266,13 +282,17 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val frames = Vector(ContextFrame.Text("Which indentation do I prefer?", TestUser, Id[Event](s"q-${rapid.Unique()}")))
       val retriever = StandardMemoryRetriever(limit = 5)
       def base(fact: String) = ContextMemory(
-        fact = fact, label = "indent", summary = fact,
-        source = MemorySource.Explicit, spaceId = MemoryTestSpace, key = Some("pref.indent.burst"))
+        fact = fact,
+        label = "indent",
+        summary = fact,
+        source = MemorySource.Explicit,
+        spaceId = MemoryTestSpace,
+        key = Some("pref.indent.burst"))
       for {
-        first  <- TestSigil.upsertMemoryByKey(base("The user prefers tabs for indentation."))
+        first <- TestSigil.upsertMemoryByKey(base("The user prefers tabs for indentation."))
         before <- retriever.retrieve(TestSigil, convId, frames, List(TestUser, TestAgent))
         second <- TestSigil.upsertMemoryByKey(base("The user prefers spaces for indentation."))
-        after  <- retriever.retrieve(TestSigil, convId, frames, List(TestUser, TestAgent))
+        after <- retriever.retrieve(TestSigil, convId, frames, List(TestUser, TestAgent))
       } yield {
         before.memories should contain(first.memory._id)
         after.memories should not contain first.memory._id
@@ -285,8 +305,12 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "leave only the current version's point in the vector index across repeated versioning" in {
       val index = wire(Set(MemoryTestSpace))
       def base(fact: String) = ContextMemory(
-        fact = fact, label = "target", summary = fact,
-        source = MemorySource.Explicit, spaceId = MemoryTestSpace, key = Some("ops.target"))
+        fact = fact,
+        label = "target",
+        summary = fact,
+        source = MemorySource.Explicit,
+        spaceId = MemoryTestSpace,
+        key = Some("ops.target"))
       for {
         v1 <- TestSigil.upsertMemoryByKey(base("The deploy target is us-east-1."))
         v2 <- TestSigil.upsertMemoryByKey(base("The deploy target is eu-west-2."))
@@ -304,12 +328,12 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "drop a rejected memory's point and restore it on approval" in {
       val index = wire(Set(MemoryTestSpace))
       for {
-        m        <- seed("The office wifi password is hunter2.", MemoryTestSpace)
-        vec      <- TestHashEmbeddingProvider.embed(m.fact)
-        before   <- index.search(vec, 10, Map("kind" -> "memory"))
-        _        <- TestSigil.rejectMemory(m._id)
+        m <- seed("The office wifi password is hunter2.", MemoryTestSpace)
+        vec <- TestHashEmbeddingProvider.embed(m.fact)
+        before <- index.search(vec, 10, Map("kind" -> "memory"))
+        _ <- TestSigil.rejectMemory(m._id)
         rejected <- index.search(vec, 10, Map("kind" -> "memory"))
-        _        <- TestSigil.approveMemory(m._id)
+        _ <- TestSigil.approveMemory(m._id)
         approved <- index.search(vec, 10, Map("kind" -> "memory"))
       } yield {
         before.flatMap(_.payload.get("memoryId")) should contain(m._id.value)
@@ -324,9 +348,14 @@ class MemoryRecallGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       wire(Set(MemoryTestSpace))
       val fact = "The build runs on JDK 21."
       def refresh(i: Int) = TestSigil.upsertMemoryByKey(ContextMemory(
-        fact = fact, label = "jdk", summary = fact,
-        source = MemorySource.Explicit, spaceId = MemoryTestSpace, key = Some("build.jdk"),
-        sourceEventIds = List(Id[Event](s"evt-$i"))))
+        fact = fact,
+        label = "jdk",
+        summary = fact,
+        source = MemorySource.Explicit,
+        spaceId = MemoryTestSpace,
+        key = Some("build.jdk"),
+        sourceEventIds = List(Id[Event](s"evt-$i"))
+      ))
       Task.sequence((1 to 260).toList.map(refresh)).map { results =>
         val last = results.last.memory
         last.sourceEventIds.size shouldBe sigil.MemoryOps.MaxSourceEventIds

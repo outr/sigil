@@ -38,33 +38,41 @@ import sigil.provider.{Reliability, SchemaDialect}
  */
 object RefusalPayload {
 
-  /** Render the tool's input schema as the serving dialect shaped it,
-    * pretty-printed for inline display. */
+  /**
+   * Render the tool's input schema as the serving dialect shaped it,
+   * pretty-printed for inline display.
+   */
   def schemaJson(tool: Tool, dialect: SchemaDialect = SchemaDialect.Identity): String =
     JsonFormatter.Default(dialect(tool))
 
-  /** Render a worked example invocation as JSON. Prefers an authored
-    * example from [[Tool.examples]]; falls back to a synthesised
-    * placeholder example. */
+  /**
+   * Render a worked example invocation as JSON. Prefers an authored
+   * example from [[Tool.examples]]; falls back to a synthesised
+   * placeholder example.
+   */
   def exampleJson(tool: Tool): String =
     JsonFormatter.Default(tool.wireSurface.example)
 
-  /** Build a synthetic example payload from a [[Definition]]. Picks one
-    * placeholder value per primitive type, descends through objects,
-    * arrays, and the first branch of polymorphic types. Strictly
-    * best-effort: when the definition is `Json` or otherwise opaque, emits
-    * a stub object the agent can fill in.
-    *
-    * Preserved for callers that have a `Definition` but no `Tool`. */
+  /**
+   * Build a synthetic example payload from a [[Definition]]. Picks one
+   * placeholder value per primitive type, descends through objects,
+   * arrays, and the first branch of polymorphic types. Strictly
+   * best-effort: when the definition is `Json` or otherwise opaque, emits
+   * a stub object the agent can fill in.
+   *
+   * Preserved for callers that have a `Definition` but no `Tool`.
+   */
   def synthesizeExample(definition: Definition): Json =
     WireSurface.synthesizeExample(definition)
 
-  /** Build a refusal failure that carries the schema + example alongside
-    * the rule. `hint` is an optional extra line rendered between the rule
-    * and the schema block (e.g. `change_mode`'s "available modes: …").
-    * `sentArgs` (the raw JSON the model emitted) is folded into the
-    * `args` field of the underlying [[ToolResult.Failure]] when provided
-    * so the agent can diff its emit against the worked example. */
+  /**
+   * Build a refusal failure that carries the schema + example alongside
+   * the rule. `hint` is an optional extra line rendered between the rule
+   * and the schema block (e.g. `change_mode`'s "available modes: …").
+   * `sentArgs` (the raw JSON the model emitted) is folded into the
+   * `args` field of the underlying [[ToolResult.Failure]] when provided
+   * so the agent can diff its emit against the worked example.
+   */
   def schemaMismatch(tool: Tool,
                      rule: String,
                      hint: Option[String] = None,
@@ -75,10 +83,12 @@ object RefusalPayload {
     ToolResult.Failure(message = body, hint = None, args = sentArgs)
   }
 
-  /** Build the unknown-tool refusal — names the missing tool, surfaces the
-    * closest-name match from the offered roster, and folds in that
-    * match's schema + example so the agent can call the intended tool
-    * directly on its next iteration. */
+  /**
+   * Build the unknown-tool refusal — names the missing tool, surfaces the
+   * closest-name match from the offered roster, and folds in that
+   * match's schema + example so the agent can call the intended tool
+   * directly on its next iteration.
+   */
   def unknownTool(invokedName: String,
                   offered: Iterable[Tool],
                   sentArgs: Option[String] = None,
@@ -107,10 +117,12 @@ object RefusalPayload {
     ToolResult.Failure(message = lead + carrierBlock + suggestion, hint = None, args = sentArgs)
   }
 
-  /** Return the closest-name match by Levenshtein distance, ignoring
-    * matches whose distance exceeds half the invoked name's length (no
-    * suggestion is better than a wildly-different one). Ties broken by
-    * first occurrence. */
+  /**
+   * Return the closest-name match by Levenshtein distance, ignoring
+   * matches whose distance exceeds half the invoked name's length (no
+   * suggestion is better than a wildly-different one). Ties broken by
+   * first occurrence.
+   */
   def closestMatch(invokedName: String, offered: Iterable[Tool]): Option[Tool] = {
     val candidates = offered.iterator.filterNot(_.name.value == invokedName).toList
     if (candidates.isEmpty) None
@@ -122,8 +134,10 @@ object RefusalPayload {
     }
   }
 
-  /** Classic O(n*m) Levenshtein distance — small enough for tool-name
-    * comparisons that allocation cost is negligible. */
+  /**
+   * Classic O(n*m) Levenshtein distance — small enough for tool-name
+   * comparisons that allocation cost is negligible.
+   */
   def levenshtein(a: String, b: String): Int = {
     val n = a.length
     val m = b.length
@@ -151,9 +165,11 @@ object RefusalPayload {
     prev(m)
   }
 
-  /** Enrich an existing free-form rule (e.g. the
-    * [[sigil.provider.ToolCallAccumulator]]'s validator-error string) by
-    * appending the tool's schema + example. */
+  /**
+   * Enrich an existing free-form rule (e.g. the
+   * [[sigil.provider.ToolCallAccumulator]]'s validator-error string) by
+   * appending the tool's schema + example.
+   */
   def enrichRule(tool: Tool,
                  rule: String,
                  sentArgs: Option[String] = None,
@@ -162,13 +178,15 @@ object RefusalPayload {
     buildBody(rule, tool, hint = None, dialect, reliability) +
       sentArgs.map(a => s"\n\nYou sent:\n$a").getOrElse("")
 
-  /** Render the refusal for a call whose args failed to parse or decode
-    * (the `WireCall.Malformed` shape). A pure materialise failure
-    * (every violation [[ViolationKind.Structural]]) keeps the
-    * historical "Failed to parse args" phrasing; constraint violations
-    * read as "violated schema constraints". The model's args ride the
-    * body verbatim. `tool` is the resolved carrier when available so
-    * the schema + example are appended. */
+  /**
+   * Render the refusal for a call whose args failed to parse or decode
+   * (the `WireCall.Malformed` shape). A pure materialise failure
+   * (every violation [[ViolationKind.Structural]]) keeps the
+   * historical "Failed to parse args" phrasing; constraint violations
+   * read as "violated schema constraints". The model's args ride the
+   * body verbatim. `tool` is the resolved carrier when available so
+   * the schema + example are appended.
+   */
   def malformedArgs(tool: Option[Tool],
                     name: String,
                     error: DecodeError,
@@ -177,7 +195,7 @@ object RefusalPayload {
                     reliability: Reliability = Reliability.Wobbly): String = {
     val argsText = rawArgs match {
       case fabric.Str(s, _) => s
-      case other            => fabric.io.JsonFormatter.Compact(other)
+      case other => fabric.io.JsonFormatter.Compact(other)
     }
     val rawSnippet = argsText.take(500)
     val truncated = if (argsText.length > 500) " (truncated)" else ""
@@ -190,16 +208,18 @@ object RefusalPayload {
       else Some(renderSentArgs(argsText))
     tool match {
       case Some(t) => enrichRule(t, rule, sentArgs, dialect, reliability)
-      case None    => rule + sentArgs.map(a => s"\n\nYou sent:\n$a").getOrElse("")
+      case None => rule + sentArgs.map(a => s"\n\nYou sent:\n$a").getOrElse("")
     }
   }
 
-  /** The refusal body. A model whose tool calls are
-    * [[Reliability.Solid]] fumbled a constraint, not the call shape —
-    * it already has the schema in its roster, so re-printing the schema
-    * and a worked example spends tokens on hand-holding it doesn't
-    * need. Wobbly / Unreliable emitters get the full block pinned next
-    * to the rejection. */
+  /**
+   * The refusal body. A model whose tool calls are
+   * [[Reliability.Solid]] fumbled a constraint, not the call shape —
+   * it already has the schema in its roster, so re-printing the schema
+   * and a worked example spends tokens on hand-holding it doesn't
+   * need. Wobbly / Unreliable emitters get the full block pinned next
+   * to the rejection.
+   */
   private def buildBody(rule: String,
                         tool: Tool,
                         hint: Option[String],
@@ -215,10 +235,12 @@ object RefusalPayload {
     }
   }
 
-  /** Convenience for tools whose refusal needs to mention the raw args
-    * the model sent. Parses the raw text as JSON when possible so the
-    * rendered value is faithful; on parse failure falls back to the raw
-    * string. */
+  /**
+   * Convenience for tools whose refusal needs to mention the raw args
+   * the model sent. Parses the raw text as JSON when possible so the
+   * rendered value is faithful; on parse failure falls back to the raw
+   * string.
+   */
   def renderSentArgs(rawArgs: String): String =
     try JsonFormatter.Default(JsonParser(rawArgs))
     catch { case _: Throwable => rawArgs }

@@ -30,7 +30,7 @@ class WorkflowPreconditionGatingSpec extends AsyncWordSpec with AsyncTaskSpec wi
       import scala.jdk.CollectionConverters.*
       val seen = recorded.iterator().asScala.exists {
         case _: WorkflowRunCompleted | _: WorkflowRunFailed => true
-        case _                                              => false
+        case _ => false
       }
       if (seen || System.currentTimeMillis() > deadline) Task.unit
       else Task.sleep(100.millis).flatMap(_ => loop)
@@ -78,7 +78,7 @@ class WorkflowPreconditionGatingSpec extends AsyncWordSpec with AsyncTaskSpec wi
           import scala.jdk.CollectionConverters.*
           val runId = recorded.iterator().asScala.collectFirst {
             case e: WorkflowRunCompleted => e.runId
-            case e: WorkflowRunFailed    => e.runId
+            case e: WorkflowRunFailed => e.runId
           }.getOrElse(fail("no terminal workflow lifecycle event observed"))
           TestWorkflowSigil.withDB(_.workflows.transaction(_.get(lightdb.id.Id[strider.Workflow](runId))))
         }

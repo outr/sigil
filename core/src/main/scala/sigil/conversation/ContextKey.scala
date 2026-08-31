@@ -24,50 +24,69 @@ opaque type ContextKey = String
 
 object ContextKey {
 
-  /** An app-defined key. The `_` prefix marks framework control-plane
-    * keys and belongs to [[internal]]; accepting it here would let an
-    * app impersonate a control-plane signal. */
+  /**
+   * An app-defined key. The `_` prefix marks framework control-plane
+   * keys and belongs to [[internal]]; accepting it here would let an
+   * app impersonate a control-plane signal.
+   */
   def apply(value: String): ContextKey = {
-    require(!value.startsWith("_"),
+    require(
+      !value.startsWith("_"),
       s"ContextKey(\"$value\") is reserved: the `_` prefix marks framework control-plane keys. " +
-        "Use ContextKey.internal from framework code, or pick an unprefixed name.")
+        "Use ContextKey.internal from framework code, or pick an unprefixed name."
+    )
     value
   }
 
-  /** A framework control-plane key. `name` is given without the `_`;
-    * the prefix is stamped here so the convention has one owner. */
+  /**
+   * A framework control-plane key. `name` is given without the `_`;
+   * the prefix is stamped here so the convention has one owner.
+   */
   def internal(name: String): ContextKey = "_" + name.stripPrefix("_")
 
-  /** This turn's resolved pinned directives occupy an outsized share of
-    * the model's window. The agent decides what to do about it. */
+  /**
+   * This turn's resolved pinned directives occupy an outsized share of
+   * the model's window. The agent decides what to do about it.
+   */
   val BudgetWarning: ContextKey = internal("budgetWarning")
 
-  /** Provenance stamped on memories `Sigil.ingestCorpusMemories`
-    * extracts: the caller-supplied passage reference the fact came
-    * from, so a corpus-derived record can be traced to its source
-    * document even though no conversation event backs it. */
+  /**
+   * Provenance stamped on memories `Sigil.ingestCorpusMemories`
+   * extracts: the caller-supplied passage reference the fact came
+   * from, so a corpus-derived record can be traced to its source
+   * document even though no conversation event backs it.
+   */
   val CorpusPassage: ContextKey = internal("corpusPassage")
 
-  /** This turn's context was elided under budget pressure — reads were
-    * rewritten to stubs, so the agent can only narrate. Guards that
-    * would challenge a narration back off when this is present. */
+  /**
+   * This turn's context was elided under budget pressure — reads were
+   * rewritten to stubs, so the agent can only narrate. Guards that
+   * would challenge a narration back off when this is present.
+   */
   val ContextPressure: ContextKey = internal("contextPressure")
 
-  /** The agent restated itself instead of acting; the observation is fed
-    * back so the next turn breaks the loop. */
+  /**
+   * The agent restated itself instead of acting; the observation is fed
+   * back so the next turn breaks the loop.
+   */
   val ParaphraseObservation: ContextKey = internal("paraphraseObservation")
 
   extension (key: ContextKey) {
-    /** The key's wire string, prefix included. */
+
+    /**
+     * The key's wire string, prefix included.
+     */
     def value: String = key
   }
 
-  /** Serialized as `{"value": "..."}` — the shape the original case
-    * class produced, and therefore the shape already on disk in every
-    * persisted `extraContext`. The object (rather than bare-string)
-    * definition also keeps `Map[ContextKey, String]` on fabric's
-    * array-of-pairs encoding; a string definition would silently rewrite
-    * those maps to JSON objects. */
+  /**
+   * Serialized as `{"value": "..."}` — the shape the original case
+   * class produced, and therefore the shape already on disk in every
+   * persisted `extraContext`. The object (rather than bare-string)
+   * definition also keeps `Map[ContextKey, String]` on fabric's
+   * array-of-pairs encoding; a string definition would silently rewrite
+   * those maps to JSON objects.
+   */
   given rw: RW[ContextKey] = RW.from(
     r = key => obj("value" -> str(key)),
     w = json => json("value").asString,

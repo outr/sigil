@@ -4,7 +4,10 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 import strider.Workflow
 
 case class CancelWorkflowInput(runId: String) extends ToolInput derives RW
@@ -18,10 +21,10 @@ case class CancelWorkflowInput(runId: String) extends ToolInput derives RW
  * underlying `cancel` API.
  */
 final class CancelWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = CancelWorkflowInput
+  type Input = CancelWorkflowInput
   type Output = TextToolOutput
   val io: ToolIO[CancelWorkflowInput, TextToolOutput] = ToolIO.derived[CancelWorkflowInput, TextToolOutput].withExamples(
-ToolExample("cancel by run id", CancelWorkflowInput(runId = "run-abc"))
+    ToolExample("cancel by run id", CancelWorkflowInput(runId = "run-abc"))
   )
   override val name = ToolName("cancel_workflow")
   override val description =

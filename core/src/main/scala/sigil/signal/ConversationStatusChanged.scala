@@ -17,4 +17,5 @@ import sigil.conversation.{Conversation, ConversationStatus}
  * Emitted from `Sigil.setConversationStatus`.
  */
 case class ConversationStatusChanged(conversationId: Id[Conversation],
-                                     status: ConversationStatus) extends ConversationNotice derives RW
+                                     status: ConversationStatus)
+  extends ConversationNotice derives RW

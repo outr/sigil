@@ -52,16 +52,18 @@ class WorkerStallDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   private val workerId = WorkerParticipantId(s"worker-${rapid.Unique()}")
 
-  /** Stub provider:
-    *   - reflector call (roster has `report_progress`) → emit a
-    *     ProgressReflection with `meaningfulProgress = false` and the
-    *     supplied `shouldAskUser`.
-    *   - worker, forced-synthesis (`tool_choice = Specific(respond)`) →
-    *     emit the worker's `respond` handoff.
-    *   - worker, otherwise → emit an identical `change_mode` so the loop
-    *     iterates and the stall detector sees a repeated-call streak.
-    *   - supervisor → respond immediately (endsTurn) so it never loops. */
-  private final class WorkerLoopProvider(askUser: Boolean) extends Provider {
+  /**
+   * Stub provider:
+   *   - reflector call (roster has `report_progress`) → emit a
+   *     ProgressReflection with `meaningfulProgress = false` and the
+   *     supplied `shouldAskUser`.
+   *   - worker, forced-synthesis (`tool_choice = Specific(respond)`) →
+   *     emit the worker's `respond` handoff.
+   *   - worker, otherwise → emit an identical `change_mode` so the loop
+   *     iterates and the stall detector sees a repeated-call streak.
+   *   - supervisor → respond immediately (endsTurn) so it never loops.
+   */
+  final private class WorkerLoopProvider(askUser: Boolean) extends Provider {
     val stallInvokeSeen = new atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -71,29 +73,29 @@ class WorkerStallDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val callId = CallId(s"call-${rapid.Unique()}")
       val isReflector = input.tools.exists(_.name.value == "report_progress")
-      val isWorker    = input.agentId.contains(workerId)
+      val isWorker = input.agentId.contains(workerId)
       val emits: List[ProviderEvent] =
         if (isReflector)
           List(
             ProviderEvent.ToolCallStart(callId, "report_progress"),
             ProviderEvent.toolCall(callId, ProgressReflectionTool)(_root_.sigil.tool.consult.ProgressReflectionInput(
-                currentStatus      = "still looping on change_mode",
-                meaningfulProgress = false,
-                remainingSteps     = "wrap up",
-                stuckOn            = Some("looping"),
-                shouldAskUser      = askUser
-              )),
+              currentStatus = "still looping on change_mode",
+              meaningfulProgress = false,
+              remainingSteps = "wrap up",
+              stuckOn = Some("looping"),
+              shouldAskUser = askUser
+            )),
             ProviderEvent.Done(StopReason.Complete)
           )
         else if (!isWorker || input.toolChoice == ToolChoice.Specific(RespondTool.schema.name))
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
-                topicLabel   = "Handoff",
-                topicSummary = "report after stall",
-                content      = "Reporting what I found and where I'm blocked.",
-                endsTurn     = true
-              )),
+              topicLabel = "Handoff",
+              topicSummary = "report after stall",
+              content = "Reporting what I found and where I'm blocked.",
+              endsTurn = true
+            )),
             ProviderEvent.Done(StopReason.Complete)
           )
         else
@@ -107,38 +109,45 @@ class WorkerStallDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   }
 
   private def supervisor: AgentParticipant =
-    DefaultAgentParticipant(id = TestAgent, modelId = modelId,
+    DefaultAgentParticipant(
+      id = TestAgent,
+      modelId = modelId,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)))
 
   private def worker: AgentParticipant =
-    DefaultAgentParticipant(id = workerId, modelId = modelId,
+    DefaultAgentParticipant(
+      id = workerId,
+      modelId = modelId,
       toolNames = ToolName("change_mode") :: CoreTools.coreToolNames,
       instructions = Instructions(),
-      generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)))
+      generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
+    )
 
-  /** A directed worker sub-conversation [supervisor, worker] linked to a
-    * parent, with the worker primed by a brief addressed to it alone (so
-    * only the worker fires on the trigger). */
+  /**
+   * A directed worker sub-conversation [supervisor, worker] linked to a
+   * parent, with the worker primed by a brief addressed to it alone (so
+   * only the worker fires on the trigger).
+   */
   private def runWorkerLoop(askUser: Boolean): Task[List[sigil.event.Event]] = {
     val provider = new WorkerLoopProvider(askUser)
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"worker-stall-${rapid.Unique()}")
     val conv = Conversation(
-      topics               = TestTopicStack,
-      participants         = List(supervisor, worker),
+      topics = TestTopicStack,
+      participants = List(supervisor, worker),
       parentConversationId = Some(Conversation.id(s"parent-${rapid.Unique()}")),
-      _id                  = convId
+      _id = convId
     )
     for {
-      _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      _   <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Find all bug references in the repo.")),
-               addressees     = Some(Set[ParticipantId](workerId)),
-               state          = EventState.Complete
-             ))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.publish(Message(
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Find all bug references in the repo.")),
+        addressees = Some(Set[ParticipantId](workerId)),
+        state = EventState.Complete
+      ))
       // Poll for the terminal condition rather than sleeping a fixed
       // interval — under the full suite's concurrent forked-JVM load the
       // worker's background-fiber loop can take well over a fixed budget
@@ -151,9 +160,11 @@ class WorkerStallDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   private def workerEventsFor(convId: Id[Conversation]): Task[List[sigil.event.Event]] =
     TestSigil.withDB(_.events.transaction(_.list)).map(_.filter(_.conversationId == convId))
 
-  /** The worker has settled once its `_stall_detected` invoke AND a
-    * worker-authored reply Message are both on the conversation — exactly
-    * what the assertions inspect. Polls until then or the deadline. */
+  /**
+   * The worker has settled once its `_stall_detected` invoke AND a
+   * worker-authored reply Message are both on the conversation — exactly
+   * what the assertions inspect. Polls until then or the deadline.
+   */
   private def awaitWorkerSettled(convId: Id[Conversation], deadline: Long): Task[List[sigil.event.Event]] =
     workerEventsFor(convId).flatMap { evs =>
       val ready =
@@ -164,7 +175,7 @@ class WorkerStallDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     }
 
   "the progress checkpoint in a worker sub-conversation" should {
-    "run the stall detector and break a worker's degenerate loop early (not flail to the cap)" in {
+    "run the stall detector and break a worker's degenerate loop early (not flail to the cap)" in
       runWorkerLoop(askUser = false).map { convEvs =>
         // The checkpoint ran in the worker — the synthetic `_stall_detected`
         // invoke landed (it would be absent under #330's full suppression).
@@ -185,9 +196,8 @@ class WorkerStallDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         }
         changeModes.size should be < TestSigil.maxAgentIterations
       }
-    }
 
-    "redirect an ask-user checkpoint to a supervisor handoff, not a user-facing clarification" in {
+    "redirect an ask-user checkpoint to a supervisor handoff, not a user-facing clarification" in
       runWorkerLoop(askUser = true).map { convEvs =>
         // No user-facing orchestrator-intervention message escapes from
         // the worker — the supervisor owns asking the human.
@@ -216,7 +226,6 @@ class WorkerStallDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         }
         workerReplies should not be empty
       }
-    }
   }
 
   "tear down" should {

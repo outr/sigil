@@ -24,19 +24,19 @@ class ChangeModeNoOpSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
   private def turnContextFor(currentMode: sigil.provider.Mode): Task[TurnContext] = {
     val convId = Conversation.id(s"change-mode-noop-${rapid.Unique()}")
-    val topic  = TopicEntry(
-      id      = sigil.conversation.Topic.id(s"topic-$convId"),
-      label   = "test",
+    val topic = TopicEntry(
+      id = sigil.conversation.Topic.id(s"topic-$convId"),
+      label = "test",
       summary = "test"
     )
     val conv = Conversation(_id = convId, topics = List(topic), currentMode = currentMode)
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map { stored =>
       TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestUser, TestAgent),
+        sigil = TestSigil,
+        chain = List(TestUser, TestAgent),
         conversation = stored,
-        turnInput    = TurnInput(conversationId = stored._id),
-        model        = TestSigil.defaultTestModel
+        turnInput = TurnInput(conversationId = stored._id),
+        model = TestSigil.defaultTestModel
       )
     }
   }
@@ -48,7 +48,7 @@ class ChangeModeNoOpSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
     "refuse same-mode re-entry with a didactic Failure naming the current mode" in {
       for {
-        ctx     <- turnContextFor(TestCodingMode)
+        ctx <- turnContextFor(TestCodingMode)
         signals <- runChange("coding", ctx)
       } yield {
         signals.collect { case mc: ModeChange => mc } shouldBe empty
@@ -64,7 +64,7 @@ class ChangeModeNoOpSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
     "refuse an unknown mode with a Failure listing the available modes" in {
       for {
-        ctx     <- turnContextFor(sigil.provider.ConversationMode)
+        ctx <- turnContextFor(sigil.provider.ConversationMode)
         signals <- runChange("ferocity", ctx)
       } yield {
         signals.collect { case mc: ModeChange => mc } shouldBe empty
@@ -87,7 +87,7 @@ class ChangeModeNoOpSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
     "accept a genuine mode change (current ≠ target) and emit ModeChange" in {
       for {
-        ctx     <- turnContextFor(sigil.provider.ConversationMode)
+        ctx <- turnContextFor(sigil.provider.ConversationMode)
         signals <- runChange("coding", ctx)
       } yield {
         val changes = signals.collect { case mc: ModeChange => mc }

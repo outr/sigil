@@ -41,11 +41,10 @@ class LiveContextBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       }
     }
 
-    "answer None for an unregistered model" in {
+    "answer None for an unregistered model" in
       new RegistryStubProvider().liveContextBudget(Model.id("test", "never-registered-budget-xyzzy")).map { budget =>
         budget shouldBe None
       }
-    }
 
     "prefer a subclass's live value over the registry" in {
       val modelId = Model.id("test", "live-budget-model")
@@ -67,7 +66,7 @@ class LiveContextBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       }
     }
 
-    "report the live per-slot budget from a reachable server (self-skips when unreachable)" in {
+    "report the live per-slot budget from a reachable server (self-skips when unreachable)" in
       LlamaCpp.fetchProps(TestSigil.llamaCppHost).flatMap {
         case None =>
           Task {
@@ -81,7 +80,6 @@ class LiveContextBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
             budget.get should be > 0L
           }
       }
-    }
   }
 
   "tear down" should {

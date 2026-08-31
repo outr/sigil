@@ -4,9 +4,7 @@ import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.db.Model
 import sigil.provider.cache.{CacheMode, FileSystemCacheStore}
-import sigil.provider.{
-  CachedProvider, ProviderCall, ProviderEvent, ProviderType, Provider
-}
+import sigil.provider.{CachedProvider, ProviderCall, ProviderEvent, ProviderType, Provider}
 import sigil.service.{Service, ServiceKind, ServiceState}
 import spice.http.HttpRequest
 
@@ -26,24 +24,30 @@ import spice.http.HttpRequest
  */
 object CachedProviderFixtures {
 
-  /** Compute the on-disk cache root for the named suite. */
+  /**
+   * Compute the on-disk cache root for the named suite.
+   */
   def cacheRoot(suiteName: String): java.nio.file.Path =
     java.nio.file.Path.of("core", "src", "test", "resources", "provider-cache", suiteName)
 
-  /** Wrap an underlying-provider task with a [[CachedProvider]] keyed
-    * by the calling suite's class name. The wrapped task is `singleton`
-    * so the cached provider is reused across the suite's tests.
-    *
-    * Convenience for the standard [[TestSigil]]-backed suites.
-    * Suites that own their own Sigil instance (workflow specs, etc.)
-    * call [[wrapFor]] instead. */
+  /**
+   * Wrap an underlying-provider task with a [[CachedProvider]] keyed
+   * by the calling suite's class name. The wrapped task is `singleton`
+   * so the cached provider is reused across the suite's tests.
+   *
+   * Convenience for the standard [[TestSigil]]-backed suites.
+   * Suites that own their own Sigil instance (workflow specs, etc.)
+   * call [[wrapFor]] instead.
+   */
   def wrap(suite: AnyRef, underlying: Task[Provider]): Task[Provider] =
     wrapFor(suite.getClass.getSimpleName.replace("$", ""), underlying, TestSigil)
 
-  /** Wrap with an explicit suite name + Sigil reference. For suites
-    * driving a non-[[TestSigil]] instance (e.g. [[TestWorkflowSigil]])
-    * or when the caller wants to share fixtures across two related
-    * suites by passing a stable name. */
+  /**
+   * Wrap with an explicit suite name + Sigil reference. For suites
+   * driving a non-[[TestSigil]] instance (e.g. [[TestWorkflowSigil]])
+   * or when the caller wants to share fixtures across two related
+   * suites by passing a stable name.
+   */
   def wrapFor(suiteName: String, underlying: Task[Provider], sigilRef: _root_.sigil.Sigil): Task[Provider] = {
     val safeName = suiteName.replace("$", "")
     val root = cacheRoot(safeName)
@@ -64,12 +68,14 @@ object CachedProviderFixtures {
     effectiveUnderlying.map(p => new CachedProvider(p, sigilRef, store, mode): Provider).singleton
   }
 
-  /** Stub provider used as the `underlying` for [[CachedProvider]] in
-    * [[CacheMode.ReplayOnly]]. Constructing this does no I/O. Every
-    * method that would actually require a wire call throws — the
-    * [[CachedProvider]] satisfies all reads from the on-disk cache or
-    * surfaces a [[sigil.provider.cache.MissingCacheException]]. */
-  private final class ReplayOnlyStubProvider(sigilRef: _root_.sigil.Sigil) extends Provider {
+  /**
+   * Stub provider used as the `underlying` for [[CachedProvider]] in
+   * [[CacheMode.ReplayOnly]]. Constructing this does no I/O. Every
+   * method that would actually require a wire call throws — the
+   * [[CachedProvider]] satisfies all reads from the on-disk cache or
+   * surfaces a [[sigil.provider.cache.MissingCacheException]].
+   */
+  final private class ReplayOnlyStubProvider(sigilRef: _root_.sigil.Sigil) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def providerKey: String = "cached-replay-stub"
     override protected def sigil: _root_.sigil.Sigil = sigilRef

@@ -83,9 +83,9 @@ object ConvoMemBench {
           val allBatchFiles = evidenceDir.listFiles().filter(_.getName.endsWith(".json")).sorted
           val batchFiles = batchNum match {
             case Some(n) => allBatchFiles.filter(_.getName == f"batched_$n%03d.json").take(1)
-            case None    => allBatchFiles.take(limit)
+            case None => allBatchFiles.take(limit)
           }
-          for (batchFile <- batchFiles) {
+          for (batchFile <- batchFiles)
             if (totalRun >= maxQuestions) println(s"  Reached max questions ($maxQuestions), stopping")
             else {
               val raw = Source.fromFile(batchFile)(using Codec.UTF8).mkString
@@ -107,22 +107,30 @@ object ConvoMemBench {
                     val text = msg("text").asString
                     val msgId = s"c$convIdx-m$msgIdx"
                     msgToConv(msgId) = convIdx
-                    batch += ((msgId, text, Map(
-                      "kind" -> "convomem-message",
-                      "conversationId" -> s"conv-$convIdx",
-                      "messageId" -> msgId
-                    )))
+                    batch +=
+                      ((
+                        msgId,
+                        text,
+                        Map(
+                          "kind" -> "convomem-message",
+                          "conversationId" -> s"conv-$convIdx",
+                          "messageId" -> msgId
+                        )))
                   }
                   val allText = messages.map(m => m("text").asString).mkString("\n")
                   val truncated = if (allText.length > 6000) allText.take(6000) else allText
                   if (truncated.length >= 50) {
                     val summaryId = s"c$convIdx-summary"
                     msgToConv(summaryId) = convIdx
-                    batch += ((summaryId, truncated, Map(
-                      "kind" -> "convomem-summary",
-                      "conversationId" -> s"conv-$convIdx",
-                      "messageId" -> summaryId
-                    )))
+                    batch +=
+                      ((
+                        summaryId,
+                        truncated,
+                        Map(
+                          "kind" -> "convomem-summary",
+                          "conversationId" -> s"conv-$convIdx",
+                          "messageId" -> summaryId
+                        )))
                   }
                 }
                 harness.embedAndIndexBatch(batch.toList).sync()
@@ -164,7 +172,8 @@ object ConvoMemBench {
                           conversations(ci)("messages").asVector.headOption.map(_("text").asString.take(140))
                         }
                       }
-                      failures += ((catName, evidenceLevel, batchFile.getName, question, evidenceIndices, rankedConvs.take(k).toList, snippets))
+                      failures +=
+                        ((catName, evidenceLevel, batchFile.getName, question, evidenceIndices, rankedConvs.take(k).toList, snippets))
                     }
                   }
                 }
@@ -172,9 +181,9 @@ object ConvoMemBench {
 
               val elapsed = (System.currentTimeMillis() - startTime) / 1000.0
               val pct = if (totalRun > 0) totalCorrect.toDouble / totalRun * 100 else 0.0
-              println(f"  ${evidenceLevel}_evidence/${batchFile.getName}: $remaining cases, R@$k=$pct%.1f%% ($totalCorrect/$totalRun, ${elapsed}%.0fs)")
+              println(
+                f"  ${evidenceLevel}_evidence/${batchFile.getName}: $remaining cases, R@$k=$pct%.1f%% ($totalCorrect/$totalRun, $elapsed%.0fs)")
             }
-          }
         }
       }
     }
@@ -184,7 +193,7 @@ object ConvoMemBench {
     println("=== Results ===")
     val overall = if (totalRun > 0) totalCorrect.toDouble / totalRun * 100 else 0.0
     println(f"Recall@$k: $totalCorrect/$totalRun ($overall%.1f%%)")
-    println(f"Time: ${elapsed}%.0fs")
+    println(f"Time: $elapsed%.0fs")
     println()
     println("By category:")
     categoryBreakdown.toList.sortBy(_._1).foreach { case (cat, (c, t)) =>
@@ -207,12 +216,12 @@ object ConvoMemBench {
       }
       sb.append(s"\n## Failures (${failures.size})\n\n")
       failures.toList.foreach { case (cat, ev, fname, q, expected, topK, snips) =>
-        sb.append(s"### [$cat / ${ev}_evidence / $fname] `${q}`\n\n")
+        sb.append(s"### [$cat / ${ev}_evidence / $fname] `$q`\n\n")
         sb.append(s"- expected conv indices: ${expected.toList.sorted.mkString(", ")}\n")
-        sb.append(s"- top-${k} ranked: ${topK.mkString(", ")}\n")
+        sb.append(s"- top-$k ranked: ${topK.mkString(", ")}\n")
         if (snips.nonEmpty) {
           sb.append("- top-K snippets:\n")
-          snips.zipWithIndex.foreach { case (s, i) => sb.append(s"  ${i + 1}. ${s}\n") }
+          snips.zipWithIndex.foreach { case (s, i) => sb.append(s"  ${i + 1}. $s\n") }
         }
         sb.append("\n")
       }

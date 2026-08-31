@@ -39,7 +39,7 @@ import scala.io.{Codec, Source}
  */
 object FailureReport {
 
-  private final case class Rec(index: Int,
+  final private case class Rec(index: Int,
                                arm: String,
                                questionType: String,
                                question: String,
@@ -196,8 +196,9 @@ object FailureReport {
             file("")
             file(s"**Model answered**:")
             file("")
-            file("> " + (if (r.answer.trim.isEmpty) "_(empty)_"
-                         else r.answer.trim.replaceAll("\r?\n", "\n> ")))
+            file("> " +
+              (if (r.answer.trim.isEmpty) "_(empty)_"
+               else r.answer.trim.replaceAll("\r?\n", "\n> ")))
             file("")
             if (r.judgeReasoning.nonEmpty) { file(s"**Judge**: ${r.judgeReasoning}"); file("") }
             file(f"**Gold coverage**: ${r.goldCoverage * 100}%.0f%% of answer sessions" +

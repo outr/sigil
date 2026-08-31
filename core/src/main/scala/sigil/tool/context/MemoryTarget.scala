@@ -28,6 +28,7 @@ enum MemoryTarget {
 }
 
 object MemoryTarget {
+
   /**
    * Resolve `key` against `candidates` (an already-scoped, already-
    * gated listing), falling back to an `_id` lookup for agents that
@@ -43,15 +44,17 @@ object MemoryTarget {
       case Some(memory) => Task.pure(Found(memory))
       case None =>
         context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
-          case Some(m) if !spaces.contains(m.spaceId)   => Missing
-          case Some(m) if m.isRecallable(Timestamp())   => Found(m)
-          case Some(m)                                  => NotRecallable(m)
-          case None                                     => Missing
+          case Some(m) if !spaces.contains(m.spaceId) => Missing
+          case Some(m) if m.isRecallable(Timestamp()) => Found(m)
+          case Some(m) => NotRecallable(m)
+          case None => Missing
         }
     }
 
-  /** Human-readable reason a resolved record isn't recallable, for the
-    * tool's failure message. */
+  /**
+   * Human-readable reason a resolved record isn't recallable, for the
+   * tool's failure message.
+   */
   def reason(memory: ContextMemory): String =
     if (memory.validUntil.isDefined) "it is a superseded version — a newer version of this memory replaced it"
     else if (memory.status != MemoryStatus.Approved) s"its status is ${memory.status}"

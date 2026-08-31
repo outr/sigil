@@ -5,7 +5,10 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult,
+  ToolSpec
+}
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
 case class ListTriggersInput(workflowId: String) extends ToolInput derives RW
@@ -17,10 +20,10 @@ case class ListTriggersInput(workflowId: String) extends ToolInput derives RW
  * field values (compact JSON of the trigger's case-class shape).
  */
 final class ListTriggersTool extends Tool with WorkflowToolSupport {
-  type Input  = ListTriggersInput
+  type Input = ListTriggersInput
   type Output = TextToolOutput
   val io: ToolIO[ListTriggersInput, TextToolOutput] = ToolIO.derived[ListTriggersInput, TextToolOutput].withExamples(
-ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc"))
+    ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc"))
   )
   override val name = ToolName("list_triggers")
   override val description =

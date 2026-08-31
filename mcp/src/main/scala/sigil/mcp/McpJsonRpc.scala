@@ -23,24 +23,30 @@ final class McpJsonRpc(input: BufferedReader,
                          Task.error(new McpError(-32601, s"No request handler for $m")),
                        notificationHandler: (String, Json) => Task[Unit] = (_, _) => Task.unit) {
 
-  private val closed    = new AtomicBoolean(false)
+  private val closed = new AtomicBoolean(false)
   private val writeLock = new Object
 
   private val dispatcher = new McpDispatcher(
-    send                = writeMessage,
-    requestHandler      = requestHandler,
+    send = writeMessage,
+    requestHandler = requestHandler,
     notificationHandler = notificationHandler
   )
 
-  /** Send a request and await the matching response. */
+  /**
+   * Send a request and await the matching response.
+   */
   def request(method: String, params: Json = Obj.empty): Task[Json] =
     dispatcher.request(method, params, _ => ())
 
-  /** Send a request with a wire-id callback (for cancellation tracking). */
+  /**
+   * Send a request with a wire-id callback (for cancellation tracking).
+   */
   def requestWithId(method: String, params: Json, onWireId: Long => Unit): Task[Json] =
     dispatcher.request(method, params, onWireId)
 
-  /** Send a notification — no response expected. */
+  /**
+   * Send a notification — no response expected.
+   */
   def notify(method: String, params: Json = Obj.empty): Task[Unit] = Task.defer {
     if (closed.get()) Task.unit else dispatcher.notify(method, params)
   }
@@ -59,11 +65,13 @@ final class McpJsonRpc(input: BufferedReader,
    * synchronize on the same intrinsic monitor). Owners of the
    * underlying streams (e.g. [[StdioMcpClient]]) are responsible for
    * destroying the process / closing the pipes; once the input
-   * pipe yields EOF, the reader thread exits naturally. */
+   * pipe yields EOF, the reader thread exits naturally.
+   */
   def close(): Task[Unit] = Task {
     if (closed.compareAndSet(false, true)) {
       dispatcher.failPending(new McpError(-1, "Connection closed"))
-      try output.close() catch { case _: Throwable => () }
+      try output.close()
+      catch { case _: Throwable => () }
     }
   }
 

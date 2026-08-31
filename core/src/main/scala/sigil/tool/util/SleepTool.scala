@@ -4,7 +4,9 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.SleepInput
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 import scala.concurrent.duration.DurationLong
 
@@ -13,7 +15,7 @@ import scala.concurrent.duration.DurationLong
  * confirmation that the pause completed.
  */
 case object SleepTool extends Tool {
-  type Input  = SleepInput
+  type Input = SleepInput
   type Output = TextToolOutput
   val io: ToolIO[SleepInput, TextToolOutput] = ToolIO.derived[SleepInput, TextToolOutput].withExamples(
     ToolExample("Brief pause (500 ms)", SleepInput(500)),

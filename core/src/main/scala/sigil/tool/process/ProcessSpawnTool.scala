@@ -15,12 +15,12 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, T
  * other commands whose output IS the value.
  */
 final class ProcessSpawnTool(registry: ProcessRegistry) extends Tool {
-  type Input  = ProcessSpawnInput
+  type Input = ProcessSpawnInput
   type Output = ProcessSpawnOutput
   val io: ToolIO[ProcessSpawnInput, ProcessSpawnOutput] = ToolIO.derived[ProcessSpawnInput, ProcessSpawnOutput].withExamples(
-    ToolExample("Start tsc --watch",   ProcessSpawnInput(command = "tsc --watch --noEmit")),
-    ToolExample("Start a dev server",   ProcessSpawnInput(command = "npm run dev")),
-    ToolExample("Tail a log",           ProcessSpawnInput(command = "tail -F app.log"))
+    ToolExample("Start tsc --watch", ProcessSpawnInput(command = "tsc --watch --noEmit")),
+    ToolExample("Start a dev server", ProcessSpawnInput(command = "npm run dev")),
+    ToolExample("Tail a log", ProcessSpawnInput(command = "tail -F app.log"))
   )
 
   override val name = ToolName("process_spawn")
@@ -42,10 +42,10 @@ final class ProcessSpawnTool(registry: ProcessRegistry) extends Tool {
   private def executeOutput(input: ProcessSpawnInput, ctx: ToolContext): Task[ProcessSpawnOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       registry.spawn(
-        command        = input.command,
-        workingDir     = dir,
-        env            = input.env.getOrElse(Map.empty),
-        stdin          = input.stdin,
+        command = input.command,
+        workingDir = dir,
+        env = input.env.getOrElse(Map.empty),
+        stdin = input.stdin,
         conversationId = ctx.conversation.id
       ).map { handle =>
         ProcessSpawnOutput(handle = handle.id, pid = handle.pid, startedAt = handle.startedAt)

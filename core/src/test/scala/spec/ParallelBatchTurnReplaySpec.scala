@@ -53,13 +53,19 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
   private val anthropic: Provider =
     AnthropicProvider(apiKey = "sk-ant-test-placeholder", sigilRef = TestSigil)
 
-  /** The parallel pair emitted on iteration 1. */
+  /**
+   * The parallel pair emitted on iteration 1.
+   */
   private val batchProbes = List("alpha", "bravo")
 
-  /** How many iterations follow the batch before the agent responds. */
+  /**
+   * How many iterations follow the batch before the agent responds.
+   */
   private val followIterations = 3
 
-  /** A turn's script: what the model emits on iteration `n` (1-based). */
+  /**
+   * A turn's script: what the model emits on iteration `n` (1-based).
+   */
   private trait Script {
     def tool: Tool
     def resultTextFor(probe: String): String
@@ -67,7 +73,9 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
     def callEvent(cid: CallId, probe: String): ProviderEvent
   }
 
-  /** Batch once, then single fresh calls. */
+  /**
+   * Batch once, then single fresh calls.
+   */
   private object FreshFollowUps extends Script {
     val tool: Tool = ProbeReadTool
     def resultTextFor(probe: String): String = ProbeReadTool.resultTextFor(probe)
@@ -80,15 +88,16 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
       else Nil
   }
 
-  /** Batch, then the SAME batch again, iteration after iteration. */
+  /**
+   * Batch, then the SAME batch again, iteration after iteration.
+   */
   private object ReissuedBatch extends Script {
     val tool: Tool = CachedProbeReadTool
     def resultTextFor(probe: String): String = CachedProbeReadTool.resultTextFor(probe)
     def callEvent(cid: CallId, probe: String): ProviderEvent =
       ProviderEvent.toolCall(cid, CachedProbeReadTool)(ProbeReadInput(probe = probe))
     def emit(n: Int): List[(CallId, String)] =
-      if (n <= followIterations + 1) batchProbes.zipWithIndex.map { case (p, i) => CallId(s"batch-$n-$i") -> p }
-      else Nil
+      if (n <= followIterations + 1) batchProbes.zipWithIndex.map { case (p, i) => CallId(s"batch-$n-$i") -> p } else Nil
   }
 
   private class ScriptedProvider(script: Script, recorded: ConcurrentLinkedQueue[ProviderCall]) extends Provider {
@@ -114,7 +123,10 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
             Stream.emits(List(
               ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
               ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-                topicLabel = "Batch", topicSummary = "Parallel batch replay", content = "Done.", endsTurn = true)),
+                topicLabel = "Batch",
+                topicSummary = "Parallel batch replay",
+                content = "Done.",
+                endsTurn = true)),
               ProviderEvent.Done(StopReason.Complete)
             ))
           case calls =>
@@ -147,27 +159,29 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
     val task = for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId = TestUser,
-             conversationId = convId,
-             topicId = TestTopicEntry.id,
-             content = Vector(ResponseContent.Text("Run the probes and report back.")),
-             state = sigil.signal.EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Run the probes and report back.")),
+        state = sigil.signal.EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId, timeout = 90.seconds)
     } yield recorded.iterator().asScala.toList
     task.sync()
   }
 
-  /** Readable dump of one iteration's rendered prompt — the diagnosis
-    * when an assertion below fails. */
+  /**
+   * Readable dump of one iteration's rendered prompt — the diagnosis
+   * when an assertion below fails.
+   */
   private def dump(call: ProviderCall): String =
     call.messages.zipWithIndex.map {
-      case (ProviderMessage.System(c), i)         => f"$i%2d system     ${one(c).take(110)}"
-      case (ProviderMessage.User(blocks), i)      => f"$i%2d user       ${one(blocks.mkString(" ")).take(110)}"
+      case (ProviderMessage.System(c), i) => f"$i%2d system     ${one(c).take(110)}"
+      case (ProviderMessage.User(blocks), i) => f"$i%2d user       ${one(blocks.mkString(" ")).take(110)}"
       case (ProviderMessage.Assistant(c, tcs), i) =>
         f"$i%2d assistant  text='${one(c).take(40)}' calls=[${tcs.map(t => s"${t.id} ${t.name}${t.argsJson}").mkString(" | ")}]"
       case (ProviderMessage.ToolResult(id, c), i) => f"$i%2d result    $id -> ${one(c).take(110)}"
-      case (other, i)                             => f"$i%2d ${one(other.toString).take(110)}"
+      case (other, i) => f"$i%2d ${one(other.toString).take(110)}"
     }.mkString("\n")
 
   private def one(s: String): String = s.replace("\n", "\\n")
@@ -175,7 +189,9 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
   private def dumpAll(calls: List[ProviderCall]): String =
     calls.zipWithIndex.map { case (c, i) => s"--- iteration ${i + 1} ---\n${dump(c)}" }.mkString("\n")
 
-  /** Every (assistantIndex, callIds) pair carrying tool calls. */
+  /**
+   * Every (assistantIndex, callIds) pair carrying tool calls.
+   */
   private def callGroups(call: ProviderCall): Vector[(Int, List[String])] =
     call.messages.zipWithIndex.collect {
       case (a: ProviderMessage.Assistant, i) if a.toolCalls.nonEmpty => i -> a.toolCalls.map(_.id)
@@ -184,9 +200,11 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
   private def resultsAt(call: ProviderCall, from: Int, count: Int): Vector[String] =
     call.messages.slice(from, from + count).collect { case ProviderMessage.ToolResult(id, _) => id }
 
-  /** `[from, until)` over `call.messages` covering `ids` — from the
-    * message issuing the first of them through the last of their
-    * results. `None` when the batch isn't in this prompt. */
+  /**
+   * `[from, until)` over `call.messages` covering `ids` — from the
+   * message issuing the first of them through the last of their
+   * results. `None` when the batch isn't in this prompt.
+   */
   private def batchWindow(call: ProviderCall, ids: List[String]): Option[(Int, Int)] = {
     val issuing = callGroups(call).collect { case (at, called) if called.exists(ids.contains) => at }
     val answering = call.messages.zipWithIndex.collect {
@@ -196,12 +214,14 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
     else Some(issuing.min -> (answering.max + 1))
   }
 
-  /** The pipeline's own messages put through the strictest shipped wire
-    * renderer, so a shape only that contract rejects still surfaces. */
+  /**
+   * The pipeline's own messages put through the strictest shipped wire
+   * renderer, so a shape only that contract rejects still surfaces.
+   */
   private def anthropicMessages(call: ProviderCall): Vector[Json] = {
     val body = anthropic.httpRequestFor(call).sync().content match {
       case Some(c: spice.http.content.StringContent) => c.value
-      case _                                         => ""
+      case _ => ""
     }
     JsonParser(body).get("messages").map(_.asVector).getOrElse(Vector.empty)
   }
@@ -233,13 +253,12 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
 
     s"$name" should {
 
-      "run the scripted turn to completion" in {
+      "run the scripted turn to completion" in
         withClue(s"iterations recorded: ${calls.size}\n${dumpAll(calls)}\n") {
           calls.size should be >= (followIterations + 2)
         }
-      }
 
-      "pair every tool call with its result in the immediately-following messages, every iteration" in {
+      "pair every tool call with its result in the immediately-following messages, every iteration" in
         calls.zipWithIndex.foreach { case (call, idx) =>
           callGroups(call).foreach { case (at, ids) =>
             val answered = resultsAt(call, at + 1, ids.size)
@@ -248,9 +267,8 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
             }
           }
         }
-      }
 
-      "replay every call of the batch exactly once, in emission order" in {
+      "replay every call of the batch exactly once, in emission order" in
         calls.zipWithIndex.drop(1).foreach { case (call, idx) =>
           val issued = callGroups(call).flatMap(_._2)
           withClue(s"iteration ${idx + 1}: a call was replayed more than once — $issued\n${dump(call)}\n") {
@@ -261,9 +279,8 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
             issued shouldBe expected
           }
         }
-      }
 
-      "answer every call with its own probe's result and nothing framework-shaped" in {
+      "answer every call with its own probe's result and nothing framework-shaped" in
         calls.zipWithIndex.drop(1).foreach { case (call, idx) =>
           val byId = resultsById(call)
           val args = call.messages.collect { case a: ProviderMessage.Assistant => a.toolCalls }.flatten
@@ -281,9 +298,8 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
             }
           }
         }
-      }
 
-      "answer every tool_use in the immediately-following message on the Anthropic wire" in {
+      "answer every tool_use in the immediately-following message on the Anthropic wire" in
         // The pipeline's own frames, rendered by the strictest wire
         // contract that ships: Anthropic rejects an assistant turn whose
         // `tool_use` ids are not all answered by the very next message.
@@ -307,7 +323,6 @@ class ParallelBatchTurnReplaySpec extends AnyWordSpec with Matchers {
             allUseIds.distinct.size shouldBe allUseIds.size
           }
         }
-      }
 
       "serve a re-issued call the original's own result rather than re-running it" in {
         if (script == ReissuedBatch) {

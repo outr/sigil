@@ -53,10 +53,10 @@ class ClientToolSpec2 extends AsyncWordSpec with AsyncTaskSpec with Matchers {
                    description: String = "Open the ingredient editor panel for the given id.",
                    keywords: Set[String] = Set("ingredient", "editor", "panel", "open")): ClientToolSpec =
     ClientToolSpec(
-      name          = name,
-      description   = description,
-      keywords      = keywords,
-      inputSchema   = obj(
+      name = name,
+      description = description,
+      keywords = keywords,
+      inputSchema = obj(
         "type" -> str("object"),
         "properties" -> obj("id" -> obj("type" -> str("string"))),
         "required" -> arr(str("id"))
@@ -64,7 +64,8 @@ class ClientToolSpec2 extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       expectsResult = expectsResult
     )
 
-  private def recorder(viewer: sigil.participant.ParticipantId): (ConcurrentLinkedQueue[Signal], java.util.concurrent.atomic.AtomicBoolean) = {
+  private def recorder(viewer: sigil.participant.ParticipantId)
+    : (ConcurrentLinkedQueue[Signal], java.util.concurrent.atomic.AtomicBoolean) = {
     val q = new ConcurrentLinkedQueue[Signal]()
     val running = new java.util.concurrent.atomic.AtomicBoolean(true)
     TestSigil.signalsFor(viewer)
@@ -94,10 +95,10 @@ class ClientToolSpec2 extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def discovery(convId: Id[Conversation], keywords: String): DiscoveryRequest =
     DiscoveryRequest(
-      keywords       = keywords,
-      chain          = List(TestUser, TestAgent),
-      mode           = ConversationMode,
-      callerSpaces   = Set.empty,
+      keywords = keywords,
+      chain = List(TestUser, TestAgent),
+      mode = ConversationMode,
+      callerSpaces = Set.empty,
       conversationId = Some(convId)
     )
 
@@ -110,19 +111,19 @@ class ClientToolSpec2 extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         _ <- Task.sleep(150.millis)
         _ <- TestSigil.handleNotice(
-               RegisterClientTools(convId, sessionId = "tab-1", tools = List(spec("open_ingredient_editor"))),
-               TestUser)
+          RegisterClientTools(convId, sessionId = "tab-1", tools = List(spec("open_ingredient_editor"))),
+          TestUser)
         _ <- waitFor(5.seconds)(recorded.iterator().asScala.exists(_.isInstanceOf[ClientToolsRegistered]))
-        matches      <- TestSigil.findCapabilities(discovery(convId, "ingredient editor"))
+        matches <- TestSigil.findCapabilities(discovery(convId, "ingredient editor"))
         otherMatches <- TestSigil.findCapabilities(discovery(otherConv, "ingredient editor"))
-        resolved     <- TestSigil.resolveToolFor(convId, ToolName("open_ingredient_editor"))
-        elsewhere    <- TestSigil.resolveToolFor(otherConv, ToolName("open_ingredient_editor"))
+        resolved <- TestSigil.resolveToolFor(convId, ToolName("open_ingredient_editor"))
+        elsewhere <- TestSigil.resolveToolFor(otherConv, ToolName("open_ingredient_editor"))
       } yield {
         running.set(false)
         val ack = recorded.iterator().asScala.collectFirst { case a: ClientToolsRegistered => a }.get
         ack.accepted shouldBe List("open_ingredient_editor")
         ack.rejected shouldBe empty
-        matches.map(_.name) should contain ("open_ingredient_editor")
+        matches.map(_.name) should contain("open_ingredient_editor")
         otherMatches.map(_.name) should not contain "open_ingredient_editor"
         resolved.map(_.name.value) shouldBe Some("open_ingredient_editor")
         elsewhere shouldBe None
@@ -135,20 +136,23 @@ class ClientToolSpec2 extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         _ <- Task.sleep(150.millis)
         _ <- TestSigil.handleNotice(
-               RegisterClientTools(convId, sessionId = "tab-1", tools = List(
-                 spec("respond"),
-                 spec("Bad-Name!"),
-                 spec("open_settings")
-               )),
-               TestUser)
+          RegisterClientTools(
+            convId,
+            sessionId = "tab-1",
+            tools = List(
+              spec("respond"),
+              spec("Bad-Name!"),
+              spec("open_settings")
+            )),
+          TestUser)
         _ <- waitFor(5.seconds)(recorded.iterator().asScala.exists(_.isInstanceOf[ClientToolsRegistered]))
       } yield {
         running.set(false)
         val ack = recorded.iterator().asScala.collectFirst { case a: ClientToolsRegistered => a }.get
         ack.accepted shouldBe List("open_settings")
         ack.rejected.keySet shouldBe Set("respond", "Bad-Name!")
-        ack.rejected("respond") should include ("collides")
-        ack.rejected("Bad-Name!") should include ("invalid name")
+        ack.rejected("respond") should include("collides")
+        ack.rejected("Bad-Name!") should include("invalid name")
       }
     }
   }
@@ -164,7 +168,7 @@ class ClientToolSpec2 extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       } yield {
         val settle = signals.collect { case d: ToolDelta => d }.find(_.state.contains(EventState.Complete)).get
         settle.outcome shouldBe Some(ToolOutcome.Success)
-        settle.output.map(_.toString).getOrElse("") should include ("Dispatched")
+        settle.output.map(_.toString).getOrElse("") should include("Dispatched")
       }
     }
 
@@ -182,7 +186,7 @@ class ClientToolSpec2 extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       } yield {
         val settle = signals.collect { case d: ToolDelta => d }.find(_.state.contains(EventState.Complete)).get
         settle.outcome shouldBe Some(ToolOutcome.Success)
-        settle.output.map(_.toString).getOrElse("") should include ("bacopa selected")
+        settle.output.map(_.toString).getOrElse("") should include("bacopa selected")
       }
     }
 
@@ -200,7 +204,7 @@ class ClientToolSpec2 extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         val settle = signals.collect { case d: ToolDelta => d }.find(_.state.contains(EventState.Complete)).get
         settle.outcome match {
           case Some(ToolOutcome.Failure(reason, recoverable)) =>
-            reason should include ("screen not mounted")
+            reason should include("screen not mounted")
             recoverable shouldBe true
           case other => fail(s"expected recoverable Failure, got $other")
         }
@@ -218,7 +222,7 @@ class ClientToolSpec2 extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         val settle = signals.collect { case d: ToolDelta => d }.find(_.state.contains(EventState.Complete)).get
         settle.outcome match {
           case Some(ToolOutcome.Failure(reason, recoverable)) =>
-            reason should include ("did not answer")
+            reason should include("did not answer")
             recoverable shouldBe true
           case other => fail(s"expected recoverable Failure, got $other")
         }
@@ -233,11 +237,12 @@ class ClientToolSpec2 extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         _ <- TestSigil.clientTools.register(convId, "tab-1", List(spec("open_ingredient_editor"), spec("open_settings")))
         _ <- TestSigil.handleNotice(
-               UnregisterClientTools(convId, "tab-1", names = Some(Set("open_settings"))), TestUser)
+          UnregisterClientTools(convId, "tab-1", names = Some(Set("open_settings"))),
+          TestUser)
         afterPartial <- TestSigil.resolveToolFor(convId, ToolName("open_settings"))
-        stillLive    <- TestSigil.resolveToolFor(convId, ToolName("open_ingredient_editor"))
+        stillLive <- TestSigil.resolveToolFor(convId, ToolName("open_ingredient_editor"))
         _ <- TestSigil.clientTools.deregisterSession("tab-1")
-        afterDetach  <- TestSigil.resolveToolFor(convId, ToolName("open_ingredient_editor"))
+        afterDetach <- TestSigil.resolveToolFor(convId, ToolName("open_ingredient_editor"))
       } yield {
         afterPartial shouldBe None
         stillLive should not be None
@@ -256,7 +261,7 @@ class ClientToolSpec2 extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         val settle = signals.collect { case d: ToolDelta => d }.find(_.state.contains(EventState.Complete)).get
         settle.outcome match {
           case Some(ToolOutcome.Failure(reason, recoverable)) =>
-            reason should include ("no longer connected")
+            reason should include("no longer connected")
             recoverable shouldBe true
           case other => fail(s"expected recoverable Failure, got $other")
         }

@@ -21,8 +21,10 @@ import scala.concurrent.duration.*
 case class MemoryAccessFlushTask(override val interval: FiniteDuration) extends MaintenanceTask {
   override def name: String = "memory-access-flush"
 
-  /** Nothing has been retrieved at boot — the first drain waits a full
-    * interval rather than opening a transaction for an empty map. */
+  /**
+   * Nothing has been retrieved at boot — the first drain waits a full
+   * interval rather than opening a transaction for an empty map.
+   */
   override def runImmediatelyOnStart: Boolean = false
 
   override def runOnce(host: Sigil): Task[Unit] = host.flushMemoryAccesses.unit

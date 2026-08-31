@@ -12,14 +12,20 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, TurnPlan, UpsertMemoryResult}
+import sigil.conversation.{
+  ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource,
+  MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput,
+  TurnPlan, UpsertMemoryResult
+}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.governor.{BudgetDirective, BudgetGovernor, CheckpointIntervention, GovernorContext}
-import sigil.governor.{DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
-  ProgressGovernor, TurnDecisionGovernor, TurnGovernor}
+import sigil.governor.{
+  DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
+  ProgressGovernor, TurnDecisionGovernor, TurnGovernor
+}
 import sigil.transport.SignalTransport
 
 import java.nio.file.Path
@@ -28,18 +34,28 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.{GenerationSettings, TokenUsage}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
+import sigil.event.{
+  AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange,
+  TopicChangeKind
+}
 import sigil.role.Role
 import sigil.orchestrator.{BudgetScope, Directive, Orchestrator}
 import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
-import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform}
+import sigil.pipeline.{
+  ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect,
+  MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub,
+  TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform
+}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.provider.{ContextSection, ContextSections, InstructionTier, ModelProfile, PromptShape, Reliability, ResolvedReferences}
 import sigil.service.Service
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
+import sigil.signal.{
+  AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal,
+  ToolDelta, TopicDelta
+}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
@@ -50,7 +66,6 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, V
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
-
 
 /**
  * Topic-stack cluster — the conversation's subject history and the
@@ -65,18 +80,19 @@ import java.util.concurrent.atomic.AtomicReference
  */
 trait TopicOps { this: Sigil =>
 
-  /** Update Conversation.topics in response to a settled TopicChange.
-    *
-    * For Switch: the change carries the post-transition topicId; we
-    * either push a fresh entry or truncate the stack back to a matching
-    * entry already present.
-    *
-    * For Rename: walk the stack and update label + summary on every
-    * entry whose id matches the renamed topic (typically just the active
-    * one). The Topic record itself is updated separately by the
-    * orchestrator before publishing.
-    */
-  private[sigil] final def applyTopicChangeToStack(tc: TopicChange): Task[Unit] =
+  /**
+   * Update Conversation.topics in response to a settled TopicChange.
+   *
+   * For Switch: the change carries the post-transition topicId; we
+   * either push a fresh entry or truncate the stack back to a matching
+   * entry already present.
+   *
+   * For Rename: walk the stack and update label + summary on every
+   * entry whose id matches the renamed topic (typically just the active
+   * one). The Topic record itself is updated separately by the
+   * orchestrator before publishing.
+   */
+  final private[sigil] def applyTopicChangeToStack(tc: TopicChange): Task[Unit] =
     withDB(_.conversations.transaction(_.modify(tc.conversationId) {
       case None => Task.pure(None)
       case Some(conv) =>
@@ -93,7 +109,7 @@ trait TopicOps { this: Sigil =>
                 conv.topics :+ TopicEntry(
                   id = tc.topicId,
                   label = tc.newLabel,
-                  summary = ""  // populated below from the Topic record
+                  summary = "" // populated below from the Topic record
                 )
               }
             // If we appended a stub, fetch the Topic record to fill summary.
@@ -101,7 +117,7 @@ trait TopicOps { this: Sigil =>
               if (existingIdx >= 0) Task.pure(nextStack)
               else withDB(_.topics.transaction(_.get(tc.topicId))).map {
                 case Some(t) => nextStack.init :+ TopicEntry(t._id, t.label, t.summary)
-                case None    => nextStack
+                case None => nextStack
               }
             withSummary.map { stack =>
               if (stack == conv.topics) Some(conv)
@@ -141,14 +157,21 @@ trait TopicOps { this: Sigil =>
    * If the classifier call fails (provider error, no tool call), falls
    * back to `NoChange` — the safe default that preserves state.
    */
-  /** Topic labels the classifier should NEVER match against as
-    * "<prior label>" — generic catch-alls (agent's own name, app
-    * name, "Greeting", "Initial setup", "Chat", "Help") that
-    * would otherwise pull every subsequent turn back to them via
-    * the prior-match path. Apps that brand the agent override and
-    * include the agent's display name. */
+  /**
+   * Topic labels the classifier should NEVER match against as
+   * "<prior label>" — generic catch-alls (agent's own name, app
+   * name, "Greeting", "Initial setup", "Chat", "Help") that
+   * would otherwise pull every subsequent turn back to them via
+   * the prior-match path. Apps that brand the agent override and
+   * include the agent's display name.
+   */
   def reservedTopicLabels: Set[String] = Set(
-    "greeting", "initial setup", "chat", "help", "assistant", "conversation"
+    "greeting",
+    "initial setup",
+    "chat",
+    "help",
+    "assistant",
+    "conversation"
   )
 
   def classifyTopicShift(modelId: Id[Model],
@@ -237,7 +260,7 @@ trait TopicOps { this: Sigil =>
     // classification.
     val resolveClassifierModel = conversationId match {
       case Some(cid) => auxModelFor(cid, tool.consultWorkType, chain, modelId)
-      case None      => routedModelFor(tool.consultWorkType, chain, modelId)
+      case None => routedModelFor(tool.consultWorkType, chain, modelId)
     }
     resolveClassifierModel.flatMap { routedModelId =>
       val classifierSettings = {
@@ -256,31 +279,31 @@ trait TopicOps { this: Sigil =>
       )
     }.flatMap {
       case sigil.tool.consult.ConsultOutcome.Parsed(input) => Task.pure(input.kind match {
-        case "NoChange" => TopicShiftResult.NoChange
-        case "Refine"   => TopicShiftResult.Refine
-        case "New"      => TopicShiftResult.New
-        case other      =>
-          // Bug #92 — defensive validator. If the classifier returns
-          // a reserved label (agent name etc.) it must NOT be a Return
-          // target even when it accidentally matches a persisted prior;
-          // force `New` and log so future drift is observable.
-          if (reservedLowered.contains(other.toLowerCase)) {
-            scribe.warn(s"classifyTopicShift: model returned reserved label '$other' as kind — forcing New")
-            TopicShiftResult.New
-          } else {
-            // Bug #89 — Return must hit a prior that survived the
-            // reserved-label filter. If somehow the classifier
-            // returned a label that was filtered out (or never
-            // existed), fall back to "New" rather than NoChange so
-            // the new topic actually gets recorded.
-            filteredPriors.find(_.label == other)
-              .map(TopicShiftResult.Return(_))
-              .getOrElse {
-                scribe.warn(s"classifyTopicShift: out-of-enum kind '$other' (priors=${filteredPriors.map(_.label).mkString(",")}) — falling back to New")
-                TopicShiftResult.New
-              }
-          }
-      })
+          case "NoChange" => TopicShiftResult.NoChange
+          case "Refine" => TopicShiftResult.Refine
+          case "New" => TopicShiftResult.New
+          case other =>
+            // Bug #92 — defensive validator. If the classifier returns
+            // a reserved label (agent name etc.) it must NOT be a Return
+            // target even when it accidentally matches a persisted prior;
+            // force `New` and log so future drift is observable.
+            if (reservedLowered.contains(other.toLowerCase)) {
+              scribe.warn(s"classifyTopicShift: model returned reserved label '$other' as kind — forcing New")
+              TopicShiftResult.New
+            } else {
+              // Bug #89 — Return must hit a prior that survived the
+              // reserved-label filter. If somehow the classifier
+              // returned a label that was filtered out (or never
+              // existed), fall back to "New" rather than NoChange so
+              // the new topic actually gets recorded.
+              filteredPriors.find(_.label == other)
+                .map(TopicShiftResult.Return(_))
+                .getOrElse {
+                  scribe.warn(s"classifyTopicShift: out-of-enum kind '$other' (priors=${filteredPriors.map(_.label).mkString(",")}) — falling back to New")
+                  TopicShiftResult.New
+                }
+            }
+        })
       // `NoOpinion` is a legitimate "model declined to call the tool";
       // default to NoChange silently. `Truncated` / `Failed` are
       // diagnostic events — surface a Failed FrameworkWorkflowNotice
@@ -310,19 +333,21 @@ trait TopicOps { this: Sigil =>
     }
   }
 
-  /** Surface a `ConsultOutcome.Truncated` / `Failed` from a framework-
-    * internal classifier consult as a [[sigil.signal.FrameworkWorkflowNotice]]
-    * with `Failed` phase. Wire subscribers (clients, dashboards) see
-    * the gap; operator logs get a scribe.warn with the same reason. */
-  private final def emitClassifierFailedNotice(workflowType: String,
+  /**
+   * Surface a `ConsultOutcome.Truncated` / `Failed` from a framework-
+   * internal classifier consult as a [[sigil.signal.FrameworkWorkflowNotice]]
+   * with `Failed` phase. Wire subscribers (clients, dashboards) see
+   * the gap; operator logs get a scribe.warn with the same reason.
+   */
+  final private def emitClassifierFailedNotice(workflowType: String,
                                                reason: String,
                                                startedMs: Long): Task[Unit] = {
     scribe.warn(s"$workflowType $reason")
     publish(sigil.signal.FrameworkWorkflowNotice(
-      workflowId    = java.util.UUID.randomUUID().toString,
-      workflowType  = workflowType,
-      phase         = sigil.signal.FrameworkWorkflowPhase.Failed(
-        reason     = reason,
+      workflowId = java.util.UUID.randomUUID().toString,
+      workflowType = workflowType,
+      phase = sigil.signal.FrameworkWorkflowPhase.Failed(
+        reason = reason,
         durationMs = System.currentTimeMillis() - startedMs
       )
     )).handleError(_ => Task.unit)
@@ -365,7 +390,7 @@ trait TopicOps { this: Sigil =>
                         previousTopics: List[TopicEntry],
                         modelId: Id[Model],
                         chain: List[ParticipantId],
-                        userMessage: String): Task[List[Event]] = {
+                        userMessage: String): Task[List[Event]] =
     if (proposedLabel.equalsIgnoreCase(currentTopic.label)) Task.pure(Nil)
     else previousTopics.find(_.label.equalsIgnoreCase(proposedLabel)) match {
       case Some(prior) =>
@@ -380,16 +405,22 @@ trait TopicOps { this: Sigil =>
         // resolveRenameTopic.
         resolveRenameTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
       case None =>
-        classifyTopicShift(modelId, chain, currentTopic, previousTopics, proposedLabel, proposedSummary, userMessage,
-                           conversationId = Some(conversation._id)).flatMap {
-          case TopicShiftResult.NoChange       => Task.pure(Nil)
-          case TopicShiftResult.Refine         => resolveRenameTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
-          case TopicShiftResult.New            => resolveNewTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
-          case TopicShiftResult.Return(prior)  =>
+        classifyTopicShift(
+          modelId,
+          chain,
+          currentTopic,
+          previousTopics,
+          proposedLabel,
+          proposedSummary,
+          userMessage,
+          conversationId = Some(conversation._id)).flatMap {
+          case TopicShiftResult.NoChange => Task.pure(Nil)
+          case TopicShiftResult.Refine => resolveRenameTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
+          case TopicShiftResult.New => resolveNewTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
+          case TopicShiftResult.Return(prior) =>
             Task.pure(List(buildSwitch(caller, conversation._id, currentTopic.id, prior.id, prior.label, prior.summary)))
         }
     }
-  }
 
   private def buildSwitch(caller: ParticipantId,
                           convId: Id[Conversation],
@@ -398,12 +429,12 @@ trait TopicOps { this: Sigil =>
                           newLabel: String,
                           newSummary: String): TopicChange =
     TopicChange(
-      kind           = TopicChangeKind.Switch(previousTopicId = previousTopicId),
-      newLabel       = newLabel,
-      newSummary     = newSummary,
-      participantId  = caller,
+      kind = TopicChangeKind.Switch(previousTopicId = previousTopicId),
+      newLabel = newLabel,
+      newSummary = newSummary,
+      participantId = caller,
       conversationId = convId,
-      topicId        = newTopicId
+      topicId = newTopicId
     )
 
   private def resolveNewTopic(proposedLabel: String,
@@ -413,9 +444,9 @@ trait TopicOps { this: Sigil =>
                               previousTopicId: Id[Topic]): Task[List[Event]] = {
     val created = Topic(
       conversationId = conversation._id,
-      label          = proposedLabel,
-      summary        = proposedSummary,
-      createdBy      = caller
+      label = proposedLabel,
+      summary = proposedSummary,
+      createdBy = caller
     )
     withDB(_.topics.transaction(_.upsert(created))).map { stored =>
       List(buildSwitch(caller, conversation._id, previousTopicId, stored._id, stored.label, stored.summary))
@@ -428,39 +459,41 @@ trait TopicOps { this: Sigil =>
                                  conversation: Conversation,
                                  currentTopicId: Id[Topic]): Task[List[Event]] =
     withDB(_.topics.transaction(_.get(currentTopicId))).flatMap {
-      case None                                  => Task.pure(Nil)
-      case Some(current) if current.labelLocked  => Task.pure(Nil)
-      case Some(current)                         =>
+      case None => Task.pure(Nil)
+      case Some(current) if current.labelLocked => Task.pure(Nil)
+      case Some(current) =>
         val renamed = current.copy(label = proposedLabel, summary = proposedSummary, modified = Timestamp())
         withDB(_.topics.transaction(_.upsert(renamed))).map { _ =>
           List(TopicChange(
-            kind           = TopicChangeKind.Rename(previousLabel = current.label),
-            newLabel       = proposedLabel,
-            newSummary     = proposedSummary,
-            participantId  = caller,
+            kind = TopicChangeKind.Rename(previousLabel = current.label),
+            newLabel = proposedLabel,
+            newSummary = proposedSummary,
+            participantId = caller,
             conversationId = conversation._id,
-            topicId        = current._id
+            topicId = current._id
           ))
         }
     }
 
-  /** Persist the agent's per-turn keyword push (from `RespondInput.keywords`)
-    * onto the conversation as `currentKeywords`. The non-critical memory
-    * retriever reads this on the next turn — no event is emitted because
-    * the keywords are turn-state, not durable history. Empty input is a
-    * no-op so the agent isn't forced to push a list it doesn't have.
-    *
-    * Called from both [[sigil.tool.core.RespondTool]] and
-    * [[sigil.orchestrator.Orchestrator]]'s streaming-respond branch so
-    * the keyword side effect fires regardless of which respond path
-    * materialised. */
+  /**
+   * Persist the agent's per-turn keyword push (from `RespondInput.keywords`)
+   * onto the conversation as `currentKeywords`. The non-critical memory
+   * retriever reads this on the next turn — no event is emitted because
+   * the keywords are turn-state, not durable history. Empty input is a
+   * no-op so the agent isn't forced to push a list it doesn't have.
+   *
+   * Called from both [[sigil.tool.core.RespondTool]] and
+   * [[sigil.orchestrator.Orchestrator]]'s streaming-respond branch so
+   * the keyword side effect fires regardless of which respond path
+   * materialised.
+   */
   def updateConversationKeywords(conversationId: Id[Conversation],
                                  keywords: List[String]): Task[Unit] = {
     val cleaned = keywords.iterator.map(_.trim).filter(_.nonEmpty).toVector.distinct
     if (cleaned.isEmpty) Task.unit
     else withDB(_.conversations.transaction(_.modify(conversationId) {
       case Some(c) => Task.pure(Some(c.copy(currentKeywords = cleaned, modified = Timestamp())))
-      case None    => Task.pure(None)
+      case None => Task.pure(None)
     })).unit
   }
 

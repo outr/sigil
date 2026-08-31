@@ -40,9 +40,11 @@ class ThinkingChunkEmissionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "Going with a friendly reply."
   )
 
-  /** Stub provider that streams reasoning chunks then a single
-    * atomic `respond` tool call. Mirrors the llama.cpp / Kimi-with-
-    * `reasoning_mode=on` shape that motivated the bug. */
+  /**
+   * Stub provider that streams reasoning chunks then a single
+   * atomic `respond` tool call. Mirrors the llama.cpp / Kimi-with-
+   * `reasoning_mode=on` shape that motivated the bug.
+   */
   private class ReasoningThenRespondProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -54,7 +56,11 @@ class ThinkingChunkEmissionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val thinking = reasoningChunks.map(t => ProviderEvent.ThinkingDelta(t): ProviderEvent)
       val toolFlow: List[ProviderEvent] = List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Greeting", topicSummary = "User greeted the agent", content = "Hi there!", endsTurn = true)),
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
+          topicLabel = "Greeting",
+          topicSummary = "User greeted the agent",
+          content = "Hi there!",
+          endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       )
       Stream.emits(thinking ::: toolFlow)
@@ -64,23 +70,25 @@ class ThinkingChunkEmissionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private val convId: Id[Conversation] = Conversation.id("thinking-chunk-conv")
   private val conv: Conversation = Conversation(topics = TestTopicStack, _id = convId)
   private val request: ConversationRequest = ConversationRequest(
-    conversationId     = convId,
-    model            = TestSigil.testModel(modelId),
-    instructions       = Instructions(),
-    turnInput          = TurnInput(conversationId = convId),
-    currentMode        = ConversationMode,
-    currentTopic       = TestTopicEntry,
-    previousTopics     = Nil,
+    conversationId = convId,
+    model = TestSigil.testModel(modelId),
+    instructions = Instructions(),
+    turnInput = TurnInput(conversationId = convId),
+    currentMode = ConversationMode,
+    currentTopic = TestTopicEntry,
+    previousTopics = Nil,
     generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-    chain              = List(TestUser, TestAgent),
-    tools              = Vector(RespondTool)
+    chain = List(TestUser, TestAgent),
+    tools = Vector(RespondTool)
   )
 
-  /** Run one turn end-to-end and apply every Signal to `SigilDB` so
-    * the persistence + replay assertions exercise the same path the
-    * framework runs in production. `SigilDB.apply` no-ops on Notice
-    * (Notices are transient — `Sigil.publish` skips persistence for
-    * them), so ThinkingChunks pass through without writing rows. */
+  /**
+   * Run one turn end-to-end and apply every Signal to `SigilDB` so
+   * the persistence + replay assertions exercise the same path the
+   * framework runs in production. `SigilDB.apply` no-ops on Notice
+   * (Notices are transient — `Sigil.publish` skips persistence for
+   * them), so ThinkingChunks pass through without writing rows.
+   */
   private def runAndPersist(): Task[List[Signal]] =
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
@@ -92,7 +100,7 @@ class ThinkingChunkEmissionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   "ThinkingChunkEmissionSpec" should {
 
-    "emit one ThinkingChunk per ProviderEvent.ThinkingDelta, all sharing the same target id" in {
+    "emit one ThinkingChunk per ProviderEvent.ThinkingDelta, all sharing the same target id" in
       runAndPersist().map { signals =>
         val chunks = signals.collect { case t: ThinkingChunk => t }
         chunks should have size reasoningChunks.size
@@ -100,9 +108,8 @@ class ThinkingChunkEmissionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         chunks.map(_.conversationId).distinct shouldBe List(convId)
         chunks.map(_.target).distinct should have size 1
       }
-    }
 
-    "match the eventual settled Message's id" in {
+    "match the eventual settled Message's id" in
       runAndPersist().map { signals =>
         val chunks = signals.collect { case t: ThinkingChunk => t }
         chunks should not be empty
@@ -112,7 +119,6 @@ class ThinkingChunkEmissionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         agentMessages should have size 1
         chunks.map(_.target).distinct shouldBe List(agentMessages.head._id)
       }
-    }
 
     "not appear in SignalTransport.replay (Notice semantics — transient, no replay)" in {
       val transport = new SignalTransport(TestSigil)

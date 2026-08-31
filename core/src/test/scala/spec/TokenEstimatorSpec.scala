@@ -24,7 +24,12 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
       val callId = Id[Event]()
       val frames: Vector[ContextFrame] = Vector(
         ContextFrame.Text("hello world", TestUser, Id[Event]()),
-        ContextFrame.ToolCall(ToolName("respond"), """{"text":"hi"}""", callId, TestAgent, callId,
+        ContextFrame.ToolCall(
+          ToolName("respond"),
+          """{"text":"hi"}""",
+          callId,
+          TestAgent,
+          callId,
           state = ToolCallState.Complete("ok"))
       )
       val total = TokenEstimator.estimateFrames(frames, HeuristicTokenizer)
@@ -41,7 +46,8 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
         fact = "x" * 400,
         label = "Test directive",
         summary = "y" * 40,
-        source = MemorySource.Explicit, pinned = true,
+        source = MemorySource.Explicit,
+        pinned = true,
         spaceId = GlobalSpace
       )
       // Summary is required by type but the renderer falls back to
@@ -51,7 +57,8 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
         fact = "x" * 400,
         label = "Test directive",
         summary = "",
-        source = MemorySource.Explicit, pinned = true,
+        source = MemorySource.Explicit,
+        pinned = true,
         spaceId = GlobalSpace
       )
       val withTokens = TokenEstimator.estimateMemories(Vector(withSummary), HeuristicTokenizer)
@@ -59,8 +66,9 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
       withTokens should be < withoutTokens
       // The estimate counts what renders: the section heading plus each
       // memory's bullet line — not the bare summary string.
-      withTokens shouldBe (HeuristicTokenizer.count(ContextSections.MemoriesHeader) +
-        HeuristicTokenizer.count(ContextSections.memoryLine(withSummary)))
+      withTokens shouldBe
+        (HeuristicTokenizer.count(ContextSections.MemoriesHeader) +
+          HeuristicTokenizer.count(ContextSections.memoryLine(withSummary)))
       withTokens should be > HeuristicTokenizer.count(withSummary.summary)
     }
 
@@ -74,7 +82,8 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
         label = "Test directive",
         summary = "y" * 40,
         key = Some("pinned-key"),
-        source = MemorySource.Explicit, pinned = true,
+        source = MemorySource.Explicit,
+        pinned = true,
         spaceId = GlobalSpace
       )
       // A keyless elided memory carries a handle too (via its record
@@ -95,16 +104,18 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
       val total = TokenEstimator.estimateSummaries(Vector(s1, s2), HeuristicTokenizer)
       val bareText = HeuristicTokenizer.count(s1.text) + HeuristicTokenizer.count(s2.text)
       total should be > bareText
-      total shouldBe (HeuristicTokenizer.count(ContextSections.SummariesHeader) +
-        HeuristicTokenizer.count(ContextSections.SummariesFooter) +
-        HeuristicTokenizer.count(ContextSections.summaryLine(s1)) +
-        HeuristicTokenizer.count(ContextSections.summaryLine(s2)))
+      total shouldBe
+        (HeuristicTokenizer.count(ContextSections.SummariesHeader) +
+          HeuristicTokenizer.count(ContextSections.SummariesFooter) +
+          HeuristicTokenizer.count(ContextSections.summaryLine(s1)) +
+          HeuristicTokenizer.count(ContextSections.summaryLine(s2)))
     }
 
     "count the reload_content handle a covering summary renders" in {
       val bare = ContextSummary(text = "abcd" * 10, conversationId = Id("conv"), tokenEstimate = 0)
       val covering = bare.copy(coversEventIds = List(Id[Event]("e1"), Id[Event]("e2")))
-      TokenEstimator.estimateSummaries(Vector(covering), HeuristicTokenizer) should be >
+      TokenEstimator.estimateSummaries(Vector(covering), HeuristicTokenizer) should
+        be >
         TokenEstimator.estimateSummaries(Vector(bare), HeuristicTokenizer)
     }
 

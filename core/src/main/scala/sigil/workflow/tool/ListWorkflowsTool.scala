@@ -3,7 +3,9 @@ package sigil.workflow.tool
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 case class ListWorkflowsInput(tag: Option[String] = None) extends ToolInput derives RW
 
@@ -13,7 +15,7 @@ case class ListWorkflowsInput(tag: Option[String] = None) extends ToolInput deri
  * (optional) narrows to templates carrying a matching tag.
  */
 final class ListWorkflowsTool extends Tool with WorkflowToolSupport {
-  type Input  = ListWorkflowsInput
+  type Input = ListWorkflowsInput
   type Output = ListWorkflowsOutput
   val io: ToolIO[ListWorkflowsInput, ListWorkflowsOutput] = ToolIO.derived[ListWorkflowsInput, ListWorkflowsOutput].withExamples(
     ToolExample("list every visible workflow", ListWorkflowsInput()),
@@ -47,10 +49,10 @@ final class ListWorkflowsTool extends Tool with WorkflowToolSupport {
             .filter(t => input.tag.forall(t.tags.contains))
         } yield ToolResult.success(ListWorkflowsOutput(filtered.map { t =>
           WorkflowSummary(
-            workflowId  = t._id.value,
-            name        = t.name,
-            enabled     = t.enabled,
-            stepCount   = t.steps.size,
+            workflowId = t._id.value,
+            name = t.name,
+            enabled = t.enabled,
+            stepCount = t.steps.size,
             description = t.description
           )
         }))

@@ -40,9 +40,11 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
 
   private val modelId: Id[Model] = Model.id("test", "max-tokens-truncation")
 
-  /** Provider that emits a `ToolCallStart` and then settles with
-    * `Done(StopReason.MaxTokens)` while the call is still open —
-    * exactly the wire-log scenario. */
+  /**
+   * Provider that emits a `ToolCallStart` and then settles with
+   * `Done(StopReason.MaxTokens)` while the call is still open —
+   * exactly the wire-log scenario.
+   */
   private class TruncatedArgsProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -59,9 +61,11 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
     }
   }
 
-  /** Sanity-control provider: same Done(MaxTokens) but no in-flight
-    * tool call. The truncation diagnostic must NOT fire here — it's
-    * scoped to orphaned calls only. */
+  /**
+   * Sanity-control provider: same Done(MaxTokens) but no in-flight
+   * tool call. The truncation diagnostic must NOT fire here — it's
+   * scoped to orphaned calls only.
+   */
   private class IdleMaxTokensProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -76,26 +80,26 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
     val convId = Conversation.id(s"max-tokens-trunc-$suffix")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector(RespondTool)
+      chain = List(TestUser, TestAgent),
+      tools = Vector(RespondTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator on Done(MaxTokens) with an in-flight tool call" should {
 
-    "emit a settling ToolDelta with Failure outcome diagnosing args-truncation" in {
+    "emit a settling ToolDelta with Failure outcome diagnosing args-truncation" in
       runWith(new TruncatedArgsProvider, suffix = "truncation").map { signals =>
         val invoke = signals.collectFirst { case t: ToolInvoke => t }
           .getOrElse(fail("Expected a ToolInvoke for the orphaned call"))
@@ -111,17 +115,16 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
         terminalDelta.input shouldBe None
         terminalDelta.outcome match {
           case Some(ToolOutcome.Failure(reason, recoverable)) =>
-            reason should include ("lsp_did_change")
-            reason should include ("max_tokens")
-            reason should include ("arguments never fully arrived")
+            reason should include("lsp_did_change")
+            reason should include("max_tokens")
+            reason should include("arguments never fully arrived")
             recoverable shouldBe true
           case other =>
             fail(s"Expected ToolOutcome.Failure; saw $other")
         }
       }
-    }
 
-    "NOT emit the misleading 'tool emitted no MessageRole.Tool event' framework error" in {
+    "NOT emit the misleading 'tool emitted no MessageRole.Tool event' framework error" in
       // The settled invoke closes the function_call ↔ function_call_output
       // pair via its own outcome; the frame renderer no longer needs
       // to synthesize its "please report it" placeholder.
@@ -133,16 +136,15 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
           case d: ToolDelta =>
             d.outcome match {
               case Some(ToolOutcome.Failure(reason, _)) => reason
-              case _                                    => d.summary.getOrElse("")
+              case _ => d.summary.getOrElse("")
             }
           case _ => ""
         }
         all(anyTextMentions) should not include "please report it"
         all(anyTextMentions) should not include "tool's executeTyped"
       }
-    }
 
-    "NOT emit a truncation diagnostic when Done(MaxTokens) fires with no in-flight call" in {
+    "NOT emit a truncation diagnostic when Done(MaxTokens) fires with no in-flight call" in
       runWith(new IdleMaxTokensProvider, suffix = "idle-max").map { signals =>
         // No orphan-settling Failure deltas should land — there's no
         // orphan invoke to settle. The degenerate-content path (which
@@ -153,7 +155,6 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
         }
         failureDeltas shouldBe empty
       }
-    }
   }
 
   "tear down" should {

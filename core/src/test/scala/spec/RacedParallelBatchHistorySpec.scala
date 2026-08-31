@@ -53,27 +53,37 @@ class RacedParallelBatchHistorySpec extends AnyWordSpec with Matchers {
   private val modelId: Id[Model] = Model.id("test", "raced-batch")
   TestSigil.testModel(modelId)
 
-  /** The parallel batch emitted on iteration 1, slowest last. */
+  /**
+   * The parallel batch emitted on iteration 1, slowest last.
+   */
   private val batchProbes = List("alpha", "bravo", "charlie")
 
-  /** Staggered so at least one sibling settles well after the first —
-    * the timing an instant-settling fixture never produces. */
+  /**
+   * Staggered so at least one sibling settles well after the first —
+   * the timing an instant-settling fixture never produces.
+   */
   private val batchDelays: Map[String, FiniteDuration] =
     Map("bravo" -> 250.millis, "charlie" -> 600.millis)
 
   private val followProbes = List("delta", "epsilon", "zeta")
 
-  /** The framework's marker for a result that has not landed yet. */
+  /**
+   * The framework's marker for a result that has not landed yet.
+   */
   private val RacePlaceholder = "result did not reach this turn"
 
   private trait Script {
 
-    /** Calls emitted on iteration `n` (1-based); empty means respond. */
+    /**
+     * Calls emitted on iteration `n` (1-based); empty means respond.
+     */
     def emit(n: Int): List[(CallId, String)]
   }
 
-  /** Batch once, then a fresh single call per iteration. The turn keeps
-    * running, so the settled batch has to survive several more rounds. */
+  /**
+   * Batch once, then a fresh single call per iteration. The turn keeps
+   * running, so the settled batch has to survive several more rounds.
+   */
   private object FreshFollowUps extends Script {
     def emit(n: Int): List[(CallId, String)] =
       if (n == 1) batchProbes.zipWithIndex.map { case (p, i) => CallId(s"batch-$i") -> p }
@@ -81,13 +91,14 @@ class RacedParallelBatchHistorySpec extends AnyWordSpec with Matchers {
       else Nil
   }
 
-  /** Batch, then the SAME batch again, iteration after iteration —
-    * every repeat runs into the duplicate-call cap, and the last call
-    * of each response is the one the usage fold lands on. */
+  /**
+   * Batch, then the SAME batch again, iteration after iteration —
+   * every repeat runs into the duplicate-call cap, and the last call
+   * of each response is the one the usage fold lands on.
+   */
   private object ReissuedBatch extends Script {
     def emit(n: Int): List[(CallId, String)] =
-      if (n <= 4) batchProbes.zipWithIndex.map { case (p, i) => CallId(s"batch-$n-$i") -> p }
-      else Nil
+      if (n <= 4) batchProbes.zipWithIndex.map { case (p, i) => CallId(s"batch-$n-$i") -> p } else Nil
   }
 
   private class ScriptedProvider(script: Script, recorded: ConcurrentLinkedQueue[ProviderCall]) extends Provider {
@@ -112,14 +123,18 @@ class RacedParallelBatchHistorySpec extends AnyWordSpec with Matchers {
             Stream.emits(List(
               ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
               ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-                topicLabel = "Batch", topicSummary = "Raced parallel batch", content = "Done.", endsTurn = true)),
+                topicLabel = "Batch",
+                topicSummary = "Raced parallel batch",
+                content = "Done.",
+                endsTurn = true)),
               ProviderEvent.Done(StopReason.Complete)
             ))
           case calls =>
             // ONE completion carrying every call — the parallel batch —
             // closed by the usage report every shipped provider sends.
             Stream.emits(calls.flatMap { case (cid, probe) =>
-              List(ProviderEvent.ToolCallStart(cid, LiveProbeReadTool.name.value),
+              List(
+                ProviderEvent.ToolCallStart(cid, LiveProbeReadTool.name.value),
                 ProviderEvent.toolCall(cid, LiveProbeReadTool)(ProbeReadInput(probe = probe)))
             } ::: List(
               ProviderEvent.Usage(TokenUsage(promptTokens = 120, completionTokens = 24, totalTokens = 144)),
@@ -151,12 +166,12 @@ class RacedParallelBatchHistorySpec extends AnyWordSpec with Matchers {
     val task = for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId = TestUser,
-             conversationId = convId,
-             topicId = TestTopicEntry.id,
-             content = Vector(ResponseContent.Text("Read every probe and report back.")),
-             state = sigil.signal.EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Read every probe and report back.")),
+        state = sigil.signal.EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId, timeout = 120.seconds)
     } yield recorded.iterator().asScala.toList
     task.sync()
@@ -164,31 +179,37 @@ class RacedParallelBatchHistorySpec extends AnyWordSpec with Matchers {
 
   private def one(s: String): String = s.replace("\n", "\\n")
 
-  /** Readable dump of one iteration's rendered prompt — the diagnosis
-    * when an assertion below fails. */
+  /**
+   * Readable dump of one iteration's rendered prompt — the diagnosis
+   * when an assertion below fails.
+   */
   private def dump(call: ProviderCall): String =
     call.messages.zipWithIndex.map {
-      case (ProviderMessage.System(c), i)         => f"$i%2d system     ${one(c).take(110)}"
-      case (ProviderMessage.User(blocks), i)      => f"$i%2d user       ${one(blocks.mkString(" ")).take(110)}"
+      case (ProviderMessage.System(c), i) => f"$i%2d system     ${one(c).take(110)}"
+      case (ProviderMessage.User(blocks), i) => f"$i%2d user       ${one(blocks.mkString(" ")).take(110)}"
       case (ProviderMessage.Assistant(c, tcs), i) =>
         f"$i%2d assistant  text='${one(c).take(40)}' calls=[${tcs.map(t => s"${t.id} ${t.name}${t.argsJson}").mkString(" | ")}]"
       case (ProviderMessage.ToolResult(id, c), i) => f"$i%2d result    $id -> ${one(c).take(110)}"
-      case (other, i)                             => f"$i%2d ${one(other.toString).take(110)}"
+      case (other, i) => f"$i%2d ${one(other.toString).take(110)}"
     }.mkString("\n")
 
   private def dumpAll(calls: List[ProviderCall]): String =
     calls.zipWithIndex.map { case (c, i) => s"--- iteration ${i + 1} ---\n${dump(c)}" }.mkString("\n")
 
-  /** Every wire call id issued in this prompt, in order. */
+  /**
+   * Every wire call id issued in this prompt, in order.
+   */
   private def issuedIds(call: ProviderCall): Vector[String] =
     call.messages.collect { case a: ProviderMessage.Assistant => a.toolCalls.map(_.id) }.flatten
 
   private def resultsById(call: ProviderCall): Map[String, String] =
     call.messages.collect { case ProviderMessage.ToolResult(id, content) => id -> content }.toMap
 
-  /** `[from, until)` over `call.messages` covering `ids` — from the
-    * message issuing the first of them through the last of their
-    * results. `None` when the batch isn't in this prompt. */
+  /**
+   * `[from, until)` over `call.messages` covering `ids` — from the
+   * message issuing the first of them through the last of their
+   * results. `None` when the batch isn't in this prompt.
+   */
   private def batchWindow(call: ProviderCall, ids: List[String]): Option[(Int, Int)] = {
     val issuing = call.messages.zipWithIndex.collect {
       case (a: ProviderMessage.Assistant, at) if a.toolCalls.exists(t => ids.contains(t.id)) => at
@@ -204,11 +225,10 @@ class RacedParallelBatchHistorySpec extends AnyWordSpec with Matchers {
 
     s"$name" should {
 
-      "run the scripted turn to completion" in {
+      "run the scripted turn to completion" in
         withClue(s"iterations recorded: ${calls.size}\n${dumpAll(calls)}\n") {
           calls.size should be >= 3
         }
-      }
 
       "carry EVERY sibling of the batch on the first iteration that follows it" in {
         val batchIds = script.emit(1).map(_._1.value)
@@ -224,7 +244,7 @@ class RacedParallelBatchHistorySpec extends AnyWordSpec with Matchers {
         }
       }
 
-      "answer a call that settled with its own real result, never the race placeholder" in {
+      "answer a call that settled with its own real result, never the race placeholder" in
         calls.zipWithIndex.drop(1).foreach { case (call, idx) =>
           val args = call.messages.collect { case a: ProviderMessage.Assistant => a.toolCalls }.flatten
             .map(t => t.id -> t.argsJson).toMap
@@ -246,7 +266,6 @@ class RacedParallelBatchHistorySpec extends AnyWordSpec with Matchers {
             }
           }
         }
-      }
 
       "keep the settled batch byte-identical and in position however many iterations follow" in {
         val batchIds = script.emit(1).map(_._1.value)
@@ -267,7 +286,7 @@ class RacedParallelBatchHistorySpec extends AnyWordSpec with Matchers {
         }
       }
 
-      "never drop a pair it has already rendered" in {
+      "never drop a pair it has already rendered" in
         calls.zipWithIndex.drop(1).sliding(2).foreach {
           case Seq((earlier, ei), (later, li)) =>
             withClue(s"iteration ${li + 1} lost calls present in iteration ${ei + 1}\n" +
@@ -276,7 +295,6 @@ class RacedParallelBatchHistorySpec extends AnyWordSpec with Matchers {
             }
           case _ => ()
         }
-      }
     }
   }
 

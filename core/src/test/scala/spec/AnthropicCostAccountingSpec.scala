@@ -34,22 +34,26 @@ import sigil.provider.{CacheKeys, TokenUsage}
  */
 class AnthropicCostAccountingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Simulate the Anthropic-shape usage JSON the bug doc cites. */
+  /**
+   * Simulate the Anthropic-shape usage JSON the bug doc cites.
+   */
   private val bugDocUsageJson: Json = obj(
-    "input_tokens"                -> num(166),
+    "input_tokens" -> num(166),
     "cache_creation_input_tokens" -> num(44856),
-    "cache_read_input_tokens"     -> num(11633),
-    "output_tokens"               -> num(8000)
+    "cache_read_input_tokens" -> num(11633),
+    "output_tokens" -> num(8000)
   )
 
-  /** Haiku rates per OpenRouter (per-million USD; the per-token rate
-    * is the per-million number divided by 1,000,000). */
+  /**
+   * Haiku rates per OpenRouter (per-million USD; the per-token rate
+   * is the per-million number divided by 1,000,000).
+   */
   private val haikuPricing: ModelPricing = ModelPricing(
-    prompt          = BigDecimal("0.000001"),    // $1/M
-    completion      = BigDecimal("0.000005"),    // $5/M
-    webSearch       = None,
-    inputCacheRead  = Some(BigDecimal("0.0000001")),   // $0.10/M
-    inputCacheWrite = Some(BigDecimal("0.00000125"))   // $1.25/M
+    prompt = BigDecimal("0.000001"), // $1/M
+    completion = BigDecimal("0.000005"), // $5/M
+    webSearch = None,
+    inputCacheRead = Some(BigDecimal("0.0000001")), // $0.10/M
+    inputCacheWrite = Some(BigDecimal("0.00000125")) // $1.25/M
   )
 
   "Anthropic usage parsing (sigil #290)" should {
@@ -60,13 +64,15 @@ class AnthropicCostAccountingSpec extends AsyncWordSpec with AsyncTaskSpec with 
       // sum-merge per the framework contract). Mirrors the post-fix
       // shape AnthropicProvider produces.
       val base = TokenUsage.fromJson(
-        bugDocUsageJson, "input_tokens", "output_tokens",
+        bugDocUsageJson,
+        "input_tokens",
+        "output_tokens",
         cacheKeys = CacheKeys.Anthropic
       )
       val totalPrompt = base.promptTokens + base.cacheCreationTokens + base.cacheReadTokens
       val usage = base.copy(
         promptTokens = totalPrompt,
-        totalTokens  = totalPrompt + base.completionTokens
+        totalTokens = totalPrompt + base.completionTokens
       )
       // promptTokens is the sum (166 + 44856 + 11633 = 56655).
       usage.promptTokens shouldBe 56655
@@ -83,10 +89,10 @@ class AnthropicCostAccountingSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
     "match a hand-computed Haiku invoice for the bug doc's usage shape" in Task {
       val usage = TokenUsage(
-        promptTokens        = 166 + 44856 + 11633,
-        completionTokens    = 8000,
-        totalTokens         = 166 + 44856 + 11633 + 8000,
-        cacheReadTokens     = 11633,
+        promptTokens = 166 + 44856 + 11633,
+        completionTokens = 8000,
+        totalTokens = 166 + 44856 + 11633 + 8000,
+        cacheReadTokens = 11633,
         cacheCreationTokens = 44856
       )
       val cost = Sigil.costFor(haikuPricing, usage)
@@ -103,9 +109,9 @@ class AnthropicCostAccountingSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
     "collapse to the legacy fresh-only formula when both cache fields are zero" in Task {
       val freshOnlyUsage = TokenUsage(
-        promptTokens     = 5000,
+        promptTokens = 5000,
         completionTokens = 200,
-        totalTokens      = 5200
+        totalTokens = 5200
       )
       val cost = Sigil.costFor(haikuPricing, freshOnlyUsage)
       // Pure fresh + completion only.
@@ -115,14 +121,14 @@ class AnthropicCostAccountingSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
     "fall back to prompt × 0.10 for inputCacheRead when not published" in Task {
       val noCacheRatesPricing = haikuPricing.copy(
-        inputCacheRead  = None,
+        inputCacheRead = None,
         inputCacheWrite = None
       )
       val usage = TokenUsage(
-        promptTokens        = 5000,  // 1000 fresh + 4000 read
-        completionTokens    = 0,
-        totalTokens         = 5000,
-        cacheReadTokens     = 4000,
+        promptTokens = 5000, // 1000 fresh + 4000 read
+        completionTokens = 0,
+        totalTokens = 5000,
+        cacheReadTokens = 4000,
         cacheCreationTokens = 0
       )
       val cost = Sigil.costFor(noCacheRatesPricing, usage)
@@ -133,14 +139,14 @@ class AnthropicCostAccountingSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
     "fall back to prompt × 1.25 for inputCacheWrite when not published" in Task {
       val noCacheRatesPricing = haikuPricing.copy(
-        inputCacheRead  = None,
+        inputCacheRead = None,
         inputCacheWrite = None
       )
       val usage = TokenUsage(
-        promptTokens        = 5000,  // 1000 fresh + 4000 write
-        completionTokens    = 0,
-        totalTokens         = 5000,
-        cacheReadTokens     = 0,
+        promptTokens = 5000, // 1000 fresh + 4000 write
+        completionTokens = 0,
+        totalTokens = 5000,
+        cacheReadTokens = 0,
         cacheCreationTokens = 4000
       )
       val cost = Sigil.costFor(noCacheRatesPricing, usage)
@@ -154,10 +160,10 @@ class AnthropicCostAccountingSpec extends AsyncWordSpec with AsyncTaskSpec with 
       // The framework clamps fresh to zero rather than producing a
       // negative cost term that distorts the rest of the math.
       val odd = TokenUsage(
-        promptTokens        = 100,
-        completionTokens    = 50,
-        totalTokens         = 150,
-        cacheReadTokens     = 80,
+        promptTokens = 100,
+        completionTokens = 50,
+        totalTokens = 150,
+        cacheReadTokens = 80,
         cacheCreationTokens = 80
       )
       val cost = Sigil.costFor(haikuPricing, odd)

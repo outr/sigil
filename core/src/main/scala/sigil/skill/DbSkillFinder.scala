@@ -47,7 +47,7 @@ case class DbSkillFinder(sigil: Sigil, maxResults: Int = 10) {
 
   private def passesAffinity(skill: Skill, request: DiscoveryRequest): Boolean = {
     // #395 — a disabled skill is never discoverable (toggled off, not deleted).
-    val passesModeAffinity  = skill.modes.isEmpty || skill.modes.contains(request.mode.id)
+    val passesModeAffinity = skill.modes.isEmpty || skill.modes.contains(request.mode.id)
     val passesSpaceAffinity = skill.space == GlobalSpace || request.callerSpaces.contains(skill.space)
     skill.enabled && passesModeAffinity && passesSpaceAffinity
   }

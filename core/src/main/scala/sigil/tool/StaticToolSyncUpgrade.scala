@@ -34,7 +34,7 @@ class StaticToolSyncUpgrade(staticTools: List[Tool]) extends DatabaseUpgrade {
 
   override def upgrade(ldb: LightDB): Task[Unit] = ldb match {
     case sigilDb: SigilDB => syncTools(sigilDb)
-    case _                => Task.unit  // not our DB shape, skip
+    case _ => Task.unit // not our DB shape, skip
   }
 
   private def syncTools(db: SigilDB): Task[Unit] = {
@@ -96,9 +96,11 @@ class StaticToolSyncUpgrade(staticTools: List[Tool]) extends DatabaseUpgrade {
 
 object StaticToolSyncUpgrade {
 
-  /** True when `err` (or any cause in its chain) is a
-    * [[ToolSpecException]] — the row is structurally readable but
-    * violates the spec contract; it must be reported, not reaped. */
+  /**
+   * True when `err` (or any cause in its chain) is a
+   * [[ToolSpecException]] — the row is structurally readable but
+   * violates the spec contract; it must be reported, not reaped.
+   */
   def isSpecViolation(err: Throwable): Boolean = {
     var cur: Throwable = err
     var seen = 0
@@ -110,11 +112,13 @@ object StaticToolSyncUpgrade {
     false
   }
 
-  /** Recover an orphan tool row's id from its raw JSON when typed
-    * decoding fails. Lightdb persists `_id` explicitly; the fallback
-    * mirrors `Tool._id = Id(name.value)` so older rows that only
-    * carry the embedded `name` field still produce an id. Returns
-    * `None` only when neither path yields a string. */
+  /**
+   * Recover an orphan tool row's id from its raw JSON when typed
+   * decoding fails. Lightdb persists `_id` explicitly; the fallback
+   * mirrors `Tool._id = Id(name.value)` so older rows that only
+   * carry the embedded `name` field still produce an id. Returns
+   * `None` only when neither path yields a string.
+   */
   def extractOrphanId(json: Json): Option[String] =
     json.get("_id").map(_.asString)
       .orElse(json.get("name").flatMap(_.get("value")).map(_.asString))

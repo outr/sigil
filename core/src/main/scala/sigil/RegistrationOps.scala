@@ -12,14 +12,20 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, TurnPlan, UpsertMemoryResult}
+import sigil.conversation.{
+  ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource,
+  MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput,
+  TurnPlan, UpsertMemoryResult
+}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.governor.{BudgetDirective, BudgetGovernor, CheckpointIntervention, GovernorContext}
-import sigil.governor.{DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
-  ProgressGovernor, TurnDecisionGovernor, TurnGovernor}
+import sigil.governor.{
+  DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
+  ProgressGovernor, TurnDecisionGovernor, TurnGovernor
+}
 import sigil.transport.SignalTransport
 
 import java.nio.file.Path
@@ -28,18 +34,28 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.{GenerationSettings, TokenUsage}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
+import sigil.event.{
+  AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange,
+  TopicChangeKind
+}
 import sigil.role.Role
 import sigil.orchestrator.{BudgetScope, Directive, Orchestrator}
 import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
-import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform}
+import sigil.pipeline.{
+  ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect,
+  MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub,
+  TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform
+}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.provider.{ContextSection, ContextSections, InstructionTier, ModelProfile, PromptShape, Reliability, ResolvedReferences}
 import sigil.service.Service
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
+import sigil.signal.{
+  AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal,
+  ToolDelta, TopicDelta
+}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
@@ -50,7 +66,6 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, V
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
-
 
 /**
  * Polymorphic-registration cluster — phase-1 of the lifecycle. Owns
@@ -65,13 +80,19 @@ import java.util.concurrent.atomic.AtomicReference
  */
 trait RegistrationOps { this: Sigil =>
 
-  /** Every Event RW the framework knows about — `CoreSignals.events ++ eventRegistrations`. */
+  /**
+   * Every Event RW the framework knows about — `CoreSignals.events ++ eventRegistrations`.
+   */
   final def allEventRWs: List[RW[? <: Event]] = CoreSignals.events ++ eventRegistrations
 
-  /** Every Delta RW the framework knows about — `CoreSignals.deltas ++ deltaRegistrations`. */
+  /**
+   * Every Delta RW the framework knows about — `CoreSignals.deltas ++ deltaRegistrations`.
+   */
   final def allDeltaRWs: List[RW[? <: Delta]] = CoreSignals.deltas ++ deltaRegistrations
 
-  /** Every Notice RW the framework knows about — `CoreSignals.notices ++ noticeRegistrations`. */
+  /**
+   * Every Notice RW the framework knows about — `CoreSignals.notices ++ noticeRegistrations`.
+   */
   final def allNoticeRWs: List[RW[? <: Notice]] = CoreSignals.notices ++ noticeRegistrations
 
   /**
@@ -87,11 +108,15 @@ trait RegistrationOps { this: Sigil =>
   final def eventSubtypeNames: Set[String] =
     allEventRWs.flatMap(_.definition.className).map(simpleClassName).toSet
 
-  /** Simple-class-name set of every registered Delta subtype. */
+  /**
+   * Simple-class-name set of every registered Delta subtype.
+   */
   final def deltaSubtypeNames: Set[String] =
     allDeltaRWs.flatMap(_.definition.className).map(simpleClassName).toSet
 
-  /** Simple-class-name set of every registered Notice subtype. */
+  /**
+   * Simple-class-name set of every registered Notice subtype.
+   */
   final def noticeSubtypeNames: Set[String] =
     allNoticeRWs.flatMap(_.definition.className).map(simpleClassName).toSet
 
@@ -105,8 +130,10 @@ trait RegistrationOps { this: Sigil =>
   private val staticToolsMemo =
     new java.util.concurrent.atomic.AtomicReference[Option[List[sigil.tool.Tool]]](None)
 
-  /** Memoized first read of [[staticTools]] — the framework's single
-    * access path to the static roster. */
+  /**
+   * Memoized first read of [[staticTools]] — the framework's single
+   * access path to the static roster.
+   */
   final def resolvedStaticTools: List[sigil.tool.Tool] = staticToolsMemo.get() match {
     case Some(list) => list
     case None =>
@@ -154,9 +181,9 @@ trait RegistrationOps { this: Sigil =>
       // dispatchers despite the leaf register call succeeding.
       _ = SpaceId.register((RW.static(GlobalSpace) :: spaceIds).distinct*)
       _ = sigil.tool.ToolKind.register(
-            (RW.static(sigil.tool.BuiltinKind) :: RW.static(sigil.tool.InternalKind) ::
-              RW.static(sigil.tool.consult.ConsultKind) :: toolKindRegistrations).distinct*
-          )
+        (RW.static(sigil.tool.BuiltinKind) :: RW.static(sigil.tool.InternalKind) ::
+          RW.static(sigil.tool.consult.ConsultKind) :: toolKindRegistrations).distinct*
+      )
       _ = ParticipantId.register((summon[RW[sigil.participant.WorkerParticipantId]] :: participantIds).distinctBy(_.definition.className)*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
       _ = sigil.provider.WorkType.register(workTypes.map(w => RW.static(w))*)
@@ -165,8 +192,8 @@ trait RegistrationOps { this: Sigil =>
       // and the `ConversationStatusChanged` notice), so registers here before
       // the aggregate Signal registration below walks the notice definitions.
       _ = sigil.conversation.ConversationStatus.register(
-            (RW.static(sigil.conversation.ConversationStatus.Open) :: conversationStatusRegistrations).distinct*
-          )
+        (RW.static(sigil.conversation.ConversationStatus.Open) :: conversationStatusRegistrations).distinct*
+      )
       // Mixin hook — runs AFTER the framework leaf polytypes (SpaceId,
       // ParticipantId, Mode, WorkType, …) register but BEFORE any aggregate
       // that walks tool / participant / signal Definitions. A mixin polytype
@@ -203,21 +230,21 @@ trait RegistrationOps { this: Sigil =>
       // leaf — so drop it here (no concrete leaf is named `ToolOutput`).
       baseToolOutputClassName = summon[RW[sigil.tool.ToolOutput]].definition.className
       _ = sigil.tool.ToolOutput.register(
-            (sigil.tool.ToolOutput.frameworkOutputRWs ++ staticOutputRWs ++ toolOutputRegistrations)
-              .filterNot(_.definition.className == baseToolOutputClassName)
-              .distinctBy(_.definition.className)*
-          )
+        (sigil.tool.ToolOutput.frameworkOutputRWs ++ staticOutputRWs ++ toolOutputRegistrations)
+          .filterNot(_.definition.className == baseToolOutputClassName)
+          .distinctBy(_.definition.className)*
+      )
       _ = sigil.viewer.ViewerStatePayload.register(viewerStatePayloadRegistrations.distinct*)
       // Heal-pipeline polytypes. The framework-shipped CorruptionEvidence
       // subtypes are registered here; apps with their own evidence
       // shapes register through `corruptionEvidenceRegistrations`.
       _ = sigil.heal.CorruptionEvidence.register(
-            (List[RW[? <: sigil.heal.CorruptionEvidence]](
-              summon[RW[sigil.heal.CorruptionEvidence.MissingToolResult]],
-              summon[RW[sigil.heal.CorruptionEvidence.DanglingToolResultOrigin]],
-              summon[RW[sigil.heal.CorruptionEvidence.OrphanSummaryCoverage]]
-            ) ++ corruptionEvidenceRegistrations).distinct*
-          )
+        (List[RW[? <: sigil.heal.CorruptionEvidence]](
+          summon[RW[sigil.heal.CorruptionEvidence.MissingToolResult]],
+          summon[RW[sigil.heal.CorruptionEvidence.DanglingToolResultOrigin]],
+          summon[RW[sigil.heal.CorruptionEvidence.OrphanSummaryCoverage]]
+        ) ++ corruptionEvidenceRegistrations).distinct*
+      )
       // Aggregates after leaves + mixins.
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((resolvedStaticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)

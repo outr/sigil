@@ -21,7 +21,8 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 final class InProcessMcpClient(override val config: McpServerConfig,
                                tools: List[McpToolDefinition],
-                               notificationListener: (String, Json) => Task[Unit]) extends McpClient {
+                               notificationListener: (String, Json) => Task[Unit])
+  extends McpClient {
   val starts: AtomicInteger = new AtomicInteger(0)
   val listToolsCalls: AtomicInteger = new AtomicInteger(0)
   val toolCalls: ConcurrentLinkedQueue[(String, Json)] = new ConcurrentLinkedQueue()
@@ -54,7 +55,9 @@ final class InProcessMcpClient(override val config: McpServerConfig,
 
   override def cancelRequest(requestId: Long, reason: Option[String] = None): Task[Unit] = Task.unit
 
-  /** Push a `notifications/tools/list_changed` back through the listener
-    * the manager supplied, the way a real server would. */
+  /**
+   * Push a `notifications/tools/list_changed` back through the listener
+   * the manager supplied, the way a real server would.
+   */
   def fireToolsListChanged(): Task[Unit] = notificationListener("notifications/tools/list_changed", Obj.empty)
 }

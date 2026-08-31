@@ -15,7 +15,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput,
  * from the returned plan fields.
  */
 case object PlannerVerdictTool extends Tool with FrameworkConsult {
-  type Input  = PlannerVerdictInput
+  type Input = PlannerVerdictInput
   type Output = TextToolOutput
   val io: ToolIO[PlannerVerdictInput, TextToolOutput] = ToolIO.derived[PlannerVerdictInput, TextToolOutput]
 
@@ -44,22 +44,28 @@ case object PlannerVerdictTool extends Tool with FrameworkConsult {
     discovery = DiscoverySpec(kind = ConsultKind)
   )
 
-  /** Strategic oversight — the model is fixed by `Sigil.plannerModelId`,
-    * so this WorkType is declarative only (no routing happens). */
+  /**
+   * Strategic oversight — the model is fixed by `Sigil.plannerModelId`,
+   * so this WorkType is declarative only (no routing happens).
+   */
   override def consultWorkType: WorkType = AnalysisWork
 
-  /** Output is a verdict plus, on first review / replan only, the
-    * plan fields. The routine reply (verdict + correction + phase) is
-    * small; 1024 tokens leaves headroom for the plan-carrying replies
-    * so a detailed objective doesn't truncate the tool-call JSON
-    * mid-object. */
+  /**
+   * Output is a verdict plus, on first review / replan only, the
+   * plan fields. The routine reply (verdict + correction + phase) is
+   * small; 1024 tokens leaves headroom for the plan-carrying replies
+   * so a detailed objective doesn't truncate the tool-call JSON
+   * mid-object.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(1024),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 
   private def executeResult(input: PlannerVerdictInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =

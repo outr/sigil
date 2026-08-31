@@ -32,13 +32,13 @@ class OpenAIReasoningEffortSpec extends AnyWordSpec with Matchers {
       OpenAI.effortLevelsFromSlug("openai/gpt-5") shouldBe Set("minimal", "low", "medium", "high")
     }
     "match gpt-5.5 before gpt-5 (longer-prefix-first)" in {
-      OpenAI.effortLevelsFromSlug("gpt-5.5-mini") should contain ("none")
+      OpenAI.effortLevelsFromSlug("gpt-5.5-mini") should contain("none")
       OpenAI.effortLevelsFromSlug("gpt-5.5-mini") should not contain "minimal"
     }
     "treat o-series models like gpt-5" in {
-      OpenAI.effortLevelsFromSlug("o1-preview") should contain ("minimal")
-      OpenAI.effortLevelsFromSlug("o3") should contain ("minimal")
-      OpenAI.effortLevelsFromSlug("o4-mini") should contain ("minimal")
+      OpenAI.effortLevelsFromSlug("o1-preview") should contain("minimal")
+      OpenAI.effortLevelsFromSlug("o3") should contain("minimal")
+      OpenAI.effortLevelsFromSlug("o4-mini") should contain("minimal")
     }
     "return empty for non-reasoning models" in {
       OpenAI.effortLevelsFromSlug("gpt-4o") shouldBe Set.empty

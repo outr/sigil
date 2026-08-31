@@ -11,7 +11,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput,
  * to force the consulted model into a structured summary output.
  */
 case object SummarizationTool extends Tool with FrameworkConsult {
-  type Input  = SummarizationInput
+  type Input = SummarizationInput
   type Output = TextToolOutput
   val io: ToolIO[SummarizationInput, TextToolOutput] = ToolIO.derived[SummarizationInput, TextToolOutput]
 
@@ -33,20 +33,26 @@ case object SummarizationTool extends Tool with FrameworkConsult {
     discovery = DiscoverySpec(kind = ConsultKind)
   )
 
-  /** Condensing work — routes through the cheap summarization tier. */
+  /**
+   * Condensing work — routes through the cheap summarization tier.
+   */
   override def consultWorkType: WorkType = SummarizationWork
 
-  /** Conservative ceiling. Summarization output scales with the
-    * target summary length, so the compressors pass a computed
-    * `maxOutputTokens` per call; this value is the fallback cap when
-    * no override is supplied. `ReasoningMode.Off` always applies. */
+  /**
+   * Conservative ceiling. Summarization output scales with the
+   * target summary length, so the compressors pass a computed
+   * `maxOutputTokens` per call; this value is the fallback cap when
+   * no override is supplied. `ReasoningMode.Off` always applies.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     maxOutputTokens = Some(2048),
     reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 
   private def executeResult(input: SummarizationInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =

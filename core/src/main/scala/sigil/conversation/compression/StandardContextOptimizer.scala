@@ -38,7 +38,8 @@ import sigil.participant.{AgentParticipantId, ParticipantId}
  */
 case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
                                     dedupConsecutiveText: Boolean = true,
-                                    stripStaleTools: Set[String] = Set.empty) extends ContextOptimizer {
+                                    stripStaleTools: Set[String] = Set.empty)
+  extends ContextOptimizer {
 
   override def optimize(frames: Vector[ContextFrame],
                         elideToolNames: Set[String] = Set.empty,
@@ -51,38 +52,40 @@ case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
     out
   }
 
-  /** Drop earlier ToolCall+ToolResult pairs for every tool name in
-    * `trim` according to the following two-tier rule:
-    *
-    *   - For pairs **before the current turn**: keep the LAST pair
-    *     per tool name so the agent has its one-turn-of-validity
-    *     window after the turn that produced it; drop everything
-    *     earlier.
-    *   - For pairs **within the current turn**: KEEP ALL of them.
-    *     Eliding within-turn iterations hides the agent's own working
-    *     memory: the model calls the tool, the framework deletes the
-    *     call before the next loop iteration, the model "sees no
-    *     prior call" and calls again, ad infinitum until
-    *     `maxAgentIterations` fires. A parallel batch is the acute
-    *     case — its siblings share one tool name, so collapsing by
-    *     name destroys every result but one and the model rationally
-    *     re-asks for the rest.
-    *
-    * The boundary is the most-recent Text frame that OPENS a turn:
-    * one authored by a non-agent participant. `currentTurnSource`
-    * narrows that to a specific participant when it names one; an
-    * agent id never does, because the agent's own prose is emitted
-    * mid-turn and would put the turn's own tool pairs on the
-    * droppable side of the line. When no turn-opening frame exists at
-    * all, every frame counts as current-turn: a pair that cannot be
-    * proven stale is kept. */
+  /**
+   * Drop earlier ToolCall+ToolResult pairs for every tool name in
+   * `trim` according to the following two-tier rule:
+   *
+   *   - For pairs **before the current turn**: keep the LAST pair
+   *     per tool name so the agent has its one-turn-of-validity
+   *     window after the turn that produced it; drop everything
+   *     earlier.
+   *   - For pairs **within the current turn**: KEEP ALL of them.
+   *     Eliding within-turn iterations hides the agent's own working
+   *     memory: the model calls the tool, the framework deletes the
+   *     call before the next loop iteration, the model "sees no
+   *     prior call" and calls again, ad infinitum until
+   *     `maxAgentIterations` fires. A parallel batch is the acute
+   *     case — its siblings share one tool name, so collapsing by
+   *     name destroys every result but one and the model rationally
+   *     re-asks for the rest.
+   *
+   * The boundary is the most-recent Text frame that OPENS a turn:
+   * one authored by a non-agent participant. `currentTurnSource`
+   * narrows that to a specific participant when it names one; an
+   * agent id never does, because the agent's own prose is emitted
+   * mid-turn and would put the turn's own tool pairs on the
+   * droppable side of the line. When no turn-opening frame exists at
+   * all, every frame counts as current-turn: a pair that cannot be
+   * proven stale is kept.
+   */
   private def collapseToolPairs(frames: Vector[ContextFrame],
                                 trim: Set[String],
                                 currentTurnSource: Option[ParticipantId]): Vector[ContextFrame] = {
     val boundaryIdx: Int = frames.lastIndexWhere {
       case t: ContextFrame.Text =>
         !t.participantId.isInstanceOf[AgentParticipantId] &&
-          currentTurnSource.forall(src => src.isInstanceOf[AgentParticipantId] || src == t.participantId)
+        currentTurnSource.forall(src => src.isInstanceOf[AgentParticipantId] || src == t.participantId)
       case _ => false
     }
 
@@ -110,7 +113,7 @@ case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
 
     val dropCallIds = frames.iterator.collect {
       case tc: ContextFrame.ToolCall
-        if trim.contains(tc.toolName.value) && !keepCallIds.contains(tc.callId) => tc.callId
+          if trim.contains(tc.toolName.value) && !keepCallIds.contains(tc.callId) => tc.callId
     }.toSet
     if (dropCallIds.isEmpty) frames
     else frames.filterNot {
@@ -118,14 +121,14 @@ case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
       // call AND result content; one filter check drops the whole
       // transaction (previously two: ToolCall + ToolResult).
       case tc: ContextFrame.ToolCall => dropCallIds.contains(tc.callId)
-      case _                         => false
+      case _ => false
     }
   }
 
   private def pruneWhitespace(frames: Vector[ContextFrame]): Vector[ContextFrame] =
     frames.filter {
       case ContextFrame.Text(content, _, _, _, _) => content.trim.nonEmpty
-      case _                                    => true
+      case _ => true
     }
 
   private def dedupRun(frames: Vector[ContextFrame]): Vector[ContextFrame] = {

@@ -18,4 +18,5 @@ import sigil.participant.Participant
  * Emitted from `Sigil.addParticipant` after the DB upsert succeeds.
  */
 case class ParticipantAdded(conversationId: Id[Conversation],
-                            participant: Participant) extends ConversationNotice derives RW
+                            participant: Participant)
+  extends ConversationNotice derives RW

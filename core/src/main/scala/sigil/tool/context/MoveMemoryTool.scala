@@ -5,7 +5,9 @@ import rapid.Task
 import sigil.SpaceId
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolGates, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolGates, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 /**
  * Re-scope an existing memory to a different accessible
@@ -25,7 +27,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToo
  * preserved.
  */
 case object MoveMemoryTool extends Tool {
-  type Input  = MoveMemoryInput
+  type Input = MoveMemoryInput
   type Output = TextToolOutput
   val io: ToolIO[MoveMemoryInput, TextToolOutput] = ToolIO.derived[MoveMemoryInput, TextToolOutput]
 
@@ -64,7 +66,7 @@ case object MoveMemoryTool extends Tool {
           ))
         case Some(targetSpace) =>
           val sourceSpaces = input.fromSpace match {
-            case None    => accessible
+            case None => accessible
             case Some(v) => accessible.filter(_.value == v)
           }
           if (sourceSpaces.isEmpty)
@@ -73,25 +75,25 @@ case object MoveMemoryTool extends Tool {
               hint = Some(s"Omit fromSpace or pass one of: $accessibleValues.")
             ))
           else findTarget(input.key, sourceSpaces, context).flatMap {
-          case MemoryTarget.Found(memory) if memory.spaceId == targetSpace =>
-            Task.pure(ToolResult.Success(TextToolOutput(
-              s"[move_memory] memory '${displayKey(memory)}' is already in space '${targetSpace.value}'; nothing to do.")))
-          case MemoryTarget.Found(memory) =>
-            context.sigil.updateMemory(memory.copy(spaceId = targetSpace)).map { _ =>
-              ToolResult.Success(TextToolOutput(
-                s"[move_memory] moved memory '${displayKey(memory)}' from space '${memory.spaceId.value}' to '${targetSpace.value}'."))
-            }
-          case MemoryTarget.NotRecallable(memory) =>
-            Task.pure(ToolResult.failure(
-              s"[move_memory] memory '${displayKey(memory)}' cannot be moved because ${MemoryTarget.reason(memory)}.",
-              hint = Some("Move the current version instead — re-scoping an archived record changes nothing any " +
-                "retrieval reads.")
-            ))
-          case MemoryTarget.Missing =>
-            Task.pure(ToolResult.failure(
-              s"[move_memory] no memory found matching key '${input.key}' in accessible spaces.",
-              hint = Some("Confirm the key with list_memories, or pass fromSpace to disambiguate.")
-            ))
+            case MemoryTarget.Found(memory) if memory.spaceId == targetSpace =>
+              Task.pure(ToolResult.Success(TextToolOutput(
+                s"[move_memory] memory '${displayKey(memory)}' is already in space '${targetSpace.value}'; nothing to do.")))
+            case MemoryTarget.Found(memory) =>
+              context.sigil.updateMemory(memory.copy(spaceId = targetSpace)).map { _ =>
+                ToolResult.Success(TextToolOutput(
+                  s"[move_memory] moved memory '${displayKey(memory)}' from space '${memory.spaceId.value}' to '${targetSpace.value}'."))
+              }
+            case MemoryTarget.NotRecallable(memory) =>
+              Task.pure(ToolResult.failure(
+                s"[move_memory] memory '${displayKey(memory)}' cannot be moved because ${MemoryTarget.reason(memory)}.",
+                hint = Some("Move the current version instead — re-scoping an archived record changes nothing any " +
+                  "retrieval reads.")
+              ))
+            case MemoryTarget.Missing =>
+              Task.pure(ToolResult.failure(
+                s"[move_memory] no memory found matching key '${input.key}' in accessible spaces.",
+                hint = Some("Confirm the key with list_memories, or pass fromSpace to disambiguate.")
+              ))
           }
       }
     }

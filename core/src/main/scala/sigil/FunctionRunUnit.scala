@@ -24,7 +24,7 @@ import sigil.conversation.Conversation
  * reason via the exception's `getMessage` (defined on
  * [[CancellationException]] as `"workflow '<id>' cancelled: <reason>"`).
  */
-private[sigil] final class FunctionRunUnit[T](
+final private[sigil] class FunctionRunUnit[T](
   override val label: String,
   override val workflowType: String,
   override val conversationId: Option[Id[Conversation]],

@@ -18,9 +18,9 @@ class GoogleBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private def req(text: String, maxTokens: Int = 256): OneShotRequest = OneShotRequest(
-    model              = TestSigil.testModel(sigil.db.Model.id("google", "gemini-2.5-flash")),
-    systemPrompt       = "You are a classifier.",
-    userPrompt         = text,
+    model = TestSigil.testModel(sigil.db.Model.id("google", "gemini-2.5-flash")),
+    systemPrompt = "You are a classifier.",
+    userPrompt = text,
     generationSettings = sigil.provider.GenerationSettings(
       outputTokenCap = sigil.provider.OutputTokenCap.Below(maxTokens)
     )
@@ -44,10 +44,10 @@ class GoogleBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "render ImageBytes as inlineData part with mimeType" in rapid.Task {
       val r = OneShotRequest(
-        model        = TestSigil.testModel(sigil.db.Model.id("google", "gemini-2.5-pro")),
+        model = TestSigil.testModel(sigil.db.Model.id("google", "gemini-2.5-pro")),
         systemPrompt = "Describe.",
-        userPrompt   = "",
-        userContent  = Vector(
+        userPrompt = "",
+        userContent = Vector(
           ResponseContent.Text("What's this?"),
           ResponseContent.ImageBytes("image/png", "iVBORw0KGgo")
         )
@@ -63,9 +63,9 @@ class GoogleBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "omit systemInstruction when systemPrompt is empty" in rapid.Task {
       val r = OneShotRequest(
-        model        = TestSigil.testModel(sigil.db.Model.id("google", "gemini-2.5-flash")),
+        model = TestSigil.testModel(sigil.db.Model.id("google", "gemini-2.5-flash")),
         systemPrompt = "",
-        userPrompt   = "no system"
+        userPrompt = "no system"
       )
       val json = GoogleBatch.renderRequestEntry(r)
       json("request").get("systemInstruction") shouldBe None
@@ -77,7 +77,8 @@ class GoogleBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "decode a successful response entry with content + usage" in rapid.Task {
       val customId = "gb-success-001"
       val json = JsonParser(
-        """{"id":"""" + customId + """","response":{"candidates":[{"content":{"parts":[{"text":"foo bar"}]}}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":3,"totalTokenCount":15}}}"""
+        """{"id":"""" + customId +
+          """","response":{"candidates":[{"content":{"parts":[{"text":"foo bar"}]}}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":3,"totalTokenCount":15}}}"""
       )
       val parsed = GoogleBatch.parseResponseEntry(json)
       parsed shouldBe defined
@@ -107,7 +108,7 @@ class GoogleBatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   "GoogleProvider.batchSupported" should {
     "be true (native batch override is wired)" in rapid.Task {
       val provider = sigil.provider.google.GoogleProvider(
-        apiKey   = "test-key",
+        apiKey = "test-key",
         sigilRef = TestSigil
       )
       provider.batchSupported shouldBe true

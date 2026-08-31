@@ -45,22 +45,30 @@ import scala.concurrent.duration.*
  */
 object GoogleBatch {
 
-  /** Conservative per-batch ceiling — Gemini documents up to thousands
-    * per inline batch but doesn't publish a hard limit at the
-    * `inlinedRequests` shape. 1000 is a safe chunk size that avoids
-    * hitting any single-request body-size cap. Apps with steady
-    * larger workloads override `GoogleProvider.batch` to tune. */
+  /**
+   * Conservative per-batch ceiling — Gemini documents up to thousands
+   * per inline batch but doesn't publish a hard limit at the
+   * `inlinedRequests` shape. 1000 is a safe chunk size that avoids
+   * hitting any single-request body-size cap. Apps with steady
+   * larger workloads override `GoogleProvider.batch` to tune.
+   */
   val MaxRequestsPerBatch: Int = 1000
 
-  /** Initial poll interval. */
+  /**
+   * Initial poll interval.
+   */
   val InitialPollInterval: FiniteDuration = 5.seconds
 
-  /** Max poll interval. */
+  /**
+   * Max poll interval.
+   */
   val MaxPollInterval: FiniteDuration = 60.seconds
 
-  /** Render one OneShotRequest into the Gemini inlinedRequests entry
-    * shape: `{id, request: {contents, systemInstruction?,
-    * generationConfig?}}`. */
+  /**
+   * Render one OneShotRequest into the Gemini inlinedRequests entry
+   * shape: `{id, request: {contents, systemInstruction?,
+   * generationConfig?}}`.
+   */
   def renderRequestEntry(request: OneShotRequest): Json = {
     val userParts: Vector[Json] =
       if (request.userContent.isEmpty)
@@ -68,7 +76,7 @@ object GoogleBatch {
       else
         request.userContent.flatMap(rcToGeminiPart)
     val contents = arr(obj(
-      "role"  -> str("user"),
+      "role" -> str("user"),
       "parts" -> arr(userParts*)
     ))
     val baseRequest = Vector[(String, Json)](
@@ -76,14 +84,15 @@ object GoogleBatch {
     )
     val withSystem: Vector[(String, Json)] =
       if (request.systemPrompt.isEmpty) baseRequest
-      else baseRequest :+ ("systemInstruction" -> obj(
-        "parts" -> arr(obj("text" -> str(request.systemPrompt)))
-      ))
+      else baseRequest :+
+        ("systemInstruction" -> obj(
+          "parts" -> arr(obj("text" -> str(request.systemPrompt)))
+        ))
     val genConfig: Vector[(String, Json)] = {
       val gs = request.generationSettings
       val maxOut = gs.effectiveCap match {
         case sigil.provider.OutputTokenCap.Below(n) => Vector(("maxOutputTokens", num(n)))
-        case _                                      => Vector.empty
+        case _ => Vector.empty
       }
       val temp = gs.temperature.map(t => ("temperature", num(t))).toVector
       maxOut ++ temp
@@ -92,16 +101,18 @@ object GoogleBatch {
       if (genConfig.isEmpty) withSystem
       else withSystem :+ ("generationConfig" -> obj(genConfig*))
     obj(
-      "id"      -> str(request.requestId.value),
+      "id" -> str(request.requestId.value),
       "request" -> obj(withGen*)
     )
   }
 
-  /** Convert a [[ResponseContent]] block into one or more Gemini
-    * content parts. Text → `text` part. Image (URL) → not directly
-    * supported in batch (Gemini batch doesn't accept fetch URLs);
-    * downgraded to text with the URL inline. ImageBytes →
-    * `inlineData` part. */
+  /**
+   * Convert a [[ResponseContent]] block into one or more Gemini
+   * content parts. Text → `text` part. Image (URL) → not directly
+   * supported in batch (Gemini batch doesn't accept fetch URLs);
+   * downgraded to text with the URL inline. ImageBytes →
+   * `inlineData` part.
+   */
   private def rcToGeminiPart(rc: ResponseContent): Vector[Json] = rc match {
     case ResponseContent.Text(t) =>
       Vector(obj("text" -> str(t)))
@@ -116,26 +127,28 @@ object GoogleBatch {
       Vector(obj(
         "inlineData" -> obj(
           "mimeType" -> str(mt),
-          "data"     -> str(b64)
+          "data" -> str(b64)
         )
       ))
     case other =>
       Vector(obj("text" -> str(sigil.render.MarkdownRenderer.renderBlock(other))))
   }
 
-  /** Parse one inlined response entry (a JSON object inside the
-    * batch resource's `output.inlinedResponses.inlinedResponses`
-    * array) into a [[OneShotResponse]]. */
-  def parseResponseEntry(entry: Json): Option[OneShotResponse] = {
+  /**
+   * Parse one inlined response entry (a JSON object inside the
+   * batch resource's `output.inlinedResponses.inlinedResponses`
+   * array) into a [[OneShotResponse]].
+   */
+  def parseResponseEntry(entry: Json): Option[OneShotResponse] =
     entry.get("id").map(_.asString).map { idStr =>
       val reqId = lightdb.id.Id[sigil.provider.ProviderRequest](idStr)
       entry.get("error").filter(_ != fabric.Null) match {
         case Some(errJson) =>
-          val msg  = errJson.get("message").map(_.asString).getOrElse("unknown batch error")
+          val msg = errJson.get("message").map(_.asString).getOrElse("unknown batch error")
           val code = errJson.get("code").map(_.asString)
           OneShotResponse(
             requestId = reqId,
-            error     = Some(OneShotResponse.Error(message = msg, code = code, recoverable = false))
+            error = Some(OneShotResponse.Error(message = msg, code = code, recoverable = false))
           )
         case None =>
           entry.get("response") match {
@@ -152,31 +165,32 @@ object GoogleBatch {
                 val prompt = u.get("promptTokenCount").map(_.asInt).getOrElse(0)
                 val completion = u.get("candidatesTokenCount").map(_.asInt).getOrElse(0)
                 TokenUsage(
-                  promptTokens     = prompt,
+                  promptTokens = prompt,
                   completionTokens = completion,
-                  totalTokens      = u.get("totalTokenCount").map(_.asInt).getOrElse(prompt + completion)
+                  totalTokens = u.get("totalTokenCount").map(_.asInt).getOrElse(prompt + completion)
                 )
               }
               OneShotResponse(
                 requestId = reqId,
-                content   = if (text.isEmpty) Vector.empty else Vector(ResponseContent.Text(text)),
-                usage     = usage
+                content = if (text.isEmpty) Vector.empty else Vector(ResponseContent.Text(text)),
+                usage = usage
               )
             case None =>
               OneShotResponse(
                 requestId = reqId,
-                error     = Some(OneShotResponse.Error(
-                  message     = "batch response entry carried neither response nor error",
+                error = Some(OneShotResponse.Error(
+                  message = "batch response entry carried neither response nor error",
                   recoverable = false
                 ))
               )
           }
       }
     }
-  }
 
-  /** Submit one chunk of requests as a single Gemini batch, poll
-    * until completion, return the parsed responses as a stream. */
+  /**
+   * Submit one chunk of requests as a single Gemini batch, poll
+   * until completion, return the parsed responses as a stream.
+   */
   def submitChunk(chunk: List[OneShotRequest],
                   apiKey: String,
                   baseUrl: URL): Stream[OneShotResponse] =
@@ -197,9 +211,9 @@ object GoogleBatch {
       Task.pure(chunk.map { r =>
         OneShotResponse(
           requestId = r.requestId,
-          error     = Some(OneShotResponse.Error(
-            message     = s"Gemini Batch: chunk has multiple models (${distinctModels.mkString(", ")}); " +
-                          "group OneShotRequests by model before calling batch().",
+          error = Some(OneShotResponse.Error(
+            message = s"Gemini Batch: chunk has multiple models (${distinctModels.mkString(", ")}); " +
+              "group OneShotRequests by model before calling batch().",
             recoverable = false
           ))
         )
@@ -209,14 +223,14 @@ object GoogleBatch {
       val customIds = chunk.map(_.requestId).toSet
       for {
         batchName <- createBatch(model, chunk, apiKey, baseUrl)
-        finalSt   <- pollUntilTerminal(batchName, apiKey, baseUrl)
-        results    = finalSt.inlinedResponses.flatMap(parseResponseEntry)
-        seenIds    = results.map(_.requestId).toSet
-        missing    = customIds.diff(seenIds).toList.map { rid =>
+        finalSt <- pollUntilTerminal(batchName, apiKey, baseUrl)
+        results = finalSt.inlinedResponses.flatMap(parseResponseEntry)
+        seenIds = results.map(_.requestId).toSet
+        missing = customIds.diff(seenIds).toList.map { rid =>
           OneShotResponse(
             requestId = rid,
-            error     = Some(OneShotResponse.Error(
-              message     = s"request did not appear in batch results (state=${finalSt.state})",
+            error = Some(OneShotResponse.Error(
+              message = s"request did not appear in batch results (state=${finalSt.state})",
               recoverable = finalSt.state == "JOB_STATE_EXPIRED"
             ))
           )
@@ -225,7 +239,9 @@ object GoogleBatch {
     }
   }
 
-  /** Create the batch via POST /v1beta/batches. */
+  /**
+   * Create the batch via POST /v1beta/batches.
+   */
   def createBatch(model: String,
                   chunk: List[OneShotRequest],
                   apiKey: String,
@@ -234,35 +250,40 @@ object GoogleBatch {
     val body = obj(
       "batch" -> obj(
         "displayName" -> str(s"sigil-batch-${java.util.UUID.randomUUID().toString.take(8)}"),
-        "model"       -> str(s"models/$model"),
+        "model" -> str(s"models/$model"),
         "inputConfig" -> obj(
           "inlinedRequests" -> obj("inlinedRequests" -> arr(entries*))
         )
       )
     )
     val req = HttpRequest(
-      method  = HttpMethod.Post,
-      url     = baseUrl.withPath("/v1beta/batches"),
+      method = HttpMethod.Post,
+      url = baseUrl.withPath("/v1beta/batches"),
       content = Some(StringContent(JsonFormatter.Compact(body), ContentType.`application/json`))
     ).withHeader("x-goog-api-key", apiKey)
     HttpClient.modify(_ => req).noFailOnHttpStatus.send().flatMap { resp =>
       resp.content match {
         case Some(c) => c.asString.flatMap { resBody =>
-          if (resp.status.isSuccess) Task {
-            JsonParser(resBody).get("name").map(_.asString).getOrElse {
-              throw new RuntimeException(s"Gemini Batch: missing `name` in create response: $resBody")
+            if (resp.status.isSuccess) Task {
+              JsonParser(resBody).get("name").map(_.asString).getOrElse {
+                throw new RuntimeException(s"Gemini Batch: missing `name` in create response: $resBody")
+              }
             }
+            else Task.error(new RuntimeException(s"Gemini Batch: create failed (${resp.status}): $resBody"))
           }
-          else Task.error(new RuntimeException(s"Gemini Batch: create failed (${resp.status}): $resBody"))
-        }
         case None => Task.error(new RuntimeException(s"Gemini Batch: empty body on create (${resp.status})"))
       }
     }
   }
 
-  /** Terminal states from Gemini's Batch state machine. */
+  /**
+   * Terminal states from Gemini's Batch state machine.
+   */
   private val TerminalStates: Set[String] = Set(
-    "JOB_STATE_SUCCEEDED", "JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED"
+    "JOB_STATE_SUCCEEDED",
+    "JOB_STATE_FAILED",
+    "JOB_STATE_CANCELLED",
+    "JOB_STATE_EXPIRED"
   )
 
   case class BatchState(state: String, inlinedResponses: List[Json])
@@ -279,24 +300,24 @@ object GoogleBatch {
   private def getBatchState(batchName: String, apiKey: String, baseUrl: URL): Task[BatchState] = {
     val req = HttpRequest(
       method = HttpMethod.Get,
-      url    = baseUrl.withPath(s"/v1beta/$batchName")
+      url = baseUrl.withPath(s"/v1beta/$batchName")
     ).withHeader("x-goog-api-key", apiKey)
     HttpClient.modify(_ => req).noFailOnHttpStatus.send().flatMap { resp =>
       resp.content match {
         case Some(c) => c.asString.flatMap { body =>
-          if (resp.status.isSuccess) Task {
-            val json = JsonParser(body)
-            val state = json.get("state").map(_.asString).getOrElse("UNKNOWN")
-            val responses = json
-              .get("output")
-              .flatMap(_.get("inlinedResponses"))
-              .flatMap(_.get("inlinedResponses"))
-              .map(_.asVector.toList)
-              .getOrElse(Nil)
-            BatchState(state, responses)
+            if (resp.status.isSuccess) Task {
+              val json = JsonParser(body)
+              val state = json.get("state").map(_.asString).getOrElse("UNKNOWN")
+              val responses = json
+                .get("output")
+                .flatMap(_.get("inlinedResponses"))
+                .flatMap(_.get("inlinedResponses"))
+                .map(_.asVector.toList)
+                .getOrElse(Nil)
+              BatchState(state, responses)
+            }
+            else Task.error(new RuntimeException(s"Gemini Batch: state fetch failed (${resp.status}): $body"))
           }
-          else Task.error(new RuntimeException(s"Gemini Batch: state fetch failed (${resp.status}): $body"))
-        }
         case None => Task.error(new RuntimeException(s"Gemini Batch: empty body on state fetch (${resp.status})"))
       }
     }

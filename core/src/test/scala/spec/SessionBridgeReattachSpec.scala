@@ -31,19 +31,19 @@ class SessionBridgeReattachSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   TestSigil.initFor(getClass.getSimpleName)
 
-  override implicit val testTimeout: FiniteDuration = 30.seconds
+  implicit override val testTimeout: FiniteDuration = 30.seconds
 
   private def buildSession(convId: Id[Conversation]): DurableSession[Id[Conversation], Signal, String] = {
     val log = new InMemoryEventLog[Id[Conversation], Signal]
     val protocol = new DurableSocket[Id[Conversation], Signal, String](
-      config           = DurableSocketConfig(),
-      outboundLog      = log,
+      config = DurableSocketConfig(),
+      outboundLog = log,
       initialChannelId = convId
     )
     val listener = reactify.Var[WebSocketListener](new WebSocketListener)
     DurableSession[Id[Conversation], Signal, String](
       clientId = s"client-${rapid.Unique()}",
-      info     = "info",
+      info = "info",
       protocol = protocol,
       listener = listener
     )
@@ -51,8 +51,8 @@ class SessionBridgeReattachSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def freshConversation(suffix: String): Task[Conversation] = {
     val convId = Conversation.id(s"bridge-$suffix-${rapid.Unique()}")
-    val topic  = TopicEntry(Topic.id(s"topic-${convId.value}"), "test", "test")
-    val conv   = Conversation(_id = convId, topics = List(topic))
+    val topic = TopicEntry(Topic.id(s"topic-${convId.value}"), "test", "test")
+    val conv = Conversation(_id = convId, topics = List(topic))
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
   }
 
@@ -67,9 +67,9 @@ class SessionBridgeReattachSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       // Post-fix: counter = 1.
       val counter = TestSigil.signals.collect {
         case m: Message if m.content.exists {
-          case t: ResponseContent.Text => t.text == "re-attach-marker"
-          case _ => false
-        } => m
+              case t: ResponseContent.Text => t.text == "re-attach-marker"
+              case _ => false
+            } => m
       }.evalMap(_ => Task { received.incrementAndGet(); () })
       counter.drain.startUnit()
 
@@ -86,18 +86,16 @@ class SessionBridgeReattachSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         // after parsing a `"type": "event"` frame off the wire, so
         // every listener SessionBridge wired runs.
         msg = Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = conv.currentTopicId,
-          content        = Vector(ResponseContent.Text("re-attach-marker")),
-          state          = EventState.Complete
+          topicId = conv.currentTopicId,
+          content = Vector(ResponseContent.Text("re-attach-marker")),
+          state = EventState.Complete
         )
         _ = session.protocol.onEvent @= (1L, msg)
         // Brief settle window for the async publish path.
         _ <- Task.sleep(500.millis)
-      } yield {
-        received.get() shouldBe 1
-      }
+      } yield received.get() shouldBe 1
     }
   }
 

@@ -20,8 +20,10 @@ object GitOps {
    */
   def shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 
-  /** Branch header parse of a `git status --branch` first line:
-    * `(branch, ahead, behind)`. */
+  /**
+   * Branch header parse of a `git status --branch` first line:
+   * `(branch, ahead, behind)`.
+   */
   final case class StatusHeader(branch: String, ahead: Int, behind: Int)
 
   /**
@@ -37,7 +39,7 @@ object GitOps {
     val rawLines = stdout.split('\n').toList.filter(_.nonEmpty)
     val (header, entryLines) = rawLines match {
       case h :: rest if h.startsWith("## ") => (Some(h), rest)
-      case all                              => (None, all)
+      case all => (None, all)
     }
 
     val statusHeader = header match {
@@ -46,7 +48,7 @@ object GitOps {
         // `branch...remote [ahead N, behind M]` or `branch...remote` or `HEAD (no branch)`
         val (nameRemote, marker) = body.indexOf(" [") match {
           case -1 => (body, "")
-          case i  => (body.substring(0, i), body.substring(i + 1))
+          case i => (body.substring(0, i), body.substring(i + 1))
         }
         val branchName = nameRemote.split("\\.\\.\\.", 2).headOption.getOrElse(nameRemote)
         val a = "ahead (\\d+)".r.findFirstMatchIn(marker).map(_.group(1).toInt).getOrElse(0)
@@ -58,20 +60,20 @@ object GitOps {
     val entries = entryLines.flatMap { line =>
       if (line.length < 3) None
       else {
-        val xy   = line.substring(0, 2)
+        val xy = line.substring(0, 2)
         val rest = line.substring(3)
         val (path, renamedFrom) = if (xy.startsWith("R") || xy.startsWith("C")) {
           rest.split(" -> ", 2) match {
             case Array(from, to) => (to, Some(from))
-            case _               => (rest, None)
+            case _ => (rest, None)
           }
         } else (rest, None)
 
         Some(GitStatusEntry(
-          path         = path,
-          indexState   = GitFileState.fromChar(xy.substring(0, 1)),
+          path = path,
+          indexState = GitFileState.fromChar(xy.substring(0, 1)),
           workingState = GitFileState.fromChar(xy.substring(1, 2)),
-          renamedFrom  = renamedFrom
+          renamedFrom = renamedFrom
         ))
       }
     }
@@ -89,13 +91,13 @@ object GitOps {
     val records = stdout.split('\u001e').toList.map(_.trim).filter(_.nonEmpty)
     records.map { record =>
       val parts = record.split('\u0000').padTo(5, "")
-      val body  = parts(4)
+      val body = parts(4)
       GitCommitEntry(
-        sha     = parts(0),
-        author  = parts(1),
-        date    = parts(2),
+        sha = parts(0),
+        author = parts(1),
+        date = parts(2),
         subject = parts(3),
-        body    = if (includeBody && body.nonEmpty) Some(body) else None
+        body = if (includeBody && body.nonEmpty) Some(body) else None
       )
     }
   }
@@ -109,23 +111,23 @@ object GitOps {
     val lines = branchOutput.split('\n').toList.filter(_.nonEmpty)
     lines.flatMap { line =>
       val isCurrent = line.startsWith("*")
-      val body      = line.drop(2).trim
+      val body = line.drop(2).trim
       // Remote-tracking entries come back as `remotes/origin/foo abc123 ...`
-      val isRemote  = body.startsWith("remotes/")
+      val isRemote = body.startsWith("remotes/")
       if (isRemote && !includeRemotes) None
       else if (body.isEmpty) None
       else {
-        val tokens   = body.split("\\s+", 3)
-        val name     = tokens.headOption.getOrElse("").stripPrefix("remotes/")
-        val sha      = if (tokens.length >= 2) tokens(1) else ""
-        val rest     = if (tokens.length >= 3) tokens(2) else ""
+        val tokens = body.split("\\s+", 3)
+        val name = tokens.headOption.getOrElse("").stripPrefix("remotes/")
+        val sha = if (tokens.length >= 2) tokens(1) else ""
+        val rest = if (tokens.length >= 3) tokens(2) else ""
         val tracking = "\\[([^\\]]+)\\]".r.findFirstMatchIn(rest).map(_.group(1))
         Some(GitBranchEntry(
-          name      = name,
-          sha       = sha,
+          name = name,
+          sha = sha,
           isCurrent = isCurrent,
-          isRemote  = isRemote,
-          tracking  = tracking
+          isRemote = isRemote,
+          tracking = tracking
         ))
       }
     }
@@ -137,20 +139,20 @@ object GitOps {
    * [[GitShowTool]] for the commit's diff body.
    */
   def parseDiff(diffText: String): List[GitDiffHunk] = {
-    val hunks        = mutable.ListBuffer.empty[GitDiffHunk]
-    var currentFile  = ""
-    var currentOld   = 0
-    var currentNew   = 0
+    val hunks = mutable.ListBuffer.empty[GitDiffHunk]
+    var currentFile = ""
+    var currentOld = 0
+    var currentNew = 0
     val currentLines = mutable.ListBuffer.empty[GitDiffLine]
-    var hunkOpen     = false
-    val HunkHeader   = "^@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@.*".r
+    var hunkOpen = false
+    val HunkHeader = "^@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@.*".r
 
     def closeHunk(): Unit = if (hunkOpen) {
       hunks += GitDiffHunk(
-        file     = currentFile,
+        file = currentFile,
         oldStart = currentOld,
         newStart = currentNew,
-        lines    = currentLines.toList
+        lines = currentLines.toList
       )
       currentLines.clear()
       hunkOpen = false
@@ -169,7 +171,7 @@ object GitOps {
         closeHunk()
         currentOld = oldStart.toInt
         currentNew = newStart.toInt
-        hunkOpen   = true
+        hunkOpen = true
       case line if hunkOpen =>
         val (kind, text) =
           if (line.startsWith("+")) (GitDiffLineKind.Add, line.drop(1))

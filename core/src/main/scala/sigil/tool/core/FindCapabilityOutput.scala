@@ -10,7 +10,6 @@ import sigil.tool.discovery.{CapabilityMatch, TaskShapeHint}
  * Mode, Skill) ranked by relevance, plus the normalised query that
  * produced them.
  *
- *
  * The framework folds this output onto the originating
  * [[sigil.event.ToolInvoke]] via the settling
  * [[sigil.signal.ToolDelta]]; the per-loop discovery cache is updated

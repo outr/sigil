@@ -32,7 +32,7 @@ class MinimalImplementationSkillSpec extends AsyncWordSpec with AsyncTaskSpec wi
   private val modelId: Id[Model] = Model.id("test", "minimal-skill")
   TestSigil.testModel(modelId)
 
-  private final class SystemCapturingProvider(seen: AtomicReference[String]) extends Provider {
+  final private class SystemCapturingProvider(seen: AtomicReference[String]) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -69,17 +69,19 @@ class MinimalImplementationSkillSpec extends AsyncWordSpec with AsyncTaskSpec wi
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Add a date picker to the form.")),
-               state          = EventState.Complete))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Add a date picker to the form.")),
+          state =
+            EventState.Complete
+        ))
         _ <- waitFor(15.seconds)(seen.get().nonEmpty)
       } yield {
         val system = seen.get()
-        system should include (MinimalImplementationSkill.name)
-        system should include ("stop at the FIRST rung that holds")
-        system should include ("NEVER simplify away")
+        system should include(MinimalImplementationSkill.name)
+        system should include("stop at the FIRST rung that holds")
+        system should include("NEVER simplify away")
       }
     }
   }

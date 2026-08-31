@@ -91,10 +91,12 @@ class SpendBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       Task.pure(Nil)
   }
 
-  /** Each tool-calling iteration bills 1,000,000 prompt tokens =
-    * $1.00. `respondAfter` caps the tool phase; iterations after it
-    * (or any forced-synthesis call) emit a terminating respond. */
-  private final class BillingProvider(respondAfter: Int) extends Provider {
+  /**
+   * Each tool-calling iteration bills 1,000,000 prompt tokens =
+   * $1.00. `respondAfter` caps the tool phase; iterations after it
+   * (or any forced-synthesis call) emit a terminating respond.
+   */
+  final private class BillingProvider(respondAfter: Int) extends Provider {
     val calls = new AtomicInteger(0)
     @volatile var sawForcedChoice = false
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -115,10 +117,10 @@ class SpendBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
-              topicLabel   = TestTopicEntry.label,
+              topicLabel = TestTopicEntry.label,
               topicSummary = TestTopicEntry.summary,
-              content      = s"Wrap-up after $n calls.",
-              endsTurn     = true
+              content = s"Wrap-up after $n calls.",
+              endsTurn = true
             )),
             ProviderEvent.Usage(TokenUsage(10000, 100, 10100)),
             ProviderEvent.Done(StopReason.ToolCall)
@@ -136,10 +138,10 @@ class SpendBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = pricedModelId,
-      toolNames          = CoreTools.coreToolNames :+ GetMagicNumberTool.name,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = pricedModelId,
+      toolNames = CoreTools.coreToolNames :+ GetMagicNumberTool.name,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -152,11 +154,11 @@ class SpendBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def userMessage(convId: Id[Conversation], text: String): Message =
     Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete
     )
 
   private def waitFor(timeout: FiniteDuration)(cond: => Boolean): Task[Unit] = {
@@ -176,19 +178,21 @@ class SpendBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private def agentReplied(convId: Id[Conversation]): Task[Boolean] =
     eventsOf(convId).map(_.exists {
       case m: Message => m.participantId == TestAgent && m.role == MessageRole.Standard
-      case _          => false
+      case _ => false
     })
 
   private def agentReplyCount(convId: Id[Conversation]): Task[Int] =
     eventsOf(convId).map(_.count {
       case m: Message => m.participantId == TestAgent && m.role == MessageRole.Standard
-      case _          => false
+      case _ => false
     })
 
-  /** Run one full user turn to QUIESCENCE: a NEW agent reply landed
-    * AND the provider stops being called (no increment across a
-    * settle window). Early returns bleed a still-running loop into
-    * the next test's provider (setProvider is by-name). */
+  /**
+   * Run one full user turn to QUIESCENCE: a NEW agent reply landed
+   * AND the provider stops being called (no increment across a
+   * settle window). Early returns bleed a still-running loop into
+   * the next test's provider (setProvider is by-name).
+   */
   private def runTurn(provider: BillingProvider, convId: Id[Conversation], text: String): Task[Unit] = {
     TestSigil.setProvider(Task.pure(provider))
     TestSigil.setMemoryExtractor(NoExtraction)
@@ -224,13 +228,13 @@ class SpendBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         }
         val directive = firstTurn.collect {
           case m: Message if m.role == MessageRole.Tool && m.content.exists {
-            case t: ResponseContent.Text => t.text.contains("soft budget")
-            case _ => false
-          } => m
+                case t: ResponseContent.Text => t.text.contains("soft budget")
+                case _ => false
+              } => m
         }
         directive should not be empty
         directive.head.content.collectFirst { case t: ResponseContent.Text => t.text }.get should
-          include ("request_deescalation")
+          include("request_deescalation")
         // Fresh turn, fresh budget: the second turn crossed again and
         // fired its own check-in.
         invokesNamed(secondTurn, "_budget_checkin") should have size 2
@@ -252,9 +256,9 @@ class SpendBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         invokesNamed(events, "_budget_ceiling") should have size 1
         val directive = events.collect {
           case m: Message if m.role == MessageRole.Tool && m.content.exists {
-            case t: ResponseContent.Text => t.text.contains("hard per-turn ceiling")
-            case _ => false
-          } => m
+                case t: ResponseContent.Text => t.text.contains("hard per-turn ceiling")
+                case _ => false
+              } => m
         }
         directive should not be empty
         withClue(s"calls=${provider.calls.get()} sawForced=${provider.sawForcedChoice}: ") {
@@ -290,36 +294,39 @@ class SpendBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val provider = new BillingProvider(respondAfter = 1)
       for {
         convId <- seedConv(Some(ConversationBudget(conversationHard = Some(BigDecimal("5")))), cost = BigDecimal("6"))
-        _ <- { TestSigil.setProvider(Task.pure(provider)); TestSigil.setMemoryExtractor(NoExtraction)
-               TestSigil.publish(userMessage(convId, "Are you there?")) }
+        _ <- {
+          TestSigil.setProvider(Task.pure(provider)); TestSigil.setMemoryExtractor(NoExtraction)
+          TestSigil.publish(userMessage(convId, "Are you there?"))
+        }
         _ <- Task.sleep(1.second)
         blocked <- eventsOf(convId)
         // Raise the ceiling conversationally and try again.
         conv <- TestSigil.withDB(_.conversations.transaction(_.get(convId))).map(_.get)
         ctx = TurnContext(
-          sigil = TestSigil, chain = List(TestUser, TestAgent), conversation = conv,
+          sigil = TestSigil,
+          chain = List(TestUser, TestAgent),
+          conversation = conv,
           turnInput = sigil.conversation.TurnInput(conversationId = convId),
-          model = TestSigil.defaultTestModel)
+          model = TestSigil.defaultTestModel
+        )
         result <- SetBudgetTool.invoke(
           sigil.tool.core.SetBudgetInput(conversationHard = Some(BigDecimal("20"))),
           ToolContext(ctx, Event.id(), SetBudgetTool.name))
         _ <- runTurn(provider, convId, "Are you there now?")
         after <- eventsOf(convId)
-      } yield {
-        withClue(s"calls-after-blocked=${provider.calls.get()}: ") {
-          // The blocked publish ran NO provider call...
-          val exhaustion = blocked.collect {
-            case m: Message if m.content.exists {
-              case t: ResponseContent.Text => t.text.contains("spend ceiling")
-              case _ => false
-            } => m
-          }
-          exhaustion should have size 1
-          // ...and the raised budget let the next turn run.
-          result.text should include ("Budget updated")
-          provider.calls.get() should be >= 1
-          invokesNamed(after, GetMagicNumberTool.name.value) should not be empty
+      } yield withClue(s"calls-after-blocked=${provider.calls.get()}: ") {
+        // The blocked publish ran NO provider call...
+        val exhaustion = blocked.collect {
+          case m: Message if m.content.exists {
+                case t: ResponseContent.Text => t.text.contains("spend ceiling")
+                case _ => false
+              } => m
         }
+        exhaustion should have size 1
+        // ...and the raised budget let the next turn run.
+        result.text should include("Budget updated")
+        provider.calls.get() should be >= 1
+        invokesNamed(after, GetMagicNumberTool.name.value) should not be empty
       }
     }
   }
@@ -336,12 +343,19 @@ class SpendBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         convId <- seedConv(None)
         conv <- TestSigil.withDB(_.conversations.transaction(_.get(convId))).map(_.get)
         ctx = TurnContext(
-          sigil = TestSigil, chain = List(TestUser, TestAgent), conversation = conv,
+          sigil = TestSigil,
+          chain = List(TestUser, TestAgent),
+          conversation = conv,
           turnInput = sigil.conversation.TurnInput(conversationId = convId),
-          model = TestSigil.defaultTestModel)
+          model = TestSigil.defaultTestModel
+        )
         // Seed per-turn routing state, then escalate twice.
-        _ <- TestSigil.classifyForRoute(strategy, ConversationWork, conv,
-               Some(userMessage(convId, "hard task")), ctx)
+        _ <- TestSigil.classifyForRoute(
+          strategy,
+          ConversationWork,
+          conv,
+          Some(userMessage(convId, "hard task")),
+          ctx)
         up1 <- TestSigil.requestEscalation(convId, "harder than it looked")
         up2 <- TestSigil.requestEscalation(convId, "harder still")
         down1 <- TestSigil.requestDeescalation(convId, "mechanical tail")

@@ -101,7 +101,8 @@ class WireCallResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     }
 
     "emit Decoded packing the roster's tool for a resolvable call" in Task {
-      accumulate(RespondTool.name.value,
+      accumulate(
+        RespondTool.name.value,
         """{"topicLabel":"T","topicSummary":"t","content":"hi","endsTurn":true}""") match {
         case WireCall.Decoded(call) =>
           (call.tool eq RespondTool) shouldBe true

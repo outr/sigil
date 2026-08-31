@@ -42,15 +42,15 @@ class DelegateTaskModelValidationSpec extends AsyncWordSpec with AsyncTaskSpec w
     val convId = Conversation.id(s"delegate-modelid-${rapid.Unique()}")
     val conv = Conversation(
       topics = List(TopicEntry(TestTopicId, "test", "test")),
-      _id    = convId
+      _id = convId
     )
     TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv))).map { stored =>
       TurnContext(
-        sigil        = TestWorkflowSigil,
-        chain        = List(WorkflowTestUser),
+        sigil = TestWorkflowSigil,
+        chain = List(WorkflowTestUser),
         conversation = stored,
-        turnInput    = TurnInput(ConversationView(conversationId = stored._id)),
-        model        = TestWorkflowSigil.cache.find(registeredId).get
+        turnInput = TurnInput(ConversationView(conversationId = stored._id)),
+        model = TestWorkflowSigil.cache.find(registeredId).get
       )
     }
   }
@@ -75,7 +75,7 @@ class DelegateTaskModelValidationSpec extends AsyncWordSpec with AsyncTaskSpec w
     "modelId is set to an id not in the ModelRegistry" should {
       "refuse at the tool boundary with a ToolResult.Failure" in {
         for {
-          ctx     <- turnContext()
+          ctx <- turnContext()
           signals <- DelegateTaskTool.execute(baseInput(Some(unregisteredIdString)), ctx, Event.id()).toList
         } yield {
           val reason = failureReason(signals).getOrElse(
@@ -92,7 +92,7 @@ class DelegateTaskModelValidationSpec extends AsyncWordSpec with AsyncTaskSpec w
 
       "include the full delegate_task input_schema and a worked example in the refusal" in {
         for {
-          ctx     <- turnContext()
+          ctx <- turnContext()
           signals <- DelegateTaskTool.execute(baseInput(Some(unregisteredIdString)), ctx, Event.id()).toList
         } yield {
           val reason = failureReason(signals).getOrElse(
@@ -117,27 +117,27 @@ class DelegateTaskModelValidationSpec extends AsyncWordSpec with AsyncTaskSpec w
     import sigil.db.{ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
     val now = lightdb.time.Timestamp()
     Model(
-      canonicalSlug       = id.value,
-      huggingFaceId       = "",
-      name                = id.value,
-      description         = s"Synthetic Model record for $id.",
-      contextLength       = 32768L,
-      architecture        = ModelArchitecture(
-        modality         = "text->text",
-        inputModalities  = List("text"),
+      canonicalSlug = id.value,
+      huggingFaceId = "",
+      name = id.value,
+      description = s"Synthetic Model record for $id.",
+      contextLength = 32768L,
+      architecture = ModelArchitecture(
+        modality = "text->text",
+        inputModalities = List("text"),
         outputModalities = List("text"),
-        tokenizer        = "GPT",
-        instructType     = None
+        tokenizer = "GPT",
+        instructType = None
       ),
-      pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
-      topProvider         = ModelTopProvider(contextLength = Some(32768L), maxCompletionTokens = Some(8192L), isModerated = false),
-      perRequestLimits    = None,
+      pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+      topProvider = ModelTopProvider(contextLength = Some(32768L), maxCompletionTokens = Some(8192L), isModerated = false),
+      perRequestLimits = None,
       supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
-      knowledgeCutoff     = None,
-      expirationDate      = None,
-      links               = ModelLinks(details = ""),
-      created             = now,
-      _id                 = id
+      knowledgeCutoff = None,
+      expirationDate = None,
+      links = ModelLinks(details = ""),
+      created = now,
+      _id = id
     )
   }
 }

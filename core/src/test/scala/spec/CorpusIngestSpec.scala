@@ -31,9 +31,11 @@ class CorpusIngestSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers wi
     "He keeps his cigars in the coal-scuttle, his tobacco in the toe end of a Persian slipper, " +
       "and his unanswered correspondence transfixed by a jack-knife into the centre of the mantelpiece."
 
-  /** Splits the dense passage into three atomic facts; answers any
-    * other passage with nothing; fails on a passage marked `BOOM`. */
-  private final class SplittingProvider extends Provider {
+  /**
+   * Splits the dense passage into three atomic facts; answers any
+   * other passage with nothing; fails on a passage marked `BOOM`.
+   */
+  final private class SplittingProvider extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -50,7 +52,9 @@ class CorpusIngestSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers wi
           ProviderEvent.ToolCallStart(callId, "extract_memories"),
           ProviderEvent.toolCall(callId, ExtractMemoriesTool)(ExtractMemoriesInput(List(
             ExtractedMemory("Sherlock Holmes keeps his cigars in the coal-scuttle.", "Cigars"),
-            ExtractedMemory("Sherlock Holmes keeps his tobacco in the toe end of a Persian slipper.", "Tobacco",
+            ExtractedMemory(
+              "Sherlock Holmes keeps his tobacco in the toe end of a Persian slipper.",
+              "Tobacco",
               key = Some("holmes.tobacco_location")),
             ExtractedMemory("Sherlock Holmes pins unanswered correspondence to the mantelpiece with a jack-knife.", "Correspondence")
           ))),
@@ -78,7 +82,7 @@ class CorpusIngestSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers wi
         chain = List(TestUser, TestAgent)
       ).map { stored =>
         stored should have size 3
-        stored.map(_.fact) should contain ("Sherlock Holmes keeps his tobacco in the toe end of a Persian slipper.")
+        stored.map(_.fact) should contain("Sherlock Holmes keeps his tobacco in the toe end of a Persian slipper.")
         stored.foreach { m =>
           m.source shouldBe MemorySource.Corpus
           m.spaceId shouldBe TestSpace
@@ -119,14 +123,13 @@ class CorpusIngestSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers wi
       }
     }
 
-    "contribute nothing for an empty or fact-free passage" in {
+    "contribute nothing for an empty or fact-free passage" in
       TestSigil.ingestCorpusMemories(
         passages = List("blank.txt#1" -> "   ", "filler.txt#1" -> "Nothing of substance here."),
         space = TestSpace,
         modelId = modelId,
         chain = List(TestUser, TestAgent)
       ).map(_ shouldBe empty)
-    }
   }
 
   "tear down" should {

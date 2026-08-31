@@ -39,29 +39,39 @@ import sigil.tool.{
   ToolSpec
 }
 
-/** Corpus input — optionals alongside a required field. The strict
-  * dialect must widen the optionals to nullable and require every
-  * property; lenient dialects must leave `required` alone. */
+/**
+ * Corpus input — optionals alongside a required field. The strict
+ * dialect must widen the optionals to nullable and require every
+ * property; lenient dialects must leave `required` alone.
+ */
 case class ConformanceOptionalsInput(title: String,
                                      note: Option[String] = None,
-                                     count: Option[Int] = None) extends ToolInput derives RW
+                                     count: Option[Int] = None)
+  extends ToolInput derives RW
 
-/** Corpus input — constrained string fields. Grammar-only keywords
-  * (`pattern`, `minLength`) appear in the canonical schema; every
-  * dialect except Identity strips them from the wire. */
+/**
+ * Corpus input — constrained string fields. Grammar-only keywords
+ * (`pattern`, `minLength`) appear in the canonical schema; every
+ * dialect except Identity strips them from the wire.
+ */
 case class ConformanceConstrainedInput(@pattern("^[a-z][a-z0-9-]*$") slug: String,
-                                       @minLength(1) label: String) extends ToolInput derives RW
+                                       @minLength(1) label: String)
+  extends ToolInput derives RW
 
-/** Corpus union — a mixed sealed hierarchy (payload case + singletons)
-  * emitted as discriminated `oneOf` branches. */
+/**
+ * Corpus union — a mixed sealed hierarchy (payload case + singletons)
+ * emitted as discriminated `oneOf` branches.
+ */
 sealed trait ConformanceShape derives RW
 case class ConformanceBox(side: Int) extends ConformanceShape
 case object ConformanceDot extends ConformanceShape
 
-/** Corpus input — union-typed field. Optional by design: the
-  * schema-ergonomics lint forbids a REQUIRED union with a
-  * payload-requiring variant (unfillable for models), so the corpus
-  * carries the union in the sanctioned optional-advanced-form shape. */
+/**
+ * Corpus input — union-typed field. Optional by design: the
+ * schema-ergonomics lint forbids a REQUIRED union with a
+ * payload-requiring variant (unfillable for models), so the corpus
+ * carries the union in the sanctioned optional-advanced-form shape.
+ */
 case class ConformanceUnionInput(label: String, shape: Option[ConformanceShape] = None) extends ToolInput derives RW
 
 /**
@@ -87,39 +97,51 @@ trait AbstractProviderConformanceSpec extends AnyWordSpec with Matchers {
 
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** The provider under test. Construction must be network-free. */
+  /**
+   * The provider under test. Construction must be network-free.
+   */
   protected def providerInstance: Provider
 
-  /** Model id for rendered bodies — registered in TestSigil's cache. */
+  /**
+   * Model id for rendered bodies — registered in TestSigil's cache.
+   */
   protected def modelId: Id[Model]
 
-  /** Parse this wire's canonical tool-call turn (some assistant content,
-    * one complete tool call, an authoritative usage block, terminal
-    * marker) into the ProviderEvent sequence the orchestrator would
-    * see. */
+  /**
+   * Parse this wire's canonical tool-call turn (some assistant content,
+   * one complete tool call, an authoritative usage block, terminal
+   * marker) into the ProviderEvent sequence the orchestrator would
+   * see.
+   */
   protected def toolTurnEvents: Vector[ProviderEvent]
 
-  /** The narration a completion speaks alongside its tool call. */
+  /**
+   * The narration a completion speaks alongside its tool call.
+   */
   protected val conformancePreamble: String = "Working on it."
 
-  /** Parse this wire's canonical speak-then-call completion: assistant
-    * narration and one complete tool call in the SAME completion. The
-    * orchestrator settles that narration as a preamble Message ahead of
-    * the invoke, so a wire that drops `content` once `tool_calls` are
-    * present loses the model's stated plan from its own transcript. */
+  /**
+   * Parse this wire's canonical speak-then-call completion: assistant
+   * narration and one complete tool call in the SAME completion. The
+   * orchestrator settles that narration as a preamble Message ahead of
+   * the invoke, so a wire that drops `content` once `tool_calls` are
+   * present loses the model's stated plan from its own transcript.
+   */
   protected def proseWithToolTurnEvents: Vector[ProviderEvent]
 
-  /** Parse this wire's canonical mid-stream inline-error fixture.
-    * `Left` when the parser throws (the standard
-    * [[ProviderStreamException]] path); `Right` with the emitted events
-    * when the provider surfaces the error as an event instead. */
+  /**
+   * Parse this wire's canonical mid-stream inline-error fixture.
+   * `Left` when the parser throws (the standard
+   * [[ProviderStreamException]] path); `Right` with the emitted events
+   * when the provider surfaces the error as an event instead.
+   */
   protected def midStreamErrorOutcome: Either[Throwable, Vector[ProviderEvent]]
 
   protected def dialect: SchemaDialect = providerInstance.schemaDialect
 
   // ---- corpus tools ----
 
-  protected final class CorpusTool[I <: ToolInput, O <: sigil.tool.ToolOutput](
+  final protected class CorpusTool[I <: ToolInput, O <: sigil.tool.ToolOutput](
     toolName: String,
     toolIO: ToolIO[I, O],
     result: O
@@ -150,27 +172,27 @@ trait AbstractProviderConformanceSpec extends AnyWordSpec with Matchers {
   // ---- helpers ----
 
   private def keysIn(json: Json): Set[String] = json match {
-    case Obj(map)      => map.keySet.toSet ++ map.values.flatMap(keysIn)
+    case Obj(map) => map.keySet.toSet ++ map.values.flatMap(keysIn)
     case Arr(items, _) => items.flatMap(keysIn).toSet
-    case _             => Set.empty
+    case _ => Set.empty
   }
 
   private def objectNodes(json: Json): Vector[Map[String, Json]] = json match {
-    case Obj(map)      => Vector(map.toMap) ++ map.values.flatMap(objectNodes)
+    case Obj(map) => Vector(map.toMap) ++ map.values.flatMap(objectNodes)
     case Arr(items, _) => items.flatMap(objectNodes)
-    case _             => Vector.empty
+    case _ => Vector.empty
   }
 
   protected def wireBody(toolChoice: ToolChoice, tools: Vector[Tool]): String =
     providerInstance.httpRequestFor(callWith(toolChoice, tools)).sync().content match {
       case Some(c: spice.http.content.StringContent) => c.value
-      case _                                         => ""
+      case _ => ""
     }
 
   protected def wireBodyFor(messages: Vector[ProviderMessage], tools: Vector[Tool]): String =
     providerInstance.httpRequestFor(callWith(ToolChoice.Auto, tools, messages)).sync().content match {
       case Some(c: spice.http.content.StringContent) => c.value
-      case _                                         => ""
+      case _ => ""
     }
 
   private def callWith(toolChoice: ToolChoice,
@@ -191,12 +213,11 @@ trait AbstractProviderConformanceSpec extends AnyWordSpec with Matchers {
 
   s"${getClass.getSimpleName} dialect (${providerInstance.schemaDialect.name})" should {
 
-    "transform every corpus schema without throwing" in {
+    "transform every corpus schema without throwing" in
       corpus.foreach { t =>
         val transformed = dialect(t)
         transformed should not be Null
       }
-    }
 
     "never engage strict for the open-JSON corpus tool" in {
       dialect.strictForTool(openJsonTool) shouldBe false
@@ -285,7 +306,7 @@ trait AbstractProviderConformanceSpec extends AnyWordSpec with Matchers {
     "carry prose spoken alongside a tool call, ahead of the call's completion" in {
       val events = proseWithToolTurnEvents
       val textAt = events.zipWithIndex.collect {
-        case (ProviderEvent.TextDelta(t), i)            => (i, t)
+        case (ProviderEvent.TextDelta(t), i) => (i, t)
         case (ProviderEvent.ContentBlockDelta(_, t), i) => (i, t)
       }
       val completeIdx = events.indexWhere(_.isInstanceOf[ProviderEvent.ToolCallComplete])

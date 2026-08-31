@@ -33,11 +33,11 @@ class AdminQueryIndexSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   private def message(convId: Id[Conversation], by: ParticipantId): Message =
     Message(
-      participantId  = by,
+      participantId = by,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      content        = Vector(ResponseContent.Text(s"from ${by.value}")),
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      content = Vector(ResponseContent.Text(s"from ${by.value}")),
+      state = EventState.Complete
     )
 
   private def stop(convId: Id[Conversation], by: ParticipantId): Stop =
@@ -59,7 +59,7 @@ class AdminQueryIndexSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       } yield {
         inTest.map(_._id) should contain allElementsOf List(a._id, b._id)
         inTest.map(_._id) should not contain c._id
-        inMemory.map(_._id) should contain (c._id)
+        inMemory.map(_._id) should contain(c._id)
         inMemory.map(_._id) should contain noneOf (a._id, b._id)
       }
     }
@@ -76,12 +76,14 @@ class AdminQueryIndexSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       for {
         conv <- newConv(TestSpace)
         convId = conv._id
-        _ <- persist(convId, List(
-          message(convId, TestUser),
-          message(convId, TestUser),
-          message(convId, TestAgent),
-          stop(convId, TestUser)
-        ))
+        _ <- persist(
+          convId,
+          List(
+            message(convId, TestUser),
+            message(convId, TestUser),
+            message(convId, TestAgent),
+            stop(convId, TestUser)
+          ))
         byUser <- TestSigil.withDB(_.eventsTransaction(convId)(
           _.query.filter(_.participantId === TestUser).toList))
         byAgent <- TestSigil.withDB(_.eventsTransaction(convId)(

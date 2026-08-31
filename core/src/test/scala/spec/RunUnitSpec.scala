@@ -126,7 +126,7 @@ class RunUnitSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         result shouldBe 0
         seen.get() match {
           case Some(t) => t.getMessage shouldBe "hook-fail"
-          case None    => fail("onFailed was not invoked")
+          case None => fail("onFailed was not invoked")
         }
       }
     }
@@ -173,7 +173,7 @@ class RunUnitSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   "runAsFrameworkWorkflow (backwards-compat shim)" should {
 
-    "emit Started → Completed for the legacy Task overload" in {
+    "emit Started → Completed for the legacy Task overload" in
       captureNotices {
         TestSigil.runAsFrameworkWorkflow("shim-success", "shim happy", None, Task.pure("ok"))
       }.map { case (result, notices) =>
@@ -183,11 +183,13 @@ class RunUnitSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         mine.head.phase shouldBe a[FrameworkWorkflowPhase.Started]
         mine.last.phase shouldBe a[FrameworkWorkflowPhase.Completed]
       }
-    }
 
-    "emit Started → Failed for the legacy Task overload on error" in {
+    "emit Started → Failed for the legacy Task overload on error" in
       captureNotices {
-        TestSigil.runAsFrameworkWorkflow("shim-failure", "shim doomed", None,
+        TestSigil.runAsFrameworkWorkflow(
+          "shim-failure",
+          "shim doomed",
+          None,
           Task.error[String](new RuntimeException("shim boom")))
           .handleError(_ => Task.pure("recovered"))
       }.map { case (result, notices) =>
@@ -197,9 +199,8 @@ class RunUnitSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         mine.last.phase shouldBe a[FrameworkWorkflowPhase.Failed]
         mine.last.phase.asInstanceOf[FrameworkWorkflowPhase.Failed].reason should include("shim boom")
       }
-    }
 
-    "still emit Step phases through the control-callback overload" in {
+    "still emit Step phases through the control-callback overload" in
       captureNotices {
         TestSigil.runAsFrameworkWorkflow("shim-steps", "shim multi-step", None) { control =>
           for {
@@ -215,7 +216,6 @@ class RunUnitSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         mine(2).phase.asInstanceOf[FrameworkWorkflowPhase.Step].label shouldBe "b"
         mine.head.workflowId shouldBe mine.last.workflowId
       }
-    }
   }
 
   "runAgent (top-level RunUnit wrap)" should {
@@ -235,10 +235,10 @@ class RunUnitSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
 
       val agent: AgentParticipant = DefaultAgentParticipant(
-        id                 = TestAgent,
-        modelId            = modelId,
-        toolNames          = CoreTools.coreToolNames,
-        instructions       = Instructions(),
+        id = TestAgent,
+        modelId = modelId,
+        toolNames = CoreTools.coreToolNames,
+        instructions = Instructions(),
         generationSettings = GenerationSettings(maxOutputTokens = Some(40), temperature = Some(0.0))
       )
 
@@ -248,7 +248,7 @@ class RunUnitSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
       val recorded = new ConcurrentLinkedQueue[Signal]()
-      val running  = new atomic.AtomicBoolean(true)
+      val running = new atomic.AtomicBoolean(true)
       TestSigil.signals
         .takeWhile(_ => running.get())
         .evalMap(s => Task { recorded.add(s); () })
@@ -272,12 +272,12 @@ class RunUnitSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _ <- Task.sleep(100.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("hi")),
-               state          = _root_.sigil.signal.EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("hi")),
+          state = _root_.sigil.signal.EventState.Complete
+        ))
         _ <- waitForSettle(System.currentTimeMillis() + 10_000L)
       } yield {
         running.set(false)
@@ -285,7 +285,7 @@ class RunUnitSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           case n: FrameworkWorkflowNotice if n.workflowType == "agent-loop" => n
         }
         val starteds = agentLoopNotices.filter(_.phase.isInstanceOf[FrameworkWorkflowPhase.Started])
-        val faileds  = agentLoopNotices.filter(_.phase.isInstanceOf[FrameworkWorkflowPhase.Failed])
+        val faileds = agentLoopNotices.filter(_.phase.isInstanceOf[FrameworkWorkflowPhase.Failed])
         starteds should not be empty
         faileds should not be empty
         val failedReason = faileds.head.phase.asInstanceOf[FrameworkWorkflowPhase.Failed].reason

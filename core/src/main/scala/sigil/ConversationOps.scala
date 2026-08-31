@@ -12,14 +12,20 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, TurnPlan, UpsertMemoryResult}
+import sigil.conversation.{
+  ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource,
+  MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput,
+  TurnPlan, UpsertMemoryResult
+}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.governor.{BudgetDirective, BudgetGovernor, CheckpointIntervention, GovernorContext}
-import sigil.governor.{DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
-  ProgressGovernor, TurnDecisionGovernor, TurnGovernor}
+import sigil.governor.{
+  DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
+  ProgressGovernor, TurnDecisionGovernor, TurnGovernor
+}
 import sigil.transport.SignalTransport
 
 import java.nio.file.Path
@@ -28,18 +34,28 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.{GenerationSettings, TokenUsage}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
+import sigil.event.{
+  AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange,
+  TopicChangeKind
+}
 import sigil.role.Role
 import sigil.orchestrator.{BudgetScope, Directive, Orchestrator}
 import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
-import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform}
+import sigil.pipeline.{
+  ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect,
+  MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub,
+  TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform
+}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.provider.{ContextSection, ContextSections, InstructionTier, ModelProfile, PromptShape, Reliability, ResolvedReferences}
 import sigil.service.Service
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
+import sigil.signal.{
+  AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal,
+  ToolDelta, TopicDelta
+}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
@@ -50,7 +66,6 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, V
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
-
 
 /**
  * Conversation-lifecycle cluster — create, join, leave, status, clear
@@ -99,11 +114,11 @@ trait ConversationOps { this: Sigil =>
       _id = conversationId
     )
     for {
-      _      <- withDB(_.topics.transaction(_.upsert(topic)))
+      _ <- withDB(_.topics.transaction(_.upsert(topic)))
       stored <- withDB(_.conversations.transaction(_.upsert(conversation)))
       // Broadcast the lifecycle Notice so live viewers' UI panels can
       // pick up the new conversation without polling.
-      _      <- publish(sigil.signal.ConversationCreated(stored._id, createdBy))
+      _ <- publish(sigil.signal.ConversationCreated(stored._id, createdBy))
       // Fire greetings in-line per agent. fireGreeting is a no-op for agents
       // without greet-eligible behaviors, so the cost for non-greeting setups
       // is just the participants.collect walk.
@@ -113,10 +128,10 @@ trait ConversationOps { this: Sigil =>
       // to greet. A greeting there makes the supervisor run "how can I help?"
       // turns AND poisons the worker's context (the worker mirrors the
       // greeting). Suppress whenever the conversation has a parent.
-      _      <- if (stored.parentConversationId.isDefined) Task.unit
-                else Task.sequence(stored.participants.collect {
-                  case agent: AgentParticipant => fireGreeting(agent, stored)
-                })
+      _ <- if (stored.parentConversationId.isDefined) Task.unit
+      else Task.sequence(stored.participants.collect {
+        case agent: AgentParticipant => fireGreeting(agent, stored)
+      })
     } yield stored
   }
 
@@ -189,11 +204,11 @@ trait ConversationOps { this: Sigil =>
         val updated = conv.copy(participants = conv.participants :+ participant)
         for {
           stored <- withDB(_.conversations.transaction(_.upsert(updated)))
-          _      <- publish(sigil.signal.ParticipantAdded(conversationId, participant))
-          _      <- participant match {
-                      case agent: AgentParticipant => fireGreeting(agent, stored)
-                      case _                       => Task.unit
-                    }
+          _ <- publish(sigil.signal.ParticipantAdded(conversationId, participant))
+          _ <- participant match {
+            case agent: AgentParticipant => fireGreeting(agent, stored)
+            case _ => Task.unit
+          }
         } yield stored
     }
 
@@ -219,7 +234,7 @@ trait ConversationOps { this: Sigil =>
         val updated = conv.copy(participants = conv.participants.filterNot(_.id == participantId))
         for {
           stored <- withDB(_.conversations.transaction(_.upsert(updated)))
-          _      <- publish(sigil.signal.ParticipantRemoved(conversationId, participantId))
+          _ <- publish(sigil.signal.ParticipantRemoved(conversationId, participantId))
         } yield stored
     }
 
@@ -251,7 +266,7 @@ trait ConversationOps { this: Sigil =>
         })
         for {
           stored <- withDB(_.conversations.transaction(_.upsert(updated)))
-          _      <- publish(sigil.signal.ParticipantUpdated(conversationId, participant))
+          _ <- publish(sigil.signal.ParticipantUpdated(conversationId, participant))
         } yield stored
     }
 
@@ -279,7 +294,7 @@ trait ConversationOps { this: Sigil =>
         val updated = conv.copy(status = status)
         for {
           stored <- withDB(_.conversations.transaction(_.upsert(updated)))
-          _      <- publish(sigil.signal.ConversationStatusChanged(conversationId, status))
+          _ <- publish(sigil.signal.ConversationStatusChanged(conversationId, status))
         } yield stored
     }
 
@@ -340,14 +355,14 @@ trait ConversationOps { this: Sigil =>
 
   private def resolvedWorkspaceFor(conversationId: Id[Conversation], depth: Int): Task[Option[java.nio.file.Path]] =
     workspaceFor(conversationId).flatMap {
-      case found @ Some(_)    => Task.pure(found)
+      case found @ Some(_) => Task.pure(found)
       case None if depth <= 0 => Task.pure(None)
       case None =>
         withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
           case Some(conv) =>
             conv.parentConversationId match {
               case Some(parentId) => resolvedWorkspaceFor(parentId, depth - 1)
-              case None           => Task.pure(None)
+              case None => Task.pure(None)
             }
           case None => Task.pure(None)
         }
@@ -402,7 +417,7 @@ trait ConversationOps { this: Sigil =>
       case Some(conv) =>
         conv.parentConversationId match {
           case Some(parentId) => delegationDepth(parentId, depth + 1, fuel - 1)
-          case None           => Task.pure(depth)
+          case None => Task.pure(depth)
         }
       case None => Task.pure(depth)
     }
@@ -426,8 +441,8 @@ trait ConversationOps { this: Sigil =>
   def createStagingConversation(stagingId: Id[Conversation],
                                 stagingFor: Id[Conversation]): Task[Conversation] = {
     val staging = Conversation(
-      _id        = stagingId,
-      topics     = Nil,
+      _id = stagingId,
+      topics = Nil,
       stagingFor = Some(stagingFor)
     )
     withDB(_.conversations.transaction(_.upsert(staging)))
@@ -466,13 +481,13 @@ trait ConversationOps { this: Sigil =>
     })
     for {
       eventCount <- rewriteEvents
-      _          <- rewriteMemories
-      _          <- rewriteSummaries
-      _          <- withDB(_.conversations.transaction(_.delete(staging)))
+      _ <- rewriteMemories
+      _ <- rewriteSummaries
+      _ <- withDB(_.conversations.transaction(_.delete(staging)))
       // The rewrite moved rows out from under the staging id without going
       // through the write path, so the recent-event window has to be told.
-      _          <- withDB(db => Task(db.forgetRecentEvents(staging)))
-      _          <- notifyHistoryImported(target, eventCount)
+      _ <- withDB(db => Task(db.forgetRecentEvents(staging)))
+      _ <- notifyHistoryImported(target, eventCount)
     } yield eventCount
   }
 
@@ -492,23 +507,23 @@ trait ConversationOps { this: Sigil =>
   def deleteStagingConversation(staging: Id[Conversation]): Task[Unit] =
     for {
       _ <- withDB { db =>
-             db.events.transaction { tx =>
-               val ids = tx.query.filter(_.conversationId === staging.value).stream.map(_._id)
-               ids.evalMap(id => tx.delete(id)).drain
-             }
-           }
+        db.events.transaction { tx =>
+          val ids = tx.query.filter(_.conversationId === staging.value).stream.map(_._id)
+          ids.evalMap(id => tx.delete(id)).drain
+        }
+      }
       _ <- withDB { db =>
-             db.memories.transaction { tx =>
-               val ids = tx.query.filter(_.conversationId === Some(staging)).stream.map(_._id)
-               ids.evalMap(id => tx.delete(id)).drain
-             }
-           }
+        db.memories.transaction { tx =>
+          val ids = tx.query.filter(_.conversationId === Some(staging)).stream.map(_._id)
+          ids.evalMap(id => tx.delete(id)).drain
+        }
+      }
       _ <- withDB { db =>
-             db.summaries.transaction { tx =>
-               val ids = tx.query.filter(_.conversationId === staging).stream.map(_._id)
-               ids.evalMap(id => tx.delete(id)).drain
-             }
-           }
+        db.summaries.transaction { tx =>
+          val ids = tx.query.filter(_.conversationId === staging).stream.map(_._id)
+          ids.evalMap(id => tx.delete(id)).drain
+        }
+      }
       _ <- withDB(_.conversations.transaction(_.delete(staging)))
       _ <- withDB(db => Task(db.forgetRecentEvents(staging)))
     } yield ()
@@ -534,38 +549,38 @@ trait ConversationOps { this: Sigil =>
       _ <- Task(clearPendingTriggers(conversationId))
       _ <- withDB(_.conversations.transaction(_.delete(conversationId)))
       _ <- withDB { db =>
-             db.events.transaction { tx =>
-               tx.query.filter(_.conversationId === conversationId.value).stream
-                 .map(_._id)
-                 .evalMap(id => tx.delete(id))
-                 .drain
-             }
-           }
+        db.events.transaction { tx =>
+          tx.query.filter(_.conversationId === conversationId.value).stream
+            .map(_._id)
+            .evalMap(id => tx.delete(id))
+            .drain
+        }
+      }
       // The delete went straight to the store, so the recent-event window
       // still describes rows that are gone. Clear it after, not before, or a
       // publish racing the cascade repopulates it.
       _ <- withDB(db => Task(db.forgetRecentEvents(conversationId)))
       _ <- withDB { db =>
-             db.participantProjections.transaction { tx =>
-               tx.query.filter(_.conversationId === conversationId).toList.flatMap { projections =>
-                 Task.sequence(projections.map(p => tx.delete(p._id))).unit
-               }
-             }
-           }
+        db.participantProjections.transaction { tx =>
+          tx.query.filter(_.conversationId === conversationId).toList.flatMap { projections =>
+            Task.sequence(projections.map(p => tx.delete(p._id))).unit
+          }
+        }
+      }
       _ <- withDB { db =>
-             db.encodedContexts.transaction { tx =>
-               tx.query.filter(_.conversationId === conversationId).toList.flatMap { caches =>
-                 Task.sequence(caches.map(c => tx.delete(c._id))).unit
-               }
-             }
-           }
+        db.encodedContexts.transaction { tx =>
+          tx.query.filter(_.conversationId === conversationId).toList.flatMap { caches =>
+            Task.sequence(caches.map(c => tx.delete(c._id))).unit
+          }
+        }
+      }
       _ <- withDB { db =>
-             db.topics.transaction { tx =>
-               tx.query.filter(_.conversationId === conversationId).toList.flatMap { topics =>
-                 Task.sequence(topics.map(t => tx.delete(t._id))).unit
-               }
-             }
-           }
+        db.topics.transaction { tx =>
+          tx.query.filter(_.conversationId === conversationId).toList.flatMap { topics =>
+            Task.sequence(topics.map(t => tx.delete(t._id))).unit
+          }
+        }
+      }
     } yield ()
 
   /**
@@ -595,30 +610,30 @@ trait ConversationOps { this: Sigil =>
     val now = Timestamp(Nowish())
     withDB(_.conversations.transaction(_.modify(conversationId) {
       case Some(conv) => Task.pure(Some(conv.copy(clearedAt = Some(now), modified = now)))
-      case None       => Task.pure(None)
+      case None => Task.pure(None)
     })).flatMap {
-      case None => Task.unit  // no conversation to clear — silent no-op
+      case None => Task.unit // no conversation to clear — silent no-op
       case Some(_) =>
         for {
           _ <- withDB { db =>
-                 db.participantProjections.transaction { tx =>
-                   tx.query.filter(_.conversationId === conversationId).toList.flatMap { projections =>
-                     Task.sequence(projections.map(p => tx.delete(p._id))).unit
-                   }
-                 }
-               }
+            db.participantProjections.transaction { tx =>
+              tx.query.filter(_.conversationId === conversationId).toList.flatMap { projections =>
+                Task.sequence(projections.map(p => tx.delete(p._id))).unit
+              }
+            }
+          }
           _ <- withDB { db =>
-                 db.encodedContexts.transaction { tx =>
-                   tx.query.filter(_.conversationId === conversationId).toList.flatMap { caches =>
-                     Task.sequence(caches.map(c => tx.delete(c._id))).unit
-                   }
-                 }
-               }
+            db.encodedContexts.transaction { tx =>
+              tx.query.filter(_.conversationId === conversationId).toList.flatMap { caches =>
+                Task.sequence(caches.map(c => tx.delete(c._id))).unit
+              }
+            }
+          }
           _ <- publish(sigil.signal.ConversationCleared(
-                 conversationId = conversationId,
-                 clearedAt      = now,
-                 clearedBy      = clearedBy
-               ))
+            conversationId = conversationId,
+            clearedAt = now,
+            clearedBy = clearedBy
+          ))
         } yield ()
     }
   }

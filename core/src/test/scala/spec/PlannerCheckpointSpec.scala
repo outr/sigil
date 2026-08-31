@@ -77,18 +77,21 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     case IdenticalReads
   }
 
-  /** Scripted provider: planner consults answer from `verdicts` in
-    * order (last repeats), reflector consults always claim progress,
-    * and main-loop calls follow `mainShape` until `respondAfter` is
-    * exhausted, then respond with `endsTurn = true`. The first
-    * `plannerTruncations` planner consults close with
-    * `finish_reason: length` and no tool call — the truncated-reply
-    * shape bug #412 observed; `verdicts` indexes the calls after
-    * them. */
-  private final class PlannerScriptProvider(respondAfter: Int,
+  /**
+   * Scripted provider: planner consults answer from `verdicts` in
+   * order (last repeats), reflector consults always claim progress,
+   * and main-loop calls follow `mainShape` until `respondAfter` is
+   * exhausted, then respond with `endsTurn = true`. The first
+   * `plannerTruncations` planner consults close with
+   * `finish_reason: length` and no tool call — the truncated-reply
+   * shape bug #412 observed; `verdicts` indexes the calls after
+   * them.
+   */
+  final private class PlannerScriptProvider(respondAfter: Int,
                                             mainShape: MainShape,
                                             verdicts: Vector[PlannerVerdictInput],
-                                            plannerTruncations: Int = 0) extends Provider {
+                                            plannerTruncations: Int = 0)
+    extends Provider {
     val totalCalls = new AtomicInteger(0)
     val mainCalls = new AtomicInteger(0)
     val plannerCalls = new AtomicInteger(0)
@@ -104,10 +107,10 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       def respond(n: Int): List[ProviderEvent] = List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
         ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
-          topicLabel   = TestTopicEntry.label,
+          topicLabel = TestTopicEntry.label,
           topicSummary = TestTopicEntry.summary,
-          content      = s"Task complete after $n calls.",
-          endsTurn     = true
+          content = s"Task complete after $n calls.",
+          endsTurn = true
         )),
         ProviderEvent.Done(StopReason.ToolCall)
       )
@@ -128,11 +131,11 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           List(
             ProviderEvent.ToolCallStart(callId, "report_progress"),
             ProviderEvent.toolCall(callId, ProgressReflectionTool)(ProgressReflectionInput(
-              currentStatus      = s"working (${rapid.Unique()})",
+              currentStatus = s"working (${rapid.Unique()})",
               meaningfulProgress = true,
-              remainingSteps     = "keep going",
-              stuckOn            = None,
-              shouldAskUser      = false
+              remainingSteps = "keep going",
+              stuckOn = None,
+              shouldAskUser = false
             )),
             ProviderEvent.Done(StopReason.Complete)
           )
@@ -162,18 +165,22 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     }
   }
 
-  /** A first-review-shaped verdict: plan fields populated (the review
-    * that creates the plan). */
+  /**
+   * A first-review-shaped verdict: plan fields populated (the review
+   * that creates the plan).
+   */
   private def onTrack(phase: String): PlannerVerdictInput = PlannerVerdictInput(
-    verdict      = "on_track",
+    verdict = "on_track",
     currentPhase = phase,
-    objective    = Some("Repair the extractor and verify the build."),
-    constraints  = List("Do not revert prior fixes."),
+    objective = Some("Repair the extractor and verify the build."),
+    constraints = List("Do not revert prior fixes."),
     doneCriteria = Some("Build compiles and tests pass.")
   )
 
-  /** A routine review per the post-#412 contract: verdict + phase
-    * only, plan fields omitted — the framework retains the plan. */
+  /**
+   * A routine review per the post-#412 contract: verdict + phase
+   * only, plan fields omitted — the framework retains the plan.
+   */
   private def slimOnTrack(phase: String): PlannerVerdictInput =
     PlannerVerdictInput(verdict = "on_track", currentPhase = phase)
 
@@ -181,19 +188,19 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     onTrack("applying fixes").copy(verdict = "deviating", correction = Some(correction))
 
   private val replanned: PlannerVerdictInput = PlannerVerdictInput(
-    verdict      = "replan",
+    verdict = "replan",
     currentPhase = "rewriting",
-    objective    = Some("Rewrite the extractor from scratch."),
-    constraints  = Nil,
+    objective = Some("Rewrite the extractor from scratch."),
+    constraints = Nil,
     doneCriteria = Some("New extractor passes the regression suite.")
   )
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = executorModelId,
-      toolNames          = (CoreTools.coreToolNames :+ MutatingSpecTool.name) :+ GetMagicNumberTool.name,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = executorModelId,
+      toolNames = (CoreTools.coreToolNames :+ MutatingSpecTool.name) :+ GetMagicNumberTool.name,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -206,11 +213,11 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private def userMessage(convId: Id[Conversation], text: String): Message =
     Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete
     )
 
   private def waitFor(timeout: FiniteDuration)(cond: => Boolean): Task[Unit] = {
@@ -238,13 +245,15 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   private def agentReplyCount(convId: Id[Conversation]): Task[Int] =
     eventsOf(convId).map(_.count {
       case m: Message => m.participantId == TestAgent && m.role == MessageRole.Standard
-      case _          => false
+      case _ => false
     })
 
-  /** Run one full user turn to QUIESCENCE: a NEW agent reply landed
-    * AND the provider stops being called (no increment across a
-    * settle window). Early returns bleed a still-running loop into
-    * the next test's provider (setProvider is by-name). */
+  /**
+   * Run one full user turn to QUIESCENCE: a NEW agent reply landed
+   * AND the provider stops being called (no increment across a
+   * settle window). Early returns bleed a still-running loop into
+   * the next test's provider (setProvider is by-name).
+   */
   private def runTurn(provider: PlannerScriptProvider, convId: Id[Conversation], text: String): Task[Unit] = {
     TestSigil.setProvider(Task.pure(provider))
     TestSigil.setMemoryExtractor(NoExtraction)
@@ -268,8 +277,8 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val correction = "Stop rereading the file; apply the fix to Extractor.scala."
       val provider = new PlannerScriptProvider(
         respondAfter = 4,
-        mainShape    = MainShape.DistinctMutations,
-        verdicts     = Vector(deviating(correction))
+        mainShape = MainShape.DistinctMutations,
+        verdicts = Vector(deviating(correction))
       )
       for {
         convId <- seedConv("deviating")
@@ -281,7 +290,7 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         withClue(s"main=${provider.mainCalls.get()} planner=${provider.plannerCalls.get()} " +
           s"checkpoints=${checkpoints.map(c => s"${c.iterationCount}:${c.meaningfulProgress}")}: ") {
           corrections should have size 1
-          directivesFor(events, corrections).head should include (correction)
+          directivesFor(events, corrections).head should include(correction)
           // The first planner review also created and published the plan.
           invokesNamed(events, "_plan") should have size 1
           // Non-terminal: the executor's next iterations ran and the
@@ -308,8 +317,8 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       // streak's threshold one checkpoint boundary later.
       val provider = new PlannerScriptProvider(
         respondAfter = 8,
-        mainShape    = MainShape.IdenticalReads,
-        verdicts     = Vector(onTrack("collecting the magic numbers"))
+        mainShape = MainShape.IdenticalReads,
+        verdicts = Vector(onTrack("collecting the magic numbers"))
       )
       for {
         convId <- seedConv("ontrack")
@@ -340,22 +349,20 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       TestSigil.setPlannerCadence(4)
       val provider = new PlannerScriptProvider(
         respondAfter = 8,
-        mainShape    = MainShape.DistinctMutations,
-        verdicts     = Vector(onTrack("phase 1"), onTrack("phase 2"), onTrack("phase 3"))
+        mainShape = MainShape.DistinctMutations,
+        verdicts = Vector(onTrack("phase 1"), onTrack("phase 2"), onTrack("phase 3"))
       )
       for {
         convId <- seedConv("sparse")
         _ <- runTurn(provider, convId, "Sweep every file and apply the rename.")
         events <- eventsOf(convId)
         _ = TestSigil.resetPlannerCadence()
-      } yield {
-        withClue(s"main=${provider.mainCalls.get()} planner=${provider.plannerCalls.get()}: ") {
-          provider.mainCalls.get() shouldBe 9
-          // First-plan call at iteration 2 plus one cadence tick at
-          // iteration 6 — never once per boundary, let alone iteration.
-          provider.plannerCalls.get() should (be >= 2 and be <= 3)
-          provider.reflectorCalls.get() shouldBe 0
-        }
+      } yield withClue(s"main=${provider.mainCalls.get()} planner=${provider.plannerCalls.get()}: ") {
+        provider.mainCalls.get() shouldBe 9
+        // First-plan call at iteration 2 plus one cadence tick at
+        // iteration 6 — never once per boundary, let alone iteration.
+        provider.plannerCalls.get() should (be >= 2 and be <= 3)
+        provider.reflectorCalls.get() shouldBe 0
       }
     }
 
@@ -364,8 +371,8 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       TestSigil.setPlannerCadence(2)
       val provider = new PlannerScriptProvider(
         respondAfter = 4,
-        mainShape    = MainShape.DistinctMutations,
-        verdicts     = Vector(onTrack("phase 1"), slimOnTrack("phase 2"))
+        mainShape = MainShape.DistinctMutations,
+        verdicts = Vector(onTrack("phase 1"), slimOnTrack("phase 2"))
       )
       for {
         convId <- seedConv("slim")
@@ -393,9 +400,9 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       TestSigil.setPlannerModelId(oversightModelId)
       TestSigil.setPlannerCadence(4)
       val provider = new PlannerScriptProvider(
-        respondAfter       = 8,
-        mainShape          = MainShape.DistinctMutations,
-        verdicts           = Vector(onTrack("phase 1")),
+        respondAfter = 8,
+        mainShape = MainShape.DistinctMutations,
+        verdicts = Vector(onTrack("phase 1")),
         plannerTruncations = 1
       )
       for {
@@ -403,19 +410,17 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         _ <- runTurn(provider, convId, "Sweep every file and apply the rename.")
         events <- eventsOf(convId)
         _ = TestSigil.resetPlannerCadence()
-      } yield {
-        withClue(s"main=${provider.mainCalls.get()} planner=${provider.plannerCalls.get()}: ") {
-          // First review (iteration 2) truncates; without pacing the
-          // empty plan refires the consult at the very next boundary
-          // (iteration 4). With pacing the retry waits for the cadence
-          // tick (iteration 6), succeeds, and creates the plan.
-          provider.plannerCalls.get() shouldBe 2
-          invokesNamed(events, "_plan") should have size 1
-          // The executor's own work is untouched by the failed review.
-          provider.mainCalls.get() shouldBe 9
-          invokesNamed(events, "_stall_detected") shouldBe empty
-          invokesNamed(events, "_planner_correction") shouldBe empty
-        }
+      } yield withClue(s"main=${provider.mainCalls.get()} planner=${provider.plannerCalls.get()}: ") {
+        // First review (iteration 2) truncates; without pacing the
+        // empty plan refires the consult at the very next boundary
+        // (iteration 4). With pacing the retry waits for the cadence
+        // tick (iteration 6), succeeds, and creates the plan.
+        provider.plannerCalls.get() shouldBe 2
+        invokesNamed(events, "_plan") should have size 1
+        // The executor's own work is untouched by the failed review.
+        provider.mainCalls.get() shouldBe 9
+        invokesNamed(events, "_stall_detected") shouldBe empty
+        invokesNamed(events, "_planner_correction") shouldBe empty
       }
     }
 
@@ -423,8 +428,8 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       TestSigil.resetPlannerModelId()
       val provider = new PlannerScriptProvider(
         respondAfter = 4,
-        mainShape    = MainShape.DistinctMutations,
-        verdicts     = Vector(onTrack("unused"))
+        mainShape = MainShape.DistinctMutations,
+        verdicts = Vector(onTrack("unused"))
       )
       for {
         convId <- seedConv("disabled")
@@ -447,8 +452,8 @@ class PlannerCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       TestSigil.setPlannerCadence(2)
       val provider = new PlannerScriptProvider(
         respondAfter = 4,
-        mainShape    = MainShape.DistinctMutations,
-        verdicts     = Vector(onTrack("phase 1"), replanned)
+        mainShape = MainShape.DistinctMutations,
+        verdicts = Vector(onTrack("phase 1"), replanned)
       )
       for {
         convId <- seedConv("replan")

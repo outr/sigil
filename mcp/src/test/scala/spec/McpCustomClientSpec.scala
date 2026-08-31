@@ -34,8 +34,10 @@ class McpCustomClientSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   private val manager = CustomClientMcpSigil.mcpManager
 
-  /** A URL only the end user's own machine can reach — the framework's
-    * HTTP+SSE client could never connect to it from the host. */
+  /**
+   * A URL only the end user's own machine can reach — the framework's
+   * HTTP+SSE client could never connect to it from the host.
+   */
   private val tunnelled = McpServerConfig(
     name = "user-laptop",
     transport = McpTransport.HttpSse(url("http://localhost:9000")),
@@ -47,14 +49,13 @@ class McpCustomClientSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   private val httpSse = McpServerConfig(name = "hosted-sse", transport = McpTransport.HttpSse(url("https://mcp.example.com")))
 
   "an app-supplied McpClient" should {
-    "serve a marked config end-to-end" in {
+    "serve a marked config end-to-end" in
       manager.addConfig(tunnelled).flatMap(_ => manager.listTools(tunnelled.name)).map { tools =>
         tools.map(_.name) shouldBe List("tunnelled_echo")
         val client = CustomClientMcpSigil.suppliedClient(tunnelled.name).getOrElse(fail("host was never asked for a client"))
         client.starts.get() shouldBe 1
         client.listToolsCalls.get() shouldBe 1
       }
-    }
 
     "surface its tools to the agent through McpToolFinder" in {
       val request = DiscoveryRequest(
@@ -80,14 +81,13 @@ class McpCustomClientSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       }
     }
 
-    "answer tool calls through the app's transport" in {
+    "answer tool calls through the app's transport" in
       manager.callTool(tunnelled.name, "tunnelled_echo", obj("value" -> str("ping")), TestAgent).map { result =>
         val client = CustomClientMcpSigil.suppliedClient(tunnelled.name).getOrElse(fail("host was never asked for a client"))
         client.toolCalls.iterator().asScala.toList.map(_._1) shouldBe List("tunnelled_echo")
         result.get("content").map(_.asVector.toList).getOrElse(Nil).flatMap(_.get("text")).map(_.asString) shouldBe
           List("tunnelled_echo handled in-process")
       }
-    }
   }
 
   "the built-in transports" should {

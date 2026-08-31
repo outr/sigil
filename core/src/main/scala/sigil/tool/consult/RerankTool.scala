@@ -12,7 +12,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput,
  * with `tool_choice = required`.
  */
 case object RerankTool extends Tool with FrameworkConsult {
-  type Input  = RerankInput
+  type Input = RerankInput
   type Output = TextToolOutput
   val io: ToolIO[RerankInput, TextToolOutput] = ToolIO.derived[RerankInput, TextToolOutput]
 
@@ -33,19 +33,25 @@ case object RerankTool extends Tool with FrameworkConsult {
     discovery = DiscoverySpec(kind = ConsultKind)
   )
 
-  /** Relevance scoring — routes through the cheap classification tier. */
+  /**
+   * Relevance scoring — routes through the cheap classification tier.
+   */
   override def consultWorkType: WorkType = ClassificationWork
 
-  /** Output is a list of candidate id strings — bounded by the
-    * candidate-pool size (typically <= 20). 768 tokens covers a full
-    * reorder plus the reasoning-spill margin. */
+  /**
+   * Output is a list of candidate id strings — bounded by the
+   * candidate-pool size (typically <= 20). 768 tokens covers a full
+   * reorder plus the reasoning-spill margin.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     maxOutputTokens = Some(768),
     reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 
   private def executeResult(input: RerankInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =

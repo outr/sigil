@@ -4,21 +4,28 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.ToolApproval
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, RefusalPayload, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, RefusalPayload, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 import sigil.tool.model.RecordConsentInput
 
 case object RecordConsentTool extends Tool {
-  type Input  = RecordConsentInput
+  type Input = RecordConsentInput
   type Output = TextToolOutput
   val io: ToolIO[RecordConsentInput, TextToolOutput] = ToolIO.derived[RecordConsentInput, TextToolOutput].withExamples(
     ToolExample(
       "load_claude_state was refused pending consent; the user approved the prompt",
-      RecordConsentInput(toolName = "load_claude_state", approved = true,
+      RecordConsentInput(
+        toolName = "load_claude_state",
+        approved = true,
         reason = Some("user approved loading prior Claude Code session state when the gate prompted"))
     ),
     ToolExample(
       "load_claude_state was refused pending consent; the user declined the prompt",
-      RecordConsentInput(toolName = "load_claude_state", approved = false,
+      RecordConsentInput(
+        toolName = "load_claude_state",
+        approved = false,
         reason = Some("user declined the state-load prompt"))
     )
   )
@@ -50,7 +57,6 @@ case object RecordConsentTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("consent", "approval", "approve", "decline", "permission", "record"))
   )
 
-
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 
   private def executeResult(input: RecordConsentInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
@@ -74,8 +80,8 @@ case object RecordConsentTool extends Tool {
         val candidates = (ctx.turn.offeredTools.iterator ++ ctx.sigil.staticTools.iterator).toList.distinct
         Task.pure(RefusalPayload.unknownTool(
           invokedName = input.toolName,
-          offered     = candidates,
-          carrier     = Some(RecordConsentTool)
+          offered = candidates,
+          carrier = Some(RecordConsentTool)
         ))
 
       case Some(tool) if !tool.requiresUserConsent =>
@@ -102,12 +108,12 @@ case object RecordConsentTool extends Tool {
         // emit it via `ctx.emit`. The tool's own result is the
         // confirmation text the framework pairs to the invoke.
         val approval = ToolApproval(
-          toolName       = targetName,
-          approved       = input.approved,
-          reason         = input.reason,
-          participantId  = ctx.caller,
+          toolName = targetName,
+          approved = input.approved,
+          reason = input.reason,
+          participantId = ctx.caller,
           conversationId = ctx.conversation.id,
-          topicId        = ctx.conversation.currentTopicId
+          topicId = ctx.conversation.currentTopicId
         )
         val verdict = if (input.approved) "approved" else "declined"
         val confirmationText = input.reason match {

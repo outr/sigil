@@ -30,7 +30,7 @@ import sigil.information.{Information, InformationSummary}
  * Knobs:
  *   - [[minChars]]: size threshold in characters (default 2000 ≈ 500
  *     tokens). Text frames shorter than this are left alone.
-    * kind.
+ * kind.
  *   - [[placeholder]]: renders the in-frame reference text from the
  *     newly-minted Information id and catalog summary.
  *   - [[summaryOf]]: produces the catalog's 1-2 line teaser. Default
@@ -42,12 +42,15 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
                                   placeholder: (Id[Information], String) => String =
                                     StandardBlockExtractor.DefaultPlaceholder,
                                   summaryOf: String => String = StandardBlockExtractor.DefaultSummary,
-                                  /** Emit a progress callback every N frames inspected.
-                                    * Default 500 keeps the activity-bar pulse cheap on small
-                                    * runs but visible on imports. Apps with very wide UIs
-                                    * tighten; apps with no progress surface keep the
-                                    * default — the callback is a no-op by default. */
-                                  progressEvery: Int = 500) extends BlockExtractor {
+                                  /**
+                                   * Emit a progress callback every N frames inspected.
+                                   * Default 500 keeps the activity-bar pulse cheap on small
+                                   * runs but visible on imports. Apps with very wide UIs
+                                   * tighten; apps with no progress surface keep the
+                                   * default — the callback is a no-op by default.
+                                   */
+                                  progressEvery: Int = 500)
+  extends BlockExtractor {
 
   override def extract(sigil: Sigil,
                        frames: Vector[ContextFrame],
@@ -61,7 +64,7 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
     // activity-bar label reflects forward motion.
     val outcomes = new Array[ContextFrame](total)
     val summariesBuilder = Vector.newBuilder[InformationSummary]
-    val infosBuilder     = Vector.newBuilder[Information]
+    val infosBuilder = Vector.newBuilder[Information]
 
     def walk(remaining: List[(ContextFrame, Int)]): Task[Unit] = remaining match {
       case Nil => Task.unit
@@ -97,9 +100,11 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
     } yield BlockExtractionResult(outcomes.toVector, summariesBuilder.result())
   }
 
-  /** Allocate an Information id, build the record via the factory,
-    * and return the replaced frame + the catalog summary + the
-    * record to be persisted at the end of the pass. No I/O here. */
+  /**
+   * Allocate an Information id, build the record via the factory,
+   * and return the replaced frame + the catalog summary + the
+   * record to be persisted at the end of the pass. No I/O here.
+   */
   private def buildExtraction(content: String,
                               replace: String => ContextFrame): (ContextFrame, InformationSummary, Information) = {
     // Sigil #393 — DETERMINISTIC id (content hash), not a fresh random one.
@@ -110,16 +115,16 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
     // duplicates for unchanged content. A stable id keeps the placeholder bytes
     // identical across turns (cache holds) and makes re-externalization an
     // idempotent upsert of one record.
-    val newId   = StandardBlockExtractor.deterministicId(content)
-    val info    = toInformation(content, newId)
+    val newId = StandardBlockExtractor.deterministicId(content)
+    val info = toInformation(content, newId)
     val summary = summaryOf(content)
     val refText = placeholder(newId, summary)
     (
       replace(refText),
       InformationSummary(
-        id              = newId,
+        id = newId,
         informationType = info.informationType,
-        summary         = summary
+        summary = summary
       ),
       info
     )
@@ -127,23 +132,27 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
 }
 
 object StandardBlockExtractor {
-  /** Deterministic [[Information]] id for `content` — its SHA-256 (hex). The
-    * SAME content always externalizes to the SAME id, so the placeholder bytes
-    * are stable across turns (the prompt-cache prefix holds instead of missing
-    * at the first externalized message — #393) and re-externalizing upserts one
-    * record rather than minting a fresh duplicate on every context build.
-    * Content-addressed (not conversation-scoped): `toInformation` derives the
-    * record from content alone, so identical content sharing a record is
-    * correct de-dup, and a stable id keeps the agent's `lookup` references valid
-    * across turns. */
+
+  /**
+   * Deterministic [[Information]] id for `content` — its SHA-256 (hex). The
+   * SAME content always externalizes to the SAME id, so the placeholder bytes
+   * are stable across turns (the prompt-cache prefix holds instead of missing
+   * at the first externalized message — #393) and re-externalizing upserts one
+   * record rather than minting a fresh duplicate on every context build.
+   * Content-addressed (not conversation-scoped): `toInformation` derives the
+   * record from content alone, so identical content sharing a record is
+   * correct de-dup, and a stable id keeps the agent's `lookup` references valid
+   * across turns.
+   */
   def deterministicId(content: String): Id[Information] = {
     val digest = java.security.MessageDigest.getInstance("SHA-256")
-    val bytes  = digest.digest(content.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    val bytes = digest.digest(content.getBytes(java.nio.charset.StandardCharsets.UTF_8))
     Id[Information](bytes.iterator.map(b => f"${b & 0xff}%02x").mkString)
   }
 
   val DefaultPlaceholder: (Id[Information], String) => String =
-    (id, summary) => s"(large content stored as Information[${id.value}]. Summary: $summary. Use `lookup(capabilityType=\"Information\", name=\"${id.value}\")` to retrieve full content.)"
+    (id, summary) =>
+      s"(large content stored as Information[${id.value}]. Summary: $summary. Use `lookup(capabilityType=\"Information\", name=\"${id.value}\")` to retrieve full content.)"
 
   val DefaultSummary: String => String = content => {
     val firstLine = content.linesIterator.find(_.trim.nonEmpty).getOrElse("").trim

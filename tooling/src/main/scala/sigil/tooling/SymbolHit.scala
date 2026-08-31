@@ -35,7 +35,7 @@ object SymbolHit {
     val loc = ws.getLocation
     val (uri, range) =
       if (loc.isLeft) (loc.getLeft.getUri, Option(loc.getLeft.getRange))
-      else            (loc.getRight.getUri, None)
+      else (loc.getRight.getUri, None)
     SymbolHit(
       name = ws.getName,
       kind = ws.getKind,

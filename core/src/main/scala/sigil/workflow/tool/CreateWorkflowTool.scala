@@ -5,7 +5,10 @@ import fabric.rw.*
 import rapid.Task
 import sigil.{GlobalSpace, SpaceId}
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 import sigil.workflow.{WorkflowStepKind, WorkflowStepSpec, WorkflowTemplate, WorkflowTrigger}
 
 case class CreateWorkflowInput(name: String,
@@ -48,7 +51,11 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
             over = Some("hits"),
             itemVariable = Some("file"),
             bodyStepIds = List("act")),
-          WorkflowStepSpec(id = "act", kind = WorkflowStepKind.Job, tool = Some("read_file"), arguments = Some(obj("path" -> str("{{file}}"))))
+          WorkflowStepSpec(
+            id = "act",
+            kind = WorkflowStepKind.Job,
+            tool = Some("read_file"),
+            arguments = Some(obj("path" -> str("{{file}}"))))
         )
       )
     )

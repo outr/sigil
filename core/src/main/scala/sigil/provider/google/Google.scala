@@ -14,12 +14,14 @@ object Google {
     if (sigilModelId.startsWith(prefix)) sigilModelId.drop(prefix.length) else sigilModelId
   }
 
-  /** Whether a model (post [[stripProviderPrefix]]) supports explicit
-    * `cachedContents` context caching. The stable Gemini 2.x families
-    * do; the gate keeps the cache-create path off any non-Gemini
-    * vendor model that happens to be routed through the Google
-    * generative-language wire, and off the experimental / preview
-    * variants whose caching behaviour is not contractually stable. */
+  /**
+   * Whether a model (post [[stripProviderPrefix]]) supports explicit
+   * `cachedContents` context caching. The stable Gemini 2.x families
+   * do; the gate keeps the cache-create path off any non-Gemini
+   * vendor model that happens to be routed through the Google
+   * generative-language wire, and off the experimental / preview
+   * variants whose caching behaviour is not contractually stable.
+   */
   def supportsContextCaching(strippedModelName: String): Boolean = {
     val name = strippedModelName.toLowerCase
     name.contains("gemini") &&

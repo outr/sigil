@@ -34,7 +34,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolGates
  * act on a selection.
  */
 case object ListMemoriesTool extends Tool {
-  type Input  = ListMemoriesInput
+  type Input = ListMemoriesInput
   type Output = ListMemoriesOutput
   val io: ToolIO[ListMemoriesInput, ListMemoriesOutput] = ToolIO.derived[ListMemoriesInput, ListMemoriesOutput]
   override val name = ToolName("list_memories")
@@ -64,9 +64,11 @@ case object ListMemoriesTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("list", "memories", "browse", "recall", "review", "all", "show"))
   )
 
-  /** Server-side page-size clamp — defends against the agent passing
-    * an enormous `limit` and dumping the entire memory store into
-    * the next turn's prompt. */
+  /**
+   * Server-side page-size clamp — defends against the agent passing
+   * an enormous `limit` and dumping the entire memory store into
+   * the next turn's prompt.
+   */
   private val MaxPageSize: Int = 100
 
   protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
@@ -83,21 +85,21 @@ case object ListMemoriesTool extends Tool {
         // path needs to stay fast as the memory store grows.
         val source: Task[List[ContextMemory]] = input.pinned match {
           case Some(true) => context.sigil.findCriticalMemories(effective)
-          case _          => context.sigil.findMemories(effective)
+          case _ => context.sigil.findMemories(effective)
         }
         source.map { memories =>
           val filtered = applyFilters(memories, input)
-          val limit    = math.max(1, math.min(input.limit, MaxPageSize))
-          val offset   = math.max(0, input.offset)
-          val page     = filtered.slice(offset, offset + limit)
+          val limit = math.max(1, math.min(input.limit, MaxPageSize))
+          val offset = math.max(0, input.offset)
+          val page = filtered.slice(offset, offset + limit)
           ListMemoriesOutput.Listed(
             memories = page.map(toEntry),
             page = MemoryListPage(
-              offset       = offset,
-              limit        = limit,
-              returned     = page.size,
+              offset = offset,
+              limit = limit,
+              returned = page.size,
               totalMatched = filtered.size,
-              hasMore      = offset + page.size < filtered.size
+              hasMore = offset + page.size < filtered.size
             )
           )
         }
@@ -106,9 +108,9 @@ case object ListMemoriesTool extends Tool {
 
   private def applyFilters(memories: List[ContextMemory], input: ListMemoriesInput): List[ContextMemory] = {
     val byPinned = input.pinned match {
-      case Some(true)  => memories.filter(_.pinned)
+      case Some(true) => memories.filter(_.pinned)
       case Some(false) => memories.filterNot(_.pinned)
-      case None        => memories
+      case None => memories
     }
     val byQuery = input.query.map(_.trim).filter(_.nonEmpty) match {
       case None => byPinned
@@ -116,10 +118,10 @@ case object ListMemoriesTool extends Tool {
         val needle = q.toLowerCase
         byPinned.filter { m =>
           m.key.exists(_.toLowerCase.contains(needle)) ||
-            m.label.toLowerCase.contains(needle) ||
-            m.summary.toLowerCase.contains(needle) ||
-            m.fact.toLowerCase.contains(needle) ||
-            m.keywords.exists(_.toLowerCase.contains(needle))
+          m.label.toLowerCase.contains(needle) ||
+          m.summary.toLowerCase.contains(needle) ||
+          m.fact.toLowerCase.contains(needle) ||
+          m.keywords.exists(_.toLowerCase.contains(needle))
         }
     }
     // Stable ordering for deterministic pagination: pinned first, then

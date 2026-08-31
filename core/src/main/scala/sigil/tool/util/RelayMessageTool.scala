@@ -6,7 +6,10 @@ import sigil.event.{Message, MessageRole}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
 import sigil.tool.model.{RelayMessageInput, ResponseContent}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolName, ToolProfile, ToolResult,
+  ToolSpec
+}
 
 /**
  * Opt-in util-tier tool: the cross-conversation *write* half (sigil
@@ -29,7 +32,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToo
  * originating conversation so the bridge is auditable.
  */
 case object RelayMessageTool extends Tool {
-  type Input  = RelayMessageInput
+  type Input = RelayMessageInput
   type Output = TextToolOutput
   val io: ToolIO[RelayMessageInput, TextToolOutput] = ToolIO.derived[RelayMessageInput, TextToolOutput]
   override val name = ToolName("relay_message")
@@ -65,12 +68,12 @@ case object RelayMessageTool extends Tool {
       case None =>
         Task.pure(ToolResult.failure(
           message = s"relay_message: conversation `${input.conversationId.value}` not found.",
-          hint    = Some("Relay only into a conversation that exists and you have joined.")
+          hint = Some("Relay only into a conversation that exists and you have joined.")
         ))
       case Some(target) if !target.participants.exists(_.id == context.caller) =>
         Task.pure(ToolResult.failure(
           message = s"relay_message: you are not a participant of conversation `${input.conversationId.value}`.",
-          hint    = Some(
+          hint = Some(
             "You may relay only into conversations you have joined (the bridge is membership-scoped). " +
               "If you delegated this work, you are a member of the worker conversation; the user-facing " +
               "conversation is your own."
@@ -86,14 +89,14 @@ case object RelayMessageTool extends Tool {
             ))
           case Right(resolved) =>
             val msg = Message(
-              participantId  = context.caller,
+              participantId = context.caller,
               conversationId = target._id,
-              topicId        = target.currentTopicId,
-              content        = Vector(ResponseContent.Text(input.content)),
-              state          = EventState.Complete,
-              role           = MessageRole.Standard,
-              addressees     = resolved,
-              source         = Some(s"relay:${context.conversation.id.value}")
+              topicId = target.currentTopicId,
+              content = Vector(ResponseContent.Text(input.content)),
+              state = EventState.Complete,
+              role = MessageRole.Standard,
+              addressees = resolved,
+              source = Some(s"relay:${context.conversation.id.value}")
             )
             context.sigil.publish(msg).map { _ =>
               val to = resolved.map(s => s" to ${s.map(_.value).mkString(", ")}").getOrElse("")
@@ -102,16 +105,18 @@ case object RelayMessageTool extends Tool {
         }
     }
 
-  /** Resolve requested addressee id-values against the target
-    * conversation's participant ids. `None`/empty requested → `None`
-    * (broadcast). Otherwise every requested value must match a
-    * participant; unmatched values are returned `Left` so the caller
-    * can't silently broadcast a message it meant to direct. */
+  /**
+   * Resolve requested addressee id-values against the target
+   * conversation's participant ids. `None`/empty requested → `None`
+   * (broadcast). Otherwise every requested value must match a
+   * participant; unmatched values are returned `Left` so the caller
+   * can't silently broadcast a message it meant to direct.
+   */
   private def resolveAddressees(requested: Option[List[String]],
                                 members: List[ParticipantId]): Either[List[String], Option[Set[ParticipantId]]] =
     requested.map(_.filter(_.nonEmpty)) match {
-      case None             => Right(None)
-      case Some(Nil)        => Right(None)
+      case None => Right(None)
+      case Some(Nil) => Right(None)
       case Some(values) =>
         val byValue = members.map(p => p.value -> p).toMap
         val unresolved = values.filterNot(byValue.contains)

@@ -1,9 +1,11 @@
 package bench
 
-/** One scored question: `gold` is an any-match list of lowercase
-  * substrings an accurate answer must contain. `answerable = false`
-  * marks the adversarial tier — the corpus does NOT hold the answer,
-  * and the correct behavior is to say so rather than assert one. */
+/**
+ * One scored question: `gold` is an any-match list of lowercase
+ * substrings an accurate answer must contain. `answerable = false`
+ * marks the adversarial tier — the corpus does NOT hold the answer,
+ * and the correct behavior is to say so rather than assert one.
+ */
 final case class ArmQuestion(question: String,
                              gold: List[String],
                              answerable: Boolean)
@@ -44,11 +46,13 @@ object MemoryArmsCorpus {
     "Watson's service revolver accompanies them on dangerous cases at Holmes's request."
   )
 
-  /** The corpus as DENSE passages — three facts packed into one
-    * paragraph, the shape document ingestion actually produces. Every
-    * memory arm seeds these (one memory per passage) except `Split`,
-    * which runs them through `ingestCorpusMemories`. The reference
-    * pairs with the text as the passage's provenance. */
+  /**
+   * The corpus as DENSE passages — three facts packed into one
+   * paragraph, the shape document ingestion actually produces. Every
+   * memory arm seeds these (one memory per passage) except `Split`,
+   * which runs them through `ingestCorpusMemories`. The reference
+   * pairs with the text as the passage's provenance.
+   */
   val passages: List[(String, String)] =
     facts.grouped(3).zipWithIndex.map { case (group, i) =>
       s"persona.txt#$i" -> group.mkString(" ")
@@ -74,12 +78,32 @@ object MemoryArmsCorpus {
     ArmQuestion("How many cases did you solve in the year 1889 exactly?", Nil, answerable = false)
   )
 
-  /** Phrases whose presence marks a hedged (non-asserting) answer to
-    * an unanswerable question. Heuristic, reported as such. */
+  /**
+   * Phrases whose presence marks a hedged (non-asserting) answer to
+   * an unanswerable question. Heuristic, reported as such.
+   */
   val hedgeMarkers: List[String] = List(
-    "don't know", "do not know", "not know", "no record", "not recorded", "cannot say",
-    "can't say", "cannot tell", "not sure", "unsure", "no information", "not mentioned",
-    "never mentioned", "doesn't say", "does not say", "no data", "unable to", "i have no",
-    "not aware", "no such", "never had", "not something i"
+    "don't know",
+    "do not know",
+    "not know",
+    "no record",
+    "not recorded",
+    "cannot say",
+    "can't say",
+    "cannot tell",
+    "not sure",
+    "unsure",
+    "no information",
+    "not mentioned",
+    "never mentioned",
+    "doesn't say",
+    "does not say",
+    "no data",
+    "unable to",
+    "i have no",
+    "not aware",
+    "no such",
+    "never had",
+    "not something i"
   )
 }

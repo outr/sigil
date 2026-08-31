@@ -14,7 +14,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExamp
  * agent's previous "shell out and regex `M  path`" workflow.
  */
 final class GitStatusTool(context: FileSystemContext) extends Tool {
-  type Input  = GitStatusInput
+  type Input = GitStatusInput
   type Output = GitStatusOutput
   val io: ToolIO[GitStatusInput, GitStatusOutput] = ToolIO.derived[GitStatusInput, GitStatusOutput].withExamples(
     ToolExample("Status of the conversation workspace", GitStatusInput()),
@@ -41,9 +41,9 @@ final class GitStatusTool(context: FileSystemContext) extends Tool {
         else {
           val (header, entries) = GitOps.parseStatus(r.stdout)
           GitStatusOutput.Reported(
-            branch  = header.branch,
-            ahead   = header.ahead,
-            behind  = header.behind,
+            branch = header.branch,
+            ahead = header.ahead,
+            behind = header.behind,
             entries = entries
           )
         }

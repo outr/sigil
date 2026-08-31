@@ -72,7 +72,7 @@ abstract class TestMcpSigilBase extends Sigil with McpSigil {
     ()
   }
 
-  private def deleteRecursive(path: Path): Unit = {
+  private def deleteRecursive(path: Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val s = java.nio.file.Files.walk(path)
       try {
@@ -80,5 +80,4 @@ abstract class TestMcpSigilBase extends Sigil with McpSigil {
         s.iterator().asScala.toList.reverse.foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally s.close()
     }
-  }
 }

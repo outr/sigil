@@ -29,29 +29,41 @@ class GetWorkflowFrameRaceBatchedSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   "A tool settled inside the agent loop's batched-events scope" should {
     "inline its result into the ContextFrame, not the #354 'raced past' placeholder" in {
-      val convId  = Conversation.id(s"gw-batch-${rapid.Unique()}")
+      val convId = Conversation.id(s"gw-batch-${rapid.Unique()}")
       val topicId = Topic.id(s"t-${rapid.Unique()}")
       val invokeId = Event.id()
       val invoke = ToolInvoke(
-        toolName       = ToolName("get_workflow"),
-        participantId  = WorkflowTestUser,
+        toolName = ToolName("get_workflow"),
+        participantId = WorkflowTestUser,
         conversationId = convId,
-        topicId        = topicId,
-        input          = Some(GetWorkflowInput("wf-race")),
-        state          = EventState.Active,
-        _id            = invokeId
+        topicId = topicId,
+        input = Some(GetWorkflowInput("wf-race")),
+        state = EventState.Active,
+        _id = invokeId
       )
       val foundOutput = GetWorkflowOutput.Found(
-        workflowId = "wf-race", name = "race-target", enabled = true, description = None,
-        space = "global", steps = Nil, triggers = Nil, variables = Nil, tags = Nil
+        workflowId = "wf-race",
+        name = "race-target",
+        enabled = true,
+        description = None,
+        space = "global",
+        steps = Nil,
+        triggers = Nil,
+        variables = Nil,
+        tags = Nil
       )
       val inputDelta = ToolDelta(
-        target = invokeId, conversationId = convId,
-        input = Some(GetWorkflowInput("wf-race")), state = Some(EventState.Complete)
+        target = invokeId,
+        conversationId = convId,
+        input = Some(GetWorkflowInput("wf-race")),
+        state = Some(EventState.Complete)
       )
       val resultDelta = ToolDelta(
-        target = invokeId, conversationId = convId,
-        output = Some(foundOutput), outcome = Some(ToolOutcome.Success), state = Some(EventState.Complete)
+        target = invokeId,
+        conversationId = convId,
+        output = Some(foundOutput),
+        outcome = Some(ToolOutcome.Success),
+        state = Some(EventState.Complete)
       )
 
       // Publish all three INSIDE one batched-events scope, the way
@@ -69,7 +81,7 @@ class GetWorkflowFrameRaceBatchedSpec extends AsyncWordSpec with AsyncTaskSpec w
           case Some(tc: ContextFrame.ToolCall) =>
             tc.state match {
               case ToolCallState.Complete(content, _) => content
-              case ToolCallState.Active               => "(active)"
+              case ToolCallState.Active => "(active)"
             }
           case other => s"(no ToolCall frame: $other)"
         }

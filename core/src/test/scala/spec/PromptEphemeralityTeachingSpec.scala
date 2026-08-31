@@ -25,26 +25,26 @@ class PromptEphemeralityTeachingSpec extends AsyncWordSpec with AsyncTaskSpec wi
   private def requestWith(projection: ParticipantProjection,
                           convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
-      conversationId         = convId,
-      model                  = TestSigil.testModel(Model.id("test", "ephemerality-teaching-model")),
-      instructions           = Instructions(),
-      turnInput              = TurnInput(
-        conversationId         = convId,
+      conversationId = convId,
+      model = TestSigil.testModel(Model.id("test", "ephemerality-teaching-model")),
+      instructions = Instructions(),
+      turnInput = TurnInput(
+        conversationId = convId,
         participantProjections = Map(TestAgent -> projection)
       ),
-      currentMode            = ConversationMode,
-      currentTopic           = TestTopicEntry,
-      previousTopics         = Nil,
-      generationSettings     = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools                  = CoreTools.all,
-      chain                  = List(TestUser, TestAgent)
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
+      generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
+      tools = CoreTools.all,
+      chain = List(TestUser, TestAgent)
     )
 
   private def renderSystem(req: ConversationRequest): Task[String] = {
     val provider = LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)
     provider.requestConverter(req).map(_.content match {
       case Some(c: spice.http.content.StringContent) => c.value
-      case _                                          => ""
+      case _ => ""
     })
   }
 
@@ -57,16 +57,16 @@ class PromptEphemeralityTeachingSpec extends AsyncWordSpec with AsyncTaskSpec wi
         // The teaching block must call out ephemerality explicitly —
         // the agent has to know that yesterday's `Recently used tools`
         // entry isn't a guarantee of current availability.
-        body.toLowerCase should include ("ephemeral")
+        body.toLowerCase should include("ephemeral")
         // And it must point at find_capability as the recovery path
         // when a tool the agent remembers is missing from the offered
         // set. The model's natural failure mode without this — pick
         // the first-position tool and loop on it (Sage wire log
         // 2026-05-28 10:33:53 → 10:34:04: 3× change_mode("coding")).
-        body should include ("find_capability")
+        body should include("find_capability")
         // Either "re-discovery" or "rediscover" — match the bug doc's
         // proposed wording without locking down exact phrasing.
-        body.toLowerCase should (include ("re-discovery") or include ("rediscover") or include ("re-discover"))
+        body.toLowerCase should (include("re-discovery") or include("rediscover") or include("re-discover"))
       }
     }
 
@@ -82,26 +82,26 @@ class PromptEphemeralityTeachingSpec extends AsyncWordSpec with AsyncTaskSpec wi
       val now = System.currentTimeMillis()
       val invocations = List(
         RecentToolInvocation(
-          toolName    = FindCapabilityTool.name,
-          argsHash    = "h-grep-search",
+          toolName = FindCapabilityTool.name,
+          argsHash = "h-grep-search",
           argsPreview = """{"keywords":"grep search find"}""",
-          invokedAt   = Timestamp(now - 30_000L)
+          invokedAt = Timestamp(now - 30_000L)
         ),
         RecentToolInvocation(
-          toolName    = FindCapabilityTool.name,
-          argsHash    = "h-grep-search",
+          toolName = FindCapabilityTool.name,
+          argsHash = "h-grep-search",
           argsPreview = """{"keywords":"grep search find"}""",
-          invokedAt   = Timestamp(now - 5_000L)
+          invokedAt = Timestamp(now - 5_000L)
         )
       )
       val proj = ParticipantProjection.empty(TestAgent, convId).copy(recentToolInvocations = invocations)
       renderSystem(requestWith(proj, convId)).map { body =>
-        body should include ("Repeated tool calls")
+        body should include("Repeated tool calls")
         // Sigil #303 — the warning must include the roster-change
         // caveat so the agent isn't told identical re-calls are
         // pointless when the framework has narrowed the roster
         // since the prior call.
-        body.toLowerCase should (include ("unless your tool roster has changed") or include ("unless your roster has changed"))
+        body.toLowerCase should (include("unless your tool roster has changed") or include("unless your roster has changed"))
       }
     }
   }

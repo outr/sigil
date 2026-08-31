@@ -20,27 +20,33 @@ import com.knuddels.jtokkit.api.{Encoding, EncodingType}
 final class JtokkitTokenizer(encoding: Encoding) extends Tokenizer {
   override def count(text: String): Int = encoding.countTokens(text)
 
-  /** Adds OpenAI's chat-format overhead (~3 tokens per message: role
-    * separator + name + ascii padding) to the raw content sum. */
+  /**
+   * Adds OpenAI's chat-format overhead (~3 tokens per message: role
+   * separator + name + ascii padding) to the raw content sum.
+   */
   override def countMessages(messages: Seq[(String, String)]): Int =
     messages.iterator.map { case (role, c) => count(role) + count(c) + 3 }.sum + 3
 }
 
 object JtokkitTokenizer {
-  /** Whether jtokkit is on the classpath. Probed once at startup; the result
-    * is cached for the life of the JVM. */
-  val available: Boolean = {
+
+  /**
+   * Whether jtokkit is on the classpath. Probed once at startup; the result
+   * is cached for the life of the JVM.
+   */
+  val available: Boolean =
     try {
       Class.forName("com.knuddels.jtokkit.Encodings")
       true
     } catch {
       case _: ClassNotFoundException | _: NoClassDefFoundError => false
     }
-  }
 
-  /** Per-JVM warn-once flag — emit a single WARN the first time a caller
-    * asks for a Jtokkit-backed tokenizer when jtokkit isn't on the
-    * classpath. Repeating the WARN per call would be noise. */
+  /**
+   * Per-JVM warn-once flag — emit a single WARN the first time a caller
+   * asks for a Jtokkit-backed tokenizer when jtokkit isn't on the
+   * classpath. Repeating the WARN per call would be noise.
+   */
   @volatile private var warnedMissing: Boolean = false
 
   private def warnFallback(name: String): Unit = synchronized {
@@ -59,31 +65,37 @@ object JtokkitTokenizer {
   private lazy val registry =
     if (available) Encodings.newDefaultEncodingRegistry() else null
 
-  /** Decision helper extracted so both `OpenAIChatGpt` / `OpenAIO200k`
-    * lazy vals AND test code can verify the fallback path
-    * deterministically. Production callers always pass `available`
-    * for `probe`; the spec passes `false` to verify the
-    * heuristic path is wired correctly without needing to actually
-    * remove jtokkit from the classpath. Public for test access; not
-    * intended as a stable API. */
+  /**
+   * Decision helper extracted so both `OpenAIChatGpt` / `OpenAIO200k`
+   * lazy vals AND test code can verify the fallback path
+   * deterministically. Production callers always pass `available`
+   * for `probe`; the spec passes `false` to verify the
+   * heuristic path is wired correctly without needing to actually
+   * remove jtokkit from the classpath. Public for test access; not
+   * intended as a stable API.
+   */
   def selectTokenizer(probe: Boolean,
                       encodingFactory: () => Tokenizer,
                       slotName: String): Tokenizer =
     if (probe) encodingFactory()
     else { warnFallback(slotName); HeuristicTokenizer }
 
-  /** cl100k_base — used by GPT-3.5 and GPT-4 chat completions. Best default
-    * for OpenAI Chat Completions and a good approximation for Anthropic
-    * and DeepSeek. Returns a [[HeuristicTokenizer]] when jtokkit is
-    * missing; logs a one-time WARN at first access. */
+  /**
+   * cl100k_base — used by GPT-3.5 and GPT-4 chat completions. Best default
+   * for OpenAI Chat Completions and a good approximation for Anthropic
+   * and DeepSeek. Returns a [[HeuristicTokenizer]] when jtokkit is
+   * missing; logs a one-time WARN at first access.
+   */
   lazy val OpenAIChatGpt: Tokenizer = selectTokenizer(
     probe = available,
     encodingFactory = () => new JtokkitTokenizer(registry.getEncoding(EncodingType.CL100K_BASE)),
     slotName = "OpenAIChatGpt"
   )
 
-  /** o200k_base — used by GPT-4o / o-series. Returns a [[HeuristicTokenizer]]
-    * when jtokkit is missing; logs a one-time WARN at first access. */
+  /**
+   * o200k_base — used by GPT-4o / o-series. Returns a [[HeuristicTokenizer]]
+   * when jtokkit is missing; logs a one-time WARN at first access.
+   */
   lazy val OpenAIO200k: Tokenizer = selectTokenizer(
     probe = available,
     encodingFactory = () => new JtokkitTokenizer(registry.getEncoding(EncodingType.O200K_BASE)),

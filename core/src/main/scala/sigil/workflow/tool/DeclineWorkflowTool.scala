@@ -5,19 +5,23 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 import strider.Workflow
 import strider.step.Step
 
 case class DeclineWorkflowInput(runId: String,
                                 stepId: String,
-                                reason: Option[String] = None) extends ToolInput derives RW
+                                reason: Option[String] = None)
+  extends ToolInput derives RW
 
 /**
  * Decline a workflow run paused on an [[strider.step.Approval]]
  * step. Sugar over [[ResumeWorkflowTool]] with the canonical
  * `"decline"` payload (or `"decline: <reason>"` when reason is
-    * provided).
+ * provided).
  *
  * The workflow's declined-branch path runs after this resolves —
  * each approval step's authoring decides what that path does
@@ -25,12 +29,14 @@ case class DeclineWorkflowInput(runId: String,
  * Idempotent against an already-resumed run.
  */
 final class DeclineWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = DeclineWorkflowInput
+  type Input = DeclineWorkflowInput
   type Output = TextToolOutput
   val io: ToolIO[DeclineWorkflowInput, TextToolOutput] = ToolIO.derived[DeclineWorkflowInput, TextToolOutput].withExamples(
-    ToolExample("Decline a deploy approval",
+    ToolExample(
+      "Decline a deploy approval",
       DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate")),
-    ToolExample("Decline with a reason",
+    ToolExample(
+      "Decline with a reason",
       DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate", reason = Some("staging tests failing")))
   )
   override val name = ToolName("decline_workflow")

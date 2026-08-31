@@ -90,8 +90,12 @@ class ClientToolRosterSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         _ <- TestSigil.clientTools.register(convId, "tab-r4", List(clientSpec("open_widget_editor")))
         names <- rosterFor(convId, ToolPolicy.Standard)
         found <- TestSigil.findCapabilities(sigil.tool.DiscoveryRequest(
-          keywords = "open widget editor", chain = List(TestUser, TestAgent),
-          mode = sigil.provider.ConversationMode, callerSpaces = Set.empty, conversationId = Some(convId)))
+          keywords = "open widget editor",
+          chain = List(TestUser, TestAgent),
+          mode = sigil.provider.ConversationMode,
+          callerSpaces = Set.empty,
+          conversationId = Some(convId)
+        ))
         resolved <- TestSigil.resolveToolFor(convId, ToolName("open_widget_editor"))
       } yield {
         names should contain("find_capability")

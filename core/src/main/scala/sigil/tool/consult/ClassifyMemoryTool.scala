@@ -16,7 +16,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput,
  * [[ConsultTool.invoke]] with `tool_choice = required`.
  */
 case object ClassifyMemoryTool extends Tool with FrameworkConsult {
-  type Input  = ClassifyMemoryInput
+  type Input = ClassifyMemoryInput
   type Output = TextToolOutput
   val io: ToolIO[ClassifyMemoryInput, TextToolOutput] = ToolIO.derived[ClassifyMemoryInput, TextToolOutput]
 
@@ -58,19 +58,25 @@ case object ClassifyMemoryTool extends Tool with FrameworkConsult {
     discovery = DiscoverySpec(kind = ConsultKind)
   )
 
-  /** Categorical decision — routes through the cheap classification tier. */
+  /**
+   * Categorical decision — routes through the cheap classification tier.
+   */
   override def consultWorkType: WorkType = ClassificationWork
 
-  /** Output is a short keyword list, an enum, a space token, and an
-    * optional one-sentence reason. 256 tokens covers the payload plus
-    * the reasoning-spill margin. */
+  /**
+   * Output is a short keyword list, an enum, a space token, and an
+   * optional one-sentence reason. 256 tokens covers the payload plus
+   * the reasoning-spill margin.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(256),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 
   private def executeResult(input: ClassifyMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =

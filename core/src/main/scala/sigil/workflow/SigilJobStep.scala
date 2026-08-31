@@ -43,16 +43,19 @@ import strider.step.{Job, Step}
  * process-wide singleton set by [[WorkflowSigil]] at init.
  */
 final case class SigilJobStep(input: JobStepInput,
-                              id: Id[Step] = Step.id()) extends Job[Json] derives RW {
+                              id: Id[Step] = Step.id())
+  extends Job[Json] derives RW {
   override def name: String = input.name.getOrElse(input.id)
 
   override def continueOnError: Boolean = input.continueOnError
   override def retryCount: Int = input.retryCount
   override def retryDelayMs: Long = input.retryDelayMs
 
-  /** #354 — thread a top-level step's result into the named workflow variable (in addition to
-    * `payloads`), so a later step can reference it via `{{output}}` substitution, exactly as a
-    * `Loop` collects into its output variable. */
+  /**
+   * #354 — thread a top-level step's result into the named workflow variable (in addition to
+   * `payloads`), so a later step can reference it via `{{output}}` substitution, exactly as a
+   * `Loop` collects into its output variable.
+   */
   override def outputVariable: Option[String] = input.output.map(_.trim).filter(_.nonEmpty)
 
   override def execute(workflow: Workflow, pm: ProgressManager): Task[Json] = {
@@ -64,16 +67,18 @@ final case class SigilJobStep(input: JobStepInput,
     toolName match {
       case Some(t) => runTool(host, workflow, t)
       case None => resolvedPrompt match {
-        case Some(p) => runPrompt(host, workflow, p)
-        case None    => Task.pure(Null)
-      }
+          case Some(p) => runPrompt(host, workflow, p)
+          case None => Task.pure(Null)
+        }
     }
   }
 
-  /** Resolve `tool` against the host Sigil's `findTools.byName`,
-    * decode the workflow-substituted `arguments` through the tool's
-    * `inputRW`, dispatch through [[sigil.tool.ToolExecutor]] against a
-    * synthetic TurnContext, and coalesce the result. */
+  /**
+   * Resolve `tool` against the host Sigil's `findTools.byName`,
+   * decode the workflow-substituted `arguments` through the tool's
+   * `inputRW`, dispatch through [[sigil.tool.ToolExecutor]] against a
+   * synthetic TurnContext, and coalesce the result.
+   */
   private def runTool(host: Sigil, workflow: Workflow, toolName: String): Task[Json] = {
     host.findTools.byName(ToolName.internal(toolName)).flatMap {
       case None =>
@@ -118,68 +123,75 @@ final case class SigilJobStep(input: JobStepInput,
                   s"isn't available in scope. The step was NOT dispatched."
               ))
             else {
-        // Sigil #396/#398 — a leaf can compute a downstream tool's call as
-        // structured output that arrives as a JSON-object STRING (a prompt leaf
-        // emits text, so the variable holds the object as a `Str`, often wrapped
-        // in a markdown code fence). Coerce such a string into the object the
-        // tool wants rather than handing it a bare `Str` ("Expected JSON object
-        // but got Str") — the "leaf decides the call, tool applies it" recipe.
-        val coerced: Json = SigilJobStep.coerceStringArgs(argsJson)
-        // `tool.inputRW` is path-dependently typed as RW[tool.Input], so the
-        // decoded value IS the tool's input — no cast.
-        val parsed: Either[Throwable, tool.Input] = scala.util.Try(tool.inputRW.write(coerced)).toEither
-        parsed match {
-          case Left(err) =>
-            Task.error(new RuntimeException(
-              s"Workflow step '${input.id}' failed to parse arguments for '$toolName': ${err.getMessage}"
-            ))
-          case Right(typedInput) =>
-            SyntheticTurnContext.build(host, workflow).flatMap { ctx =>
-              // Dispatch through the executor's collected entry: the full
-              // gate pipeline runs (a precondition-gated tool dispatched
-              // from a workflow is properly blocked), the resolution runs
-              // inline (a step has no turn to yield), and the typed result
-              // arrives as a ToolResultEnvelope — no cast.
-              val invokeId = Event.id()
-              ToolExecutor.executeCollected(tool)(typedInput, ctx, invokeId).flatMap { case (signals, envelope) =>
-                val settle = signals.reverseIterator.collectFirst {
-                  case d: ToolDelta if d.state.contains(EventState.Complete) => d
-                }
-                def fromMessages: Json = {
-                  val texts = signals.collect { case m: Message =>
-                    m.content.collect { case ResponseContent.Text(text) => text }.mkString
-                  }.filter(_.nonEmpty)
-                  if (texts.isEmpty) obj("ok" -> str("done"))
-                  else obj("results" -> fabric.Arr(texts.map(t => (str(t): Json)).toVector, None))
-                }
-                def blockedMessage: Option[String] = signals.collectFirst {
-                  case m: Message if m.disposition.isInstanceOf[sigil.event.MessageDisposition.Failure] =>
-                    m.content.collect { case ResponseContent.Text(text) => text }.mkString
-                }
-                val resultJson: Json = envelope match {
-                  case Some(env) => tool.outputRW.read(env.output)
-                  case None =>
-                    settle.flatMap(_.outcome) match {
-                      case Some(f: ToolOutcome.Failure) => obj("error" -> str(f.reason))
-                      case _ =>
-                        // No settle delta at all means the dispatch was gate-
-                        // blocked (consent / precondition refusal) — surface
-                        // the refusal as an error instead of a silent success.
-                        blockedMessage.map(m => obj("error" -> str(m)): Json).getOrElse(fromMessages)
+              // Sigil #396/#398 — a leaf can compute a downstream tool's call as
+              // structured output that arrives as a JSON-object STRING (a prompt leaf
+              // emits text, so the variable holds the object as a `Str`, often wrapped
+              // in a markdown code fence). Coerce such a string into the object the
+              // tool wants rather than handing it a bare `Str` ("Expected JSON object
+              // but got Str") — the "leaf decides the call, tool applies it" recipe.
+              val coerced: Json = SigilJobStep.coerceStringArgs(argsJson)
+              // `tool.inputRW` is path-dependently typed as RW[tool.Input], so the
+              // decoded value IS the tool's input — no cast.
+              val parsed: Either[Throwable, tool.Input] = scala.util.Try(tool.inputRW.write(coerced)).toEither
+              parsed match {
+                case Left(err) =>
+                  Task.error(new RuntimeException(
+                    s"Workflow step '${input.id}' failed to parse arguments for '$toolName': ${err.getMessage}"
+                  ))
+                case Right(typedInput) =>
+                  SyntheticTurnContext.build(host, workflow).flatMap { ctx =>
+                    // Dispatch through the executor's collected entry: the full
+                    // gate pipeline runs (a precondition-gated tool dispatched
+                    // from a workflow is properly blocked), the resolution runs
+                    // inline (a step has no turn to yield), and the typed result
+                    // arrives as a ToolResultEnvelope — no cast.
+                    val invokeId = Event.id()
+                    ToolExecutor.executeCollected(tool)(typedInput, ctx, invokeId).flatMap { case (signals, envelope) =>
+                      val settle = signals.reverseIterator.collectFirst {
+                        case d: ToolDelta if d.state.contains(EventState.Complete) => d
+                      }
+                      def fromMessages: Json = {
+                        val texts = signals.collect { case m: Message =>
+                          m.content.collect { case ResponseContent.Text(text) => text }.mkString
+                        }.filter(_.nonEmpty)
+                        if (texts.isEmpty) obj("ok" -> str("done"))
+                        else obj("results" -> fabric.Arr(texts.map(t => str(t): Json).toVector, None))
+                      }
+                      def blockedMessage: Option[String] = signals.collectFirst {
+                        case m: Message if m.disposition.isInstanceOf[sigil.event.MessageDisposition.Failure] =>
+                          m.content.collect { case ResponseContent.Text(text) => text }.mkString
+                      }
+                      val resultJson: Json = envelope match {
+                        case Some(env) => tool.outputRW.read(env.output)
+                        case None =>
+                          settle.flatMap(_.outcome) match {
+                            case Some(f: ToolOutcome.Failure) => obj("error" -> str(f.reason))
+                            case _ =>
+                              // No settle delta at all means the dispatch was gate-
+                              // blocked (consent / precondition refusal) — surface
+                              // the refusal as an error instead of a silent success.
+                              blockedMessage.map(m => obj("error" -> str(m)): Json).getOrElse(fromMessages)
+                          }
+                      }
+                      // A tool's ancillary durable events (`ctx.emit`) — a
+                      // `record_consent`'s ToolApproval, a `change_mode`'s
+                      // ModeChange, a `respond`'s reply Message — are the step's
+                      // real effect. They publish first, then the settled invoke.
+                      val emitted: List[Event] = signals.collect { case e: Event => e }
+                      publishEmitted(host, emitted)
+                        .flatMap(_ =>
+                          persistToolInvocation(
+                            host,
+                            workflow,
+                            ctx,
+                            ToolName.internal(toolName),
+                            typedInput,
+                            settle,
+                            invokeId))
+                        .map(_ => resultJson)
                     }
-                }
-                // A tool's ancillary durable events (`ctx.emit`) — a
-                // `record_consent`'s ToolApproval, a `change_mode`'s
-                // ModeChange, a `respond`'s reply Message — are the step's
-                // real effect. They publish first, then the settled invoke.
-                val emitted: List[Event] = signals.collect { case e: Event => e }
-                publishEmitted(host, emitted)
-                  .flatMap(_ => persistToolInvocation(
-                    host, workflow, ctx, ToolName.internal(toolName), typedInput, settle, invokeId))
-                  .map(_ => resultJson)
+                  }
               }
-            }
-        }
             }
         }
     }
@@ -215,9 +227,9 @@ final case class SigilJobStep(input: JobStepInput,
         )
         val acc = new java.lang.StringBuilder
         provider(request).evalMap {
-          case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
+          case ProviderEvent.TextDelta(t) => Task { acc.append(t); () }
           case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
-          case _                                     => Task.unit
+          case _ => Task.unit
         }.drain.flatMap { _ =>
           val response = acc.toString
           // Sigil #376 — record the prompt + the model's reply in the run's
@@ -228,27 +240,32 @@ final case class SigilJobStep(input: JobStepInput,
       }
     }
 
-  /** Publish the tool's ancillary durable events in emission order. Unlike
-    * the transcript persistence below these are the step's actual effect —
-    * a `ToolApproval` a later gated step reads, a `ModeChange` the run's
-    * conversation depends on — so the publish is AWAITED, not detached. A
-    * per-event failure is logged and skipped rather than failing the step. */
+  /**
+   * Publish the tool's ancillary durable events in emission order. Unlike
+   * the transcript persistence below these are the step's actual effect —
+   * a `ToolApproval` a later gated step reads, a `ModeChange` the run's
+   * conversation depends on — so the publish is AWAITED, not detached. A
+   * per-event failure is logged and skipped rather than failing the step.
+   */
   private def publishEmitted(host: Sigil, events: List[Event]): Task[Unit] =
     events.foldLeft(Task.unit) { (acc, event) =>
-      acc.flatMap(_ => host.publish(event).map(_ => ()).handleError { t =>
-        Task(scribe.warn(
-          s"Workflow step '${input.id}': publishing tool-emitted ${event.getClass.getSimpleName} failed: ${t.getMessage}"))
-      })
+      acc.flatMap(_ =>
+        host.publish(event).map(_ => ()).handleError { t =>
+          Task(scribe.warn(
+            s"Workflow step '${input.id}': publishing tool-emitted ${event.getClass.getSimpleName} failed: ${t.getMessage}"))
+        })
     }
 
-  /** Sigil #376 — record a tool step as one settled [[ToolInvoke]] (input +
-    * output + outcome) in the run's sub-conversation so the call is openable.
-    * `tool.execute` emits only the settling delta (the orchestrator normally
-    * supplies the invoke), so we mint the paired, already-Complete invoke here
-    * rather than publishing an orphan delta. It carries the dispatch's own
-    * invoke id so the emitted events' `origin` stamps resolve. Best-effort and
-    * gated on a bound run with a resolvable author; a publish hiccup never
-    * fails the step. */
+  /**
+   * Sigil #376 — record a tool step as one settled [[ToolInvoke]] (input +
+   * output + outcome) in the run's sub-conversation so the call is openable.
+   * `tool.execute` emits only the settling delta (the orchestrator normally
+   * supplies the invoke), so we mint the paired, already-Complete invoke here
+   * rather than publishing an orphan delta. It carries the dispatch's own
+   * invoke id so the emitted events' `origin` stamps resolve. Best-effort and
+   * gated on a bound run with a resolvable author; a publish hiccup never
+   * fails the step.
+   */
   private def persistToolInvocation(host: Sigil,
                                     workflow: Workflow,
                                     ctx: TurnContext,
@@ -261,29 +278,31 @@ final case class SigilJobStep(input: JobStepInput,
       ctx.chain.headOption match {
         case None => Task.unit
         case Some(author) => Task {
-          val invoke = ToolInvoke(
-            toolName       = toolName,
-            participantId  = author,
-            conversationId = ctx.conversation._id,
-            topicId        = ctx.conversation.currentTopicId,
-            _id            = invokeId,
-            input          = Some(input),
-            output         = settle.flatMap(_.output).getOrElse(sigil.tool.ToolOutput.Pending),
-            outcome        = settle.flatMap(_.outcome).getOrElse(ToolOutcome.Success),
-            state          = EventState.Complete
-          )
-          // Fire-and-forget — transcript persistence is observability, not the
-          // run's critical path; a per-iteration publish must not slow a Loop.
-          host.publish(invoke).map(_ => ()).handleError(_ => Task.unit).startUnit()
-          ()
-        }
+            val invoke = ToolInvoke(
+              toolName = toolName,
+              participantId = author,
+              conversationId = ctx.conversation._id,
+              topicId = ctx.conversation.currentTopicId,
+              _id = invokeId,
+              input = Some(input),
+              output = settle.flatMap(_.output).getOrElse(sigil.tool.ToolOutput.Pending),
+              outcome = settle.flatMap(_.outcome).getOrElse(ToolOutcome.Success),
+              state = EventState.Complete
+            )
+            // Fire-and-forget — transcript persistence is observability, not the
+            // run's critical path; a per-iteration publish must not slow a Loop.
+            host.publish(invoke).map(_ => ()).handleError(_ => Task.unit).startUnit()
+            ()
+          }
       }
 
-  /** Sigil #376 — record a prompt step's prompt + the model's reply as two
-    * Messages in the run's sub-conversation so the step is openable (the reply
-    * carries `modelId` so the UI badges which model produced it). Best-effort:
-    * no-op for an unbound run or when no participant resolves from the chain
-    * (mirrors the worker-transcript persistence contract). */
+  /**
+   * Sigil #376 — record a prompt step's prompt + the model's reply as two
+   * Messages in the run's sub-conversation so the step is openable (the reply
+   * carries `modelId` so the UI badges which model produced it). Best-effort:
+   * no-op for an unbound run or when no participant resolves from the chain
+   * (mirrors the worker-transcript persistence contract).
+   */
   private def persistPromptTurn(host: Sigil,
                                 workflow: Workflow,
                                 ctx: TurnContext,
@@ -295,20 +314,27 @@ final case class SigilJobStep(input: JobStepInput,
       ctx.chain.headOption match {
         case None => Task.unit
         case Some(author) => Task {
-          val convId = ctx.conversation._id
-          val topicId = ctx.conversation.currentTopicId
-          val promptMsg = Message(
-            participantId = author, conversationId = convId, topicId = topicId,
-            content = Vector(ResponseContent.Text(promptText)), state = EventState.Complete)
-          val replyMsg = Message(
-            participantId = author, conversationId = convId, topicId = topicId,
-            content = Vector(ResponseContent.Text(responseText)), modelId = Some(modelId),
-            state = EventState.Complete)
-          // Fire-and-forget — see persistToolInvocation.
-          host.publish(promptMsg).flatMap(_ => host.publish(replyMsg)).map(_ => ())
-            .handleError(_ => Task.unit).startUnit()
-          ()
-        }
+            val convId = ctx.conversation._id
+            val topicId = ctx.conversation.currentTopicId
+            val promptMsg = Message(
+              participantId = author,
+              conversationId = convId,
+              topicId = topicId,
+              content = Vector(ResponseContent.Text(promptText)),
+              state = EventState.Complete)
+            val replyMsg = Message(
+              participantId = author,
+              conversationId = convId,
+              topicId = topicId,
+              content = Vector(ResponseContent.Text(responseText)),
+              modelId = Some(modelId),
+              state = EventState.Complete
+            )
+            // Fire-and-forget — see persistToolInvocation.
+            host.publish(promptMsg).flatMap(_ => host.publish(replyMsg)).map(_ => ())
+              .handleError(_ => Task.unit).startUnit()
+            ()
+          }
       }
 }
 
@@ -337,7 +363,7 @@ object SigilJobStep {
   private[workflow] def stripCodeFence(s: String): String = {
     val t = s.trim
     if (t.startsWith("```")) {
-      val body      = t.stripPrefix("```")
+      val body = t.stripPrefix("```")
       val afterLang = body.indexOf('\n') match { case -1 => body; case i => body.substring(i + 1) }
       afterLang.stripSuffix("```").trim
     } else t

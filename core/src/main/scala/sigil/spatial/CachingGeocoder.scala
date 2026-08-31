@@ -25,7 +25,8 @@ import scala.concurrent.duration.*
  */
 case class CachingGeocoder(delegate: Geocoder,
                            sigil: Sigil,
-                           ttl: Option[FiniteDuration] = Some(30.days)) extends Geocoder {
+                           ttl: Option[FiniteDuration] = Some(30.days))
+  extends Geocoder {
 
   override def geocode(point: Point): Task[Option[GeocodingResult]] =
     lookupCached(point).flatMap {

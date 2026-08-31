@@ -16,28 +16,36 @@ import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
  */
 enum SectionBody {
 
-  /** Prose rendered as one unit. Never budget-trimmed. */
+  /**
+   * Prose rendered as one unit. Never budget-trimmed.
+   */
   case Blob(text: String)
 
-  /** A header over independently droppable lines, plus an optional
-    * footer. `lines` is in priority order — newest / most relevant
-    * first — so trimming takes a prefix, exactly like the prompt
-    * shape's entry caps. */
+  /**
+   * A header over independently droppable lines, plus an optional
+   * footer. `lines` is in priority order — newest / most relevant
+   * first — so trimming takes a prefix, exactly like the prompt
+   * shape's entry caps.
+   */
   case Entries(header: String, lines: List[String], footer: String = "")
 
-  /** The section's rendered text. */
+  /**
+   * The section's rendered text.
+   */
   def rendered: String = this match {
-    case Blob(t)          => t
+    case Blob(t) => t
     case Entries(h, l, f) => h + l.mkString + f
   }
 
-  /** This body trimmed to fit `budget` tokens, or `None` when nothing
-    * survives (a header with no entries is noise, not context).
-    *
-    * The largest prefix of `lines` whose FULL rendering fits wins —
-    * counting the assembled text rather than summing per-line counts,
-    * since the estimator is not additive across fragments. Blobs are
-    * returned untouched. */
+  /**
+   * This body trimmed to fit `budget` tokens, or `None` when nothing
+   * survives (a header with no entries is noise, not context).
+   *
+   * The largest prefix of `lines` whose FULL rendering fits wins —
+   * counting the assembled text rather than summing per-line counts,
+   * since the estimator is not additive across fragments. Blobs are
+   * returned untouched.
+   */
   def within(budget: Int, tokenizer: Tokenizer = HeuristicTokenizer): Option[SectionBody] = this match {
     case b: Blob => Some(b)
     case Entries(header, lines, footer) =>

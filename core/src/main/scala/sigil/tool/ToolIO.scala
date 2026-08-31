@@ -33,13 +33,17 @@ final class ToolIO[I <: ToolInput, O <: ToolOutput] private (val inputRW: RW[I],
                                                              val examples: List[ToolExample[I]],
                                                              val lintExempt: Boolean) {
 
-  /** Single derivation surface for the schema the LLM sees, the
-    * refusal example payload, pre-decode normalisation, and the
-    * end-to-end decode. Biased to the first authored example. */
+  /**
+   * Single derivation surface for the schema the LLM sees, the
+   * refusal example payload, pre-decode normalisation, and the
+   * end-to-end decode. Biased to the first authored example.
+   */
   lazy val surface: WireSurface[I] = WireSurface.fromDefinition(definition, inputRW, examples.headOption.map(_.input))
 
-  /** Attach worked examples, validating each at construction. A
-    * failing example throws [[ToolIOException]] naming the example. */
+  /**
+   * Attach worked examples, validating each at construction. A
+   * failing example throws [[ToolIOException]] naming the example.
+   */
   def withExamples(es: ToolExample[I]*): ToolIO[I, O] = {
     val probe = WireSurface.fromDefinition(definition, inputRW)
     val violations = es.toList.flatMap { e =>
@@ -51,7 +55,7 @@ final class ToolIO[I <: ToolInput, O <: ToolOutput] private (val inputRW: RW[I],
         case Right(json) =>
           probe.decode(json) match {
             case Left(err) => List(s"example '${e.description}' does not round-trip through the schema: ${err.render}")
-            case Right(_)  => Nil
+            case Right(_) => Nil
           }
       }
     }
@@ -62,39 +66,47 @@ final class ToolIO[I <: ToolInput, O <: ToolOutput] private (val inputRW: RW[I],
 
 object ToolIO {
 
-  /** Standard derivation — the definition is `inputRW.definition` by
-    * construction. The schema-ergonomics rule ([[SchemaErgonomics]]) is
-    * enforced by the boot completeness pass, NOT here: a union field's
-    * emitted shape depends on which polymorphic subtypes the APP has
-    * registered (a field-carrying `SpaceId` variant flips a passing
-    * union to unfillable), and tool objects initialize before app
-    * registrations complete — a construction-time verdict would be
-    * init-order roulette. Boot sees the final registered state. */
+  /**
+   * Standard derivation — the definition is `inputRW.definition` by
+   * construction. The schema-ergonomics rule ([[SchemaErgonomics]]) is
+   * enforced by the boot completeness pass, NOT here: a union field's
+   * emitted shape depends on which polymorphic subtypes the APP has
+   * registered (a field-carrying `SpaceId` variant flips a passing
+   * union to unfillable), and tool objects initialize before app
+   * registrations complete — a construction-time verdict would be
+   * init-order roulette. Boot sees the final registered state.
+   */
   def derived[I <: ToolInput, O <: ToolOutput](using irw: RW[I], orw: RW[O]): ToolIO[I, O] =
     new ToolIO(irw, orw, irw.definition, Nil, lintExempt = false)
 
-  /** Runtime schema over [[JsonInput]] with a prose result — the
-    * common dynamic-tool shape. */
+  /**
+   * Runtime schema over [[JsonInput]] with a prose result — the
+   * common dynamic-tool shape.
+   */
   def dynamic(definition: Definition): ToolIO[JsonInput, TextToolOutput] =
     dynamicAs[TextToolOutput](definition)
 
-  /** Runtime schema over [[JsonInput]] with a caller-chosen output
-    * type (e.g. the polymorphic [[ToolOutput]] for MCP results). No
-    * ergonomics lint — the schema is server- or record-provided and
-    * surfaced as-is. */
+  /**
+   * Runtime schema over [[JsonInput]] with a caller-chosen output
+   * type (e.g. the polymorphic [[ToolOutput]] for MCP results). No
+   * ergonomics lint — the schema is server- or record-provided and
+   * surfaced as-is.
+   */
   def dynamicAs[O <: ToolOutput](definition: Definition)(using orw: RW[O]): ToolIO[JsonInput, O] =
     new ToolIO(summon[RW[JsonInput]], orw, definition, Nil, lintExempt = true)
 
-  /** Hand-built or deliberately-kept definition over a typed input
-    * (dynamic enum schemas; rich unions that are a considered,
-    * app-extensible surface). Round-trips a probe value synthesized
-    * from the definition — optional fields INCLUDED, so a disagreement
-    * confined to an optional field is caught — through the surface's
-    * decode (normalise → validate → materialise via the RW) and throws
-    * on disagreement.
-    * The ergonomics rule does NOT apply to this constructor — at
-    * boot or otherwise; choosing it IS the recorded decision to keep
-    * the schema shape. */
+  /**
+   * Hand-built or deliberately-kept definition over a typed input
+   * (dynamic enum schemas; rich unions that are a considered,
+   * app-extensible surface). Round-trips a probe value synthesized
+   * from the definition — optional fields INCLUDED, so a disagreement
+   * confined to an optional field is caught — through the surface's
+   * decode (normalise → validate → materialise via the RW) and throws
+   * on disagreement.
+   * The ergonomics rule does NOT apply to this constructor — at
+   * boot or otherwise; choosing it IS the recorded decision to keep
+   * the schema shape.
+   */
   def withSchema[I <: ToolInput, O <: ToolOutput](definition: Definition)(using irw: RW[I], orw: RW[O]): ToolIO[I, O] = {
     val probeJson = WireSurface.synthesizeProbe(definition)
     WireSurface.fromDefinition(definition, irw).decode(probeJson) match {
@@ -107,7 +119,6 @@ object ToolIO {
     }
     new ToolIO(irw, orw, definition, Nil, lintExempt = true)
   }
-
 
   private def contextName(definition: Definition): String =
     definition.className.getOrElse("(anonymous input)")

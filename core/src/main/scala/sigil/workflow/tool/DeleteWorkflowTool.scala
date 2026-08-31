@@ -4,7 +4,10 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 import sigil.workflow.WorkflowTemplate
 
 case class DeleteWorkflowInput(workflowId: String) extends ToolInput derives RW
@@ -21,10 +24,10 @@ case class DeleteWorkflowInput(workflowId: String) extends ToolInput derives RW
  * runs first via `cancel_workflow`.
  */
 final class DeleteWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = DeleteWorkflowInput
+  type Input = DeleteWorkflowInput
   type Output = TextToolOutput
   val io: ToolIO[DeleteWorkflowInput, TextToolOutput] = ToolIO.derived[DeleteWorkflowInput, TextToolOutput].withExamples(
-ToolExample("delete by id", DeleteWorkflowInput(workflowId = "wf-abc"))
+    ToolExample("delete by id", DeleteWorkflowInput(workflowId = "wf-abc"))
   )
   override val name = ToolName("delete_workflow")
   override val description =
@@ -50,8 +53,7 @@ ToolExample("delete by id", DeleteWorkflowInput(workflowId = "wf-abc"))
           case Left(_) => Task.pure(ToolResult.failure(s"Workflow '${input.workflowId}' not found."))
           case Right(_) =>
             host.withDB(_.workflowTemplates.transaction(_.delete(id))).map(_ =>
-              ToolResult.success(TextToolOutput(s"Workflow '${template.name}' deleted (id=${input.workflowId})."))
-            )
+              ToolResult.success(TextToolOutput(s"Workflow '${template.name}' deleted (id=${input.workflowId}).")))
         }
     }
   }

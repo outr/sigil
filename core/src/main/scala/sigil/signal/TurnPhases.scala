@@ -25,12 +25,17 @@ case class TurnPhases(conversationId: Id[Conversation],
                       participantId: ParticipantId,
                       iterations: Int,
                       totalMs: Long,
-                      durations: List[(TurnPhase, Long)]) extends ConversationNotice derives RW {
+                      durations: List[(TurnPhase, Long)])
+  extends ConversationNotice derives RW {
 
-  /** Milliseconds attributed to `phase` this turn. */
+  /**
+   * Milliseconds attributed to `phase` this turn.
+   */
   def apply(phase: TurnPhase): Long = durations.collectFirst { case (p, ms) if p == phase => ms }.getOrElse(0L)
 
-  /** The turn's wall clock minus its model time — the orchestration
-    * overhead a consumer tracks for regressions. */
+  /**
+   * The turn's wall clock minus its model time — the orchestration
+   * overhead a consumer tracks for regressions.
+   */
   def overheadMs: Long = totalMs - apply(TurnPhase.ModelStream)
 }

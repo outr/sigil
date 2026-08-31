@@ -32,65 +32,78 @@ import spice.net.*
 object Cloudflare {
   val Provider: String = "cloudflare"
 
-  /** Strip the `cloudflare/` namespace prefix from a Sigil model id,
-    * leaving the raw `@cf/...` model name Cloudflare's OpenAI-compatible
-    * endpoint expects in the request body. */
+  /**
+   * Strip the `cloudflare/` namespace prefix from a Sigil model id,
+   * leaving the raw `@cf/...` model name Cloudflare's OpenAI-compatible
+   * endpoint expects in the request body.
+   */
   def stripProviderPrefix(sigilModelId: String): String = {
     val prefix = s"$Provider/"
     if (sigilModelId.startsWith(prefix)) sigilModelId.drop(prefix.length) else sigilModelId
   }
 
-  /** One row of Cloudflare's `/ai/models/search` response. Names mirror
-    * the wire fields (after camelCase normalisation). The `id` field is
-    * Cloudflare's internal UUID — we key Sigil records by `name`
-    * (e.g. `@cf/moonshotai/kimi-k2.6`) because that's what the
-    * chat-completions wire expects in the `model` field. */
+  /**
+   * One row of Cloudflare's `/ai/models/search` response. Names mirror
+   * the wire fields (after camelCase normalisation). The `id` field is
+   * Cloudflare's internal UUID — we key Sigil records by `name`
+   * (e.g. `@cf/moonshotai/kimi-k2.6`) because that's what the
+   * chat-completions wire expects in the `model` field.
+   */
   case class Entry(id: String,
                    name: String,
                    description: Option[String] = None,
                    task: Option[CloudflareTask] = None,
-                   properties: List[Property] = Nil) derives RW
+                   properties: List[Property] = Nil)
+    derives RW
 
   case class CloudflareTask(id: String, name: String) derives RW
 
-  /** Single entry in a row's `properties` array. Cloudflare exposes
-    * per-model metadata (context length, max input/output tokens,
-    * function-calling support, vision support, …) as a flat list of
-    * `{property_id, value}` records keyed by string id.
-    *
-    * `value` is `Json`, not `String`: Cloudflare returns non-string
-    * values for some properties (e.g. `price` is a JSON array of
-    * per-unit pricing objects). [[toModel]] reads only the string-valued
-    * properties it consumes; everything else is ignored rather than
-    * fatal. Typing this `String` previously made fabric's strict decode
-    * throw on the array-valued `price`, collapsing the entire catalog to
-    * zero models. */
+  /**
+   * Single entry in a row's `properties` array. Cloudflare exposes
+   * per-model metadata (context length, max input/output tokens,
+   * function-calling support, vision support, …) as a flat list of
+   * `{property_id, value}` records keyed by string id.
+   *
+   * `value` is `Json`, not `String`: Cloudflare returns non-string
+   * values for some properties (e.g. `price` is a JSON array of
+   * per-unit pricing objects). [[toModel]] reads only the string-valued
+   * properties it consumes; everything else is ignored rather than
+   * fatal. Typing this `String` previously made fabric's strict decode
+   * throw on the array-valued `price`, collapsing the entire catalog to
+   * zero models.
+   */
   case class Property(propertyId: String, value: Json) derives RW
 
   private case class ListResponse(result: List[Json] = Nil,
-                                   resultInfo: Option[ResultInfo] = None) derives RW
+                                  resultInfo: Option[ResultInfo] = None)
+    derives RW
 
   case class ResultInfo(page: Int = 1,
                         perPage: Int = 0,
                         count: Int = 0,
-                        totalCount: Int = 0) derives RW
+                        totalCount: Int = 0)
+    derives RW
 
-  /** The `task.name` Cloudflare assigns to chat-completion models. The
-    * Workers AI catalog hosts many other task families (embeddings,
-    * image-to-image, text-to-image, automatic-speech-recognition, …)
-    * that are NOT chat-completion endpoints; the default filter on
-    * [[loadModels]] excludes them. */
+  /**
+   * The `task.name` Cloudflare assigns to chat-completion models. The
+   * Workers AI catalog hosts many other task families (embeddings,
+   * image-to-image, text-to-image, automatic-speech-recognition, …)
+   * that are NOT chat-completion endpoints; the default filter on
+   * [[loadModels]] excludes them.
+   */
   val TextGenerationTask: String = "Text Generation"
 
-  /** Translate a Cloudflare catalog entry into a Sigil [[Model]].
-    * Context length pulls from `context_window` (preferred) or
-    * `max_input_tokens` (fallback). Max-output budget pulls from
-    * `max_output_tokens` when present so the framework's max-tokens
-    * resolver has a real ceiling.
-    *
-    * Pricing is read from the array-valued `price` property (#337) and
-    * mapped into per-token [[ModelPricing]]; a model whose catalog entry
-    * carries no `price` stays at zero. */
+  /**
+   * Translate a Cloudflare catalog entry into a Sigil [[Model]].
+   * Context length pulls from `context_window` (preferred) or
+   * `max_input_tokens` (fallback). Max-output budget pulls from
+   * `max_output_tokens` when present so the framework's max-tokens
+   * resolver has a real ceiling.
+   *
+   * Pricing is read from the array-valued `price` property (#337) and
+   * mapped into per-token [[ModelPricing]]; a model whose catalog entry
+   * carries no `price` stays at zero.
+   */
   def toModel(entry: Entry): Model = {
     val canonical = s"$Provider/${entry.name}"
     // Keep only the string-valued properties toModel actually reads;
@@ -113,78 +126,84 @@ object Cloudflare {
     val now = Timestamp()
 
     Model(
-      canonicalSlug       = canonical,
-      huggingFaceId       = "",
-      name                = entry.name,
-      displayName         = displayNameFor(entry.name),
-      description         = entry.description.filter(_.nonEmpty)
-                              .getOrElse(s"Cloudflare Workers AI model ${entry.name}"),
-      contextLength       = contextLength,
-      architecture        = ModelArchitecture(
-        modality         = if (supportsVision) "text+image->text" else "text->text",
-        inputModalities  = inputModalities,
+      canonicalSlug = canonical,
+      huggingFaceId = "",
+      name = entry.name,
+      displayName = displayNameFor(entry.name),
+      description = entry.description.filter(_.nonEmpty)
+        .getOrElse(s"Cloudflare Workers AI model ${entry.name}"),
+      contextLength = contextLength,
+      architecture = ModelArchitecture(
+        modality = if (supportsVision) "text+image->text" else "text->text",
+        inputModalities = inputModalities,
         outputModalities = List("text"),
-        tokenizer        = "Unknown",
-        instructType     = None
+        tokenizer = "Unknown",
+        instructType = None
       ),
-      pricing             = pricingFrom(entry.properties),
-      topProvider         = ModelTopProvider(
-        contextLength       = Some(contextLength).filter(_ > 0),
+      pricing = pricingFrom(entry.properties),
+      topProvider = ModelTopProvider(
+        contextLength = Some(contextLength).filter(_ > 0),
         maxCompletionTokens = maxOutput,
-        isModerated         = false
+        isModerated = false
       ),
-      perRequestLimits    = None,
+      perRequestLimits = None,
       supportedParameters = supportedParameters,
-      defaultParameters   = ModelDefaultParameters(),
-      knowledgeCutoff     = None,
-      expirationDate      = None,
-      links               = ModelLinks(details = s"https://developers.cloudflare.com/workers-ai/models/"),
-      created             = now,
-      modified            = now,
-      _id                 = Id[Model](canonical)
+      defaultParameters = ModelDefaultParameters(),
+      knowledgeCutoff = None,
+      expirationDate = None,
+      links = ModelLinks(details = s"https://developers.cloudflare.com/workers-ai/models/"),
+      created = now,
+      modified = now,
+      _id = Id[Model](canonical)
     )
   }
 
-  /** Per-million-token → per-token divisor. Cloudflare's catalog quotes
-    * `price` in per-M-token units; [[ModelPricing]] is per-token (see
-    * [[sigil.Sigil.costFor]], which multiplies by raw token counts). */
+  /**
+   * Per-million-token → per-token divisor. Cloudflare's catalog quotes
+   * `price` in per-M-token units; [[ModelPricing]] is per-token (see
+   * [[sigil.Sigil.costFor]], which multiplies by raw token counts).
+   */
   private val PerMillion = BigDecimal(1000000)
 
-  /** Map the array-valued `price` property into per-token
-    * [[ModelPricing]] (#337). Each row is `{unit, price, currency}`; we
-    * map the three token units we bill on and divide by a million.
-    * A missing / non-array / malformed `price` yields zeros, so a catalog
-    * entry without pricing still loads. Values parse through `toString`
-    * to avoid binary-float artifacts (`0.95` stays `0.95`). */
+  /**
+   * Map the array-valued `price` property into per-token
+   * [[ModelPricing]] (#337). Each row is `{unit, price, currency}`; we
+   * map the three token units we bill on and divide by a million.
+   * A missing / non-array / malformed `price` yields zeros, so a catalog
+   * entry without pricing still loads. Values parse through `toString`
+   * to avoid binary-float artifacts (`0.95` stays `0.95`).
+   */
   private def pricingFrom(properties: List[Property]): ModelPricing = {
     val byUnit: Map[String, BigDecimal] = properties.collectFirst {
       case Property("price", arr) if arr.isArr =>
         arr.asVector.toList.flatMap { row =>
           for {
-            unit  <- row.get("unit").map(_.asString)
+            unit <- row.get("unit").map(_.asString)
             price <- scala.util.Try(BigDecimal(row.get("price").map(_.asDouble).getOrElse(0.0).toString)).toOption
           } yield unit -> price
         }
     }.getOrElse(Nil).toMap
     def perToken(unit: String): Option[BigDecimal] = byUnit.get(unit).map(_ / PerMillion)
     ModelPricing(
-      prompt         = perToken("per M input tokens").getOrElse(BigDecimal(0)),
-      completion     = perToken("per M output tokens").getOrElse(BigDecimal(0)),
-      webSearch      = None,
+      prompt = perToken("per M input tokens").getOrElse(BigDecimal(0)),
+      completion = perToken("per M output tokens").getOrElse(BigDecimal(0)),
+      webSearch = None,
       inputCacheRead = perToken("per M cached input tokens")
     )
   }
 
-  /** Fetch + map Cloudflare's Workers AI catalog. Walks pagination
-    * until every page is consumed; default filters to
-    * [[TextGenerationTask]] rows so embeddings / image / ASR models
-    * don't pollute the chat-completion registry. Pass
-    * `textGenerationOnly = false` to load the whole catalog.
-    *
-    * Auth uses the supplied `apiToken` as a Bearer header. The token
-    * needs the `Workers AI:Read` scope. Failures (auth, network,
-    * malformed response) propagate so provider construction fails
-    * loudly rather than silently seeding nothing. */
+  /**
+   * Fetch + map Cloudflare's Workers AI catalog. Walks pagination
+   * until every page is consumed; default filters to
+   * [[TextGenerationTask]] rows so embeddings / image / ASR models
+   * don't pollute the chat-completion registry. Pass
+   * `textGenerationOnly = false` to load the whole catalog.
+   *
+   * Auth uses the supplied `apiToken` as a Bearer header. The token
+   * needs the `Workers AI:Read` scope. Failures (auth, network,
+   * malformed response) propagate so provider construction fails
+   * loudly rather than silently seeding nothing.
+   */
   def loadModels(accountId: String,
                  apiToken: String,
                  baseUrl: URL = url"https://api.cloudflare.com",
@@ -213,13 +232,15 @@ object Cloudflare {
     fetchPage(1, Nil).map(_.map(toModel))
   }
 
-  /** Parse one `/ai/models/search` page: snake_case-normalise, then
-    * decode each entry **individually** so a single unparseable row
-    * (an unexpected property shape, a missing field) skips itself with a
-    * `scribe.warn` instead of collapsing the whole page to empty. A
-    * top-level decode failure is logged before falling back to an empty
-    * page — "0 models" is never silent. Returns the surviving entries
-    * plus pagination info. */
+  /**
+   * Parse one `/ai/models/search` page: snake_case-normalise, then
+   * decode each entry **individually** so a single unparseable row
+   * (an unexpected property shape, a missing field) skips itself with a
+   * `scribe.warn` instead of collapsing the whole page to empty. A
+   * top-level decode failure is logged before falling back to an empty
+   * page — "0 models" is never silent. Returns the surviving entries
+   * plus pagination info.
+   */
   def parsePage(rawJson: Json): (List[Entry], Option[ResultInfo]) = {
     val normalized = rawJson.filterOne(SnakeToCamelFilter)
     val response = scala.util.Try(normalized.as[ListResponse]) match {
@@ -239,14 +260,16 @@ object Cloudflare {
     (entries, response.resultInfo)
   }
 
-  /** Convenience boot helper — load this account's Workers AI catalog
-    * into its own slice of the framework registry. Apps call this once
-    * on startup so the framework's pre-flight budget gate, routing
-    * strategy, and the modelId boundary check on tool inputs all see a
-    * real [[Model]] record for every deployment the app routes to.
-    * Each account keeps its own slice; re-running swaps it and leaves
-    * every other source untouched. Returns the loaded list for apps
-    * that want to inspect / log it. */
+  /**
+   * Convenience boot helper — load this account's Workers AI catalog
+   * into its own slice of the framework registry. Apps call this once
+   * on startup so the framework's pre-flight budget gate, routing
+   * strategy, and the modelId boundary check on tool inputs all see a
+   * real [[Model]] record for every deployment the app routes to.
+   * Each account keeps its own slice; re-running swaps it and leaves
+   * every other source untouched. Returns the loaded list for apps
+   * that want to inspect / log it.
+   */
   def refreshModels(sigil: Sigil,
                     accountId: String,
                     apiToken: String,
@@ -260,17 +283,18 @@ object Cloudflare {
       }
     }
 
-  /** Heuristic friendly name for a Cloudflare model name like
-    * `@cf/moonshotai/kimi-k2.6`. Drops the `@cf/` namespace and the
-    * vendor prefix, hyphen-splits the remaining slug, and title-cases
-    * each segment ("Kimi K2.6"). Returns `None` when the name doesn't
-    * conform to the `@cf/<vendor>/<slug>` shape. */
+  /**
+   * Heuristic friendly name for a Cloudflare model name like
+   * `@cf/moonshotai/kimi-k2.6`. Drops the `@cf/` namespace and the
+   * vendor prefix, hyphen-splits the remaining slug, and title-cases
+   * each segment ("Kimi K2.6"). Returns `None` when the name doesn't
+   * conform to the `@cf/<vendor>/<slug>` shape.
+   */
   def displayNameFor(name: String): Option[String] = {
     val parts = name.stripPrefix("@cf/").split('/').filter(_.nonEmpty)
     parts.lastOption.map { slug =>
       slug.split('-').filter(_.nonEmpty).map(seg =>
-        if (seg.isEmpty) seg else seg.head.toUpper.toString + seg.tail
-      ).mkString(" ")
+        if (seg.isEmpty) seg else seg.head.toUpper.toString + seg.tail).mkString(" ")
     }
   }
 }

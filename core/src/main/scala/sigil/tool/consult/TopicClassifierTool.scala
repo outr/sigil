@@ -14,7 +14,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput,
  * enum constrains the LLM to a valid choice.
  */
 class TopicClassifierTool(priorLabels: List[String]) extends Tool with FrameworkConsult {
-  type Input  = TopicClassifierInput
+  type Input = TopicClassifierInput
   type Output = TextToolOutput
 
   override val name: ToolName = ToolName("classify_topic_shift")
@@ -32,19 +32,25 @@ class TopicClassifierTool(priorLabels: List[String]) extends Tool with Framework
     discovery = DiscoverySpec(kind = ConsultKind)
   )
 
-  /** Categorical decision — routes through the cheap classification tier. */
+  /**
+   * Categorical decision — routes through the cheap classification tier.
+   */
   override def consultWorkType: WorkType = ClassificationWork
 
-  /** Output is a single enum string; 256 tokens covers the structured
-    * payload plus a reasoning-spill margin for thinking-capable models. */
+  /**
+   * Output is a single enum string; 256 tokens covers the structured
+   * payload plus a reasoning-spill margin for thinking-capable models.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(256),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 
-  /** Hand-built schema whose `kind` field has a dynamic enum populated
-    * from the per-call prior labels; `withSchema` round-trips a probe
-    * value through the definition and the RW at construction. */
+  /**
+   * Hand-built schema whose `kind` field has a dynamic enum populated
+   * from the per-call prior labels; `withSchema` round-trips a probe
+   * value through the definition and the RW at construction.
+   */
   val io: ToolIO[TopicClassifierInput, TextToolOutput] = {
     val enumKeys: List[String] = "NoChange" :: "Refine" :: "New" :: priorLabels
     val polyValues: Map[String, Definition] =
@@ -54,7 +60,9 @@ class TopicClassifierTool(priorLabels: List[String]) extends Tool with Framework
     ))))
   }
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]]. Resolves to an empty success for completeness.
+   */
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit((_, _) => Task.pure(ToolResult.success(TextToolOutput(""))))
 }

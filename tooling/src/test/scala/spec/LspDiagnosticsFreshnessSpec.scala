@@ -29,11 +29,11 @@ class LspDiagnosticsFreshnessSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private def synthSession(): (LspSession, LspRecordingClient) = {
     val client = new LspRecordingClient(PermissiveWorkspaceEditApplier)
     val session = new LspSession(
-      config             = LspServerConfig(languageId = "scala", command = "fake", args = Nil),
-      projectRoot        = "/tmp/fake-project",
-      process            = null.asInstanceOf[Process],
-      server             = null.asInstanceOf[org.eclipse.lsp4j.services.LanguageServer],
-      client             = client,
+      config = LspServerConfig(languageId = "scala", command = "fake", args = Nil),
+      projectRoot = "/tmp/fake-project",
+      process = null.asInstanceOf[Process],
+      server = null.asInstanceOf[org.eclipse.lsp4j.services.LanguageServer],
+      client = client,
       serverCapabilities = new ServerCapabilities()
     )
     (session, client)
@@ -70,9 +70,9 @@ class LspDiagnosticsFreshnessSpec extends AsyncWordSpec with AsyncTaskSpec with 
       publish(client, uri, diag("stale error for v1"))
       val genBefore = session.publishGeneration(uri)
       // The v2 publish arrives 300ms into the wait.
-      val late = Task.sleep(300.millis).map { _ => publish(client, uri) }
+      val late = Task.sleep(300.millis).map(_ => publish(client, uri))
       for {
-        _     <- Task(late.startUnit())
+        _ <- Task(late.startUnit())
         fresh <- session.waitForDiagnostics(uri, genBefore, timeoutMs = 3000L)
       } yield {
         fresh shouldBe true
@@ -102,9 +102,9 @@ class LspDiagnosticsFreshnessSpec extends AsyncWordSpec with AsyncTaskSpec with 
     "not be satisfied by a publish for a DIFFERENT uri" in {
       val (session, client) = synthSession()
       val otherUri = "file:///tmp/fake-project/src/Other.scala"
-      val late = Task.sleep(150.millis).map { _ => publish(client, otherUri, diag("other file's error")) }
+      val late = Task.sleep(150.millis).map(_ => publish(client, otherUri, diag("other file's error")))
       for {
-        _     <- Task(late.startUnit())
+        _ <- Task(late.startUnit())
         fresh <- session.waitForDiagnostics(uri, sinceGeneration = 0L, timeoutMs = 600L)
       } yield {
         fresh shouldBe false

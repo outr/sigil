@@ -36,10 +36,12 @@ class AtomicRespondUsageSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private val modelId: Id[Model] = Model.id("test", "atomic-model")
 
-  /** Provider that emits the atomic respond shape: ToolCallStart, then
-    * ToolCallComplete (NO ContentBlockDelta — args arrived as a
-    * single payload, never streamed character-by-character through
-    * `RespondStreamProcessor`), then Done, then a trailing Usage event. */
+  /**
+   * Provider that emits the atomic respond shape: ToolCallStart, then
+   * ToolCallComplete (NO ContentBlockDelta — args arrived as a
+   * single payload, never streamed character-by-character through
+   * `RespondStreamProcessor`), then Done, then a trailing Usage event.
+   */
   private class AtomicRespondProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -51,13 +53,13 @@ class AtomicRespondUsageSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
         ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
-            topicLabel    = "Greeting",
-            topicSummary  = "Hello world",
-            content       = "Hello, world.",
-            disposition   = ResponseDisposition.Success,
-            endsTurn      = true,
-            keywords      = Nil
-          )),
+          topicLabel = "Greeting",
+          topicSummary = "Hello world",
+          content = "Hello, world.",
+          disposition = ResponseDisposition.Success,
+          endsTurn = true,
+          keywords = Nil
+        )),
         ProviderEvent.Done(StopReason.Complete),
         ProviderEvent.Usage(TokenUsage(promptTokens = 100, completionTokens = 20, totalTokens = 120))
       ))
@@ -70,26 +72,26 @@ class AtomicRespondUsageSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val convId = Conversation.id(s"atomic-usage-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = ConversationRequest(
-        conversationId     = convId,
-        model            = TestSigil.testModel(modelId),
-        instructions       = Instructions(),
-        turnInput          = TurnInput(conversationId = convId),
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
-        previousTopics     = Nil,
+        conversationId = convId,
+        model = TestSigil.testModel(modelId),
+        instructions = Instructions(),
+        turnInput = TurnInput(conversationId = convId),
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
+        previousTopics = Nil,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-        chain              = List(TestUser, TestAgent),
-        tools              = CoreTools.all.toVector
+        chain = List(TestUser, TestAgent),
+        tools = CoreTools.all.toVector
       )
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, new AtomicRespondProvider, request, conv).toList
       } yield {
         val messages = signals.collect {
           case m: Message
-            if m.participantId == TestAgent &&
-              m.role == sigil.event.MessageRole.Standard &&
-              m.conversationId == convId => m
+              if m.participantId == TestAgent &&
+                m.role == sigil.event.MessageRole.Standard &&
+                m.conversationId == convId => m
         }
         messages should not be empty
         val msgId = messages.head._id
@@ -111,31 +113,31 @@ class AtomicRespondUsageSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val convId = Conversation.id(s"atomic-usage-persist-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = ConversationRequest(
-        conversationId     = convId,
-        model            = TestSigil.testModel(modelId),
-        instructions       = Instructions(),
-        turnInput          = TurnInput(conversationId = convId),
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
-        previousTopics     = Nil,
+        conversationId = convId,
+        model = TestSigil.testModel(modelId),
+        instructions = Instructions(),
+        turnInput = TurnInput(conversationId = convId),
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
+        previousTopics = Nil,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-        chain              = List(TestUser, TestAgent),
-        tools              = CoreTools.all.toVector
+        chain = List(TestUser, TestAgent),
+        tools = CoreTools.all.toVector
       )
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, new AtomicRespondProvider, request, conv).toList
         // Publish every signal in order — the live pipeline.
-        _       <- signals.foldLeft(Task.unit) { (acc, s) =>
-                     acc.flatMap(_ => TestSigil.publish(s).handleError(_ => Task.unit))
-                   }
-        evs     <- TestSigil.withDB(_.events.transaction(_.list))
+        _ <- signals.foldLeft(Task.unit) { (acc, s) =>
+          acc.flatMap(_ => TestSigil.publish(s).handleError(_ => Task.unit))
+        }
+        evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val persisted = evs.collect {
           case m: Message
-            if m.conversationId == convId &&
-              m.participantId == TestAgent &&
-              m.role == sigil.event.MessageRole.Standard => m
+              if m.conversationId == convId &&
+                m.participantId == TestAgent &&
+                m.role == sigil.event.MessageRole.Standard => m
         }
         persisted should not be empty
         val u = persisted.head.usage

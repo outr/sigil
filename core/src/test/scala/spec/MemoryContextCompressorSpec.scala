@@ -61,11 +61,13 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private def textFrame(s: String, id: String): ContextFrame.Text =
     ContextFrame.Text(s, TestUser, Id[Event](id))
 
-  /** A transcript the extraction leg's high-signal filter accepts. The
-    * compressor now spends its extraction consult only on chunks the
-    * app's configured [[sigil.conversation.compression.extract.HighSignalFilter]]
-    * passes — the same gate the per-turn extractor applies — so the
-    * fixture has to look like a turn worth mining. */
+  /**
+   * A transcript the extraction leg's high-signal filter accepts. The
+   * compressor now spends its extraction consult only on chunks the
+   * app's configured [[sigil.conversation.compression.extract.HighSignalFilter]]
+   * passes — the same gate the per-turn extractor applies — so the
+   * fixture has to look like a turn worth mining.
+   */
   private val highSignalFrames: Vector[ContextFrame.Text] = Vector(
     textFrame("I prefer dark mode in every editor I use, please remember that for later.", "ev-0"),
     textFrame("My favorite deployment target is the staging cluster we set up last quarter.", "ev-1"),
@@ -107,7 +109,8 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       TestSigil.reset()
       val convId = Conversation.id(s"mcc-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
       TestSigil.setCompressionSpace(Some(MemoryTestSpace))
       TestSigil.setProvider(Task.pure(new StubProvider(
@@ -139,7 +142,8 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       TestSigil.setVectorIndex(new InMemoryVectorIndex)
       val convId = Conversation.id(s"mcc-retrieve-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
       TestSigil.setCompressionSpace(Some(MemoryTestSpace))
       TestSigil.setProvider(Task.pure(new StubProvider(
@@ -166,7 +170,8 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       TestSigil.reset()
       val convId = Conversation.id(s"mcc-none-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
       TestSigil.setCompressionSpace(None)
       TestSigil.setProvider(Task.pure(new StubProvider(
@@ -191,7 +196,8 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       TestSigil.reset()
       val convId = Conversation.id(s"mcc-filtered-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
       TestSigil.setCompressionSpace(Some(MemoryTestSpace))
       TestSigil.setProvider(Task.pure(new StubProvider(
@@ -204,8 +210,8 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val frames = (0 until 5).toVector.map(i => textFrame(s"utterance $i", s"ev-$i"))
       for {
         result <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), rapid.Stream.emits(frames), convId)
-        facts  <- TestSigil.withDB(_.memories.transaction(_.list))
-                    .map(_.filter(_.spaceId == MemoryTestSpace).map(_.fact))
+        facts <- TestSigil.withDB(_.memories.transaction(_.list))
+          .map(_.filter(_.spaceId == MemoryTestSpace).map(_.fact))
       } yield {
         result.map(_.text) shouldBe Some("Nothing much happened.")
         facts should not contain "should NOT be extracted from small talk"
@@ -217,7 +223,8 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       TestSigil.setMemoryExtractor(sigil.conversation.compression.extract.NoOpMemoryExtractor)
       val convId = Conversation.id(s"mcc-nofilter-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
       TestSigil.setCompressionSpace(Some(MemoryTestSpace))
       TestSigil.setProvider(Task.pure(new StubProvider(
@@ -227,9 +234,9 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val compressor = MemoryContextCompressor()
       val frames = (0 until 5).toVector.map(i => textFrame(s"utterance $i", s"ev-$i"))
       for {
-        _     <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), rapid.Stream.emits(frames), convId)
+        _ <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), rapid.Stream.emits(frames), convId)
         facts <- TestSigil.withDB(_.memories.transaction(_.list))
-                   .map(_.filter(_.spaceId == MemoryTestSpace).map(_.fact))
+          .map(_.filter(_.spaceId == MemoryTestSpace).map(_.fact))
       } yield facts should contain("Extracted despite low-signal text.")
     }
   }

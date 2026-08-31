@@ -23,33 +23,37 @@ import sigil.vector.{VectorPoint, VectorPointId}
  */
 trait MemoryOps { this: Sigil =>
 
-  /** Soft check on a proposed pinned-memory write — never fails the
-    * task. Apps that want hard rejection (e.g. regulated industries
-    * where blowing the inviolable share is a real problem) override
-    * this hook to fail with their own exception based on the same
-    * [[sigil.conversation.CoreContextValidator]] estimates the
-    * framework uses for warnings. Default: no-op for any memory,
-    * pinned or not. */
+  /**
+   * Soft check on a proposed pinned-memory write — never fails the
+   * task. Apps that want hard rejection (e.g. regulated industries
+   * where blowing the inviolable share is a real problem) override
+   * this hook to fail with their own exception based on the same
+   * [[sigil.conversation.CoreContextValidator]] estimates the
+   * framework uses for warnings. Default: no-op for any memory,
+   * pinned or not.
+   */
   protected def validateCoreContextCap(proposed: ContextMemory): Task[Unit] =
     Task.unit
 
-  /** Persist a new [[ContextMemory]] and return the stored record.
-    * When vector search is wired, auto-embeds `memory.fact` and
-    * upserts into [[vectorIndex]] with payload
-    * `kind=memory, spaceId=…`.
-    *
-    * Pinned memories (`memory.pinned == true`) pass through the soft
-    * [[validateCoreContextCap]] hook (default no-op — apps that want
-    * hard rejection override and throw their own exception).
-    *
-    * If [[memoryClassifierModel]] is set and the supplied
-    * `memory.keywords` is empty, the framework runs a one-shot LLM
-    * classification (sync) to populate keywords + permanence + space
-    * before the write. The classifier respects caller-set fields:
-    * non-empty keywords skip the call entirely, explicit
-    * `pinned = true` is preserved, and a non-Global caller-set space
-    * is preserved. Apps that want fully manual control supply
-    * non-empty keywords. */
+  /**
+   * Persist a new [[ContextMemory]] and return the stored record.
+   * When vector search is wired, auto-embeds `memory.fact` and
+   * upserts into [[vectorIndex]] with payload
+   * `kind=memory, spaceId=…`.
+   *
+   * Pinned memories (`memory.pinned == true`) pass through the soft
+   * [[validateCoreContextCap]] hook (default no-op — apps that want
+   * hard rejection override and throw their own exception).
+   *
+   * If [[memoryClassifierModel]] is set and the supplied
+   * `memory.keywords` is empty, the framework runs a one-shot LLM
+   * classification (sync) to populate keywords + permanence + space
+   * before the write. The classifier respects caller-set fields:
+   * non-empty keywords skip the call entirely, explicit
+   * `pinned = true` is preserved, and a non-Global caller-set space
+   * is preserved. Apps that want fully manual control supply
+   * non-empty keywords.
+   */
   def persistMemory(memory: ContextMemory): Task[ContextMemory] =
     validateCoreContextCap(memory).flatMap { _ =>
       enrichMemoryClassification(memory, memory.createdBy.toList).flatMap(applyDistillation).flatMap { enriched =>
@@ -78,13 +82,12 @@ trait MemoryOps { this: Sigil =>
    * Empty `key` is rejected — un-keyed memories must use
    * [[persistMemory]] (the single-shot path; no versioning).
    */
-  def upsertMemoryByKey(memory: ContextMemory): Task[UpsertMemoryResult] = {
+  def upsertMemoryByKey(memory: ContextMemory): Task[UpsertMemoryResult] =
     if (!memory.key.exists(_.nonEmpty))
       Task.error(new IllegalArgumentException("upsertMemoryByKey requires Some(non-empty key); use persistMemory for un-keyed inserts"))
     else validateCoreContextCap(memory).flatMap { _ =>
       enrichMemoryClassification(memory, memory.createdBy.toList).flatMap(applyDistillation).flatMap(upsertMemoryByKeyImpl)
     }
-  }
 
   private def upsertMemoryByKeyImpl(memory: ContextMemory): Task[UpsertMemoryResult] =
     upsertMemoryByKeyWrite(memory).flatMap { result =>
@@ -93,21 +96,25 @@ trait MemoryOps { this: Sigil =>
       }
     }
 
-  /** A `Versioned` write archives the prior record — its vector point
-    * must go with it or semantic search keeps returning the superseded
-    * text, and every cached retrieval must recompute so the stale
-    * version stops rendering mid-burst. The other write outcomes leave
-    * the recallable set alone. */
+  /**
+   * A `Versioned` write archives the prior record — its vector point
+   * must go with it or semantic search keeps returning the superseded
+   * text, and every cached retrieval must recompute so the stale
+   * version stops rendering mid-burst. The other write outcomes leave
+   * the recallable set alone.
+   */
   private def settleArchivedVersion(result: UpsertMemoryResult): Task[Unit] = result match {
     case UpsertMemoryResult.Versioned(_, archived) =>
       evictMemoryPoint(archived._id).map(_ => invalidateAllMemoryRetrievals())
     case _ => Task.unit
   }
 
-  /** The DB-write half of [[upsertMemoryByKeyImpl]] — applies the
-    * versioning rules and persists, but does NOT index. The single
-    * path re-attaches [[indexMemory]]; the batched path defers to one
-    * [[indexMemoriesBatch]] across every written record. */
+  /**
+   * The DB-write half of [[upsertMemoryByKeyImpl]] — applies the
+   * versioning rules and persists, but does NOT index. The single
+   * path re-attaches [[indexMemory]]; the batched path defers to one
+   * [[indexMemoriesBatch]] across every written record.
+   */
   private def upsertMemoryByKeyWrite(memory: ContextMemory): Task[UpsertMemoryResult] =
     withDB { db =>
       db.memories.transaction { tx =>
@@ -208,8 +215,10 @@ trait MemoryOps { this: Sigil =>
                        conversationId: Id[Conversation]): Task[ContextMemory] =
     enrich(memory, chain, conversationId).flatMap(persistMemory)
 
-  /** Convenience overload of [[upsertMemoryByKey]] with the same
-    * `createdBy` + `location` auto-fill behavior as [[persistMemoryFor]]. */
+  /**
+   * Convenience overload of [[upsertMemoryByKey]] with the same
+   * `createdBy` + `location` auto-fill behavior as [[persistMemoryFor]].
+   */
   def upsertMemoryByKeyFor(memory: ContextMemory,
                            chain: List[sigil.participant.ParticipantId],
                            conversationId: Id[Conversation]): Task[UpsertMemoryResult] =
@@ -282,16 +291,16 @@ trait MemoryOps { this: Sigil =>
           val kept = result.memories.filter(_.content.trim.nonEmpty)
           val memories = kept.map { m =>
             ContextMemory(
-              fact       = m.content,
-              label      = if (m.label.trim.nonEmpty) m.label else m.key.getOrElse("memory"),
-              summary    = m.content,
-              source     = MemorySource.UserInput,
-              spaceId    = space,
-              key        = m.key,
-              keywords   = m.tags.toVector,
-              pinned     = pinAll,
-              status     = MemoryStatus.Approved,
-              createdBy  = chain.lastOption
+              fact = m.content,
+              label = if (m.label.trim.nonEmpty) m.label else m.key.getOrElse("memory"),
+              summary = m.content,
+              source = MemorySource.UserInput,
+              spaceId = space,
+              key = m.key,
+              keywords = m.tags.toVector,
+              pinned = pinAll,
+              status = MemoryStatus.Approved,
+              createdBy = chain.lastOption
             )
           }
           // Seeded outside any conversation, so leave `conversationId`
@@ -368,8 +377,10 @@ trait MemoryOps { this: Sigil =>
       }
     }).flatMap(perPassage => persistMemories(perPassage.flatten))
 
-  /** Internal helper — fold chain-derived `createdBy` + `location`
-    * onto a memory without overwriting fields the caller already set. */
+  /**
+   * Internal helper — fold chain-derived `createdBy` + `location`
+   * onto a memory without overwriting fields the caller already set.
+   */
   private def enrich(memory: ContextMemory,
                      chain: List[sigil.participant.ParticipantId],
                      conversationId: Id[Conversation]): Task[ContextMemory] = {
@@ -377,7 +388,7 @@ trait MemoryOps { this: Sigil =>
       if (memory.createdBy.isDefined) memory
       else chain.lastOption match {
         case Some(p) => memory.copy(createdBy = Some(p))
-        case None    => memory
+        case None => memory
       }
     val withConv =
       if (withCreator.conversationId.isDefined) withCreator
@@ -385,49 +396,55 @@ trait MemoryOps { this: Sigil =>
     if (withConv.location.isDefined) Task.pure(withConv)
     else locationForChain(chain, conversationId).map {
       case Some(place) => withConv.copy(location = Some(place))
-      case None        => withConv
+      case None => withConv
     }
   }
 
-  /** Model used by [[persistMemory]] / [[upsertMemoryByKey]] to extract
-    * retrieval keywords for the memory's content (sync — blocks the
-    * write on a one-shot LLM call). When `None` the framework skips
-    * extraction and the memory persists with whatever keywords the
-    * caller supplied (often empty); the lexical retriever then matches
-    * only on label / summary / fact / tags via the existing tokenized
-    * `searchText` field, which works less well for memories whose
-    * surface vocabulary doesn't share tokens with future queries.
-    *
-    * Apps wanting topical retrieval to actually work over their memory
-    * collection set this to a small / fast model — the classification
-    * is a single short-list response per memory, not a reasoning task. */
+  /**
+   * Model used by [[persistMemory]] / [[upsertMemoryByKey]] to extract
+   * retrieval keywords for the memory's content (sync — blocks the
+   * write on a one-shot LLM call). When `None` the framework skips
+   * extraction and the memory persists with whatever keywords the
+   * caller supplied (often empty); the lexical retriever then matches
+   * only on label / summary / fact / tags via the existing tokenized
+   * `searchText` field, which works less well for memories whose
+   * surface vocabulary doesn't share tokens with future queries.
+   *
+   * Apps wanting topical retrieval to actually work over their memory
+   * collection set this to a small / fast model — the classification
+   * is a single short-list response per memory, not a reasoning task.
+   */
   def memoryClassifierModel: Option[Id[Model]] = None
 
-  /** Opt-in ingest-time distillation ([[sigil.conversation.compression.MemoryDistiller]]).
-    * When set, [[persistMemory]] / [[persistMemories]] consult it after
-    * classification and before the write: the distiller produces a
-    * genuine one-line `summary` (the per-turn render form) and
-    * optionally retrieval-optimized `embeddedText` for facts whose
-    * full text is too large to inject every turn. Default `None` —
-    * memories persist exactly as supplied. Runs at memory-creation
-    * time (a build-time cost), never on the turn hot path, so the
-    * shipped [[sigil.conversation.compression.ConsultMemoryDistiller]]
-    * may be wired to a strong model without affecting the runtime
-    * model. Failures are logged and the memory persists undistilled. */
+  /**
+   * Opt-in ingest-time distillation ([[sigil.conversation.compression.MemoryDistiller]]).
+   * When set, [[persistMemory]] / [[persistMemories]] consult it after
+   * classification and before the write: the distiller produces a
+   * genuine one-line `summary` (the per-turn render form) and
+   * optionally retrieval-optimized `embeddedText` for facts whose
+   * full text is too large to inject every turn. Default `None` —
+   * memories persist exactly as supplied. Runs at memory-creation
+   * time (a build-time cost), never on the turn hot path, so the
+   * shipped [[sigil.conversation.compression.ConsultMemoryDistiller]]
+   * may be wired to a strong model without affecting the runtime
+   * model. Failures are logged and the memory persists undistilled.
+   */
   def memoryDistiller: Option[sigil.conversation.compression.MemoryDistiller] = None
 
-  /** Apply [[memoryDistiller]] to a memory about to be written.
-    * Best-effort: a distiller failure logs a WARN and the memory
-    * persists as-is. */
+  /**
+   * Apply [[memoryDistiller]] to a memory about to be written.
+   * Best-effort: a distiller failure logs a WARN and the memory
+   * persists as-is.
+   */
   private def applyDistillation(memory: ContextMemory): Task[ContextMemory] =
     memoryDistiller match {
       case None => Task.pure(memory)
       case Some(distiller) =>
         distiller.distill(this, memory).map {
           case Some(d) => memory.copy(
-            summary = Some(d.summary.trim).filter(_.nonEmpty).getOrElse(memory.summary),
-            embeddedText = d.embeddingText.map(_.trim).filter(_.nonEmpty)
-          )
+              summary = Some(d.summary.trim).filter(_.nonEmpty).getOrElse(memory.summary),
+              embeddedText = d.embeddingText.map(_.trim).filter(_.nonEmpty)
+            )
           case None => memory
         }.handleError { e =>
           Task {
@@ -437,42 +454,43 @@ trait MemoryOps { this: Sigil =>
         }
     }
 
-  /** Run [[sigil.tool.consult.ClassifyMemoryTool]] against the memory's
-    * content when [[memoryClassifierModel]] is set and the caller didn't
-    * already supply keywords. Returns the input memory enriched with
-    * keywords + permanence (`pinned`) + space (or unchanged on opt-out
-    * / classification failure — never blocks persist on an LLM hiccup).
-    *
-    * Caller-set fields are respected:
-    *   - `memory.keywords` non-empty → skip the classifier entirely
-    *     (caller has explicit keywords; nothing to enrich).
-    *   - `memory.pinned == true` → keep pinned even if classifier says
-    *     `Once` (caller deliberately pinned).
-    *   - `memory.spaceId` other than [[sigil.GlobalSpace]] → keep the
-    *     caller's explicit space (the classifier's choice only fills
-    *     in when the caller defaulted to global). */
+  /**
+   * Run [[sigil.tool.consult.ClassifyMemoryTool]] against the memory's
+   * content when [[memoryClassifierModel]] is set and the caller didn't
+   * already supply keywords. Returns the input memory enriched with
+   * keywords + permanence (`pinned`) + space (or unchanged on opt-out
+   * / classification failure — never blocks persist on an LLM hiccup).
+   *
+   * Caller-set fields are respected:
+   *   - `memory.keywords` non-empty → skip the classifier entirely
+   *     (caller has explicit keywords; nothing to enrich).
+   *   - `memory.pinned == true` → keep pinned even if classifier says
+   *     `Once` (caller deliberately pinned).
+   *   - `memory.spaceId` other than [[sigil.GlobalSpace]] → keep the
+   *     caller's explicit space (the classifier's choice only fills
+   *     in when the caller defaulted to global).
+   */
   private def enrichMemoryClassification(memory: ContextMemory,
-                                          chain: List[sigil.participant.ParticipantId]
-                                         ): Task[ContextMemory] =
+                                         chain: List[sigil.participant.ParticipantId]): Task[ContextMemory] =
     if (memory.keywords.nonEmpty) Task.pure(memory)
     else memoryClassifierModel match {
       case None => Task.pure(memory)
       case Some(modelId) =>
         for {
           accessible <- memory.conversationId match {
-                          case Some(convId) => accessibleSpaces(chain, convId).map(_ + GlobalSpace)
-                          case None         => accessibleSpaces(chain).map(_ + GlobalSpace)
-                        }
-          recentMsg  <- recentUserMessageText(memory.conversationId)
-          enriched   <- runMemoryClassifier(memory, chain, modelId, accessible, recentMsg)
+            case Some(convId) => accessibleSpaces(chain, convId).map(_ + GlobalSpace)
+            case None => accessibleSpaces(chain).map(_ + GlobalSpace)
+          }
+          recentMsg <- recentUserMessageText(memory.conversationId)
+          enriched <- runMemoryClassifier(memory, chain, modelId, accessible, recentMsg)
         } yield enriched
     }
 
   private def runMemoryClassifier(memory: ContextMemory,
-                                   chain: List[sigil.participant.ParticipantId],
-                                   modelId: Id[Model],
-                                   accessibleSpaces: Set[SpaceId],
-                                   recentUserMessage: Option[String]): Task[ContextMemory] = {
+                                  chain: List[sigil.participant.ParticipantId],
+                                  modelId: Id[Model],
+                                  accessibleSpaces: Set[SpaceId],
+                                  recentUserMessage: Option[String]): Task[ContextMemory] = {
     val spaceCatalog =
       if (accessibleSpaces.isEmpty) "  (none — only global available)"
       else accessibleSpaces.toList.sortBy(_.value).map { s =>
@@ -482,7 +500,7 @@ trait MemoryOps { this: Sigil =>
     val rendered = renderMemoryForClassification(memory)
     val userMsgBlock = recentUserMessage match {
       case Some(text) => s"\n\nUser's recent message (the trigger for this save):\n$text"
-      case None       => ""
+      case None => ""
     }
     val systemPrompt =
       """You classify a memory the framework is about to persist. Decide three things in one call:
@@ -504,7 +522,7 @@ trait MemoryOps { this: Sigil =>
     val settings = {
       val base = sigil.provider.GenerationSettings(
         outputTokenCap = sigil.provider.OutputTokenCap.Below(220),
-        reasoningMode  = sigil.provider.ReasoningMode.Off
+        reasoningMode = sigil.provider.ReasoningMode.Off
       )
       if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
       else base
@@ -528,21 +546,23 @@ trait MemoryOps { this: Sigil =>
     }
   }
 
-  /** Apply classifier output to the memory record, respecting caller-set
-    * fields. Unrecognised permanence falls back to keeping the caller's
-    * value; ambiguous space leaves the caller's space intact and emits
-    * a scribe warning (apps that want to surface ambiguity to the user
-    * subscribe to the warning via their log infra, or pre-classify
-    * explicitly via [[sigil.Sigil.classifyMemoryDecision]]). */
+  /**
+   * Apply classifier output to the memory record, respecting caller-set
+   * fields. Unrecognised permanence falls back to keeping the caller's
+   * value; ambiguous space leaves the caller's space intact and emits
+   * a scribe warning (apps that want to surface ambiguity to the user
+   * subscribe to the warning via their log infra, or pre-classify
+   * explicitly via [[sigil.Sigil.classifyMemoryDecision]]).
+   */
   private def applyClassifierOutput(memory: ContextMemory,
-                                     input: sigil.tool.consult.ClassifyMemoryInput,
-                                     accessibleSpaces: Set[SpaceId]): ContextMemory = {
+                                    input: sigil.tool.consult.ClassifyMemoryInput,
+                                    accessibleSpaces: Set[SpaceId]): ContextMemory = {
     val cleanedKeywords = input.keywords.iterator.map(_.trim.toLowerCase).filter(_.nonEmpty).toVector.distinct
     val withKeywords = if (cleanedKeywords.isEmpty) memory else memory.copy(keywords = cleanedKeywords)
 
     val withPinned = input.permanence match {
       case sigil.conversation.Permanence.Always => withKeywords.copy(pinned = true)
-      case sigil.conversation.Permanence.Once   => withKeywords  // keep caller's pinned value (default false)
+      case sigil.conversation.Permanence.Once => withKeywords // keep caller's pinned value (default false)
     }
 
     val classifierSpace = input.space.trim
@@ -555,19 +575,20 @@ trait MemoryOps { this: Sigil =>
             s"(fallback space='${memory.spaceId.value}'); reason: $reason"
         )
         withPinned
-      }
-      else if (memory.spaceId != GlobalSpace) withPinned  // caller picked explicitly
+      } else if (memory.spaceId != GlobalSpace) withPinned // caller picked explicitly
       else accessibleSpaces.find(_.value == classifierSpace) match {
         case Some(picked) => withPinned.copy(spaceId = picked)
-        case None         => withPinned
+        case None => withPinned
       }
 
     withSpace
   }
 
-  /** Look up the most recent non-agent message text in a conversation —
-    * the LLM uses this to detect imperative cues. Returns None when no
-    * conversation context is available. */
+  /**
+   * Look up the most recent non-agent message text in a conversation —
+   * the LLM uses this to detect imperative cues. Returns None when no
+   * conversation context is available.
+   */
   private def recentUserMessageText(conversationId: Option[Id[Conversation]]): Task[Option[String]] =
     conversationId match {
       case None => Task.pure(None)
@@ -575,12 +596,14 @@ trait MemoryOps { this: Sigil =>
         framesFor(convId).map { frames =>
           frames.reverseIterator.collectFirst {
             case t: sigil.conversation.ContextFrame.Text
-              if !t.participantId.isInstanceOf[sigil.participant.AgentParticipantId] => t.content
+                if !t.participantId.isInstanceOf[sigil.participant.AgentParticipantId] => t.content
           }
         }
     }
 
-  /** Render a memory in a compact form for the classifier. */
+  /**
+   * Render a memory in a compact form for the classifier.
+   */
   private def renderMemoryForClassification(memory: ContextMemory): String = {
     val sb = new StringBuilder
     sb.append(s"Label: ${memory.label}\n")
@@ -591,26 +614,30 @@ trait MemoryOps { this: Sigil =>
     sb.toString
   }
 
-  /** `true` when both [[embeddingProvider]] and [[vectorIndex]] are
-    * non-NoOp — the flag the framework checks before auto-embedding on
-    * persist or attempting vector-backed search. Public so retrieval
-    * stages can skip the vector leg entirely when it isn't wired
-    * (the [[searchMemories]] fallback is an UNRANKED space listing —
-    * useful as a last resort for a direct caller, pure noise as a
-    * relevance leg inside the fusion). */
+  /**
+   * `true` when both [[embeddingProvider]] and [[vectorIndex]] are
+   * non-NoOp — the flag the framework checks before auto-embedding on
+   * persist or attempting vector-backed search. Public so retrieval
+   * stages can skip the vector leg entirely when it isn't wired
+   * (the [[searchMemories]] fallback is an UNRANKED space listing —
+   * useful as a last resort for a direct caller, pure noise as a
+   * relevance leg inside the fusion).
+   */
   final def vectorWired: Boolean =
     embeddingProvider.dimensions > 0 && (vectorIndex ne sigil.vector.NoOpVectorIndex)
 
-  /** Embed a memory's `fact`, upsert it into [[vectorIndex]], and stamp
-    * the record with the resulting [[EmbeddingRef]] so the store knows
-    * exactly which text and which embedder the live point was built
-    * from. Returns the stamped record. No-op (returns `m` unchanged)
-    * when vector search isn't wired or the fact is empty; vector
-    * failures are logged and swallowed so a persist never fails on an
-    * index hiccup — and the record then stays unstamped, which is
-    * precisely what [[sigil.maintenance.EmbeddingReconcileTask]] later
-    * picks up. */
-  private final def indexMemory(m: ContextMemory): Task[ContextMemory] =
+  /**
+   * Embed a memory's `fact`, upsert it into [[vectorIndex]], and stamp
+   * the record with the resulting [[EmbeddingRef]] so the store knows
+   * exactly which text and which embedder the live point was built
+   * from. Returns the stamped record. No-op (returns `m` unchanged)
+   * when vector search isn't wired or the fact is empty; vector
+   * failures are logged and swallowed so a persist never fails on an
+   * index hiccup — and the record then stays unstamped, which is
+   * precisely what [[sigil.maintenance.EmbeddingReconcileTask]] later
+   * picks up.
+   */
+  final private def indexMemory(m: ContextMemory): Task[ContextMemory] =
     if (!vectorWired || m.embeddingSource.isEmpty) Task.pure(m)
     else embeddingProvider.embed(m.embeddingSource).flatMap { vec =>
       vectorIndex.upsert(memoryVectorPoint(m, vec)).flatMap { _ =>
@@ -624,24 +651,28 @@ trait MemoryOps { this: Sigil =>
       }
     }
 
-  /** Re-embed and re-index a memory — the entry point for the write
-    * surfaces on [[Sigil]] that bring a record back INTO the
-    * recallable set (approval), and for
-    * [[sigil.maintenance.EmbeddingReconcileTask]]'s drift repair.
-    * Returns the record with its refreshed provenance stamp. */
+  /**
+   * Re-embed and re-index a memory — the entry point for the write
+   * surfaces on [[Sigil]] that bring a record back INTO the
+   * recallable set (approval), and for
+   * [[sigil.maintenance.EmbeddingReconcileTask]]'s drift repair.
+   * Returns the record with its refreshed provenance stamp.
+   */
   final def reindexMemory(m: ContextMemory): Task[ContextMemory] = indexMemory(m)
 
-  /** Remove a memory's point from [[vectorIndex]] and clear the
-    * record's [[ContextMemory.embedding]] stamp — the stamp asserts a
-    * live point exists, so it must not outlive one. No-op when vector
-    * search isn't wired (no point, and no stamp could have been
-    * written); failures are logged and swallowed so a store write never
-    * fails on an index hiccup. Every path that takes a record out of
-    * the recallable set (archive on version, reject, hard delete)
-    * routes through here — a point left behind keeps the record
-    * reachable through [[Sigil.searchMemories]]'s candidate pool, which
-    * is the only retrieval leg the store-side gate can't pre-filter. */
-  protected final def evictMemoryPoint(id: Id[ContextMemory]): Task[Unit] =
+  /**
+   * Remove a memory's point from [[vectorIndex]] and clear the
+   * record's [[ContextMemory.embedding]] stamp — the stamp asserts a
+   * live point exists, so it must not outlive one. No-op when vector
+   * search isn't wired (no point, and no stamp could have been
+   * written); failures are logged and swallowed so a store write never
+   * fails on an index hiccup. Every path that takes a record out of
+   * the recallable set (archive on version, reject, hard delete)
+   * routes through here — a point left behind keeps the record
+   * reachable through [[Sigil.searchMemories]]'s candidate pool, which
+   * is the only retrieval leg the store-side gate can't pre-filter.
+   */
+  final protected def evictMemoryPoint(id: Id[ContextMemory]): Task[Unit] =
     if (!vectorWired) Task.unit
     else vectorIndex.delete(VectorPointId(id.value))
       .flatMap(_ => clearEmbeddingStamp(id))
@@ -649,25 +680,31 @@ trait MemoryOps { this: Sigil =>
         Task(scribe.warn(s"Vector delete failed for memory ${id.value}: ${e.getMessage}"))
       }
 
-  /** Record-carrying overload of [[evictMemoryPoint]] — returns the
-    * record as the store now holds it, stamp cleared. */
-  protected final def evictMemoryPoint(m: ContextMemory): Task[ContextMemory] =
+  /**
+   * Record-carrying overload of [[evictMemoryPoint]] — returns the
+   * record as the store now holds it, stamp cleared.
+   */
+  final protected def evictMemoryPoint(m: ContextMemory): Task[ContextMemory] =
     evictMemoryPoint(m._id).map(_ => if (vectorWired) m.copy(embedding = None) else m)
 
-  /** Drop the provenance stamp from a record that no longer has a
-    * point. Silently skips a row that is already unstamped or has been
-    * hard-deleted. */
-  private final def clearEmbeddingStamp(id: Id[ContextMemory]): Task[Unit] =
+  /**
+   * Drop the provenance stamp from a record that no longer has a
+   * point. Silently skips a row that is already unstamped or has been
+   * hard-deleted.
+   */
+  final private def clearEmbeddingStamp(id: Id[ContextMemory]): Task[Unit] =
     withDB(_.memories.transaction { tx =>
       tx.get(id).flatMap {
         case Some(m) if m.embedding.nonEmpty => tx.upsert(m.copy(embedding = None)).unit
-        case _                               => Task.unit
+        case _ => Task.unit
       }
     })
 
-  /** Build the [[VectorPoint]] for a memory — shared by the single and
-    * batched index paths so the payload shape stays in one place. */
-  private final def memoryVectorPoint(m: ContextMemory, vec: Vector[Double]): VectorPoint =
+  /**
+   * Build the [[VectorPoint]] for a memory — shared by the single and
+   * batched index paths so the payload shape stays in one place.
+   */
+  final private def memoryVectorPoint(m: ContextMemory, vec: Vector[Double]): VectorPoint =
     VectorPoint(
       id = VectorPointId(m._id.value),
       vector = vec,
@@ -679,14 +716,16 @@ trait MemoryOps { this: Sigil =>
       )
     )
 
-  /** Embed and index a list of memories with a single batched embedding
-    * request and a single batched vector upsert — the bulk equivalent
-    * of [[indexMemory]], provenance stamps included. Memories with an
-    * empty `fact` are skipped and returned untouched. No-op when vector
-    * search isn't wired; failures are logged and swallowed so a bulk
-    * persist never fails on an index hiccup. Returns the records in
-    * input order. */
-  private final def indexMemoriesBatch(memories: List[ContextMemory]): Task[List[ContextMemory]] = {
+  /**
+   * Embed and index a list of memories with a single batched embedding
+   * request and a single batched vector upsert — the bulk equivalent
+   * of [[indexMemory]], provenance stamps included. Memories with an
+   * empty `fact` are skipped and returned untouched. No-op when vector
+   * search isn't wired; failures are logged and swallowed so a bulk
+   * persist never fails on an index hiccup. Returns the records in
+   * input order.
+   */
+  final private def indexMemoriesBatch(memories: List[ContextMemory]): Task[List[ContextMemory]] = {
     val indexable = memories.filter(_.embeddingSource.nonEmpty)
     if (!vectorWired || indexable.isEmpty) Task.pure(memories)
     else embeddingProvider.embedBatch(indexable.map(_.embeddingSource)).flatMap { vectors =>
@@ -749,7 +788,7 @@ trait MemoryOps { this: Sigil =>
 
   private def archivedOf(result: UpsertMemoryResult): Option[Id[ContextMemory]] = result match {
     case UpsertMemoryResult.Versioned(_, archived) => Some(archived._id)
-    case _                                         => None
+    case _ => None
   }
 
   /**
@@ -771,9 +810,12 @@ trait MemoryOps { this: Sigil =>
 }
 
 object MemoryOps {
-  /** System prompt for [[sigil.Sigil.ingestCorpusMemories]]'s
-    * extraction consult: turn one document passage into atomic,
-    * self-contained facts a small runtime model cannot misread. */
+
+  /**
+   * System prompt for [[sigil.Sigil.ingestCorpusMemories]]'s
+   * extraction consult: turn one document passage into atomic,
+   * self-contained facts a small runtime model cannot misread.
+   */
   val DefaultCorpusIngestSystemPrompt: String =
     """You convert a passage from a document into durable memories via the `extract_memories` tool.
       |The passage is source material, NOT a conversation — there is no user speaking.
@@ -789,17 +831,21 @@ object MemoryOps {
       |genuine categorization tokens. Include every concrete fact the passage states; omit
       |narrative connective tissue and anything the passage does not actually say.""".stripMargin
 
-  /** Ceiling on a memory's `sourceEventIds`. A long-lived keyed slot
-    * refreshed on every turn would otherwise accumulate one id per
-    * refresh forever — thousands of ids on a record whose value is a
-    * single sentence. The most recent ids are the useful ones (the
-    * exchange that last restated the fact), so the union keeps the
-    * tail. */
+  /**
+   * Ceiling on a memory's `sourceEventIds`. A long-lived keyed slot
+   * refreshed on every turn would otherwise accumulate one id per
+   * refresh forever — thousands of ids on a record whose value is a
+   * single sentence. The most recent ids are the useful ones (the
+   * exchange that last restated the fact), so the union keeps the
+   * tail.
+   */
   val MaxSourceEventIds: Int = 200
 
-  /** Union a memory's prior provenance with a fresh extraction's,
-    * preserving order and keeping the most recent
-    * [[MaxSourceEventIds]]. */
-  def boundedProvenance(prior: List[Id[Event]], fresh: List[Id[Event]]): List[Id[Event]] =
-    (prior ++ fresh).distinct.takeRight(MaxSourceEventIds)
+  /**
+   * Union a memory's prior provenance with a fresh extraction's,
+   * preserving order and keeping the most recent
+   * [[MaxSourceEventIds]].
+   */
+  def boundedProvenance(prior: List[Id[Event]], fresh: List[Id[Event]]): List[Id[Event]] = (prior ++ fresh).distinct.takeRight(
+    MaxSourceEventIds)
 }

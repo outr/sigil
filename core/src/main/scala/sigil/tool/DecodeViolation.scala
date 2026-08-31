@@ -10,7 +10,10 @@ package sigil.tool
  * one per round-trip.
  */
 final case class DecodeViolation(path: List[String], reason: String, kind: ViolationKind = ViolationKind.Constraint) {
-  /** Render as `path: reason` or just `reason` for root-level failures. */
+
+  /**
+   * Render as `path: reason` or just `reason` for root-level failures.
+   */
   def render: String =
     if (path.isEmpty) reason else s"${path.mkString(".")}: $reason"
 }

@@ -28,13 +28,17 @@ class ContextSectionShedSpec extends AnyWordSpec with Matchers {
     "order the framework's sections by shed stage" in {
       val cascade = ContextSections.shedCascade(ContextSections.all)
       cascade.map(_.id) shouldBe List(
-        ProfileSection.Memories, ProfileSection.Information, ProfileSection.Summaries)
+        ProfileSection.Memories,
+        ProfileSection.Information,
+        ProfileSection.Summaries)
       cascade.foreach(_.shed should not be empty)
       succeed
     }
 
     "include an app's own section at its declared stage" in {
-      val mine = custom(ProfileSection.ExtraContext, Some(0),
+      val mine = custom(
+        ProfileSection.ExtraContext,
+        Some(0),
         Some(t => t.copy(extraContext = Map.empty)))
       val cascade = ContextSections.shedCascade(ContextSections.all :+ mine)
       cascade.map(_.id).head shouldBe ProfileSection.ExtraContext
@@ -42,7 +46,9 @@ class ContextSectionShedSpec extends AnyWordSpec with Matchers {
     }
 
     "apply the declared effect to the turn" in {
-      val mine = custom(ProfileSection.ExtraContext, Some(0),
+      val mine = custom(
+        ProfileSection.ExtraContext,
+        Some(0),
         Some(t => t.copy(information = Vector.empty)))
       val shed = ContextSections.shedCascade(List(mine)).head.shed.get
       shed(turn).information shouldBe empty
@@ -53,8 +59,8 @@ class ContextSectionShedSpec extends AnyWordSpec with Matchers {
       val thrown = intercept[IllegalArgumentException] {
         ContextSections.shedCascade(ContextSections.all :+ broken)
       }
-      thrown.getMessage should include ("ExtraContext")
-      thrown.getMessage should include ("shedStage")
+      thrown.getMessage should include("ExtraContext")
+      thrown.getMessage should include("shedStage")
     }
 
     "accept a section with no shed stage and no effect" in {

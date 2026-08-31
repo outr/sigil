@@ -34,8 +34,18 @@ class MemoryRecallDilutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     override val id: String = "persona-controlled"
     override val dimensions: Int = 3
     private val personaWords = Set(
-      "sherlock", "holmes", "detective", "deduction", "observation", "character",
-      "converse", "investigate", "problems", "logic", "violin", "baker")
+      "sherlock",
+      "holmes",
+      "detective",
+      "deduction",
+      "observation",
+      "character",
+      "converse",
+      "investigate",
+      "problems",
+      "logic",
+      "violin",
+      "baker")
     private val factWords = Set("tobacco", "slipper", "persian", "mantelpiece")
     override def embed(text: String): Task[Vector[Double]] = Task {
       val tokens = text.toLowerCase.split("[^a-z]+").iterator.filter(_.nonEmpty).toList
@@ -135,10 +145,8 @@ class MemoryRecallDilutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         convId <- seedConv("default", List("sherlock", "holmes"))
         ids <- retrievedIds(StandardMemoryRetriever(limit = 5), convId, questionFrames)
-      } yield {
-        withClue(s"retrieved=$ids slipper=$slipperId: ") {
-          ids should contain (slipperId)
-        }
+      } yield withClue(s"retrieved=$ids slipper=$slipperId: ") {
+        ids should contain(slipperId)
       }
     }
 
@@ -151,15 +159,13 @@ class MemoryRecallDilutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         convId <- seedConv("composite", List("sherlock", "holmes"))
         ids <- retrievedIds(composite, convId, questionFrames)
-      } yield {
-        withClue(s"retrieved=$ids slipper=$slipperId: ") {
-          // The diluted query still returns memories — just not the one
-          // that answers the question. If this ever starts passing the
-          // slipper through, the fixture no longer discriminates and
-          // the spec must be re-tuned.
-          ids should not be empty
-          ids should not contain slipperId
-        }
+      } yield withClue(s"retrieved=$ids slipper=$slipperId: ") {
+        // The diluted query still returns memories — just not the one
+        // that answers the question. If this ever starts passing the
+        // slipper through, the fixture no longer discriminates and
+        // the spec must be re-tuned.
+        ids should not be empty
+        ids should not contain slipperId
       }
     }
 
@@ -167,10 +173,8 @@ class MemoryRecallDilutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         convId <- seedConv("keywords", List("tobacco"))
         ids <- retrievedIds(StandardMemoryRetriever(limit = 5), convId, Vector.empty)
-      } yield {
-        withClue(s"retrieved=$ids slipper=$slipperId: ") {
-          ids should contain (slipperId)
-        }
+      } yield withClue(s"retrieved=$ids slipper=$slipperId: ") {
+        ids should contain(slipperId)
       }
     }
 
@@ -180,14 +184,12 @@ class MemoryRecallDilutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         convId <- seedConv("thematic", List("sherlock", "holmes"))
         ids <- retrievedIds(StandardMemoryRetriever(limit = 5), convId, thematic)
-      } yield {
-        withClue(s"retrieved=$ids: ") {
-          // A theme-shaped question retrieves theme memories — the
-          // undiluted composition helps specific questions without
-          // starving general ones.
-          ids should not be empty
-          ids should not contain slipperId
-        }
+      } yield withClue(s"retrieved=$ids: ") {
+        // A theme-shaped question retrieves theme memories — the
+        // undiluted composition helps specific questions without
+        // starving general ones.
+        ids should not be empty
+        ids should not contain slipperId
       }
     }
   }

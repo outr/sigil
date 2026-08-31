@@ -21,4 +21,5 @@ case class ProcessOutputResult(handle: String,
                                nextCursor: Long,
                                status: ProcessRunStatus,
                                exitCode: Option[Int],
-                               dropped: Boolean) extends sigil.tool.ToolOutput derives RW
+                               dropped: Boolean)
+  extends sigil.tool.ToolOutput derives RW

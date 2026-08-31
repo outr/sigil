@@ -33,14 +33,16 @@ import scala.jdk.CollectionConverters.*
  */
 final class RecentEventOverlay(eventsPerConversation: Int, trackedConversations: Int) {
 
-  private final class Window {
+  final private class Window {
     private val entries: JLinkedHashMap[Id[Event], Event] =
       new JLinkedHashMap[Id[Event], Event](16, 0.75f, false) {
         override def removeEldestEntry(eldest: JMap.Entry[Id[Event], Event]): Boolean = size() > eventsPerConversation
       }
 
-    /** Last-write-wins on id, so a Delta's post-application row replaces the
-      * version this window already held rather than adding an entry. */
+    /**
+     * Last-write-wins on id, so a Delta's post-application row replaces the
+     * version this window already held rather than adding an entry.
+     */
     def record(event: Event): Unit = synchronized {
       entries.put(event._id, event)
       ()
@@ -67,17 +69,21 @@ final class RecentEventOverlay(eventsPerConversation: Int, trackedConversations:
     window.record(event)
   }
 
-  /** Point-in-time snapshot for `conversationId`, oldest first. */
+  /**
+   * Point-in-time snapshot for `conversationId`, oldest first.
+   */
   def recent(conversationId: Id[Conversation]): List[Event] =
     windows.synchronized(Option(windows.get(conversationId))) match {
       case Some(window) => window.snapshot
-      case None         => Nil
+      case None => Nil
     }
 
-  /** Drop everything held for `conversationId`. Called whenever the durable
-    * rows go away or move — a deleted conversation, a staging conversation
-    * merged into its target — so the window can't resurrect a row that no
-    * longer exists under that id. */
+  /**
+   * Drop everything held for `conversationId`. Called whenever the durable
+   * rows go away or move — a deleted conversation, a staging conversation
+   * merged into its target — so the window can't resurrect a row that no
+   * longer exists under that id.
+   */
   def forget(conversationId: Id[Conversation]): Unit = windows.synchronized {
     windows.remove(conversationId)
     ()

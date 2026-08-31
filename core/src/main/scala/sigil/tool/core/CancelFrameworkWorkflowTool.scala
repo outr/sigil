@@ -3,24 +3,33 @@ package sigil.tool.core
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolOutput, ToolProfile, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolOutput, ToolProfile, ToolSpec
+}
 
 case class CancelFrameworkWorkflowInput(workflowId: String,
-                                        reason: Option[String] = None) extends ToolInput derives RW
+                                        reason: Option[String] = None)
+  extends ToolInput derives RW
 
 enum CancelFrameworkWorkflowOutput extends ToolOutput derives RW {
 
-  /** Cancellation flag flipped successfully — the workflow body
-    * will honour it at its next checkpoint and emit a
-    * `FrameworkWorkflowPhase.Failed("cancelled: …", …)` Notice. */
+  /**
+   * Cancellation flag flipped successfully — the workflow body
+   * will honour it at its next checkpoint and emit a
+   * `FrameworkWorkflowPhase.Failed("cancelled: …", …)` Notice.
+   */
   case Cancelled(workflowId: String, workflowType: String, label: String)
 
-  /** Workflow id wasn't found in the active set — either the
-    * workflow already finished, or the id is wrong. Idempotent
-    * shape so re-cancellation is a clean no-op. */
+  /**
+   * Workflow id wasn't found in the active set — either the
+   * workflow already finished, or the id is wrong. Idempotent
+   * shape so re-cancellation is a clean no-op.
+   */
   case NotActive(workflowId: String)
 
-  /** Workflow was already cancelled by an earlier call. */
+  /**
+   * Workflow was already cancelled by an earlier call.
+   */
   case AlreadyCancelled(workflowId: String, existingReason: String)
 }
 
@@ -41,12 +50,14 @@ enum CancelFrameworkWorkflowOutput extends ToolOutput derives RW {
  * ("framework workflow" vs "workflow run / strider").
  */
 case object CancelFrameworkWorkflowTool extends Tool {
-  type Input  = CancelFrameworkWorkflowInput
+  type Input = CancelFrameworkWorkflowInput
   type Output = CancelFrameworkWorkflowOutput
-  val io: ToolIO[CancelFrameworkWorkflowInput, CancelFrameworkWorkflowOutput] = ToolIO.derived[CancelFrameworkWorkflowInput, CancelFrameworkWorkflowOutput].withExamples(
-    ToolExample("Cancel a slow compress",
-      CancelFrameworkWorkflowInput(workflowId = "wf-abc-123", reason = Some("user clicked cancel")))
-  )
+  val io: ToolIO[CancelFrameworkWorkflowInput, CancelFrameworkWorkflowOutput] =
+    ToolIO.derived[CancelFrameworkWorkflowInput, CancelFrameworkWorkflowOutput].withExamples(
+      ToolExample(
+        "Cancel a slow compress",
+        CancelFrameworkWorkflowInput(workflowId = "wf-abc-123", reason = Some("user clicked cancel")))
+    )
   override val name = ToolName("cancel_framework_workflow")
   override val description =
     """Cancel a framework-internal workflow (pre-flight, compress, frame-load, …) by its
@@ -60,7 +71,6 @@ case object CancelFrameworkWorkflowTool extends Tool {
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("cancel", "framework", "workflow", "abort", "stop", "preflight", "compress"))
   )
-
 
   protected def resolve: Resolution[Input, Output] = Resolution.Simple(executeOutput)
 

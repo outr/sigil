@@ -32,28 +32,32 @@ class RosterNarrowingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   // Synthetic baseline — 10 fictional tools the agent declares.
   private val baseline: List[ToolName] = (1 to 10).map(i => ToolName.parse(s"app_tool_$i").fold(sys.error, identity)).toList
 
-  /** Standard-policy agent: ToolPolicy.Standard means find_capability
-    * stays in the roster (recovery path exists). */
+  /**
+   * Standard-policy agent: ToolPolicy.Standard means find_capability
+   * stays in the roster (recovery path exists).
+   */
   private case object StandardAgent extends AgentParticipant {
-    override def id: AgentParticipantId      = TestAgent
+    override def id: AgentParticipantId = TestAgent
     override def modelId: Id[sigil.db.Model] = sigil.db.Model.id("test", "narrow-standard")
-    override def roles: List[Role]           = List(GeneralistRole)
-    override def displayName: String         = "StandardAgent"
-    override def avatarUrl: Option[String]   = None
-    override def toolNames: List[ToolName]   = baseline
-    override def tools: ToolPolicy           = ToolPolicy.Standard
+    override def roles: List[Role] = List(GeneralistRole)
+    override def displayName: String = "StandardAgent"
+    override def avatarUrl: Option[String] = None
+    override def toolNames: List[ToolName] = baseline
+    override def tools: ToolPolicy = ToolPolicy.Standard
   }
 
-  /** ActiveOnly-policy agent: same baseline but find_capability is
-    * stripped. Narrowing must NOT engage here — no recovery path. */
+  /**
+   * ActiveOnly-policy agent: same baseline but find_capability is
+   * stripped. Narrowing must NOT engage here — no recovery path.
+   */
   private case object ActiveOnlyAgent extends AgentParticipant {
-    override def id: AgentParticipantId      = TestAgent
+    override def id: AgentParticipantId = TestAgent
     override def modelId: Id[sigil.db.Model] = sigil.db.Model.id("test", "narrow-activeonly")
-    override def roles: List[Role]           = List(GeneralistRole)
-    override def displayName: String         = "ActiveOnlyAgent"
-    override def avatarUrl: Option[String]   = None
-    override def toolNames: List[ToolName]   = baseline
-    override def tools: ToolPolicy           = ToolPolicy.ActiveOnly(Nil)
+    override def roles: List[Role] = List(GeneralistRole)
+    override def displayName: String = "ActiveOnlyAgent"
+    override def avatarUrl: Option[String] = None
+    override def toolNames: List[ToolName] = baseline
+    override def tools: ToolPolicy = ToolPolicy.ActiveOnly(Nil)
   }
 
   private def reset(): Unit = TestSigil.narrowRosterByRecentUseOverride.set(None)
@@ -85,8 +89,8 @@ class RosterNarrowingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         recentlyUsedTools = recent
       )
       // Baseline tools that ARE recently used → kept.
-      roster should contain (ToolName("app_tool_3"))
-      roster should contain (ToolName("app_tool_7"))
+      roster should contain(ToolName("app_tool_3"))
+      roster should contain(ToolName("app_tool_7"))
       // Baseline tools NOT recently used → dropped.
       roster should not contain ToolName("app_tool_1")
       roster should not contain ToolName("app_tool_4")
@@ -94,7 +98,7 @@ class RosterNarrowingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       // (they'd only be in suggested or essentials).
       roster should not contain ToolName("not_in_baseline")
       // find_capability is always present.
-      roster should contain (FindCapabilityTool.schema.name)
+      roster should contain(FindCapabilityTool.schema.name)
     }
 
     "preserve full baseline when recentlyUsedTools is EMPTY (first-iteration safety)" in Task {
@@ -139,8 +143,8 @@ class RosterNarrowingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         overlays = Nil,
         recentlyUsedTools = recent
       )
-      roster should contain (ToolName("brand_new_discovery"))
-      roster should contain (ToolName("app_tool_3"))
+      roster should contain(ToolName("brand_new_discovery"))
+      roster should contain(ToolName("app_tool_3"))
     }
 
     "ToolPolicy.Active extras narrow alongside baseline (sigil #287)" in Task {
@@ -155,8 +159,8 @@ class RosterNarrowingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       // `agent.toolNames`).
       val recent = Set(ToolName("app_tool_3"), ToolName("metals_find_usages"))
       val overlay = ToolPolicy.Active(List(
-        ToolName("metals_find_symbol"),  // not in recent → drop
-        ToolName("metals_find_usages")   // in recent → keep
+        ToolName("metals_find_symbol"), // not in recent → drop
+        ToolName("metals_find_usages") // in recent → keep
       ))
       val roster = TestSigil.effectiveToolNames(
         agent = StandardAgent,
@@ -165,14 +169,14 @@ class RosterNarrowingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         overlays = List(overlay),
         recentlyUsedTools = recent
       )
-      roster should contain (ToolName("app_tool_3"))
-      roster should contain (ToolName("metals_find_usages"))
+      roster should contain(ToolName("app_tool_3"))
+      roster should contain(ToolName("metals_find_usages"))
       roster should not contain ToolName("metals_find_symbol")
       roster should not contain ToolName("app_tool_1")
     }
 
     "Active extras preserved when narrowing OFF (no behaviour change for default consumers)" in Task {
-      reset()  // narrowing off
+      reset() // narrowing off
       val recent = Set(ToolName("app_tool_3"))
       val overlay = ToolPolicy.Active(List(ToolName("metals_find_symbol")))
       val roster = TestSigil.effectiveToolNames(
@@ -182,9 +186,9 @@ class RosterNarrowingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         overlays = List(overlay),
         recentlyUsedTools = recent
       )
-      roster should contain (ToolName("metals_find_symbol"))
-      roster should contain (ToolName("app_tool_1"))
-      roster should contain (ToolName("app_tool_3"))
+      roster should contain(ToolName("metals_find_symbol"))
+      roster should contain(ToolName("app_tool_1"))
+      roster should contain(ToolName("app_tool_3"))
     }
   }
 

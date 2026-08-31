@@ -26,7 +26,8 @@ import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
  */
 case class BudgetStage(limit: Int,
                        tokenBudget: Option[Int] = None,
-                       tokenizer: Tokenizer = HeuristicTokenizer) extends MemoryRetrievalStage {
+                       tokenizer: Tokenizer = HeuristicTokenizer)
+  extends MemoryRetrievalStage {
   override val name: String = "budget"
 
   override def run(state: MemoryRetrievalState, ctx: MemoryRetrievalContext): Task[MemoryRetrievalState] = Task {

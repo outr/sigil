@@ -74,15 +74,15 @@ class PreviewStreamWebRtcSpec extends AnyWordSpec with Matchers with BeforeAndAf
 
   override protected def afterAll(): Unit = {
     if (skipReason.isEmpty) {
-      try TestStreamBrowserSigil.disposeStreamBrowserController(convId).sync() catch { case _: Throwable => () }
+      try TestStreamBrowserSigil.disposeStreamBrowserController(convId).sync()
+      catch { case _: Throwable => () }
       fixture.stop().sync()
     }
     TestStreamBrowserSigil.shutdown.sync()
     super.afterAll()
   }
 
-  private def awaitSignal(streamId: String, timeoutMs: Long)
-                         (matches: SignalMessage => Boolean): Option[PreviewSignal] = {
+  private def awaitSignal(streamId: String, timeoutMs: Long)(matches: SignalMessage => Boolean): Option[PreviewSignal] = {
     val deadline = System.currentTimeMillis() + timeoutMs
     var found: Option[PreviewSignal] = None
     while (found.isEmpty && System.currentTimeMillis() < deadline) {
@@ -107,7 +107,7 @@ class PreviewStreamWebRtcSpec extends AnyWordSpec with Matchers with BeforeAndAf
         case w: PreviewStreamSession.WebRtc => w
         case other => fail(s"expected a WebRTC session, got $other")
       }
-      TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should contain (webRtc.streamId)
+      TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should contain(webRtc.streamId)
 
       val offer = awaitSignal(webRtc.streamId, timeoutMs = 60_000) {
         case _: SignalMessage.Offer => true
@@ -115,8 +115,8 @@ class PreviewStreamWebRtcSpec extends AnyWordSpec with Matchers with BeforeAndAf
       }
       offer.map(_.message) match {
         case Some(SignalMessage.Offer(sdp)) =>
-          sdp should include ("m=video")
-          sdp should include ("m=application")   // the input DataChannel
+          sdp should include("m=video")
+          sdp should include("m=application") // the input DataChannel
         case other => fail(s"no offer PreviewSignal arrived for ${webRtc.streamId} (saw $other)")
       }
       offer.get.conversationId shouldBe convId
@@ -126,7 +126,8 @@ class PreviewStreamWebRtcSpec extends AnyWordSpec with Matchers with BeforeAndAf
       stats.width should be > 0
 
       TestStreamBrowserSigil.handleNotice(
-        PreviewSignalReply(convId, webRtc.streamId, SignalMessage.Bye), SpecViewer
+        PreviewSignalReply(convId, webRtc.streamId, SignalMessage.Bye),
+        SpecViewer
       ).sync()
 
       val deadline = System.currentTimeMillis() + 30_000

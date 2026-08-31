@@ -94,7 +94,7 @@ class MessageVisibilitySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         .drain
         .startUnit()
 
-      val publicMsg   = msg("public",   MessageVisibility.All)
+      val publicMsg = msg("public", MessageVisibility.All)
       val internalMsg = msg("internal", MessageVisibility.Agents)
 
       for {
@@ -137,15 +137,15 @@ class MessageVisibilitySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   "SignalTransport.replay" should {
     "filter Agents-only events from history for a non-agent viewer" in {
       val transport = new SignalTransport(TestSigil)
-      val publicMsg   = msg("public-replay",   MessageVisibility.All)
+      val publicMsg = msg("public-replay", MessageVisibility.All)
       val internalMsg = msg("internal-replay", MessageVisibility.Agents)
 
       for {
-        _      <- TestSigil.withDB(_.events.transaction(tx =>
-                    tx.insert(publicMsg).flatMap(_ => tx.insert(internalMsg))))
-        seen   <- transport.replay(TestUser, ResumeRequest.RecentMessages(10), Some(Set(convId)))
-                    .toList
-                    .map(_.collect { case m: Message => m._id })
+        _ <- TestSigil.withDB(_.events.transaction(tx =>
+          tx.insert(publicMsg).flatMap(_ => tx.insert(internalMsg))))
+        seen <- transport.replay(TestUser, ResumeRequest.RecentMessages(10), Some(Set(convId)))
+          .toList
+          .map(_.collect { case m: Message => m._id })
       } yield {
         seen should contain(publicMsg._id)
         seen should not contain internalMsg._id
@@ -157,16 +157,13 @@ class MessageVisibilitySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val internalMsg = msg("internal-agent", MessageVisibility.Agents)
 
       for {
-        _    <- TestSigil.withDB(_.events.transaction(_.insert(internalMsg)))
+        _ <- TestSigil.withDB(_.events.transaction(_.insert(internalMsg)))
         seen <- transport.replay(TestAgent, ResumeRequest.RecentMessages(10), Some(Set(convId)))
-                  .toList
-                  .map(_.collect { case m: Message => m._id })
-      } yield {
-        seen should contain(internalMsg._id)
-      }
+          .toList
+          .map(_.collect { case m: Message => m._id })
+      } yield seen should contain(internalMsg._id)
     }
   }
-
 
   "tear down" should {
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)

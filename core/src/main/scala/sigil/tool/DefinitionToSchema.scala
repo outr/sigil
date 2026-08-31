@@ -25,16 +25,20 @@ object DefinitionToSchema {
 
   val Discriminator: String = WireSurface.Discriminator
 
-  /** Emit canonical JSON Schema for a `Definition`. Delegates to
-    * [[WireSurface.emitSchema]]; one walker, one set of conventions. */
+  /**
+   * Emit canonical JSON Schema for a `Definition`. Delegates to
+   * [[WireSurface.emitSchema]]; one walker, one set of conventions.
+   */
   def apply(definition: Definition): Json = WireSurface.emitSchema(definition)
 
-  /** True if the schema tree rooted at `definition` contains a
-    * `DefType.Json` anywhere. Used by `OpenAIProvider` to decide whether a
-    * tool can ship with `strict: true`: OpenAI's strict mode demands
-    * every "object" branch carry closed `properties` +
-    * `additionalProperties: false`, which is mutually exclusive with
-    * "any JSON value" — strict and `Json` can't coexist, so any tool
-    * whose input contains a `Json` field opts out of strict per-tool. */
+  /**
+   * True if the schema tree rooted at `definition` contains a
+   * `DefType.Json` anywhere. Used by `OpenAIProvider` to decide whether a
+   * tool can ship with `strict: true`: OpenAI's strict mode demands
+   * every "object" branch carry closed `properties` +
+   * `additionalProperties: false`, which is mutually exclusive with
+   * "any JSON value" — strict and `Json` can't coexist, so any tool
+   * whose input contains a `Json` field opts out of strict per-tool.
+   */
   def containsJson(definition: Definition): Boolean = WireSurface.containsJson(definition)
 }

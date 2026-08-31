@@ -23,7 +23,7 @@ import sigil.provider.llamacpp.LlamaCppProvider
  */
 class LlamaCppTopicShiftBiasSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  override implicit protected val testTimeout: scala.concurrent.duration.FiniteDuration =
+  implicit override protected val testTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(5).minutes
 
   TestSigil.initFor(getClass.getSimpleName)
@@ -66,17 +66,17 @@ class LlamaCppTopicShiftBiasSpec extends AsyncWordSpec with AsyncTaskSpec with M
                        proposedSummary: String,
                        userMessage: String): Task[TopicShiftResult] =
     TestSigil.classifyTopicShift(
-      modelId         = modelId,
-      chain           = List(TestUser, TestAgent),
-      current         = TopicEntry(
-        id      = sigil.conversation.Topic.id(s"topic-bias-${rapid.Unique()}"),
-        label   = currentLabel,
+      modelId = modelId,
+      chain = List(TestUser, TestAgent),
+      current = TopicEntry(
+        id = sigil.conversation.Topic.id(s"topic-bias-${rapid.Unique()}"),
+        label = currentLabel,
         summary = currentSummary
       ),
-      priors          = Nil,
-      proposedLabel   = proposedLabel,
+      priors = Nil,
+      proposedLabel = proposedLabel,
       proposedSummary = proposedSummary,
-      userMessage     = userMessage
+      userMessage = userMessage
     )
 
   "topic classifier placeholder bias" should {
@@ -84,11 +84,11 @@ class LlamaCppTopicShiftBiasSpec extends AsyncWordSpec with AsyncTaskSpec with M
     "resolve Refine when the first concrete subject lands on a placeholder topic" in {
       reseed()
       classify(
-        currentLabel    = "Greeting",
-        currentSummary  = "Fresh conversation start — introducing myself as a Scala coding assistant.",
-        proposedLabel   = "sigil project setup",
+        currentLabel = "Greeting",
+        currentSummary = "Fresh conversation start — introducing myself as a Scala coding assistant.",
+        proposedLabel = "sigil project setup",
         proposedSummary = "Binding the sigil workspace and starting Metals for semantic tools.",
-        userMessage     = "I'd like to start Metals for the sigil project."
+        userMessage = "I'd like to start Metals for the sigil project."
       ).map { result =>
         result shouldBe TopicShiftResult.Refine
       }
@@ -97,11 +97,11 @@ class LlamaCppTopicShiftBiasSpec extends AsyncWordSpec with AsyncTaskSpec with M
     "still resolve New for a genuine subject change away from established work" in {
       reseed()
       classify(
-        currentLabel    = "sigil project setup",
-        currentSummary  = "Metals is running for the sigil project; semantic tools are available.",
-        proposedLabel   = "Italy vacation planning",
+        currentLabel = "sigil project setup",
+        currentSummary = "Metals is running for the sigil project; semantic tools are available.",
+        proposedLabel = "Italy vacation planning",
         proposedSummary = "Planning a two-week trip through Rome, Florence, and the Amalfi coast.",
-        userMessage     = "Different subject — can you help me plan my vacation to Italy?"
+        userMessage = "Different subject — can you help me plan my vacation to Italy?"
       ).map { result =>
         result shouldBe TopicShiftResult.New
       }

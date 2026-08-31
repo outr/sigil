@@ -12,4 +12,5 @@ import sigil.diagnostics.ProfileSection
  */
 case class ContextSectionBreakdown(section: ProfileSection,
                                    tokens: Int,
-                                   count: Int) derives RW
+                                   count: Int)
+  derives RW

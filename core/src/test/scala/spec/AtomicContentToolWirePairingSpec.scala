@@ -9,16 +9,18 @@ import _root_.sigil.event.Event
 import _root_.sigil.tool.ToolName
 import _root_.sigil.tool.core.{CoreTools, RespondOptionsTool}
 
-/** Coverage for atomic-content tool wire pairing.
-  *
-  * Atomic-content tools (`respond_options`, the `respond` family,
-  * `no_response`) settle their `ToolInvoke` via a `ToolDelta` carrying
-  * the typed output under the typed tool-execution model — so
-  * `renderFrames` pairs each `function_call` with one
-  * `function_call_output`, exactly one, never a fabricated synthetic
-  * duplicate (Sigil #259: a leftover synthetic pairing on top of the
-  * real one made Anthropic reject the request with two `tool_result`
-  * blocks for one `tool_use`). */
+/**
+ * Coverage for atomic-content tool wire pairing.
+ *
+ * Atomic-content tools (`respond_options`, the `respond` family,
+ * `no_response`) settle their `ToolInvoke` via a `ToolDelta` carrying
+ * the typed output under the typed tool-execution model — so
+ * `renderFrames` pairs each `function_call` with one
+ * `function_call_output`, exactly one, never a fabricated synthetic
+ * duplicate (Sigil #259: a leftover synthetic pairing on top of the
+ * real one made Anthropic reject the request with two `tool_result`
+ * blocks for one `tool_use`).
+ */
 class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
 
   // Test-only Provider exposing `renderFrames` (which is
@@ -80,7 +82,11 @@ class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
     "list the atomic content tools (respond_field/respond_failure folded into respond, #346)" in {
       CoreTools.atomicContentToolNames should have size 5
       CoreTools.atomicContentToolNames.map(_.value) shouldBe Set(
-        "respond", "respond_options", "respond_card", "respond_cards", "no_response"
+        "respond",
+        "respond_options",
+        "respond_card",
+        "respond_cards",
+        "no_response"
       )
     }
   }

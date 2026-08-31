@@ -55,14 +55,13 @@ class MemoryProvenanceSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     }
 
-    "union ids on a Refreshed upsert" in {
+    "union ids on a Refreshed upsert" in
       TestSigil.upsertMemoryByKey(keyed("The deploy target is us-east-1.", key, List(e2, e3))).map { result =>
         result should be(a[UpsertMemoryResult.Refreshed])
         result.memory.sourceEventIds should be(List(e1, e2, e3))
       }
-    }
 
-    "replace ids on a Versioned upsert while the archived version keeps its own" in {
+    "replace ids on a Versioned upsert while the archived version keeps its own" in
       TestSigil.upsertMemoryByKey(keyed("The deploy target is eu-west-1.", key, List(e4))).flatMap {
         case UpsertMemoryResult.Versioned(fresh, archived) =>
           fresh.sourceEventIds should be(List(e4))
@@ -70,7 +69,6 @@ class MemoryProvenanceSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           Task.pure(succeed)
         case other => Task.pure(fail(s"expected Versioned, got $other"))
       }
-    }
 
     "flow the frame slice's event ids through extractFromFrames" in {
       class RecordingExtractor extends MemoryExtractor {

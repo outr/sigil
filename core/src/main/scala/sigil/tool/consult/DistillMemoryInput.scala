@@ -16,4 +16,5 @@ import sigil.tool.ToolInput
  *     already self-contained.
  */
 case class DistillMemoryInput(summary: String,
-                              retrievalText: Option[String] = None) extends ToolInput derives RW
+                              retrievalText: Option[String] = None)
+  extends ToolInput derives RW

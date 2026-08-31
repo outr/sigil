@@ -28,19 +28,34 @@ final class AgentRunawayException(message: String,
  * rather than reading the message string.
  */
 enum ForcedSynthesisReason {
-  /** Iteration counter reached `maxAgentIterations`. */
+
+  /**
+   * Iteration counter reached `maxAgentIterations`.
+   */
   case CapHit
-  /** Model returned without calling any tool despite
-    * `tool_choice: required` — typically a weak / non-instruction-
-    * following local model. */
+
+  /**
+   * Model returned without calling any tool despite
+   * `tool_choice: required` — typically a weak / non-instruction-
+   * following local model.
+   */
   case NoToolCall
-  /** Progress-checkpoint intervention. */
+
+  /**
+   * Progress-checkpoint intervention.
+   */
   case StallIntervention
-  /** One (tool, args) group was refused by the duplicate-call cap past
-    * its refusal bound — the model kept re-issuing a call the framework
-    * had already convicted, so the turn was wrapped up. */
+
+  /**
+   * One (tool, args) group was refused by the duplicate-call cap past
+   * its refusal bound — the model kept re-issuing a call the framework
+   * had already convicted, so the turn was wrapped up.
+   */
   case DuplicateRefusalLoop
-  /** The turn (or conversation) crossed its hard spend ceiling —
-    * the forced turn wraps up with a spend-and-state report. */
+
+  /**
+   * The turn (or conversation) crossed its hard spend ceiling —
+   * the forced turn wraps up with a spend-and-state report.
+   */
   case BudgetCeiling
 }

@@ -12,7 +12,7 @@ import sigil.tool.model.{RandomDoubleInput, RandomDoubleOutput}
  * `[0.0, 1.0)` when `min` / `max` are omitted.
  */
 case object RandomDoubleTool extends Tool {
-  type Input  = RandomDoubleInput
+  type Input = RandomDoubleInput
   type Output = RandomDoubleOutput
   val io: ToolIO[RandomDoubleInput, RandomDoubleOutput] = ToolIO.derived[RandomDoubleInput, RandomDoubleOutput].withExamples(
     ToolExample("unit-interval draw", RandomDoubleInput()),
@@ -39,9 +39,9 @@ case object RandomDoubleTool extends Tool {
     val rng = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)
     RandomDoubleOutput(
       value = rng.between(input.min, input.max),
-      min   = input.min,
-      max   = input.max,
-      seed  = input.seed
+      min = input.min,
+      max = input.max,
+      seed = input.seed
     )
   }
 }

@@ -23,13 +23,14 @@ class StreamBrowserConfigSpec extends AnyWordSpec with Matchers {
     "size the framebuffer from the declared max, not the first render target" in {
       sigil.usePreviewConfig(sigil.virtualDisplayPreviewConfig)
       val display = sigil.streamBrowserConfigFor(StreamConfig(
-        width = Some(390), height = Some(844),
-        maxWidth = Some(1920), maxHeight = Some(1080)
+        width = Some(390),
+        height = Some(844),
+        maxWidth = Some(1920),
+        maxHeight = Some(1080)
       )).virtualDisplay.get
       display.width should be >= 1920
       display.height should be >= 1080
     }
-
 
     "leave the configured display alone for an unsized request" in {
       sigil.usePreviewConfig(sigil.virtualDisplayPreviewConfig)
@@ -66,12 +67,11 @@ class StreamBrowserConfigSpec extends AnyWordSpec with Matchers {
 
     "have nothing to size on a screencast-only host" in {
       sigil.usePreviewConfig(sigil.headlessPreviewConfig)
-      try {
+      try
         sigil.streamBrowserConfigFor(StreamConfig(width = Some(390), height = Some(844)))
           .virtualDisplay shouldBe None
-      } finally {
+      finally
         sigil.usePreviewConfig(sigil.headlessPreviewConfig)
-      }
     }
   }
 }

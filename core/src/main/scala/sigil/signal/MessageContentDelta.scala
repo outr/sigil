@@ -23,4 +23,5 @@ import fabric.rw.*
 case class MessageContentDelta(kind: ContentKind,
                                arg: Option[String] = None,
                                complete: Boolean,
-                               delta: String) derives RW
+                               delta: String)
+  derives RW

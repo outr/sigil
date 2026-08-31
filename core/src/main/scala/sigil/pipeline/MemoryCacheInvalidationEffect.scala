@@ -29,12 +29,12 @@ object MemoryCacheInvalidationEffect extends SettledEffect {
   override def apply(signal: Signal, self: Sigil): Task[Unit] =
     resolveSettledEvent(signal, self).map {
       case Some(m: Message)
-        if m.state == EventState.Complete && !m.participantId.isInstanceOf[AgentParticipantId] =>
-          self.invalidateMemoryRetrievalCache(m.conversationId)
+          if m.state == EventState.Complete && !m.participantId.isInstanceOf[AgentParticipantId] =>
+        self.invalidateMemoryRetrievalCache(m.conversationId)
       case Some(tc: TopicChange) if tc.state == EventState.Complete =>
         tc.kind match {
           case _: TopicChangeKind.Switch => self.invalidateMemoryRetrievalCache(tc.conversationId)
-          case _                         => ()
+          case _ => ()
         }
       case _ => ()
     }

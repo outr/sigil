@@ -36,13 +36,13 @@ class InternalDiagnosticRenderSpec extends AsyncWordSpec with AsyncTaskSpec with
   private val directive = "You appear blocked — stop gathering and call `respond` now."
 
   private def internalFrame: ContextFrame.ToolCall = ContextFrame.ToolCall(
-    toolName      = ToolName.internal("_stall_detected"),
-    argsJson      = "{}",
-    callId        = Id[Event]("synth-1"),
+    toolName = ToolName.internal("_stall_detected"),
+    argsJson = "{}",
+    callId = Id[Event]("synth-1"),
     participantId = TestAgent,
     sourceEventId = Id[Event]("synth-1"),
-    internal      = true,
-    state         = ToolCallState.Complete(directive, Nil)
+    internal = true,
+    state = ToolCallState.Complete(directive, Nil)
   )
 
   private def assistantToolNames(rendered: Vector[ProviderMessage]): List[String] =
@@ -61,13 +61,13 @@ class InternalDiagnosticRenderSpec extends AsyncWordSpec with AsyncTaskSpec with
 
     "still render a normal agent tool call as an assistant tool_use + tool_result" in Task {
       val normal = ContextFrame.ToolCall(
-        toolName      = ToolName("read_file"),
-        argsJson      = """{"path":"x"}""",
-        callId        = Id[Event]("call-2"),
+        toolName = ToolName("read_file"),
+        argsJson = """{"path":"x"}""",
+        callId = Id[Event]("call-2"),
         participantId = TestAgent,
         sourceEventId = Id[Event]("call-2"),
-        internal      = false,
-        state         = ToolCallState.Complete("file contents", Nil)
+        internal = false,
+        state = ToolCallState.Complete("file contents", Nil)
       )
       val rendered = FakeProvider.renderFrames(Vector(normal), Some(TestAgent))
       assistantToolNames(rendered) should contain("read_file")
@@ -84,7 +84,10 @@ class InternalDiagnosticRenderSpec extends AsyncWordSpec with AsyncTaskSpec with
   "FrameBuilder (sigil #385)" should {
     "thread `internal` from a synthetic ToolInvoke onto its ToolCall frame" in Task {
       val invoke = SyntheticDiagnostic.invoke(
-        "_stall_detected", TestAgent, Conversation.id("c"), Topic.id("t"))
+        "_stall_detected",
+        TestAgent,
+        Conversation.id("c"),
+        Topic.id("t"))
       val frame = FrameBuilder.computeFrame(invoke).getOrElse(fail("no frame"))
       frame.asInstanceOf[ContextFrame.ToolCall].internal shouldBe true
     }

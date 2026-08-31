@@ -32,20 +32,26 @@ object SseFramer {
    */
   case class Config(idFor: Signal => Option[String] = SseFramer.defaultIdFor)
 
-  /** Heartbeat frame (`:hb\n\n`) that apps interleave at the HTTP
-    * layer to keep idle connections open through proxies. */
+  /**
+   * Heartbeat frame (`:hb\n\n`) that apps interleave at the HTTP
+   * layer to keep idle connections open through proxies.
+   */
   val Heartbeat: String = ":hb\n\n"
 
   def defaultIdFor(signal: Signal): Option[String] = signal match {
     case e: Event => Some(e.timestamp.value.toString)
-    case _        => None
+    case _ => None
   }
 
-  /** Turn a stream of signals into a stream of SSE frame strings. */
+  /**
+   * Turn a stream of signals into a stream of SSE frame strings.
+   */
   def frame(signals: Stream[Signal], config: Config = Config()): Stream[String] =
     signals.map(s => formatFrame(s, config))
 
-  /** Render a single signal as one SSE frame. */
+  /**
+   * Render a single signal as one SSE frame.
+   */
   def formatFrame(signal: Signal, config: Config = Config()): String = {
     val json = JsonFormatter.Compact(signal.json(using summon[RW[Signal]]))
     val sb = new StringBuilder

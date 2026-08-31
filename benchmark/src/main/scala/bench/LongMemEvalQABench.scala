@@ -61,10 +61,12 @@ import scala.io.{Codec, Source}
  */
 object LongMemEvalQABench {
 
-  /** The per-question facts `classify` needs. */
-  private final case class ArmQuestion0(questionType: String)
+  /**
+   * The per-question facts `classify` needs.
+   */
+  final private case class ArmQuestion0(questionType: String)
 
-  private final case class QaResult(index: Int,
+  final private case class QaResult(index: Int,
                                     questionType: String,
                                     question: String,
                                     gold: String,
@@ -79,17 +81,22 @@ object LongMemEvalQABench {
                                     judgeMs: Long,
                                     memoryCount: Int,
                                     errored: Boolean = false,
-                                    /** Why it failed, derived — see [[classify]]. */
+                                    /**
+                                     * Why it failed, derived — see [[classify]].
+                                     */
                                     failure: String = "",
                                     judgeReasoning: String = "",
                                     injected: List[String] = Nil,
                                     injectedSessions: List[String] = Nil,
                                     answerSessions: List[String] = Nil)
 
-  private final case class ArmSummary(arm: String, results: List[QaResult]) {
+  final private case class ArmSummary(arm: String, results: List[QaResult]) {
     def accuracy: Double = if (scored.isEmpty) 0.0 else scored.count(_.correct).toDouble / scored.size
-    /** Retrieval diagnostic — meaningless for an arm that retrieves
-      * nothing, hence the Option. */
+
+    /**
+     * Retrieval diagnostic — meaningless for an arm that retrieves
+     * nothing, hence the Option.
+     */
     def retrieval: Option[Double] =
       if (arm == "norag" || scored.isEmpty) None
       else Some(scored.count(_.goldRetrieved).toDouble / scored.size)
@@ -157,7 +164,8 @@ object LongMemEvalQABench {
     val vectorIndex = new InMemoryVectorIndex
     host.setEmbedding(
       OpenAICompatibleEmbeddingProvider(
-        embeddingKey, embedBaseUrl,
+        embeddingKey,
+        embedBaseUrl,
         sys.env.getOrElse("SIGIL_EMBEDDING_MODEL", "text-embedding-3-small"),
         sys.env.get("SIGIL_EMBEDDING_DIMENSIONS").flatMap(_.toIntOption).getOrElse(1536)
       ),
@@ -167,7 +175,9 @@ object LongMemEvalQABench {
 
     println("\n=== LongMemEval — end-to-end QA ===")
     println(s"runtime+judge model: $modelName @ $llamaHost")
-    println(s"arms: ${arms.mkString(", ")}   memories/turn: $memoryLimit   timestamps: ${if (timestamps) "on" else "off"}   reasoning: ${if (reasoning) "on" else "off"}   max output: $outputCap")
+    println(s"arms: ${arms.mkString(", ")}   memories/turn: $memoryLimit   timestamps: ${if (timestamps) "on" else "off"}   reasoning: ${
+        if (reasoning) "on" else "off"
+      }   max output: $outputCap")
 
     val raw = Source.fromFile(new File(dataPath))(using Codec.UTF8).mkString
     val entries = JsonParser(raw).asVector
@@ -192,14 +202,30 @@ object LongMemEvalQABench {
           catch {
             case e: Throwable =>
               println(s"  [$arm] ERROR  q$i ${e.getClass.getSimpleName}: ${e.getMessage.take(120)}")
-              QaResult(i, "error", "", "", "", correct = false, judgeFailed = false,
-                goldRetrieved = false, goldCoverage = 0.0, tokens = 0L, ingestMs = 0L, turnMs = 0L, judgeMs = 0L,
-                memoryCount = 0, errored = true, failure = "harness-error",
-                judgeReasoning = s"${e.getClass.getSimpleName}: ${Option(e.getMessage).getOrElse("").take(200)}")
+              QaResult(
+                i,
+                "error",
+                "",
+                "",
+                "",
+                correct = false,
+                judgeFailed = false,
+                goldRetrieved = false,
+                goldCoverage = 0.0,
+                tokens = 0L,
+                ingestMs = 0L,
+                turnMs = 0L,
+                judgeMs = 0L,
+                memoryCount = 0,
+                errored = true,
+                failure = "harness-error",
+                judgeReasoning = s"${e.getClass.getSimpleName}: ${Option(e.getMessage).getOrElse("").take(200)}"
+              )
           }
         judgeLog.foreach(p => appendJudgeRecord(p, arm, r))
         val mark = if (r.judgeFailed) "JUDGE?" else if (r.correct) "OK  " else "MISS"
-        println(f"  [$arm] $mark%-6s q$i%-4d mem=${r.memoryCount}%-5d ingest=${r.ingestMs / 1000}%4ds turn=${r.turnMs / 1000}%4ds judge=${r.judgeMs / 1000}%3ds" +
+        println(f"  [$arm] $mark%-6s q$i%-4d mem=${r.memoryCount}%-5d ingest=${r.ingestMs / 1000}%4ds turn=${r.turnMs /
+            1000}%4ds judge=${r.judgeMs / 1000}%3ds" +
           (if (verbose) f"  ${r.answer.replaceAll("\\s+", " ").take(80)}" else ""))
         r
       }
@@ -212,7 +238,8 @@ object LongMemEvalQABench {
     println("\n=== Final ===")
     println(table)
     reportPath.foreach { p =>
-      java.nio.file.Files.writeString(java.nio.file.Path.of(p),
+      java.nio.file.Files.writeString(
+        java.nio.file.Path.of(p),
         s"# LongMemEval — end-to-end QA\n\nmodel: `$modelName`  memories/turn: $memoryLimit  questions: $count\n\n$table\n")
       println(s"report written to $p")
     }
@@ -305,15 +332,16 @@ object LongMemEvalQABench {
     val harness = new AgentBenchHarness(host, ArmsBenchUser)
     val turnStart = System.currentTimeMillis()
     val trace = harness.runConversation(
-      conversationFactory = id => Conversation(
-        topics = List(TopicEntry(
-          id = Topic.id(s"lme-$arm-$index-${rapid.Unique()}"),
-          label = "Recall from our past conversations",
-          summary = "")),
-        participants = List(agent),
-        space = space,
-        _id = id
-      ),
+      conversationFactory = id =>
+        Conversation(
+          topics = List(TopicEntry(
+            id = Topic.id(s"lme-$arm-$index-${rapid.Unique()}"),
+            label = "Recall from our past conversations",
+            summary = "")),
+          participants = List(agent),
+          space = space,
+          _id = id
+        ),
       userMessages = List(userText),
       perTurnTimeout = turnTimeout.seconds
     ).sync()
@@ -345,7 +373,7 @@ object LongMemEvalQABench {
     // comprehension failure.
     val coveredSessions = turns.collect {
       case (sessId, date, text)
-        if answerSessionIds.contains(sessId) && injectedFacts.contains(stampedOf(date, text)) => sessId
+          if answerSessionIds.contains(sessId) && injectedFacts.contains(stampedOf(date, text)) => sessId
     }.distinct
     val goldCoverage =
       if (answerSessionIds.isEmpty) 1.0
@@ -358,26 +386,49 @@ object LongMemEvalQABench {
       case (sessId, date, text) if injectedFacts.contains(stampedOf(date, text)) => sessId
     }.distinct
 
-    QaResult(index, questionType, question, gold, answer,
-      correct = verdict.correct, judgeFailed = verdict.judgeFailed,
-      goldRetrieved = goldRetrieved, goldCoverage = goldCoverage, tokens = tokens,
-      ingestMs = ingestMs, turnMs = turnMs, judgeMs = judgeMs, memoryCount = turns.size,
-      failure = classify(ArmQuestion0(questionType), verdict.correct, verdict.judgeFailed,
-        goldCoverage, errored = false, timestamps = timestamps),
+    QaResult(
+      index,
+      questionType,
+      question,
+      gold,
+      answer,
+      correct = verdict.correct,
+      judgeFailed = verdict.judgeFailed,
+      goldRetrieved = goldRetrieved,
+      goldCoverage = goldCoverage,
+      tokens = tokens,
+      ingestMs = ingestMs,
+      turnMs = turnMs,
+      judgeMs = judgeMs,
+      memoryCount = turns.size,
+      failure = classify(
+        ArmQuestion0(questionType),
+        verdict.correct,
+        verdict.judgeFailed,
+        goldCoverage,
+        errored = false,
+        timestamps = timestamps),
       judgeReasoning = verdict.reasoning,
       injected = injectedList,
       injectedSessions = injectedSessions,
-      answerSessions = answerSessionIds.toList)
+      answerSessions = answerSessionIds.toList
+    )
   }
 
-  /** How a question failed. The distinction that matters for fixing
-    * it is whether the evidence ever reached the prompt: a retrieval
-    * miss is a retriever/ingest problem, a comprehension miss is a
-    * rendering/prompt/model problem, and they have disjoint fixes.
-    * Deriving it here means the failure list is grouped by cause
-    * instead of being 276 answers to read one at a time. */
-  private def classify(q: ArmQuestion0, correct: Boolean, judgeFailed: Boolean,
-                       goldCoverage: Double, errored: Boolean, timestamps: Boolean): String =
+  /**
+   * How a question failed. The distinction that matters for fixing
+   * it is whether the evidence ever reached the prompt: a retrieval
+   * miss is a retriever/ingest problem, a comprehension miss is a
+   * rendering/prompt/model problem, and they have disjoint fixes.
+   * Deriving it here means the failure list is grouped by cause
+   * instead of being 276 answers to read one at a time.
+   */
+  private def classify(q: ArmQuestion0,
+                       correct: Boolean,
+                       judgeFailed: Boolean,
+                       goldCoverage: Double,
+                       errored: Boolean,
+                       timestamps: Boolean): String =
     if (errored) "harness-error"
     else if (correct) ""
     else if (judgeFailed) "judge-no-verdict"
@@ -389,8 +440,10 @@ object LongMemEvalQABench {
     else if (goldCoverage < 1.0) "retrieval-partial"
     else "comprehension-miss"
 
-  /** One JSONL line per judged answer: enough for a second judge to
-    * re-decide the same call without re-running retrieval or the model. */
+  /**
+   * One JSONL line per judged answer: enough for a second judge to
+   * re-decide the same call without re-running retrieval or the model.
+   */
   private def appendJudgeRecord(path: String, arm: String, r: QaResult): Unit = {
     val json = obj(
       "index" -> num(r.index),
@@ -417,8 +470,10 @@ object LongMemEvalQABench {
     )
     val line = fabric.io.JsonFormatter.Compact(json) + "\n"
     java.nio.file.Files.writeString(
-      java.nio.file.Path.of(path), line,
-      java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND)
+      java.nio.file.Path.of(path),
+      line,
+      java.nio.file.StandardOpenOption.CREATE,
+      java.nio.file.StandardOpenOption.APPEND)
   }
 
   private def render(summaries: List[ArmSummary]): String = {

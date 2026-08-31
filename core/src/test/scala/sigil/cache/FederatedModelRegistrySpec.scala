@@ -197,7 +197,10 @@ class FederatedModelRegistrySpec extends AsyncWordSpec with AsyncTaskSpec with M
         _ <- registry.register(replacement)
       } yield {
         registry.sources.map(_.name) shouldBe List(
-          ModelRegistry.AppSourceName, ModelRegistry.CatalogSourceName, "early", "late"
+          ModelRegistry.AppSourceName,
+          ModelRegistry.CatalogSourceName,
+          "early",
+          "late"
         )
         registry.find(fromLate._id).map(_.description) shouldBe Some("late")
         succeed

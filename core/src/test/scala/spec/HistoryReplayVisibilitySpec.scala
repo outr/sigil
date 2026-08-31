@@ -35,24 +35,24 @@ class HistoryReplayVisibilitySpec extends AsyncWordSpec with AsyncTaskSpec with 
     val convId = Conversation.id(s"replay-vis-${rapid.Unique()}")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val userMsg = Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      content        = Vector(ResponseContent.Text("please do the thing")),
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      content = Vector(ResponseContent.Text("please do the thing")),
+      state = EventState.Complete
     )
     // The field shape: an internal checkpoint directive — Agents
     // visibility, never for user UIs.
     val internal = Message(
-      participantId  = TestAgent,
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      role           = MessageRole.Standard,
-      visibility     = MessageVisibility.Agents,
-      content        = Vector(ResponseContent.Text(
+      topicId = TestTopicEntry.id,
+      role = MessageRole.Standard,
+      visibility = MessageVisibility.Agents,
+      content = Vector(ResponseContent.Text(
         "[progress checkpoint — internal, not a user message] You have run 40 iterations without meaningful progress."
       )),
-      state          = EventState.Complete
+      state = EventState.Complete
     )
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
@@ -61,9 +61,10 @@ class HistoryReplayVisibilitySpec extends AsyncWordSpec with AsyncTaskSpec with 
     } yield (convId, userMsg, internal)
   }
 
-  private def startRecorder(viewer: sigil.participant.ParticipantId): (ConcurrentLinkedQueue[Signal], java.util.concurrent.atomic.AtomicBoolean) = {
+  private def startRecorder(viewer: sigil.participant.ParticipantId)
+    : (ConcurrentLinkedQueue[Signal], java.util.concurrent.atomic.AtomicBoolean) = {
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new java.util.concurrent.atomic.AtomicBoolean(true)
+    val running = new java.util.concurrent.atomic.AtomicBoolean(true)
     TestSigil.signalsFor(viewer)
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
@@ -82,16 +83,16 @@ class HistoryReplayVisibilitySpec extends AsyncWordSpec with AsyncTaskSpec with 
       for {
         seeded <- seedConversation()
         (convId, userMsg, internal) = seeded
-        userView  <- TestSigil.eventsFor(convId, viewer = Some(TestUser))
+        userView <- TestSigil.eventsFor(convId, viewer = Some(TestUser))
         agentView <- TestSigil.eventsFor(convId, viewer = Some(TestAgent))
-        rawView   <- TestSigil.eventsFor(convId)
+        rawView <- TestSigil.eventsFor(convId)
       } yield {
-        userView.events.map(_._id) should contain (userMsg._id)
+        userView.events.map(_._id) should contain(userMsg._id)
         userView.events.map(_._id) should not contain internal._id
         // The agent legitimately sees internal machinery.
-        agentView.events.map(_._id) should contain (internal._id)
+        agentView.events.map(_._id) should contain(internal._id)
         // Framework-internal raw reads (compaction, prompt builds) see everything.
-        rawView.events.map(_._id) should contain (internal._id)
+        rawView.events.map(_._id) should contain(internal._id)
       }
     }
   }
@@ -114,7 +115,7 @@ class HistoryReplayVisibilitySpec extends AsyncWordSpec with AsyncTaskSpec with 
         val snapshot = recorded.iterator().asScala.collectFirst {
           case s: ConversationSnapshot if s.conversationId == convId => s
         }.getOrElse(fail("no ConversationSnapshot delivered"))
-        snapshot.recentEvents.map(_._id) should contain (userMsg._id)
+        snapshot.recentEvents.map(_._id) should contain(userMsg._id)
         snapshot.recentEvents.map(_._id) should not contain internal._id
       }
     }
@@ -138,7 +139,7 @@ class HistoryReplayVisibilitySpec extends AsyncWordSpec with AsyncTaskSpec with 
         val snapshot = recorded.iterator().asScala.collectFirst {
           case s: ConversationHistorySnapshot if s.conversationId == convId => s
         }.getOrElse(fail("no ConversationHistorySnapshot delivered"))
-        snapshot.events.map(_._id) should contain (userMsg._id)
+        snapshot.events.map(_._id) should contain(userMsg._id)
         snapshot.events.map(_._id) should not contain internal._id
       }
     }
@@ -151,13 +152,13 @@ class HistoryReplayVisibilitySpec extends AsyncWordSpec with AsyncTaskSpec with 
         seeded <- seedConversation()
         (convId, userMsg, internal) = seeded
         viewerScoped <- new SigilDbEventLog(TestSigil, viewer = Some(TestUser)).replay(convId, afterSeq = 0L)
-        unbound      <- new SigilDbEventLog(TestSigil).replay(convId, afterSeq = 0L)
+        unbound <- new SigilDbEventLog(TestSigil).replay(convId, afterSeq = 0L)
       } yield {
         val viewerIds = viewerScoped.map(_._2).collect { case e: Event => e._id }
-        viewerIds should contain (userMsg._id)
+        viewerIds should contain(userMsg._id)
         viewerIds should not contain internal._id
         val rawIds = unbound.map(_._2).collect { case e: Event => e._id }
-        rawIds should contain (internal._id)
+        rawIds should contain(internal._id)
       }
     }
   }

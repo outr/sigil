@@ -13,7 +13,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExamp
  * for a structured [[GitDiffOutput.Hunks]] payload.
  */
 final class GitDiffTool(context: FileSystemContext) extends Tool {
-  type Input  = GitDiffInput
+  type Input = GitDiffInput
   type Output = GitDiffOutput
   val io: ToolIO[GitDiffInput, GitDiffOutput] = ToolIO.derived[GitDiffInput, GitDiffOutput].withExamples(
     ToolExample("Unstaged changes", GitDiffInput()),
@@ -37,13 +37,13 @@ final class GitDiffTool(context: FileSystemContext) extends Tool {
   private def executeOutput(input: GitDiffInput, ctx: ToolContext): Task[GitDiffOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val stagedFlag = if (input.staged) " --staged" else ""
-      val pathArg    = input.path.fold("")(p => s" -- $p")
-      val cmd        = s"git diff$stagedFlag$pathArg"
+      val pathArg = input.path.fold("")(p => s" -- $p")
+      val cmd = s"git diff$stagedFlag$pathArg"
       context.executeCommand(cmd, dir).map { r =>
         if (r.exitCode != 0) GitDiffOutput.Failed(r.stderr, r.exitCode)
         else input.format match {
           case GitDiffFormat.Hunks => GitDiffOutput.Hunks(GitOps.parseDiff(r.stdout))
-          case GitDiffFormat.Text  => GitDiffOutput.Text(r.stdout)
+          case GitDiffFormat.Text => GitDiffOutput.Text(r.stdout)
         }
       }
     }

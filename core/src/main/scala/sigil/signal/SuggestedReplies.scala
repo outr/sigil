@@ -25,4 +25,5 @@ import sigil.event.Event
  */
 case class SuggestedReplies(conversationId: Id[Conversation],
                             forMessageId: Id[Event],
-                            suggestions: List[String]) extends ConversationNotice derives RW
+                            suggestions: List[String])
+  extends ConversationNotice derives RW

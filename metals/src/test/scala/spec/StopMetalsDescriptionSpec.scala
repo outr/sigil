@@ -19,19 +19,19 @@ class StopMetalsDescriptionSpec extends AnyWordSpec with Matchers {
 
     "state the destructive consequences and the re-import cost" in {
       val d = new StopMetalsTool().description
-      d should include ("DESTRUCTIVE")
-      d should include ("full build re-import")
+      d should include("DESTRUCTIVE")
+      d should include("full build re-import")
     }
 
     "forbid ritual refresh/restart/prepare invocations" in {
       val d = new StopMetalsTool().description
-      d should include ("do NOT call this to \"refresh\", \"restart\", or \"prepare\"")
-      d should include ("a running server is already the prepared state")
+      d should include("do NOT call this to \"refresh\", \"restart\", or \"prepare\"")
+      d should include("a running server is already the prepared state")
     }
 
     "restrict appropriateness to an explicit user request" in {
       val d = new StopMetalsTool().description
-      d.replace('\n', ' ') should include ("ONLY when the user explicitly asks")
+      d.replace('\n', ' ') should include("ONLY when the user explicitly asks")
     }
   }
 }

@@ -27,4 +27,5 @@ import sigil.tool.ToolName
  */
 case class TaskShapeHint(shape: String,
                          recommended: ToolName,
-                         context: String) derives RW
+                         context: String)
+  derives RW

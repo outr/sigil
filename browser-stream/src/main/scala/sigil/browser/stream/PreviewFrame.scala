@@ -21,4 +21,5 @@ import robobrowser.event.ScreencastFrameMetadata
  */
 final case class PreviewFrame(dataBase64: String,
                               metadata: ScreencastFrameMetadata,
-                              sequence: Long) derives RW
+                              sequence: Long)
+  derives RW

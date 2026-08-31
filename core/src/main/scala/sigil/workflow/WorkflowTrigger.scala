@@ -34,16 +34,20 @@ import fabric.rw.PolyType
  */
 trait WorkflowTrigger {
 
-  /** Stable kind identifier — short string the LLM uses when
-    * referring to this trigger family in tool inputs (`"conversation"`,
-    * `"time"`, `"webhook"`, …). Distinct from `productPrefix` to keep
-    * the agent-facing vocabulary stable across refactors. */
+  /**
+   * Stable kind identifier — short string the LLM uses when
+   * referring to this trigger family in tool inputs (`"conversation"`,
+   * `"time"`, `"webhook"`, …). Distinct from `productPrefix` to keep
+   * the agent-facing vocabulary stable across refactors.
+   */
   def kind: String
 
-  /** Compile to a Strider trigger primitive. Implementations create
-    * the `strider.step.Trigger` that owns the actual register / check
-    * / unregister logic. The framework calls this when scheduling a
-    * workflow that includes this trigger. */
+  /**
+   * Compile to a Strider trigger primitive. Implementations create
+   * the `strider.step.Trigger` that owns the actual register / check
+   * / unregister logic. The framework calls this when scheduling a
+   * workflow that includes this trigger.
+   */
   def compile(host: _root_.sigil.Sigil): strider.step.Trigger
 }
 

@@ -30,11 +30,14 @@ case class GateStage() extends MemoryRetrievalStage {
 }
 
 object GateStage {
-  /** The per-memory mode-affinity gate. A memory with empty
-    * `modeAffinity` is universal — surfaces regardless of mode. A
-    * non-empty set means the memory only surfaces when `currentMode`
-    * is in it. Shared with the pinned load, which applies the same
-    * gate outside the pipeline. */
+
+  /**
+   * The per-memory mode-affinity gate. A memory with empty
+   * `modeAffinity` is universal — surfaces regardless of mode. A
+   * non-empty set means the memory only surfaces when `currentMode`
+   * is in it. Shared with the pinned load, which applies the same
+   * gate outside the pipeline.
+   */
   def matchesMode(memory: ContextMemory, currentMode: Option[Id[Mode]]): Boolean =
     memory.modeAffinity.isEmpty || currentMode.exists(memory.modeAffinity.contains)
 }

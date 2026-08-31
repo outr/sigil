@@ -7,14 +7,16 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
 
-/** List provider strategies visible to the caller in the
-  * conversation's space, including a marker for the currently-
-  * assigned strategy. Pair with [[SwitchModelTool]] for a "show
-  * options then pick one" UX.
-  *
-  * **Not auto-registered.** Apps add to `staticTools` to expose. */
+/**
+ * List provider strategies visible to the caller in the
+ * conversation's space, including a marker for the currently-
+ * assigned strategy. Pair with [[SwitchModelTool]] for a "show
+ * options then pick one" UX.
+ *
+ * **Not auto-registered.** Apps add to `staticTools` to expose.
+ */
 case object ListProviderStrategiesTool extends Tool {
-  type Input  = ListProviderStrategiesInput
+  type Input = ListProviderStrategiesInput
   type Output = TextToolOutput
   val io: ToolIO[ListProviderStrategiesInput, TextToolOutput] = ToolIO.derived[ListProviderStrategiesInput, TextToolOutput]
   override val name = ToolName("list_provider_strategies")
@@ -33,21 +35,22 @@ case object ListProviderStrategiesTool extends Tool {
   private def executeResult(input: ListProviderStrategiesInput,
                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
-      records  <- ctx.sigil.listProviderStrategies(ctx.conversation.space, ctx.chain)
+      records <- ctx.sigil.listProviderStrategies(ctx.conversation.space, ctx.chain)
       assigned <- ctx.sigil.assignedProviderStrategy(ctx.conversation.space)
     } yield {
       val payload = obj(
-        "space"    -> str(ctx.conversation.space.value),
+        "space" -> str(ctx.conversation.space.value),
         "assigned" -> assigned.map(id => str(id.value)).getOrElse(fabric.Null),
-        "strategies" -> arr(records.map(r => obj(
-          "id"    -> str(r._id.value),
-          "label" -> str(r.label),
-          "defaults" -> arr(r.defaultCandidates.map(c => str(c.modelId.value))*),
-          "routes" -> obj(r.routeCandidates.map { case (workType, list) =>
-            workType -> arr(list.map(c => str(c.modelId.value))*)
-          }.toList*),
-          "isAssigned" -> fabric.bool(assigned.contains(r._id))
-        ))*)
+        "strategies" -> arr(records.map(r =>
+          obj(
+            "id" -> str(r._id.value),
+            "label" -> str(r.label),
+            "defaults" -> arr(r.defaultCandidates.map(c => str(c.modelId.value))*),
+            "routes" -> obj(r.routeCandidates.map { case (workType, list) =>
+              workType -> arr(list.map(c => str(c.modelId.value))*)
+            }.toList*),
+            "isAssigned" -> fabric.bool(assigned.contains(r._id))
+          ))*)
       )
       ToolResult.Success(TextToolOutput(JsonFormatter.Compact(payload)))
     }

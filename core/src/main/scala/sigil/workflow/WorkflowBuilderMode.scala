@@ -37,10 +37,12 @@ case object WorkflowBuilderMode extends Mode {
     content = WorkflowBuilderSkill.text
   ))
 
-  /** `Active` — keeps the framework essentials (respond, no_response,
-    * stop, find_capability, the response-shape tools) AND adds the
-    * workflow management tools on top. The agent can both author
-    * workflows and reply conversationally to the user. */
+  /**
+   * `Active` — keeps the framework essentials (respond, no_response,
+   * stop, find_capability, the response-shape tools) AND adds the
+   * workflow management tools on top. The agent can both author
+   * workflows and reply conversationally to the user.
+   */
   override val tools: ToolPolicy = ToolPolicy.Active(List(
     ToolName("create_workflow"),
     ToolName("update_workflow"),

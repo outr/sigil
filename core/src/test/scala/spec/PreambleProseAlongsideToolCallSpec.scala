@@ -65,8 +65,10 @@ class PreambleProseAlongsideToolCallSpec extends AsyncWordSpec with AsyncTaskSpe
   private val preamble = "Let me look up the magic number before I answer."
   private val finalAnswer = "The magic number is 42."
 
-  /** The rendered history the SECOND provider call received — what the model
-    * actually reads on the iteration after the preamble turn. */
+  /**
+   * The rendered history the SECOND provider call received — what the model
+   * actually reads on the iteration after the preamble turn.
+   */
   private val secondCallMessages = new AtomicReference[Vector[ProviderMessage]](Vector.empty)
 
   /**
@@ -76,8 +78,9 @@ class PreambleProseAlongsideToolCallSpec extends AsyncWordSpec with AsyncTaskSpe
    * moves the prose in front of the `respond` instead, the shape in which it
    * is the answer said twice rather than a narrated plan.
    */
-  private final class PreambleThenToolProvider(wireProse: String => List[ProviderEvent],
-                                               speakBeforeReplying: Boolean = false) extends Provider {
+  final private class PreambleThenToolProvider(wireProse: String => List[ProviderEvent],
+                                               speakBeforeReplying: Boolean = false)
+    extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -93,10 +96,10 @@ class PreambleProseAlongsideToolCallSpec extends AsyncWordSpec with AsyncTaskSpe
           wireProse(finalAnswer) ::: List[ProviderEvent](
             ProviderEvent.ToolCallStart(cid, "respond"),
             ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-              topicLabel   = TestTopicEntry.label,
+              topicLabel = TestTopicEntry.label,
               topicSummary = TestTopicEntry.summary,
-              content      = finalAnswer,
-              endsTurn     = true
+              content = finalAnswer,
+              endsTurn = true
             )),
             ProviderEvent.Done(StopReason.ToolCall)
           )
@@ -115,10 +118,10 @@ class PreambleProseAlongsideToolCallSpec extends AsyncWordSpec with AsyncTaskSpe
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, "respond"),
           ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-            topicLabel   = TestTopicEntry.label,
+            topicLabel = TestTopicEntry.label,
             topicSummary = TestTopicEntry.summary,
-            content      = finalAnswer,
-            endsTurn     = true
+            content = finalAnswer,
+            endsTurn = true
           )),
           ProviderEvent.Done(StopReason.ToolCall)
         ))
@@ -126,13 +129,17 @@ class PreambleProseAlongsideToolCallSpec extends AsyncWordSpec with AsyncTaskSpe
     }
   }
 
-  /** Anthropic / Google / Responses: prose is a content block. */
+  /**
+   * Anthropic / Google / Responses: prose is a content block.
+   */
   private def blockWire(text: String): List[ProviderEvent] = {
     val cid = CallId("preamble-block")
     List(ProviderEvent.ContentBlockStart(cid, "Text", None), ProviderEvent.ContentBlockDelta(cid, text))
   }
 
-  /** OpenAI-compatible chat completions: prose is `delta.content`. */
+  /**
+   * OpenAI-compatible chat completions: prose is `delta.content`.
+   */
   private def textWire(text: String): List[ProviderEvent] = List(ProviderEvent.TextDelta(text))
 
   /**
@@ -151,10 +158,10 @@ class PreambleProseAlongsideToolCallSpec extends AsyncWordSpec with AsyncTaskSpe
 
   private def makeAgent(mid: Id[Model]): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = mid,
-      toolNames          = CoreTools.coreToolNames ::: List(ToolName("get_magic_number")),
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = mid,
+      toolNames = CoreTools.coreToolNames ::: List(ToolName("get_magic_number")),
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
     )
 
@@ -172,40 +179,46 @@ class PreambleProseAlongsideToolCallSpec extends AsyncWordSpec with AsyncTaskSpe
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("What is the magic number?")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("What is the magic number?")),
+        state = EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId, timeout = 30.seconds)
     } yield convId
   }
 
-  /** Every settled, user-visible agent Message's content, rendered. */
+  /**
+   * Every settled, user-visible agent Message's content, rendered.
+   */
   private def agentReplies(convId: Id[Conversation]): Task[List[String]] =
     TestSigil.withDB(_.events.transaction(_.list)).map(_.collect {
-      case m: Message if m.conversationId == convId && m.participantId == TestAgent &&
-        m.role == MessageRole.Standard && m.state == EventState.Complete =>
+      case m: Message
+          if m.conversationId == convId && m.participantId == TestAgent &&
+            m.role == MessageRole.Standard && m.state == EventState.Complete =>
         m.content.mkString(" ")
     })
 
-  /** Assistant prose the next iteration's rendered request carried back. */
+  /**
+   * Assistant prose the next iteration's rendered request carried back.
+   */
   private def renderedAssistantText: String =
     secondCallMessages.get().collect { case a: ProviderMessage.Assistant => a.content }.mkString("\n")
 
   private def verify(wireProse: String => List[ProviderEvent], mid: Id[Model], wire: String) =
-    runUserTurn(wireProse, mid).flatMap(convId => agentReplies(convId).map { replies =>
-      withClue(s"[$wire] settled agent replies: $replies\n") {
-        replies.exists(_.contains(preamble)) shouldBe true
-      }
-      withClue(s"[$wire] rendered second-iteration assistant text: '$renderedAssistantText'\n") {
-        renderedAssistantText should include(preamble)
-      }
-      withClue(s"[$wire] the turn still answered: $replies\n") {
-        replies.exists(_.contains(finalAnswer)) shouldBe true
-      }
-    })
+    runUserTurn(wireProse, mid).flatMap(convId =>
+      agentReplies(convId).map { replies =>
+        withClue(s"[$wire] settled agent replies: $replies\n") {
+          replies.exists(_.contains(preamble)) shouldBe true
+        }
+        withClue(s"[$wire] rendered second-iteration assistant text: '$renderedAssistantText'\n") {
+          renderedAssistantText should include(preamble)
+        }
+        withClue(s"[$wire] the turn still answered: $replies\n") {
+          replies.exists(_.contains(finalAnswer)) shouldBe true
+        }
+      })
 
   "Prose emitted alongside a tool call" should {
 
@@ -216,21 +229,23 @@ class PreambleProseAlongsideToolCallSpec extends AsyncWordSpec with AsyncTaskSpe
       verify(textWire, textModelId, "text")
 
     "keep the prose but drop the mis-split reasoning tail that shares its wire field" in
-      runUserTurn(residueWire, residueModelId).flatMap(convId => agentReplies(convId).map { replies =>
-        withClue(s"settled agent replies: $replies\n") {
-          replies.exists(_.contains(preamble)) shouldBe true
-          replies.exists(_.contains("</think>")) shouldBe false
-          replies.exists(_.contains("The user wants the magic number")) shouldBe false
-        }
-      })
+      runUserTurn(residueWire, residueModelId).flatMap(convId =>
+        agentReplies(convId).map { replies =>
+          withClue(s"settled agent replies: $replies\n") {
+            replies.exists(_.contains(preamble)) shouldBe true
+            replies.exists(_.contains("</think>")) shouldBe false
+            replies.exists(_.contains("The user wants the magic number")) shouldBe false
+          }
+        })
 
     "say the answer once when the prose beside the call is the reply itself" in
       runUserTurn(textWire, duplicateModelId, speakBeforeReplying = true)
-        .flatMap(convId => agentReplies(convId).map { replies =>
-          withClue(s"settled agent replies: $replies\n") {
-            replies.count(_.contains(finalAnswer)) shouldBe 1
-          }
-        })
+        .flatMap(convId =>
+          agentReplies(convId).map { replies =>
+            withClue(s"settled agent replies: $replies\n") {
+              replies.count(_.contains(finalAnswer)) shouldBe 1
+            }
+          })
   }
 
   "tear down" should {

@@ -49,7 +49,7 @@ class AnthropicProviderModelIdSpec extends AnyWordSpec with Matchers {
     val httpReq = provider.requestConverter(requestFor(modelId)).sync()
     val body = httpReq.content match {
       case Some(c: spice.http.content.StringContent) => fabric.io.JsonParser(c.value)
-      case _                                          => obj()
+      case _ => obj()
     }
     body("model").asString
   }

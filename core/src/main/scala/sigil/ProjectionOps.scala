@@ -12,14 +12,20 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, TurnPlan, UpsertMemoryResult}
+import sigil.conversation.{
+  ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource,
+  MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput,
+  TurnPlan, UpsertMemoryResult
+}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.governor.{BudgetDirective, BudgetGovernor, CheckpointIntervention, GovernorContext}
-import sigil.governor.{DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
-  ProgressGovernor, TurnDecisionGovernor, TurnGovernor}
+import sigil.governor.{
+  DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
+  ProgressGovernor, TurnDecisionGovernor, TurnGovernor
+}
 import sigil.transport.SignalTransport
 
 import java.nio.file.Path
@@ -28,18 +34,28 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.{GenerationSettings, TokenUsage}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
+import sigil.event.{
+  AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange,
+  TopicChangeKind
+}
 import sigil.role.Role
 import sigil.orchestrator.{BudgetScope, Directive, Orchestrator}
 import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
-import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform}
+import sigil.pipeline.{
+  ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect,
+  MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub,
+  TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform
+}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.provider.{ContextSection, ContextSections, InstructionTier, ModelProfile, PromptShape, Reliability, ResolvedReferences}
 import sigil.service.Service
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
+import sigil.signal.{
+  AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal,
+  ToolDelta, TopicDelta
+}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
@@ -50,7 +66,6 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, V
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
-
 
 /**
  * Projection cluster — everything `publish` derives from a settled
@@ -67,10 +82,12 @@ import java.util.concurrent.atomic.AtomicReference
  */
 trait ProjectionOps { this: Sigil =>
 
-  /** If this signal settles a [[ModeChange]] to `Complete`, resolve the
-    * Mode-source [[ActiveSkillSlot]] (via [[sigil.provider.Mode.skill]]) and write it into
-    * the acting participant's projection on the view. */
-  private[sigil] final def maybeApplyModeSkill(signal: Signal): Task[Unit] = signal match {
+  /**
+   * If this signal settles a [[ModeChange]] to `Complete`, resolve the
+   * Mode-source [[ActiveSkillSlot]] (via [[sigil.provider.Mode.skill]]) and write it into
+   * the acting participant's projection on the view.
+   */
+  final private[sigil] def maybeApplyModeSkill(signal: Signal): Task[Unit] = signal match {
     case mc: ModeChange if mc.state == EventState.Complete => applyModeSkill(mc)
     case d: sigil.signal.Delta =>
       withDB(_.eventsTransaction(d.conversationId)(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
@@ -80,7 +97,7 @@ trait ProjectionOps { this: Sigil =>
     case _ => Task.unit
   }
 
-  private final def applyModeSkill(mc: ModeChange): Task[Unit] =
+  final private def applyModeSkill(mc: ModeChange): Task[Unit] =
     updateProjection(mc.conversationId, mc.participantId) { proj =>
       val newModeId = mc.mode.id
 
@@ -93,7 +110,7 @@ trait ProjectionOps { this: Sigil =>
         case Some(boundMode) if boundMode != newModeId =>
           val archived = proj.activeSkills.get(SkillSource.Discovery) match {
             case Some(slot) => proj.lastDiscoverySkillByMode + (boundMode -> slot)
-            case None       => proj.lastDiscoverySkillByMode
+            case None => proj.lastDiscoverySkillByMode
           }
           (archived, proj.activeSkills - SkillSource.Discovery)
         case _ => (proj.lastDiscoverySkillByMode, proj.activeSkills)
@@ -112,7 +129,7 @@ trait ProjectionOps { this: Sigil =>
       // Step 3 — apply the new mode's bundled skill to the Mode slot.
       val withModeSkill = mc.mode.skill match {
         case Some(slot) => restoredSkills + (SkillSource.Mode -> slot)
-        case None       => restoredSkills - SkillSource.Mode
+        case None => restoredSkills - SkillSource.Mode
       }
 
       proj.copy(
@@ -136,7 +153,7 @@ trait ProjectionOps { this: Sigil =>
    *   - Events that start Active and settle later via a Delta —
    *     the Delta branch re-reads the target post-apply.
    */
-  private[sigil] final def updateView(signal: Signal): Task[Unit] = signal match {
+  final private[sigil] def updateView(signal: Signal): Task[Unit] = signal match {
     case e: Event if e.state == EventState.Complete =>
       applyParticipantProjectionFor(e)
     case d: sigil.signal.Delta =>
@@ -147,10 +164,12 @@ trait ProjectionOps { this: Sigil =>
     case _ => Task.unit
   }
 
-  /** Apply the participant-side projection updates implied by `event`
-    * to the relevant [[ParticipantProjection]] record. Runs only on
-    * Complete events. */
-  private final def applyParticipantProjectionFor(event: Event): Task[Unit] =
+  /**
+   * Apply the participant-side projection updates implied by `event`
+   * to the relevant [[ParticipantProjection]] record. Runs only on
+   * Complete events.
+   */
+  final private def applyParticipantProjectionFor(event: Event): Task[Unit] =
     event match {
       case ti: ToolInvoke =>
         // Bug #230 — when the tool author declared
@@ -188,7 +207,7 @@ trait ProjectionOps { this: Sigil =>
         // identical FAILING calls (a stronger model hits the same failure).
         val failed = ti.outcome match {
           case _: sigil.event.ToolOutcome.Failure => true
-          case _                                  => false
+          case _ => false
         }
         // A dispatch the framework REFUSED settles Pending like a raced one
         // but means the opposite — nothing ran and no result is coming. The
@@ -196,25 +215,25 @@ trait ProjectionOps { this: Sigil =>
         // raced-reissue redirect skips them.
         val invocation = ti.input match {
           case Some(in) => sigil.conversation.RecentToolInvocation(
-            toolName    = ti.toolName,
-            argsHash    = sigil.tool.ToolInputCanonicalizer.argsHash(in),
-            argsPreview = sigil.tool.ToolInputCanonicalizer.argsPreview(in),
-            invokedAt   = ti.timestamp,
-            resulted    = resulted,
-            failed      = failed,
-            refusal     = ti.refusal,
-            invokeId    = Some(ti._id)
-          )
+              toolName = ti.toolName,
+              argsHash = sigil.tool.ToolInputCanonicalizer.argsHash(in),
+              argsPreview = sigil.tool.ToolInputCanonicalizer.argsPreview(in),
+              invokedAt = ti.timestamp,
+              resulted = resulted,
+              failed = failed,
+              refusal = ti.refusal,
+              invokeId = Some(ti._id)
+            )
           case None => sigil.conversation.RecentToolInvocation(
-            toolName    = ti.toolName,
-            argsHash    = "",
-            argsPreview = "",
-            invokedAt   = ti.timestamp,
-            resulted    = resulted,
-            failed      = failed,
-            refusal     = ti.refusal,
-            invokeId    = Some(ti._id)
-          )
+              toolName = ti.toolName,
+              argsHash = "",
+              argsPreview = "",
+              invokedAt = ti.timestamp,
+              resulted = resulted,
+              failed = failed,
+              refusal = ti.refusal,
+              invokeId = Some(ti._id)
+            )
         }
         updateProjection(ti.conversationId, ti.participantId) { proj =>
           val existing = proj.recentToolInvocations.indexWhere(_.invokeId.contains(ti._id))
@@ -254,40 +273,44 @@ trait ProjectionOps { this: Sigil =>
 
   // -- projection helpers --
 
-  /** Fetch the [[ParticipantProjection]] for `(participantId, conversationId)`,
-    * returning an empty seed if one hasn't been materialized yet. Empty
-    * projections are NOT persisted — the projection only lands on disk
-    * once an event drives an update. */
+  /**
+   * Fetch the [[ParticipantProjection]] for `(participantId, conversationId)`,
+   * returning an empty seed if one hasn't been materialized yet. Empty
+   * projections are NOT persisted — the projection only lands on disk
+   * once an event drives an update.
+   */
   def projectionFor(participantId: ParticipantId,
                     conversationId: Id[Conversation]): Task[ParticipantProjection] =
     withDB(_.participantProjections.transaction(_.get(ParticipantProjection.idFor(participantId, conversationId)))).map {
       case Some(p) => p
-      case None    => ParticipantProjection.empty(participantId, conversationId)
+      case None => ParticipantProjection.empty(participantId, conversationId)
     }
 
-  /** Sigil #289 — predicate for cross-conversation reads. The
-    * conversation-query tools (`search_conversation`, `reload_content`)
-    * call this before dispatching a read against
-    * a `conversationId` that differs from the caller's current
-    * conversation. Allowed when:
-    *   - target == current (same conversation; trivially allowed)
-    *   - target == current.parentConversationId (worker reading its
-    *     parent)
-    *   - target.parentConversationId == current.id (parent reading
-    *     one of its workers)
-    *
-    * Anything else returns `Left(reason)` and the tool surfaces a
-    * Failure with the reason text. The predicate is intentionally
-    * narrow — it doesn't traverse the whole tree (no grandparents /
-    * sibling-conversations). Apps that need wider cross-conversation
-    * access override this hook. */
+  /**
+   * Sigil #289 — predicate for cross-conversation reads. The
+   * conversation-query tools (`search_conversation`, `reload_content`)
+   * call this before dispatching a read against
+   * a `conversationId` that differs from the caller's current
+   * conversation. Allowed when:
+   *   - target == current (same conversation; trivially allowed)
+   *   - target == current.parentConversationId (worker reading its
+   *     parent)
+   *   - target.parentConversationId == current.id (parent reading
+   *     one of its workers)
+   *
+   * Anything else returns `Left(reason)` and the tool surfaces a
+   * Failure with the reason text. The predicate is intentionally
+   * narrow — it doesn't traverse the whole tree (no grandparents /
+   * sibling-conversations). Apps that need wider cross-conversation
+   * access override this hook.
+   */
   def canReadConversation(currentConversationId: Id[Conversation],
                           targetConversationId: Id[Conversation]): Task[Either[String, Unit]] =
     if (currentConversationId == targetConversationId) Task.pure(Right(()))
     else withDB(_.conversations.transaction { tx =>
       for {
         current <- tx.get(currentConversationId)
-        target  <- tx.get(targetConversationId)
+        target <- tx.get(targetConversationId)
       } yield (current, target) match {
         case (None, _) =>
           Left(s"current conversation `${currentConversationId.value}` not found")
@@ -295,7 +318,7 @@ trait ProjectionOps { this: Sigil =>
           Left(s"target conversation `${targetConversationId.value}` not found")
         case (Some(c), Some(t)) =>
           val isParentOfTarget = t.parentConversationId.contains(c._id)
-          val isChildOfTarget  = c.parentConversationId.contains(t._id)
+          val isChildOfTarget = c.parentConversationId.contains(t._id)
           if (isParentOfTarget || isChildOfTarget) Right(())
           else Left(
             s"target conversation `${targetConversationId.value}` is not the current " +
@@ -305,11 +328,13 @@ trait ProjectionOps { this: Sigil =>
       }
     })
 
-  /** Most-recent [[sigil.event.ToolApproval]] for `(toolName,
-    * conversationId)`, or `None` when the agent hasn't recorded a
-    * decision yet. The orchestrator reads this before dispatching a
-    * `requiresUserConsent` tool; apps can also call directly to
-    * surface "is this tool approved in this conversation?" UX. */
+  /**
+   * Most-recent [[sigil.event.ToolApproval]] for `(toolName,
+   * conversationId)`, or `None` when the agent hasn't recorded a
+   * decision yet. The orchestrator reads this before dispatching a
+   * `requiresUserConsent` tool; apps can also call directly to
+   * surface "is this tool approved in this conversation?" UX.
+   */
   def latestToolApproval(toolName: sigil.tool.ToolName,
                          conversationId: Id[Conversation]): Task[Option[sigil.event.ToolApproval]] =
     withDB(_.conversationEventsConsistent(conversationId)).map { events =>
@@ -321,13 +346,15 @@ trait ProjectionOps { this: Sigil =>
         .lastOption
     }
 
-  /** Materialize the rolling-window frames for a conversation by querying
-    * `db.events` for Complete events with a non-empty
-    * [[Event.contextFrame]], honoring the conversation's `clearedAt`
-    * watermark. Returns frames in chronological (timestamp-ascending)
-    * order.
-    *
-    * Bug #26 — replaces the legacy `viewFor` / `view.frames` lookup. */
+  /**
+   * Materialize the rolling-window frames for a conversation by querying
+   * `db.events` for Complete events with a non-empty
+   * [[Event.contextFrame]], honoring the conversation's `clearedAt`
+   * watermark. Returns frames in chronological (timestamp-ascending)
+   * order.
+   *
+   * Bug #26 — replaces the legacy `viewFor` / `view.frames` lookup.
+   */
   def framesFor(conversationId: Id[Conversation]): Task[Vector[ContextFrame]] =
     withDB(_.conversations.transaction(_.get(conversationId))).flatMap { convOpt =>
       val watermark = convOpt.flatMap(_.clearedAt).map(_.value).getOrElse(0L)
@@ -421,18 +448,20 @@ trait ProjectionOps { this: Sigil =>
                 topicId: Option[Id[Topic]] = None,
                 minTimestamp: Option[Timestamp] = None,
                 maxTimestamp: Option[Timestamp] = None,
-                /** When set, the page is scoped to what this viewer may
-                  * see: events failing [[canSee]] are dropped BEFORE
-                  * pagination (so `maxMessages` counts visible messages)
-                  * and [[viewerTransforms]] redact the survivors —
-                  * identical to the live wire's `signalsFor` semantics.
-                  * `None` returns the raw log: framework internals
-                  * (compaction, reconciliation, agent prompt builds)
-                  * must see everything. ANY path that delivers history
-                  * to a client passes the viewer — an Agents-visibility
-                  * checkpoint directive reaching a user UI on a hard
-                  * refresh is an information-scope leak, not a
-                  * cosmetic one. */
+                /**
+                 * When set, the page is scoped to what this viewer may
+                 * see: events failing [[canSee]] are dropped BEFORE
+                 * pagination (so `maxMessages` counts visible messages)
+                 * and [[viewerTransforms]] redact the survivors —
+                 * identical to the live wire's `signalsFor` semantics.
+                 * `None` returns the raw log: framework internals
+                 * (compaction, reconciliation, agent prompt builds)
+                 * must see everything. ANY path that delivers history
+                 * to a client passes the viewer — an Agents-visibility
+                 * checkpoint directive reaching a user UI on a hard
+                 * refresh is an information-scope leak, not a
+                 * cosmetic one.
+                 */
                 viewer: Option[ParticipantId] = None): Task[EventsPage] = {
     import lightdb.filter.*
     val safePage = math.max(0, page)
@@ -448,9 +477,9 @@ trait ProjectionOps { this: Sigil =>
 
     def redactFor(e: Event): Event = viewer match {
       case Some(v) => applyViewerTransforms(e, v) match {
-        case ev: Event => ev
-        case _         => e
-      }
+          case ev: Event => ev
+          case _ => e
+        }
       case None => e
     }
 
@@ -499,7 +528,7 @@ trait ProjectionOps { this: Sigil =>
   private def withDBScopeSnapshot(conversationId: Id[Conversation]): List[Event] =
     startedInstance.get() match {
       case Some(inst) => inst.db.batchedEventScope(conversationId).map(_.snapshot).getOrElse(Nil)
-      case None       => Nil
+      case None => Nil
     }
 
   /**
@@ -571,12 +600,12 @@ trait ProjectionOps { this: Sigil =>
       // directly and is intentionally unaffected by this cap.
       val taskTs: Option[Long] = evs.iterator.collect {
         case m: sigil.event.Message
-          if m.role == sigil.event.MessageRole.Standard
-          && !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] => m.timestamp.value
+            if m.role == sigil.event.MessageRole.Standard
+              && !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] => m.timestamp.value
       }.maxOption
       val capped = taskTs match {
         case Some(t) if at.value >= t => Timestamp(t - 1)
-        case _                        => at
+        case _ => at
       }
       withDB(_.conversations.transaction(_.modify(conversationId) {
         case Some(conv) =>
@@ -587,53 +616,59 @@ trait ProjectionOps { this: Sigil =>
       })).unit
     }
 
-  /** Fetch the [[EncodedContext]] cache row for this `(agentId,
-    * conversationId, modelId)` triple, returning a fresh empty row if
-    * none exists. Bug #26 — the curator looks this up per turn,
-    * appends since-cursor frames via the active provider's
-    * [[sigil.provider.Provider.appendFrame]], and persists the result.
-    * Cache misses (no row, or `builtThrough` behind newest event id)
-    * trigger an incremental rebuild.
-    *
-    * The cache shape is opaque to the framework — only the provider
-    * that wrote the bytes understands them. Cross-model mixing is
-    * structurally impossible because `modelId` is part of the cache
-    * key. */
+  /**
+   * Fetch the [[EncodedContext]] cache row for this `(agentId,
+   * conversationId, modelId)` triple, returning a fresh empty row if
+   * none exists. Bug #26 — the curator looks this up per turn,
+   * appends since-cursor frames via the active provider's
+   * [[sigil.provider.Provider.appendFrame]], and persists the result.
+   * Cache misses (no row, or `builtThrough` behind newest event id)
+   * trigger an incremental rebuild.
+   *
+   * The cache shape is opaque to the framework — only the provider
+   * that wrote the bytes understands them. Cross-model mixing is
+   * structurally impossible because `modelId` is part of the cache
+   * key.
+   */
   def encodedContextFor(agentId: ParticipantId,
                         conversationId: Id[Conversation],
                         modelId: Id[Model]): Task[EncodedContext] =
     withDB(_.encodedContexts.transaction(_.get(EncodedContext.idFor(agentId, conversationId, modelId)))).map {
       case Some(c) => c
-      case None    => EncodedContext.empty(agentId, conversationId, modelId)
+      case None => EncodedContext.empty(agentId, conversationId, modelId)
     }
 
-  /** Persist (or upsert) an [[EncodedContext]] cache row. Returns the
-    * stored record (with `modified` and `lastAccessedAt` bumped to
-    * `now()`). Apps that drive their own cache flows call this after
-    * incrementally appending; the framework's curator does so
-    * automatically. */
+  /**
+   * Persist (or upsert) an [[EncodedContext]] cache row. Returns the
+   * stored record (with `modified` and `lastAccessedAt` bumped to
+   * `now()`). Apps that drive their own cache flows call this after
+   * incrementally appending; the framework's curator does so
+   * automatically.
+   */
   def saveEncodedContext(cache: EncodedContext): Task[EncodedContext] = {
     val now = Timestamp(Nowish())
     val updated = cache.copy(modified = now, lastAccessedAt = now)
     withDB(_.encodedContexts.transaction(_.upsert(updated)))
   }
 
-  /** Update a participant's [[ParticipantProjection]] in the projections
-    * collection. Creates a fresh empty projection (with the deterministic
-    * derived id) if none exists. Use from curators, tools, or any app
-    * code that needs to mutate per-participant projection state.
-    *
-    * Sigil #291 — when `broadcast = true` (default), publishes a
-    * [[sigil.signal.ParticipantProjectionUpdated]] Notice after the
-    * write commits so multi-client UIs subscribed to this conversation
-    * see the change without polling. Framework-internal cache writes
-    * that no UI cares about (e.g. cached `previous_response_id`) pass
-    * `broadcast = false`. App writes through the convenience methods
-    * ([[setParticipantContext]], [[activateSkill]], etc.) broadcast
-    * by default — the polling workaround that motivated this signal. */
-  def updateProjection(conversationId: Id[Conversation], participantId: ParticipantId,
-                       broadcast: Boolean = true)
-                      (f: ParticipantProjection => ParticipantProjection): Task[Unit] =
+  /**
+   * Update a participant's [[ParticipantProjection]] in the projections
+   * collection. Creates a fresh empty projection (with the deterministic
+   * derived id) if none exists. Use from curators, tools, or any app
+   * code that needs to mutate per-participant projection state.
+   *
+   * Sigil #291 — when `broadcast = true` (default), publishes a
+   * [[sigil.signal.ParticipantProjectionUpdated]] Notice after the
+   * write commits so multi-client UIs subscribed to this conversation
+   * see the change without polling. Framework-internal cache writes
+   * that no UI cares about (e.g. cached `previous_response_id`) pass
+   * `broadcast = false`. App writes through the convenience methods
+   * ([[setParticipantContext]], [[activateSkill]], etc.) broadcast
+   * by default — the polling workaround that motivated this signal.
+   */
+  def updateProjection(conversationId: Id[Conversation],
+                       participantId: ParticipantId,
+                       broadcast: Boolean = true)(f: ParticipantProjection => ParticipantProjection): Task[Unit] =
     withDB(_.participantProjections.transaction(_.modify(ParticipantProjection.idFor(participantId, conversationId)) {
       case Some(proj) =>
         Task.pure(Some(f(proj).copy(modified = Timestamp(Nowish()))))
@@ -646,99 +681,105 @@ trait ProjectionOps { this: Sigil =>
       case _ => Task.unit
     }
 
-  /** Convenience: set (or replace) a skill slot for a participant. Discovery
-    * and User sources are driven through here by tools that want to activate
-    * a skill; Mode-source slots are maintained by the framework via
-    * [[sigil.provider.Mode.skill]] on `ModeChange`. */
+  /**
+   * Convenience: set (or replace) a skill slot for a participant. Discovery
+   * and User sources are driven through here by tools that want to activate
+   * a skill; Mode-source slots are maintained by the framework via
+   * [[sigil.provider.Mode.skill]] on `ModeChange`.
+   */
   def activateSkill(conversationId: Id[Conversation],
                     participantId: ParticipantId,
                     source: SkillSource,
                     slot: ActiveSkillSlot): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(activeSkills = proj.activeSkills + (source -> slot))
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(activeSkills = proj.activeSkills + (source -> slot)))
 
-  /** Convenience: clear a skill slot for a participant (if present). */
+  /**
+   * Convenience: clear a skill slot for a participant (if present).
+   */
   def clearSkill(conversationId: Id[Conversation],
                  participantId: ParticipantId,
                  source: SkillSource): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(activeSkills = proj.activeSkills - source)
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(activeSkills = proj.activeSkills - source))
 
-  /** Convenience: set a single key/value on a participant's
-    * `extraContext`. Same key replaces. */
+  /**
+   * Convenience: set a single key/value on a participant's
+   * `extraContext`. Same key replaces.
+   */
   def setParticipantContext(conversationId: Id[Conversation],
                             participantId: ParticipantId,
                             key: ContextKey,
                             value: String): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(extraContext = proj.extraContext + (key -> value))
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(extraContext = proj.extraContext + (key -> value)))
 
-  /** Convenience: remove a key from a participant's `extraContext`. */
+  /**
+   * Convenience: remove a key from a participant's `extraContext`.
+   */
   def clearParticipantContext(conversationId: Id[Conversation],
                               participantId: ParticipantId,
                               key: ContextKey): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(extraContext = proj.extraContext - key)
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(extraContext = proj.extraContext - key))
 
-  /** Cache a provider's per-(agent, conversation) server-side state
-    * handle. OpenAI's Responses API populates this on every settle so
-    * the next turn can pass `previous_response_id` and ship only the
-    * delta input. `messageCount` is the rendered-message count at the
-    * time of capture — the next call trims that many from the head
-    * before sending. */
+  /**
+   * Cache a provider's per-(agent, conversation) server-side state
+   * handle. OpenAI's Responses API populates this on every settle so
+   * the next turn can pass `previous_response_id` and ship only the
+   * delta input. `messageCount` is the rendered-message count at the
+   * time of capture — the next call trims that many from the head
+   * before sending.
+   */
   def setProviderResponseState(conversationId: Id[Conversation],
                                participantId: ParticipantId,
                                responseId: String,
                                messageCount: Int): Task[Unit] =
     // Sigil #291 — framework-internal provider-cache write; no UI
     // surface mirrors this state, so suppress the broadcast.
-    updateProjection(conversationId, participantId, broadcast = false)(
-      proj => proj.copy(
+    updateProjection(conversationId, participantId, broadcast = false)(proj =>
+      proj.copy(
         latestProviderResponseId = Some(responseId),
         latestProviderResponseMessageCount = Some(messageCount)
-      )
-    )
+      ))
 
-  /** Forget the cached provider response state for an (agent, conversation)
-    * pair. Fires when the upstream API rejects `previous_response_id`
-    * (`previous_response_not_found` — the id expired). Next turn falls
-    * back to the full-transcript request shape. */
+  /**
+   * Forget the cached provider response state for an (agent, conversation)
+   * pair. Fires when the upstream API rejects `previous_response_id`
+   * (`previous_response_not_found` — the id expired). Next turn falls
+   * back to the full-transcript request shape.
+   */
   def clearProviderResponseState(conversationId: Id[Conversation],
                                  participantId: ParticipantId): Task[Unit] =
     // Sigil #291 — framework-internal cache invalidation; suppress broadcast.
-    updateProjection(conversationId, participantId, broadcast = false)(
-      proj => proj.copy(
+    updateProjection(conversationId, participantId, broadcast = false)(proj =>
+      proj.copy(
         latestProviderResponseId = None,
         latestProviderResponseMessageCount = None
-      )
-    )
+      ))
 
-  /** Convenience: advance a participant's last-read cursor in
-    * `conversationId` to a specific event's server-stamped
-    * timestamp. The framework looks up the event's authoritative
-    * timestamp — clients never specify a wall-clock time, so
-    * client-clock drift is moot. Bug #62.
-    *
-    * No-op when `readThrough` doesn't resolve (stale id, deleted
-    * event). Idempotent: calling twice with the same id is
-    * cheap. */
+  /**
+   * Convenience: advance a participant's last-read cursor in
+   * `conversationId` to a specific event's server-stamped
+   * timestamp. The framework looks up the event's authoritative
+   * timestamp — clients never specify a wall-clock time, so
+   * client-clock drift is moot. Bug #62.
+   *
+   * No-op when `readThrough` doesn't resolve (stale id, deleted
+   * event). Idempotent: calling twice with the same id is
+   * cheap.
+   */
   def markRead(conversationId: Id[Conversation],
                participantId: ParticipantId,
                readThrough: Id[sigil.event.Event]): Task[Unit] =
     withDB(_.eventsTransaction(conversationId)(_.get(readThrough))).flatMap {
-      case None    => Task.unit
+      case None => Task.unit
       case Some(e) => markRead(conversationId, participantId, e.timestamp)
     }
 
-  /** Direct-timestamp overload for the rare case where a caller
-    * already has a server-authoritative `Timestamp` in hand
-    * (replay tooling, batch catch-up scripts, etc.). Most code
-    * should use the event-id overload above — that's the path
-    * that's safe against client clock drift. Bug #62. */
+  /**
+   * Direct-timestamp overload for the rare case where a caller
+   * already has a server-authoritative `Timestamp` in hand
+   * (replay tooling, batch catch-up scripts, etc.). Most code
+   * should use the event-id overload above — that's the path
+   * that's safe against client clock drift. Bug #62.
+   */
   def markRead(conversationId: Id[Conversation],
                participantId: ParticipantId,
                lastReadAt: lightdb.time.Timestamp): Task[Unit] = {
@@ -746,49 +787,53 @@ trait ProjectionOps { this: Sigil =>
     withDB(_.eventsTransaction(conversationId)(_.get(stateId))).flatMap {
       case Some(_) =>
         publish(sigil.signal.ReadStateDelta(
-          target         = stateId,
+          target = stateId,
           conversationId = conversationId,
-          participantId  = participantId,
-          lastReadAt     = lastReadAt
+          participantId = participantId,
+          lastReadAt = lastReadAt
         ))
-      case None    =>
+      case None =>
         // First read for this `(conv, participant)` — insert the
         // ReadState row. Subsequent advances mutate via
         // ReadStateDelta (no new event row).
         withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
-          case None       => Task.unit
+          case None => Task.unit
           case Some(conv) =>
             publish(sigil.event.ReadState(
-              participantId  = participantId,
+              participantId = participantId,
               conversationId = conversationId,
-              topicId        = conv.currentTopicId,
-              lastReadAt     = lastReadAt,
-              _id            = stateId
+              topicId = conv.currentTopicId,
+              lastReadAt = lastReadAt,
+              _id = stateId
             ))
         }
     }
   }
 
-  /** Read the current `lastReadAt` cursor for `(conversationId,
-    * participantId)`. `None` if the participant has never marked
-    * read in this conversation. Bug #62. */
+  /**
+   * Read the current `lastReadAt` cursor for `(conversationId,
+   * participantId)`. `None` if the participant has never marked
+   * read in this conversation. Bug #62.
+   */
   def readStateFor(conversationId: Id[Conversation],
                    participantId: ParticipantId): Task[Option[sigil.event.ReadState]] = {
     val stateId = sigil.event.ReadState.idFor(conversationId, participantId)
     withDB(_.eventsTransaction(conversationId)(_.get(stateId))).map {
       case Some(r: sigil.event.ReadState) => Some(r)
-      case _                              => None
+      case _ => None
     }
   }
 
-  /** Convenience: publish a [[sigil.event.Reaction]] event for the
-    * given message. `removed = false` means "I'm reacting now",
-    * `removed = true` means "I'm taking my reaction back." Last-
-    * write-wins per `(messageId, participantId, emoji)` — consumers
-    * reduce the event tail to find the current state.
-    *
-    * No-ops if the conversation isn't found (caller's `conversationId`
-    * was stale). Bug #61. */
+  /**
+   * Convenience: publish a [[sigil.event.Reaction]] event for the
+   * given message. `removed = false` means "I'm reacting now",
+   * `removed = true` means "I'm taking my reaction back." Last-
+   * write-wins per `(messageId, participantId, emoji)` — consumers
+   * reduce the event tail to find the current state.
+   *
+   * No-ops if the conversation isn't found (caller's `conversationId`
+   * was stale). Bug #61.
+   */
   def react(conversationId: Id[Conversation],
             participantId: ParticipantId,
             messageId: Id[sigil.event.Event],
@@ -798,19 +843,21 @@ trait ProjectionOps { this: Sigil =>
       case None => Task.unit
       case Some(conv) =>
         publish(sigil.event.Reaction(
-          participantId  = participantId,
+          participantId = participantId,
           conversationId = conversationId,
-          topicId        = conv.currentTopicId,
-          messageId      = messageId,
-          emoji          = emoji,
-          removed        = removed
+          topicId = conv.currentTopicId,
+          messageId = messageId,
+          emoji = emoji,
+          removed = removed
         ))
     }
 
-  /** Convenience: publish a [[Stop]] event for the conversation. Lets
-    * UI layers (stop button) and programmatic callers issue stops
-    * without reconstructing the event by hand. For LLM-initiated stops
-    * use [[sigil.tool.core.CancelTool]] instead. */
+  /**
+   * Convenience: publish a [[Stop]] event for the conversation. Lets
+   * UI layers (stop button) and programmatic callers issue stops
+   * without reconstructing the event by hand. For LLM-initiated stops
+   * use [[sigil.tool.core.CancelTool]] instead.
+   */
   def stop(conversationId: Id[Conversation],
            requestedBy: ParticipantId,
            targetParticipantId: Option[ParticipantId] = None,
@@ -829,26 +876,28 @@ trait ProjectionOps { this: Sigil =>
         ))
     }
 
-  /** Maintain materialized projections on the [[Conversation]] record:
-    *   - `currentMode` tracks the latest [[ModeChange]]
-    *   - `topics` (the navigation stack) tracks the latest [[TopicChange]]:
-    *     - `Switch` either pushes a new entry (if the topic isn't on the
-    *       stack) or truncates the stack back to that entry (if it is —
-    *       the natural "return to prior topic" flow)
-    *     - `Rename` mutates the active entry's label + summary in place
-    *   - `cost` is incremented when a [[Message]] settles whose
-    *     `modelId` resolves to a known [[Model]] in
-    *     [[sigil.cache.ModelRegistry]] (USD; per-token pricing
-    *     multiplied by [[sigil.provider.TokenUsage]]). Each non-zero
-    *     increment publishes a [[sigil.signal.ConversationCostUpdated]]
-    *     Notice with the new total + per-Message delta.
-    *
-    * Fires only on the SETTLE (an Event already at `Complete`, or a
-    * `Delta` that transitions its target to `Complete`), never on the
-    * initial Active pulse — so these projection fields are written
-    * exactly once per transition even though each change flows through
-    * `publish` twice (event + state delta). */
-  private[sigil] final def updateConversationProjection(signal: Signal): Task[Unit] = {
+  /**
+   * Maintain materialized projections on the [[Conversation]] record:
+   *   - `currentMode` tracks the latest [[ModeChange]]
+   *   - `topics` (the navigation stack) tracks the latest [[TopicChange]]:
+   *     - `Switch` either pushes a new entry (if the topic isn't on the
+   *       stack) or truncates the stack back to that entry (if it is —
+   *       the natural "return to prior topic" flow)
+   *     - `Rename` mutates the active entry's label + summary in place
+   *   - `cost` is incremented when a [[Message]] settles whose
+   *     `modelId` resolves to a known [[Model]] in
+   *     [[sigil.cache.ModelRegistry]] (USD; per-token pricing
+   *     multiplied by [[sigil.provider.TokenUsage]]). Each non-zero
+   *     increment publishes a [[sigil.signal.ConversationCostUpdated]]
+   *     Notice with the new total + per-Message delta.
+   *
+   * Fires only on the SETTLE (an Event already at `Complete`, or a
+   * `Delta` that transitions its target to `Complete`), never on the
+   * initial Active pulse — so these projection fields are written
+   * exactly once per transition even though each change flows through
+   * `publish` twice (event + state delta).
+   */
+  final private[sigil] def updateConversationProjection(signal: Signal): Task[Unit] = {
     val settled: Task[Option[Event]] = signal match {
       case e: Event if e.state == EventState.Complete => Task.pure(Some(e))
       case d: sigil.signal.Delta =>
@@ -862,7 +911,7 @@ trait ProjectionOps { this: Sigil =>
           case Some(conv) if conv.currentMode != mc.mode =>
             Task.pure(Some(conv.copy(currentMode = mc.mode, modified = Timestamp(Nowish()))))
           case Some(conv) => Task.pure(Some(conv))
-          case None       => Task.pure(None)
+          case None => Task.pure(None)
         })).unit
       case Some(cc: sigil.event.ComplexityChange) =>
         // The pin/unpin tools mutate `pinnedComplexity` themselves;
@@ -874,7 +923,7 @@ trait ProjectionOps { this: Sigil =>
           case Some(conv) if conv.pinnedComplexity != cc.newTier =>
             Task.pure(Some(conv.copy(pinnedComplexity = cc.newTier, modified = Timestamp(Nowish()))))
           case Some(conv) => Task.pure(Some(conv))
-          case None       => Task.pure(None)
+          case None => Task.pure(None)
         })).unit
       case Some(tc: TopicChange) =>
         applyTopicChangeToStack(tc)
@@ -890,14 +939,16 @@ trait ProjectionOps { this: Sigil =>
     }
   }
 
-  /** Increment [[Conversation.cost]] for a settled cost-bearing event
-    * (either a [[Message]] or a [[ToolInvoke]]) whose `modelId` is
-    * known to the [[sigil.cache.ModelRegistry]].
-    *
-    * Math: per-token pricing × token counts (USD). Cache miss,
-    * `modelId = None`, or zero usage → no-op. On a non-zero delta,
-    * publishes a [[sigil.signal.ConversationCostUpdated]] Notice
-    * carrying the new running total + the per-event delta. */
+  /**
+   * Increment [[Conversation.cost]] for a settled cost-bearing event
+   * (either a [[Message]] or a [[ToolInvoke]]) whose `modelId` is
+   * known to the [[sigil.cache.ModelRegistry]].
+   *
+   * Math: per-token pricing × token counts (USD). Cache miss,
+   * `modelId = None`, or zero usage → no-op. On a non-zero delta,
+   * publishes a [[sigil.signal.ConversationCostUpdated]] Notice
+   * carrying the new running total + the per-event delta.
+   */
   /**
    * Sigil #406 — per-turn cost telemetry seam. Called once per charged turn at
    * the point the framework folds the turn's USD `cost` into
@@ -916,7 +967,7 @@ trait ProjectionOps { this: Sigil =>
    */
   def onTurnCost(entry: TurnCost): Task[Unit] = Task.unit
 
-  private final def applyEventCostToConversation(
+  final private def applyEventCostToConversation(
     conversationId: Id[Conversation],
     eventId: Id[Event],
     participantId: ParticipantId,
@@ -972,13 +1023,13 @@ trait ProjectionOps { this: Sigil =>
               // cost projection.
               onTurnCost(TurnCost(
                 conversationId = updated._id,
-                eventId        = eventId,
-                participantId  = participantId,
-                modelId        = resolvedModelId,
-                mode           = updated.currentMode.name,
-                cost           = delta,
-                usage          = usage,
-                timestamp      = Timestamp(Nowish())
+                eventId = eventId,
+                participantId = participantId,
+                modelId = resolvedModelId,
+                mode = updated.currentMode.name,
+                cost = delta,
+                usage = usage,
+                timestamp = Timestamp(Nowish())
               )).handleError(t => Task(scribe.warn(s"onTurnCost hook failed for ${updated._id.value}: ${t.getMessage}")))
             }
           case None => Task.unit

@@ -24,13 +24,15 @@ class LlamaCppInlineErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   // drives the exception's reported provider key, and inlineErrorThrows
   // is the gate under test.
   private val cfg: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
-    providerNamespace    = LlamaCpp.Provider,
-    providerName         = "LlamaCpp",
+    providerNamespace = LlamaCpp.Provider,
+    providerName = "LlamaCpp",
     schemaDialect = sigil.provider.SchemaDialect.Identity,
-    inlineErrorThrows    = true
+    inlineErrorThrows = true
   )
 
-  /** Build a fresh state + parse one SSE data line carrying `json`. */
+  /**
+   * Build a fresh state + parse one SSE data line carrying `json`.
+   */
   private def parse(json: Json): Vector[sigil.provider.ProviderEvent] = {
     val state = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(ToolRoster.empty))
     OpenAIChatCompletions.parseLine("data: " + fabric.io.JsonFormatter.Compact(json), state, cfg)
@@ -40,9 +42,9 @@ class LlamaCppInlineErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     "throw ProviderStreamException when an inline `error` event arrives mid-stream" in {
       val errorEvent = obj(
         "error" -> obj(
-          "code"    -> num(500),
+          "code" -> num(500),
           "message" -> str("Failed to parse input at pos 28: <|tool_call>foo<tool_call|>"),
-          "type"    -> str("server_error")
+          "type" -> str("server_error")
         )
       )
       val thrown = intercept[ProviderStreamException] {
@@ -59,7 +61,7 @@ class LlamaCppInlineErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
     "ignore an `error` field that is JSON null" in {
       val nullErrorEvent = obj(
-        "error"   -> Null,
+        "error" -> Null,
         "choices" -> arr()
       )
       noException should be thrownBy parse(nullErrorEvent)

@@ -30,9 +30,11 @@ final case class DetachedToolTask(invokeId: Id[Event],
                                   keepRunningOnStop: Boolean,
                                   cancellation: CancellationToken,
                                   startedAt: Timestamp,
-                                  /** `None` while the dispatch is still ATTACHED
-                                    * (registered at dispatch so a Stop can reach
-                                    * the token in either phase); set when the
-                                    * threshold promotes it. Only detached
-                                    * entries appear in the task panel. */
+                                  /**
+                                   * `None` while the dispatch is still ATTACHED
+                                   * (registered at dispatch so a Stop can reach
+                                   * the token in either phase); set when the
+                                   * threshold promotes it. Only detached
+                                   * entries appear in the task panel.
+                                   */
                                   detachedAt: Option[Timestamp])

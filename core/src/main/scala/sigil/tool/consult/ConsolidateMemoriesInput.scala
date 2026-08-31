@@ -19,4 +19,5 @@ import sigil.tool.ToolInput
  */
 case class ConsolidateMemoriesInput(verdict: ConsolidationVerdict,
                                     mergedFact: Option[String] = None,
-                                    mergedLabel: Option[String] = None) extends ToolInput derives RW
+                                    mergedLabel: Option[String] = None)
+  extends ToolInput derives RW

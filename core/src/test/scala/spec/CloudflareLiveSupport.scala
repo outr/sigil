@@ -19,20 +19,22 @@ import spice.net.*
  * failures.
  */
 object CloudflareLiveSupport {
-  def apiToken: Option[String]  = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
+  def apiToken: Option[String] = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
   def accountId: Option[String] = sys.env.get("CLOUDFLARE_ACCOUNT_ID").filter(_.nonEmpty)
 
   private def probe(token: String, accountId: String): HttpRequest = HttpRequest(
     method = HttpMethod.Get,
-    url    = URL.parse(s"https://api.cloudflare.com/client/v4/accounts/$accountId/ai/models/search")
+    url = URL.parse(s"https://api.cloudflare.com/client/v4/accounts/$accountId/ai/models/search")
   ).withHeader("Authorization", s"Bearer $token")
 
-  /** Signatures of "the live Workers AI service is unavailable RIGHT NOW" —
-    * distinct from a real test failure. The suite-start probe catches a drained
-    * quota up front, but mid-run the free tier also returns capacity throttles
-    * (`429 Capacity temporarily exceeded`, code 3040) or hangs under load. Per-test
-    * error handlers pass a caught throwable here and `cancel(...)` on a match, so
-    * external throttling self-skips instead of failing the suite. */
+  /**
+   * Signatures of "the live Workers AI service is unavailable RIGHT NOW" —
+   * distinct from a real test failure. The suite-start probe catches a drained
+   * quota up front, but mid-run the free tier also returns capacity throttles
+   * (`429 Capacity temporarily exceeded`, code 3040) or hangs under load. Per-test
+   * error handlers pass a caught throwable here and `cancel(...)` on a match, so
+   * external throttling self-skips instead of failing the suite.
+   */
   private val unavailableMarkers: List[String] = List(
     "used up your daily free allocation",
     "Capacity temporarily exceeded",

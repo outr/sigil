@@ -25,12 +25,13 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExamp
  * Emits a typed [[SemanticSearchOutput]] (`query`, `memories: List[SemanticSearchHit]`, `count`).
  */
 case object SemanticSearchTool extends Tool {
-  type Input  = SemanticSearchInput
+  type Input = SemanticSearchInput
   type Output = SemanticSearchOutput
   val io: ToolIO[SemanticSearchInput, SemanticSearchOutput] = ToolIO.derived[SemanticSearchInput, SemanticSearchOutput].withExamples(
     ToolExample("Recall a preference", SemanticSearchInput(query = "user's preferred coding style")),
     ToolExample("Top 3 matches only", SemanticSearchInput(query = "deadline next week", limit = 3)),
-    ToolExample("Include archived versions",
+    ToolExample(
+      "Include archived versions",
       SemanticSearchInput(query = "deploy target", includeHistory = true))
   )
   override val name = ToolName("semantic_search")
@@ -62,14 +63,15 @@ case object SemanticSearchTool extends Tool {
         ctx.sigil.searchMemories(input.query, spaces, input.limit).flatMap { hits =>
           val filtered = hits.filter { m =>
             m.status == MemoryStatus.Approved &&
-              (input.includeHistory || m.validUntil.isEmpty)
+            (input.includeHistory || m.validUntil.isEmpty)
           }
           ctx.sigil.recordMemoryAccesses(filtered.map(_._id))
-            .map(_ => SemanticSearchOutput(
-              query    = input.query,
-              memories = filtered.map(toHit),
-              count    = filtered.size
-            ))
+            .map(_ =>
+              SemanticSearchOutput(
+                query = input.query,
+                memories = filtered.map(toHit),
+                count = filtered.size
+              ))
         }
     }
 
@@ -79,14 +81,14 @@ case object SemanticSearchTool extends Tool {
 
   private def toHit(m: sigil.conversation.ContextMemory): SemanticSearchHit =
     SemanticSearchHit(
-      memoryId      = m._id.value,
-      key           = m.key,
-      label         = m.label,
-      summary       = m.summary,
-      fact          = m.fact,
-      pinned        = m.pinned,
-      archived      = m.validUntil.isDefined,
-      confidence    = m.confidence,
+      memoryId = m._id.value,
+      key = m.key,
+      label = m.label,
+      summary = m.summary,
+      fact = m.fact,
+      pinned = m.pinned,
+      archived = m.validUntil.isDefined,
+      confidence = m.confidence,
       justification = m.justification
     )
 }

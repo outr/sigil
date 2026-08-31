@@ -75,10 +75,10 @@ class ContextFrameToolResultMigrationUpgrade extends DatabaseUpgrade {
 
   override def upgrade(ldb: LightDB): Task[Unit] = ldb match {
     case sigilDb: SigilDB => migrate(sigilDb)
-    case _                => Task.unit
+    case _ => Task.unit
   }
 
-  private def migrate(db: SigilDB): Task[Unit] = {
+  private def migrate(db: SigilDB): Task[Unit] =
     db.events.transaction { tx =>
       tx.jsonStream.toList.flatMap { rows =>
         val (toDelete, toUpsert) = ContextFrameToolResultMigrationUpgrade.classifyRows(rows)
@@ -103,41 +103,48 @@ class ContextFrameToolResultMigrationUpgrade extends DatabaseUpgrade {
         drops.flatMap(_ => rewrites)
       }
     }
-  }
 }
 
 object ContextFrameToolResultMigrationUpgrade {
 
-  /** Top-level Event-poly discriminators that #265 retired. Rows
-    * carrying one of these as their `type` are dropped wholesale —
-    * no surviving Scala class can decode them. */
+  /**
+   * Top-level Event-poly discriminators that #265 retired. Rows
+   * carrying one of these as their `type` are dropped wholesale —
+   * no surviving Scala class can decode them.
+   */
   val deadEventTypes: Set[String] = Set("ToolResults", "ToolCall")
 
-  /** Whether the row's top-level `type` is a #265-retired Event
-    * discriminator. Public for unit-test access. */
+  /**
+   * Whether the row's top-level `type` is a #265-retired Event
+   * discriminator. Public for unit-test access.
+   */
   def isDeadOuterEvent(json: Json): Boolean =
     json.get("type").map(_.asString).exists(deadEventTypes.contains)
 
-  /** Whether the row's `contextFrame` carries the retired
-    * `ToolResult` discriminator. Public for unit-test access. */
+  /**
+   * Whether the row's `contextFrame` carries the retired
+   * `ToolResult` discriminator. Public for unit-test access.
+   */
   def isOrphanToolResult(json: Json): Boolean =
     json.get("contextFrame")
       .flatMap(_.get("type"))
       .map(_.asString)
       .contains("ToolResult")
 
-  /** Classify a batch of raw rows into the two migration outcomes:
-    *
-    *   - `toDelete`: row ids whose top-level `type` is dead-poly;
-    *     the entire row gets dropped from the events store. Drop
-    *     wins over rewrite — a row that's BOTH dead-outer AND
-    *     dead-inner is dropped (no point trying to rewrite a row
-    *     we can't decode at all).
-    *   - `toUpsert`: rewritten typed [[Event]]s whose `contextFrame`
-    *     has been nulled and the surviving fields successfully
-    *     re-decoded. Caller upserts these back via the typed path.
-    *
-    * Returns `(toDelete, toUpsert)`. */
+  /**
+   * Classify a batch of raw rows into the two migration outcomes:
+   *
+   *   - `toDelete`: row ids whose top-level `type` is dead-poly;
+   *     the entire row gets dropped from the events store. Drop
+   *     wins over rewrite — a row that's BOTH dead-outer AND
+   *     dead-inner is dropped (no point trying to rewrite a row
+   *     we can't decode at all).
+   *   - `toUpsert`: rewritten typed [[Event]]s whose `contextFrame`
+   *     has been nulled and the surviving fields successfully
+   *     re-decoded. Caller upserts these back via the typed path.
+   *
+   * Returns `(toDelete, toUpsert)`.
+   */
   def classifyRows(rows: List[Json]): (List[String], List[Event]) = {
     val toDelete = scala.collection.mutable.ListBuffer.empty[String]
     val toUpsert = scala.collection.mutable.ListBuffer.empty[Event]
@@ -158,13 +165,15 @@ object ContextFrameToolResultMigrationUpgrade {
     (toDelete.toList, toUpsert.toList)
   }
 
-  /** Given a row whose inner `contextFrame` carries the dead
-    * `ToolResult` discriminator (but whose top-level `type` is
-    * still valid), return the rewritten typed [[Event]] with
-    * `contextFrame = null`. Returns `None` when the rewrite still
-    * fails to decode (some other dead discriminator in the row).
-    * Stateless — pure JSON → Event transformation, no DB / framework
-    * dependencies. */
+  /**
+   * Given a row whose inner `contextFrame` carries the dead
+   * `ToolResult` discriminator (but whose top-level `type` is
+   * still valid), return the rewritten typed [[Event]] with
+   * `contextFrame = null`. Returns `None` when the rewrite still
+   * fails to decode (some other dead discriminator in the row).
+   * Stateless — pure JSON → Event transformation, no DB / framework
+   * dependencies.
+   */
   def rewriteOrphanRow(json: Json): Option[Event] = {
     if (!isOrphanToolResult(json)) return None
     val rewritten = json.merge(obj("contextFrame" -> Null))
@@ -182,9 +191,11 @@ object ContextFrameToolResultMigrationUpgrade {
     }
   }
 
-  /** Recover an event row's id from its raw JSON for drop / diagnostic
-    * logging. Mirrors lightdb's stored `_id` field; returns `None`
-    * when the JSON shape doesn't carry one. */
+  /**
+   * Recover an event row's id from its raw JSON for drop / diagnostic
+   * logging. Mirrors lightdb's stored `_id` field; returns `None`
+   * when the JSON shape doesn't carry one.
+   */
   def extractOrphanId(json: Json): Option[String] =
     json.get("_id").map(_.asString)
 }

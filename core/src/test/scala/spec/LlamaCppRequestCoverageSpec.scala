@@ -18,7 +18,7 @@ class LlamaCppRequestCoverageSpec extends AbstractRequestCoverageSpec {
   override protected def providerInstance: Provider =
     LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)
   override protected def modelId: Id[Model] = Model.id("test", "model")
-    TestSigil.testModel(modelId)
+  TestSigil.testModel(modelId)
 
   "LlamaCppProvider wire-specific coverage" should {
     "forward topP from GenerationSettings as top_p on the wire" in {
@@ -82,7 +82,7 @@ class LlamaCppRequestCoverageSpec extends AbstractRequestCoverageSpec {
       val roles: Vector[String] = messages.flatMap(_.get("role").map(_.asString))
       withClue(s"roles: ${roles.mkString(",")}") {
         roles.count(_ == "system") shouldBe 1
-        roles.count(_ == "user")   shouldBe 1
+        roles.count(_ == "user") shouldBe 1
         roles.head shouldBe "system"
       }
     }

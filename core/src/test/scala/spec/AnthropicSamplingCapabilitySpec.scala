@@ -23,7 +23,9 @@ class AnthropicSamplingCapabilitySpec extends AnyWordSpec with Matchers {
 
   private val provider = AnthropicProvider(apiKey = "sk-ant-test", sigilRef = TestSigil)
 
-  /** Register a model with the given `supportedParameters` set. */
+  /**
+   * Register a model with the given `supportedParameters` set.
+   */
   private def register(id: Id[Model], params: Set[String]): Unit = {
     val m = TestSigil.testModel(id).copy(supportedParameters = params)
     TestSigil.cache.merge(List(m)).sync()
@@ -32,25 +34,25 @@ class AnthropicSamplingCapabilitySpec extends AnyWordSpec with Matchers {
   private def renderedBody(modelId: Id[Model]): fabric.Json = {
     val convId = sigil.conversation.Conversation.id(s"cap-${rapid.Unique()}")
     val request = ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.cache.find(modelId).getOrElse(fail("model not registered")),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(
-        conversationId         = convId,
-        frames                 = Vector(ContextFrame.Text("hi", TestUser, Id[Event]("seed"))),
+      conversationId = convId,
+      model = TestSigil.cache.find(modelId).getOrElse(fail("model not registered")),
+      instructions = Instructions(),
+      turnInput = TurnInput(
+        conversationId = convId,
+        frames = Vector(ContextFrame.Text("hi", TestUser, Id[Event]("seed"))),
         participantProjections = Map(TestAgent -> ParticipantProjection.empty(TestAgent, convId))
       ),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       // The caller sets a sampling param — the thing the catalog may forbid.
       generationSettings = GenerationSettings(temperature = Some(0.7), topP = Some(0.9), maxOutputTokens = Some(50)),
-      tools              = CoreTools.all,
-      chain              = List(TestUser, TestAgent)
+      tools = CoreTools.all,
+      chain = List(TestUser, TestAgent)
     )
     val httpReq = provider.requestConverter(request).sync()
     httpReq.content match {
       case Some(c: spice.http.content.StringContent) => fabric.io.JsonParser(c.value)
-      case other                                     => fail(s"expected string body, got $other")
+      case other => fail(s"expected string body, got $other")
     }
   }
 

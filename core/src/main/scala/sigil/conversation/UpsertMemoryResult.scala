@@ -18,12 +18,14 @@ enum UpsertMemoryResult(val memory: ContextMemory) {
   case Refreshed(override val memory: ContextMemory) extends UpsertMemoryResult(memory)
   case Versioned(override val memory: ContextMemory, archived: ContextMemory) extends UpsertMemoryResult(memory)
 
-  /** The same outcome carrying an updated record — used by the write
-    * paths that stamp the written memory after the fact (the
-    * vector-index provenance stamp) so callers see the stored shape. */
+  /**
+   * The same outcome carrying an updated record — used by the write
+   * paths that stamp the written memory after the fact (the
+   * vector-index provenance stamp) so callers see the stored shape.
+   */
   def withMemory(memory: ContextMemory): UpsertMemoryResult = this match {
-    case Stored(_)              => Stored(memory)
-    case Refreshed(_)           => Refreshed(memory)
+    case Stored(_) => Stored(memory)
+    case Refreshed(_) => Refreshed(memory)
     case Versioned(_, archived) => Versioned(memory, archived)
   }
 }

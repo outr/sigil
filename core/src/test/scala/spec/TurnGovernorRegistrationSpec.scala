@@ -48,9 +48,11 @@ class TurnGovernorRegistrationSpec extends AsyncWordSpec with AsyncTaskSpec with
   private val modelId: Id[Model] = Model.id("test", "turn-governor")
   TestSigil.testModel(modelId)
 
-  /** Votes forced synthesis at one specific boundary; records every
-    * boundary it is asked about. */
-  private final class ForceAtGovernor(at: Int) extends TurnGovernor {
+  /**
+   * Votes forced synthesis at one specific boundary; records every
+   * boundary it is asked about.
+   */
+  final private class ForceAtGovernor(at: Int) extends TurnGovernor {
     val seen: atomic.AtomicReference[Vector[Int]] = new atomic.AtomicReference(Vector.empty)
     override def name: String = "test-force-at"
     override def evaluate(ctx: GovernorContext): Task[GovernorVote] = Task {
@@ -61,9 +63,11 @@ class TurnGovernorRegistrationSpec extends AsyncWordSpec with AsyncTaskSpec with
     }
   }
 
-  /** Passes through to a built-in governor, recording each boundary it
-    * actually reaches — the evidence for short-circuiting. */
-  private final class RecordingGovernor(delegate: TurnGovernor) extends TurnGovernor {
+  /**
+   * Passes through to a built-in governor, recording each boundary it
+   * actually reaches — the evidence for short-circuiting.
+   */
+  final private class RecordingGovernor(delegate: TurnGovernor) extends TurnGovernor {
     val seen: atomic.AtomicReference[Vector[Int]] = new atomic.AtomicReference(Vector.empty)
     override def name: String = s"recording-${delegate.name}"
     override def evaluate(ctx: GovernorContext): Task[GovernorVote] = Task {
@@ -71,13 +75,18 @@ class TurnGovernorRegistrationSpec extends AsyncWordSpec with AsyncTaskSpec with
     }.flatMap(_ => delegate.evaluate(ctx))
   }
 
-  /** Emits a distinct non-terminal `change_mode` every main-loop turn so
-    * the loop keeps iterating; responds only on the forced-synthesis
-    * turn (signalled by `tool_choice = Specific(respond)`). */
-  private final class LoopingProvider extends Provider {
-    /** `tool_choice` of each MAIN-LOOP call, in order. Auxiliary consult
-      * calls (topic classification, memory extraction) carry their own
-      * single-tool roster and are excluded so indices stay meaningful. */
+  /**
+   * Emits a distinct non-terminal `change_mode` every main-loop turn so
+   * the loop keeps iterating; responds only on the forced-synthesis
+   * turn (signalled by `tool_choice = Specific(respond)`).
+   */
+  final private class LoopingProvider extends Provider {
+
+    /**
+     * `tool_choice` of each MAIN-LOOP call, in order. Auxiliary consult
+     * calls (topic classification, memory extraction) carry their own
+     * single-tool roster and are excluded so indices stay meaningful.
+     */
     val toolChoices: atomic.AtomicReference[Vector[ToolChoice]] =
       new atomic.AtomicReference(Vector.empty)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -94,10 +103,10 @@ class TurnGovernorRegistrationSpec extends AsyncWordSpec with AsyncTaskSpec with
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
-              topicLabel   = "Governor-synth",
+              topicLabel = "Governor-synth",
               topicSummary = "forced by the registered governor",
-              content      = "Synthesised after the registered governor forced the wrap-up.",
-              endsTurn     = true
+              content = "Synthesised after the registered governor forced the wrap-up.",
+              endsTurn = true
             )),
             ProviderEvent.Done(StopReason.Complete)
           )
@@ -115,10 +124,10 @@ class TurnGovernorRegistrationSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = ToolName("change_mode") :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = ToolName("change_mode") :: CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -134,18 +143,18 @@ class TurnGovernorRegistrationSpec extends AsyncWordSpec with AsyncTaskSpec with
       TestSigil.setTurnGovernors(forcing :: trailing)
 
       val convId = Conversation.id(s"governor-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = TestTopicEntry.id,
-                 content        = Vector(ResponseContent.Text("Work the X system")),
-                 state          = EventState.Complete
-               ))
-        _   <- TestSigil.awaitSettled(convId)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Work the X system")),
+          state = EventState.Complete
+        ))
+        _ <- TestSigil.awaitSettled(convId)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val convEvs = evs.filter(_.conversationId == convId)

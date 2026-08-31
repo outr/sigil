@@ -32,25 +32,25 @@ class LookupReconcileSpec extends AnyWordSpec with Matchers {
 
   "lookup registration" should {
     "live in CoreTools.all so the name always resolves" in {
-      CoreTools.all should contain (LookupTool)
+      CoreTools.all should contain(LookupTool)
     }
   }
 
   "reconcileLookupTool" should {
     "advertise lookup when the turn carries retrieved memories" in {
       val tools = Sigil.reconcileLookupTool(base, input(memories = Vector(ContextMemory.id("m1"))))
-      tools.map(_.schema.name.value) should contain ("lookup")
+      tools.map(_.schema.name.value) should contain("lookup")
     }
 
     "advertise lookup when the turn carries pinned memories" in {
       val tools = Sigil.reconcileLookupTool(base, input(critical = Vector(ContextMemory.id("p1"))))
-      tools.map(_.schema.name.value) should contain ("lookup")
+      tools.map(_.schema.name.value) should contain("lookup")
     }
 
     "advertise lookup when the turn carries information summaries" in {
       val info = InformationSummary(Id[Information]("i1"), Information.name.of[StoredInformation], "a note")
       val tools = Sigil.reconcileLookupTool(base, input(information = Vector(info)))
-      tools.map(_.schema.name.value) should contain ("lookup")
+      tools.map(_.schema.name.value) should contain("lookup")
     }
 
     "not duplicate an already-present lookup" in {
@@ -68,7 +68,7 @@ class LookupReconcileSpec extends AnyWordSpec with Matchers {
       // may hold keys learned from history — so the reconcile is
       // add-only and respects an app's explicit roster choice.
       val tools = Sigil.reconcileLookupTool(base :+ LookupTool, input())
-      tools.map(_.schema.name.value) should contain ("lookup")
+      tools.map(_.schema.name.value) should contain("lookup")
     }
 
     "stay out of the default advertised roster names" in {

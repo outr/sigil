@@ -8,7 +8,9 @@ import sigil.conversation.{Conversation, ReplySuggestionsConfig}
 import sigil.db.Model
 import sigil.event.Message
 import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
-import sigil.provider.{CallId, GenerationSettings, Instructions, Provider, ProviderCall, ProviderEvent, ProviderMessage, ProviderType, MessageContent, StopReason}
+import sigil.provider.{
+  CallId, GenerationSettings, Instructions, Provider, ProviderCall, ProviderEvent, ProviderMessage, ProviderType, MessageContent, StopReason
+}
 import sigil.signal.{EventState, Signal, SuggestedReplies}
 import sigil.tool.consult.{SuggestReplyInput, SuggestReplyTool}
 import sigil.tool.core.{CoreTools, RespondOptionsTool, RespondTool}
@@ -37,9 +39,11 @@ class ReplySuggestionsSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   private val modelId: Id[Model] = Model.id("test", "reply-suggestions-model")
   TestSigil.testModel(modelId)
 
-  /** The per-turn extractor issues its own consult after every turn;
-    * silence it so the suggestion consult is the only one this suite's
-    * provider has to recognise. */
+  /**
+   * The per-turn extractor issues its own consult after every turn;
+   * silence it so the suggestion consult is the only one this suite's
+   * provider has to recognise.
+   */
   private object NoExtraction extends sigil.conversation.compression.extract.MemoryExtractor {
     override def extract(sigil: _root_.sigil.Sigil,
                          conversationId: Id[Conversation],
@@ -56,8 +60,9 @@ class ReplySuggestionsSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
    * framework consult with a bare `Done` (no opinion). Records each
    * suggestion consult's rendered user prompt.
    */
-  private final class SuggestingProvider(reply: ProviderEvent*)(suggestions: List[String],
-                                                                failConsult: Boolean = false) extends Provider {
+  final private class SuggestingProvider(reply: ProviderEvent*)(suggestions: List[String],
+                                                                failConsult: Boolean = false)
+    extends Provider {
     val suggestCalls = new AtomicInteger(0)
     val suggestPrompts = new ConcurrentLinkedQueue[String]()
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -91,10 +96,10 @@ class ReplySuggestionsSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     List[ProviderEvent](
       ProviderEvent.ToolCallStart(cid, RespondTool.name.value),
       ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-        topicLabel   = TestTopicEntry.label,
+        topicLabel = TestTopicEntry.label,
         topicSummary = TestTopicEntry.summary,
-        content      = content,
-        endsTurn     = true
+        content = content,
+        endsTurn = true
       )),
       ProviderEvent.Done(StopReason.Complete)
     )
@@ -105,7 +110,7 @@ class ReplySuggestionsSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     List[ProviderEvent](
       ProviderEvent.ToolCallStart(cid, RespondOptionsTool.name.value),
       ProviderEvent.toolCall(cid, RespondOptionsTool)(RespondOptionsInput(
-        prompt  = "Which environment?",
+        prompt = "Which environment?",
         options = List(SelectOption("Staging", "staging"), SelectOption("Production", "production")),
         allowMultiple = false
       )),
@@ -115,10 +120,10 @@ class ReplySuggestionsSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
     )
 
@@ -145,20 +150,22 @@ class ReplySuggestionsSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     loop(timeout.toMillis)
   }
 
-  /** Drive one complete turn: seed the conversation, publish the user
-    * message, wait for the agent's claim to settle, then give the
-    * post-settle background fiber a bounded window to land. */
+  /**
+   * Drive one complete turn: seed the conversation, publish the user
+   * message, wait for the agent's claim to settle, then give the
+   * post-settle background fiber a bounded window to land.
+   */
   private def runTurn(conv: Conversation,
                       text: String = "How do I roll back the last deploy?"): Task[Unit] =
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = conv._id,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text(text)),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = conv._id,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text(text)),
+        state = EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(conv._id, timeout = 30.seconds)
     } yield ()
 
@@ -171,11 +178,11 @@ class ReplySuggestionsSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
                       parent: Option[Id[Conversation]] = None,
                       staging: Option[Id[Conversation]] = None): Conversation =
     Conversation(
-      topics               = TestTopicStack,
-      participants         = List(makeAgent()),
-      _id                  = Conversation.id(s"$prefix-${rapid.Unique()}"),
+      topics = TestTopicStack,
+      participants = List(makeAgent()),
+      _id = Conversation.id(s"$prefix-${rapid.Unique()}"),
       parentConversationId = parent,
-      stagingFor           = staging
+      stagingFor = staging
     )
 
   private val config = ReplySuggestionsConfig(fallbackModelId = modelId)

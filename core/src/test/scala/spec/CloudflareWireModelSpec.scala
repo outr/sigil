@@ -22,12 +22,14 @@ import sigil.tool.ToolRoster
 class CloudflareWireModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** The exact Model record #331's catalog parse produces for Kimi —
-    * `_id = cloudflare/@cf/moonshotai/kimi-k2.6`, `name = @cf/…`. */
+  /**
+   * The exact Model record #331's catalog parse produces for Kimi —
+   * `_id = cloudflare/@cf/moonshotai/kimi-k2.6`, `name = @cf/…`.
+   */
   private val kimi: Model = Cloudflare.toModel(
     Cloudflare.Entry(
-      id         = "uuid-kimi",
-      name       = "@cf/moonshotai/kimi-k2.6",
+      id = "uuid-kimi",
+      name = "@cf/moonshotai/kimi-k2.6",
       properties = List(Cloudflare.Property("context_window", str("131072")))
     )
   )
@@ -35,12 +37,12 @@ class CloudflareWireModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   private def wireModelField(model: Model): rapid.Task[String] =
     CloudflareProvider.create(TestSigil, apiToken = "test", accountId = "acct").flatMap { provider =>
       val call = ProviderCall(
-        model              = model,
-        system             = "s",
-        messages           = Vector(ProviderMessage.User(Vector(MessageContent.Text("hi")))),
+        model = model,
+        system = "s",
+        messages = Vector(ProviderMessage.User(Vector(MessageContent.Text("hi")))),
         roster = ToolRoster(Vector(RespondTool)),
-        builtInTools       = Set.empty,
-        toolChoice         = ToolChoice.Required,
+        builtInTools = Set.empty,
+        toolChoice = ToolChoice.Required,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
       )
       provider.httpRequestFor(call).map { req =>

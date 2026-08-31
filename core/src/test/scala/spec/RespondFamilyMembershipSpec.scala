@@ -3,9 +3,7 @@ package spec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.tool.ToolName
-import sigil.tool.core.{
-  CoreTools, NoResponseTool, RespondCardTool, RespondCardsTool, RespondFamilyTool, RespondOptionsTool, RespondTool
-}
+import sigil.tool.core.{CoreTools, NoResponseTool, RespondCardTool, RespondCardsTool, RespondFamilyTool, RespondOptionsTool, RespondTool}
 
 /**
  * RespondFamilyTool's companion is the ONE membership source for the

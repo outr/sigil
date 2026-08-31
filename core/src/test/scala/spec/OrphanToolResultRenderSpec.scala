@@ -25,10 +25,12 @@ import sigil.tool.model.ResponseContent
  */
 class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
 
-  /** Stub Provider exposing the protected `renderFrames` for direct
-    * testing. The Provider trait declares `renderFrames` as
-    * `protected[provider]`, so this stub lives in the same package
-    * spec-side via a thin shim. */
+  /**
+   * Stub Provider exposing the protected `renderFrames` for direct
+   * testing. The Provider trait declares `renderFrames` as
+   * `protected[provider]`, so this stub lives in the same package
+   * spec-side via a thin shim.
+   */
   private object Probe extends Provider {
     override def `type` = _root_.sigil.provider.ProviderType.LlamaCpp
     override def models = Nil
@@ -64,7 +66,7 @@ class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
       val fallback = frames.collect { case t: ContextFrame.Text => t }
         .filter(_.content.contains("orphan tool result"))
       fallback should have size 1
-      fallback.head.content should include (orphanCallId.value)
+      fallback.head.content should include(orphanCallId.value)
       val rendered = Probe.renderFor(frames, TestAgent)
       // Nothing pairs on the wire, so no ToolResult message is emitted —
       // the shape that used to 400 the request never reaches the API.
@@ -79,7 +81,9 @@ class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
       // into the agent's context on every subsequent turn.
       val events = sigil.orchestrator.SyntheticDiagnostic(
         sigil.orchestrator.Directive.RefusalChallenge,
-        TestAgent, convId, TestTopicId,
+        TestAgent,
+        convId,
+        TestTopicId,
         disposition = sigil.event.MessageDisposition.Failure(recoverable = true)
       ).collect { case e: Event => e }
       val frames = FrameBuilder.build(events)
@@ -90,7 +94,7 @@ class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
       frames.collect { case tc: ContextFrame.ToolCall => tc } should have size 1
       val systems = Probe.renderFor(frames, TestAgent).collect { case s: ProviderMessage.System => s }
       systems should have size 1
-      systems.head.content should include ("find_capability")
+      systems.head.content should include("find_capability")
     }
 
     "pair correctly when the ToolCall IS in the request" in {
@@ -103,7 +107,7 @@ class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
           callId = callId,
           participantId = TestAgent,
           sourceEventId = Id[Event]("tc-event"),
-          wireCallId = Some("call_wire_abc"),  // upstream wire id
+          wireCallId = Some("call_wire_abc"), // upstream wire id
           state = ToolCallState.Complete("{\"hits\":[]}")
         )
       )
@@ -117,11 +121,11 @@ class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
     "drop the orphan even when the request also has a valid pair (mixed scenario)" in {
       val orphanId = Id[Event]("orphan")
       val invoke = ToolInvoke(
-        toolName       = ToolName("vector_lookup"),
-        participantId  = TestAgent,
+        toolName = ToolName("vector_lookup"),
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = TestTopicId,
-        state          = EventState.Complete
+        topicId = TestTopicId,
+        state = EventState.Complete
       )
       val events = List[Event](
         userText("hi"),
@@ -139,28 +143,28 @@ class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
   }
 
   private def userText(text: String): Message = Message(
-    participantId  = TestUser,
+    participantId = TestUser,
     conversationId = convId,
-    topicId        = TestTopicId,
-    content        = Vector(ResponseContent.Text(text)),
-    state          = EventState.Complete
+    topicId = TestTopicId,
+    content = Vector(ResponseContent.Text(text)),
+    state = EventState.Complete
   )
 
   private def agentText(text: String): Message = Message(
-    participantId  = TestAgent,
+    participantId = TestAgent,
     conversationId = convId,
-    topicId        = TestTopicId,
-    content        = Vector(ResponseContent.Text(text)),
-    state          = EventState.Complete
+    topicId = TestTopicId,
+    content = Vector(ResponseContent.Text(text)),
+    state = EventState.Complete
   )
 
   private def toolResultMessage(origin: Id[Event], text: String): Message = Message(
-    participantId  = TestAgent,
+    participantId = TestAgent,
     conversationId = convId,
-    topicId        = TestTopicId,
-    role           = MessageRole.Tool,
-    content        = Vector(ResponseContent.Text(text)),
-    state          = EventState.Complete,
-    origin         = Some(origin)
+    topicId = TestTopicId,
+    role = MessageRole.Tool,
+    content = Vector(ResponseContent.Text(text)),
+    state = EventState.Complete,
+    origin = Some(origin)
   )
 }

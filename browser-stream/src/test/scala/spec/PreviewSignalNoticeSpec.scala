@@ -39,7 +39,7 @@ class PreviewSignalNoticeSpec extends AnyWordSpec with Matchers {
 
   "PreviewSignal / PreviewSignalReply" should {
 
-    "round-trip through the polymorphic Signal RW for every SignalMessage case" in {
+    "round-trip through the polymorphic Signal RW for every SignalMessage case" in
       messages.foreach { message =>
         val outbound: Signal = PreviewSignal(convId, "stream-1", message)
         signalRW.write(signalRW.read(outbound)) shouldBe outbound
@@ -47,7 +47,6 @@ class PreviewSignalNoticeSpec extends AnyWordSpec with Matchers {
         val inbound: Signal = PreviewSignalReply(convId, "stream-1", message)
         signalRW.write(signalRW.read(inbound)) shouldBe inbound
       }
-    }
 
     "carry a viewer-addressed signal's addressee across the wire" in {
       // A registered ParticipantId subtype — an addressed signal is only

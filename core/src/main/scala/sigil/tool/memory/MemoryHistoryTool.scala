@@ -4,14 +4,16 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 /**
  * Opt-in tool: return the full version history of a keyed memory,
  * chronologically (oldest → newest).
  */
 case object MemoryHistoryTool extends Tool {
-  type Input  = MemoryHistoryInput
+  type Input = MemoryHistoryInput
   type Output = TextToolOutput
   val io: ToolIO[MemoryHistoryInput, TextToolOutput] = ToolIO.derived[MemoryHistoryInput, TextToolOutput].withExamples(
     ToolExample("History of the user's theme preference", MemoryHistoryInput(key = "user.ui.theme"))
@@ -33,7 +35,6 @@ case object MemoryHistoryTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("memory", "history", "version"))
   )
 
-
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 
   private def executeResult(input: MemoryHistoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
@@ -47,7 +48,7 @@ case object MemoryHistoryTool extends Tool {
   private def resolveSpace(input: MemoryHistoryInput, context: ToolContext) =
     input.spaceId match {
       case Some(s) => Task.pure(Some(s))
-      case None    => context.sigil.defaultMemorySpace(context.conversation.id)
+      case None => context.sigil.defaultMemorySpace(context.conversation.id)
     }
 
   private def render(key: String, versions: List[ContextMemory]): String =

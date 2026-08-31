@@ -66,7 +66,8 @@ class SearchConversationToolSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
       val stream = SearchConversationTool.execute(
         SearchConversationInput(query = "Qdrant"),
-        contextFor(convId), Event.id()
+        contextFor(convId),
+        Event.id()
       )
       stream.toList.map { emitted =>
         val out = typed(emitted)
@@ -80,7 +81,8 @@ class SearchConversationToolSpec extends AsyncWordSpec with AsyncTaskSpec with M
     "emit an empty-hits result when nothing matches" in {
       val stream = SearchConversationTool.execute(
         SearchConversationInput(query = "zzznomatch"),
-        contextFor(convId), Event.id()
+        contextFor(convId),
+        Event.id()
       )
       stream.toList.map { emitted =>
         val out = typed(emitted)

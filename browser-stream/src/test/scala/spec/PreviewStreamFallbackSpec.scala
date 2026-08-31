@@ -40,7 +40,8 @@ class PreviewStreamFallbackSpec extends AnyWordSpec with Matchers with BeforeAnd
 
   override protected def afterAll(): Unit = {
     if (chromeAvailable) {
-      try TestStreamBrowserSigil.disposeStreamBrowserController(convId).sync() catch { case _: Throwable => () }
+      try TestStreamBrowserSigil.disposeStreamBrowserController(convId).sync()
+      catch { case _: Throwable => () }
       fixture.stop().sync()
     }
     TestStreamBrowserSigil.shutdown.sync()
@@ -63,7 +64,7 @@ class PreviewStreamFallbackSpec extends AnyWordSpec with Matchers with BeforeAnd
         case s: PreviewStreamSession.Screencast => s
         case other => fail(s"expected a screencast fallback, got $other")
       }
-      TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should contain (screencast.streamId)
+      TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should contain(screencast.streamId)
 
       try {
         // Chrome buffers only a handful of frames before an un-acked
@@ -81,9 +82,8 @@ class PreviewStreamFallbackSpec extends AnyWordSpec with Matchers with BeforeAnd
           case List(a, b) => b should be > a
           case _ => ()
         }
-      } finally {
+      } finally
         screencast.stop.sync()
-      }
       TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should not contain screencast.streamId
       // The stream completes rather than parking forever on an empty queue.
       screencast.frames.toList.timeout(30.seconds).sync() shouldBe empty
@@ -95,9 +95,12 @@ class PreviewStreamFallbackSpec extends AnyWordSpec with Matchers with BeforeAnd
       val controller = TestStreamBrowserSigil.streamBrowserController(convId).sync()
       controller.run(_.navigate(fixture.url)).sync()
 
-      val session = TestStreamBrowserSigil.previewStreamFor(convId, StreamConfig(
-        width = Some(390), height = Some(844)
-      )).sync()
+      val session = TestStreamBrowserSigil.previewStreamFor(
+        convId,
+        StreamConfig(
+          width = Some(390),
+          height = Some(844)
+        )).sync()
       val screencast = session match {
         case s: PreviewStreamSession.Screencast => s
         case other => fail(s"expected a screencast fallback, got $other")
@@ -148,9 +151,8 @@ class PreviewStreamFallbackSpec extends AnyWordSpec with Matchers with BeforeAnd
         }
         thrown.reason shouldBe StreamUnavailable.NoVirtualDisplay
         TestStreamBrowserSigil.previewStreamsFor(convId) shouldBe empty
-      } finally {
+      } finally
         TestStreamBrowserSigil.setFallbackToScreencast(true)
-      }
     }
 
     "let the idle reaper dispose a preview browser nobody is watching" in {

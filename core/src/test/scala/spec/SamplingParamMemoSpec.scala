@@ -40,13 +40,18 @@ class SamplingParamMemoSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private def rejection(message: String): ProviderStreamException =
     new ProviderStreamException(
-      providerKey = "anthropic", code = 0, typ = "invalid_request_error",
-      message_ = message, status = Some(400)
+      providerKey = "anthropic",
+      code = 0,
+      typ = "invalid_request_error",
+      message_ = message,
+      status = Some(400)
     )
 
-  /** Fake provider recording every call's (modelId, temperature). It 400s
-    * whenever a sampling param is set and emits a clean `respond` otherwise. */
-  private final class SamplingRejecter extends Provider {
+  /**
+   * Fake provider recording every call's (modelId, temperature). It 400s
+   * whenever a sampling param is set and emits a clean `respond` otherwise.
+   */
+  final private class SamplingRejecter extends Provider {
     val calls: java.util.concurrent.ConcurrentLinkedQueue[(String, Option[Double])] =
       new java.util.concurrent.ConcurrentLinkedQueue[(String, Option[Double])]()
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -71,20 +76,21 @@ class SamplingParamMemoSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
-      generationSettings = GenerationSettings(temperature = Some(0.7)))
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
+      generationSettings = GenerationSettings(temperature = Some(0.7))
+    )
 
   private def turn(convId: Id[Conversation], text: String): Task[Unit] =
     for {
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text(text)),
-             state          = EventState.Complete))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text(text)),
+        state = EventState.Complete))
       _ <- TestSigil.awaitSettled(convId)
     } yield ()
 
@@ -120,20 +126,20 @@ class SamplingParamMemoSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val provider = new SamplingRejecter
       TestSigil.setProvider(Task.pure(provider))
       val convId = Conversation.id(s"sampling-memo-${rapid.Unique()}")
-      val conv   = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
+      val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
 
       // The model must NOT be pre-memoed for this to be a real test.
       Provider.rejectsSamplingParam(modelId, "temperature") shouldBe false
 
       for {
-        _        <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _        <- turn(convId, "First request.")
-        boundary  = provider.calls.size()
-        _        <- turn(convId, "Second request.")
-        _        <- turn(convId, "Third request.")
-        evs      <- eventsFor(convId)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- turn(convId, "First request.")
+        boundary = provider.calls.size()
+        _ <- turn(convId, "Second request.")
+        _ <- turn(convId, "Third request.")
+        evs <- eventsFor(convId)
       } yield {
-        val all   = provider.calls.asScala.toList
+        val all = provider.calls.asScala.toList
         val turn1 = all.take(boundary).collect { case (m, t) if m == modelId.value => t }
         val later = all.drop(boundary).collect { case (m, t) if m == modelId.value => t }
 
@@ -152,8 +158,8 @@ class SamplingParamMemoSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         later.count(_.isDefined) shouldBe 0
 
         // Every turn produced a real reply; no Failure bubbles.
-        evs.collect { case m: Message if m.participantId == TestAgent && m.isSuccess && m.role == MessageRole.Standard => m
-          } should not be empty
+        evs.collect { case m: Message if m.participantId == TestAgent && m.isSuccess && m.role == MessageRole.Standard => m } should not be
+          empty
         evs.collect { case m: Message if m.isFailure => m } shouldBe empty
       }
     }

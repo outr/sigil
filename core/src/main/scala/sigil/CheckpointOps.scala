@@ -12,14 +12,20 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, TurnPlan, UpsertMemoryResult}
+import sigil.conversation.{
+  ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource,
+  MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput,
+  TurnPlan, UpsertMemoryResult
+}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.governor.{BudgetDirective, BudgetGovernor, CheckpointIntervention, GovernorContext}
-import sigil.governor.{DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
-  ProgressGovernor, TurnDecisionGovernor, TurnGovernor}
+import sigil.governor.{
+  DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
+  ProgressGovernor, TurnDecisionGovernor, TurnGovernor
+}
 import sigil.transport.SignalTransport
 
 import java.nio.file.Path
@@ -28,18 +34,28 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.{GenerationSettings, TokenUsage}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
+import sigil.event.{
+  AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange,
+  TopicChangeKind
+}
 import sigil.role.Role
 import sigil.orchestrator.{BudgetScope, Directive, Orchestrator}
 import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
-import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform}
+import sigil.pipeline.{
+  ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect,
+  MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub,
+  TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform
+}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.provider.{ContextSection, ContextSections, InstructionTier, ModelProfile, PromptShape, Reliability, ResolvedReferences}
 import sigil.service.Service
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
+import sigil.signal.{
+  AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal,
+  ToolDelta, TopicDelta
+}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
@@ -65,35 +81,39 @@ import java.util.concurrent.atomic.AtomicReference
  */
 trait CheckpointOps { this: Sigil =>
 
-  /** Per-claim progress-checkpoint state. Keyed by the AgentState id
-    * that owns the claim. Carries the prior checkpoint's `currentStatus`
-    * (anchor for the next checkpoint's "did things change?" question),
-    * the count of consecutive `meaningfulProgress = false`
-    * checkpoints — the framework intervenes when the count reaches
-    * [[consecutiveNoProgressLimit]] — and the churn chain: the prior
-    * window's mutation targets plus how many consecutive windows have
-    * re-mutated only already-seen targets without any verification
-    * call. Populated on first checkpoint; cleared on `releaseClaim`.
-    *
-    * When the planner tier is enabled ([[plannerModelId]]) the state
-    * additionally carries the turn's plan artifact, the iteration of
-    * the most recent planner review, and the anomaly latch that
-    * mechanical signals (stall heuristics, churn chain, budget
-    * check-in) set to arm the next boundary's planner consult. */
-  private[sigil] final case class CheckpointState(@volatile var lastStatus: Option[String],
-                                            @volatile var noProgressStreak: Int,
-                                            @volatile var lastMutationTargets: Set[String] = Set.empty,
-                                            @volatile var repeatUnverifiedWindows: Int = 0,
-                                            @volatile var plan: Option[TurnPlan] = None,
-                                            @volatile var lastPlannerIteration: Int = 0,
-                                            @volatile var plannerAnomalyPending: Boolean = false)
-  private[sigil] final val checkpointStates: ConcurrentHashMap[Id[Event], CheckpointState] = new ConcurrentHashMap()
+  /**
+   * Per-claim progress-checkpoint state. Keyed by the AgentState id
+   * that owns the claim. Carries the prior checkpoint's `currentStatus`
+   * (anchor for the next checkpoint's "did things change?" question),
+   * the count of consecutive `meaningfulProgress = false`
+   * checkpoints — the framework intervenes when the count reaches
+   * [[consecutiveNoProgressLimit]] — and the churn chain: the prior
+   * window's mutation targets plus how many consecutive windows have
+   * re-mutated only already-seen targets without any verification
+   * call. Populated on first checkpoint; cleared on `releaseClaim`.
+   *
+   * When the planner tier is enabled ([[plannerModelId]]) the state
+   * additionally carries the turn's plan artifact, the iteration of
+   * the most recent planner review, and the anomaly latch that
+   * mechanical signals (stall heuristics, churn chain, budget
+   * check-in) set to arm the next boundary's planner consult.
+   */
+  final private[sigil] case class CheckpointState(@volatile var lastStatus: Option[String],
+                                                  @volatile var noProgressStreak: Int,
+                                                  @volatile var lastMutationTargets: Set[String] = Set.empty,
+                                                  @volatile var repeatUnverifiedWindows: Int = 0,
+                                                  @volatile var plan: Option[TurnPlan] = None,
+                                                  @volatile var lastPlannerIteration: Int = 0,
+                                                  @volatile var plannerAnomalyPending: Boolean = false)
+  final private[sigil] val checkpointStates: ConcurrentHashMap[Id[Event], CheckpointState] = new ConcurrentHashMap()
 
-  /** Run the checkpoint for a boundary the caller has already decided is
-    * due. `modelProfile` and `plannerCadence` come from the
-    * [[sigil.governor.GovernorContext]] assembled once per boundary, so
-    * the per-model derivations are not repeated here. */
-  private[sigil] final def runProgressCheckpoint(agent: AgentParticipant,
+  /**
+   * Run the checkpoint for a boundary the caller has already decided is
+   * due. `modelProfile` and `plannerCadence` come from the
+   * [[sigil.governor.GovernorContext]] assembled once per boundary, so
+   * the per-model derivations are not repeated here.
+   */
+  final private[sigil] def runProgressCheckpoint(agent: AgentParticipant,
                                                  convId: Id[Conversation],
                                                  claimed: AgentState,
                                                  iteration: Int,
@@ -102,7 +122,8 @@ trait CheckpointOps { this: Sigil =>
     if (plannerModelId.isDefined)
       runPlannerCheckpoint(agent, convId, claimed, iteration, plannerModelId.get, modelProfile, plannerCadence)
     else {
-      val state = checkpointStates.computeIfAbsent(claimed._id,
+      val state = checkpointStates.computeIfAbsent(
+        claimed._id,
         _ => CheckpointState(lastStatus = None, noProgressStreak = 0))
       val priorStatus = state.lastStatus
       val stallTask = evaluateStall(convId, agent.id)
@@ -151,8 +172,11 @@ trait CheckpointOps { this: Sigil =>
         // reached the checkpoint and it ran on the agent's default model (e.g.
         // Fable, which can't satisfy the forced report → silent None).
         val resolveCheckpointModel: Task[Id[Model]] =
-          auxModelFor(convId, sigil.tool.consult.ProgressReflectionTool.consultWorkType,
-            List(agent.id), progressReflectionModelFor(agent))
+          auxModelFor(
+            convId,
+            sigil.tool.consult.ProgressReflectionTool.consultWorkType,
+            List(agent.id),
+            progressReflectionModelFor(agent))
         // Sigil #394 — shared processing for a checkpoint report: persist the
         // ProgressCheckpoint, update the no-progress streak, and build the
         // cooperative/terminal intervention. Called both for a real reflector
@@ -186,11 +210,12 @@ trait CheckpointOps { this: Sigil =>
               else if (state.repeatUnverifiedWindows >= 2)
                 sigil.conversation.compression.StallDetector.Signal(
                   detected = true,
-                  reason   = Some(
+                  reason = Some(
                     s"You have re-edited the same target(s) (${targets.toList.sorted.take(3).mkString(", ")}) across " +
                       s"${state.repeatUnverifiedWindows + 1} checkpoint windows without any compile/test/diagnostics call — " +
                       "editing again cannot tell you whether anything is fixed. VERIFY the current state (compile, run " +
-                      "diagnostics) before touching those targets again."))
+                      "diagnostics) before touching those targets again.")
+                )
               else sigil.conversation.compression.StallDetector.Signal.Empty
             // fold the objective stall signal into the
             //
@@ -203,20 +228,19 @@ trait CheckpointOps { this: Sigil =>
             // veto authority over both signals (an identical-args write
             // loop is still a stall, however many "successes" it
             // settles).
-            val effectiveMeaningful =
-              (report.meaningfulProgress || ctx.windowMutations > 0) && !stall.detected
-            val effectiveStuckOn    = stall.reason.orElse(report.stuckOn)
+            val effectiveMeaningful = (report.meaningfulProgress || ctx.windowMutations > 0) && !stall.detected
+            val effectiveStuckOn = stall.reason.orElse(report.stuckOn)
             val checkpoint = sigil.event.ProgressCheckpoint(
-              participantId        = agent.id,
-              conversationId       = convId,
-              topicId              = topicId,
-              iterationCount       = iteration,
+              participantId = agent.id,
+              conversationId = convId,
+              topicId = topicId,
+              iterationCount = iteration,
               prevCheckpointStatus = priorStatus,
-              currentStatus        = report.currentStatus,
-              meaningfulProgress   = effectiveMeaningful,
-              remainingSteps       = report.remainingSteps,
-              stuckOn              = effectiveStuckOn,
-              shouldAskUser        = report.shouldAskUser
+              currentStatus = report.currentStatus,
+              meaningfulProgress = effectiveMeaningful,
+              remainingSteps = report.remainingSteps,
+              stuckOn = effectiveStuckOn,
+              shouldAskUser = report.shouldAskUser
             )
             publish(checkpoint).flatMap { _ =>
               // Update side-state for the next checkpoint comparison.
@@ -268,65 +292,70 @@ trait CheckpointOps { this: Sigil =>
             }
           }
         resolveCheckpointModel.flatMap { checkpointModelId =>
-        sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ProgressReflectionInput](
-          sigil = this,
-          modelId = checkpointModelId,
-          chain = List(agent.id),
-          systemPrompt = systemPrompt,
-          userPrompt = userPrompt,
-          tool = sigil.tool.consult.ProgressReflectionTool,
-          generationSettings = sigil.tool.consult.ProgressReflectionTool.consultSettings
-        ).flatMap {
-        case Some(report) => stallTask.flatMap(stall => processCheckpointReport(report, stall))
-        case None         =>
-          // Sigil #394 — fail SAFE, not open. A checkpoint that couldn't
-          // produce a report (a forced-tool_choice-incompatible model returned
-          // naked text → None) must not silently switch OFF stall detection
-          // (observed: 44 of 64 checkpoints returned None on Fable, the streak
-          // never built, zero interventions across 84 iterations). Fall back to
-          // the objective signals — the StallDetector verdict and the
-          // same-target churn chain — so an incapable checkpoint model
-          // can't disable the guardrails entirely.
-          stallTask.flatMap { stall =>
-            val wouldChurn = ctx.windowMutationTargets.nonEmpty && !ctx.windowVerified &&
-              ctx.windowMutationTargets.subsetOf(state.lastMutationTargets) &&
-              state.repeatUnverifiedWindows + 1 >= 2
-            if (stall.detected || wouldChurn)
-              processCheckpointReport(
-                sigil.tool.consult.ProgressReflectionInput(
-                  currentStatus      = stall.reason.getOrElse("Repeating the same kind of action without new information."),
-                  meaningfulProgress = false,
-                  remainingSteps     = "",
-                  stuckOn            = stall.reason,
-                  shouldAskUser      = false),
-                stall)
-            else Task.pure(None)
+          sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ProgressReflectionInput](
+            sigil = this,
+            modelId = checkpointModelId,
+            chain = List(agent.id),
+            systemPrompt = systemPrompt,
+            userPrompt = userPrompt,
+            tool = sigil.tool.consult.ProgressReflectionTool,
+            generationSettings = sigil.tool.consult.ProgressReflectionTool.consultSettings
+          ).flatMap {
+            case Some(report) => stallTask.flatMap(stall => processCheckpointReport(report, stall))
+            case None =>
+              // Sigil #394 — fail SAFE, not open. A checkpoint that couldn't
+              // produce a report (a forced-tool_choice-incompatible model returned
+              // naked text → None) must not silently switch OFF stall detection
+              // (observed: 44 of 64 checkpoints returned None on Fable, the streak
+              // never built, zero interventions across 84 iterations). Fall back to
+              // the objective signals — the StallDetector verdict and the
+              // same-target churn chain — so an incapable checkpoint model
+              // can't disable the guardrails entirely.
+              stallTask.flatMap { stall =>
+                val wouldChurn = ctx.windowMutationTargets.nonEmpty && !ctx.windowVerified &&
+                  ctx.windowMutationTargets.subsetOf(state.lastMutationTargets) &&
+                  state.repeatUnverifiedWindows + 1 >= 2
+                if (stall.detected || wouldChurn)
+                  processCheckpointReport(
+                    sigil.tool.consult.ProgressReflectionInput(
+                      currentStatus = stall.reason.getOrElse("Repeating the same kind of action without new information."),
+                      meaningfulProgress = false,
+                      remainingSteps = "",
+                      stuckOn = stall.reason,
+                      shouldAskUser = false
+                    ),
+                    stall
+                  )
+                else Task.pure(None)
+              }
+          }.handleError { e =>
+            Task(scribe.warn(s"runProgressCheckpoint failed for ${agent.id.value}/${convId.value} iter=$iteration: ${e.getMessage}"))
+              .map(_ => None)
           }
-      }.handleError { e =>
-        Task(scribe.warn(s"runProgressCheckpoint failed for ${agent.id.value}/${convId.value} iter=$iteration: ${e.getMessage}"))
-          .map(_ => None)
-      }
-      }
+        }
       }
     }
   }
 
-  /** Planner-tier progress checkpoint ([[plannerModelId]]). Replaces
-    * the executor's self-assessment with a higher-tier verdict against
-    * an explicit [[TurnPlan]]. The mechanical signals (StallDetector,
-    * same-target churn chain) arm the planner via the anomaly latch
-    * instead of driving the self-report streak machinery, and the
-    * planner LLM call itself fires sparsely: on a pending anomaly,
-    * when no plan exists yet (the first review creates it), or on the
-    * [[plannerCadence]] tick. All other boundaries are free. */
-  private final def runPlannerCheckpoint(agent: AgentParticipant,
+  /**
+   * Planner-tier progress checkpoint ([[plannerModelId]]). Replaces
+   * the executor's self-assessment with a higher-tier verdict against
+   * an explicit [[TurnPlan]]. The mechanical signals (StallDetector,
+   * same-target churn chain) arm the planner via the anomaly latch
+   * instead of driving the self-report streak machinery, and the
+   * planner LLM call itself fires sparsely: on a pending anomaly,
+   * when no plan exists yet (the first review creates it), or on the
+   * [[plannerCadence]] tick. All other boundaries are free.
+   */
+  final private def runPlannerCheckpoint(agent: AgentParticipant,
                                          convId: Id[Conversation],
                                          claimed: AgentState,
                                          iteration: Int,
                                          plannerModel: Id[Model],
                                          modelProfile: ModelProfile,
                                          plannerCadence: Int): Task[Option[CheckpointIntervention]] = {
-    val state = checkpointStates.computeIfAbsent(claimed._id,
+    val state = checkpointStates.computeIfAbsent(
+      claimed._id,
       _ => CheckpointState(lastStatus = None, noProgressStreak = 0))
     evaluateStall(convId, agent.id).flatMap { rawStall =>
       loadProgressContext(convId, agent.id).flatMap { ctx =>
@@ -395,30 +424,31 @@ trait CheckpointOps { this: Sigil =>
                     scribe.warn(s"planner_verdict truncated for ${agent.id.value}/${convId.value} iter=$iteration" +
                       t.completionTokens.map(c => s" ($c completion tokens)").getOrElse(""))
                   case sigil.tool.consult.ConsultOutcome.Failed(cause) =>
-                    scribe.warn(s"planner_verdict consult failed for ${agent.id.value}/${convId.value} iter=$iteration: ${cause.getMessage}")
+                    scribe.warn(
+                      s"planner_verdict consult failed for ${agent.id.value}/${convId.value} iter=$iteration: ${cause.getMessage}")
                   case _ => () // NoOpinion; Unparseable already warned in invokeRich
                 }
                 anomalyReason match {
                   case Some(reason) =>
                     val checkpoint = sigil.event.ProgressCheckpoint(
-                      participantId        = agent.id,
-                      conversationId       = convId,
-                      topicId              = conv.currentTopicId,
-                      iterationCount       = iteration,
+                      participantId = agent.id,
+                      conversationId = convId,
+                      topicId = conv.currentTopicId,
+                      iterationCount = iteration,
                       prevCheckpointStatus = state.lastStatus,
-                      currentStatus        = reason,
-                      meaningfulProgress   = false,
-                      remainingSteps       = state.plan.map(_.doneCriteria).getOrElse(""),
-                      stuckOn              = Some(reason),
-                      shouldAskUser        = false
+                      currentStatus = reason,
+                      meaningfulProgress = false,
+                      remainingSteps = state.plan.map(_.doneCriteria).getOrElse(""),
+                      stuckOn = Some(reason),
+                      shouldAskUser = false
                     )
                     publish(checkpoint).map { _ =>
                       state.lastStatus = Some(reason)
                       state.noProgressStreak = state.noProgressStreak + 1
                       Some(CheckpointIntervention(
-                        directive  = Directive.ProgressCheckpoint(reason, Some(reason)),
+                        directive = Directive.ProgressCheckpoint(reason, Some(reason)),
                         askingUser = false,
-                        terminal   = terminalOnPersistentNoProgress(state.noProgressStreak)
+                        terminal = terminalOnPersistentNoProgress(state.noProgressStreak)
                       ))
                     }
                   case None => Task.pure(None)
@@ -432,13 +462,15 @@ trait CheckpointOps { this: Sigil =>
     }
   }
 
-  /** Route a planner verdict: maintain the plan artifact (created on
-    * the first review, revised on replan), publish the `_plan` and
-    * `_planner_correction` directives, and persist the checkpoint.
-    * Always non-terminal — a plan-holding model saying on_track must
-    * never be stall-killed, and a deviating correction gives the
-    * executor at least one iteration to act on it. */
-  private final def applyPlannerVerdict(agent: AgentParticipant,
+  /**
+   * Route a planner verdict: maintain the plan artifact (created on
+   * the first review, revised on replan), publish the `_plan` and
+   * `_planner_correction` directives, and persist the checkpoint.
+   * Always non-terminal — a plan-holding model saying on_track must
+   * never be stall-killed, and a deviating correction gives the
+   * executor at least one iteration to act on it.
+   */
+  final private def applyPlannerVerdict(agent: AgentParticipant,
                                         conv: Conversation,
                                         state: CheckpointState,
                                         iteration: Int,
@@ -447,11 +479,11 @@ trait CheckpointOps { this: Sigil =>
     state.plannerAnomalyPending = false
     val returnedPhase = Some(verdict.currentPhase.trim).filter(_.nonEmpty)
     val returnedPlan = for {
-      objective    <- verdict.objective.map(_.trim).filter(_.nonEmpty)
+      objective <- verdict.objective.map(_.trim).filter(_.nonEmpty)
       doneCriteria <- verdict.doneCriteria.map(_.trim).filter(_.nonEmpty)
     } yield TurnPlan(
-      objective    = objective,
-      constraints  = verdict.constraints.map(_.trim).filter(_.nonEmpty),
+      objective = objective,
+      constraints = verdict.constraints.map(_.trim).filter(_.nonEmpty),
       doneCriteria = doneCriteria,
       currentPhase = returnedPhase)
     val replan = verdict.verdict == "replan"
@@ -475,16 +507,16 @@ trait CheckpointOps { this: Sigil =>
       else if (replan) s"Planner: replanned — ${returnedPhase.getOrElse("plan revised")}"
       else s"Planner: on track — ${returnedPhase.getOrElse("progressing")}"
     val checkpoint = sigil.event.ProgressCheckpoint(
-      participantId        = agent.id,
-      conversationId       = conv._id,
-      topicId              = conv.currentTopicId,
-      iterationCount       = iteration,
+      participantId = agent.id,
+      conversationId = conv._id,
+      topicId = conv.currentTopicId,
+      iterationCount = iteration,
       prevCheckpointStatus = state.lastStatus,
-      currentStatus        = status,
-      meaningfulProgress   = !deviating,
-      remainingSteps       = state.plan.map(_.doneCriteria).getOrElse(""),
-      stuckOn              = if (deviating) Some(correction) else None,
-      shouldAskUser        = false
+      currentStatus = status,
+      meaningfulProgress = !deviating,
+      remainingSteps = state.plan.map(_.doneCriteria).getOrElse(""),
+      stuckOn = if (deviating) Some(correction) else None,
+      shouldAskUser = false
     )
     publishPlanTask
       .flatMap(_ => correctionTask)
@@ -520,15 +552,19 @@ trait CheckpointOps { this: Sigil =>
       |can tell the work is finished) — and return it with your verdict. Keep every plan
       |field concise; never quote the user's request verbatim.""".stripMargin
 
-  /** Render the `_plan` directive the executor reads: the plan
-    * artifact as an internal Tool-role message. */
+  /**
+   * Render the `_plan` directive the executor reads: the plan
+   * artifact as an internal Tool-role message.
+   */
   private def renderPlanDirective(plan: TurnPlan): String = Directive.Plan(plan).render
 
-  /** Stitch the planner consult's user prompt: the user task, the held
-    * plan, the window's activity, turn spend, and the anomaly reason
-    * when one armed this review. Window-scoped and line-bounded via
-    * [[loadProgressContext]], so the prompt stays bounded regardless
-    * of conversation length. */
+  /**
+   * Stitch the planner consult's user prompt: the user task, the held
+   * plan, the window's activity, turn spend, and the anomaly reason
+   * when one armed this review. Window-scoped and line-bounded via
+   * [[loadProgressContext]], so the prompt stays bounded regardless
+   * of conversation length.
+   */
   private def renderPlannerPrompt(ctx: ProgressContext,
                                   plan: Option[TurnPlan],
                                   iteration: Int,
@@ -538,7 +574,7 @@ trait CheckpointOps { this: Sigil =>
       case Some(t) =>
         val directiveLine = ctx.latestDirective match {
           case Some(d) => s"The user has since said \"$d\" to continue this objective.\n\n"
-          case None    => "\n"
+          case None => "\n"
         }
         s"The user's request:\n\"$t\"\n\n" + directiveLine
       case None => "The user's request: (no recent substantive user message found)\n\n"
@@ -560,7 +596,7 @@ trait CheckpointOps { this: Sigil =>
         val numbered = list.zipWithIndex.map { case (line, i) => s"  ${i + 1}. $line" }.mkString("\n")
         s"${earlierLine}The executor's work since the last checkpoint:\n$numbered\n\n"
     }
-    val spendLine = turnCost.filter(_ > 0).map(c => f"This turn has spent $$${c}%.2f so far.\n\n").getOrElse("")
+    val spendLine = turnCost.filter(_ > 0).map(c => f"This turn has spent $$$c%.2f so far.\n\n").getOrElse("")
     val anomalyLine = anomaly.map(a => s"An anomaly signal fired: $a\n\n").getOrElse("")
     val ask =
       s"The executor is at iteration $iteration. Deliver your verdict: on_track when this trajectory is " +
@@ -570,17 +606,19 @@ trait CheckpointOps { this: Sigil =>
     taskBlock + planBlock + historyBlock + spendLine + anomalyLine + ask
   }
 
-  /** Load the context the reflection prompt needs: the user's most
-    * recent substantive Message + the agent's tool-call history in the
-    * window since the prior checkpoint. Best-effort — failures fall
-    * through to empty context rather than aborting the checkpoint.
-    *
-    * The window scoping matters more than it looks: the history was
-    * previously the whole arc since the objective, head-capped — so
-    * past ~20 calls the reflector's input FROZE, its status echoed
-    * verbatim forever, and the "identical status = no progress" rule
-    * marched every long healthy turn into a forced kill. */
-  protected final def loadProgressContext(convId: Id[Conversation],
+  /**
+   * Load the context the reflection prompt needs: the user's most
+   * recent substantive Message + the agent's tool-call history in the
+   * window since the prior checkpoint. Best-effort — failures fall
+   * through to empty context rather than aborting the checkpoint.
+   *
+   * The window scoping matters more than it looks: the history was
+   * previously the whole arc since the objective, head-capped — so
+   * past ~20 calls the reflector's input FROZE, its status echoed
+   * verbatim forever, and the "identical status = no progress" rule
+   * marched every long healthy turn into a forced kill.
+   */
+  final protected def loadProgressContext(convId: Id[Conversation],
                                           agentId: ParticipantId): Task[ProgressContext] =
     withDB { db =>
       db.conversationEventsConsistent(convId).flatMap { all =>
@@ -592,9 +630,9 @@ trait CheckpointOps { this: Sigil =>
         // asked while judging progress against the real goal.
         val userMsgs = convEvents.collect {
           case m: Message
-            if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
-               m.role == MessageRole.Standard &&
-               m.content.nonEmpty =>
+              if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
+                m.role == MessageRole.Standard &&
+                m.content.nonEmpty =>
             m
         }
         val (substantiveUser, directive) =
@@ -610,7 +648,7 @@ trait CheckpointOps { this: Sigil =>
             case m: Message if m.role == MessageRole.Standard && m.content.nonEmpty => m
           }.minByOption(_.timestamp.value)
         )
-        val task: Option[String]            = substantive.map(m => textOfContent(m.content))
+        val task: Option[String] = substantive.map(m => textOfContent(m.content))
         val latestDirective: Option[String] = directive.map(m => textOfContent(m.content))
         val objectiveCutoff = substantive.map(_.timestamp.value).getOrElse(0L)
         // The window opens at the prior checkpoint — never before the
@@ -625,7 +663,7 @@ trait CheckpointOps { this: Sigil =>
         // are bookkeeping, not agent activity — excluded.
         val arcInvokes = convEvents.collect {
           case ti: sigil.event.ToolInvoke
-            if ti.timestamp.value > objectiveCutoff && ti.participantId == agentId && !ti.internal => ti
+              if ti.timestamp.value > objectiveCutoff && ti.participantId == agentId && !ti.internal => ti
         }.sortBy(_.timestamp.value)
         val windowInvokes = arcInvokes.filter(_.timestamp.value > windowCutoff)
         val shown = windowInvokes.takeRight(20)
@@ -649,28 +687,30 @@ trait CheckpointOps { this: Sigil =>
             ti.outcome == sigil.event.ToolOutcome.Success &&
               toolsByName.get(ti.toolName.value).exists(_.verification))
           ProgressContext(
-            userTask              = task,
-            toolHistory           = shown.map(renderInvokeHistoryLine),
-            latestDirective       = latestDirective,
-            earlierCalls          = arcInvokes.size - shown.size,
-            windowMutations       = successfulMutations.size,
+            userTask = task,
+            toolHistory = shown.map(renderInvokeHistoryLine),
+            latestDirective = latestDirective,
+            earlierCalls = arcInvokes.size - shown.size,
+            windowMutations = successfulMutations.size,
             windowMutationTargets = targets,
-            windowVerified        = verified
+            windowVerified = verified
           )
         }
       }
     }.handleError(_ => Task.pure(ProgressContext(None, Nil)))
 
-  /** One reflection-history line for a window invoke. Respond calls
-    * carry their `endsTurn` framing: a mid-task status update must not
-    * read as the final reply, or the reflector concludes "final
-    * response delivered" while the work is still in flight and every
-    * later checkpoint inherits the false completion. */
-  private final def renderInvokeHistoryLine(ti: sigil.event.ToolInvoke): String = {
+  /**
+   * One reflection-history line for a window invoke. Respond calls
+   * carry their `endsTurn` framing: a mid-task status update must not
+   * read as the final reply, or the reflector concludes "final
+   * response delivered" while the work is still in flight and every
+   * later checkpoint inherits the false completion.
+   */
+  final private def renderInvokeHistoryLine(ti: sigil.event.ToolInvoke): String = {
     val tail = ti.outcome match {
-      case sigil.event.ToolOutcome.Success       => "OK"
+      case sigil.event.ToolOutcome.Success => "OK"
       case sigil.event.ToolOutcome.Failure(_, _) => "FAIL"
-      case sigil.event.ToolOutcome.Pending       => "(no result yet)"
+      case sigil.event.ToolOutcome.Pending => "(no result yet)"
     }
     ti.input match {
       case Some(r: sigil.tool.model.RespondInput) =>
@@ -682,30 +722,36 @@ trait CheckpointOps { this: Sigil =>
     }
   }
 
-  /** Timestamp of the agent's most recent settled [[sigil.event.ProgressCheckpoint]]
-    * — the shared lower bound for the inter-checkpoint window that both
-    * the reflection context and the stall detectors evaluate. */
-  private final def priorCheckpointCutoff(convEvents: List[Event], agentId: ParticipantId): Option[Long] =
+  /**
+   * Timestamp of the agent's most recent settled [[sigil.event.ProgressCheckpoint]]
+   * — the shared lower bound for the inter-checkpoint window that both
+   * the reflection context and the stall detectors evaluate.
+   */
+  final private def priorCheckpointCutoff(convEvents: List[Event], agentId: ParticipantId): Option[Long] =
     convEvents.reverseIterator.collectFirst {
       case c: sigil.event.ProgressCheckpoint
-        if c.participantId == agentId &&
-           c.state == EventState.Complete =>
+          if c.participantId == agentId &&
+            c.state == EventState.Complete =>
         c.timestamp.value
     }
 
-  /** Evaluate the agent's recent tool-call tail for objective stall
-    * signals — identical-call streaks and empty-payload streaks.
-    * Folds into the progress checkpoint's `meaningfulProgress`
-    * computation. Best-effort: failures fall through to the empty
-    * signal rather than aborting the checkpoint. */
-  /** Model-independent hard-stall check. Runs the input-only identical-call
-    * streak at [[hardStallIdenticalCallLimit]] over the same since-checkpoint
-    * tail [[evaluateStall]] uses. Returns the intervention reason when the
-    * model has emitted the same call that many times in one turn — the signal
-    * that every cooperative guard has been ignored and the turn must be force-
-    * ended rather than ground to [[maxAgentIterations]]. Cheap (one event
-    * read, no LLM), so it can run at every iteration boundary. */
-  private[sigil] final def evaluateHardStall(convId: Id[Conversation],
+  /**
+   * Evaluate the agent's recent tool-call tail for objective stall
+   * signals — identical-call streaks and empty-payload streaks.
+   * Folds into the progress checkpoint's `meaningfulProgress`
+   * computation. Best-effort: failures fall through to the empty
+   * signal rather than aborting the checkpoint.
+   */
+  /**
+   * Model-independent hard-stall check. Runs the input-only identical-call
+   * streak at [[hardStallIdenticalCallLimit]] over the same since-checkpoint
+   * tail [[evaluateStall]] uses. Returns the intervention reason when the
+   * model has emitted the same call that many times in one turn — the signal
+   * that every cooperative guard has been ignored and the turn must be force-
+   * ended rather than ground to [[maxAgentIterations]]. Cheap (one event
+   * read, no LLM), so it can run at every iteration boundary.
+   */
+  final private[sigil] def evaluateHardStall(convId: Id[Conversation],
                                              agentId: ParticipantId): Task[Option[String]] =
     if (hardStallIdenticalCallLimit <= 0) Task.pure(None)
     else loadStallRecords(convId, agentId).map { records =>
@@ -714,30 +760,32 @@ trait CheckpointOps { this: Sigil =>
         .reason
     }.handleError(_ => Task.pure(None))
 
-  /** Refusal-loop check — how many times ONE (tool, canonical args) group
-    * has been refused by the duplicate-call cap with nothing dispatched in
-    * between, for the group with the most such refusals. The cap detects the
-    * repeat but can only answer it with another refusal, and the refusal
-    * re-triggers the loop; past [[duplicateRefusalLimit]] the model has read
-    * the corrective as many times as it is going to and the turn is wrapped
-    * up instead.
-    *
-    * The count runs from the turn's most recent DISPATCHED call, so an agent
-    * that reads a refusal and goes on to do real work is never terminated for
-    * the refusals behind it — only one that has stopped doing anything else.
-    * Groups by the same canonical args hash the cap itself uses, so the two
-    * always agree on what "the same call" means. Cheap (one event read, no
-    * LLM); best-effort. */
-  private[sigil] final def evaluateDuplicateRefusalLoop(convId: Id[Conversation],
+  /**
+   * Refusal-loop check — how many times ONE (tool, canonical args) group
+   * has been refused by the duplicate-call cap with nothing dispatched in
+   * between, for the group with the most such refusals. The cap detects the
+   * repeat but can only answer it with another refusal, and the refusal
+   * re-triggers the loop; past [[duplicateRefusalLimit]] the model has read
+   * the corrective as many times as it is going to and the turn is wrapped
+   * up instead.
+   *
+   * The count runs from the turn's most recent DISPATCHED call, so an agent
+   * that reads a refusal and goes on to do real work is never terminated for
+   * the refusals behind it — only one that has stopped doing anything else.
+   * Groups by the same canonical args hash the cap itself uses, so the two
+   * always agree on what "the same call" means. Cheap (one event read, no
+   * LLM); best-effort.
+   */
+  final private[sigil] def evaluateDuplicateRefusalLoop(convId: Id[Conversation],
                                                         agentId: ParticipantId,
                                                         turnStartMs: Long): Task[Option[(String, Int)]] =
     if (duplicateRefusalLimit <= 0) Task.pure(None)
     else withDB(_.conversationEventsConsistent(convId)).map { events =>
       val turnInvokes = events.collect {
         case ti: sigil.event.ToolInvoke
-          if ti.participantId == agentId &&
-             ti.timestamp.value >= turnStartMs &&
-             !ti.internal => ti
+            if ti.participantId == agentId &&
+              ti.timestamp.value >= turnStartMs &&
+              !ti.internal => ti
       }.sortBy(_.timestamp.value)
       val trailing = turnInvokes.reverse.takeWhile(_.refusal.nonEmpty)
       trailing.iterator
@@ -755,16 +803,18 @@ trait CheckpointOps { this: Sigil =>
         .filter(_._2 >= duplicateRefusalLimit)
     }.handleError(_ => Task.pure(None))
 
-  private final def evaluateStall(convId: Id[Conversation],
+  final private def evaluateStall(convId: Id[Conversation],
                                   agentId: ParticipantId): Task[sigil.conversation.compression.StallDetector.Signal] =
     loadStallRecords(convId, agentId)
       .map(sigil.conversation.compression.StallDetector.evaluate(_))
       .handleError(_ => Task.pure(sigil.conversation.compression.StallDetector.Signal.Empty))
 
-  /** Build the chronological tail of non-internal tool calls since the prior
-    * checkpoint (falling back to the most recent user Message, then 0) that
-    * both [[evaluateStall]] and [[evaluateHardStall]] evaluate. */
-  private final def loadStallRecords(convId: Id[Conversation],
+  /**
+   * Build the chronological tail of non-internal tool calls since the prior
+   * checkpoint (falling back to the most recent user Message, then 0) that
+   * both [[evaluateStall]] and [[evaluateHardStall]] evaluate.
+   */
+  final private def loadStallRecords(convId: Id[Conversation],
                                      agentId: ParticipantId): Task[List[sigil.conversation.compression.StallDetector.CallRecord]] =
     withDB(_.conversationEventsConsistent(convId)).map { all =>
       val convEvents = all.sortBy(_.timestamp.value)
@@ -774,46 +824,50 @@ trait CheckpointOps { this: Sigil =>
       val cutoff = priorCheckpointCutoff(convEvents, agentId).orElse {
         convEvents.reverseIterator.collectFirst {
           case m: Message
-            if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
-               m.role == MessageRole.Standard &&
-               m.content.nonEmpty =>
+              if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
+                m.role == MessageRole.Standard &&
+                m.content.nonEmpty =>
             m.timestamp.value
         }
       }.getOrElse(0L)
 
       val invokes = convEvents.collect {
         case ti: sigil.event.ToolInvoke
-          if ti.timestamp.value > cutoff &&
-             ti.participantId == agentId &&
-             !ti.internal => ti
+            if ti.timestamp.value > cutoff &&
+              ti.participantId == agentId &&
+              !ti.internal => ti
       }
       val messagesByOrigin = convEvents.collect {
         case m: Message if m.role == MessageRole.Tool && m.origin.isDefined => m.origin.get -> m
       }.toMap
       val records = invokes.sortBy(_.timestamp.value).map { ti =>
         sigil.conversation.compression.StallDetector.CallRecord(
-          invoke        = ti,
+          invoke = ti,
           resultMessage = messagesByOrigin.get(ti._id)
         )
       }
       records
     }
 
-  /** Concatenate textual ResponseContent blocks; used to derive a
-    * one-line view of a Message for the reflection prompt. */
-  private final def textOfContent(blocks: Vector[_root_.sigil.tool.model.ResponseContent]): String =
+  /**
+   * Concatenate textual ResponseContent blocks; used to derive a
+   * one-line view of a Message for the reflection prompt.
+   */
+  final private def textOfContent(blocks: Vector[_root_.sigil.tool.model.ResponseContent]): String =
     blocks.collect {
-      case _root_.sigil.tool.model.ResponseContent.Text(t)     => t
+      case _root_.sigil.tool.model.ResponseContent.Text(t) => t
       case _root_.sigil.tool.model.ResponseContent.Markdown(t) => t
     }.mkString(" ").trim
 
-  private final def snippet(s: String, maxLen: Int): String =
+  final private def snippet(s: String, maxLen: Int): String =
     if (s.length <= maxLen) s else s.take(maxLen) + "…"
 
-  /** Stitch the user task + tool history + prior checkpoint status
-    * into the reflection prompt. Pure helper — useful to apps that
-    * want to surface the same context shape to a custom reflection
-    * tool, and to specs verifying the prompt structure. */
+  /**
+   * Stitch the user task + tool history + prior checkpoint status
+   * into the reflection prompt. Pure helper — useful to apps that
+   * want to surface the same context shape to a custom reflection
+   * tool, and to specs verifying the prompt structure.
+   */
   def renderCheckpointPrompt(ctx: ProgressContext,
                              priorStatus: Option[String],
                              iteration: Int): String = {
@@ -821,10 +875,10 @@ trait CheckpointOps { this: Sigil =>
       case Some(t) =>
         val directiveLine = ctx.latestDirective match {
           case Some(d) => s"The user has since said \"$d\" to continue this objective.\n\n"
-          case None    => "\n"
+          case None => "\n"
         }
         s"The user's request:\n\"$t\"\n\n" + directiveLine
-      case None    => "The user's request: (no recent substantive user message found)\n\n"
+      case None => "The user's request: (no recent substantive user message found)\n\n"
     }
     val earlierLine =
       if (ctx.earlierCalls > 0)
@@ -843,7 +897,7 @@ trait CheckpointOps { this: Sigil =>
       else ""
     val priorBlock = priorStatus match {
       case Some(s) => s"Prior checkpoint status: \"$s\"\n\n"
-      case None    => "Prior checkpoint status: (first checkpoint)\n\n"
+      case None => "Prior checkpoint status: (first checkpoint)\n\n"
     }
     val ask =
       s"You are at iteration $iteration. " +
@@ -862,15 +916,15 @@ trait CheckpointOps { this: Sigil =>
     taskBlock + historyBlock + mutationsLine + priorBlock + ask
   }
 
-  private[sigil] final def latestCheckpointStatus(agentId: ParticipantId,
-                                           convId: Id[Conversation]): Task[Option[String]] =
+  final private[sigil] def latestCheckpointStatus(agentId: ParticipantId,
+                                                  convId: Id[Conversation]): Task[Option[String]] =
     withDB(_.conversationEventsConsistent(convId)).map { events =>
       events.collect {
         case cp: sigil.event.ProgressCheckpoint if cp.participantId == agentId => cp
       }.maxByOption(_.timestamp.value).map { cp =>
         val statusLine = if (cp.currentStatus.nonEmpty) cp.currentStatus else "(no status text)"
-        val stuckLine  = cp.stuckOn.filter(_.nonEmpty).map(s => s"\n\nStuck on: $s").getOrElse("")
-        val nextLine   = if (cp.remainingSteps.nonEmpty) s"\n\nRemaining: ${cp.remainingSteps}" else ""
+        val stuckLine = cp.stuckOn.filter(_.nonEmpty).map(s => s"\n\nStuck on: $s").getOrElse("")
+        val nextLine = if (cp.remainingSteps.nonEmpty) s"\n\nRemaining: ${cp.remainingSteps}" else ""
         s"$statusLine$stuckLine$nextLine"
       }
     }.handleError(_ => Task.pure(None))

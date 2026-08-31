@@ -40,9 +40,8 @@ object GeocodingEnrichmentEffect extends SettledEffect {
     case _ => Task.unit
   }
 
-  private def shouldEnrich(m: Message, self: Sigil): Boolean = {
+  private def shouldEnrich(m: Message, self: Sigil): Boolean =
     if (self.geocoder eq NoOpGeocoder) false
     else if (m.participantId.isInstanceOf[AgentParticipantId]) false
     else m.location.exists(p => p.name.isEmpty && p.address.isEmpty)
-  }
 }

@@ -34,7 +34,9 @@ import sigil.tool.{Resolution, Tool, ToolContext, ToolDecorator, ToolResult}
  */
 class ProxyTool(val underlying: Tool, transport: ToolProxyTransport) extends ToolDecorator {
 
-  /** The decorated tool under its historical name. */
+  /**
+   * The decorated tool under its historical name.
+   */
   def wrapped: Tool = underlying
 
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(dispatchRemote)
@@ -42,7 +44,7 @@ class ProxyTool(val underlying: Tool, transport: ToolProxyTransport) extends Too
   private def dispatchRemote(input: Input, context: ToolContext): Task[ToolResult[Output]] = {
     val rendered = inputRW.read(input)
     transport.dispatch(underlying.name, rendered, context).map {
-      case ToolResult.Success(json)    => ToolResult.Success(outputRW.write(json))
+      case ToolResult.Success(json) => ToolResult.Success(outputRW.write(json))
       case failure: ToolResult.Failure => failure
     }
   }

@@ -23,7 +23,9 @@ class LlamaCppHostProbeSpec extends AnyWordSpec with Matchers {
 
   private val fallback: URL = url"https://llama.voidcraft.invalid"
 
-  /** Run `f` against a locally-bound stub server, always stopping it after. */
+  /**
+   * Run `f` against a locally-bound stub server, always stopping it after.
+   */
   private def withStub(handler: HttpHandler)(f: URL => Unit): Unit = {
     val server = HttpServer.create(new InetSocketAddress(java.net.InetAddress.getLoopbackAddress, 0), 0)
     server.createContext("/", handler)
@@ -40,13 +42,17 @@ class LlamaCppHostProbeSpec extends AnyWordSpec with Matchers {
     finally out.close()
   }
 
-  /** Answers `/v1/models` like llama.cpp does; 404s anything else. */
+  /**
+   * Answers `/v1/models` like llama.cpp does; 404s anything else.
+   */
   private val llamaCppLike: HttpHandler = (exchange: HttpExchange) =>
     if (exchange.getRequestURI.getPath == "/v1/models")
       send(exchange, 200, """{"object":"list","data":[{"id":"local-model"}]}""")
     else send(exchange, 404, "not found")
 
-  /** Accepts the socket, then 404s everything — the squatter case. */
+  /**
+   * Accepts the socket, then 404s everything — the squatter case.
+   */
   private val squatter: HttpHandler = (exchange: HttpExchange) => send(exchange, 404, "not found")
 
   "TestSigil.hostHealthy" should {
@@ -73,7 +79,9 @@ class LlamaCppHostProbeSpec extends AnyWordSpec with Matchers {
     }
   }
 
-  /** A port that was bound and released, so nothing is listening on it. */
+  /**
+   * A port that was bound and released, so nothing is listening on it.
+   */
   private def closedPort: Int = {
     val socket = new java.net.ServerSocket(0, 0, java.net.InetAddress.getLoopbackAddress)
     try socket.getLocalPort

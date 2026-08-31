@@ -12,7 +12,9 @@ import sigil.diagnostics.ProfileSection
  */
 object ContextFeatures {
 
-  /** Framework features, in emission order. */
+  /**
+   * Framework features, in emission order.
+   */
   val all: List[ContextFeature] = List(CurrentDateFeature())
 
   /**
@@ -77,8 +79,8 @@ object ContextFeatures {
     c.featureBodies.getOrElse(feature.id, Nil).filter(_.placementIn(feature) == placement).map(_.body)
 
   private def merge(bodies: List[SectionBody]): Option[SectionBody] = bodies match {
-    case Nil        => None
+    case Nil => None
     case one :: Nil => Some(one)
-    case many       => Some(SectionBody.Blob(many.iterator.map(_.rendered).mkString))
+    case many => Some(SectionBody.Blob(many.iterator.map(_.rendered).mkString))
   }
 }

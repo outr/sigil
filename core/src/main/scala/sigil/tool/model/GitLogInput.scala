@@ -15,4 +15,5 @@ case class GitLogInput(path: Option[String] = None,
                        since: Option[String] = None,
                        limit: Option[Int] = None,
                        includeBody: Boolean = false,
-                       workingDir: Option[String] = None) extends ToolInput derives RW
+                       workingDir: Option[String] = None)
+  extends ToolInput derives RW

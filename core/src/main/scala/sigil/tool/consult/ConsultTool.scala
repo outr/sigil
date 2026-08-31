@@ -8,7 +8,10 @@ import sigil.tool.ToolContext
 import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, StopReason}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec, WireCall}
+import sigil.tool.{
+  DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult,
+  ToolSpec, WireCall
+}
 
 /**
  * One-shot LLM consultation. Two surfaces on the same object:
@@ -22,7 +25,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput,
  *    machinery that needs structured sub-decisions.
  */
 case object ConsultTool extends Tool {
-  type Input  = ConsultInput
+  type Input = ConsultInput
   type Output = TextToolOutput
   val io: ToolIO[ConsultInput, TextToolOutput] = ToolIO.derived[ConsultInput, TextToolOutput].withExamples(
     ToolExample(
@@ -61,8 +64,6 @@ case object ConsultTool extends Tool {
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(keywords = Set("consult", "model", "ask", "delegate", "question", "opinion", "llm"))
   )
-
-
 
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 
@@ -156,7 +157,7 @@ case object ConsultTool extends Tool {
                                  userPrompt: String,
                                  tool: Tool { type Input = I },
                                  generationSettings: GenerationSettings =
-                                   GenerationSettings.classifierDefault): Task[ConsultOutcome[I]] = {
+                                   GenerationSettings.classifierDefault): Task[ConsultOutcome[I]] =
     // Wrap the full chain (including model resolution and request
     // construction) so any throwable surfaces as `ConsultOutcome.Failed`
     // rather than escaping to the caller. `Task(...)` defers the
@@ -180,7 +181,7 @@ case object ConsultTool extends Tool {
         // name + surface decode for a replayed fixture stream.
         val parsed: Option[I] = events.iterator.flatMap {
           case ProviderEvent.ToolCallComplete(_, wc) => wc.inputFor(tool)
-          case _                                     => None
+          case _ => None
         }.nextOption()
         // A `Malformed` call for THIS tool means the model DID answer and
         // the answer failed to decode — a parse failure carrying every
@@ -199,7 +200,7 @@ case object ConsultTool extends Tool {
             ConsultOutcome.Unparseable(m.error)
           case None =>
             val usage = events.collectFirst { case ProviderEvent.Usage(u) => u }
-            val stop  = events.collectFirst { case ProviderEvent.Done(reason) => reason }
+            val stop = events.collectFirst { case ProviderEvent.Done(reason) => reason }
             // Sigil #342 — distinguish "the provider returned NOTHING for a
             // single-tool consult" (no content, no tool call — often 0
             // completion tokens, e.g. Cloudflare/Kimi treating
@@ -208,27 +209,26 @@ case object ConsultTool extends Tool {
             // tool). The former is a provider failure the caller can fall
             // back on or retry elsewhere — not something to absorb silently.
             val producedSomething = events.exists {
-              case _: ProviderEvent.TextDelta         => true
+              case _: ProviderEvent.TextDelta => true
               case _: ProviderEvent.ContentBlockDelta => true
-              case _: ProviderEvent.ToolCallStart     => true
-              case _: ProviderEvent.ToolCallComplete  => true
-              case _                                  => false
+              case _: ProviderEvent.ToolCallStart => true
+              case _: ProviderEvent.ToolCallComplete => true
+              case _ => false
             }
             stop match {
               case Some(StopReason.MaxTokens) => ConsultOutcome.truncated(usage)
-              case _ if !producedSomething    =>
+              case _ if !producedSomething =>
                 ConsultOutcome.Failed(new RuntimeException(
                   "provider returned an empty completion for a single-tool consult (no content, no tool call" +
                     usage.map(u => s", ${u.completionTokens} completion tokens").getOrElse("") +
                     ") — the forced tool call was not honored"))
-              case _                          => ConsultOutcome.NoOpinion
+              case _ => ConsultOutcome.NoOpinion
             }
         }
       }
     }.handleError { t =>
       Task.pure(ConsultOutcome.Failed(t))
     }
-  }
 
   /**
    * Routing-aware [[invoke]]. Resolves the concrete model from the
@@ -258,7 +258,13 @@ case object ConsultTool extends Tool {
                                    userPrompt: String,
                                    generationSettings: Option[GenerationSettings] = None): Task[Option[I]] =
     sigil.routedModelFor(tool.consultWorkType, chain, fallbackModelId).flatMap { modelId =>
-      invoke[I](sigil, modelId, chain, systemPrompt, userPrompt, tool,
+      invoke[I](
+        sigil,
+        modelId,
+        chain,
+        systemPrompt,
+        userPrompt,
+        tool,
         generationSettings.getOrElse(settingsFor(tool)))
     }
 
@@ -274,15 +280,15 @@ case object ConsultTool extends Tool {
    */
   def settingsFor(tool: Tool): GenerationSettings = tool match {
     case fc: FrameworkConsult => fc.consultSettings
-    case _                    => GenerationSettings.classifierDefault
+    case _ => GenerationSettings.classifierDefault
   }
 
   private[consult] def collectText(events: List[ProviderEvent]): String = {
     val sb = new StringBuilder
     events.foreach {
       case ProviderEvent.ContentBlockDelta(_, t) => sb.append(t)
-      case ProviderEvent.TextDelta(t)            => sb.append(t)
-      case _                                     => ()
+      case ProviderEvent.TextDelta(t) => sb.append(t)
+      case _ => ()
     }
     sb.toString
   }

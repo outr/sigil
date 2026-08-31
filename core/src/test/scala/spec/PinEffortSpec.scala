@@ -56,18 +56,20 @@ class PinEffortSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def ctx(conv: Conversation): TurnContext =
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser, TestAgent),
+      sigil = TestSigil,
+      chain = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv._id, frames = Vector.empty),
-      model        = TestSigil.defaultTestModel
+      turnInput = TurnInput(conversationId = conv._id, frames = Vector.empty),
+      model = TestSigil.defaultTestModel
     )
 
-  /** Records the `GenerationSettings` of every `ProviderCall` it serves,
-    * then answers with a clean single-call `respond(endsTurn = true)`
-    * whose topic matches the active one (fast-path — no classifier
-    * consult). The first recorded settings are the agent turn's. */
-  private final class CapturingProvider extends Provider {
+  /**
+   * Records the `GenerationSettings` of every `ProviderCall` it serves,
+   * then answers with a clean single-call `respond(endsTurn = true)`
+   * whose topic matches the active one (fast-path — no classifier
+   * consult). The first recorded settings are the agent turn's.
+   */
+  final private class CapturingProvider extends Provider {
     val settings = new ConcurrentLinkedQueue[GenerationSettings]()
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -80,10 +82,10 @@ class PinEffortSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       Stream.emits(List[ProviderEvent](
         ProviderEvent.ToolCallStart(cid, "respond"),
         ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-          topicLabel   = TestTopicEntry.label,
+          topicLabel = TestTopicEntry.label,
           topicSummary = TestTopicEntry.summary,
-          content      = "Done.",
-          endsTurn     = true
+          content = "Done.",
+          endsTurn = true
         )),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
@@ -92,31 +94,33 @@ class PinEffortSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def agentWith(base: GenerationSettings): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = base
     )
 
-  /** Run one user turn against `provider` and return the first
-    * ProviderCall's GenerationSettings (the agent turn). */
+  /**
+   * Run one user turn against `provider` and return the first
+   * ProviderCall's GenerationSettings (the agent turn).
+   */
   private def firstTurnSettings(provider: CapturingProvider,
                                 pinned: Option[Effort],
                                 base: GenerationSettings): Task[GenerationSettings] = {
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"pin-effort-turn-${rapid.Unique()}")
-    val agent  = agentWith(base)
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId, pinnedEffort = pinned)
+    val agent = agentWith(base)
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId, pinnedEffort = pinned)
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("hello")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("hello")),
+        state = EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId)
     } yield provider.settings.asScala.headOption.getOrElse(
       throw new IllegalStateException("provider was never called"))
@@ -124,25 +128,23 @@ class PinEffortSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   "Conversation.pinnedEffort" should {
 
-    "default to None on fresh conversations" in {
+    "default to None on fresh conversations" in
       freshConv("default").map(_.pinnedEffort shouldBe None)
-    }
 
-    "persist and round-trip when set" in {
+    "persist and round-trip when set" in
       freshConv("persist", pinned = Some(Effort.High)).flatMap { conv =>
         TestSigil.withDB(_.conversations.transaction(_.get(conv._id))).map { reloaded =>
           reloaded.flatMap(_.pinnedEffort) shouldBe Some(Effort.High)
         }
       }
-    }
   }
 
   "PinEffortTool" should {
 
     "parse level names and write pinnedEffort" in {
       for {
-        conv     <- freshConv("pin-tool")
-        _        <- PinEffortTool.execute(PinEffortInput("high"), ctx(conv), Event.id()).toList
+        conv <- freshConv("pin-tool")
+        _ <- PinEffortTool.execute(PinEffortInput("high"), ctx(conv), Event.id()).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
       } yield reloaded.flatMap(_.pinnedEffort) shouldBe Some(Effort.High)
     }
@@ -151,8 +153,8 @@ class PinEffortSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val normalisations = List("max", "MAX", "Maximum", "highest", "full")
       Task.sequence(normalisations.map { raw =>
         for {
-          conv     <- freshConv(s"normalise-${raw.replaceAll("\\W", "")}")
-          _        <- PinEffortTool.execute(PinEffortInput(raw), ctx(conv), Event.id()).toList
+          conv <- freshConv(s"normalise-${raw.replaceAll("\\W", "")}")
+          _ <- PinEffortTool.execute(PinEffortInput(raw), ctx(conv), Event.id()).toList
           reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
         } yield reloaded.flatMap(_.pinnedEffort)
       }).map { results =>
@@ -163,8 +165,8 @@ class PinEffortSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "reject an unrecognised level without mutating state" in {
       for {
-        conv     <- freshConv("reject", pinned = Some(Effort.Low))
-        _        <- PinEffortTool.execute(PinEffortInput("turbo"), ctx(conv), Event.id()).toList
+        conv <- freshConv("reject", pinned = Some(Effort.Low))
+        _ <- PinEffortTool.execute(PinEffortInput("turbo"), ctx(conv), Event.id()).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
       } yield reloaded.flatMap(_.pinnedEffort) shouldBe Some(Effort.Low) // unchanged
     }
@@ -174,16 +176,16 @@ class PinEffortSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "clear pinnedEffort when present" in {
       for {
-        conv     <- freshConv("unpin", pinned = Some(Effort.High))
-        _        <- UnpinEffortTool.execute(UnpinEffortInput(), ctx(conv), Event.id()).toList
+        conv <- freshConv("unpin", pinned = Some(Effort.High))
+        _ <- UnpinEffortTool.execute(UnpinEffortInput(), ctx(conv), Event.id()).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
       } yield reloaded.flatMap(_.pinnedEffort) shouldBe None
     }
 
     "no-op when nothing pinned" in {
       for {
-        conv     <- freshConv("unpin-noop")
-        _        <- UnpinEffortTool.execute(UnpinEffortInput(), ctx(conv), Event.id()).toList
+        conv <- freshConv("unpin-noop")
+        _ <- UnpinEffortTool.execute(UnpinEffortInput(), ctx(conv), Event.id()).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
       } yield reloaded.flatMap(_.pinnedEffort) shouldBe None
     }
@@ -193,7 +195,9 @@ class PinEffortSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "ship the pinned effort with reasoning forced on" in {
       val provider = new CapturingProvider
-      firstTurnSettings(provider, pinned = Some(Effort.High),
+      firstTurnSettings(
+        provider,
+        pinned = Some(Effort.High),
         base = GenerationSettings(maxOutputTokens = Some(50))).map { s =>
         s.effort shouldBe Some(Effort.High)
         s.reasoningMode shouldBe ReasoningMode.On
@@ -202,7 +206,9 @@ class PinEffortSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "leave the candidate's own settings untouched when unpinned" in {
       val provider = new CapturingProvider
-      firstTurnSettings(provider, pinned = None,
+      firstTurnSettings(
+        provider,
+        pinned = None,
         base = GenerationSettings(maxOutputTokens = Some(50))).map { s =>
         s.effort shouldBe None
         s.reasoningMode shouldBe ReasoningMode.Auto

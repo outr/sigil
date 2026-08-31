@@ -23,16 +23,15 @@ class ModelProfileSpec extends AnyWordSpec with Matchers {
                       shape: PromptShape = PromptShape.Full) =
     ModelProfile(tier, Reliability.Solid, comfort, oversight, shape)
 
-  private def matches(n: Int): List[CapabilityMatch] =
-    (1 to n).toList.map { i =>
-      CapabilityMatch(
-        name = s"tool_$i",
-        description = s"description for tool $i",
-        capabilityType = CapabilityType.Tool,
-        score = 100.0 - i,
-        status = CapabilityStatus.Ready
-      )
-    }
+  private def matches(n: Int): List[CapabilityMatch] = (1 to n).toList.map { i =>
+    CapabilityMatch(
+      name = s"tool_$i",
+      description = s"description for tool $i",
+      capabilityType = CapabilityType.Tool,
+      score = 100.0 - i,
+      status = CapabilityStatus.Ready
+    )
+  }
 
   "The default profile" should {
     "treat an unrecognized model as frontier-tier and fully comfortable" in {
@@ -70,7 +69,9 @@ class ModelProfileSpec extends AnyWordSpec with Matchers {
     "size to contextComfort rather than the raw window when comfort is lower" in {
       val big = FindCapabilityTool.sizeToModel(matches(40), 200_000L, profile(InstructionTier.Frontier))
       val comfortable = FindCapabilityTool.sizeToModel(
-        matches(40), 200_000L, profile(InstructionTier.Frontier, comfort = 16_000))
+        matches(40),
+        200_000L,
+        profile(InstructionTier.Frontier, comfort = 16_000))
       comfortable.size should be < big.size
     }
 

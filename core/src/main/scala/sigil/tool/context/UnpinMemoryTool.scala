@@ -4,7 +4,9 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolGates, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolGates, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 /**
  * Unpin a memory so it stops rendering every turn. The record stays
@@ -22,7 +24,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToo
  *      `list_memories(pinned=true)`).
  */
 case object UnpinMemoryTool extends Tool {
-  type Input  = UnpinMemoryInput
+  type Input = UnpinMemoryInput
   type Output = TextToolOutput
   val io: ToolIO[UnpinMemoryInput, TextToolOutput] = ToolIO.derived[UnpinMemoryInput, TextToolOutput]
 

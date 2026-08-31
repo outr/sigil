@@ -45,6 +45,8 @@ object MinimalImplementationSkill {
       |- Non-trivial logic leaves ONE runnable check behind — the smallest thing that fails if the logic breaks. Trivial one-liners need none.
       |- Report code first, then at most three short lines: what was skipped and when to add it. Explanation the user explicitly asked for is given in full; unrequested essays are complexity smuggled back in as prose.""".stripMargin
 
-  /** The slot apps attach to a Mode, Role, or projection. */
+  /**
+   * The slot apps attach to a Mode, Role, or projection.
+   */
   val slot: ActiveSkillSlot = ActiveSkillSlot(name = name, content = text)
 }

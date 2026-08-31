@@ -4,7 +4,9 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolGates, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolGates, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 /**
  * Pin a previously-saved memory so it starts rendering every turn.
@@ -24,7 +26,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToo
  * [[sigil.Sigil.validateCoreContextCap]].
  */
 case object PinMemoryTool extends Tool {
-  type Input  = PinMemoryInput
+  type Input = PinMemoryInput
   type Output = TextToolOutput
   val io: ToolIO[PinMemoryInput, TextToolOutput] = ToolIO.derived[PinMemoryInput, TextToolOutput]
 
@@ -83,7 +85,9 @@ case object PinMemoryTool extends Tool {
         }
     }
 
-  /** Look for the target by `key` first, then by `_id` fallback. */
+  /**
+   * Look for the target by `key` first, then by `_id` fallback.
+   */
   private def findTarget(key: String,
                          spaces: Set[sigil.SpaceId],
                          context: ToolContext): Task[MemoryTarget] =

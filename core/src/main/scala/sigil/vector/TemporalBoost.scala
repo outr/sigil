@@ -27,37 +27,44 @@ case class TemporalBoost(halfLifeMs: Long,
   require(halfLifeMs > 0, "halfLifeMs must be positive")
   require(temporalWeight >= 0.0 && temporalWeight <= 1.0, "temporalWeight must be in [0, 1]")
 
-  /** Apply the temporal re-rank to `candidates` using `referenceTimeMs`
-    * as the query's notional timestamp. Stable order among tied
-    * scores (sortBy is stable). */
-  def rerank(candidates: List[VectorSearchResult], referenceTimeMs: Long): List[VectorSearchResult] = {
+  /**
+   * Apply the temporal re-rank to `candidates` using `referenceTimeMs`
+   * as the query's notional timestamp. Stable order among tied
+   * scores (sortBy is stable).
+   */
+  def rerank(candidates: List[VectorSearchResult], referenceTimeMs: Long): List[VectorSearchResult] =
     if (candidates.isEmpty) Nil
     else candidates.map { c =>
       val boost = c.payload.get(timestampKey).flatMap(_.toLongOption) match {
         case Some(ts) => TemporalBoost.decay(math.abs(ts - referenceTimeMs).toDouble, halfLifeMs)
-        case None     => 0.0
+        case None => 0.0
       }
       val blended = (1.0 - temporalWeight) * c.score + temporalWeight * boost
       c.copy(score = blended)
     }.sortBy(-_.score)
-  }
 }
 
 object TemporalBoost {
 
-  /** Conventional payload key under which timestamps (millis since
-    * epoch, as a numeric string) are stored for temporal reranking. */
+  /**
+   * Conventional payload key under which timestamps (millis since
+   * epoch, as a numeric string) are stored for temporal reranking.
+   */
   val TimestampKey: String = "timestamp"
 
-  /** The shared exponential-decay curve — 1.0 at zero distance, 0.5 at
-    * one half-life, asymptotically 0 beyond. Every framework surface
-    * that scores by age (this reranker, the memory pipeline's Fuse
-    * stage) evaluates the same function so the curves can't drift
-    * apart. */
+  /**
+   * The shared exponential-decay curve — 1.0 at zero distance, 0.5 at
+   * one half-life, asymptotically 0 beyond. Every framework surface
+   * that scores by age (this reranker, the memory pipeline's Fuse
+   * stage) evaluates the same function so the curves can't drift
+   * apart.
+   */
   def decay(distanceMs: Double, halfLifeMs: Long): Double =
     math.pow(0.5, math.max(0.0, distanceMs) / halfLifeMs.toDouble)
 
-  /** Preset half-lives covering common retrieval horizons. */
+  /**
+   * Preset half-lives covering common retrieval horizons.
+   */
   object HalfLife {
     val OneHour: Long = 60L * 60L * 1000L
     val OneDay: Long = 24L * OneHour

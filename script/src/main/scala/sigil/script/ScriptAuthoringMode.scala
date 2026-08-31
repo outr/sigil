@@ -5,9 +5,9 @@ import sigil.provider.{CodingWork, Mode, ToolPolicy, WorkType}
 import sigil.tool.ToolName
 
 /**
-  * Mode the agent enters when it intends to author a runtime script
-  * tool.
-  */
+ * Mode the agent enters when it intends to author a runtime script
+ * tool.
+ */
 case object ScriptAuthoringMode extends Mode {
   override val name: String = "script-authoring"
 
@@ -140,12 +140,14 @@ case object ScriptAuthoringMode extends Mode {
         |""".stripMargin
   ))
 
-  /** Adds the script-authoring tool family to the roster. The
-    * baseline (respond, no_response, change_mode, stop, find_capability)
-    * is preserved by `ToolPolicy.Active`'s semantics — these tools
-    * supplement, don't replace.
-    *
-    * `ScriptAuthoringMode`. */
+  /**
+   * Adds the script-authoring tool family to the roster. The
+   * baseline (respond, no_response, change_mode, stop, find_capability)
+   * is preserved by `ToolPolicy.Active`'s semantics — these tools
+   * supplement, don't replace.
+   *
+   * `ScriptAuthoringMode`.
+   */
   override val tools: ToolPolicy = ToolPolicy.Active(List(
     ToolName("library_lookup"),
     ToolName("class_signatures"),

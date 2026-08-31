@@ -6,7 +6,7 @@ import sigil.conversation.Conversation
 
 /**
  * Lifecycle pulse for a framework-internal long-running operation
-* (pre-flight, context compression, frame load, …).
+ * (pre-flight, context compression, frame load, …).
  *
  * Distinct from the persistent `WorkflowRunStarted` /
  * `WorkflowStepCompleted` / `WorkflowRunCompleted` Events emitted
@@ -35,6 +35,7 @@ import sigil.conversation.Conversation
 case class FrameworkWorkflowNotice(workflowId: String,
                                    workflowType: String,
                                    phase: FrameworkWorkflowPhase,
-                                   conversationId: Option[Id[Conversation]] = None) extends Notice derives RW {
+                                   conversationId: Option[Id[Conversation]] = None)
+  extends Notice derives RW {
   override def conversationScope: Option[Id[Conversation]] = conversationId
 }

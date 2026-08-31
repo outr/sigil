@@ -72,9 +72,7 @@ class HybridSearchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _ <- index.upsert(VectorPoint("keyword", vec1, Map(HybridSearch.TextKey -> keywordMatch)))
         _ <- index.upsert(VectorPoint("semantic", vec2, Map(HybridSearch.TextKey -> semanticNeighbor)))
         hits <- hybrid.search("worm bin maintenance tips", limit = 2)
-      } yield {
-        hits.head.id shouldBe "keyword"
-      }
+      } yield hits.head.id shouldBe "keyword"
     }
 
     "honor payload filters (constraints applied to candidates)" in {
@@ -86,9 +84,7 @@ class HybridSearchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _ <- index.upsert(VectorPoint("p1", v1, Map("kind" -> "a", HybridSearch.TextKey -> "alpha beta gamma")))
         _ <- index.upsert(VectorPoint("p2", v2, Map("kind" -> "b", HybridSearch.TextKey -> "alpha beta gamma")))
         hits <- hybrid.search("alpha", limit = 5, filter = Map("kind" -> "a"))
-      } yield {
-        hits.map(_.id) shouldBe List("p1")
-      }
+      } yield hits.map(_.id) shouldBe List("p1")
     }
 
     "short-circuit keyword re-ranking when query has no tokens" in {
@@ -98,9 +94,7 @@ class HybridSearchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         vec <- StubEmbedder.embed("alpha beta")
         _ <- index.upsert(VectorPoint("p1", vec, Map(HybridSearch.TextKey -> "alpha beta")))
         hits <- hybrid.search("", limit = 5)
-      } yield {
-        hits.map(_.id) shouldBe List("p1")
-      }
+      } yield hits.map(_.id) shouldBe List("p1")
     }
   }
 }

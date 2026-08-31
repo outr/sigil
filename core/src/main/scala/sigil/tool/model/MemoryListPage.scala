@@ -16,4 +16,5 @@ case class MemoryListPage(offset: Int,
                           limit: Int,
                           returned: Int,
                           totalMatched: Int,
-                          hasMore: Boolean) derives RW
+                          hasMore: Boolean)
+  derives RW

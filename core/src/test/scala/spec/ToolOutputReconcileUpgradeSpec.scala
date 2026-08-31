@@ -37,25 +37,29 @@ class ToolOutputReconcileUpgradeSpec extends AnyWordSpec with Matchers {
 
   private val eventRW: RW[Event] = summon[RW[Event]]
 
-  /** A valid, fully-serialized `ToolInvoke` event to anchor the splice. */
+  /**
+   * A valid, fully-serialized `ToolInvoke` event to anchor the splice.
+   */
   private def baseInvokeJson(id: String, output: ToolOutput): Json =
     eventRW.read(ToolInvoke(
-      toolName       = ToolName("browser_screenshot"),
-      participantId  = TestUser,
+      toolName = ToolName("browser_screenshot"),
+      participantId = TestUser,
       conversationId = Id(s"conv-$id"),
-      topicId        = TestTopicId,
-      output         = output,
-      state          = EventState.Complete,
-      _id            = Id(id)
+      topicId = TestTopicId,
+      output = output,
+      state = EventState.Complete,
+      _id = Id(id)
     ))
 
-  /** The pre-rename on-disk shape — a `ToolInvoke` whose `output` block
-    * carries the retired `BrowserScreenshotOutput` discriminator the
-    * current `ToolOutput` poly no longer knows. */
+  /**
+   * The pre-rename on-disk shape — a `ToolInvoke` whose `output` block
+   * carries the retired `BrowserScreenshotOutput` discriminator the
+   * current `ToolOutput` poly no longer knows.
+   */
   private val legacyOutputBlock: Json = obj(
-    "type"    -> str("BrowserScreenshotOutput"),
-    "fileId"  -> str("file-1"),
-    "url"     -> str("https://example.test/shot.png"),
+    "type" -> str("BrowserScreenshotOutput"),
+    "fileId" -> str("file-1"),
+    "url" -> str("https://example.test/shot.png"),
     "altText" -> str("a screenshot")
   )
 
@@ -85,10 +89,10 @@ class ToolOutputReconcileUpgradeSpec extends AnyWordSpec with Matchers {
 
     "ignore non-ToolInvoke rows" in {
       val message = eventRW.read(Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = Id("conv-msg"),
-        topicId        = TestTopicId,
-        state          = EventState.Complete
+        topicId = TestTopicId,
+        state = EventState.Complete
       ))
       ToolOutputReconcileUpgrade.isToolInvoke(message) shouldBe false
       ToolOutputReconcileUpgrade.repairedEvent(message) shouldBe None
@@ -122,18 +126,20 @@ class ToolOutputReconcileUpgradeSpec extends AnyWordSpec with Matchers {
     }
   }
 
-  /** The pre-removal on-disk shape — a `ToolInvoke` whose `input` block
-    * carries a `BrowserScreenshotInput` discriminator dropped from the
-    * `ToolInput` poly when the tool was removed from the roster. */
+  /**
+   * The pre-removal on-disk shape — a `ToolInvoke` whose `input` block
+   * carries a `BrowserScreenshotInput` discriminator dropped from the
+   * `ToolInput` poly when the tool was removed from the roster.
+   */
   private val legacyInputBlock: Json = obj(
-    "type"     -> str("BrowserScreenshotInput"),
+    "type" -> str("BrowserScreenshotInput"),
     "fullPage" -> bool(true),
     "maxHeight" -> num(10000)
   )
 
   private def inputOrphanRow(id: String): Json = {
     val base = baseInvokeJson(id, TextToolOutput("ok")) // valid output
-    Obj(base.asMap.updated("input", legacyInputBlock))  // orphaned input
+    Obj(base.asMap.updated("input", legacyInputBlock)) // orphaned input
   }
 
   "ToolOutputReconcileUpgrade — ToolInput orphans (sigil #384)" should {

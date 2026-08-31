@@ -42,8 +42,10 @@ case object ProbeReadTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("test", "probe_read"))
   )
 
-  /** Result text for `probe` — the exact string specs search the
-    * rendered prompt for. */
+  /**
+   * Result text for `probe` — the exact string specs search the
+   * rendered prompt for.
+   */
   def resultTextFor(probe: String): String = s"probe-result:$probe"
 
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(run)

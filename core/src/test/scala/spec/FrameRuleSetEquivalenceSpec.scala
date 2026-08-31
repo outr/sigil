@@ -85,7 +85,9 @@ class FrameRuleSetEquivalenceSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private val settledDirective: List[Event] =
     sigil.orchestrator.SyntheticDiagnostic(
       sigil.orchestrator.Directive.PlainTextReply("here is my answer in prose"),
-      TestAgent, convId, TestTopicId,
+      TestAgent,
+      convId,
+      TestTopicId,
       disposition = MessageDisposition.Failure(recoverable = true)
     ).collect { case e: Event => e }
 
@@ -104,13 +106,21 @@ class FrameRuleSetEquivalenceSpec extends AsyncWordSpec with AsyncTaskSpec with 
   ).copy(timestamp = at(10))
 
   private val sequence: List[Event] =
-    List(userMessage, imageMessage, invoke, toolResult, directiveInvoke, directiveResult,
-      settledDirectiveInvoke, settledDirectiveResult, agentReply)
+    List(
+      userMessage,
+      imageMessage,
+      invoke,
+      toolResult,
+      directiveInvoke,
+      directiveResult,
+      settledDirectiveInvoke,
+      settledDirectiveResult,
+      agentReply)
 
   "The one event→frame rule set" should {
     "project the same frames through the live path and a from-scratch fold" in {
       for {
-        _    <- TestSigil.publishHistorical(sequence, convId)
+        _ <- TestSigil.publishHistorical(sequence, convId)
         live <- TestSigil.framesFor(convId)
       } yield {
         val folded = FrameBuilder.build(sequence)
@@ -165,7 +175,7 @@ class FrameRuleSetEquivalenceSpec extends AsyncWordSpec with AsyncTaskSpec with 
       )
       val folded = FrameBuilder.build(List(stray))
       folded should have size 1
-      folded.head.asInstanceOf[ContextFrame.Text].content should include ("orphan tool result")
+      folded.head.asInstanceOf[ContextFrame.Text].content should include("orphan tool result")
       folded.head.visibility shouldBe MessageVisibility.Agents
     }
 

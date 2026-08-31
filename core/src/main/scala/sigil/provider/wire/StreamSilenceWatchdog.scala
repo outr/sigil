@@ -39,15 +39,17 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 object StreamSilenceWatchdog {
 
-  /** Build the monitor loop. The caller starts it on a background
-    * fiber and sets `stopped` when the stream terminates; the loop
-    * exits on its next tick (clearing any active stall). Breaches fire
-    * at most once.
-    *
-    * `postContentBudgetMs` is the full line-silence budget; callers
-    * that grant reasoning requests an extended idle window pass the
-    * widened value here. `cancel` must be safe to run concurrently
-    * with stream consumption (okhttp's `Call.cancel()` is). */
+  /**
+   * Build the monitor loop. The caller starts it on a background
+   * fiber and sets `stopped` when the stream terminates; the loop
+   * exits on its next tick (clearing any active stall). Breaches fire
+   * at most once.
+   *
+   * `postContentBudgetMs` is the full line-silence budget; callers
+   * that grant reasoning requests an extended idle window pass the
+   * widened value here. `cancel` must be safe to run concurrently
+   * with stream consumption (okhttp's `Call.cancel()` is).
+   */
   def run(state: OpenAIChatCompletions.StreamState,
           config: OpenAIChatCompletions.Config,
           postContentBudgetMs: Long,
@@ -119,8 +121,7 @@ object StreamSilenceWatchdog {
               relief.foreach(_.clear())
               tick(stalled = false)
             } else tick(stalled)
-          }
-          else tick(stalled)
+          } else tick(stalled)
         }
       }
     tick(stalled = false)

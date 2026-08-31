@@ -61,23 +61,30 @@ trait MediaProvider {
 
 object MediaProvider {
 
-  /** Synthesized speech bytes. */
+  /**
+   * Synthesized speech bytes.
+   */
   final case class AudioBlob(bytes: Array[Byte], contentType: String)
 
-  /** A single chunk of streamed TTS output. `isFinal = true` indicates
-    * the last chunk in the stream — consumers can finalize playback /
-    * download once they see it. */
+  /**
+   * A single chunk of streamed TTS output. `isFinal = true` indicates
+   * the last chunk in the stream — consumers can finalize playback /
+   * download once they see it.
+   */
   final case class AudioChunk(bytes: Array[Byte], contentType: String, isFinal: Boolean)
 
-  /** Generated image bytes. */
+  /**
+   * Generated image bytes.
+   */
   final case class ImageBlob(bytes: Array[Byte], contentType: String)
 
-  /** Raised by methods a given provider doesn't implement. The
-    * `operation` field carries the method name (`textToSpeech`,
-    * `speechToText`, `generateImage`) so handlers can switch on it
-    * without string matching. */
-  final case class UnsupportedMediaOperation(operation: String)
-    extends RuntimeException(s"MediaProvider does not support `$operation`")
+  /**
+   * Raised by methods a given provider doesn't implement. The
+   * `operation` field carries the method name (`textToSpeech`,
+   * `speechToText`, `generateImage`) so handlers can switch on it
+   * without string matching.
+   */
+  final case class UnsupportedMediaOperation(operation: String) extends RuntimeException(s"MediaProvider does not support `$operation`")
 }
 
 /**

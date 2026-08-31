@@ -3,10 +3,14 @@ package bench
 import rapid.Task
 import sigil.provider.{AnalysisWork, GenerationSettings, OutputTokenCap, ReasoningMode, WorkType}
 import sigil.tool.consult.{ConsultKind, FrameworkConsult}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
-/** The consult tool [[BenchJudge]] forces — never rostered on an
-  * agent; the framework reads the typed input directly. */
+/**
+ * The consult tool [[BenchJudge]] forces — never rostered on an
+ * agent; the framework reads the typed input directly.
+ */
 case object JudgeVerdictTool extends Tool with FrameworkConsult {
   type Input = JudgeVerdictInput
   type Output = TextToolOutput

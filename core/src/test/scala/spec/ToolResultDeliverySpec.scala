@@ -33,12 +33,12 @@ class ToolResultDeliverySpec extends AsyncWordSpec with AsyncTaskSpec with Match
     // Step 1 — the invoke as the input-settle left it: Complete but
     // outcome Pending. Its computed frame carries the race placeholder.
     val pendingRow = ToolInvoke(
-      toolName       = ToolName("slow_sweep"),
-      participantId  = TestAgent,
+      toolName = ToolName("slow_sweep"),
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicId,
-      state          = EventState.Complete,
-      timestamp      = Timestamp(ts)
+      topicId = TestTopicId,
+      state = EventState.Complete,
+      timestamp = Timestamp(ts)
     )
     val placeholderFrame = FrameBuilder.computeFrame(pendingRow)
     // Step 2 — the outcome has since settled on the row, but the frame
@@ -60,13 +60,13 @@ class ToolResultDeliverySpec extends AsyncWordSpec with AsyncTaskSpec with Match
         case Some(tc) =>
           tc.resultPending shouldBe true
           tc.state match {
-            case ToolCallState.Complete(content, _) => content should include ("did not reach this turn")
-            case other                              => fail(s"expected Complete placeholder, got $other")
+            case ToolCallState.Complete(content, _) => content should include("did not reach this turn")
+            case other => fail(s"expected Complete placeholder, got $other")
           }
         case None => fail("fixture produced no ToolCall frame")
       }
       for {
-        _      <- TestSigil.withDB(_.eventsTransaction(convId)(_.upsert(fossil)))
+        _ <- TestSigil.withDB(_.eventsTransaction(convId)(_.upsert(fossil)))
         frames <- TestSigil.framesFor(convId)
         // The heal also persisted — the durable row's frame is fixed.
         reread <- TestSigil.withDB(_.eventsTransaction(convId)(_.get(fossil._id)))
@@ -76,7 +76,7 @@ class ToolResultDeliverySpec extends AsyncWordSpec with AsyncTaskSpec with Match
         tc.resultPending shouldBe false
         tc.state match {
           case ToolCallState.Complete(content, _) =>
-            content should include ("sweep converged: 96 changed")
+            content should include("sweep converged: 96 changed")
             content should not include "did not reach this turn"
           case other => fail(s"expected healed Complete frame, got $other")
         }
@@ -89,16 +89,16 @@ class ToolResultDeliverySpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "leave a genuinely still-pending invoke's placeholder in place" in {
       val convId = freshConv()
       val pendingRow = ToolInvoke(
-        toolName       = ToolName("still_running"),
-        participantId  = TestAgent,
+        toolName = ToolName("still_running"),
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = TestTopicId,
-        state          = EventState.Complete,
-        timestamp      = Timestamp(1000L)
+        topicId = TestTopicId,
+        state = EventState.Complete,
+        timestamp = Timestamp(1000L)
       )
       val row = pendingRow.withContextFrame(FrameBuilder.computeFrame(pendingRow))
       for {
-        _      <- TestSigil.withDB(_.eventsTransaction(convId)(_.upsert(row)))
+        _ <- TestSigil.withDB(_.eventsTransaction(convId)(_.upsert(row)))
         frames <- TestSigil.framesFor(convId)
       } yield {
         val tc = frames.collectFirst { case t: ContextFrame.ToolCall => t }
@@ -122,16 +122,14 @@ class ToolResultDeliverySpec extends AsyncWordSpec with AsyncTaskSpec with Match
       // A fresh user-authored Message is the turn boundary.
       for {
         _ <- TestSigil.publish(Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = convId,
-          topicId        = TestTopicEntry.id,
-          role           = MessageRole.Standard,
-          content        = Vector(ResponseContent.Text("next task")),
-          state          = EventState.Complete
+          topicId = TestTopicEntry.id,
+          role = MessageRole.Standard,
+          content = Vector(ResponseContent.Text("next task")),
+          state = EventState.Complete
         ))
-      } yield {
-        TestSigil.deliveredToolResultIds(convId) shouldBe empty
-      }
+      } yield TestSigil.deliveredToolResultIds(convId) shouldBe empty
     }
 
     "keep tracking scoped per conversation" in {

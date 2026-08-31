@@ -22,9 +22,11 @@ import spice.http.HttpRequest
 class ProviderResolutionSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Minimal provider — its only job here is to carry a `providerKey`
-    * (derived from `type`) and resolve cached models. */
-  private final class StubProvider(pt: ProviderType) extends Provider {
+  /**
+   * Minimal provider — its only job here is to carry a `providerKey`
+   * (derived from `type`) and resolve cached models.
+   */
+  final private class StubProvider(pt: ProviderType) extends Provider {
     override def `type`: ProviderType = pt
     override protected def sigil: _root_.sigil.Sigil = TestSigil
     override def call(input: ProviderCall): Stream[ProviderEvent] = Stream.empty
@@ -33,13 +35,13 @@ class ProviderResolutionSpec extends AnyWordSpec with Matchers {
   }
 
   private val cloudflare = new StubProvider(ProviderType.Cloudflare)
-  private val anthropic  = new StubProvider(ProviderType.Anthropic)
-  private val llamacpp   = new StubProvider(ProviderType.LlamaCpp)
+  private val anthropic = new StubProvider(ProviderType.Anthropic)
+  private val llamacpp = new StubProvider(ProviderType.LlamaCpp)
 
   // Register one model under each provider's namespace.
-  private val kimi   = Model.id("cloudflare", "@cf/moonshotai/kimi-k2.6")
+  private val kimi = Model.id("cloudflare", "@cf/moonshotai/kimi-k2.6")
   private val claude = Model.id("anthropic", "claude-opus-4-8")
-  private val gemma  = Model.id("llamacpp", "gemma-4-26b")
+  private val gemma = Model.id("llamacpp", "gemma-4-26b")
   TestSigil.testModel(kimi); TestSigil.testModel(claude); TestSigil.testModel(gemma)
 
   private val registry = new ProviderRegistry(List(cloudflare, anthropic, llamacpp))
@@ -61,7 +63,7 @@ class ProviderResolutionSpec extends AnyWordSpec with Matchers {
       registry.resolve(kimi).map(pm => (pm.provider.providerKey, pm.model._id)) shouldBe
         Some(("cloudflare", kimi))
       registry.resolve(claude).map(_.provider.providerKey) shouldBe Some("anthropic")
-      registry.resolve(gemma).map(_.provider.providerKey)  shouldBe Some("llamacpp")
+      registry.resolve(gemma).map(_.provider.providerKey) shouldBe Some("llamacpp")
     }
 
     "never cross-route — a cloudflare/ id only ever reaches the cloudflare provider (#333)" in {

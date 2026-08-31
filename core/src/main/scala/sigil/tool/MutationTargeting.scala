@@ -15,28 +15,36 @@ import scala.reflect.ClassTag
  */
 sealed trait MutationTargeting {
 
-  /** Best-effort target extraction from an untyped input. Total —
-    * a foreign input class yields `None`. */
+  /**
+   * Best-effort target extraction from an untyped input. Total —
+   * a foreign input class yields `None`.
+   */
   def targetOf(input: ToolInput): Option[MutationTarget]
 }
 
 object MutationTargeting {
 
-  /** Explicit "targets unknown" — conservative cache / churn behavior. */
+  /**
+   * Explicit "targets unknown" — conservative cache / churn behavior.
+   */
   val none: MutationTargeting = new MutationTargeting {
     override def targetOf(input: ToolInput): Option[MutationTarget] = None
   }
 
-  /** Typed extractor: `f` runs only when `input` is an `I`; any other
-    * input class yields `None`. */
+  /**
+   * Typed extractor: `f` runs only when `input` is an `I`; any other
+   * input class yields `None`.
+   */
   def typed[I <: ToolInput: ClassTag](f: I => Option[MutationTarget]): MutationTargeting = new MutationTargeting {
     override def targetOf(input: ToolInput): Option[MutationTarget] = input match {
       case i: I => f(i)
-      case _    => None
+      case _ => None
     }
   }
 
-  /** Common case — the target is a single path-like input field. */
+  /**
+   * Common case — the target is a single path-like input field.
+   */
   def path[I <: ToolInput: ClassTag](f: I => String): MutationTargeting =
     typed[I](i => Some(MutationTarget(f(i))))
 }

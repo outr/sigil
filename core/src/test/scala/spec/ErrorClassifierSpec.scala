@@ -56,7 +56,9 @@ class ErrorClassifierSpec extends AnyWordSpec with Matchers {
   "ErrorClassifier.Default — typed dispatch (Sigil audit H5)" should {
     "classify ProviderStreamException as Fallthrough by type, not message text" in {
       val ex = new sigil.provider.ProviderStreamException(
-        providerKey = "test", code = 200, typ = "empty_budget_burn",
+        providerKey = "test",
+        code = 200,
+        typ = "empty_budget_burn",
         message_ = "no transient keyword in this message"
       )
       ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Fallthrough
@@ -64,7 +66,9 @@ class ErrorClassifierSpec extends AnyWordSpec with Matchers {
 
     "classify malformed_tool_args as Fallthrough so the strategy can route to another candidate" in {
       val ex = new sigil.provider.ProviderStreamException(
-        providerKey = "test", code = 200, typ = "malformed_tool_args",
+        providerKey = "test",
+        code = 200,
+        typ = "malformed_tool_args",
         message_ = "model emitted a JSON array"
       )
       ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Fallthrough
@@ -72,7 +76,9 @@ class ErrorClassifierSpec extends AnyWordSpec with Matchers {
 
     "classify truncated_stream as Retry — a dropped transport, not model degeneration (#360)" in {
       val ex = new sigil.provider.ProviderStreamException(
-        providerKey = "cloudflare", code = 200, typ = "truncated_stream",
+        providerKey = "cloudflare",
+        code = 200,
+        typ = "truncated_stream",
         message_ = "closed the stream mid-flight with no finish_reason and no [DONE]"
       )
       ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Retry
@@ -85,30 +91,38 @@ class ErrorClassifierSpec extends AnyWordSpec with Matchers {
       // path then degrades to a lower tier once retries exhaust), not the
       // terminal Fallthrough that killed the turn before #397.
       val inlineOverload = new sigil.provider.ProviderStreamException(
-        providerKey = "anthropic", code = 0, typ = "overloaded_error",
-        message_ = "Overloaded", status = None
+        providerKey = "anthropic",
+        code = 0,
+        typ = "overloaded_error",
+        message_ = "Overloaded",
+        status = None
       )
       ErrorClassifier.Default.classify(inlineOverload) shouldBe ErrorClassification.Retry
     }
 
     "classify a literal HTTP 529 overload status as Retry (#397)" in {
       val http529 = new sigil.provider.ProviderStreamException(
-        providerKey = "anthropic", code = 529, typ = "error",
-        message_ = "Overloaded", status = Some(529)
+        providerKey = "anthropic",
+        code = 529,
+        typ = "error",
+        message_ = "Overloaded",
+        status = Some(529)
       )
       ErrorClassifier.Default.classify(http529) shouldBe ErrorClassification.Retry
     }
 
     "classify CapacityAcquireTimeoutException as Fallthrough (this candidate is saturated)" in {
       val ex = new sigil.provider.CapacityAcquireTimeoutException(
-        maxConcurrent = 4, waited = scala.concurrent.duration.FiniteDuration(60, "s")
+        maxConcurrent = 4,
+        waited = scala.concurrent.duration.FiniteDuration(60, "s")
       )
       ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Fallthrough
     }
 
     "classify RequestOverBudgetException as Fatal (no candidate-level mitigation)" in {
       val ex = new sigil.provider.RequestOverBudgetException(
-        estimatedTokens = 100000, contextLength = 8192,
+        estimatedTokens = 100000,
+        contextLength = 8192,
         modelId = lightdb.id.Id[sigil.db.Model]("test/model")
       )
       ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Fatal

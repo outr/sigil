@@ -24,9 +24,12 @@ trait HighSignalFilter {
 }
 
 object HighSignalFilter {
-  /** Combinator — passes when ANY of `filters` passes. Use to widen a
-    * corpus-specific filter without replacing it, e.g.
-    * `HighSignalFilter.any(DefaultHighSignalFilter, AgenticSignalFilter)`. */
+
+  /**
+   * Combinator — passes when ANY of `filters` passes. Use to widen a
+   * corpus-specific filter without replacing it, e.g.
+   * `HighSignalFilter.any(DefaultHighSignalFilter, AgenticSignalFilter)`.
+   */
   def any(filters: HighSignalFilter*): HighSignalFilter = new HighSignalFilter {
     override def isHighSignal(userMessage: String): Boolean = filters.exists(_.isHighSignal(userMessage))
     override def isHighSignal(turn: ExtractionTurn): Boolean = filters.exists(_.isHighSignal(turn))

@@ -4,16 +4,21 @@ import fabric.rw.*
 import rapid.Task
 import sigil.provider.Complexity
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolOutput, ToolProfile, ToolResult,
+  ToolSpec
+}
 
 final case class RequestDeescalationInput(@description("Why the cheaper tier suffices now — e.g. 'the hard restoration is done; remaining work is mechanical error fixes'. Stored for transparency.")
-                                          reason: String)
+reason: String)
   extends ToolInput derives RW
 
-final case class RequestDeescalationOutput(@description("The complexity tier after the step down. Unchanged when there was no escalation to unwind.")
-                                           tier: Complexity,
-                                           @description("True when the call actually lowered the tier; false when the turn was already at its classified base tier.")
-                                           lowered: Boolean) extends ToolOutput derives RW
+final case class RequestDeescalationOutput(
+  @description("The complexity tier after the step down. Unchanged when there was no escalation to unwind.")
+  tier: Complexity,
+  @description("True when the call actually lowered the tier; false when the turn was already at its classified base tier.")
+  lowered: Boolean)
+  extends ToolOutput derives RW
 
 /**
  * The symmetric counterpart to `request_escalation`: step the current
@@ -24,14 +29,15 @@ final case class RequestDeescalationOutput(@description("The complexity tier aft
  * at frontier prices.
  */
 case object RequestDeescalationTool extends Tool {
-  type Input  = RequestDeescalationInput
+  type Input = RequestDeescalationInput
   type Output = RequestDeescalationOutput
-  val io: ToolIO[RequestDeescalationInput, RequestDeescalationOutput] = ToolIO.derived[RequestDeescalationInput, RequestDeescalationOutput].withExamples(
-    ToolExample(
-      "Step down after the hard phase completes",
-      RequestDeescalationInput(reason = "definitions restored from git history; remaining work is fixing mechanical compile errors")
+  val io: ToolIO[RequestDeescalationInput, RequestDeescalationOutput] =
+    ToolIO.derived[RequestDeescalationInput, RequestDeescalationOutput].withExamples(
+      ToolExample(
+        "Step down after the hard phase completes",
+        RequestDeescalationInput(reason = "definitions restored from git history; remaining work is fixing mechanical compile errors")
+      )
     )
-  )
   override val name = ToolName("request_deescalation")
   override val description =
     """Step this turn's complexity tier back DOWN one level so subsequent iterations route to a
@@ -50,7 +56,6 @@ case object RequestDeescalationTool extends Tool {
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("deescalate", "de-escalate", "tier", "complexity", "cheaper model", "step down", "cost"))
   )
-
 
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 

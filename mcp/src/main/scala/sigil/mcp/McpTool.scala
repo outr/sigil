@@ -49,7 +49,8 @@ import java.util.Base64
 final class McpTool(manager: McpManager,
                     serverConfig: McpServerConfig,
                     definition: McpToolDefinition,
-                    nameOverride: Option[ToolName] = None) extends Tool {
+                    nameOverride: Option[ToolName] = None)
+  extends Tool {
   type Input = JsonInput
   type Output = ToolOutput
 
@@ -187,15 +188,19 @@ object McpTool {
     )
   }
 
-  /** The raw display name a server advertises this tool under —
-    * `prefix + name`, before any grammar sanitization. */
+  /**
+   * The raw display name a server advertises this tool under —
+   * `prefix + name`, before any grammar sanitization.
+   */
   def displayName(serverConfig: McpServerConfig, definition: McpToolDefinition): String =
     serverConfig.prefix.getOrElse("") + definition.name
 
-  /** Grammar-conform a raw display name: characters providers reject
-    * collapse to `_` and the result truncates to the 64-char limit.
-    * Lossy by construction — [[resolveNames]] is what keeps two raw
-    * names that collapse together from shadowing each other. */
+  /**
+   * Grammar-conform a raw display name: characters providers reject
+   * collapse to `_` and the result truncates to the 64-char limit.
+   * Lossy by construction — [[resolveNames]] is what keeps two raw
+   * names that collapse together from shadowing each other.
+   */
   def sanitizedName(rawName: String): ToolName =
     ToolName.parse(rawName).getOrElse {
       val sanitized = rawName.replaceAll("[^a-zA-Z0-9_-]", "_").take(64)
@@ -206,14 +211,16 @@ object McpTool {
       )
     }
 
-  /** Map every raw display name in a roster to a UNIQUE [[ToolName]].
-    * Sanitization is lossy — `fs.read` and `fs:read` both collapse to
-    * `fs_read`, and two names differing past the 64th character
-    * truncate together — so the naive mapping silently drops one tool
-    * from the roster. Colliding entries after the first (in sorted
-    * order, so the assignment is stable across calls) get a `_2`,
-    * `_3`, … suffix that fits inside the 64-char limit, and each
-    * collision warns naming both raw names. */
+  /**
+   * Map every raw display name in a roster to a UNIQUE [[ToolName]].
+   * Sanitization is lossy — `fs.read` and `fs:read` both collapse to
+   * `fs_read`, and two names differing past the 64th character
+   * truncate together — so the naive mapping silently drops one tool
+   * from the roster. Colliding entries after the first (in sorted
+   * order, so the assignment is stable across calls) get a `_2`,
+   * `_3`, … suffix that fits inside the 64-char limit, and each
+   * collision warns naming both raw names.
+   */
   def resolveNames(rawNames: Iterable[String]): Map[String, ToolName] = {
     val taken = scala.collection.mutable.Map.empty[String, String]
     rawNames.toList.distinct.sorted.map { raw =>

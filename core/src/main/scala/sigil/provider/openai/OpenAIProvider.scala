@@ -47,62 +47,75 @@ import scala.util.Success
 case class OpenAIProvider(apiKey: String,
                           sigilRef: Sigil,
                           baseUrl: URL = url"https://api.openai.com",
-                          /** Per-read idle timeout for the SSE stream. Wired
-                            * through to okhttp's `readTimeout` — fires only
-                            * when no bytes arrive for the duration. Slow-but-
-                            * working models stream as long as their tokens
-                            * keep flowing; genuinely stalled streams fail
-                            * within `tokenIdleTimeout`. */
+                          /**
+                           * Per-read idle timeout for the SSE stream. Wired
+                           * through to okhttp's `readTimeout` — fires only
+                           * when no bytes arrive for the duration. Slow-but-
+                           * working models stream as long as their tokens
+                           * keep flowing; genuinely stalled streams fail
+                           * within `tokenIdleTimeout`.
+                           */
                           tokenIdleTimeout: FiniteDuration = 120.seconds,
-                          /** Override the provider's identity when targeting an
-                            * OpenAI-Responses-compatible endpoint at a different
-                            * vendor (DigitalOcean Inference, Azure-style mirrors).
-                            * The vendor's `Authorization: Bearer` auth, request
-                            * shape, and SSE grammar match OpenAI's, but cost
-                            * tracking + model-registry namespacing should track
-                            * the actual host. Defaults: OpenAI. */
+                          /**
+                           * Override the provider's identity when targeting an
+                           * OpenAI-Responses-compatible endpoint at a different
+                           * vendor (DigitalOcean Inference, Azure-style mirrors).
+                           * The vendor's `Authorization: Bearer` auth, request
+                           * shape, and SSE grammar match OpenAI's, but cost
+                           * tracking + model-registry namespacing should track
+                           * the actual host. Defaults: OpenAI.
+                           */
                           providerType: ProviderType = ProviderType.OpenAI,
                           providerNamespace: String = OpenAI.Provider,
-                          /** Whether the upstream Responses surface accepts
-                            * `tool_choice: "required"`. OpenAI does;
-                            * DigitalOcean Inference's Responses surface
-                            * rejects it with HTTP 424 "unexpected EOF" and
-                            * only accepts `auto` / `none` / specific-tool.
-                            * When false, `ToolChoice.Required` is silently
-                            * downgraded to `auto` — the agent loop's
-                            * tool-choice-required semantics still hold
-                            * (the system prompt's tool-mandatory framing
-                            * does the heavy lifting), the wire body just
-                            * stays parseable. */
-                          requiredToolChoiceSupported: Boolean = true) extends Provider {
+                          /**
+                           * Whether the upstream Responses surface accepts
+                           * `tool_choice: "required"`. OpenAI does;
+                           * DigitalOcean Inference's Responses surface
+                           * rejects it with HTTP 424 "unexpected EOF" and
+                           * only accepts `auto` / `none` / specific-tool.
+                           * When false, `ToolChoice.Required` is silently
+                           * downgraded to `auto` — the agent loop's
+                           * tool-choice-required semantics still hold
+                           * (the system prompt's tool-mandatory framing
+                           * does the heavy lifting), the wire body just
+                           * stays parseable.
+                           */
+                          requiredToolChoiceSupported: Boolean = true)
+  extends Provider {
   override def `type`: ProviderType = providerType
   override val providerKey: String = providerNamespace
   override protected def sigil: Sigil = sigilRef
   override def schemaDialect: SchemaDialect = SchemaDialect.OpenAIStrict
 
-  /** Strip the provider's namespace prefix from a Sigil-shaped model id
-    * (`<provider>/<model>` → `<model>`). Uses `providerNamespace` so a
-    * DigitalOcean-configured instance strips `digitalocean/` rather than
-    * `openai/`. */
+  /**
+   * Strip the provider's namespace prefix from a Sigil-shaped model id
+   * (`<provider>/<model>` → `<model>`). Uses `providerNamespace` so a
+   * DigitalOcean-configured instance strips `digitalocean/` rather than
+   * `openai/`.
+   */
   private def stripNamespacePrefix(sigilModelId: String): String = {
     val prefix = s"$providerNamespace/"
     if (sigilModelId.startsWith(prefix)) sigilModelId.drop(prefix.length) else sigilModelId
   }
 
-  /** OpenAI Chat Completions / Responses use the cl100k_base /
-    * o200k_base BPE tokenizer. cl100k is the safe default — accurate
-    * for GPT-3.5 / GPT-4 / GPT-4o-mini, slightly conservative (~5%
-    * over) for o-series. The pre-flight gate's job is to err
-    * conservative anyway. */
+  /**
+   * OpenAI Chat Completions / Responses use the cl100k_base /
+   * o200k_base BPE tokenizer. cl100k is the safe default — accurate
+   * for GPT-3.5 / GPT-4 / GPT-4o-mini, slightly conservative (~5%
+   * over) for o-series. The pre-flight gate's job is to err
+   * conservative anyway.
+   */
   override def tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
   // ---- batch (sigil #299) ----
 
-  /** Sigil #299 — OpenAI Batch API is available for `/v1/chat/completions`
-    * (the JSONL `url` field) at ~50% cost discount with a 24-hour
-    * SLA. Streaming-side OpenAI calls (this provider's primary path)
-    * still go through `/v1/responses`; batch-only paths take the
-    * chat-completions surface for the upload's JSONL lines. */
+  /**
+   * Sigil #299 — OpenAI Batch API is available for `/v1/chat/completions`
+   * (the JSONL `url` field) at ~50% cost discount with a 24-hour
+   * SLA. Streaming-side OpenAI calls (this provider's primary path)
+   * still go through `/v1/responses`; batch-only paths take the
+   * chat-completions surface for the upload's JSONL lines.
+   */
   override def batchSupported: Boolean = true
 
   override def batch(requests: Stream[OneShotRequest]): Stream[OneShotResponse] =
@@ -119,13 +132,13 @@ case class OpenAIProvider(apiKey: String,
     // covered by `previous_response_id` on the next turn. Framework-
     // emitted ToolResult PMs are temporally interleaved inside the
     // response's range; the next turn's renderInput role-filters the
-     // post-cutoff tail to extract them.
+    // post-cutoff tail to extract them.
     state.sentMessageCount = input.messages.size
     Stream.force(
       for {
-        raw         <- httpRequestFor(input)
+        raw <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLinesHandle()
+        handle <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLinesHandle()
       } yield {
         // okhttp's per-read timeout (configured via HttpClient.timeout)
         // catches genuine network stalls — fires when no bytes arrive
@@ -152,20 +165,24 @@ case class OpenAIProvider(apiKey: String,
     ).withHeader("Authorization", s"Bearer $apiKey")
   }
 
-  /** True when the configured Model record's outputModalities indicate an
-    * image-only model (e.g. `gpt-image-2`) — these go to
-    * `/v1/images/generations` with a different request shape and a
-    * different streaming event grammar. */
+  /**
+   * True when the configured Model record's outputModalities indicate an
+   * image-only model (e.g. `gpt-image-2`) — these go to
+   * `/v1/images/generations` with a different request shape and a
+   * different streaming event grammar.
+   */
   private def isImageOnlyModel(modelId: lightdb.id.Id[Model]): Boolean =
     models.find(_._id == modelId).exists { m =>
       val out = m.architecture.outputModalities.toSet
       out.contains("image") && !out.contains("text")
     }
 
-  /** Body for `/v1/images/generations`. Streams partial previews via
-    * `stream: true, partial_images: 2`; OpenAI emits
-    * `image_generation.partial_image` events progressively followed by
-    * `image_generation.completed`. */
+  /**
+   * Body for `/v1/images/generations`. Streams partial previews via
+   * `stream: true, partial_images: 2`; OpenAI emits
+   * `image_generation.partial_image` events progressively followed by
+   * `image_generation.completed`.
+   */
   private def buildImagesBody(input: ProviderCall): Json = {
     val modelName = stripNamespacePrefix(input.modelId.value)
     val prompt = extractImagePrompt(input)
@@ -178,10 +195,12 @@ case class OpenAIProvider(apiKey: String,
     )
   }
 
-  /** Pull the prompt for a direct image-generation call. Concatenates
-    * the system instructions (if any) with the most-recent user
-    * message's text — the model takes a single string. Multi-turn
-    * conversation history is not meaningful for image-only models. */
+  /**
+   * Pull the prompt for a direct image-generation call. Concatenates
+   * the system instructions (if any) with the most-recent user
+   * message's text — the model takes a single string. Multi-turn
+   * conversation history is not meaningful for image-only models.
+   */
   private def extractImagePrompt(input: ProviderCall): String = {
     val combined = input.systemCombined
     val systemPart = if (combined.isEmpty) "" else combined + "\n\n"
@@ -208,7 +227,7 @@ case class OpenAIProvider(apiKey: String,
     // size optimization.
     val carriesToolOutputs = input.messages.exists {
       case _: ProviderMessage.ToolResult => true
-      case _                             => false
+      case _ => false
     }
     val effectivePreviousResponseId: Option[String] =
       if (carriesToolOutputs) None else input.previousResponseId
@@ -288,13 +307,13 @@ case class OpenAIProvider(apiKey: String,
     val reasoningField: Vector[(String, Json)] =
       if (gen.reasoningMode == ReasoningMode.Off && isReasoningModel) {
         Vector("reasoning" -> obj(
-          "effort"  -> str(OpenAI.lowestEffort(supportedEffortLevels)),
+          "effort" -> str(OpenAI.lowestEffort(supportedEffortLevels)),
           "summary" -> str("auto")
         ))
       } else (gen.effort, isReasoningModel) match {
         case (Some(e), true) =>
           Vector("reasoning" -> obj(
-            "effort"  -> str(OpenAI.effortLevelFor(e, supportedEffortLevels)),
+            "effort" -> str(OpenAI.effortLevelFor(e, supportedEffortLevels)),
             "summary" -> str("auto")
           ))
         case (Some(e), false) =>
@@ -327,15 +346,17 @@ case class OpenAIProvider(apiKey: String,
     obj((baseFields ++ instructionsField ++ toolFields ++ reasoningField ++ includeField ++ genFields)*)
   }
 
-  /** Render framework-neutral [[ProviderMessage]]s into Responses API
-    * input items. Each item carries a `role` + a `content` array of
-    * typed blocks.
-    *
-    * Every tool call settles by construction (the framework emits a
-    * [[ToolDelta]] folding output / outcome / state onto the
-    * originating [[ToolInvoke]] for atomic AND streaming dispatch
-    * alike), so no wire-side `function_call` ↔
-    * `function_call_output` synthesis is needed. */
+  /**
+   * Render framework-neutral [[ProviderMessage]]s into Responses API
+   * input items. Each item carries a `role` + a `content` array of
+   * typed blocks.
+   *
+   * Every tool call settles by construction (the framework emits a
+   * [[ToolDelta]] folding output / outcome / state onto the
+   * originating [[ToolInvoke]] for atomic AND streaming dispatch
+   * alike), so no wire-side `function_call` ↔
+   * `function_call_output` synthesis is needed.
+   */
   private def renderInput(messages: Vector[ProviderMessage]): Vector[Json] =
     messages.flatMap {
       case ProviderMessage.System(content) =>
@@ -358,8 +379,10 @@ case class OpenAIProvider(apiKey: String,
           case MessageContent.Image(u, _, q) =>
             obj("type" -> str("input_image"), "image_url" -> str(u.toString), "detail" -> str(q.openAIDetail))
           case MessageContent.ImageBytes(mediaType, base64, _, q) =>
-            obj("type" -> str("input_image"),
-                "image_url" -> str(s"data:$mediaType;base64,$base64"), "detail" -> str(q.openAIDetail))
+            obj(
+              "type" -> str("input_image"),
+              "image_url" -> str(s"data:$mediaType;base64,$base64"),
+              "detail" -> str(q.openAIDetail))
         }
         Vector(obj("role" -> str("user"), "content" -> arr(contentItems*)))
 
@@ -387,50 +410,55 @@ case class OpenAIProvider(apiKey: String,
           "output" -> str(content)
         ))
 
-     case ProviderMessage.Reasoning(providerItemId, summary, encryptedContent) =>
-        val summaryArr = arr(summary.map(t => obj(
-          "type" -> str("summary_text"),
-          "text" -> str(t)
-        ))*)
+      case ProviderMessage.Reasoning(providerItemId, summary, encryptedContent) =>
+        val summaryArr = arr(summary.map(t =>
+          obj(
+            "type" -> str("summary_text"),
+            "text" -> str(t)
+          ))*)
         val baseFields = Vector[(String, Json)](
-          "type"    -> str("reasoning"),
-          "id"      -> str(providerItemId),
+          "type" -> str("reasoning"),
+          "id" -> str(providerItemId),
           "summary" -> summaryArr
         )
         val encryptedField = encryptedContent.toVector.map("encrypted_content" -> str(_))
         Vector(obj((baseFields ++ encryptedField)*))
     }
 
-  /** Render custom functions + built-in tools into the Responses
-    * `tools` array. Each item is a top-level object with a `type`
-    * discriminator (`function` for custom, built-in names otherwise). */
+  /**
+   * Render custom functions + built-in tools into the Responses
+   * `tools` array. Each item is a top-level object with a `type`
+   * discriminator (`function` for custom, built-in names otherwise).
+   */
   private def renderTools(input: ProviderCall): Vector[Json] = {
     val functionTools = input.tools.map { t =>
       val s = t.schema
       obj(
-        "type"        -> str("function"),
-        "name"        -> str(s.name.value),
+        "type" -> str("function"),
+        "name" -> str(s.name.value),
         "description" -> str(ToolDescriptionRenderer.render(t, input.currentMode, sigil)),
         // Strict mode enables grammar-constrained decoding — the model
         // can't emit malformed args. [[SchemaDialect.OpenAIStrict]]
         // rewrites sigil's canonical schema into the closed-object
         // strict shape (with the open-JSON opt-out inside the dialect).
-        "strict"      -> bool(schemaDialect.strictForTool(t)),
-        "parameters"  -> schemaDialect(t)
+        "strict" -> bool(schemaDialect.strictForTool(t)),
+        "parameters" -> schemaDialect(t)
       )
     }
     val builtIn = input.builtInTools.iterator.flatMap(renderBuiltIn).toVector
     functionTools ++ builtIn
   }
 
-  /** Map a [[BuiltInTool]] to the Responses tool-array entry shape.
-    * Tools the API hasn't surfaced yet are dropped silently. */
+  /**
+   * Map a [[BuiltInTool]] to the Responses tool-array entry shape.
+   * Tools the API hasn't surfaced yet are dropped silently.
+   */
   private def renderBuiltIn(tool: BuiltInTool): Option[Json] = tool match {
-    case BuiltInTool.WebSearch       => Some(obj("type" -> str("web_search")))
+    case BuiltInTool.WebSearch => Some(obj("type" -> str("web_search")))
     case BuiltInTool.ImageGeneration => Some(obj("type" -> str("image_generation")))
-    case BuiltInTool.FileSearch      => Some(obj("type" -> str("file_search")))
+    case BuiltInTool.FileSearch => Some(obj("type" -> str("file_search")))
     case BuiltInTool.CodeInterpreter => Some(obj("type" -> str("code_interpreter")))
-    case BuiltInTool.ComputerUse     => Some(obj("type" -> str("computer_use_preview")))
+    case BuiltInTool.ComputerUse => Some(obj("type" -> str("computer_use_preview")))
   }
 
   // ---- streaming response parsing ----
@@ -444,9 +472,11 @@ case class OpenAIProvider(apiKey: String,
       onMalformed = reason => Vector(ProviderEvent.Error(s"Failed to parse chunk: $reason"))
     )
 
-  /** Route a Responses SSE event by `type` discriminator. Unknown
-    * types are ignored — OpenAI adds new ones over time; we surface
-    * the ones we understand and drop the rest. */
+  /**
+   * Route a Responses SSE event by `type` discriminator. Unknown
+   * types are ignored — OpenAI adds new ones over time; we surface
+   * the ones we understand and drop the rest.
+   */
   private def parseEvent(json: Json, state: StreamState): Vector[ProviderEvent] = {
     val eventType = json.get("type").map(_.asString).getOrElse("")
     eventType match {
@@ -463,13 +493,13 @@ case class OpenAIProvider(apiKey: String,
       case "response.output_text.delta" =>
         val callId = state.activeItemCallId.getOrElse(CallId("responses-text"))
         val rawDelta = json.get("delta").map(_.asString).getOrElse("")
-       // Strip inline citation markers (e.g., 【cite_turn0view0】)
+        // Strip inline citation markers (e.g., 【cite_turn0view0】)
         val delta = OpenAIProvider.CitationMarker.replaceAllIn(rawDelta, "")
         if (delta.isEmpty) Vector.empty
         else Vector(ProviderEvent.ContentBlockDelta(callId, delta))
 
       case "response.output_text.annotation.added" =>
-       // buffer URL citations so we can emit them as a
+        // buffer URL citations so we can emit them as a
         // trailing markdown footer at `response.completed`. The
         // annotation is the structured counterpart to the
         // `【cite_…】` marker we just stripped from the text.
@@ -489,7 +519,7 @@ case class OpenAIProvider(apiKey: String,
 
       case "response.reasoning_summary_text.delta" | "response.reasoning.delta" =>
         val delta = json.get("delta").map(_.asString).getOrElse("")
-       // accumulate the summary fragments per active reasoning item so
+        // accumulate the summary fragments per active reasoning item so
         // the final ReasoningItem we emit at `output_item.done` carries
         // the full text. Also surface the delta as a `ThinkingDelta` for
         // UIs that visualize CoT streams in real time.
@@ -530,15 +560,15 @@ case class OpenAIProvider(apiKey: String,
               .orElse(item.get("image_url").map(_.asString))
             raw.flatMap(OpenAIProvider.toProviderImage) match {
               case Some(img) => Vector(
-                ProviderEvent.ImageGenerationComplete(callId, img),
-                ProviderEvent.ServerToolComplete(callId, BuiltInTool.ImageGeneration)
-              )
+                  ProviderEvent.ImageGenerationComplete(callId, img),
+                  ProviderEvent.ServerToolComplete(callId, BuiltInTool.ImageGeneration)
+                )
               case None => Vector.empty
             }
           case "web_search_call" =>
             Vector(ProviderEvent.ServerToolComplete(callId, BuiltInTool.WebSearch))
           case "reasoning" =>
-           // Final summary entries on `item.summary` win over the
+            // Final summary entries on `item.summary` win over the
             // delta-accumulated buffer when both exist (the wire's
             // settled view is authoritative).
             val pid = item.get("id").map(_.asString)
@@ -574,7 +604,7 @@ case class OpenAIProvider(apiKey: String,
         val usage = json.get("response").flatMap(_.get("usage")).map(parseUsage)
         val completes = state.acc.complete()
         val usageEv = usage.toVector.map(ProviderEvent.Usage(_))
-       // Flush buffered web-search citations as a markdown footer appended to the
+        // Flush buffered web-search citations as a markdown footer appended to the
         // active text block. Renders as a real "Sources" list in any
         // markdown-capable consumer; passes through as readable plaintext
         // otherwise. Deduplicated by URL so the same source cited multiple
@@ -596,7 +626,7 @@ case class OpenAIProvider(apiKey: String,
           if (state.sawFunctionCall) StopReason.ToolCall
           else apiStatus match {
             case Some("incomplete") => StopReason.MaxTokens
-            case _                  => StopReason.Complete
+            case _ => StopReason.Complete
           }
         // The captured `response.id` becomes the next turn's
         // `previous_response_id`. The recorded `messageCount` is the
@@ -617,7 +647,7 @@ case class OpenAIProvider(apiKey: String,
         // via `previous_response_id` onto it 400s ("No tool output found for
         // function call ..."). A NON-terminal tool call (`find_capability`,
         // `change_mode`, …) is fine: its output ships in the next request's
-       // `input` (with the round-tripped call_id), pairing the
+        // `input` (with the round-tripped call_id), pairing the
         // call — so the chain stays valid. Pure-text / server-tool-only
         // responses chain too. Clear the chain only for the terminal case.
         val endsWithTerminalCall =
@@ -667,8 +697,10 @@ case class OpenAIProvider(apiKey: String,
     }
   }
 
-  /** When an output item is added, OpenAI tells us its kind and call_id.
-    * We track the active item's call_id so subsequent deltas can pair. */
+  /**
+   * When an output item is added, OpenAI tells us its kind and call_id.
+   * We track the active item's call_id so subsequent deltas can pair.
+   */
   private def parseOutputItemAdded(json: Json, state: StreamState): Vector[ProviderEvent] = {
     val item = json.get("item").getOrElse(Obj.empty)
     val itemType = item.get("type").map(_.asString).getOrElse("")
@@ -727,50 +759,65 @@ case class OpenAIProvider(apiKey: String,
   private def parseUsage(json: Json): TokenUsage =
     TokenUsage.fromJson(json, "input_tokens", "output_tokens", Some("total_tokens"), CacheKeys.OpenAIResponses)
 
-  /** Per-response state: tracks the active output item (so deltas
-    * pair with the right call_id), plus a shared tool-call
-    * accumulator for function-call args. Mutable — confined to a
-    * single stream. */
+  /**
+   * Per-response state: tracks the active output item (so deltas
+   * pair with the right call_id), plus a shared tool-call
+   * accumulator for function-call args. Mutable — confined to a
+   * single stream.
+   */
   final private[openai] class StreamState(val acc: ToolCallAccumulator) {
     var activeItemCallId: Option[CallId] = None
     var itemIndex: Int = 0
     var nextIndex: Int = 0
     var sawFunctionCall: Boolean = false
-    /** Names of every `function_call` item this response emitted. Used at
-      * `response.completed` to decide whether the captured `responseId` is
-      * chainable: a response ending with a TERMINAL user-visible tool
-      * (`respond` family) leaves a dangling call in OpenAI's stored state and
-      * must NOT be chained via `previous_response_id`; non-terminal tool calls
-      * pair on the next turn and stay chainable. */
+
+    /**
+     * Names of every `function_call` item this response emitted. Used at
+     * `response.completed` to decide whether the captured `responseId` is
+     * chainable: a response ending with a TERMINAL user-visible tool
+     * (`respond` family) leaves a dangling call in OpenAI's stored state and
+     * must NOT be chained via `previous_response_id`; non-terminal tool calls
+     * pair on the next turn and stay chainable.
+     */
     val functionCallNames: scala.collection.mutable.Set[String] = scala.collection.mutable.Set.empty
-    /** Server-side state handle captured from `response.created`. Empty
-      * until the SSE delivers it; used at `response.completed` to emit
-      * `ResponseStateCaptured` so the framework can persist it for the
-      * next turn's `previous_response_id`. */
+
+    /**
+     * Server-side state handle captured from `response.created`. Empty
+     * until the SSE delivers it; used at `response.completed` to emit
+     * `ResponseStateCaptured` so the framework can persist it for the
+     * next turn's `previous_response_id`.
+     */
     var responseId: String = ""
-   /** Full rendered message count for this call (pre-trim) — set by
-      * `call` before the stream starts. Recorded as the NEXT turn's
-      * `priorMessageCount`. The next turn drops that many PMs from
-      * the head and role-filters the tail to keep only User +
-      * ToolResult items; Assistant + Reasoning output items are
-      * covered by `previous_response_id` server-side. Framework-
-      * emitted ToolResult PMs that sit BETWEEN OpenAI's output
-      * items in the dropped range are recovered by the role filter.
-      */
+
+    /**
+     * Full rendered message count for this call (pre-trim) — set by
+     * `call` before the stream starts. Recorded as the NEXT turn's
+     * `priorMessageCount`. The next turn drops that many PMs from
+     * the head and role-filters the tail to keep only User +
+     * ToolResult items; Assistant + Reasoning output items are
+     * covered by `previous_response_id` server-side. Framework-
+     * emitted ToolResult PMs that sit BETWEEN OpenAI's output
+     * items in the dropped range are recovered by the role filter.
+     */
     var sentMessageCount: Int = 0
-    /** Annotations gathered from `response.output_text.annotation.added`
-      * events (web-search citations). Emitted at `response.completed`
-      * as a trailing markdown footer so the URLs reach the user
-      * instead of being dropped along with the inline `【cite_…】`
-      * markers. */
+
+    /**
+     * Annotations gathered from `response.output_text.annotation.added`
+     * events (web-search citations). Emitted at `response.completed`
+     * as a trailing markdown footer so the URLs reach the user
+     * instead of being dropped along with the inline `【cite_…】`
+     * markers.
+     */
     val pendingCitations: scala.collection.mutable.ArrayBuffer[(String, String)] =
       scala.collection.mutable.ArrayBuffer.empty
 
-    /** Bug #61 — per-active-reasoning-item state. Keys are the
-      * stream-local callId.value (since `output_item.added` always
-      * carries one); values are the wire-level provider id (`rs_…`),
-      * accumulated summary text fragments, and the optional encrypted
-      * CoT blob respectively. Cleared on `output_item.done`. */
+    /**
+     * Bug #61 — per-active-reasoning-item state. Keys are the
+     * stream-local callId.value (since `output_item.added` always
+     * carries one); values are the wire-level provider id (`rs_…`),
+     * accumulated summary text fragments, and the optional encrypted
+     * CoT blob respectively. Cleared on `output_item.done`.
+     */
     val reasoningProviderIds: scala.collection.mutable.Map[String, String] =
       scala.collection.mutable.Map.empty
     val reasoningSummaryBuffers: scala.collection.mutable.Map[String, StringBuilder] =
@@ -781,34 +828,41 @@ case class OpenAIProvider(apiKey: String,
 }
 
 object OpenAIProvider {
-  /** OpenAI Responses API web-search citation markers. Two shapes
-    * observed on the wire:
-    *   - Bracketed: `【cite_turn1view0】` (U+3010 + `cite` + separator
-    *     + `turn<N>view<M>` group(s) + U+3011). The separator has
-    *     varied — underscore, PUA characters, RTL marks — so we
-    *     match liberally on "any non-alphanumeric chars between
-    *     `cite` and `turn`."
-    *   - Bare: `citeturn1view0turn1view2` — no brackets at all,
-    *     concatenated directly to surrounding prose. Same `turn<N>(view|search|navlist|news)<M>`
-    *     repeating block, prefixed with `cite`. We drop both
-    *     forms; the structured URL/title pair rides on
-    *     as a Sources footer at `response.completed`. */
+
+  /**
+   * OpenAI Responses API web-search citation markers. Two shapes
+   * observed on the wire:
+   *   - Bracketed: `【cite_turn1view0】` (U+3010 + `cite` + separator
+   *     + `turn<N>view<M>` group(s) + U+3011). The separator has
+   *     varied — underscore, PUA characters, RTL marks — so we
+   *     match liberally on "any non-alphanumeric chars between
+   *     `cite` and `turn`."
+   *   - Bare: `citeturn1view0turn1view2` — no brackets at all,
+   *     concatenated directly to surrounding prose. Same `turn<N>(view|search|navlist|news)<M>`
+   *     repeating block, prefixed with `cite`. We drop both
+   *     forms; the structured URL/title pair rides on
+   *     as a Sources footer at `response.completed`.
+   */
   private val CitationMarker: scala.util.matching.Regex =
     """(?:【\s*cite[^a-zA-Z0-9]*(?:turn\d+(?:view|search|navlist|news)\d+[^a-zA-Z0-9]*)+】|cite(?:turn\d+(?:view|search|navlist|news)\d+)+)""".r
 
-  /** Construct an OpenAIProvider. Models are read from
-    * [[sigil.cache.ModelRegistry]] at access time, so the DB just needs
-    * to be populated (typically via
-    * [[sigil.controller.OpenRouter.refreshModels]]). */
+  /**
+   * Construct an OpenAIProvider. Models are read from
+   * [[sigil.cache.ModelRegistry]] at access time, so the DB just needs
+   * to be populated (typically via
+   * [[sigil.controller.OpenRouter.refreshModels]]).
+   */
   def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://api.openai.com"): Task[OpenAIProvider] =
     Task.pure(OpenAIProvider(apiKey, sigil, baseUrl))
 
-  /** Classify a raw image reference from an OpenAI image-generation
-    * event into a typed [[ProviderImage]]: an `http(s)` value is a
-    * [[ProviderImage.Hosted]] URL; a `data:` URL or a bare base64
-    * payload is [[ProviderImage.Inline]] image bytes. Returns `None`
-    * for an empty or unparseable reference — never constructs a
-    * `data:` URL. */
+  /**
+   * Classify a raw image reference from an OpenAI image-generation
+   * event into a typed [[ProviderImage]]: an `http(s)` value is a
+   * [[ProviderImage.Hosted]] URL; a `data:` URL or a bare base64
+   * payload is [[ProviderImage.Inline]] image bytes. Returns `None`
+   * for an empty or unparseable reference — never constructs a
+   * `data:` URL.
+   */
   private[openai] def toProviderImage(raw: String): Option[ProviderImage] = {
     val trimmed = raw.trim
     if (trimmed.isEmpty) None
@@ -824,7 +878,6 @@ object OpenAIProvider {
           contentType = if (contentType.nonEmpty) contentType else "image/png"
         ))
       }
-    }
-    else Some(ProviderImage.Inline(base64 = trimmed, contentType = "image/png"))
+    } else Some(ProviderImage.Inline(base64 = trimmed, contentType = "image/png"))
   }
 }

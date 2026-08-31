@@ -71,7 +71,7 @@ class MemoryLookupScopeSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private def factOf(out: LookupOutput): Option[String] = out match {
     case LookupOutput.Found(_, _, payload, _) => payload.get("fact").map(_.asString)
-    case _                                    => None
+    case _ => None
   }
 
   "lookup(Memory)" should {
@@ -79,9 +79,9 @@ class MemoryLookupScopeSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       // The same slot exists in two tenants' spaces; only one is ours.
       reseed(Set(MemoryTestSpace))
       for {
-        _     <- seed("user.email", "theirs@example.com", TestSpace)
-        mine  <- seed("user.email", "mine@example.com", MemoryTestSpace)
-        ctx    = makeContext(Conversation.id(s"lookup-scope-${rapid.Unique()}"))
+        _ <- seed("user.email", "theirs@example.com", TestSpace)
+        mine <- seed("user.email", "mine@example.com", MemoryTestSpace)
+        ctx = makeContext(Conversation.id(s"lookup-scope-${rapid.Unique()}"))
         found <- lookup("user.email", ctx)
       } yield {
         factOf(found) shouldBe Some("mine@example.com")
@@ -94,9 +94,9 @@ class MemoryLookupScopeSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       reseed(Set(MemoryTestSpace))
       for {
         theirs <- seed("user.email", "theirs@example.com", TestSpace)
-        ctx     = makeContext(Conversation.id(s"lookup-denied-${rapid.Unique()}"))
-        byKey  <- lookup("user.email", ctx)
-        byId   <- lookup(theirs._id.value, ctx)
+        ctx = makeContext(Conversation.id(s"lookup-denied-${rapid.Unique()}"))
+        byKey <- lookup("user.email", ctx)
+        byId <- lookup(theirs._id.value, ctx)
       } yield {
         byKey shouldBe a[LookupOutput.NotFound]
         byId shouldBe a[LookupOutput.NotFound]
@@ -106,19 +106,23 @@ class MemoryLookupScopeSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     "resolve a versioned key to the current version, not an archived one" in {
       reseed(Set(MemoryTestSpace))
       def keyed(fact: String) = ContextMemory(
-        fact = fact, label = "deploy", summary = fact, key = Some("ops.deploy"),
-        source = MemorySource.Explicit, spaceId = MemoryTestSpace)
+        fact = fact,
+        label = "deploy",
+        summary = fact,
+        key = Some("ops.deploy"),
+        source = MemorySource.Explicit,
+        spaceId = MemoryTestSpace)
       for {
-        _       <- TestSigil.upsertMemoryByKey(keyed("The deploy target is us-east-1."))
-        _       <- TestSigil.upsertMemoryByKey(keyed("The deploy target is eu-west-2."))
+        _ <- TestSigil.upsertMemoryByKey(keyed("The deploy target is us-east-1."))
+        _ <- TestSigil.upsertMemoryByKey(keyed("The deploy target is eu-west-2."))
         current <- TestSigil.upsertMemoryByKey(keyed("The deploy target is ap-south-1."))
-        ctx      = makeContext(Conversation.id(s"lookup-version-${rapid.Unique()}"))
-        found   <- lookup("ops.deploy", ctx)
+        ctx = makeContext(Conversation.id(s"lookup-version-${rapid.Unique()}"))
+        found <- lookup("ops.deploy", ctx)
       } yield {
         factOf(found) shouldBe Some("The deploy target is ap-south-1.")
         found match {
           case LookupOutput.Found(_, _, payload, _) => payload.get("_id").map(_.asString) shouldBe Some(current.memory._id.value)
-          case other                                => fail(s"expected Found, got $other")
+          case other => fail(s"expected Found, got $other")
         }
       }
     }
@@ -126,12 +130,12 @@ class MemoryLookupScopeSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     "refuse a record the recall gate excludes, even by direct id" in {
       reseed(Set(MemoryTestSpace))
       for {
-        m     <- seed("user.nickname", "Call me Ace.", MemoryTestSpace)
-        ctx    = makeContext(Conversation.id(s"lookup-gate-${rapid.Unique()}"))
-        before<- lookup("user.nickname", ctx)
-        _     <- TestSigil.rejectMemory(m._id)
+        m <- seed("user.nickname", "Call me Ace.", MemoryTestSpace)
+        ctx = makeContext(Conversation.id(s"lookup-gate-${rapid.Unique()}"))
+        before <- lookup("user.nickname", ctx)
+        _ <- TestSigil.rejectMemory(m._id)
         byKey <- lookup("user.nickname", ctx)
-        byId  <- lookup(m._id.value, ctx)
+        byId <- lookup(m._id.value, ctx)
       } yield {
         factOf(before) shouldBe Some("Call me Ace.")
         byKey shouldBe a[LookupOutput.NotFound]

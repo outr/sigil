@@ -22,9 +22,11 @@ import sigil.provider.cloudflare.Cloudflare
  */
 class CloudflareCatalogParseSpec extends AnyWordSpec with Matchers {
 
-  /** A `/models/search` page mirroring the live wire shape: one model
-    * with an array-valued `price` (Kimi), one all-string model, and one
-    * structurally-broken row (missing the required `name`). */
+  /**
+   * A `/models/search` page mirroring the live wire shape: one model
+   * with an array-valued `price` (Kimi), one all-string model, and one
+   * structurally-broken row (missing the required `name`).
+   */
   private val page = JsonParser(
     """
       |{
@@ -92,17 +94,17 @@ class CloudflareCatalogParseSpec extends AnyWordSpec with Matchers {
   "Cloudflare.toModel" should {
     "read the string-valued properties (context, capabilities)" in {
       val (entries, _) = Cloudflare.parsePage(page)
-      val kimi  = Cloudflare.toModel(entries.find(_.name == "@cf/moonshotai/kimi-k2.6").get)
+      val kimi = Cloudflare.toModel(entries.find(_.name == "@cf/moonshotai/kimi-k2.6").get)
       kimi.contextLength shouldBe 131072L
-      kimi.supportedParameters should contain("tools")  // function_calling = "true"
+      kimi.supportedParameters should contain("tools") // function_calling = "true"
     }
 
     "map the array-valued `price` into per-token ModelPricing (#337)" in {
       val (entries, _) = Cloudflare.parsePage(page)
-      val kimi  = Cloudflare.toModel(entries.find(_.name == "@cf/moonshotai/kimi-k2.6").get)
-      val perM  = BigDecimal(1000000)
-      kimi.pricing.prompt         shouldBe (BigDecimal("0.95") / perM)
-      kimi.pricing.completion     shouldBe (BigDecimal("4") / perM)
+      val kimi = Cloudflare.toModel(entries.find(_.name == "@cf/moonshotai/kimi-k2.6").get)
+      val perM = BigDecimal(1000000)
+      kimi.pricing.prompt shouldBe (BigDecimal("0.95") / perM)
+      kimi.pricing.completion shouldBe (BigDecimal("4") / perM)
       kimi.pricing.inputCacheRead shouldBe Some(BigDecimal("0.16") / perM)
     }
 

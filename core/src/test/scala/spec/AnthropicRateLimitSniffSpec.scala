@@ -20,7 +20,7 @@ class AnthropicRateLimitSniffSpec extends AsyncWordSpec with AsyncTaskSpec with 
   TestSigil.initFor(getClass.getSimpleName)
 
   private val provider = AnthropicProvider(
-    apiKey   = "synthetic-test-key",
+    apiKey = "synthetic-test-key",
     sigilRef = TestSigil
   )
 

@@ -19,8 +19,10 @@ opaque type FeatureId = String
 
 object FeatureId {
 
-  /** A feature id. Blank ids are rejected — an unnameable feature can
-    * neither be disabled nor attributed. */
+  /**
+   * A feature id. Blank ids are rejected — an unnameable feature can
+   * neither be disabled nor attributed.
+   */
   def apply(value: String): FeatureId = {
     require(value.trim.nonEmpty, "FeatureId cannot be blank — the id is how a feature is disabled and profiled.")
     value

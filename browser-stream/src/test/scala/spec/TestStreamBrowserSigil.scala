@@ -36,20 +36,26 @@ object TestStreamBrowserSigil extends Sigil with StreamBrowserSigil {
 
   override def testMode: Boolean = true
 
-  /** CI runners restrict unprivileged user namespaces, which kills
-    * Chrome's sandbox at launch — tests run unsandboxed. */
+  /**
+   * CI runners restrict unprivileged user namespaces, which kills
+   * Chrome's sandbox at launch — tests run unsandboxed.
+   */
   override def browserConfig: RoboBrowserConfig = RoboBrowserConfig(
     browserConfig = BrowserConfig(headless = true, disableGPU = true, noSandbox = true),
     enableNetworkEvents = false,
     enableDOMEvents = false
   )
 
-  /** Headless, no virtual display — the shape that can only ever reach
-    * the screencast rung. */
+  /**
+   * Headless, no virtual display — the shape that can only ever reach
+   * the screencast rung.
+   */
   val headlessPreviewConfig: RoboBrowserConfig = browserConfig
 
-  /** Headful on a dedicated Xvfb display — the shape WebRTC needs. 720p
-    * keeps the encoder's work modest on a shared CI box. */
+  /**
+   * Headful on a dedicated Xvfb display — the shape WebRTC needs. 720p
+   * keeps the encoder's work modest on a shared CI box.
+   */
   val virtualDisplayPreviewConfig: RoboBrowserConfig = browserConfig.copy(
     browserConfig = browserConfig.browserConfig.copy(headless = false),
     virtualDisplay = Some(VirtualDisplayConfig(width = 1280, height = 720))
@@ -61,8 +67,10 @@ object TestStreamBrowserSigil extends Sigil with StreamBrowserSigil {
 
   override def streamBrowserConfig: RoboBrowserConfig = previewConfigRef.get()
 
-  /** The framework's unoverridden default — the clean-capture profile
-    * specs assert against this, not the per-test override above. */
+  /**
+   * The framework's unoverridden default — the clean-capture profile
+   * specs assert against this, not the per-test override above.
+   */
   lazy val defaultStreamBrowserConfig: RoboBrowserConfig = super.streamBrowserConfig
   override def streamFallbackToScreencast: Boolean = fallbackRef.get()
 
@@ -93,7 +101,7 @@ object TestStreamBrowserSigil extends Sigil with StreamBrowserSigil {
     ()
   }
 
-  private def deleteRecursive(path: Path): Unit = {
+  private def deleteRecursive(path: Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val s = java.nio.file.Files.walk(path)
       try {
@@ -101,5 +109,4 @@ object TestStreamBrowserSigil extends Sigil with StreamBrowserSigil {
         s.iterator().asScala.toList.reverse.foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally s.close()
     }
-  }
 }

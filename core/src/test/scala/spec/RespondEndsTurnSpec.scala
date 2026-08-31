@@ -49,10 +49,12 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   private val modelId: Id[Model] = Model.id("test", "ends-turn-model")
   TestSigil.testModel(modelId)
 
-  /** Provider that scripts:
-    *   - call 1: respond(endsTurn = false, content = "Let me check…")
-    *   - call 2: respond(endsTurn = true, content = "Done.")
-    * Records call count so the spec can assert it received both. */
+  /**
+   * Provider that scripts:
+   *   - call 1: respond(endsTurn = false, content = "Let me check…")
+   *   - call 2: respond(endsTurn = true, content = "Done.")
+   * Records call count so the spec can assert it received both.
+   */
   private class TwoStepProgressProvider extends Provider {
     val callCount = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -71,17 +73,17 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val payload =
         if (n == 1)
           RespondInput(
-            topicLabel   = "Status",
+            topicLabel = "Status",
             topicSummary = "Progress update before doing more work.",
-            content      = "Let me check…",
-            endsTurn     = false
+            content = "Let me check…",
+            endsTurn = false
           )
         else
           RespondInput(
-            topicLabel   = "Done",
+            topicLabel = "Done",
             topicSummary = "Final answer for this turn.",
-            content      = "Done.",
-            endsTurn     = true
+            content = "Done.",
+            endsTurn = true
           )
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
@@ -91,8 +93,10 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     }
   }
 
-  /** Provider that emits respond(endsTurn = false) every call —
-    * tests the runaway cap. */
+  /**
+   * Provider that emits respond(endsTurn = false) every call —
+   * tests the runaway cap.
+   */
   private class AlwaysContinueProvider extends Provider {
     val callCount = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -106,10 +110,10 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
         ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
-          topicLabel   = s"Status $n",
+          topicLabel = s"Status $n",
           topicSummary = "Status pulse.",
-          content      = s"Step $n…",
-          endsTurn     = false
+          content = s"Step $n…",
+          endsTurn = false
         )),
         ProviderEvent.Done(StopReason.Complete)
       ))
@@ -118,16 +122,18 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
-  /** Poll `cond` until true or `timeout` elapses — replaces fixed sleeps in
-    * async agent-loop assertions so a slow CI runner doesn't snapshot before the
-    * loop's later iterations land. */
+  /**
+   * Poll `cond` until true or `timeout` elapses — replaces fixed sleeps in
+   * async agent-loop assertions so a slow CI runner doesn't snapshot before the
+   * loop's later iterations land.
+   */
   private def waitUntil(timeout: scala.concurrent.duration.FiniteDuration)(cond: => Boolean): Task[Unit] = {
     val deadline = System.currentTimeMillis() + timeout.toMillis
     def loop: Task[Unit] =
@@ -142,18 +148,18 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val provider = new TwoStepProgressProvider
       TestSigil.setProvider(Task.pure(provider))
       val convId = Conversation.id(s"ends-turn-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Evaluate the admin services.")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Evaluate the admin services.")),
+          state = EventState.Complete
+        ))
         // Poll for both iterations rather than a fixed sleep — the 2nd
         // iteration can land later than a flat 2s on a slow/contended CI runner
         // (was `1 was not equal to 2`).
@@ -163,7 +169,7 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       } yield {
         val agentMessages = events.collect {
           case m: Message
-            if m.participantId == TestAgent && m.role == sigil.event.MessageRole.Standard => m
+              if m.participantId == TestAgent && m.role == sigil.event.MessageRole.Standard => m
         }.sortBy(_.timestamp.value)
         // Two iterations → two user-visible (Standard-role) agent
         // Messages: the progress pulse (endsTurn=false) AND the final
@@ -178,11 +184,11 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         // plain text without markdown structure may render as Markdown
         // rather than Text. Match both.
         val texts = agentMessages.flatMap(_.content.collect {
-          case ResponseContent.Text(t)     => t
+          case ResponseContent.Text(t) => t
           case ResponseContent.Markdown(t) => t
         })
-        texts should contain ("Let me check…")
-        texts should contain ("Done.")
+        texts should contain("Let me check…")
+        texts should contain("Done.")
       }
     }
   }
@@ -208,10 +214,10 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
-              topicLabel   = "Done",
+              topicLabel = "Done",
               topicSummary = "Direct reply.",
-              content      = "Hi.",
-              endsTurn     = true
+              content = "Hi.",
+              endsTurn = true
             )),
             ProviderEvent.Done(StopReason.Complete)
           ))
@@ -219,23 +225,22 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       }
       TestSigil.setProvider(Task.pure(singleProvider))
       val convId = Conversation.id(s"ends-turn-true-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Hi.")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Hi.")),
+          state = EventState.Complete
+        ))
         _ <- Task.sleep(1.second)
-      } yield {
+      } yield
         // Single iteration — provider was called exactly once.
         callCount.get() shouldBe 1
-      }
     }
   }
 

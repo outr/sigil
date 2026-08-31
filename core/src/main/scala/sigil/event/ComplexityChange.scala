@@ -27,7 +27,7 @@ import sigil.signal.EventState
  *     `Pinned` / `Repinned` / `Unpinned` distinctly without diffing
  *     `previousTier` / `newTier` to figure out which path ran.
  *
-* `ControlPlaneEvent` — matches `ModeChange` / `RouteResolved`. Doesn't
+ * `ControlPlaneEvent` — matches `ModeChange` / `RouteResolved`. Doesn't
  */
 case class ComplexityChange(participantId: ParticipantId,
                             conversationId: Id[Conversation],
@@ -56,17 +56,26 @@ case class ComplexityChange(participantId: ParticipantId,
 
 object ComplexityChange {
 
-  /** Which tool transition fired this event. Reducers key off the
-    * enum case rather than diffing `previousTier` / `newTier`. */
+  /**
+   * Which tool transition fired this event. Reducers key off the
+   * enum case rather than diffing `previousTier` / `newTier`.
+   */
   enum Reason derives RW {
-    /** `pin_complexity` set a tier where nothing was pinned before. */
+
+    /**
+     * `pin_complexity` set a tier where nothing was pinned before.
+     */
     case Pinned
 
-    /** `pin_complexity` replaced an existing pin with another tier
-      * (or the same tier — UI can still render a "confirmed" pulse). */
+    /**
+     * `pin_complexity` replaced an existing pin with another tier
+     * (or the same tier — UI can still render a "confirmed" pulse).
+     */
     case Repinned
 
-    /** `unpin_complexity` cleared the pin. */
+    /**
+     * `unpin_complexity` cleared the pin.
+     */
     case Unpinned
   }
 }

@@ -12,20 +12,27 @@ import rapid.Task
  * reference semantics live in [[DiscoveryFilter]].
  */
 trait ToolFinder {
-  /** Wire-shape contributions for the tools this finder may surface —
-    * each [[ToolIO]] carries the input AND output codec registered
-    * into the polymorphic `ToolInput` / `ToolOutput` RWs at init. A
-    * finder override contributes its codecs by construction; the
-    * static roster's codecs are derived independently at the
-    * registration site, so overriding the finder can never silently
-    * drop them. */
+
+  /**
+   * Wire-shape contributions for the tools this finder may surface —
+   * each [[ToolIO]] carries the input AND output codec registered
+   * into the polymorphic `ToolInput` / `ToolOutput` RWs at init. A
+   * finder override contributes its codecs by construction; the
+   * static roster's codecs are derived independently at the
+   * registration site, so overriding the finder can never silently
+   * drop them.
+   */
   def toolIO: List[ToolIO[?, ?]]
 
-  /** Find tools matching a discovery request: keyword + mode + space
-    * filters, scored. */
+  /**
+   * Find tools matching a discovery request: keyword + mode + space
+   * filters, scored.
+   */
   def apply(request: DiscoveryRequest): Task[List[Tool]]
 
-  /** Exact-name lookup. Used by the orchestrator and the agent
-    * dispatcher to resolve a tool the caller already named. */
+  /**
+   * Exact-name lookup. Used by the orchestrator and the agent
+   * dispatcher to resolve a tool the caller already named.
+   */
   def byName(name: ToolName): Task[Option[Tool]]
 }

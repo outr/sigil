@@ -28,14 +28,18 @@ import scala.concurrent.duration.*
 trait ToolingSigil extends Sigil {
   type DB <: SigilDB & ToolingCollections
 
-  /** Whether the framework's LSP + BSP tools are appended to
-    * `staticTools`. Default true. Apps that want a locked-down
-    * agent surface override to false and register a curated subset. */
+  /**
+   * Whether the framework's LSP + BSP tools are appended to
+   * `staticTools`. Default true. Apps that want a locked-down
+   * agent surface override to false and register a curated subset.
+   */
   def toolingToolsEnabled: Boolean = true
 
-  /** How often [[lspManager]] / [[bspManager]] sweep idle sessions.
-    * Default once per minute — sessions whose idle time exceeds
-    * their config's `idleTimeoutMs` are torn down. */
+  /**
+   * How often [[lspManager]] / [[bspManager]] sweep idle sessions.
+   * Default once per minute — sessions whose idle time exceeds
+   * their config's `idleTimeoutMs` are torn down.
+   */
   def toolingIdleSweepInterval: FiniteDuration = 1.minute
 
   final lazy val lspManager: LspManager =
@@ -52,8 +56,10 @@ trait ToolingSigil extends Sigil {
   protected def toolingTools: List[Tool] =
     lspTools ++ bspTools
 
-  /** Every LSP-side tool the framework ships. Apps that want a
-    * subset override this and pick. */
+  /**
+   * Every LSP-side tool the framework ships. Apps that want a
+   * subset override this and pick.
+   */
   protected def lspTools: List[Tool] = List(
     // Phase 0 — base
     new LspDiagnosticsTool(lspManager),
@@ -85,7 +91,9 @@ trait ToolingSigil extends Sigil {
     new LspDocumentLinkTool(lspManager)
   )
 
-  /** Every BSP-side tool the framework ships. */
+  /**
+   * Every BSP-side tool the framework ships.
+   */
   protected def bspTools: List[Tool] = List(
     new BspListTargetsTool(bspManager),
     new BspCompileTool(bspManager),
@@ -104,7 +112,9 @@ trait ToolingSigil extends Sigil {
     new BspScalaMainClassesTool(bspManager)
   )
 
-  /** Periodic idle sweep — runs forever on a daemon fiber. */
+  /**
+   * Periodic idle sweep — runs forever on a daemon fiber.
+   */
   private def sweepLoop(): Task[Unit] = Task.defer {
     Task.sleep(toolingIdleSweepInterval)
       .flatMap(_ => lspManager.sweepIdle().handleError(_ => Task.unit))

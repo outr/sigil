@@ -8,9 +8,7 @@ import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.event.Stop
-import sigil.provider.{
-  ConversationMode, GenerationSettings, ProviderCall, ProviderStreamRegistry, ToolChoice
-}
+import sigil.provider.{ConversationMode, GenerationSettings, ProviderCall, ProviderStreamRegistry, ToolChoice}
 import spice.http.client.StreamHandle
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
@@ -30,8 +28,7 @@ import sigil.tool.ToolRoster
  * the flag flips, exactly as the line stream over a cancelled
  * `Call` does.
  */
-class ProviderStreamCancelSpec
-  extends AsyncWordSpec with AsyncTaskSpec with Matchers with BeforeAndAfterAll {
+class ProviderStreamCancelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers with BeforeAndAfterAll {
 
   TestSigil.initFor(getClass.getSimpleName)
 
@@ -40,10 +37,12 @@ class ProviderStreamCancelSpec
     super.afterAll()
   }
 
-  /** Build a synthetic streaming handle: `total` lines emitted ~`gap`
-    * apart, with each emission gated on a cancelled flag that `cancel`
-    * flips. Returns the handle plus the flag and an emitted-count
-    * counter for assertions. */
+  /**
+   * Build a synthetic streaming handle: `total` lines emitted ~`gap`
+   * apart, with each emission gated on a cancelled flag that `cancel`
+   * flips. Returns the handle plus the flag and an emitted-count
+   * counter for assertions.
+   */
   private def syntheticHandle(total: Int,
                               gap: FiniteDuration): (StreamHandle[String], AtomicBoolean, AtomicInteger) = {
     val cancelled = new AtomicBoolean(false)
@@ -65,16 +64,16 @@ class ProviderStreamCancelSpec
   private def callFor(convId: Id[Conversation],
                       agent: Option[sigil.participant.ParticipantId]): ProviderCall =
     ProviderCall(
-      model            = TestSigil.testModel(Model.id("test", "stream-cancel")),
-      system             = "",
-      messages           = Vector.empty,
+      model = TestSigil.testModel(Model.id("test", "stream-cancel")),
+      system = "",
+      messages = Vector.empty,
       roster = ToolRoster(Vector.empty),
-      builtInTools       = Set.empty,
-      toolChoice         = ToolChoice.Auto,
+      builtInTools = Set.empty,
+      toolChoice = ToolChoice.Auto,
       generationSettings = GenerationSettings(),
-      currentMode        = ConversationMode,
-      conversationId     = Some(convId),
-      agentId            = agent
+      currentMode = ConversationMode,
+      conversationId = Some(convId),
+      agentId = agent
     )
 
   "ProviderStreamRegistry" should {
@@ -130,13 +129,13 @@ class ProviderStreamCancelSpec
 
       val started = System.currentTimeMillis()
       for {
-        fiber   <- tracked.toList.start
-        _       <- Task.sleep(200.millis)
-        _       <- {
-                     reg.size shouldBe 1
-                     reg.cancelFor(convId, Some(TestAgent))
-                   }
-        lines   <- fiber.join
+        fiber <- tracked.toList.start
+        _ <- Task.sleep(200.millis)
+        _ <- {
+          reg.size shouldBe 1
+          reg.cancelFor(convId, Some(TestAgent))
+        }
+        lines <- fiber.join
       } yield {
         val elapsed = System.currentTimeMillis() - started
         withClue(s"stream took ${elapsed}ms; should abort well before the ~5s natural duration: ") {
@@ -187,19 +186,19 @@ class ProviderStreamCancelSpec
 
       val started = System.currentTimeMillis()
       for {
-        _     <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         fiber <- tracked.toList.start
-        _     <- Task.sleep(200.millis)
-        _     <- {
-                   TestSigil.providerStreams.size shouldBe 1
-                   TestSigil.publish(Stop(
-                     participantId       = TestUser,
-                     conversationId      = convId,
-                     topicId             = TestTopicEntry.id,
-                     targetParticipantId = Some(TestAgent),
-                     force               = true
-                   ))
-                 }
+        _ <- Task.sleep(200.millis)
+        _ <- {
+          TestSigil.providerStreams.size shouldBe 1
+          TestSigil.publish(Stop(
+            participantId = TestUser,
+            conversationId = convId,
+            topicId = TestTopicEntry.id,
+            targetParticipantId = Some(TestAgent),
+            force = true
+          ))
+        }
         lines <- fiber.join
       } yield {
         val elapsed = System.currentTimeMillis() - started

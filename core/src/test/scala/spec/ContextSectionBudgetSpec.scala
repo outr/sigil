@@ -51,8 +51,12 @@ class ContextSectionBudgetSpec extends AnyWordSpec with Matchers {
     chain = List(TestUser, TestAgent)
   )
 
-  private val ctx = SectionContext(request, resolved, discoveredCapabilitiesPromptCap = 25,
-    now = Timestamp().value, promptShape = PromptShape.Full)
+  private val ctx = SectionContext(
+    request,
+    resolved,
+    discoveredCapabilitiesPromptCap = 25,
+    now = Timestamp().value,
+    promptShape = PromptShape.Full)
 
   private def memoriesSection: ContextSection =
     ContextSections.all.find(_.id == ProfileSection.Memories).getOrElse(fail("no memories section"))

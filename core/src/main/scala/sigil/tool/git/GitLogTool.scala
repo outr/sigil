@@ -13,11 +13,11 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExamp
  * survive parsing. Returns a typed [[GitLogOutput]].
  */
 final class GitLogTool(context: FileSystemContext) extends Tool {
-  type Input  = GitLogInput
+  type Input = GitLogInput
   type Output = GitLogOutput
   val io: ToolIO[GitLogInput, GitLogOutput] = ToolIO.derived[GitLogInput, GitLogOutput].withExamples(
-    ToolExample("20 most recent commits",    GitLogInput()),
-    ToolExample("Last 5 commits on a path",  GitLogInput(path = Some("src/main"), limit = Some(5))),
+    ToolExample("20 most recent commits", GitLogInput()),
+    ToolExample("Last 5 commits on a path", GitLogInput(path = Some("src/main"), limit = Some(5))),
     ToolExample("Commits since last Friday", GitLogInput(since = Some("last friday"), includeBody = true))
   )
   override val name = ToolName("git_log")
@@ -36,11 +36,11 @@ final class GitLogTool(context: FileSystemContext) extends Tool {
 
   private def executeOutput(input: GitLogInput, ctx: ToolContext): Task[GitLogOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
-      val limit    = input.limit.getOrElse(20)
-      val format   = "%H%x00%an%x00%aI%x00%s%x00%b%x1e"
+      val limit = input.limit.getOrElse(20)
+      val format = "%H%x00%an%x00%aI%x00%s%x00%b%x1e"
       val sinceArg = input.since.fold("")(s => s" --since=${GitOps.shellQuote(s)}")
-      val pathArg  = input.path.fold("")(p => s" -- ${GitOps.shellQuote(p)}")
-      val cmd      = s"""git log --pretty=format:$format -n $limit$sinceArg$pathArg"""
+      val pathArg = input.path.fold("")(p => s" -- ${GitOps.shellQuote(p)}")
+      val cmd = s"""git log --pretty=format:$format -n $limit$sinceArg$pathArg"""
       context.executeCommand(cmd, dir).map { r =>
         if (r.exitCode != 0) GitLogOutput.Failed(r.stderr, r.exitCode)
         else GitLogOutput.Listed(GitOps.parseLog(r.stdout, input.includeBody))

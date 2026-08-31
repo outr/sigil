@@ -35,8 +35,12 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
   TestStreamBrowserSigil.initFor(getClass.getSimpleName)
 
   private val chromeAvailable: Boolean =
-    List("/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium",
-      "/usr/local/bin/google-chrome", "/opt/google/chrome/chrome")
+    List(
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/local/bin/google-chrome",
+      "/opt/google/chrome/chrome")
       .exists(p => new java.io.File(p).canExecute)
 
   private val xvfbAvailable: Boolean =
@@ -74,7 +78,8 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
 
   override protected def afterAll(): Unit = {
     if (skipReason.isEmpty) {
-      try TestStreamBrowserSigil.disposeStreamBrowserController(convId).sync() catch { case _: Throwable => () }
+      try TestStreamBrowserSigil.disposeStreamBrowserController(convId).sync()
+      catch { case _: Throwable => () }
       fixture.stop().sync()
     }
     TestStreamBrowserSigil.shutdown.sync()
@@ -120,9 +125,13 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
       controller.browser.virtualDisplay.map(_.width) shouldBe Some(1280)
       controller.browser.virtualDisplay.map(_.height) shouldBe Some(844)
 
-      val session = TestStreamBrowserSigil.previewStreamFor(convId, StreamConfig(
-        width = Some(390), height = Some(844), maxFps = 30
-      )).sync()
+      val session = TestStreamBrowserSigil.previewStreamFor(
+        convId,
+        StreamConfig(
+          width = Some(390),
+          height = Some(844),
+          maxFps = 30
+        )).sync()
       val webRtc = session match {
         case w: PreviewStreamSession.WebRtc => w
         case other => fail(s"expected a WebRTC session, got $other")
@@ -161,16 +170,16 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
 
         val landscape = webRtc.stats.sync()
         landscape.renderSize shouldBe RenderSize(1280, 820)
-        RenderSize(landscape.width, landscape.height) shouldBe (behavior match {
-          case ResizeBehavior.Reconfigure => RenderSize(1280, 820)
-          // The encoder was never asked to change, so the viewer keeps decoding
-          // the frame shape it negotiated — there is nothing for a per-resolution
-          // surface pool to accept silently and then ignore
-          case ResizeBehavior.FixedCanvas => transmittedAtPortrait
-        })
-      } finally {
+        RenderSize(landscape.width, landscape.height) shouldBe
+          (behavior match {
+            case ResizeBehavior.Reconfigure => RenderSize(1280, 820)
+            // The encoder was never asked to change, so the viewer keeps decoding
+            // the frame shape it negotiated — there is nothing for a per-resolution
+            // surface pool to accept silently and then ignore
+            case ResizeBehavior.FixedCanvas => transmittedAtPortrait
+          })
+      } finally
         webRtc.stop.sync()
-      }
     }
 
     "grow past the first render target within a max-declared envelope, and clamp beyond it" in {
@@ -183,17 +192,25 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
       // framebuffer envelope up front — the later landscape grow that
       // used to raise DisplayResizeUnsupportedException just works.
       val controller = TestStreamBrowserSigil
-        .streamBrowserController(growConv, StreamConfig(
-          width = Some(390), height = Some(844),
-          maxWidth = Some(1600), maxHeight = Some(1000)
-        )).sync()
+        .streamBrowserController(
+          growConv,
+          StreamConfig(
+            width = Some(390),
+            height = Some(844),
+            maxWidth = Some(1600),
+            maxHeight = Some(1000)
+          )).sync()
       controller.run(_.navigate(fixture.url)).sync()
       controller.browser.virtualDisplay.map(_.width).get should be >= 1600
       controller.browser.virtualDisplay.map(_.height).get should be >= 1000
 
-      val session = TestStreamBrowserSigil.previewStreamFor(growConv, StreamConfig(
-        width = Some(390), height = Some(844), maxFps = 30
-      )).sync()
+      val session = TestStreamBrowserSigil.previewStreamFor(
+        growConv,
+        StreamConfig(
+          width = Some(390),
+          height = Some(844),
+          maxFps = 30
+        )).sync()
       val webRtc = session match {
         case w: PreviewStreamSession.WebRtc => w
         case other => fail(s"expected a WebRTC session, got $other")
@@ -213,10 +230,11 @@ class PreviewStreamResizeSpec extends AnyWordSpec with Matchers with BeforeAndAf
         clamped.renderSize shouldBe RenderSize(1600, 1000)
         // Whatever the branch, the frame the viewer negotiated is still the
         // frame it is receiving after two resizes
-        RenderSize(clamped.width, clamped.height) shouldBe (clamped.resizeBehavior match {
-          case ResizeBehavior.Reconfigure => RenderSize(1600, 1000)
-          case ResizeBehavior.FixedCanvas => RenderSize(grown.width, grown.height)
-        })
+        RenderSize(clamped.width, clamped.height) shouldBe
+          (clamped.resizeBehavior match {
+            case ResizeBehavior.Reconfigure => RenderSize(1600, 1000)
+            case ResizeBehavior.FixedCanvas => RenderSize(grown.width, grown.height)
+          })
         TestStreamBrowserSigil.previewStreamsFor(growConv).map(_.streamId) should contain(webRtc.streamId)
         // Two resizes, still the one offer the viewer answered at start
         awaitOffers(webRtc.streamId, atLeast = 2, timeoutMs = 5_000) should have size 1

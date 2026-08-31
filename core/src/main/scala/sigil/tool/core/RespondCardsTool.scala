@@ -19,7 +19,7 @@ import sigil.tool.model.RespondCardsInput
  * each card with its own native grouping.
  */
 case object RespondCardsTool extends RespondFamilyTool {
-  type Input  = RespondCardsInput
+  type Input = RespondCardsInput
   type Output = TextToolOutput
   val io: ToolIO[RespondCardsInput, TextToolOutput] = ToolIO.derived[RespondCardsInput, TextToolOutput]
 

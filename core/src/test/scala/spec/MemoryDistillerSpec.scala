@@ -35,7 +35,7 @@ class MemoryDistillerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   private val retrievalText =
     "Sherlock Holmes stores his pipe tobacco inside the toe end of a Persian slipper on the mantelpiece at 221B Baker Street."
 
-  private final class DistillScriptProvider extends Provider {
+  final private class DistillScriptProvider extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -95,7 +95,7 @@ class MemoryDistillerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       succeed
     }
 
-    "distill a long fact into a summary plus retrieval text and stamp the embedding from it" in {
+    "distill a long fact into a summary plus retrieval text and stamp the embedding from it" in
       TestSigil.persistMemory(corpusMemory(longFact)).map { stored =>
         stored.summary shouldBe distilledSummary
         stored.embeddedText shouldBe Some(retrievalText)
@@ -107,7 +107,6 @@ class MemoryDistillerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         sigil.provider.ContextSections.memoryRenderText(stored) shouldBe
           s"""$distilledSummary [full: lookup("${stored._id.value}")]"""
       }
-    }
 
     "skip short facts without spending a consult" in {
       val before = provider.calls.get()

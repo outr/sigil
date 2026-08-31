@@ -49,9 +49,9 @@ class ExpectedHashSentinelSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   private def isStale(signals: List[Signal]): Boolean =
     signals.exists {
       case d: ToolDelta => d.outcome.exists {
-        case f: ToolOutcome.Failure => f.reason.contains("file changed since")
-        case _                      => false
-      }
+          case f: ToolOutcome.Failure => f.reason.contains("file changed since")
+          case _ => false
+        }
       case _ => false
     }
 
@@ -80,7 +80,9 @@ class ExpectedHashSentinelSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         _ <- fs.writeFile("a.txt", "foo\n")
         r <- new EditFileTool(fs).execute(
-          EditFileInput("a.txt", oldString = "foo", newString = "bar", expectedHash = Some("None")), tc, Event.id()).toList
+          EditFileInput("a.txt", oldString = "foo", newString = "bar", expectedHash = Some("None")),
+          tc,
+          Event.id()).toList
         onDisk <- fs.readFile("a.txt")
       } yield {
         isStale(r) shouldBe false
@@ -90,11 +92,15 @@ class ExpectedHashSentinelSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     }
     "commit for Some(\"null\") and Some(\"  \") too" in withWorkspace { (fs, tc) =>
       for {
-        _  <- fs.writeFile("b.txt", "one\ntwo\n")
+        _ <- fs.writeFile("b.txt", "one\ntwo\n")
         r1 <- new EditFileTool(fs).execute(
-          EditFileInput("b.txt", oldString = "one", newString = "1", expectedHash = Some("null")), tc, Event.id()).toList
+          EditFileInput("b.txt", oldString = "one", newString = "1", expectedHash = Some("null")),
+          tc,
+          Event.id()).toList
         r2 <- new EditFileTool(fs).execute(
-          EditFileInput("b.txt", oldString = "two", newString = "2", expectedHash = Some("  ")), tc, Event.id()).toList
+          EditFileInput("b.txt", oldString = "two", newString = "2", expectedHash = Some("  ")),
+          tc,
+          Event.id()).toList
         onDisk <- fs.readFile("b.txt")
       } yield {
         editFileSucceeded(r1) shouldBe true
@@ -109,12 +115,16 @@ class ExpectedHashSentinelSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val content = "alpha\n"
       val currentHash = FileVersion.hashOf(content)
       for {
-        _      <- fs.writeFile("c.txt", content)
-        good   <- new EditFileTool(fs).execute(
-          EditFileInput("c.txt", oldString = "alpha", newString = "beta", expectedHash = Some(currentHash)), tc, Event.id()).toList
+        _ <- fs.writeFile("c.txt", content)
+        good <- new EditFileTool(fs).execute(
+          EditFileInput("c.txt", oldString = "alpha", newString = "beta", expectedHash = Some(currentHash)),
+          tc,
+          Event.id()).toList
         // The file is now "beta\n"; the original hash is stale.
-        stale  <- new EditFileTool(fs).execute(
-          EditFileInput("c.txt", oldString = "beta", newString = "gamma", expectedHash = Some(currentHash)), tc, Event.id()).toList
+        stale <- new EditFileTool(fs).execute(
+          EditFileInput("c.txt", oldString = "beta", newString = "gamma", expectedHash = Some(currentHash)),
+          tc,
+          Event.id()).toList
       } yield {
         editFileSucceeded(good) shouldBe true
         isStale(stale) shouldBe true
@@ -127,8 +137,16 @@ class ExpectedHashSentinelSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         _ <- fs.writeFile("r.txt", "l0\nl1\nl2\n")
         r <- new EditAtRangeTool(fs).execute(
-          EditAtRangeInput("r.txt", startLine = 1, startChar = 0, endLine = 2, endChar = 0,
-            newText = "X\n", expectedHash = Some("None")), tc, Event.id()).toList
+          EditAtRangeInput(
+            "r.txt",
+            startLine = 1,
+            startChar = 0,
+            endLine = 2,
+            endChar = 0,
+            newText = "X\n",
+            expectedHash = Some("None")),
+          tc,
+          Event.id()).toList
         onDisk <- fs.readFile("r.txt")
       } yield {
         isStale(r) shouldBe false
@@ -143,11 +161,17 @@ class ExpectedHashSentinelSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         _ <- fs.writeFile("r2.txt", content)
         _ <- fs.writeFile("r2.txt", "l0\nCHANGED\nl2\n") // external write — hash now stale
         r <- new EditAtRangeTool(fs).execute(
-          EditAtRangeInput("r2.txt", startLine = 0, startChar = 0, endLine = 1, endChar = 0,
-            newText = "Y\n", expectedHash = Some(staleHash)), tc, Event.id()).toList
-      } yield {
-        isStale(r) shouldBe true
-      }
+          EditAtRangeInput(
+            "r2.txt",
+            startLine = 0,
+            startChar = 0,
+            endLine = 1,
+            endChar = 0,
+            newText = "Y\n",
+            expectedHash = Some(staleHash)),
+          tc,
+          Event.id()).toList
+      } yield isStale(r) shouldBe true
     }
   }
 

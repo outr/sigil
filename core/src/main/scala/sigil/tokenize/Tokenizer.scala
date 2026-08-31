@@ -16,15 +16,20 @@ package sigil.tokenize
  * implementation. Default is the heuristic.
  */
 trait Tokenizer {
-  /** Count tokens for a single string. */
+
+  /**
+   * Count tokens for a single string.
+   */
   def count(text: String): Int
 
-  /** Count tokens for a sequence of (role, content) pairs in chat-completion
-    * shape. Concrete tokenizers may add per-message overhead beyond the raw
-    * sum (OpenAI's chat format adds ~3 tokens of metadata per message — role
-    * separator + name + ascii padding). The default sums per-content with a
-    * conservative +3 per-message charge so consumers using the trait directly
-    * still get a roughly-accurate estimate. */
+  /**
+   * Count tokens for a sequence of (role, content) pairs in chat-completion
+   * shape. Concrete tokenizers may add per-message overhead beyond the raw
+   * sum (OpenAI's chat format adds ~3 tokens of metadata per message — role
+   * separator + name + ascii padding). The default sums per-content with a
+   * conservative +3 per-message charge so consumers using the trait directly
+   * still get a roughly-accurate estimate.
+   */
   def countMessages(messages: Seq[(String, String)]): Int =
     messages.iterator.map { case (_, c) => count(c) + 3 }.sum
 }

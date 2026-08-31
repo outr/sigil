@@ -27,22 +27,34 @@ class RefusalVerbositySpec extends AnyWordSpec with Matchers {
   "RefusalPayload verbosity" should {
 
     "pin the schema and a worked example for a wobbly emitter" in {
-      val body = RefusalPayload.malformedArgs(Some(tool), tool.name.value, error, Str("{}"),
+      val body = RefusalPayload.malformedArgs(
+        Some(tool),
+        tool.name.value,
+        error,
+        Str("{}"),
         reliability = Reliability.Wobbly)
-      body should include (s"Schema for `${tool.name.value}`")
-      body should include (s"Example call for `${tool.name.value}`")
+      body should include(s"Schema for `${tool.name.value}`")
+      body should include(s"Example call for `${tool.name.value}`")
     }
 
     "do the same for an unreliable emitter" in {
-      val body = RefusalPayload.malformedArgs(Some(tool), tool.name.value, error, Str("{}"),
+      val body = RefusalPayload.malformedArgs(
+        Some(tool),
+        tool.name.value,
+        error,
+        Str("{}"),
         reliability = Reliability.Unreliable)
-      body should include ("Schema for")
+      body should include("Schema for")
     }
 
     "state the rule alone for a solid emitter" in {
-      val body = RefusalPayload.malformedArgs(Some(tool), tool.name.value, error, Str("{}"),
+      val body = RefusalPayload.malformedArgs(
+        Some(tool),
+        tool.name.value,
+        error,
+        Str("{}"),
         reliability = Reliability.Solid)
-      body should include ("violated schema constraints")
+      body should include("violated schema constraints")
       body should not include "Schema for"
       body should not include "Example call for"
     }
@@ -51,7 +63,7 @@ class RefusalVerbositySpec extends AnyWordSpec with Matchers {
       val wobbly = RefusalPayload.enrichRule(tool, rule, reliability = Reliability.Wobbly)
       val solid = RefusalPayload.enrichRule(tool, rule, reliability = Reliability.Solid)
       solid.length should be < wobbly.length
-      solid should include (rule)
+      solid should include(rule)
     }
 
     "default to the verbose form when no reliability is supplied" in {

@@ -52,13 +52,16 @@ object RetrievalFlags {
     Retrieval(hybrid = hybrid, temporal = temporal, rerank = rerank)
   }
 
-  /** Concise one-line summary of enabled retrieval modes for console
-    * output — benchmark runners print this at startup so the
-    * result banner is self-describing. */
+  /**
+   * Concise one-line summary of enabled retrieval modes for console
+   * output — benchmark runners print this at startup so the
+   * result banner is self-describing.
+   */
   def describe(retrieval: Retrieval): String = {
     val parts = List(
       retrieval.hybrid.map(h => f"hybrid(α=${h.semanticWeight}%.2f)"),
-      retrieval.temporal.map(t => s"temporal(halfLife=${t.boost.halfLifeMs / TemporalBoost.HalfLife.OneDay}d, w=${t.boost.temporalWeight})"),
+      retrieval.temporal.map(t =>
+        s"temporal(halfLife=${t.boost.halfLifeMs / TemporalBoost.HalfLife.OneDay}d, w=${t.boost.temporalWeight})"),
       retrieval.rerank.map(r => s"rerank(pool=${r.poolSize})")
     ).flatten
     if (parts.isEmpty) "vanilla cosine" else parts.mkString(" + ")
@@ -67,24 +70,24 @@ object RetrievalFlags {
   def flagInt(args: Array[String], name: String): Option[Int] =
     args.indexOf(name) match {
       case -1 => None
-      case i  => args.lift(i + 1).flatMap(_.toIntOption)
+      case i => args.lift(i + 1).flatMap(_.toIntOption)
     }
 
   def flagLong(args: Array[String], name: String): Option[Long] =
     args.indexOf(name) match {
       case -1 => None
-      case i  => args.lift(i + 1).flatMap(_.toLongOption)
+      case i => args.lift(i + 1).flatMap(_.toLongOption)
     }
 
   def flagDouble(args: Array[String], name: String): Option[Double] =
     args.indexOf(name) match {
       case -1 => None
-      case i  => args.lift(i + 1).flatMap(_.toDoubleOption)
+      case i => args.lift(i + 1).flatMap(_.toDoubleOption)
     }
 
   def flagString(args: Array[String], name: String): Option[String] =
     args.indexOf(name) match {
       case -1 => None
-      case i  => args.lift(i + 1)
+      case i => args.lift(i + 1)
     }
 }

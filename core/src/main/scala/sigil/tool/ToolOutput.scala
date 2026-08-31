@@ -58,30 +58,36 @@ trait ToolOutput {
 
 object ToolOutput extends PolyType[ToolOutput]()(using scala.reflect.ClassTag(classOf[ToolOutput])) {
 
-  /** Initial state of every [[sigil.event.ToolInvoke]] — the call has
-    * been issued but the tool's `execute` hasn't yet settled it. A
-    * [[sigil.signal.ToolDelta]] with `output = Some(...)` replaces
-    * this with the real output (or a [[Progress]] interim). */
+  /**
+   * Initial state of every [[sigil.event.ToolInvoke]] — the call has
+   * been issued but the tool's `execute` hasn't yet settled it. A
+   * [[sigil.signal.ToolDelta]] with `output = Some(...)` replaces
+   * this with the real output (or a [[Progress]] interim).
+   */
   case object Pending extends ToolOutput
 
-  /** Interim progress update emitted by a long-running tool via
-    * [[sigil.tool.ToolContext.reportProgress]]. Folded into the live
-    * invoke by a [[sigil.signal.ToolDelta]]; consumers see the chip's
-    * content advance through successive Progress values before the
-    * final concrete `ToolOutput` lands.
-    *
-    * `percent` is `Some(0.0..1.0)` when the tool can express a real
-    * completion fraction; `None` for unbounded "still working" pulses. */
+  /**
+   * Interim progress update emitted by a long-running tool via
+   * [[sigil.tool.ToolContext.reportProgress]]. Folded into the live
+   * invoke by a [[sigil.signal.ToolDelta]]; consumers see the chip's
+   * content advance through successive Progress values before the
+   * final concrete `ToolOutput` lands.
+   *
+   * `percent` is `Some(0.0..1.0)` when the tool can express a real
+   * completion fraction; `None` for unbounded "still working" pulses.
+   */
   case class Progress(message: String, percent: Option[Double] = None) extends ToolOutput derives RW
 
-  /** Every framework-shipped concrete `ToolOutput` subtype, registered
-    * by default so apps that wire the optional tool families
-    * (fs / git / process / web / random / memory / model / capability /
-    * pagination / …) get polymorphic round-trip on `ToolDelta.output`
-    * / `ToolInvoke.output` without per-app registration.
-    *
-    * App-defined subtypes (outside `sigil.tool.*`) still register via
-    * `Sigil.toolOutputRegistrations`. */
+  /**
+   * Every framework-shipped concrete `ToolOutput` subtype, registered
+   * by default so apps that wire the optional tool families
+   * (fs / git / process / web / random / memory / model / capability /
+   * pagination / …) get polymorphic round-trip on `ToolDelta.output`
+   * / `ToolInvoke.output` without per-app registration.
+   *
+   * App-defined subtypes (outside `sigil.tool.*`) still register via
+   * `Sigil.toolOutputRegistrations`.
+   */
   val frameworkOutputRWs: List[RW[? <: ToolOutput]] = List[RW[? <: ToolOutput]](
     RW.static(Pending),
     summon[RW[Progress]],

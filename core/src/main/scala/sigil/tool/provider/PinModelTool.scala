@@ -4,7 +4,10 @@ import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 
 case class PinModelInput(modelId: String) extends ToolInput derives RW
 
@@ -27,7 +30,7 @@ case class PinModelInput(modelId: String) extends ToolInput derives RW
  * to their `staticTools` list.
  */
 case object PinModelTool extends Tool {
-  type Input  = PinModelInput
+  type Input = PinModelInput
   type Output = TextToolOutput
   val io: ToolIO[PinModelInput, TextToolOutput] = ToolIO.derived[PinModelInput, TextToolOutput].withExamples(
     ToolExample("Pin to local llama", PinModelInput("local/qwen3.5-9b")),
@@ -47,8 +50,16 @@ case object PinModelTool extends Tool {
     description = description,
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set(
-      "pin", "lock", "force", "stick", "fix", "always", "deterministic",
-      "model", "llm", "use"
+      "pin",
+      "lock",
+      "force",
+      "stick",
+      "fix",
+      "always",
+      "deterministic",
+      "model",
+      "llm",
+      "use"
     ))
   )
 
@@ -61,12 +72,12 @@ case object PinModelTool extends Tool {
         Task.pure(ToolResult.failure(guidance))
       case ModelResolutionResult.Resolved(modelId, via) =>
         val noteVia = via match {
-          case ModelResolutionResult.Resolution.Alias     => s" (resolved alias '${input.modelId}' → ${modelId.value})"
+          case ModelResolutionResult.Resolution.Alias => s" (resolved alias '${input.modelId}' → ${modelId.value})"
           case ModelResolutionResult.Resolution.BareModel => s" (interpreted '${input.modelId}' as ${modelId.value})"
-          case ModelResolutionResult.Resolution.ExactId   => ""
+          case ModelResolutionResult.Resolution.ExactId => ""
         }
         ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
-          case None       => Task.pure(None)
+          case None => Task.pure(None)
           case Some(conv) => Task.pure(Some(conv.copy(pinnedModelId = Some(modelId), modified = Timestamp())))
         })).map {
           case None =>

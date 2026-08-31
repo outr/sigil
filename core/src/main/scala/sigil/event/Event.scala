@@ -27,8 +27,11 @@ import sigil.signal.{EventState, Signal}
 trait Event extends Signal with Document[Event] {
   def participantId: ParticipantId
   def conversationId: Id[Conversation]
-  /** Every Event belongs to exactly one conversation — that's its
-    * wire-delivery scope. */
+
+  /**
+   * Every Event belongs to exactly one conversation — that's its
+   * wire-delivery scope.
+   */
   final override def conversationScope: Option[Id[Conversation]] = Some(conversationId)
   def topicId: Id[Topic]
   def topicIndex: Int
@@ -102,8 +105,6 @@ trait Event extends Signal with Document[Event] {
    * orchestrator stamps this for tool-emitted events; agent flows
    * stamp it for events emitted in response to a trigger; user-driven
    * paths (slash commands, workflows) set it at the dispatch site.
-   *
-   *
    *
    * `None` is allowed only for genuinely root events (the user's
    * first message, a scheduled job kicked off cold, etc.). A
@@ -188,18 +189,22 @@ object Event extends JsonConversion[Event] {
    */
   val timestamp: I[Long] = field.index("timestamp", _.timestamp.value)
 
-  /** Index on the authoring participant, typed against the
-    * [[ParticipantId]] poly (`participantId === MyUserId(id)`), for
-    * per-participant activity reads and group-bys. The index term is
-    * the id's serialized form — the text the document column already
-    * holds — so SQL backends add the index without a data migration. */
+  /**
+   * Index on the authoring participant, typed against the
+   * [[ParticipantId]] poly (`participantId === MyUserId(id)`), for
+   * per-participant activity reads and group-bys. The index term is
+   * the id's serialized form — the text the document column already
+   * holds — so SQL backends add the index without a data migration.
+   */
   val participantId: I[ParticipantId] = field.index(_.participantId)
 
-  /** Index on the event's poly discriminator (`"Message"`,
-    * `"ToolInvoke"`, …) so event-type filters run indexed on every
-    * backend. Declared on the discriminator column itself: the value
-    * is the subtype's simple class name, which is how the [[Signal]]
-    * poly names its registrations, so the index term matches the
-    * stored column text exactly. */
+  /**
+   * Index on the event's poly discriminator (`"Message"`,
+   * `"ToolInvoke"`, …) so event-type filters run indexed on every
+   * backend. Declared on the discriminator column itself: the value
+   * is the subtype's simple class name, which is how the [[Signal]]
+   * poly names its registrations, so the index term matches the
+   * stored column text exactly.
+   */
   val eventType: I[String] = field.index("type", _.getClass.getSimpleName.stripSuffix("$"))
 }

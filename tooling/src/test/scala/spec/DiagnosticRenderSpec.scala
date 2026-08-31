@@ -20,11 +20,15 @@ class DiagnosticRenderSpec extends AnyWordSpec with Matchers {
 
   private def range(line: Int) = LspRange(LspPosition(line, 5), LspPosition(line, 9))
 
-  private def bspDiag(file: String, line: Int, message: String,
+  private def bspDiag(file: String,
+                      line: Int,
+                      message: String,
                       severity: LspSeverity = LspSeverity.Error): BspDiagnostic =
     BspDiagnostic(filePath = file, range = range(line), severity = severity, message = message)
 
-  private def lspDiag(file: String, line: Int, message: String,
+  private def lspDiag(file: String,
+                      line: Int,
+                      message: String,
                       severity: LspSeverity = LspSeverity.Error): LspDiagnostic =
     LspDiagnostic(filePath = file, range = range(line), severity = severity, message = message)
 
@@ -38,15 +42,15 @@ class DiagnosticRenderSpec extends AnyWordSpec with Matchers {
       val head15 = lines.take(15)
 
       // Line 1 carries the verdict + counts regardless of truncation.
-      head15.head should include ("ERROR")
-      head15.head should include ("30 error(s)")
-      head15.head should include ("7 warning(s)")
-      head15.head should include ("25 target(s)")
+      head15.head should include("ERROR")
+      head15.head should include("30 error(s)")
+      head15.head should include("7 warning(s)")
+      head15.head should include("25 target(s)")
       // ≥10 complete file:line: error entries inside the head.
       head15.tail.count(_.matches(""".+\.scala:\d+:\d+: error: .+""")) should be >= 10
       // Errors render before any warning.
       val firstWarning = lines.indexWhere(_.contains(": warning: "))
-      val lastError    = lines.lastIndexWhere(_.contains(": error: "))
+      val lastError = lines.lastIndexWhere(_.contains(": error: "))
       lastError should be < firstWarning
     }
 
@@ -57,7 +61,7 @@ class DiagnosticRenderSpec extends AnyWordSpec with Matchers {
         bspDiag("src/B.scala", 2, "first in B")
       )
       val lines = BspCompileResult("/proj", "ERROR", 3, diags).modelText.get.split('\n').toList
-      lines.head should startWith ("ERROR")
+      lines.head should startWith("ERROR")
       lines.drop(1) shouldBe List(
         "src/A.scala:3:5: error: early",
         "src/B.scala:2:5: error: first in B",
@@ -75,10 +79,14 @@ class DiagnosticRenderSpec extends AnyWordSpec with Matchers {
         "ERROR · 0 target(s)",
         "cause: BSP error: connection reset"
       )
-      val withDiags = BspCompileResult("/proj", "ERROR", 2,
-        List(bspDiag("src/A.scala", 1, "boom")), cause = Some("request also failed"))
+      val withDiags = BspCompileResult(
+        "/proj",
+        "ERROR",
+        2,
+        List(bspDiag("src/A.scala", 1, "boom")),
+        cause = Some("request also failed"))
       val lines = withDiags.modelText.get.split('\n').toList
-      lines(1) should include ("boom")
+      lines(1) should include("boom")
       lines.last shouldBe "cause: request also failed"
     }
 
@@ -89,7 +97,7 @@ class DiagnosticRenderSpec extends AnyWordSpec with Matchers {
       )
       val lines = BspCompileResult("/proj", "ERROR", 1, diags).modelText.get.split('\n').toList
       lines(1) shouldBe "src/A.scala:1:5: error: unclosed comment"
-      lines(2) should startWith ("  ")
+      lines(2) should startWith("  ")
       // The next diagnostic's primary line is back at column zero.
       lines.exists(_.startsWith("src/A.scala:8:5: error: second")) shouldBe true
     }
@@ -99,25 +107,25 @@ class DiagnosticRenderSpec extends AnyWordSpec with Matchers {
 
     "declare a fresh empty result clean" in {
       LspDiagnosticsResult("src/A.scala", Nil, fresh = true).modelText.get should
-        include ("src/A.scala is clean")
+        include("src/A.scala is clean")
     }
 
     "refuse to call a stale empty snapshot clean" in {
       val text = LspDiagnosticsResult("src/A.scala", Nil, fresh = false).modelText.get
-      text should include ("freshness UNKNOWN")
-      text should include ("do NOT treat as clean")
+      text should include("freshness UNKNOWN")
+      text should include("do NOT treat as clean")
       text should not include "is clean"
     }
 
     "lead with counts and mark a stale non-empty snapshot" in {
       val diags = List(lspDiag("src/A.scala", 4, "boom"), lspDiag("src/A.scala", 2, "meh", LspSeverity.Warning))
       val freshLines = LspDiagnosticsResult("src/A.scala", diags, fresh = true).modelText.get.split('\n').toList
-      freshLines.head should include ("1 error(s), 1 warning(s) in src/A.scala")
+      freshLines.head should include("1 error(s), 1 warning(s) in src/A.scala")
       freshLines.head should not include "STALE"
       freshLines(1) shouldBe "src/A.scala:4:5: error: boom"
 
       val stale = LspDiagnosticsResult("src/A.scala", diags, fresh = false).modelText.get
-      stale.split('\n').head should include ("STALE snapshot")
+      stale.split('\n').head should include("STALE snapshot")
     }
   }
 }

@@ -30,15 +30,17 @@ class DuplicateMalformedCompleteSpec extends AsyncWordSpec with AsyncTaskSpec wi
   private val modelId: Id[Model] = Model.id("test", "split-finish")
 
   private val malformed = WireCall.Malformed(
-    name    = NoResponseTool.schema.name.value,
-    error   = DecodeError(
+    name = NoResponseTool.schema.name.value,
+    error = DecodeError(
       List(DecodeViolation(List("reason"), "expected a string", ViolationKind.Structural)),
       fabric.obj("reason" -> fabric.num(42))
     ),
     rawArgs = fabric.obj("reason" -> fabric.num(42))
   )
 
-  /** Emits the SAME malformed completion twice under one call id. */
+  /**
+   * Emits the SAME malformed completion twice under one call id.
+   */
   private class DuplicateMalformedProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -57,25 +59,25 @@ class DuplicateMalformedCompleteSpec extends AsyncWordSpec with AsyncTaskSpec wi
     val convId = Conversation.id(s"dup-malformed-${rapid.Unique()}")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector(NoResponseTool)
+      chain = List(TestUser, TestAgent),
+      tools = Vector(NoResponseTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, new DuplicateMalformedProvider, request, conv).toList
     } yield signals
   }
 
   "a duplicated malformed ToolCallComplete" should {
-    "produce exactly one refusal for the one invoke" in {
+    "produce exactly one refusal for the one invoke" in
       run().map { signals =>
         val refusals = signals.collect {
           case m: Message if m.role == MessageRole.Tool && m.disposition.isInstanceOf[MessageDisposition.Failure] => m
@@ -84,7 +86,6 @@ class DuplicateMalformedCompleteSpec extends AsyncWordSpec with AsyncTaskSpec wi
           refusals should have size 1
         }
       }
-    }
   }
 
   "tear down" should {

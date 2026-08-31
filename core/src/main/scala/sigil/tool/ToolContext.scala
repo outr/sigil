@@ -47,21 +47,30 @@ final case class ToolContext(turn: TurnContext,
 
   // ---- pass-throughs for fields every tool body reads ----
 
-  def sigil: _root_.sigil.Sigil               = turn.sigil
-  /** Whether large results are bounded/externalized (agent path) or captured
-    * in full (workflow step execution). See [[TurnContext.overflowLargeResults]]. */
-  def overflowLargeResults: Boolean           = turn.overflowLargeResults
-  def chain: List[ParticipantId]              = turn.chain
-  def caller: ParticipantId                   = turn.caller
-  def conversation: Conversation              = turn.conversation
-  /** Sigil #277 — the Model this dispatch's parent turn is operating
-    * against. Always set (it's required on the underlying TurnContext).
-    * Tools read `model.contextLength`, `model.pricing`, etc. directly
-    * off the record; previously they had to round-trip through the
-    * registry via the old `Option[Id[Model]]`. */
-  def model: Model                            = turn.model
-  /** Convenience — `model._id`. */
-  def modelId: Id[Model]                      = turn.modelId
+  def sigil: _root_.sigil.Sigil = turn.sigil
+
+  /**
+   * Whether large results are bounded/externalized (agent path) or captured
+   * in full (workflow step execution). See [[TurnContext.overflowLargeResults]].
+   */
+  def overflowLargeResults: Boolean = turn.overflowLargeResults
+  def chain: List[ParticipantId] = turn.chain
+  def caller: ParticipantId = turn.caller
+  def conversation: Conversation = turn.conversation
+
+  /**
+   * Sigil #277 — the Model this dispatch's parent turn is operating
+   * against. Always set (it's required on the underlying TurnContext).
+   * Tools read `model.contextLength`, `model.pricing`, etc. directly
+   * off the record; previously they had to round-trip through the
+   * registry via the old `Option[Id[Model]]`.
+   */
+  def model: Model = turn.model
+
+  /**
+   * Convenience — `model._id`.
+   */
+  def modelId: Id[Model] = turn.modelId
   def turnInput: _root_.sigil.conversation.TurnInput = turn.turnInput
 
   // ---- tool-only side channel ----
@@ -93,11 +102,11 @@ final case class ToolContext(turn: TurnContext,
    */
   def reportProgress(message: String, percent: Option[Double] = None): rapid.Task[Unit] =
     sigil.publish(ToolProgress(
-      invokeId       = invokeId,
+      invokeId = invokeId,
       conversationId = conversation.id,
-      message        = message,
-      percent        = percent,
-      attribution    = Some(toolName)
+      message = message,
+      percent = percent,
+      attribution = Some(toolName)
     )).map(_ => ())
 
   /**
@@ -108,12 +117,12 @@ final case class ToolContext(turn: TurnContext,
    */
   def toolLog(content: String, level: LogLevel = LogLevel.Info): rapid.Task[Unit] =
     sigil.publish(ToolLog(
-      content        = content,
-      level          = level,
-      participantId  = caller,
+      content = content,
+      level = level,
+      participantId = caller,
       conversationId = conversation.id,
-      topicId        = conversation.currentTopicId,
-      origin         = Some(invokeId)
+      topicId = conversation.currentTopicId,
+      origin = Some(invokeId)
     )).map(_ => ())
 
   /**
@@ -130,9 +139,9 @@ final case class ToolContext(turn: TurnContext,
    */
   def setSummary(value: String): rapid.Task[Unit] =
     sigil.publish(ToolDelta(
-      target         = invokeId,
+      target = invokeId,
       conversationId = conversation.id,
-      summary        = Some(value)
+      summary = Some(value)
     )).map(_ => ())
 
   /**
@@ -169,22 +178,28 @@ final case class ToolContext(turn: TurnContext,
       } else rapid.Task.unit
     }
 
-  /** Snapshot of the ancillary durable events this tool has emitted via
-    * [[emit]] and not yet drained, in emission order. */
+  /**
+   * Snapshot of the ancillary durable events this tool has emitted via
+   * [[emit]] and not yet drained, in emission order.
+   */
   def emittedEvents: List[Event] = emissionState.get().getOrElse(Vector.empty).toList
 
-  /** Atomically remove and return the pending emitted events without
-    * closing the buffer — the detach-time flush. Draining an already-closed
-    * context yields nothing. */
+  /**
+   * Atomically remove and return the pending emitted events without
+   * closing the buffer — the detach-time flush. Draining an already-closed
+   * context yields nothing.
+   */
   private[sigil] def drainEmitted(): List[Event] =
     emissionState.getAndUpdate(_.map(_ => Vector.empty)).getOrElse(Vector.empty).toList
 
-  /** Close the emission buffer AND return whatever was still buffered, in
-    * one atomic step — called by [[ToolExecutor]] when the tool's
-    * resolution settles. Because close and final drain are indivisible, an
-    * emit racing the settle is either included here or raises
-    * [[LateEmissionException]]; it can never land in a buffer nobody reads.
-    * Subsequent [[emit]] calls raise. */
+  /**
+   * Close the emission buffer AND return whatever was still buffered, in
+   * one atomic step — called by [[ToolExecutor]] when the tool's
+   * resolution settles. Because close and final drain are indivisible, an
+   * emit racing the settle is either included here or raises
+   * [[LateEmissionException]]; it can never land in a buffer nobody reads.
+   * Subsequent [[emit]] calls raise.
+   */
   private[sigil] def closeEmissions(): List[Event] =
     emissionState.getAndSet(None).getOrElse(Vector.empty).toList
 }

@@ -46,13 +46,13 @@ class SessionBridgeEndHookSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val seen = new AtomicReference[(String, Id[Conversation])](null)
       for {
         _ <- SessionBridge.attach(
-               sigil = TestSigil,
-               session = session,
-               viewer = TestUser,
-               onSessionEnd = (cid, conv) => Task { calls.incrementAndGet(); seen.set((cid, conv)); () })
-        _ =  session.protocol.close()
+          sigil = TestSigil,
+          session = session,
+          viewer = TestUser,
+          onSessionEnd = (cid, conv) => Task { calls.incrementAndGet(); seen.set((cid, conv)); () })
+        _ = session.protocol.close()
         // A second close must not re-fire (terminal, idempotent).
-        _ =  session.protocol.close()
+        _ = session.protocol.close()
         _ <- Task.sleep(scala.concurrent.duration.DurationInt(150).millis)
       } yield {
         calls.get() shouldBe 1
@@ -66,10 +66,10 @@ class SessionBridgeEndHookSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val calls = new AtomicInteger(0)
       for {
         _ <- SessionBridge.attach(
-               sigil = TestSigil,
-               session = session,
-               viewer = TestUser,
-               onSessionEnd = (_, _) => Task { calls.incrementAndGet(); () })
+          sigil = TestSigil,
+          session = session,
+          viewer = TestUser,
+          onSessionEnd = (_, _) => Task { calls.incrementAndGet(); () })
         _ <- Task.sleep(scala.concurrent.duration.DurationInt(150).millis)
       } yield calls.get() shouldBe 0
     }

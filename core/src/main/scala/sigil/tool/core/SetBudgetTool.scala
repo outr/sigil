@@ -4,18 +4,23 @@ import fabric.rw.*
 import rapid.Task
 import sigil.conversation.ConversationBudget
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 
-final case class SetBudgetInput(@description("Soft per-turn spend budget in USD — crossing it makes the agent pause, summarize, and ask whether to continue. Omit to leave unchanged.")
-                                turnSoft: Option[BigDecimal] = None,
-                                @description("Hard per-turn spend ceiling in USD — crossing it ends the turn with a spend-and-state report. Omit to leave unchanged.")
-                                turnHard: Option[BigDecimal] = None,
-                                @description("Soft whole-conversation spend budget in USD. Omit to leave unchanged.")
-                                conversationSoft: Option[BigDecimal] = None,
-                                @description("Hard whole-conversation spend ceiling in USD — a conversation past it refuses new turns until raised. Omit to leave unchanged.")
-                                conversationHard: Option[BigDecimal] = None,
-                                @description("True to clear the conversation's budget override entirely, reverting every threshold to the application default. Supplied values are ignored when set.")
-                                clear: Boolean = false)
+final case class SetBudgetInput(
+  @description("Soft per-turn spend budget in USD — crossing it makes the agent pause, summarize, and ask whether to continue. Omit to leave unchanged.")
+  turnSoft: Option[BigDecimal] = None,
+  @description("Hard per-turn spend ceiling in USD — crossing it ends the turn with a spend-and-state report. Omit to leave unchanged.")
+  turnHard: Option[BigDecimal] = None,
+  @description("Soft whole-conversation spend budget in USD. Omit to leave unchanged.")
+  conversationSoft: Option[BigDecimal] = None,
+  @description(
+    "Hard whole-conversation spend ceiling in USD — a conversation past it refuses new turns until raised. Omit to leave unchanged.")
+  conversationHard: Option[BigDecimal] = None,
+  @description("True to clear the conversation's budget override entirely, reverting every threshold to the application default. Supplied values are ignored when set.")
+  clear: Boolean = false)
   extends ToolInput derives RW
 
 /**
@@ -26,7 +31,7 @@ final case class SetBudgetInput(@description("Soft per-turn spend budget in USD 
  * ceiling re-arms a budget-exhausted conversation.
  */
 case object SetBudgetTool extends Tool {
-  type Input  = SetBudgetInput
+  type Input = SetBudgetInput
   type Output = TextToolOutput
   val io: ToolIO[SetBudgetInput, TextToolOutput] = ToolIO.derived[SetBudgetInput, TextToolOutput].withExamples(
     ToolExample("Cap the conversation at $5", SetBudgetInput(conversationHard = Some(BigDecimal(5)))),
@@ -47,11 +52,19 @@ case object SetBudgetTool extends Tool {
     description = description,
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set(
-      "budget", "spend", "cost", "cap", "limit", "ceiling", "dollars",
-      "expensive", "afford", "money", "price"
+      "budget",
+      "spend",
+      "cost",
+      "cap",
+      "limit",
+      "ceiling",
+      "dollars",
+      "expensive",
+      "afford",
+      "money",
+      "price"
     ))
   )
-
 
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 
@@ -66,8 +79,8 @@ case object SetBudgetTool extends Tool {
           else {
             val cur = conv.budget.getOrElse(ConversationBudget())
             Some(cur.copy(
-              turnSoft         = input.turnSoft.orElse(cur.turnSoft),
-              turnHard         = input.turnHard.orElse(cur.turnHard),
+              turnSoft = input.turnSoft.orElse(cur.turnSoft),
+              turnHard = input.turnHard.orElse(cur.turnHard),
               conversationSoft = input.conversationSoft.orElse(cur.conversationSoft),
               conversationHard = input.conversationHard.orElse(cur.conversationHard)
             ))
@@ -81,7 +94,7 @@ case object SetBudgetTool extends Tool {
         // if the new ceiling is crossed later.
         sigil.clearBudgetExhaustedNotice(convId)
         val eff = sigil.effectiveBudgetsFor(updated)
-        def fmt(o: Option[BigDecimal]): String = o.map(v => f"$$${v}%.2f").getOrElse("unset")
+        def fmt(o: Option[BigDecimal]): String = o.map(v => f"$$$v%.2f").getOrElse("unset")
         ToolResult.Success(TextToolOutput(
           s"Budget updated. Effective thresholds — turn soft: ${fmt(eff.turnSoft)}, turn hard: ${fmt(eff.turnHard)}, " +
             s"conversation soft: ${fmt(eff.conversationSoft)}, conversation hard: ${fmt(eff.conversationHard)}. " +

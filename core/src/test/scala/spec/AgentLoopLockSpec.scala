@@ -28,7 +28,7 @@ class AgentLoopLockSpec extends AnyWordSpec with Matchers {
   "AgentRunawayException" should {
     "be a RuntimeException carrying its message" in {
       val e = new AgentRunawayException("Agent foo hit maxAgentIterations (10) in conversation bar", sigil.ForcedSynthesisReason.CapHit)
-      e shouldBe a [RuntimeException]
+      e shouldBe a[RuntimeException]
       e.getMessage should include("maxAgentIterations")
       e.getMessage should include("foo")
       e.getMessage should include("bar")
@@ -42,7 +42,7 @@ class AgentLoopLockSpec extends AnyWordSpec with Matchers {
       // That string match will silently break if the format ever changes.
       // This spec is the canary.
       val agentId = "test-agent"
-      val convId  = "conv-123"
+      val convId = "conv-123"
       val expected = s"agentlock:$agentId:$convId"
       // Construct a synthetic AgentState with this id and verify the
       // suffix match the filter uses still holds.
@@ -54,8 +54,8 @@ class AgentLoopLockSpec extends AnyWordSpec with Matchers {
         state = EventState.Active,
         _id = Id[sigil.event.Event](expected)
       )
-      claim._id.value should startWith ("agentlock:")
-      claim._id.value should endWith (s":$convId")
+      claim._id.value should startWith("agentlock:")
+      claim._id.value should endWith(s":$convId")
       claim._id.value should include(":test-agent:")
     }
   }

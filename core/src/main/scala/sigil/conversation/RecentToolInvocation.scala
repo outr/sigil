@@ -69,4 +69,5 @@ case class RecentToolInvocation(toolName: ToolName,
                                 resulted: Boolean = true,
                                 failed: Boolean = false,
                                 refusal: Option[sigil.event.DispatchRefusal] = None,
-                                invokeId: Option[Id[Event]] = None) derives RW
+                                invokeId: Option[Id[Event]] = None)
+  derives RW

@@ -14,12 +14,14 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExamp
  * `waitTimeoutMs`) until the subprocess emits something useful.
  */
 final class ProcessOutputTool(registry: ProcessRegistry) extends Tool {
-  type Input  = ProcessOutputInput
+  type Input = ProcessOutputInput
   type Output = ProcessOutputResult
   val io: ToolIO[ProcessOutputInput, ProcessOutputResult] = ToolIO.derived[ProcessOutputInput, ProcessOutputResult].withExamples(
-    ToolExample("First read on a new handle",                 ProcessOutputInput(handle = "p1")),
-    ToolExample("Delta read after the previous cursor",       ProcessOutputInput(handle = "p1", sinceCursor = 4096L)),
-    ToolExample("Block up to 5 s for the next 'compiled' line", ProcessOutputInput(handle = "p1", waitForPattern = Some("compiled"), waitTimeoutMs = 5000L))
+    ToolExample("First read on a new handle", ProcessOutputInput(handle = "p1")),
+    ToolExample("Delta read after the previous cursor", ProcessOutputInput(handle = "p1", sinceCursor = 4096L)),
+    ToolExample(
+      "Block up to 5 s for the next 'compiled' line",
+      ProcessOutputInput(handle = "p1", waitForPattern = Some("compiled"), waitTimeoutMs = 5000L))
   )
 
   override val name = ToolName("process_output")
@@ -47,25 +49,25 @@ final class ProcessOutputTool(registry: ProcessRegistry) extends Tool {
       ))
     else
       registry.output(
-        handle         = input.handle,
-        sinceCursor    = input.sinceCursor,
-        waitForLines   = input.waitForLines,
+        handle = input.handle,
+        sinceCursor = input.sinceCursor,
+        waitForLines = input.waitForLines,
         waitForPattern = input.waitForPattern,
-        waitTimeoutMs  = input.waitTimeoutMs
+        waitTimeoutMs = input.waitTimeoutMs
       ).map { result =>
         val status = result.status match {
-          case ProcessStatus.Running   => ProcessRunStatus.Running
+          case ProcessStatus.Running => ProcessRunStatus.Running
           case ProcessStatus.Exited(_) => ProcessRunStatus.Exited
         }
         ToolResult.success(ProcessOutputResult(
-          handle      = result.handle,
-          stdout      = result.stdout,
-          stderr      = result.stderr,
+          handle = result.handle,
+          stdout = result.stdout,
+          stderr = result.stderr,
           sinceCursor = result.sinceCursor,
-          nextCursor  = result.nextCursor,
-          status      = status,
-          exitCode    = result.exitCode,
-          dropped     = result.dropped
+          nextCursor = result.nextCursor,
+          status = status,
+          exitCode = result.exitCode,
+          dropped = result.dropped
         ))
       }.handleError {
         case _: NoSuchElementException =>
@@ -82,10 +84,12 @@ final class ProcessOutputTool(registry: ProcessRegistry) extends Tool {
         case other => Task.error(other)
       }
 
-  /** A real process handle is a short token from `process_spawn` (e.g. "p1");
-    * anything containing path separators or a file extension is a file path the
-    * agent confused for a handle — most often a `.sigil/output/...` overflow
-    * file. Redirect those to `read_file` rather than failing opaquely (#370). */
+  /**
+   * A real process handle is a short token from `process_spawn` (e.g. "p1");
+   * anything containing path separators or a file extension is a file path the
+   * agent confused for a handle — most often a `.sigil/output/...` overflow
+   * file. Redirect those to `read_file` rather than failing opaquely (#370).
+   */
   private def looksLikePath(handle: String): Boolean =
     handle.contains("/") || handle.contains("\\") || handle.contains(".sigil") || handle.endsWith(".txt")
 }

@@ -18,26 +18,29 @@ import fabric.rw.*
 case class ErrorEvidence(errorClass: String,
                          message: String,
                          statusCode: Option[Int] = None,
-                         body: Option[String] = None) derives RW
+                         body: Option[String] = None)
+  derives RW
 
 object ErrorEvidence {
 
-  /** Best-effort conversion from a `Throwable` to a structured
-    * `ErrorEvidence`. Recognises spice's `StreamingHttpFailedException`
-    * for the status / body fields; falls back to class name + message
-    * for everything else. */
+  /**
+   * Best-effort conversion from a `Throwable` to a structured
+   * `ErrorEvidence`. Recognises spice's `StreamingHttpFailedException`
+   * for the status / body fields; falls back to class name + message
+   * for everything else.
+   */
   def of(error: Throwable): ErrorEvidence = error match {
     case e: spice.http.client.StreamingHttpFailedException =>
       ErrorEvidence(
         errorClass = e.getClass.getName,
-        message    = Option(e.getMessage).getOrElse(""),
+        message = Option(e.getMessage).getOrElse(""),
         statusCode = Some(e.status),
-        body       = Some(e.body)
+        body = Some(e.body)
       )
     case _ =>
       ErrorEvidence(
         errorClass = error.getClass.getName,
-        message    = Option(error.getMessage).getOrElse("")
+        message = Option(error.getMessage).getOrElse("")
       )
   }
 }

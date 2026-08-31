@@ -35,7 +35,7 @@ class ContextFeatureEvaluationSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private val featureId = FeatureId("liveStatus")
 
-  private final class CountingFeature extends ContextFeature {
+  final private class CountingFeature extends ContextFeature {
     val calls = new AtomicInteger(0)
     val id: FeatureId = featureId
     def placement: Placement = Placement.VolatileTail
@@ -47,7 +47,7 @@ class ContextFeatureEvaluationSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private val feature = new CountingFeature
 
-  private final class CapturingProvider extends Provider {
+  final private class CapturingProvider extends Provider {
     val calls = new ConcurrentLinkedQueue[ProviderCall]()
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -60,10 +60,10 @@ class ContextFeatureEvaluationSpec extends AsyncWordSpec with AsyncTaskSpec with
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
         ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-          topicLabel   = TestTopicEntry.label,
+          topicLabel = TestTopicEntry.label,
           topicSummary = TestTopicEntry.summary,
-          content      = "ok",
-          endsTurn     = true
+          content = "ok",
+          endsTurn = true
         )),
         ProviderEvent.Done(StopReason.Complete)
       ))
@@ -76,17 +76,17 @@ class ContextFeatureEvaluationSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private val topic = Topic(
     conversationId = convId,
-    label          = TestTopicEntry.label,
-    summary        = TestTopicEntry.summary,
-    createdBy      = TestUser,
-    _id            = Id[Topic](s"feature-eval-topic-${rapid.Unique()}")
+    label = TestTopicEntry.label,
+    summary = TestTopicEntry.summary,
+    createdBy = TestUser,
+    _id = Id[Topic](s"feature-eval-topic-${rapid.Unique()}")
   )
 
   private def agent: AgentParticipant = DefaultAgentParticipant(
-    id                 = TestAgent,
-    modelId            = modelId,
-    toolNames          = CoreTools.coreToolNames,
-    instructions       = Instructions(),
+    id = TestAgent,
+    modelId = modelId,
+    toolNames = CoreTools.coreToolNames,
+    instructions = Instructions(),
     generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
   )
 
@@ -97,7 +97,7 @@ class ContextFeatureEvaluationSpec extends AsyncWordSpec with AsyncTaskSpec with
   private def idleCount(snap: List[Signal]): Int =
     snap.count {
       case d: AgentStateDelta => d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete)
-      case _                  => false
+      case _ => false
     }
 
   private lazy val runTurn: Task[(ProviderCall, List[Signal])] = {
@@ -105,27 +105,27 @@ class ContextFeatureEvaluationSpec extends AsyncWordSpec with AsyncTaskSpec with
     TestSigil.setProvider(Task.pure(provider))
     TestSigil.setContextFeatures(List(feature))
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new AtomicBoolean(true)
+    val running = new AtomicBoolean(true)
     TestSigil.signals.takeWhile(_ => running.get()).evalMap(s => Task { recorded.add(s); () }).drain.startUnit()
     val conv = Conversation(
-      topics       = List(sigil.conversation.TopicEntry(topic._id, topic.label, topic.summary)),
+      topics = List(sigil.conversation.TopicEntry(topic._id, topic.label, topic.summary)),
       participants = List(agent),
-      _id          = convId
+      _id = convId
     )
     for {
       _ <- Task.sleep(120.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.withDB(_.topics.transaction(_.upsert(topic)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = topic._id,
-             content        = Vector(ResponseContent.Text("hello")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = topic._id,
+        content = Vector(ResponseContent.Text("hello")),
+        state = EventState.Complete
+      ))
       _ <- waitFor(System.currentTimeMillis() + 30_000L)(idleCount(recorded.iterator().asScala.toList) > 0)
       _ <- Task.sleep(200.millis)
-      _ <- Task { running.set(false) }
+      _ <- Task(running.set(false))
     } yield (
       provider.calls.iterator().asScala.toList.headOption.getOrElse(
         throw new IllegalStateException("no provider call captured")),
@@ -134,25 +134,22 @@ class ContextFeatureEvaluationSpec extends AsyncWordSpec with AsyncTaskSpec with
   }.singleton
 
   "A Task-effectful feature on a live turn" should {
-    "reach the wire bytes" in {
+    "reach the wire bytes" in
       runTurn.map { case (call, _) =>
         call.systemVolatile should include("The upstream service is reachable.")
         call.system should not include "The upstream service is reachable."
       }
-    }
 
-    "compute once per request, not once per consumer" in {
+    "compute once per request, not once per consumer" in
       runTurn.map { case (_, _) =>
         feature.calls.get() shouldBe provider.calls.size()
       }
-    }
 
-    "appear in the wire profile under its own feature id" in {
+    "appear in the wire profile under its own feature id" in
       runTurn.map { case (_, signals) =>
         val profiles = signals.collect { case p: WireRequestProfile => p }
         profiles should not be empty
         profiles.head.profile.sections.getOrElse(ProfileSection.Feature(featureId), 0) should be > 0
       }
-    }
   }
 }

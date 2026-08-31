@@ -6,9 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.provider.cloudflare.CloudflareProvider
-import sigil.provider.{
-  GenerationSettings, MessageContent, ProviderCall, ProviderEvent, ProviderMessage, ReasoningMode, ToolChoice
-}
+import sigil.provider.{GenerationSettings, MessageContent, ProviderCall, ProviderEvent, ProviderMessage, ReasoningMode, ToolChoice}
 import sigil.workflow.WorkflowStepKind
 import sigil.workflow.tool.{CreateWorkflowInput, CreateWorkflowTool}
 
@@ -49,7 +47,7 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   override protected val testTimeout: FiniteDuration = 2.minutes
 
-  private val apiTokenOpt: Option[String]  = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
+  private val apiTokenOpt: Option[String] = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
   private val accountIdOpt: Option[String] = sys.env.get("CLOUDFLARE_ACCOUNT_ID").filter(_.nonEmpty)
   private val modelId: Id[Model] = Model.id("cloudflare", "@cf/moonshotai/kimi-k2.6")
 
@@ -58,15 +56,21 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   private def registerKimiModel(): Model = TestWorkflowSigil.cache.find(modelId).getOrElse {
     val m = Model(
-      canonicalSlug = modelId.value, huggingFaceId = "", name = modelId.value,
-      description = "Live Kimi fixture.", contextLength = 131072L,
+      canonicalSlug = modelId.value,
+      huggingFaceId = "",
+      name = modelId.value,
+      description = "Live Kimi fixture.",
+      contextLength = 131072L,
       architecture = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
       pricing = ModelPricing(BigDecimal(0), BigDecimal(0), None, None),
       topProvider = ModelTopProvider(Some(131072L), Some(16000L), isModerated = false),
       perRequestLimits = None,
       supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
-      knowledgeCutoff = None, expirationDate = None, links = ModelLinks(""),
-      created = lightdb.time.Timestamp(), _id = modelId
+      knowledgeCutoff = None,
+      expirationDate = None,
+      links = ModelLinks(""),
+      created = lightdb.time.Timestamp(),
+      _id = modelId
     )
     TestWorkflowSigil.cache.merge(List(m)).sync(); m
   }
@@ -130,14 +134,18 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
           roster = ToolRoster(Vector(new CreateWorkflowTool)),
           builtInTools = Set.empty,
           toolChoice = ToolChoice.Required,
-          generationSettings = GenerationSettings(maxOutputTokens = Some(16000), temperature = Some(0.0), reasoningMode = ReasoningMode.Auto)
+          generationSettings =
+            GenerationSettings(maxOutputTokens = Some(16000), temperature = Some(0.0), reasoningMode = ReasoningMode.Auto)
         )
         provider.call(pc).toList.handleError { t =>
           if (CloudflareLiveSupport.isServiceUnavailable(t))
-            Task(cancel(s"Cloudflare Workers AI unavailable (throttle/timeout) — skipping live spec. (${Option(t.getMessage).getOrElse(t.toString)})"))
+            Task(cancel(
+              s"Cloudflare Workers AI unavailable (throttle/timeout) — skipping live spec. (${Option(t.getMessage).getOrElse(t.toString)})"))
           else Task.error(t)
         }.map { events =>
-          events.flatMap { case ProviderEvent.ToolCallComplete(_, wc) => wc.decodedInput; case _ => None }.collectFirst { case in: CreateWorkflowInput => in }
+          events.flatMap { case ProviderEvent.ToolCallComplete(_, wc) => wc.decodedInput; case _ => None }.collectFirst {
+            case in: CreateWorkflowInput => in
+          }
             .getOrElse(throw new RuntimeException(s"Kimi did not call create_workflow. Events: $events"))
         }
       }
@@ -175,7 +183,7 @@ class CloudflareKimiWorkflowFirstSpec extends AsyncWordSpec with AsyncTaskSpec w
               discoveryJob.toList.flatMap(_.variables.values)
           val grepParamSignals = List("/home/u/project", "bug #")
           withClue(s"discovery Job = ${discoveryJob.map(summarizeStep)}\n" +
-                   s"cross-kind field values = $crossKindValues\n") {
+            s"cross-kind field values = $crossKindValues\n") {
             for (v <- crossKindValues; sig <- grepParamSignals)
               withClue(s"grep param '$sig' must live in `arguments`, not scattered into a cross-kind field (found in '$v'): ") {
                 v.toLowerCase.contains(sig.toLowerCase) shouldBe false

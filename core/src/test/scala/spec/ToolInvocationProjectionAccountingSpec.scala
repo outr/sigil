@@ -40,18 +40,21 @@ import scala.jdk.CollectionConverters.*
 class ToolInvocationProjectionAccountingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  override implicit val testTimeout: FiniteDuration = 120.seconds
+  implicit override val testTimeout: FiniteDuration = 120.seconds
 
   private val modelId: Id[Model] = Model.id("test", "projection-accounting")
   TestSigil.testModel(modelId)
 
   private val probe = "dup"
 
-  /** Scripted turn: `identicalCalls` identical `probe_read` dispatches,
-    * then `respond` to end it. Non-agent rosters (extractors, consults)
-    * get an empty completion so no live model is needed. */
+  /**
+   * Scripted turn: `identicalCalls` identical `probe_read` dispatches,
+   * then `respond` to end it. Non-agent rosters (extractors, consults)
+   * get an empty completion so no live model is needed.
+   */
   private class ScriptedProvider(recorded: ConcurrentLinkedQueue[ProviderCall],
-                                 identicalCalls: Int) extends Provider {
+                                 identicalCalls: Int)
+    extends Provider {
     private val iterations = new AtomicInteger(0)
 
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -75,7 +78,10 @@ class ToolInvocationProjectionAccountingSpec extends AsyncWordSpec with AsyncTas
         else Stream.emits(List(
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
           ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-            topicLabel = "Probes", topicSummary = "Probe accounting", content = "Done.", endsTurn = true)),
+            topicLabel = "Probes",
+            topicSummary = "Probe accounting",
+            content = "Done.",
+            endsTurn = true)),
           ProviderEvent.Done(StopReason.Complete)
         ))
       }
@@ -91,14 +97,16 @@ class ToolInvocationProjectionAccountingSpec extends AsyncWordSpec with AsyncTas
 
   private case class Run(convId: Id[Conversation], calls: List[ProviderCall])
 
-  /** Everything the model actually reads on a request. */
+  /**
+   * Everything the model actually reads on a request.
+   */
   private def renderedText(call: ProviderCall): String = {
     val body = call.messagesWithVolatileTail.iterator.map {
-      case ProviderMessage.System(c)         => c
-      case ProviderMessage.User(content)     => content.mkString(" ")
+      case ProviderMessage.System(c) => c
+      case ProviderMessage.User(content) => content.mkString(" ")
       case ProviderMessage.Assistant(c, tcs) => s"$c ${tcs.mkString(" ")}"
-      case ProviderMessage.ToolResult(_, c)  => c
-      case other                             => other.toString
+      case ProviderMessage.ToolResult(_, c) => c
+      case other => other.toString
     }.mkString("\n")
     s"${call.system}\n$body"
   }
@@ -117,12 +125,12 @@ class ToolInvocationProjectionAccountingSpec extends AsyncWordSpec with AsyncTas
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Run the probe and report back.")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Run the probe and report back.")),
+        state = EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId, timeout = 90.seconds)
     } yield Run(convId, recorded.iterator().asScala.toList)
   }
@@ -138,13 +146,13 @@ class ToolInvocationProjectionAccountingSpec extends AsyncWordSpec with AsyncTas
 
   "A settled tool dispatch" should {
 
-    "record exactly one recent-invocation entry carrying its real outcome" in {
+    "record exactly one recent-invocation entry carrying its real outcome" in
       runTurn("accounting-single", identicalCalls = 1).flatMap { run =>
         for {
           entries <- probeEntries(run.convId)
           invokes <- TestSigil.eventsFor(run.convId).map(_.events.collect {
-                       case t: ToolInvoke if t.toolName == ProbeReadTool.name => t
-                     })
+            case t: ToolInvoke if t.toolName == ProbeReadTool.name => t
+          })
         } yield {
           withClue(s"recent-invocation entries for one dispatch: $entries\n") {
             entries.size shouldBe 1
@@ -163,9 +171,8 @@ class ToolInvocationProjectionAccountingSpec extends AsyncWordSpec with AsyncTas
           renderedText(next.head) should not include "Repeated tool calls"
         }
       }
-    }
 
-    "report the true repeat count in the prompt's duplicate digest" in {
+    "report the true repeat count in the prompt's duplicate digest" in
       // Two identical settled calls must read as `2x`, not `4x`: the
       // digest is the didactic pressure the model calibrates against.
       runTurn("accounting-digest", identicalCalls = 2).map { run =>
@@ -178,9 +185,8 @@ class ToolInvocationProjectionAccountingSpec extends AsyncWordSpec with AsyncTas
           rendered should include(s"`${ProbeReadTool.name.value}` called 2x with identical args")
         }
       }
-    }
 
-    "trip the duplicate-call cap on the third identical call, not the raced-result redirect" in {
+    "trip the duplicate-call cap on the third identical call, not the raced-result redirect" in
       runTurn("accounting-cap", identicalCalls = 3).flatMap { run =>
         toolFailureTexts(run.convId).map { texts =>
           withClue(s"tool-role failures: $texts\n") {
@@ -191,7 +197,6 @@ class ToolInvocationProjectionAccountingSpec extends AsyncWordSpec with AsyncTas
           }
         }
       }
-    }
   }
 
   "A genuinely raced dispatch (result settled Pending)" should {
@@ -205,47 +210,48 @@ class ToolInvocationProjectionAccountingSpec extends AsyncWordSpec with AsyncTas
 
       def publishRacedInvoke(): Task[Unit] = {
         val invoke = ToolInvoke(
-          toolName       = ProbeReadTool.name,
-          participantId  = TestAgent,
+          toolName = ProbeReadTool.name,
+          participantId = TestAgent,
           conversationId = convId,
-          topicId        = TestTopicEntry.id,
-          input          = Some(input),
-          state          = EventState.Active
+          topicId = TestTopicEntry.id,
+          input = Some(input),
+          state = EventState.Active
         )
-        TestSigil.publish(invoke).flatMap(_ => TestSigil.publish(ToolDelta(
-          target         = invoke._id,
-          conversationId = convId,
-          input          = Some(input),
-          state          = Some(EventState.Complete)
-        ))).unit
+        TestSigil.publish(invoke).flatMap(_ =>
+          TestSigil.publish(ToolDelta(
+            target = invoke._id,
+            conversationId = convId,
+            input = Some(input),
+            state = Some(EventState.Complete)
+          ))).unit
       }
 
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _       <- publishRacedInvoke()
-        _       <- publishRacedInvoke()
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- publishRacedInvoke()
+        _ <- publishRacedInvoke()
         entries <- probeEntries(convId)
-        proj    <- TestSigil.projectionFor(TestAgent, convId)
+        proj <- TestSigil.projectionFor(TestAgent, convId)
         signals <- Orchestrator.process(
-                     TestSigil,
-                     new ScriptedProvider(new ConcurrentLinkedQueue[ProviderCall](), identicalCalls = 1),
-                     ConversationRequest(
-                       conversationId     = convId,
-                       model              = TestSigil.testModel(modelId),
-                       instructions       = Instructions(),
-                       turnInput          = TurnInput(
-                         conversationId         = convId,
-                         participantProjections = Map(TestAgent -> proj)
-                       ),
-                       currentMode        = ConversationMode,
-                       currentTopic       = TestTopicEntry,
-                       generationSettings = GenerationSettings(maxOutputTokens = Some(64), temperature = Some(0.0)),
-                       tools              = Vector(ProbeReadTool, RespondTool),
-                       chain              = List(TestUser, TestAgent),
-                       turnStartedAt      = Some(Timestamp(0L))
-                     ),
-                     conv
-                   ).toList
+          TestSigil,
+          new ScriptedProvider(new ConcurrentLinkedQueue[ProviderCall](), identicalCalls = 1),
+          ConversationRequest(
+            conversationId = convId,
+            model = TestSigil.testModel(modelId),
+            instructions = Instructions(),
+            turnInput = TurnInput(
+              conversationId = convId,
+              participantProjections = Map(TestAgent -> proj)
+            ),
+            currentMode = ConversationMode,
+            currentTopic = TestTopicEntry,
+            generationSettings = GenerationSettings(maxOutputTokens = Some(64), temperature = Some(0.0)),
+            tools = Vector(ProbeReadTool, RespondTool),
+            chain = List(TestUser, TestAgent),
+            turnStartedAt = Some(Timestamp(0L))
+          ),
+          conv
+        ).toList
       } yield {
         val hash = ToolInputCanonicalizer.argsHash(input)
         withClue(s"raced entries: $entries\n") {

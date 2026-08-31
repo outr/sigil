@@ -49,7 +49,9 @@ class ContextFeatureSpec extends AnyWordSpec with Matchers {
     ContextSections.render(sections, placement, ctx)
   }
 
-  /** Just the features' own contribution, without the rest of the prompt. */
+  /**
+   * Just the features' own contribution, without the rest of the prompt.
+   */
   private def renderFeatures(features: List[ContextFeature], placement: Placement): String = {
     val ctx = ContextFeatures.evaluate(features, baseContext).sync()
     ContextSections.render(ContextFeatures.sections(features), placement, ctx)
@@ -57,10 +59,13 @@ class ContextFeatureSpec extends AnyWordSpec with Matchers {
 
   private val statusId = FeatureId("erpStatus")
 
-  /** An app feature that consults a live source. */
+  /**
+   * An app feature that consults a live source.
+   */
   private class StatusFeature(status: String,
                               override val placement: Placement = Placement.VolatileTail,
-                              override val budget: Option[Int] = None) extends ContextFeature {
+                              override val budget: Option[Int] = None)
+    extends ContextFeature {
     val calls = new AtomicInteger(0)
     val id: FeatureId = statusId
     def compute(ctx: SectionContext): Task[List[FeatureBody]] = Task {
@@ -112,7 +117,7 @@ class ContextFeatureSpec extends AnyWordSpec with Matchers {
       val profile = RequestProfiler.profileWith(ctx, HeuristicTokenizer, _.description, sections)
       profile.sections.keys.count {
         case ProfileSection.Feature(_) => true
-        case _                         => false
+        case _ => false
       } shouldBe 1
     }
 
@@ -145,9 +150,8 @@ class ContextFeatureSpec extends AnyWordSpec with Matchers {
             ContextSections.render(ContextSections.all, placement, baseContext)
         }
         feature.calls.get() shouldBe 0
-      } finally {
+      } finally
         TestSigil.resetContextFeatures()
-      }
     }
   }
 

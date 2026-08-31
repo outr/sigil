@@ -30,7 +30,7 @@ class ToolDescriptionAuditSpec extends AnyWordSpec with Matchers {
   private val Simple = """description\s*=\s*"([^"]+)"""".r
   private val BacktickRe = """`([a-z_][a-z0-9_]*)`""".r
 
-  private def readAllScala: List[(String, String)] = {
+  private def readAllScala: List[(String, String)] =
     roots.flatMap { root =>
       val p = Paths.get(root)
       if (!Files.exists(p)) Nil
@@ -39,10 +39,11 @@ class ToolDescriptionAuditSpec extends AnyWordSpec with Matchers {
         .map(p => p.toString -> Source.fromFile(p.toFile).getLines().mkString("\n"))
         .toList
     }
-  }
 
-  /** Extract `description = """..."""` (triple-quoted) or
-    * `description = "..."` (single-line) from a tool source. */
+  /**
+   * Extract `description = """..."""` (triple-quoted) or
+   * `description = "..."` (single-line) from a tool source.
+   */
   private def descriptionOf(src: String): Option[String] = {
     val idx = src.indexOf("description")
     if (idx < 0) return None
@@ -58,14 +59,22 @@ class ToolDescriptionAuditSpec extends AnyWordSpec with Matchers {
   }
 
   private val allowed: Set[(String, String)] = {
-    val respondFam = Set("respond", "respond_options",
-      "respond_card", "respond_cards", "no_response")
+    val respondFam = Set(
+      "respond",
+      "respond_options",
+      "respond_card",
+      "respond_cards",
+      "no_response")
     val cross = for (a <- respondFam; b <- respondFam if a != b) yield (a, b)
     cross ++ Set(
-      "pin_complexity" -> "unpin_complexity", "unpin_complexity" -> "pin_complexity",
-      "pin_effort" -> "unpin_effort", "unpin_effort" -> "pin_effort",
-      "pin_memory" -> "unpin_memory", "unpin_memory" -> "pin_memory",
-      "pin_model" -> "unpin_model", "unpin_model" -> "pin_model",
+      "pin_complexity" -> "unpin_complexity",
+      "unpin_complexity" -> "pin_complexity",
+      "pin_effort" -> "unpin_effort",
+      "unpin_effort" -> "pin_effort",
+      "pin_memory" -> "unpin_memory",
+      "unpin_memory" -> "pin_memory",
+      "pin_model" -> "unpin_model",
+      "unpin_model" -> "pin_model",
       // #344 — record_consent's description names respond_options to tell
       // the agent that an options selection is NOT a reason to pre-consent.
       "record_consent" -> "respond_options",

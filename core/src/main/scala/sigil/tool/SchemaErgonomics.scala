@@ -15,10 +15,12 @@ import fabric.{Arr, Json, Obj, Str}
  */
 object SchemaErgonomics {
 
-  /** The discriminator key emitted on every `oneOf` branch of a sealed
-    * trait / data enum. A branch requiring only the discriminator is
-    * fine (the model just emits the variant tag); requiring anything
-    * beyond it is the unfillable case. */
+  /**
+   * The discriminator key emitted on every `oneOf` branch of a sealed
+   * trait / data enum. A branch requiring only the discriminator is
+   * fine (the model just emits the variant tag); requiring anything
+   * beyond it is the unfillable case.
+   */
   private val Discriminator: String = WireSurface.Discriminator
 
   private def requiredFields(obj: Map[String, Json]): List[String] =
@@ -29,13 +31,15 @@ object SchemaErgonomics {
 
   private def branchRequiresPayload(branch: Json): Boolean = branch match {
     case Obj(bm) => requiredFields(bm).exists(_ != Discriminator)
-    case _       => false
+    case _ => false
   }
 
-  /** Walk an emitted JSON Schema; report the path of every REQUIRED
-    * field whose schema is a union with a payload-requiring branch.
-    * Optional unions (the model can skip them) are fine and not
-    * reported. Reusable for apps that want to lint their own tools. */
+  /**
+   * Walk an emitted JSON Schema; report the path of every REQUIRED
+   * field whose schema is a union with a payload-requiring branch.
+   * Optional unions (the model can skip them) are fine and not
+   * reported. Reusable for apps that want to lint their own tools.
+   */
   def unfillableUnionFindings(schema: Json): List[String] = {
     def walk(json: Json, path: String, isRequired: Boolean): List[String] = json match {
       case Obj(m) =>

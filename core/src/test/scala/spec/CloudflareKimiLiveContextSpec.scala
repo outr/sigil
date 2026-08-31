@@ -45,7 +45,7 @@ class CloudflareKimiLiveContextSpec extends AsyncWordSpec with AsyncTaskSpec wit
   // generous headroom over the 1-minute default.
   override protected val testTimeout: FiniteDuration = 5.minutes
 
-  private val apiTokenOpt: Option[String]  = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
+  private val apiTokenOpt: Option[String] = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
   private val accountIdOpt: Option[String] = sys.env.get("CLOUDFLARE_ACCOUNT_ID").filter(_.nonEmpty)
 
   private val modelId: Id[Model] = Model.id("cloudflare", "@cf/moonshotai/kimi-k2.6")
@@ -55,8 +55,10 @@ class CloudflareKimiLiveContextSpec extends AsyncWordSpec with AsyncTaskSpec wit
       super.run(testName, args)
     }
 
-  /** Create an isolated temp dir seeded with files that carry bug-number
-    * references, so a grep over it returns real matches. */
+  /**
+   * Create an isolated temp dir seeded with files that carry bug-number
+   * references, so a grep over it returns real matches.
+   */
   private def seedWorkspace(): java.nio.file.Path = {
     val dir = java.nio.file.Files.createTempDirectory("kimi-grep-")
     java.nio.file.Files.writeString(
@@ -95,8 +97,8 @@ class CloudflareKimiLiveContextSpec extends AsyncWordSpec with AsyncTaskSpec wit
         instructions = Instructions(),
         generationSettings = GenerationSettings(
           maxOutputTokens = Some(16000),
-          temperature     = Some(0.0),
-          reasoningMode   = ReasoningMode.Off
+          temperature = Some(0.0),
+          reasoningMode = ReasoningMode.Off
         )
       )
       val convId = Conversation.id(s"kimi-live-ctx-${rapid.Unique()}")
@@ -112,7 +114,7 @@ class CloudflareKimiLiveContextSpec extends AsyncWordSpec with AsyncTaskSpec wit
         topicId = TestTopicId,
         content = Vector(ResponseContent.Text(
           s"Search the code under the directory `${workspace.toString}` for any references to bug " +
-          s"numbers (e.g. text like \"bug #123\"). List the files and lines where they appear."
+            s"numbers (e.g. text like \"bug #123\"). List the files and lines where they appear."
         )),
         state = EventState.Complete,
         timestamp = now
@@ -128,8 +130,7 @@ class CloudflareKimiLiveContextSpec extends AsyncWordSpec with AsyncTaskSpec wit
         val window = all.filter(e =>
           e.conversationId == convId
             && e.timestamp.value >= now.value
-            && e.state == EventState.Complete
-        ).sortBy(_.timestamp.value)
+            && e.state == EventState.Complete).sortBy(_.timestamp.value)
         val toolInvokes = window.collect { case ti: ToolInvoke => ti }
         val byName = toolInvokes.groupBy(_.toolName.value).view.mapValues(_.size).toMap
         val grepCalls = byName.getOrElse("grep", 0)

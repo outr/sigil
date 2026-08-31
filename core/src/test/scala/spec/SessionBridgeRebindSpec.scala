@@ -30,10 +30,12 @@ class SessionBridgeRebindSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   TestSigil.initFor(getClass.getSimpleName)
 
-  override implicit val testTimeout: FiniteDuration = 30.seconds
+  implicit override val testTimeout: FiniteDuration = 30.seconds
 
-  /** Two viewers sharing the conversation — `initial` for the
-    * pre-auth pseudonym, `authed` for the post-auth user. */
+  /**
+   * Two viewers sharing the conversation — `initial` for the
+   * pre-auth pseudonym, `authed` for the post-auth user.
+   */
   case object PreAuthViewer extends ParticipantId {
     override val value: String = "pre-auth-298"
   }
@@ -50,14 +52,14 @@ class SessionBridgeRebindSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   private def buildSession(convId: Id[Conversation]): DurableSession[Id[Conversation], Signal, String] = {
     val log = new InMemoryEventLog[Id[Conversation], Signal]
     val protocol = new DurableSocket[Id[Conversation], Signal, String](
-      config           = DurableSocketConfig(),
-      outboundLog      = log,
+      config = DurableSocketConfig(),
+      outboundLog = log,
       initialChannelId = convId
     )
     val listener = reactify.Var[WebSocketListener](new WebSocketListener)
     DurableSession[Id[Conversation], Signal, String](
       clientId = s"client-${rapid.Unique()}",
-      info     = "info",
+      info = "info",
       protocol = protocol,
       listener = listener
     )
@@ -65,17 +67,17 @@ class SessionBridgeRebindSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private def freshConversation(suffix: String): Task[Conversation] = {
     val convId = Conversation.id(s"rebind-$suffix-${rapid.Unique()}")
-    val topic  = TopicEntry(Topic.id(s"topic-${convId.value}"), "test", "test")
-    val conv   = Conversation(_id = convId, topics = List(topic))
+    val topic = TopicEntry(Topic.id(s"topic-${convId.value}"), "test", "test")
+    val conv = Conversation(_id = convId, topics = List(topic))
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
   }
 
   private def msg(convId: Id[Conversation], text: String, sender: ParticipantId): Message = Message(
-    participantId  = sender,
+    participantId = sender,
     conversationId = convId,
-    topicId        = TestTopicId,
-    content        = Vector(ResponseContent.Text(text)),
-    state          = EventState.Complete
+    topicId = TestTopicId,
+    content = Vector(ResponseContent.Text(text)),
+    state = EventState.Complete
   )
 
   "SessionBridge.attach (sigil #298)" should {
@@ -85,31 +87,33 @@ class SessionBridgeRebindSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         conv <- freshConversation("currentViewer")
         session = buildSession(conv._id)
         handle <- SessionBridge.attach(TestSigil, session, PreAuthViewer, resume = ResumeRequest.None)
-      } yield {
-        handle.currentViewer shouldBe PreAuthViewer
-      }
+      } yield handle.currentViewer shouldBe PreAuthViewer
     }
 
     "rebindViewer swaps the live signalsFor subscription to the new viewer" in {
       val preAuthCount = new AtomicInteger(0)
-      val authedCount  = new AtomicInteger(0)
+      val authedCount = new AtomicInteger(0)
 
       // Subscribe per-viewer counters that watch our marker text via
       // the live signal stream. Pre-rebind, only PreAuthViewer's path
       // sees signals; post-rebind, only AuthedViewer's path sees them
       // (because the session's `signalsFor(viewer)` switched).
       TestSigil.signalsFor(PreAuthViewer)
-        .collect { case m: Message if m.content.exists {
-          case t: ResponseContent.Text => t.text == "rebind-marker"
-          case _ => false
-        } => m }
+        .collect {
+          case m: Message if m.content.exists {
+                case t: ResponseContent.Text => t.text == "rebind-marker"
+                case _ => false
+              } => m
+        }
         .evalMap(_ => Task { preAuthCount.incrementAndGet(); () })
         .drain.startUnit()
       TestSigil.signalsFor(AuthedViewer)
-        .collect { case m: Message if m.content.exists {
-          case t: ResponseContent.Text => t.text == "rebind-marker"
-          case _ => false
-        } => m }
+        .collect {
+          case m: Message if m.content.exists {
+                case t: ResponseContent.Text => t.text == "rebind-marker"
+                case _ => false
+              } => m
+        }
         .evalMap(_ => Task { authedCount.incrementAndGet(); () })
         .drain.startUnit()
 
@@ -142,7 +146,7 @@ class SessionBridgeRebindSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         session = buildSession(conv._id)
         handle <- SessionBridge.attach(TestSigil, session, PreAuthViewer, resume = ResumeRequest.None)
         before = handle.currentViewer
-        _ <- handle.rebindViewer(PreAuthViewer)  // same viewer
+        _ <- handle.rebindViewer(PreAuthViewer) // same viewer
       } yield {
         handle.currentViewer shouldBe PreAuthViewer
         handle.currentViewer shouldBe before

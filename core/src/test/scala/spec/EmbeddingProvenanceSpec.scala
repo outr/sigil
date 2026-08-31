@@ -27,9 +27,11 @@ import java.util.concurrent.atomic.AtomicInteger
 class EmbeddingProvenanceSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Deterministic embedder with a declared identity and a call
-    * counter, so a spec can assert exactly how much embedding a sweep
-    * spent. */
+  /**
+   * Deterministic embedder with a declared identity and a call
+   * counter, so a spec can assert exactly how much embedding a sweep
+   * spent.
+   */
   private class CountingEmbedding(override val id: String, override val dimensions: Int = 4) extends EmbeddingProvider {
     val calls: AtomicInteger = new AtomicInteger(0)
 
@@ -78,8 +80,10 @@ class EmbeddingProvenanceSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   private def reload(m: ContextMemory): Task[ContextMemory] =
     TestSigil.withDB(_.memories.transaction(_.get(m._id))).map(_.getOrElse(fail(s"memory ${m._id.value} missing")))
 
-  /** Write straight to the store, bypassing every indexing path — the
-    * shape of an app-side write that leaves the vector index behind. */
+  /**
+   * Write straight to the store, bypassing every indexing path — the
+   * shape of an app-side write that leaves the vector index behind.
+   */
   private def rawUpsert(m: ContextMemory): Task[ContextMemory] =
     TestSigil.withDB(_.memories.transaction(_.upsert(m)))
 

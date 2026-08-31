@@ -5,7 +5,8 @@ import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.conversation.{ConversationView,
+import sigil.conversation.{
+  ConversationView,
   ActiveSkillSlot,
   ContextFrame,
   ContextKey,
@@ -54,20 +55,26 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
 
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** The provider under test. */
+  /**
+   * The provider under test.
+   */
   protected def providerInstance: Provider
 
-  /** The model id to pass on the request. Providers don't care much —
-    * the important thing is that it matches a registered model in
-    * TestSigil's cache if the provider looks it up. */
+  /**
+   * The model id to pass on the request. Providers don't care much —
+   * the important thing is that it matches a registered model in
+   * TestSigil's cache if the provider looks it up.
+   */
   protected def modelId: Id[Model]
 
   protected val conversationId: Id[Conversation] = Conversation.id("coverage-conv")
 
-  /** A baseline user frame — carried by [[emptyView]] so generated
-    * wire bodies always have at least one input/message entry (real
-    * provider APIs reject fully-empty message arrays). Tests that
-    * override frames via `.copy(frames = ...)` replace this baseline. */
+  /**
+   * A baseline user frame — carried by [[emptyView]] so generated
+   * wire bodies always have at least one input/message entry (real
+   * provider APIs reject fully-empty message arrays). Tests that
+   * override frames via `.copy(frames = ...)` replace this baseline.
+   */
   protected val baselineFrame: ContextFrame.Text = ContextFrame.Text(
     content = "baseline user message",
     participantId = TestUser,
@@ -110,8 +117,13 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
   private def upsertMemory(fact: String,
                            source: MemorySource,
                            pinned: Boolean = false): Id[ContextMemory] = {
-    val memory = ContextMemory(fact = fact, label = fact.take(40), summary = fact,
-      source = source, pinned = pinned, spaceId = TestSpace)
+    val memory = ContextMemory(
+      fact = fact,
+      label = fact.take(40),
+      summary = fact,
+      source = source,
+      pinned = pinned,
+      spaceId = TestSpace)
     TestSigil.withDB(_.memories.transaction(_.upsert(memory))).sync()
     memory._id
   }
@@ -258,10 +270,10 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
 
     "include per-participant recentToolInvocations (from projections) in the wire body" in {
       val invocation = sigil.conversation.RecentToolInvocation(
-        toolName    = ToolName.parse("RECENT_TOOL_42").fold(sys.error, identity),
-        argsHash    = "hash-42",
+        toolName = ToolName.parse("RECENT_TOOL_42").fold(sys.error, identity),
+        argsHash = "hash-42",
         argsPreview = "{\"q\":\"42\"}",
-        invokedAt   = lightdb.time.Timestamp()
+        invokedAt = lightdb.time.Timestamp()
       )
       val proj = sigil.conversation.ParticipantProjection.empty(TestAgent, conversationId)
         .copy(recentToolInvocations = List(invocation))
@@ -349,17 +361,23 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
     }
   }
 
-  /** Override-hook for providers that DO serialize Reasoning frames.
-    * Default `false` (every framework provider except OpenAI). */
+  /**
+   * Override-hook for providers that DO serialize Reasoning frames.
+   * Default `false` (every framework provider except OpenAI).
+   */
   protected def expectsReasoningSerialized: Boolean = false
 
-  /** Whether this provider applies the trailing-assistant user anchor (#396).
-    * Anthropic / Google / llama.cpp do; OpenAI-family chat/Responses accept a
-    * trailing assistant and override to `false`. */
+  /**
+   * Whether this provider applies the trailing-assistant user anchor (#396).
+   * Anthropic / Google / llama.cpp do; OpenAI-family chat/Responses accept a
+   * trailing assistant and override to `false`.
+   */
   protected def appliesUserAnchor: Boolean = true
 
-  /** Role of the last entry in this provider's wire message list. Defaults to
-    * `messages[].role`; Google reads `contents[].role`. */
+  /**
+   * Role of the last entry in this provider's wire message list. Defaults to
+   * `messages[].role`; Google reads `contents[].role`.
+   */
   protected def lastWireRole(body: String): Option[String] =
     JsonParser(body).get("messages").flatMap(_.asVector.lastOption)
       .flatMap(_.get("role")).map(_.asString)

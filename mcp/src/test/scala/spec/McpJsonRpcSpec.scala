@@ -18,11 +18,13 @@ import java.nio.charset.StandardCharsets
  */
 class McpJsonRpcSpec extends AnyWordSpec with Matchers {
 
-  /** Wire a McpJsonRpc to fixed input bytes + a captured output buffer. */
+  /**
+   * Wire a McpJsonRpc to fixed input bytes + a captured output buffer.
+   */
   private def fixture(inputLines: String = ""): (McpJsonRpc, ByteArrayOutputStream) = {
     val inBytes = inputLines.getBytes(StandardCharsets.UTF_8)
-    val reader  = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(inBytes), StandardCharsets.UTF_8))
-    val out     = new ByteArrayOutputStream()
+    val reader = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(inBytes), StandardCharsets.UTF_8))
+    val out = new ByteArrayOutputStream()
     (new McpJsonRpc(reader, out), out)
   }
 
@@ -51,7 +53,7 @@ class McpJsonRpcSpec extends AnyWordSpec with Matchers {
       val (rpc, out) = fixture()
       // Just verify the wire format — we don't await the response (no reader running).
       rpc.requestWithId("tools/list", obj(), _ => ()).startUnit()
-      Thread.sleep(50)  // let the write happen
+      Thread.sleep(50) // let the write happen
       val parsed = JsonParser(out.toString(StandardCharsets.UTF_8).trim)
       parsed.get("jsonrpc").map(_.asString) shouldBe Some("2.0")
       parsed.get("method").map(_.asString) shouldBe Some("tools/list")

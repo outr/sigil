@@ -2,7 +2,9 @@ package sigil.tool.consult
 
 import rapid.Task
 import sigil.provider.{GenerationSettings, OutputTokenCap, ReasoningMode, SummarizationWork, WorkType}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 /**
  * Internal-only consult that predicts what the USER will say next.
@@ -15,7 +17,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput,
  * `executeResult` body worth running.
  */
 case object SuggestReplyTool extends Tool with FrameworkConsult {
-  type Input  = SuggestReplyInput
+  type Input = SuggestReplyInput
   type Output = TextToolOutput
   val io: ToolIO[SuggestReplyInput, TextToolOutput] = ToolIO.derived[SuggestReplyInput, TextToolOutput]
 
@@ -34,15 +36,19 @@ case object SuggestReplyTool extends Tool with FrameworkConsult {
     discovery = DiscoverySpec(kind = ConsultKind)
   )
 
-  /** A short list of short strings — the cheap summarization tier
-    * handles it. */
+  /**
+   * A short list of short strings — the cheap summarization tier
+   * handles it.
+   */
   override def consultWorkType: WorkType = SummarizationWork
 
-  /** Output is at most a handful of one-line strings; 192 tokens
-    * covers the structured payload plus the reasoning-spill margin. */
+  /**
+   * Output is at most a handful of one-line strings; 192 tokens
+   * covers the structured payload plus the reasoning-spill margin.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(192),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)

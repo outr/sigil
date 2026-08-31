@@ -74,7 +74,8 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
           case 1 =>
             Stream.emits(probes.zipWithIndex.flatMap { case (p, i) =>
               val cid = CallId(s"toolu_batch$i")
-              List(ProviderEvent.ToolCallStart(cid, ProbeReadTool.name.value),
+              List(
+                ProviderEvent.ToolCallStart(cid, ProbeReadTool.name.value),
                 ProviderEvent.toolCall(cid, ProbeReadTool)(ProbeReadInput(probe = p)))
             } :+ ProviderEvent.Done(StopReason.ToolCall))
           case n =>
@@ -82,15 +83,20 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
             Stream.emits(List(
               ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
               ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-                topicLabel = "Probes", topicSummary = "Probe lookup", content = "Done.", endsTurn = true)),
+                topicLabel = "Probes",
+                topicSummary = "Probe lookup",
+                content = "Done.",
+                endsTurn = true)),
               ProviderEvent.Done(StopReason.Complete)
             ))
         }
       }
   }
 
-  /** Iteration 2's prompt, produced by the real loop after a settled
-    * two-call parallel batch. */
+  /**
+   * Iteration 2's prompt, produced by the real loop after a settled
+   * two-call parallel batch.
+   */
   private lazy val captured: ProviderCall = {
     val recorded = new ConcurrentLinkedQueue[ProviderCall]()
     val provider = new ScriptedProvider(recorded)
@@ -110,24 +116,26 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
     val task = for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId = TestUser,
-             conversationId = convId,
-             topicId = TestTopicEntry.id,
-             content = Vector(ResponseContent.Text(
-               "Read the probes 'alpha' and 'bravo' and tell me both values.")),
-             state = sigil.signal.EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text(
+          "Read the probes 'alpha' and 'bravo' and tell me both values.")),
+        state = sigil.signal.EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId, timeout = 90.seconds)
     } yield recorded.iterator().asScala.toList
     task.sync()(1)
   }
 
-  /** The pipeline's own Anthropic body, retargeted at the live model
-    * and made non-streaming so one response is one JSON object. */
+  /**
+   * The pipeline's own Anthropic body, retargeted at the live model
+   * and made non-streaming so one response is one JSON object.
+   */
   private def liveBody(call: ProviderCall): Json = {
     val body = anthropic.httpRequestFor(call).sync().content match {
       case Some(c: StringContent) => JsonParser(c.value)
-      case _                      => throw new IllegalStateException("no body rendered")
+      case _ => throw new IllegalStateException("no body rendered")
     }
     // `temperature` is rejected outright by this model generation.
     val retargeted = body.merge(obj(
@@ -138,10 +146,12 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
     obj(retargeted.asObj.value.filterNot(_._1 == "temperature").toList*)
   }
 
-  /** Collapse each maximal run of `[assistant with one tool_use]
-    * [user with one tool_result]` pairs whose ids all belong to
-    * `batchIds` into the single assistant turn plus single user turn
-    * the model actually emitted and would have been answered with. */
+  /**
+   * Collapse each maximal run of `[assistant with one tool_use]
+   * [user with one tool_result]` pairs whose ids all belong to
+   * `batchIds` into the single assistant turn plus single user turn
+   * the model actually emitted and would have been answered with.
+   */
   private def groupBatch(messages: Vector[Json], batchIds: Set[String]): Vector[Json] = {
     def useIds(m: Json): Vector[String] =
       blocks(m, "tool_use").flatMap(_.get("id").map(_.asString))
@@ -152,16 +162,20 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
     var i = 0
     while (i < messages.length) {
       val uses = useIds(messages(i))
-      if (uses.size == 1 && batchIds.contains(uses.head) &&
-        i + 1 < messages.length && resultIds(messages(i + 1)) == uses) {
+      if (
+        uses.size == 1 && batchIds.contains(uses.head) &&
+        i + 1 < messages.length && resultIds(messages(i + 1)) == uses
+      ) {
         var n = 0
         val useBlocks = Vector.newBuilder[Json]
         val resultBlocks = Vector.newBuilder[Json]
         var textBlocks = Vector.empty[Json]
-        while (i + 2 * n + 1 < messages.length && {
-          val u = useIds(messages(i + 2 * n))
-          u.size == 1 && batchIds.contains(u.head) && resultIds(messages(i + 2 * n + 1)) == u
-        }) {
+        while (
+          i + 2 * n + 1 < messages.length && {
+            val u = useIds(messages(i + 2 * n))
+            u.size == 1 && batchIds.contains(u.head) && resultIds(messages(i + 2 * n + 1)) == u
+          }
+        ) {
           textBlocks ++= blocks(messages(i + 2 * n), "text")
           useBlocks ++= blocks(messages(i + 2 * n), "tool_use")
           resultBlocks ++= blocks(messages(i + 2 * n + 1), "tool_result")
@@ -183,8 +197,10 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
       .flatMap(c => scala.util.Try(c.asVector).getOrElse(Vector.empty))
       .filter(_.get("type").map(_.asString).contains(blockType))
 
-  /** What the model chose: the names of the tools it called, or
-    * `text` when it answered in prose. */
+  /**
+   * What the model chose: the names of the tools it called, or
+   * `text` when it answered in prose.
+   */
   private def decide(body: Json): (List[String], String) = {
     val req = HttpRequest(
       method = HttpMethod.Post,
@@ -196,7 +212,7 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
     val raw = HttpClient.modify(_ => req).noFailOnHttpStatus.timeout(120.seconds).send().flatMap { resp =>
       resp.content match {
         case Some(c) => c.asString
-        case None    => Task.pure("")
+        case None => Task.pure("")
       }
     }.sync()
     val parsed = JsonParser(raw)
@@ -205,8 +221,9 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
       case None =>
         val content = parsed.get("content").map(_.asVector).getOrElse(Vector.empty)
         val calls = content.filter(_.get("type").map(_.asString).contains("tool_use"))
-          .map(b => b.get("name").map(_.asString).getOrElse("?") +
-            b.get("input").map(JsonFormatter.Compact.apply).getOrElse("")).toList
+          .map(b =>
+            b.get("name").map(_.asString).getOrElse("?") +
+              b.get("input").map(JsonFormatter.Compact.apply).getOrElse("")).toList
         val text = content.filter(_.get("type").map(_.asString).contains("text"))
           .flatMap(_.get("text").map(_.asString)).mkString(" ")
         (calls, text)
@@ -236,9 +253,8 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
 
   "the field model, answering the prompt that follows a settled parallel batch" should {
 
-    "A: split rendering (shipped)" in {
+    "A: split rendering (shipped)" in
       runArm("A-split", liveBody(captured))
-    }
 
     "B: grouped rendering (one assistant turn, one result turn)" in {
       val base = liveBody(captured)
@@ -246,14 +262,15 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
       runArm("B-grouped", base.merge(obj("messages" -> arr(grouped*))))
     }
 
-    "C: split rendering with the recent-tools digest removed" in {
+    "C: split rendering with the recent-tools digest removed" in
       runArm("C-no-recent-tools", stripEverywhere(liveBody(captured), "== Recently used tools =="))
-    }
   }
 
-  /** Removes a prompt section wherever it landed. The stable prefix
-    * rides `system`; the volatile tail rides a trailing `[system]`
-    * user message, so both have to be rewritten. */
+  /**
+   * Removes a prompt section wherever it landed. The stable prefix
+   * rides `system`; the volatile tail rides a trailing `[system]`
+   * user message, so both have to be rewritten.
+   */
   private def stripEverywhere(body: Json, header: String): Json = {
     val messages = body.get("messages").map(_.asVector).getOrElse(Vector.empty).map { m =>
       val content = m.get("content").toVector
@@ -261,7 +278,7 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
         .map { b =>
           b.get("text").map(_.asString) match {
             case Some(t) => b.merge(obj("text" -> str(stripSection(t, header))))
-            case None    => b
+            case None => b
           }
         }
       m.merge(obj("content" -> arr(content*)))
@@ -272,7 +289,9 @@ class ParallelBatchReissueLiveSpec extends AnyWordSpec with Matchers {
     ))
   }
 
-  /** Drops one `== Header ==` section, up to the next section header. */
+  /**
+   * Drops one `== Header ==` section, up to the next section header.
+   */
   private def stripSection(text: String, header: String): String = {
     val lines = text.linesIterator.toVector
     val start = lines.indexWhere(_.trim == header.trim)

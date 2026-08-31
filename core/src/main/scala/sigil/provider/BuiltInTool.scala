@@ -22,22 +22,33 @@ import fabric.rw.*
  * they support.
  */
 enum BuiltInTool derives RW {
-  /** Model autonomously searches the web, consumes results, and
-    * integrates them into its output. */
+
+  /**
+   * Model autonomously searches the web, consumes results, and
+   * integrates them into its output.
+   */
   case WebSearch
 
-  /** Model autonomously generates images as part of its output. The
-    * generated image appears as a [[sigil.tool.model.ResponseContent.Image]]
-    * block in the final Message. */
+  /**
+   * Model autonomously generates images as part of its output. The
+   * generated image appears as a [[sigil.tool.model.ResponseContent.Image]]
+   * block in the final Message.
+   */
   case ImageGeneration
 
-  /** Model autonomously searches uploaded files / a vector store. */
+  /**
+   * Model autonomously searches uploaded files / a vector store.
+   */
   case FileSearch
 
-  /** Model autonomously executes code in a sandbox. */
+  /**
+   * Model autonomously executes code in a sandbox.
+   */
   case CodeInterpreter
 
-  /** Model autonomously drives a virtual computer (mouse, keyboard,
-    * screenshots). */
+  /**
+   * Model autonomously drives a virtual computer (mouse, keyboard,
+   * screenshots).
+   */
   case ComputerUse
 }

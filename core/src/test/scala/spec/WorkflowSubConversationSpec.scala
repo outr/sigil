@@ -50,13 +50,13 @@ class WorkflowSubConversationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         conversationId = Some(boundId)
       )
       for {
-        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(boundConv(boundId))))
-        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(boundConv(boundId))))
+        _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
         run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
         runConvId = run.conversationId.map(Id[Conversation](_))
         subConv <- runConvId match {
           case Some(cid) => TestWorkflowSigil.withDB(_.conversations.transaction(_.get(cid)))
-          case None      => Task.pure(None)
+          case None => Task.pure(None)
         }
       } yield {
         // The run carries a distinct conversation id, NOT the bound one.
@@ -84,8 +84,8 @@ class WorkflowSubConversationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         conversationId = Some(boundId)
       )
       for {
-        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(boundConv(boundId))))
-        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(boundConv(boundId))))
+        _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
         run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
         runConvId = Id[Conversation](run.conversationId.getOrElse(fail("run had no sub-conversation")))
         invokes <- waitForToolInvoke(runConvId, "echo_back", 10.seconds)
@@ -107,11 +107,9 @@ class WorkflowSubConversationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         conversationId = None
       )
       for {
-        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
         run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
-      } yield {
-        run.conversationId shouldBe None
-      }
+      } yield run.conversationId shouldBe None
     }
   }
 
