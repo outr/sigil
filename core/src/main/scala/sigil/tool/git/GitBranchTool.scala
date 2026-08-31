@@ -13,10 +13,10 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExamp
  * [[GitBranchOutput]].
  */
 final class GitBranchTool(context: FileSystemContext) extends Tool {
-  type Input  = GitBranchInput
+  type Input = GitBranchInput
   type Output = GitBranchOutput
   val io: ToolIO[GitBranchInput, GitBranchOutput] = ToolIO.derived[GitBranchInput, GitBranchOutput].withExamples(
-    ToolExample("Local branches",          GitBranchInput()),
+    ToolExample("Local branches", GitBranchInput()),
     ToolExample("Local + remote-tracking", GitBranchInput(includeRemotes = true))
   )
   override val name = ToolName("git_branch")
@@ -36,19 +36,18 @@ final class GitBranchTool(context: FileSystemContext) extends Tool {
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val flag = if (input.includeRemotes) "-a" else ""
       for {
-        branchResult  <- context.executeCommand(s"git branch $flag -vv", dir)
+        branchResult <- context.executeCommand(s"git branch $flag -vv", dir)
         currentResult <- context.executeCommand("git rev-parse --abbrev-ref HEAD", dir)
-      } yield {
+      } yield
         if (branchResult.exitCode != 0 || currentResult.exitCode != 0)
           GitBranchOutput.Failed(
-            error    = if (branchResult.stderr.nonEmpty) branchResult.stderr else currentResult.stderr,
+            error = if (branchResult.stderr.nonEmpty) branchResult.stderr else currentResult.stderr,
             exitCode = if (branchResult.exitCode != 0) branchResult.exitCode else currentResult.exitCode
           )
         else
           GitBranchOutput.Listed(
-            current  = currentResult.stdout.trim,
+            current = currentResult.stdout.trim,
             branches = GitOps.parseBranches(branchResult.stdout, input.includeRemotes)
           )
-      }
     }
 }

@@ -20,23 +20,27 @@ class SyntheticDiagnosticFrameSpec extends AnyWordSpec with Matchers {
   // args needs the framework's ToolInput poly registrations.
   TestSigil.polymorphicRegistrations.sync()
 
-  private val caller  = TestAgent
-  private val convId  = Conversation.id("synth-diag")
+  private val caller = TestAgent
+  private val convId = Conversation.id("synth-diag")
   private val topicId = Topic.id("synth-diag-topic")
   private val directive = Directive.RepeatedQueryIntercept("bug references")
-  private val reason  = directive.render
+  private val reason = directive.render
 
   private def frameText(f: ContextFrame): String = f match {
     case tc: ContextFrame.ToolCall => tc.state match {
-      case ToolCallState.Complete(content, _) => content
-      case _                                  => ""
-    }
+        case ToolCallState.Complete(content, _) => content
+        case _ => ""
+      }
     case _ => ""
   }
 
   "SyntheticDiagnostic.apply" should {
     "stamp the reason onto the invoke's own outcome + summary (self-describing, #341)" in {
-      val invoke = SyntheticDiagnostic(directive, caller, convId, topicId,
+      val invoke = SyntheticDiagnostic(
+        directive,
+        caller,
+        convId,
+        topicId,
         disposition = MessageDisposition.Failure(recoverable = true))
         .collectFirst { case ti: ToolInvoke => ti }.getOrElse(fail("no invoke produced"))
       invoke.outcome shouldBe ToolOutcome.Failure(reason, recoverable = true)
@@ -44,7 +48,11 @@ class SyntheticDiagnosticFrameSpec extends AnyWordSpec with Matchers {
     }
 
     "render the reason in the agent's frame from the invoke ALONE — no paired Message (#341)" in {
-      val invoke = SyntheticDiagnostic(directive, caller, convId, topicId,
+      val invoke = SyntheticDiagnostic(
+        directive,
+        caller,
+        convId,
+        topicId,
         disposition = MessageDisposition.Failure(recoverable = true))
         .collectFirst { case ti: ToolInvoke => ti }.get
       // Frame the invoke WITHOUT its paired Message — the bug's scenario.
@@ -54,7 +62,11 @@ class SyntheticDiagnosticFrameSpec extends AnyWordSpec with Matchers {
     }
 
     "carry a Success outcome (with the reason as summary) for a non-failure disposition" in {
-      val invoke = SyntheticDiagnostic(Directive.ProviderError(reason), caller, convId, topicId,
+      val invoke = SyntheticDiagnostic(
+        Directive.ProviderError(reason),
+        caller,
+        convId,
+        topicId,
         disposition = MessageDisposition.Success)
         .collectFirst { case ti: ToolInvoke => ti }.get
       invoke.outcome shouldBe ToolOutcome.Success

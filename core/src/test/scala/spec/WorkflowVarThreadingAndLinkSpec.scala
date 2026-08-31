@@ -39,17 +39,27 @@ class WorkflowVarThreadingAndLinkSpec extends AsyncWordSpec with AsyncTaskSpec w
   private def syntheticModel(id: Id[Model]): Model = {
     val now = lightdb.time.Timestamp()
     Model(
-      canonicalSlug = id.value, huggingFaceId = "", name = id.value,
-      description = s"Synthetic Model for $id.", contextLength = 32768L,
+      canonicalSlug = id.value,
+      huggingFaceId = "",
+      name = id.value,
+      description = s"Synthetic Model for $id.",
+      contextLength = 32768L,
       architecture = ModelArchitecture("text->text", List("text"), List("text"), "GPT", None),
       pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
       topProvider = ModelTopProvider(contextLength = Some(32768L), maxCompletionTokens = Some(8192L), isModerated = false),
-      perRequestLimits = None, supportedParameters = Set("temperature"), knowledgeCutoff = None,
-      expirationDate = None, links = ModelLinks(details = ""), created = now, _id = id
+      perRequestLimits = None,
+      supportedParameters = Set("temperature"),
+      knowledgeCutoff = None,
+      expirationDate = None,
+      links = ModelLinks(details = ""),
+      created = now,
+      _id = id
     )
   }
 
-  /** Echoes a fixed reply for the consuming prompt step. */
+  /**
+   * Echoes a fixed reply for the consuming prompt step.
+   */
   private object StubProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -63,9 +73,16 @@ class WorkflowVarThreadingAndLinkSpec extends AsyncWordSpec with AsyncTaskSpec w
     Conversation(
       topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
       participants = List(DefaultAgentParticipant(
-        id = WorkflowTestUser.asInstanceOf[AgentParticipantId], modelId = modelId,
-        toolNames = Nil, instructions = Instructions(), generationSettings = GenerationSettings())),
-      currentMode = ConversationMode, space = GlobalSpace, _id = id
+        id = WorkflowTestUser.asInstanceOf[AgentParticipantId],
+        modelId = modelId,
+        toolNames = Nil,
+        instructions = Instructions(),
+        generationSettings =
+          GenerationSettings()
+      )),
+      currentMode = ConversationMode,
+      space = GlobalSpace,
+      _id = id
     )
 
   private def subscribe(): ConcurrentLinkedQueue[Signal] = {
@@ -81,8 +98,8 @@ class WorkflowVarThreadingAndLinkSpec extends AsyncWordSpec with AsyncTaskSpec w
       import scala.jdk.CollectionConverters.*
       val done = recorded.iterator().asScala.exists {
         case e: WorkflowRunCompleted => e.runId == runId
-        case e: WorkflowRunFailed    => e.runId == runId
-        case _                       => false
+        case e: WorkflowRunFailed => e.runId == runId
+        case _ => false
       }
       if (done || System.currentTimeMillis() > deadline) Task.unit
       else Task.sleep(100.millis).flatMap(_ => loop)
@@ -94,7 +111,8 @@ class WorkflowVarThreadingAndLinkSpec extends AsyncWordSpec with AsyncTaskSpec w
     "report variables still present as {{...}} after substitution" in Task {
       WorkflowVariableSubstitution.unresolvedVars("a {{foo}} b {{bar}} {{foo}}") shouldBe List("foo", "bar")
       WorkflowVariableSubstitution.unresolvedVars(WorkflowVariableSubstitution.substitute(
-        "p={{path}} c={{missing}}", Map("path" -> (Str("x"): Json)))) shouldBe List("missing")
+        "p={{path}} c={{missing}}",
+        Map("path" -> (Str("x"): Json)))) shouldBe List("missing")
       WorkflowVariableSubstitution.unresolvedVars("nothing here") shouldBe Nil
     }
   }
@@ -111,17 +129,25 @@ class WorkflowVarThreadingAndLinkSpec extends AsyncWordSpec with AsyncTaskSpec w
       val template = WorkflowTemplate(
         name = "loop-thread",
         steps = List(LoopStepInput(
-          id = "loop", over = "items", itemVariable = "item", output = Some("processed"),
+          id = "loop",
+          over = "items",
+          itemVariable = "item",
+          output = Some("processed"),
           body = List(
             JobStepInput(id = "make", tool = Some("echo_back"), arguments = Some("""{"text":"{{item}}"}"""), output = Some("r1")),
-            JobStepInput(id = "use", prompt = Some("MARKER {{r1}}"), output = Some("r2"))))),
-        space = GlobalSpace, createdBy = Some(WorkflowTestUser), conversationId = Some(boundId)
+            JobStepInput(id = "use", prompt = Some("MARKER {{r1}}"), output = Some("r2"))
+          )
+        )),
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(boundId)
       )
       for {
-        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(boundConv(boundId))))
-        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
-        run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template, variables = Map("items" -> fabric.arr(Str("x"))))
-        _   <- waitForTerminal(recorded, run._id.value, 15.seconds)
+        _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(boundConv(boundId))))
+        _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        run <-
+          sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template, variables = Map("items" -> fabric.arr(Str("x"))))
+        _ <- waitForTerminal(recorded, run._id.value, 15.seconds)
         runConvId = run.conversationId.map(Id[Conversation](_))
         evs <- TestWorkflowSigil.withDB(_.events.transaction(_.list))
       } yield {
@@ -129,10 +155,11 @@ class WorkflowVarThreadingAndLinkSpec extends AsyncWordSpec with AsyncTaskSpec w
         recorded.iterator().asScala.toList.collect { case e: WorkflowRunFailed if e.runId == run._id.value => e } shouldBe empty
         // The persisted prompt turn carries the resolved sibling output — not
         // the unresolved `{{r1}}` literal (which is exactly what broke before).
-        val prompts = runConvId.toList.flatMap(cid => evs.collect {
-          case m: Message if m.conversationId == cid =>
-            m.content.collect { case ResponseContent.Text(t) => t }.mkString
-        }).filter(_.startsWith("MARKER "))
+        val prompts = runConvId.toList.flatMap(cid =>
+          evs.collect {
+            case m: Message if m.conversationId == cid =>
+              m.content.collect { case ResponseContent.Text(t) => t }.mkString
+          }).filter(_.startsWith("MARKER "))
         prompts should not be empty
         prompts.foreach(_ should not include "{{r1}}")
         succeed
@@ -146,13 +173,15 @@ class WorkflowVarThreadingAndLinkSpec extends AsyncWordSpec with AsyncTaskSpec w
       val template = WorkflowTemplate(
         name = "unresolved-arg",
         steps = List(JobStepInput(id = "echo", tool = Some("echo_back"), arguments = Some("""{"text":"{{nope}}"}"""))),
-        space = GlobalSpace, createdBy = Some(WorkflowTestUser), conversationId = Some(boundId)
+        space = GlobalSpace,
+        createdBy = Some(WorkflowTestUser),
+        conversationId = Some(boundId)
       )
       for {
-        _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(boundConv(boundId))))
-        _   <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(boundConv(boundId))))
+        _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
         run <- sigil.workflow.WorkflowScheduler.scheduleTemplate(TestWorkflowSigil, template)
-        _   <- waitForTerminal(recorded, run._id.value, 15.seconds)
+        _ <- waitForTerminal(recorded, run._id.value, 15.seconds)
         runConvId = run.conversationId.map(Id[Conversation](_))
         evs <- TestWorkflowSigil.withDB(_.events.transaction(_.list))
       } yield {
@@ -160,10 +189,11 @@ class WorkflowVarThreadingAndLinkSpec extends AsyncWordSpec with AsyncTaskSpec w
         val fails = recorded.iterator().asScala.toList.collect { case e: WorkflowRunFailed if e.runId == run._id.value => e }
         fails should have size 1
         // #382 — failed with an unresolved-variable reason, and the tool never ran.
-        fails.head.reason.toLowerCase should include ("unresolved")
-        runConvId.toList.flatMap(cid => evs.collect {
-          case ti: ToolInvoke if ti.conversationId == cid && ti.toolName.value == "echo_back" => ti
-        }) shouldBe empty
+        fails.head.reason.toLowerCase should include("unresolved")
+        runConvId.toList.flatMap(cid =>
+          evs.collect {
+            case ti: ToolInvoke if ti.conversationId == cid && ti.toolName.value == "echo_back" => ti
+          }) shouldBe empty
         // #381 — the failure event links back to the bound conversation.
         fails.head.parentConversationId shouldBe Some(boundId)
       }

@@ -9,7 +9,7 @@ import sigil.participant.ParticipantId
 import sigil.signal.EventState
 
 /**
-* Per-message emoji reaction.
+ * Per-message emoji reaction.
  *
  * One participant's reaction toggle on a specific Message: each
  * reaction is its own durable Event, and the agent / app reduces

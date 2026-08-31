@@ -9,7 +9,7 @@ import sigil.participant.ParticipantId
 import sigil.signal.EventState
 
 /**
-* Per-`(conversation, participant)` read cursor.
+ * Per-`(conversation, participant)` read cursor.
  *
  * The participant's last-read position in a conversation,
  * expressed as a server-stamped `Timestamp` — "I've consumed
@@ -56,11 +56,14 @@ case class ReadState(participantId: ParticipantId,
 }
 
 object ReadState {
-  /** Deterministic id for a `(conversationId, participantId)`
-    * pair. The same id gets upserted on every read advance, so
-    * `db.events` carries one row per pair regardless of how many
-    * times the participant scrolls. Mirrors AgentState's per-claim
-    * lock-id convention. */
+
+  /**
+   * Deterministic id for a `(conversationId, participantId)`
+   * pair. The same id gets upserted on every read advance, so
+   * `db.events` carries one row per pair regardless of how many
+   * times the participant scrolls. Mirrors AgentState's per-claim
+   * lock-id convention.
+   */
   def idFor(conversationId: Id[Conversation], participantId: ParticipantId): Id[Event] =
     Id(s"read:${conversationId.value}:${participantId.value}")
 }

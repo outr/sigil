@@ -21,30 +21,38 @@ import java.util.concurrent.ConcurrentHashMap
  */
 trait TurnPhaseOps { this: Sigil =>
 
-  private final val turnPhaseRecorders: ConcurrentHashMap[Id[Conversation], TurnPhaseRecorder] =
+  final private val turnPhaseRecorders: ConcurrentHashMap[Id[Conversation], TurnPhaseRecorder] =
     new ConcurrentHashMap()
 
-  /** Open a turn's phase accounting. `triggeredAt` is the triggering
-    * event's publish instant, so the first phase measures the time the
-    * publish pipeline itself spent before the agent could claim. */
-  private[sigil] final def openTurnPhases(conversationId: Id[Conversation], triggeredAt: Long): Unit = {
+  /**
+   * Open a turn's phase accounting. `triggeredAt` is the triggering
+   * event's publish instant, so the first phase measures the time the
+   * publish pipeline itself spent before the agent could claim.
+   */
+  final private[sigil] def openTurnPhases(conversationId: Id[Conversation], triggeredAt: Long): Unit = {
     val recorder = new TurnPhaseRecorder(math.min(triggeredAt, System.currentTimeMillis()))
     turnPhaseRecorders.put(conversationId, recorder)
     recorder.mark(TurnPhase.PublishToClaim)
   }
 
-  /** Attribute everything since the previous mark to `phase`. No-op when
-    * `conversationId` has no turn in flight. */
-  private[sigil] final def markTurnPhase(conversationId: Id[Conversation], phase: TurnPhase): Unit =
+  /**
+   * Attribute everything since the previous mark to `phase`. No-op when
+   * `conversationId` has no turn in flight.
+   */
+  final private[sigil] def markTurnPhase(conversationId: Id[Conversation], phase: TurnPhase): Unit =
     Option(turnPhaseRecorders.get(conversationId)).foreach(_.mark(phase))
 
-  /** Note that another agent-loop iteration has begun. */
-  private[sigil] final def markTurnIteration(conversationId: Id[Conversation]): Unit =
+  /**
+   * Note that another agent-loop iteration has begun.
+   */
+  final private[sigil] def markTurnIteration(conversationId: Id[Conversation]): Unit =
     Option(turnPhaseRecorders.get(conversationId)).foreach(_.nextIteration())
 
-  /** Close the turn's accounting and broadcast the breakdown. Emits
-    * nothing when no turn was open. */
-  private[sigil] final def closeTurnPhases(conversationId: Id[Conversation],
+  /**
+   * Close the turn's accounting and broadcast the breakdown. Emits
+   * nothing when no turn was open.
+   */
+  final private[sigil] def closeTurnPhases(conversationId: Id[Conversation],
                                            participantId: ParticipantId): Task[Unit] =
     Option(turnPhaseRecorders.remove(conversationId)) match {
       case None => Task.unit
@@ -52,10 +60,10 @@ trait TurnPhaseOps { this: Sigil =>
         recorder.mark(TurnPhase.TerminalToRelease)
         publish(TurnPhases(
           conversationId = conversationId,
-          participantId  = participantId,
-          iterations     = recorder.iterations,
-          totalMs        = recorder.totalMs,
-          durations      = recorder.durations
+          participantId = participantId,
+          iterations = recorder.iterations,
+          totalMs = recorder.totalMs,
+          durations = recorder.durations
         )).handleError(_ => Task.unit)
     }
 }

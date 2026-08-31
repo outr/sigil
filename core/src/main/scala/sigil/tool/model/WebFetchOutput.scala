@@ -16,4 +16,5 @@ import fabric.rw.*
 case class WebFetchOutput(content: String,
                           contentType: String,
                           statusCode: Int,
-                          truncated: Boolean) extends sigil.tool.ToolOutput derives RW
+                          truncated: Boolean)
+  extends sigil.tool.ToolOutput derives RW

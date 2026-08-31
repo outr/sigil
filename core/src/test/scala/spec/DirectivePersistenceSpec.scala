@@ -48,7 +48,7 @@ class DirectivePersistenceSpec extends AnyWordSpec with Matchers {
     "round-trip every case through its RW" in {
       val rw = summon[RW[Directive]]
       all.foreach { d =>
-        withClue(s"$d: ") { rw.write(rw.read(d)) shouldBe d }
+        withClue(s"$d: ")(rw.write(rw.read(d)) shouldBe d)
       }
       succeed
     }
@@ -57,18 +57,18 @@ class DirectivePersistenceSpec extends AnyWordSpec with Matchers {
       val rw = summon[RW[ToolInput]]
       all.foreach { d =>
         val input: ToolInput = DirectiveInput(d)
-        withClue(s"$d: ") { rw.write(rw.read(input)) shouldBe input }
+        withClue(s"$d: ")(rw.write(rw.read(input)) shouldBe input)
       }
       succeed
     }
 
     "keep every case's wire name stable and non-empty" in {
-      all.foreach(d => withClue(s"$d: ") { d.wireName should startWith("_") })
+      all.foreach(d => withClue(s"$d: ")(d.wireName should startWith("_")))
       succeed
     }
 
     "render prose for every case" in {
-      all.foreach(d => withClue(s"$d: ") { d.render.trim should not be empty })
+      all.foreach(d => withClue(s"$d: ")(d.render.trim should not be empty))
       succeed
     }
 

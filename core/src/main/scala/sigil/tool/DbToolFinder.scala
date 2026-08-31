@@ -25,7 +25,8 @@ import sigil.Sigil
  */
 case class DbToolFinder(sigil: Sigil,
                         extraIO: List[ToolIO[?, ?]] = Nil,
-                        maxResults: Int = 10) extends ToolFinder {
+                        maxResults: Int = 10)
+  extends ToolFinder {
 
   override def toolIO: List[ToolIO[?, ?]] = extraIO
 
@@ -43,7 +44,7 @@ case class DbToolFinder(sigil: Sigil,
         }
         .scored
         .sort(Sort.BestMatch())
-        .limit(maxResults * 2)  // over-fetch; affinity filter trims to maxResults below
+        .limit(maxResults * 2) // over-fetch; affinity filter trims to maxResults below
         .toList
     }).attempt.flatMap {
       case scala.util.Success(tools) =>

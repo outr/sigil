@@ -38,16 +38,19 @@ import sigil.vector.TemporalBoost
 case class FuseStage(rrfK: Int = 60,
                      lexicalWeight: Double = 2.0,
                      vectorWeight: Double = 1.0,
-                     /** Per-signal weight on the context keyword leg
-                       * (classifier keywords + topic label). Default
-                       * 1.0 — context should inform the ranking, never
-                       * outvote a direct match on the user's question
-                       * (whose lexical leg carries 2.0). `0.0` disables
-                       * the context contribution entirely. */
+                     /**
+                      * Per-signal weight on the context keyword leg
+                      * (classifier keywords + topic label). Default
+                      * 1.0 — context should inform the ranking, never
+                      * outvote a direct match on the user's question
+                      * (whose lexical leg carries 2.0). `0.0` disables
+                      * the context contribution entirely.
+                      */
                      keywordWeight: Double = 1.0,
                      recencyWeight: Double = FuseStage.DefaultRecencyWeight,
                      reinforcementWeight: Double = FuseStage.DefaultReinforcementWeight,
-                     recencyHalfLifeMs: Long = FuseStage.DefaultRecencyHalfLifeMs) extends MemoryRetrievalStage {
+                     recencyHalfLifeMs: Long = FuseStage.DefaultRecencyHalfLifeMs)
+  extends MemoryRetrievalStage {
   require(recencyWeight >= 0.0, "recencyWeight must be non-negative")
   require(reinforcementWeight >= 0.0, "reinforcementWeight must be non-negative")
   require(recencyHalfLifeMs > 0, "recencyHalfLifeMs must be positive")
@@ -65,10 +68,12 @@ case class FuseStage(rrfK: Int = 60,
     ))
   }
 
-  /** Accumulate weighted-RRF contributions per record (insertion
-    * order = first leg first, so tie ordering matches the legacy
-    * id-based fuse), apply the bounded boost multiplier, and sort by
-    * descending score (stable). */
+  /**
+   * Accumulate weighted-RRF contributions per record (insertion
+   * order = first leg first, so tie ordering matches the legacy
+   * id-based fuse), apply the bounded boost multiplier, and sort by
+   * descending score (stable).
+   */
   private[retrieval] def fuse(legs: List[(Vector[ContextMemory], Double)], now: Timestamp): Vector[ContextMemory] = {
     val accum = scala.collection.mutable.LinkedHashMap.empty[Id[ContextMemory], (ContextMemory, Double)]
     legs.foreach { case (ranking, legWeight) =>
@@ -77,7 +82,7 @@ case class FuseStage(rrfK: Int = 60,
         val contribution = m.confidence * legWeight / (rrfK + rank)
         accum.updateWith(m._id) {
           case Some((record, score)) => Some((record, score + contribution))
-          case None                  => Some((m, contribution))
+          case None => Some((m, contribution))
         }
       }
     }
@@ -103,15 +108,22 @@ case class FuseStage(rrfK: Int = 60,
 }
 
 object FuseStage {
-  /** Conservative default recency scale — bounds the recency share of
-    * the boost multiplier to 5%. */
+
+  /**
+   * Conservative default recency scale — bounds the recency share of
+   * the boost multiplier to 5%.
+   */
   val DefaultRecencyWeight: Double = 0.05
 
-  /** Conservative default reinforcement scale — bounds the
-    * reinforcement share of the boost multiplier to 3%. */
+  /**
+   * Conservative default reinforcement scale — bounds the
+   * reinforcement share of the boost multiplier to 3%.
+   */
   val DefaultReinforcementWeight: Double = 0.03
 
-  /** Default recency half-life — one week ([[TemporalBoost.HalfLife]]
-    * preset): a week-old memory's recency term is half a fresh one's. */
+  /**
+   * Default recency half-life — one week ([[TemporalBoost.HalfLife]]
+   * preset): a week-old memory's recency term is half a fresh one's.
+   */
   val DefaultRecencyHalfLifeMs: Long = TemporalBoost.HalfLife.OneWeek
 }

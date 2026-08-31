@@ -90,9 +90,11 @@ trait ScriptSigil extends Sigil {
   override def toolRegistrations: List[RW[? <: sigil.tool.Tool]] =
     summon[RW[ScriptTool]] :: super.toolRegistrations
 
-  /** Register [[ScriptKind]] so [[ScriptTool]] records' `kind` field
-    * round-trips through fabric's polymorphic [[sigil.tool.ToolKind]]
-    * discriminator. */
+  /**
+   * Register [[ScriptKind]] so [[ScriptTool]] records' `kind` field
+   * round-trips through fabric's polymorphic [[sigil.tool.ToolKind]]
+   * discriminator.
+   */
   override protected def toolKindRegistrations: List[RW[? <: sigil.tool.ToolKind]] =
     RW.static[sigil.tool.ToolKind](ScriptKind) :: super.toolKindRegistrations
 
@@ -107,33 +109,37 @@ trait ScriptSigil extends Sigil {
   override protected def eventRegistrations: List[RW[? <: Event]] =
     summon[RW[ScriptResult]] :: super.eventRegistrations
 
-   /**
-     * Auto-register [[JsonInput]]'s RW so [[ToolInvoke]] events for
-     * runtime-created [[ScriptTool]] calls (whose `inputRW` is
-     * `RW[JsonInput]`) round-trip through fabric's polymorphic
-     * `RW[ToolInput]` discriminator. Without this, the first
-     * script-tool invocation crashes the agent loop at persistence
-     * with `Type not found [JsonInput]` — the in-flight `ToolInvoke`
-     * lands on the wire but the persistence step throws before any
-     * settling delta can be emitted, so client chips render
-     * "(input pending)" forever and the agent loop dies.
-     */
+  /**
+   * Auto-register [[JsonInput]]'s RW so [[ToolInvoke]] events for
+   * runtime-created [[ScriptTool]] calls (whose `inputRW` is
+   * `RW[JsonInput]`) round-trip through fabric's polymorphic
+   * `RW[ToolInput]` discriminator. Without this, the first
+   * script-tool invocation crashes the agent loop at persistence
+   * with `Type not found [JsonInput]` — the in-flight `ToolInvoke`
+   * lands on the wire but the persistence step throws before any
+   * settling delta can be emitted, so client chips render
+   * "(input pending)" forever and the agent loop dies.
+   */
   override def toolInputRegistrations: List[RW[? <: sigil.tool.ToolInput]] =
     summon[RW[JsonInput]] :: super.toolInputRegistrations
 
-  /** Register [[ScriptAuthoringMode]] alongside any modes the app
-    * defines. Without this the framework can't resolve `change_mode`
-    * calls targeting `script-authoring`, and the script-authoring
-    * tool family becomes unreachable. Apps that override `modes`
-    * should `super.modes ++ ...`. */
+  /**
+   * Register [[ScriptAuthoringMode]] alongside any modes the app
+   * defines. Without this the framework can't resolve `change_mode`
+   * calls targeting `script-authoring`, and the script-authoring
+   * tool family becomes unreachable. Apps that override `modes`
+   * should `super.modes ++ ...`.
+   */
   override protected def modes: List[Mode] = ScriptAuthoringMode :: super.modes
 
-  /** Auto-register the script-authoring tools (introspection plus the
-    * management surface) so `ToolPolicy.Active` references in
-    * [[ScriptAuthoringMode]] resolve to live tool records on every
-    * boot. The static-tool sync upgrade picks them up via the
-    * `StaticToolSyncUpgrade` defined in [[Sigil.instance]]. Apps that
-    * override `staticTools` should `super.staticTools ++ ...`. */
+  /**
+   * Auto-register the script-authoring tools (introspection plus the
+   * management surface) so `ToolPolicy.Active` references in
+   * [[ScriptAuthoringMode]] resolve to live tool records on every
+   * boot. The static-tool sync upgrade picks them up via the
+   * `StaticToolSyncUpgrade` defined in [[Sigil.instance]]. Apps that
+   * override `staticTools` should `super.staticTools ++ ...`.
+   */
   override def staticTools: List[Tool] = super.staticTools ++ List(
     LibraryLookupTool,
     ClassSignaturesTool,

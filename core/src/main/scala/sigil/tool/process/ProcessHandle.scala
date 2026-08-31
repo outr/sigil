@@ -15,4 +15,5 @@ case class ProcessHandle(id: String,
                          pid: Long,
                          startedAt: Timestamp,
                          conversationId: Id[Conversation],
-                         command: String) derives RW
+                         command: String)
+  derives RW

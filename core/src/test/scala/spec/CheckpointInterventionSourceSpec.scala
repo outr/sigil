@@ -43,13 +43,15 @@ class CheckpointInterventionSourceSpec extends AsyncWordSpec with AsyncTaskSpec 
   // intervention path is exercised.
   TestSigil.setProgressCheckpointInterval(1)
 
-  /** Two-shape stub provider:
-    *   - Consult call (request carries exactly one tool, `report_progress`):
-    *     emit a [[ProgressReflectionInput]] declaring shouldAskUser = true
-    *     so the checkpoint produces an askingUser-flavoured intervention.
-    *   - Agent's iteration (any other roster shape): emit a
-    *     non-terminal `find_capability` call so the loop continues to
-    *     the post-drain checkpoint trigger. */
+  /**
+   * Two-shape stub provider:
+   *   - Consult call (request carries exactly one tool, `report_progress`):
+   *     emit a [[ProgressReflectionInput]] declaring shouldAskUser = true
+   *     so the checkpoint produces an askingUser-flavoured intervention.
+   *   - Agent's iteration (any other roster shape): emit a
+   *     non-terminal `find_capability` call so the loop continues to
+   *     the post-drain checkpoint trigger.
+   */
   private class StubProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -63,11 +65,11 @@ class CheckpointInterventionSourceSpec extends AsyncWordSpec with AsyncTaskSpec 
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, "report_progress"),
           ProviderEvent.toolCall(callId, ProgressReflectionTool)(ProgressReflectionInput(
-            currentStatus      = "stuck on the bsp_list_targets loop",
+            currentStatus = "stuck on the bsp_list_targets loop",
             meaningfulProgress = false,
-            remainingSteps     = "ask user for clarification",
-            stuckOn            = Some("bsp_list_targets returns no results"),
-            shouldAskUser      = true
+            remainingSteps = "ask user for clarification",
+            stuckOn = Some("bsp_list_targets returns no results"),
+            shouldAskUser = true
           )),
           ProviderEvent.Done(StopReason.Complete)
         ))
@@ -84,21 +86,21 @@ class CheckpointInterventionSourceSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def runScenario(): Task[List[Signal]] = {
     TestSigil.setProvider(Task.pure(new StubProvider))
     val convId = Conversation.id(s"checkpoint-source-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
@@ -108,7 +110,7 @@ class CheckpointInterventionSourceSpec extends AsyncWordSpec with AsyncTaskSpec 
     def hasIdle: Boolean =
       recorded.iterator().asScala.exists {
         case d: AgentStateDelta
-          if d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete) => true
+            if d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete) => true
         case _ => false
       }
     def waitForSettle(deadline: Long): Task[Unit] =
@@ -119,12 +121,12 @@ class CheckpointInterventionSourceSpec extends AsyncWordSpec with AsyncTaskSpec 
       _ <- Task.sleep(100.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Do the thing")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Do the thing")),
+        state = EventState.Complete
+      ))
       _ <- waitForSettle(System.currentTimeMillis() + 15_000L)
     } yield {
       running.set(false)
@@ -134,7 +136,7 @@ class CheckpointInterventionSourceSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   "Sigil bug #353 — askingUser checkpoint routes to the agent, not the user" should {
 
-    "publish NO user-visible orchestrator-intervention Message, but a Tool-role directive under a _stall_detected invoke" in {
+    "publish NO user-visible orchestrator-intervention Message, but a Tool-role directive under a _stall_detected invoke" in
       runScenario().map { signals =>
         val agentMessages = signals.collect { case m: Message if m.participantId == TestAgent => m }
         // #353 — the framework no longer impersonates the agent toward the
@@ -155,7 +157,6 @@ class CheckpointInterventionSourceSpec extends AsyncWordSpec with AsyncTaskSpec 
           directives should not be empty
         }
       }
-    }
   }
 
   "tear down" should {

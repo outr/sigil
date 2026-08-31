@@ -34,14 +34,16 @@ object AnthropicLiveSupport {
       }
     }
 
-  /** Like [[runGated]], but additionally probes that the SPECIFIC model is
-    * available to this key. Entitlement-gated models (e.g. Claude Fable 5,
-    * which needs Project Glasswing / a qualifying tier) return HTTP 404
-    * "model not available" on a real request even though the key
-    * authenticates fine against `/v1/models`. A 404 here cancels the suite
-    * cleanly — same posture as a revoked key — so a conformance spec for a
-    * model this account can't reach doesn't hard-fail the run. The model
-    * slug is the id's trailing segment (the `anthropic/` namespace stripped). */
+  /**
+   * Like [[runGated]], but additionally probes that the SPECIFIC model is
+   * available to this key. Entitlement-gated models (e.g. Claude Fable 5,
+   * which needs Project Glasswing / a qualifying tier) return HTTP 404
+   * "model not available" on a real request even though the key
+   * authenticates fine against `/v1/models`. A 404 here cancels the suite
+   * cleanly — same posture as a revoked key — so a conformance spec for a
+   * model this account can't reach doesn't hard-fail the run. The model
+   * slug is the id's trailing segment (the `anthropic/` namespace stripped).
+   */
   def runGatedForModel(suite: Suite, testName: Option[String], args: Args, modelId: String)(runBody: => Status): Status =
     runGated(suite, testName, args) {
       apiKey match {

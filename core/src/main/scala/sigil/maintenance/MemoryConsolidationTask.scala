@@ -61,7 +61,8 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
                               maxClustersPerSweep: Int = 8,
                               maxClusterSize: Int = 6,
                               maxCandidatesPerSpace: Int = 200,
-                              override val runImmediatelyOnStart: Boolean = false) extends MaintenanceTask {
+                              override val runImmediatelyOnStart: Boolean = false)
+  extends MaintenanceTask {
 
   override def name: String = "memory-consolidation"
 
@@ -79,8 +80,10 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
   private def vectorReady(host: Sigil): Boolean =
     host.embeddingProvider.dimensions > 0 && (host.vectorIndex ne NoOpVectorIndex)
 
-  /** Sweep one space under the remaining cluster budget; returns the
-    * number of clusters consulted. */
+  /**
+   * Sweep one space under the remaining cluster budget; returns the
+   * number of clusters consulted.
+   */
   private def sweepSpace(host: Sigil, space: SpaceId, budget: Int): Task[Int] =
     candidates(host, space).flatMap { pool =>
       if (pool.size < 2) Task.pure(0)
@@ -91,20 +94,22 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
       }
     }
 
-  /** Keyless, unpinned, Approved, recallable, non-expiring memories in
-    * the space, newest first, capped at [[maxCandidatesPerSpace]].
-    *
-    * Memories with `expiresAt` set are excluded: consolidating a fact
-    * that is scheduled to stop mattering into a merged record that
-    * never expires launders a temporary fact into a permanent one.
-    *
-    * Newest-first matters when the space holds more than
-    * [[maxCandidatesPerSpace]] rows. Under an oldest-first take the
-    * same head of the corpus is re-examined every sweep — if it holds
-    * no mergeable pairs, nothing beyond it is ever looked at, and
-    * fresh duplicates (which is where duplicates actually come from)
-    * never get a turn. Ordering by `modified` also gives a record
-    * touched by a keyed refresh another pass. */
+  /**
+   * Keyless, unpinned, Approved, recallable, non-expiring memories in
+   * the space, newest first, capped at [[maxCandidatesPerSpace]].
+   *
+   * Memories with `expiresAt` set are excluded: consolidating a fact
+   * that is scheduled to stop mattering into a merged record that
+   * never expires launders a temporary fact into a permanent one.
+   *
+   * Newest-first matters when the space holds more than
+   * [[maxCandidatesPerSpace]] rows. Under an oldest-first take the
+   * same head of the corpus is re-examined every sweep — if it holds
+   * no mergeable pairs, nothing beyond it is ever looked at, and
+   * fresh duplicates (which is where duplicates actually come from)
+   * never get a turn. Ordering by `modified` also gives a record
+   * touched by a keyed refresh another pass.
+   */
   private def candidates(host: Sigil, space: SpaceId): Task[List[ContextMemory]] =
     host.withDB(_.memories.transaction { tx =>
       tx.query
@@ -121,19 +126,21 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
         .take(maxCandidatesPerSpace)
     }
 
-  /** Greedy near-duplicate clustering: walk candidates in stable
-    * (newest-first) order; each unvisited seed vector-searches the
-    * space and pulls in unvisited candidates at cosine ≥
-    * [[similarityThreshold]] that share the seed's exact
-    * [[ContextMemory.modeAffinity]]. Clusters need ≥ 2 members; at
-    * most `budget` clusters are produced.
-    *
-    * Identical mode affinity is a hard clustering constraint, not a
-    * merge-time reconciliation: a directive scoped to one mode and a
-    * near-identical universal fact state the same thing in different
-    * scopes, and any single merged record either escalates the scoped
-    * one to universal (it now fires in every mode) or demotes the
-    * universal one (it stops firing where it used to). */
+  /**
+   * Greedy near-duplicate clustering: walk candidates in stable
+   * (newest-first) order; each unvisited seed vector-searches the
+   * space and pulls in unvisited candidates at cosine ≥
+   * [[similarityThreshold]] that share the seed's exact
+   * [[ContextMemory.modeAffinity]]. Clusters need ≥ 2 members; at
+   * most `budget` clusters are produced.
+   *
+   * Identical mode affinity is a hard clustering constraint, not a
+   * merge-time reconciliation: a directive scoped to one mode and a
+   * near-identical universal fact state the same thing in different
+   * scopes, and any single merged record either escalates the scoped
+   * one to universal (it now fires in every mode) or demotes the
+   * universal one (it stops firing where it used to).
+   */
   private def buildClusters(host: Sigil,
                             space: SpaceId,
                             embedded: List[(ContextMemory, Vector[Double])],
@@ -145,9 +152,9 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
              visited: Set[Id[ContextMemory]],
              acc: List[List[ContextMemory]]): Task[List[List[ContextMemory]]] =
       pending match {
-        case Nil                                     => Task.pure(acc.reverse)
-        case _ if acc.size >= budget                 => Task.pure(acc.reverse)
-        case (seed, _) :: rest if visited(seed._id)  => loop(rest, visited, acc)
+        case Nil => Task.pure(acc.reverse)
+        case _ if acc.size >= budget => Task.pure(acc.reverse)
+        case (seed, _) :: rest if visited(seed._id) => loop(rest, visited, acc)
         case (seed, vec) :: rest =>
           host.vectorIndex.search(vec, limit = maxClusterSize * 2, filter = filter).flatMap { hits =>
             val matched = hits.iterator
@@ -168,12 +175,14 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
     loop(embedded, Set.empty, Nil)
   }
 
-  /** Consult the cluster and apply the verdict. Failures are logged
-    * and swallowed — one bad cluster never aborts the sweep. A Merge
-    * whose proposed fact fails [[MemoryConsolidationTask.validateMerge]]
-    * degrades to KeepSeparate: the sweep archives real user facts, so
-    * a hallucinated or degenerate merge is the one outcome worth
-    * refusing outright. */
+  /**
+   * Consult the cluster and apply the verdict. Failures are logged
+   * and swallowed — one bad cluster never aborts the sweep. A Merge
+   * whose proposed fact fails [[MemoryConsolidationTask.validateMerge]]
+   * degrades to KeepSeparate: the sweep archives real user facts, so
+   * a hallucinated or degenerate merge is the one outcome worth
+   * refusing outright.
+   */
   private def consolidate(host: Sigil, space: SpaceId, cluster: List[ContextMemory]): Task[Unit] =
     consultCluster(host, cluster)
       .flatMap {
@@ -181,7 +190,7 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
           MemoryConsolidationTask.validateMerge(cluster, input.mergedFact) match {
             case Right(_) => applyMerge(host, space, cluster, input)
             case Left(reason) => Task(scribe.warn(
-              s"$name: rejecting merge in space ${space.value} ($reason) — keeping ${cluster.size} records separate"))
+                s"$name: rejecting merge in space ${space.value} ($reason) — keeping ${cluster.size} records separate"))
           }
         case _ => Task.unit
       }
@@ -189,9 +198,11 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
         Task(scribe.warn(s"$name: cluster consolidation failed in space ${space.value}: ${e.getMessage}"))
       }
 
-  /** The verdict consult — routed through the cheap summarization tier
-    * via [[ConsultTool.invokeRouted]]. Protected so specs can script
-    * verdicts without an LLM. */
+  /**
+   * The verdict consult — routed through the cheap summarization tier
+   * via [[ConsultTool.invokeRouted]]. Protected so specs can script
+   * verdicts without an LLM.
+   */
   protected def consultCluster(host: Sigil, cluster: List[ContextMemory]): Task[Option[ConsolidateMemoriesInput]] = {
     val rendered = cluster.zipWithIndex.map { case (m, idx) =>
       s"${idx + 1}. [${m.label}] ${m.fact}"
@@ -210,16 +221,18 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
     )
   }
 
-  /** Write the merged record and archive every member through the
-    * standard versioning fields. The merged record inherits the
-    * cluster's shared `modeAffinity` (identical by construction — see
-    * [[buildClusters]]) and the primary member's `memoryType`, so a
-    * consolidation never silently widens a memory's retrieval gate or
-    * reclassifies what kind of thing it is.
-    *
-    * Archiving goes through [[Sigil.updateMemory]], which deletes the
-    * member's vector point rather than re-embedding it — an archived
-    * record must not stay reachable through the semantic leg. */
+  /**
+   * Write the merged record and archive every member through the
+   * standard versioning fields. The merged record inherits the
+   * cluster's shared `modeAffinity` (identical by construction — see
+   * [[buildClusters]]) and the primary member's `memoryType`, so a
+   * consolidation never silently widens a memory's retrieval gate or
+   * reclassifies what kind of thing it is.
+   *
+   * Archiving goes through [[Sigil.updateMemory]], which deletes the
+   * member's vector point rather than re-embedding it — an archived
+   * record must not stay reachable through the semantic leg.
+   */
   private def applyMerge(host: Sigil,
                          space: SpaceId,
                          cluster: List[ContextMemory],
@@ -241,7 +254,7 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
       justification = Some(s"Consolidated from ${cluster.size} near-duplicate memories"),
       conversationId = cluster.map(_.conversationId).distinct match {
         case one :: Nil => one
-        case _          => None
+        case _ => None
       },
       modeAffinity = primary.modeAffinity,
       sourceEventIds = cluster.flatMap(_.sourceEventIds).distinct
@@ -255,19 +268,26 @@ class MemoryConsolidationTask(spaces: List[SpaceId],
 }
 
 object MemoryConsolidationTask {
-  /** Ceiling on the merged fact's length as a multiple of the combined
-    * member facts — a merge that says MORE than its inputs did is
-    * elaboration, not consolidation. */
+
+  /**
+   * Ceiling on the merged fact's length as a multiple of the combined
+   * member facts — a merge that says MORE than its inputs did is
+   * elaboration, not consolidation.
+   */
   val MaxMergeLengthFactor: Int = 2
 
-  /** Minimum share of some single member's content words that must
-    * survive into the merged fact. A merge grounded in the cluster
-    * restates one member closely; a fabrication shares almost nothing
-    * with any of them. */
+  /**
+   * Minimum share of some single member's content words that must
+   * survive into the merged fact. A merge grounded in the cluster
+   * restates one member closely; a fabrication shares almost nothing
+   * with any of them.
+   */
   val MinMergeOverlap: Double = 0.3
 
-  /** Words this short or shorter are structural (articles,
-    * prepositions, conjunctions) and carry no grounding signal. */
+  /**
+   * Words this short or shorter are structural (articles,
+   * prepositions, conjunctions) and carry no grounding signal.
+   */
   private val MaxStructuralWordLength: Int = 3
 
   /**

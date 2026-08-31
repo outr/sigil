@@ -11,20 +11,28 @@ import fabric.rw.*
  * system-prompt directive, Anthropic's `thinking` block, OpenAI's
  * `reasoning.effort`, Google's `thinking_config`, etc.
  *
- *
  * Bug #155.
  */
 enum ReasoningMode derives RW {
-  /** Model / deployment default. Provider doesn't inject any
-    * directive. */
+
+  /**
+   * Model / deployment default. Provider doesn't inject any
+   * directive.
+   */
   case Auto
-  /** Force reasoning on. Kimi: appends `/think` to the system
-    * prompt. Anthropic: `thinking: {type: "enabled", ...}` (when
-    * the model supports it). */
+
+  /**
+   * Force reasoning on. Kimi: appends `/think` to the system
+   * prompt. Anthropic: `thinking: {type: "enabled", ...}` (when
+   * the model supports it).
+   */
   case On
-  /** Force reasoning off. Kimi: appends `/no_think` to the system
-    * prompt. Anthropic / OpenAI reasoning models: providers
-    * silently ignore — those families don't expose a hard off
-    * switch on every model. */
+
+  /**
+   * Force reasoning off. Kimi: appends `/no_think` to the system
+   * prompt. Anthropic / OpenAI reasoning models: providers
+   * silently ignore — those families don't expose a hard off
+   * switch on every model.
+   */
   case Off
 }

@@ -18,23 +18,29 @@ import fabric.rw.PolyType
  */
 trait ToolKind {
 
-  /** Stable string the wire layer uses on the polymorphic discriminator.
-    * Must be unique across registered subtypes. */
+  /**
+   * Stable string the wire layer uses on the polymorphic discriminator.
+   * Must be unique across registered subtypes.
+   */
   def value: String
 
-  /** Whether tools of this kind surface through `find_capability`.
-    * Discoverable kinds must declare non-empty keywords on their
-    * [[DiscoverySpec]] ([[ToolSpec]] enforces it); non-discoverable
-    * kinds ([[InternalKind]], [[sigil.tool.consult.ConsultKind]])
-    * are framework-invoked and exempt. */
+  /**
+   * Whether tools of this kind surface through `find_capability`.
+   * Discoverable kinds must declare non-empty keywords on their
+   * [[DiscoverySpec]] ([[ToolSpec]] enforces it); non-discoverable
+   * kinds ([[InternalKind]], [[sigil.tool.consult.ConsultKind]])
+   * are framework-invoked and exempt.
+   */
   def discoverable: Boolean = true
 }
 
 object ToolKind extends PolyType[ToolKind]()(using scala.reflect.ClassTag(classOf[ToolKind]))
 
-/** Default kind for framework-shipped tools (respond, change_mode,
-  * find_capability, etc.). Apps' static catalog tools that don't
-  * declare their own kind also fall into this bucket. */
+/**
+ * Default kind for framework-shipped tools (respond, change_mode,
+ * find_capability, etc.). Apps' static catalog tools that don't
+ * declare their own kind also fall into this bucket.
+ */
 case object BuiltinKind extends ToolKind {
   override def value: String = "builtin"
 }

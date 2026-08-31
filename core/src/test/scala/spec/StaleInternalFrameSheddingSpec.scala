@@ -21,19 +21,20 @@ class StaleInternalFrameSheddingSpec extends AnyWordSpec with Matchers {
   private def tc(name: String, internal: Boolean, content: String): ContextFrame.ToolCall = {
     val id = Id[Event](rapid.Unique())
     ContextFrame.ToolCall(
-      toolName      = ToolName.parse(name).fold(sys.error, identity),
-      argsJson      = "{}",
-      callId        = id,
+      toolName = ToolName.parse(name).fold(sys.error, identity),
+      argsJson = "{}",
+      callId = id,
       participantId = TestAgent,
       sourceEventId = id,
-      internal      = internal,
-      state         = ToolCallState.Complete(content, Nil)
+      internal = internal,
+      state = ToolCallState.Complete(content, Nil)
     )
   }
 
   private def internalContents(frames: Vector[ContextFrame]): List[String] =
-    frames.collect { case t: ContextFrame.ToolCall if t.internal =>
-      t.state.asInstanceOf[ToolCallState.Complete].content
+    frames.collect {
+      case t: ContextFrame.ToolCall if t.internal =>
+        t.state.asInstanceOf[ToolCallState.Complete].content
     }.toList
 
   "StandardContextCurator.dropStaleInternalFrames (sigil #385)" should {

@@ -12,14 +12,20 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, TurnPlan, UpsertMemoryResult}
+import sigil.conversation.{
+  ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource,
+  MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput,
+  TurnPlan, UpsertMemoryResult
+}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.governor.{BudgetDirective, BudgetGovernor, CheckpointIntervention, GovernorContext}
-import sigil.governor.{DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
-  ProgressGovernor, TurnDecisionGovernor, TurnGovernor}
+import sigil.governor.{
+  DegenerateGenerationGovernor, GovernorVote, OutcomeGovernor, PlainTextReplyGovernor,
+  ProgressGovernor, TurnDecisionGovernor, TurnGovernor
+}
 import sigil.transport.SignalTransport
 
 import java.nio.file.Path
@@ -28,18 +34,28 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.{GenerationSettings, TokenUsage}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
+import sigil.event.{
+  AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange,
+  TopicChangeKind
+}
 import sigil.role.Role
 import sigil.orchestrator.{BudgetScope, Directive, Orchestrator}
 import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
-import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform}
+import sigil.pipeline.{
+  ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect,
+  MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub,
+  TopicIndexCanonicalizingTransform, ViewerTransform, WorkerConversationAddressingTransform
+}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.provider.{ContextSection, ContextSections, InstructionTier, ModelProfile, PromptShape, Reliability, ResolvedReferences}
 import sigil.service.Service
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta, TopicDelta}
+import sigil.signal.{
+  AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal,
+  ToolDelta, TopicDelta
+}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
@@ -50,7 +66,6 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, V
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
-
 
 /**
  * Boot and teardown cluster — phase-2 of the lifecycle. Owns
@@ -66,18 +81,22 @@ import java.util.concurrent.atomic.AtomicReference
  */
 trait LifecycleOps { this: Sigil =>
 
-  /** True once [[instance]]'s task body has begun executing — used by
-    * [[shutdown]] to skip DB-dispose when no instance was ever
-    * constructed (e.g. codegen-only paths that ran
-    * `polymorphicRegistrations` without opening the store). */
+  /**
+   * True once [[instance]]'s task body has begun executing — used by
+   * [[shutdown]] to skip DB-dispose when no instance was ever
+   * constructed (e.g. codegen-only paths that ran
+   * `polymorphicRegistrations` without opening the store).
+   */
   private val instanceStarted: java.util.concurrent.atomic.AtomicBoolean =
     new java.util.concurrent.atomic.AtomicBoolean(false)
 
-  /** Synchronous handle to the fully-constructed [[SigilInstance]],
-    * set once [[instance]]'s task body completes. Lets hot-path
-    * helpers (notably [[eventsFor]]'s batched-scope snapshot) reach
-    * the live `DB` without re-running the `instance` task or
-    * blocking on its singleton. `None` until the store is open. */
+  /**
+   * Synchronous handle to the fully-constructed [[SigilInstance]],
+   * set once [[instance]]'s task body completes. Lets hot-path
+   * helpers (notably [[eventsFor]]'s batched-scope snapshot) reach
+   * the live `DB` without re-running the `instance` task or
+   * blocking on its singleton. `None` until the store is open.
+   */
   private[sigil] val startedInstance: java.util.concurrent.atomic.AtomicReference[Option[SigilInstance]] =
     new java.util.concurrent.atomic.AtomicReference[Option[SigilInstance]](None)
 
@@ -93,10 +112,10 @@ trait LifecycleOps { this: Sigil =>
       // configuration and re-merge it on top so defaults fill the gaps
       // but never clobber deliberate settings.
       _ <- Task {
-             val explicit = Profig.json
-             Profig.loadDefaults()
-             Profig.merge(explicit)
-           }
+        val explicit = Profig.json
+        Profig.loadDefaults()
+        Profig.merge(explicit)
+      }
       _ = instanceStarted.set(true)
       config = Profig("sigil").as[Config]
       (directory, collectionStore) = config.postgres match {
@@ -125,21 +144,23 @@ trait LifecycleOps { this: Sigil =>
       _ <- db.init
       _ <- reconcileStaleActiveEvents(db)
       _ <- if (vectorWired) vectorIndex.ensureCollection(embeddingProvider.dimensions)
-           else Task.unit
+      else Task.unit
       _ <- loadAndRefreshModels(db)
       _ <- validateModeSkillSizes()
       _ <- startExpiredMemorySweep()
       _ <- startMaintenanceTasks()
       inst = SigilInstance(
-               config = config,
-               db = db
-             )
+        config = config,
+        db = db
+      )
       _ = startedInstance.set(Some(inst))
     } yield inst
   }.singleton
 
-  /** Test-only hook to trigger boot-time reconciliation against the
-    * already-opened DB without re-creating the Sigil instance. */
+  /**
+   * Test-only hook to trigger boot-time reconciliation against the
+   * already-opened DB without re-creating the Sigil instance.
+   */
   protected[sigil] def runStaleActiveReconciliationTask: Task[Unit] =
     withDB(db => reconcileStaleActiveEvents(db))
 
@@ -175,18 +196,20 @@ trait LifecycleOps { this: Sigil =>
       }
     }
 
-  /** Validate that every registered Mode's bundled skill content (if
-    * any) fits under [[modeSkillShareLimit]] × largest-model-context.
-    * Modes share `SkillSource.Mode` slot; one per active mode. Apps
-    * with intentionally large skills override [[modeSkillShareLimit]]
-    * or skip the validation by overriding this method.
-    *
-    * Basis is the LARGEST registered model — complexity-routed setups
-    * register a small local model for `Complexity.Low` traffic that
-    * by design won't run the modes whose skills this validator gates.
-    * The skills always render against a frontier model with ample
-    * headroom; the validator should pessimise against the AGENT's
-    * configured ceiling rather than the cost-tier floor. */
+  /**
+   * Validate that every registered Mode's bundled skill content (if
+   * any) fits under [[modeSkillShareLimit]] × largest-model-context.
+   * Modes share `SkillSource.Mode` slot; one per active mode. Apps
+   * with intentionally large skills override [[modeSkillShareLimit]]
+   * or skip the validation by overriding this method.
+   *
+   * Basis is the LARGEST registered model — complexity-routed setups
+   * register a small local model for `Complexity.Low` traffic that
+   * by design won't run the modes whose skills this validator gates.
+   * The skills always render against a frontier model with ample
+   * headroom; the validator should pessimise against the AGENT's
+   * configured ceiling rather than the cost-tier floor.
+   */
   protected def validateModeSkillSizes(): Task[Unit] = Task {
     sigil.conversation.CoreContextValidator.largestModelContext(this) match {
       case None => () // no models registered → can't validate
@@ -197,7 +220,7 @@ trait LifecycleOps { this: Sigil =>
         if (violations.nonEmpty) {
           val msg = violations.map { case (mode, slot) =>
             val tokens = sigil.tokenize.HeuristicTokenizer.count(slot.content)
-            s"mode '${mode.name}' skill '${slot.name}' is ${tokens} tok (limit ${limit})"
+            s"mode '${mode.name}' skill '${slot.name}' is $tokens tok (limit $limit)"
           }.mkString("; ")
           throw new IllegalStateException(
             s"Mode skill content exceeds modeSkillShareLimit (${(modeSkillShareLimit * 100).toInt}%): $msg. " +
@@ -231,35 +254,39 @@ trait LifecycleOps { this: Sigil =>
   private def loadAndRefreshModels(db: DB): Task[Unit] =
     if (!loadOpenRouterModels) Task.unit
     else for {
-      stored      <- db.models.get()
-      _           <- if (stored.list.nonEmpty) seedCatalogSnapshot(stored.list) else Task.unit
-      isFresh     = stored.list.nonEmpty &&
-                      (Timestamp().value - stored.refreshed.value) < modelRefreshInterval.toMillis
-      _           <- if (isFresh) Task.unit else blockingRefresh(db, hadPriorCache = stored.list.nonEmpty)
+      stored <- db.models.get()
+      _ <- if (stored.list.nonEmpty) seedCatalogSnapshot(stored.list) else Task.unit
+      isFresh = stored.list.nonEmpty &&
+        (Timestamp().value - stored.refreshed.value) < modelRefreshInterval.toMillis
+      _ <- if (isFresh) Task.unit else blockingRefresh(db, hadPriorCache = stored.list.nonEmpty)
       // Re-read after the (possibly-just-run) blocking refresh so the
       // schedule's first sleep aligns with the latest stamp.
-      latest      <- db.models.get()
-      _           <- scheduleNextRefresh(db, latest.refreshed)
+      latest <- db.models.get()
+      _ <- scheduleNextRefresh(db, latest.refreshed)
     } yield ()
 
-  /** Seed the registry's catalog slice from the persisted `db.models`
-    * snapshot.
-    *
-    * The snapshot mirrors the aggregate catalog only — llama.cpp and
-    * other backend-sourced models are deliberately never persisted —
-    * so it restores that one source. A provider that already seeded
-    * its own slice keeps it, whatever order boot ran in. */
+  /**
+   * Seed the registry's catalog slice from the persisted `db.models`
+   * snapshot.
+   *
+   * The snapshot mirrors the aggregate catalog only — llama.cpp and
+   * other backend-sourced models are deliberately never persisted —
+   * so it restores that one source. A provider that already seeded
+   * its own slice keeps it, whatever order boot ran in.
+   */
   private[sigil] def seedCatalogSnapshot(models: List[Model]): Task[Unit] =
     cache.catalogSource.set(models).map { _ =>
       scribe.info(s"Seeded the model catalog from the persisted snapshot — registry slices: ${cache.sliceSummary}")
     }
 
-  /** One-shot blocking refresh from OpenRouter. Delegates to the
-    * boot-safe (sigil, db) overload of [[OpenRouter.refreshModels]] so
-    * the boot fiber doesn't re-enter [[withDB]] — that would await the
-    * in-flight `Sigil.instance.singleton` against itself and deadlock.
-    * Post-boot callers use the public 1-arg overload
-    * which resolves the db via `withDB` normally. */
+  /**
+   * One-shot blocking refresh from OpenRouter. Delegates to the
+   * boot-safe (sigil, db) overload of [[OpenRouter.refreshModels]] so
+   * the boot fiber doesn't re-enter [[withDB]] — that would await the
+   * in-flight `Sigil.instance.singleton` against itself and deadlock.
+   * Post-boot callers use the public 1-arg overload
+   * which resolves the db via `withDB` normally.
+   */
   private def blockingRefresh(db: DB, hadPriorCache: Boolean): Task[Unit] =
     OpenRouter.refreshModels(this, db).handleError { e =>
       if (hadPriorCache)
@@ -273,9 +300,11 @@ trait LifecycleOps { this: Sigil =>
         ))
     }
 
-  /** Schedule the next refresh at `lastRefreshed + interval`, then
-    * loop every interval after. Floors the initial delay at 1 minute
-    * so a clock skew or a stamp-just-now case doesn't fire instantly. */
+  /**
+   * Schedule the next refresh at `lastRefreshed + interval`, then
+   * loop every interval after. Floors the initial delay at 1 minute
+   * so a clock skew or a stamp-just-now case doesn't fire instantly.
+   */
   private def scheduleNextRefresh(db: DB, lastRefreshed: Timestamp): Task[Unit] = Task {
     val elapsedMs = Timestamp().value - lastRefreshed.value
     val initialDelayMs = math.max(60_000L, modelRefreshInterval.toMillis - elapsedMs)
@@ -350,24 +379,27 @@ trait LifecycleOps { this: Sigil =>
       // lands in the range match). `from = None` means "no lower
       // bound" so any expiresAt up to `now` is in scope.
       tx.query
-        .filter(_ => lightdb.filter.Filter.RangeLong[ContextMemory](
-          fieldName = ContextMemory.expiresAtValue.name,
-          from = None,
-          to = Some(now.value)
-        ))
+        .filter(_ =>
+          lightdb.filter.Filter.RangeLong[ContextMemory](
+            fieldName = ContextMemory.expiresAtValue.name,
+            from = None,
+            to = Some(now.value)
+          ))
         .toList
         .flatMap { expired =>
           Task.sequence(expired.map(m => forgetMemoryById(m._id))).map(_ => expired.size)
         }
     })
 
-  /** Hard-delete a memory by id. Removes the row from the store AND
-    * the corresponding vector-index point (when wired). Used by the
-    * expired-memory sweep; apps can call directly for ad-hoc deletes. */
+  /**
+   * Hard-delete a memory by id. Removes the row from the store AND
+   * the corresponding vector-index point (when wired). Used by the
+   * expired-memory sweep; apps can call directly for ad-hoc deletes.
+   */
   def forgetMemoryById(id: Id[ContextMemory]): Task[Boolean] =
     withDB(_.memories.transaction { tx =>
       tx.get(id).flatMap {
-        case None    => Task.pure(false)
+        case None => Task.pure(false)
         case Some(_) => tx.delete(id).map(_ => true)
       }
     }).flatMap { removed =>
@@ -377,18 +409,20 @@ trait LifecycleOps { this: Sigil =>
       }
     }
 
-  /** Resolve the [[DB]] and run `f` against it. Backed by
-    * `Sigil.instance.flatMap` so callers don't have to think about
-    * initialization timing — `withDB` waits if the instance hasn't
-    * fully booted yet.
-    *
-    * **Don't call from inside `Sigil.instance`'s init for-comp.** The
-    * `instance` task is `.singleton`-memoised; `withDB` re-entering
-    * during init awaits the in-flight resolution against itself and
-    * deadlocks silently. Boot-path code receives the
-    * `db` as a parameter — pass it through directly. See
-    * [[OpenRouter.refreshModels]]'s `(sigil, db)` overload for the
-    * canonical pattern. */
+  /**
+   * Resolve the [[DB]] and run `f` against it. Backed by
+   * `Sigil.instance.flatMap` so callers don't have to think about
+   * initialization timing — `withDB` waits if the instance hasn't
+   * fully booted yet.
+   *
+   * **Don't call from inside `Sigil.instance`'s init for-comp.** The
+   * `instance` task is `.singleton`-memoised; `withDB` re-entering
+   * during init awaits the in-flight resolution against itself and
+   * deadlocks silently. Boot-path code receives the
+   * `db` as a parameter — pass it through directly. See
+   * [[OpenRouter.refreshModels]]'s `(sigil, db)` overload for the
+   * canonical pattern.
+   */
   def withDB[Return](f: DB => Task[Return]): Task[Return] = instance.flatMap(sigil => f(sigil.db))
 
   // -- shutdown --
@@ -461,12 +495,16 @@ trait LifecycleOps { this: Sigil =>
    */
   protected def onShutdown: Task[Unit] = Task.unit
 
-  /** Cancellation flag observed by background fibers (model refresh,
-    * MCP reaper, etc.). Set by [[shutdown]]. */
+  /**
+   * Cancellation flag observed by background fibers (model refresh,
+   * MCP reaper, etc.). Set by [[shutdown]].
+   */
   private val shutdownRequested: java.util.concurrent.atomic.AtomicBoolean =
     new java.util.concurrent.atomic.AtomicBoolean(false)
 
-  /** Test hook for background fibers — `true` once [[shutdown]] has
-    * been called. Apps don't usually consult this directly. */
+  /**
+   * Test hook for background fibers — `true` once [[shutdown]] has
+   * been called. Apps don't usually consult this directly.
+   */
   def isShutdown: Boolean = shutdownRequested.get()
 }

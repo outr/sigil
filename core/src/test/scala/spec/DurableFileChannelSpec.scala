@@ -47,13 +47,17 @@ class DurableFileChannelSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       new scala.util.Random(7L).nextBytes(data)
       val received = ReceivedFile(
         transferId = "t-upload",
-        value = StoredFileRef(space = GlobalSpace, category = StoredFileCategory.UserAttachment, title = Some("design.zip"), language = Some("binary")),
+        value = StoredFileRef(
+          space = GlobalSpace,
+          category = StoredFileCategory.UserAttachment,
+          title = Some("design.zip"),
+          language = Some("binary")),
         headers = Headers.empty.setHeader("Content-Type", "application/zip"),
         path = tempWith(data)
       )
       for {
         stored <- channel.persist(received)
-        back   <- TestSigil.fetchStoredFile(stored._id, List(TestUser))
+        back <- TestSigil.fetchStoredFile(stored._id, List(TestUser))
       } yield {
         stored.contentType shouldBe "application/zip"
         stored.space shouldBe GlobalSpace

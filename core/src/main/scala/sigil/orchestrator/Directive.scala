@@ -21,101 +21,139 @@ import sigil.conversation.TurnPlan
  */
 enum Directive derives RW {
 
-  /** The planner's turn plan, handed to the executor. */
+  /**
+   * The planner's turn plan, handed to the executor.
+   */
   case Plan(plan: TurnPlan)
 
-  /** The planner judged the executor off-plan. */
+  /**
+   * The planner judged the executor off-plan.
+   */
   case PlannerCorrection(correction: String)
 
-  /** A soft spend budget was crossed — cooperative check-in. */
+  /**
+   * A soft spend budget was crossed — cooperative check-in.
+   */
   case BudgetCheckin(turnCost: BigDecimal,
                      conversationCost: BigDecimal,
                      scope: BudgetScope,
                      limit: BigDecimal)
 
-  /** A hard spend ceiling was crossed — terminal synthesis. */
+  /**
+   * A hard spend ceiling was crossed — terminal synthesis.
+   */
   case BudgetCeiling(turnCost: BigDecimal,
                      conversationCost: BigDecimal,
                      scope: BudgetScope,
                      limit: BigDecimal)
 
-  /** The progress checkpoint's reflection nudge. */
+  /**
+   * The progress checkpoint's reflection nudge.
+   */
   case ProgressCheckpoint(body: String, stuckOn: Option[String])
 
-  /** The agent is blocked on user input and may ask directly. */
+  /**
+   * The agent is blocked on user input and may ask directly.
+   */
   case StallAskUser
 
-  /** The agent is blocked but is a directed worker — it reports to its
-    * supervisor rather than asking the user. */
+  /**
+   * The agent is blocked but is a directed worker — it reports to its
+   * supervisor rather than asking the user.
+   */
   case StallAskSupervisor
 
-  /** The iteration cap was reached; synthesize from what's gathered. */
+  /**
+   * The iteration cap was reached; synthesize from what's gathered.
+   */
   case CapReached(cap: Int)
 
-  /** The same call was re-issued past the duplicate-call cap's refusal
-    * bound; the turn is being wrapped up. */
+  /**
+   * The same call was re-issued past the duplicate-call cap's refusal
+   * bound; the turn is being wrapped up.
+   */
   case DuplicateRefusalLoop(toolName: String, refusals: Int)
 
-  /** A `respond` refused the user without consulting the catalog. */
+  /**
+   * A `respond` refused the user without consulting the catalog.
+   */
   case RefusalChallenge
 
-  /** Plain prose carried no explicit turn decision. */
+  /**
+   * Plain prose carried no explicit turn decision.
+   */
   case TurnDecisionRequired(droppedText: Option[String], priorChallenges: Int)
 
-  /** The same `find_capability` keywords were issued twice this turn. */
+  /**
+   * The same `find_capability` keywords were issued twice this turn.
+   */
   case RepeatedQueryIntercept(normalizedKeywords: String)
 
-  /** A plain-text reply was dropped — every reply must be a tool call. */
+  /**
+   * A plain-text reply was dropped — every reply must be a tool call.
+   */
   case PlainTextReply(droppedText: String)
 
-  /** The model entered a token-level repetition loop. */
+  /**
+   * The model entered a token-level repetition loop.
+   */
   case DegenerateGeneration(repeatedSentence: String,
                             occurrences: Int,
                             totalSentences: Int,
                             share: Double,
                             textLength: Int)
 
-  /** An upstream provider error, sanitized for the agent. */
+  /**
+   * An upstream provider error, sanitized for the agent.
+   */
   case ProviderError(sanitizedMessage: String)
 
-  /** XML tool-call syntax leaked into `respond.content`. */
+  /**
+   * XML tool-call syntax leaked into `respond.content`.
+   */
   case XmlToolCallLeak(firstLeakedExcerpt: String)
 
-  /** Whether the directive stays in context once read.
-    *
-    * A durable directive states something the agent must keep judging
-    * against for the rest of the turn — the plan is the standing
-    * objective, and dropping it leaves the planner correcting against a
-    * plan the executor can no longer see. Everything else is a
-    * transient nudge aimed at ONE next iteration; stale copies are
-    * context noise the curator sheds. */
+  /**
+   * Whether the directive stays in context once read.
+   *
+   * A durable directive states something the agent must keep judging
+   * against for the rest of the turn — the plan is the standing
+   * objective, and dropping it leaves the planner correcting against a
+   * plan the executor can no longer see. Everything else is a
+   * transient nudge aimed at ONE next iteration; stale copies are
+   * context noise the curator sheds.
+   */
   def durable: Boolean = this match {
     case _: Plan => true
-    case _       => false
+    case _ => false
   }
 
-  /** The synthetic invoke's tool name. Stable and client-facing —
-    * clients and persisted history key off these. */
+  /**
+   * The synthetic invoke's tool name. Stable and client-facing —
+   * clients and persisted history key off these.
+   */
   def wireName: String = this match {
-    case _: Plan                 => Directive.PlanName
-    case _: PlannerCorrection    => "_planner_correction"
-    case _: BudgetCheckin        => "_budget_checkin"
-    case _: BudgetCeiling        => "_budget_ceiling"
-    case _: ProgressCheckpoint   => Directive.StallDetectedName
-    case StallAskUser            => Directive.StallDetectedName
-    case StallAskSupervisor      => Directive.StallDetectedName
-    case _: CapReached           => Directive.CapReachedName
+    case _: Plan => Directive.PlanName
+    case _: PlannerCorrection => "_planner_correction"
+    case _: BudgetCheckin => "_budget_checkin"
+    case _: BudgetCeiling => "_budget_ceiling"
+    case _: ProgressCheckpoint => Directive.StallDetectedName
+    case StallAskUser => Directive.StallDetectedName
+    case StallAskSupervisor => Directive.StallDetectedName
+    case _: CapReached => Directive.CapReachedName
     case _: DuplicateRefusalLoop => Directive.RefusalLoopName
-    case RefusalChallenge        => Directive.RefusalChallengeName
+    case RefusalChallenge => Directive.RefusalChallengeName
     case _: TurnDecisionRequired => Orchestrator.TurnDecisionToolName
     case _: RepeatedQueryIntercept => Directive.RepeatedQueryInterceptName
-    case _: PlainTextReply       => "_plain_text_reply"
+    case _: PlainTextReply => "_plain_text_reply"
     case _: DegenerateGeneration => "_degenerate_generation"
-    case _: ProviderError        => "_provider_error"
-    case _: XmlToolCallLeak      => sigil.provider.XmlToolCallSanitizer.SyntheticInvokeName
+    case _: ProviderError => "_provider_error"
+    case _: XmlToolCallLeak => sigil.provider.XmlToolCallSanitizer.SyntheticInvokeName
   }
 
-  /** The prose the model reads. */
+  /**
+   * The prose the model reads.
+   */
   def render: String = this match {
     case Plan(plan) =>
       val constraints =
@@ -139,7 +177,7 @@ enum Directive derives RW {
 
     case BudgetCeiling(turnCost, conversationCost, scope, limit) =>
       val which = scope match {
-        case BudgetScope.PerTurn      => "hard per-turn ceiling"
+        case BudgetScope.PerTurn => "hard per-turn ceiling"
         case BudgetScope.Conversation => "hard conversation ceiling"
       }
       s"[spend ceiling — internal, not a user message] ${Directive.spendLine(turnCost, conversationCost)} " +
@@ -246,13 +284,15 @@ object Directive {
   val CapReachedName: String = "_cap_reached"
   val RefusalLoopName: String = "_refusal_loop"
 
-  /** Wire names of the directives whose frames survive the curator's
-    * stale-internal-frame shed. Membership source for consumers that
-    * classify a synthetic invoke by name alone — a persisted frame
-    * carries the wire name, not the typed payload. */
+  /**
+   * Wire names of the directives whose frames survive the curator's
+   * stale-internal-frame shed. Membership source for consumers that
+   * classify a synthetic invoke by name alone — a persisted frame
+   * carries the wire name, not the typed payload.
+   */
   val durableWireNames: Set[String] = Set(PlanName)
 
-  private[sigil] def fmt(v: BigDecimal): String = f"$$${v}%.2f"
+  private[sigil] def fmt(v: BigDecimal): String = f"$$$v%.2f"
 
   private[sigil] def spendLine(turnCost: BigDecimal, conversationCost: BigDecimal): String =
     s"This turn has spent ${fmt(turnCost)}; the conversation total is ${fmt(conversationCost)}."

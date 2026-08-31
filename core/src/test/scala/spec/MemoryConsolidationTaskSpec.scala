@@ -31,8 +31,10 @@ import scala.collection.mutable.ListBuffer
 class MemoryConsolidationTaskSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Controlled embedder — facts about the same subject share a
-    * direction (cosine > 0.99); different subjects are orthogonal. */
+  /**
+   * Controlled embedder — facts about the same subject share a
+   * direction (cosine > 0.99); different subjects are orthogonal.
+   */
   private object ControlledEmbedding extends EmbeddingProvider {
     override val dimensions: Int = 4
 
@@ -117,11 +119,12 @@ class MemoryConsolidationTaskSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val newer = seed("User prefers the color blue.", sourceEventIds = List(e2)).sync()
       seed("The deploy target is us-east-1.").sync()
 
-      val task = new ScriptedConsolidation(_ => Some(ConsolidateMemoriesInput(
-        verdict = ConsolidationVerdict.Merge,
-        mergedFact = Some("The user's favorite color is blue."),
-        mergedLabel = Some("Favorite color")
-      )))
+      val task = new ScriptedConsolidation(_ =>
+        Some(ConsolidateMemoriesInput(
+          verdict = ConsolidationVerdict.Merge,
+          mergedFact = Some("The user's favorite color is blue."),
+          mergedLabel = Some("Favorite color")
+        )))
       task.runOnce(TestSigil).flatMap { _ =>
         TestSigil.withDB(_.memories.transaction(_.list)).map { rows =>
           task.consulted.toList.map(_.map(_._id).toSet) should be(List(Set(older._id, newer._id)))
@@ -170,7 +173,8 @@ class MemoryConsolidationTaskSpec extends AsyncWordSpec with AsyncTaskSpec with 
       seed("The user's dog is named Biscuit.", createdOffsetMs = 70_000).sync()
       seed("User's dog's name is Biscuit.", createdOffsetMs = 60_000).sync()
 
-      val task = new ScriptedConsolidation(_ => Some(ConsolidateMemoriesInput(verdict = ConsolidationVerdict.KeepSeparate)),
+      val task = new ScriptedConsolidation(
+        _ => Some(ConsolidateMemoriesInput(verdict = ConsolidationVerdict.KeepSeparate)),
         clusterCap = 1)
       task.runOnce(TestSigil).map { _ =>
         task.consulted.size should be(1)
@@ -194,15 +198,21 @@ class MemoryConsolidationTaskSpec extends AsyncWordSpec with AsyncTaskSpec with 
     "carry mode affinity and memory type from the primary member onto the merged record" in {
       wire()
       val coding = Id[sigil.provider.Mode]("coding")
-      val older = seed("The user's favorite color is blue.", createdOffsetMs = 60_000,
-        modeAffinity = Set(coding), memoryType = sigil.conversation.MemoryType.Preference).sync()
-      seed("User prefers the color blue.", modeAffinity = Set(coding),
+      val older = seed(
+        "The user's favorite color is blue.",
+        createdOffsetMs = 60_000,
+        modeAffinity = Set(coding),
+        memoryType = sigil.conversation.MemoryType.Preference).sync()
+      seed(
+        "User prefers the color blue.",
+        modeAffinity = Set(coding),
         memoryType = sigil.conversation.MemoryType.Preference).sync()
 
-      val task = new ScriptedConsolidation(_ => Some(ConsolidateMemoriesInput(
-        verdict = ConsolidationVerdict.Merge,
-        mergedFact = Some("The user's favorite color is blue.")
-      )))
+      val task = new ScriptedConsolidation(_ =>
+        Some(ConsolidateMemoriesInput(
+          verdict = ConsolidationVerdict.Merge,
+          mergedFact = Some("The user's favorite color is blue.")
+        )))
       task.runOnce(TestSigil).flatMap { _ =>
         TestSigil.withDB(_.memories.transaction(_.list)).map { rows =>
           val merged = rows.find(_.supersedes.contains(older._id)).getOrElse(fail("merged record missing"))
@@ -229,10 +239,11 @@ class MemoryConsolidationTaskSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val older = seed("The user's favorite color is blue.", createdOffsetMs = 60_000).sync()
       val newer = seed("User prefers the color blue.").sync()
 
-      val task = new ScriptedConsolidation(_ => Some(ConsolidateMemoriesInput(
-        verdict = ConsolidationVerdict.Merge,
-        mergedFact = Some("Quarterly revenue exceeded projections across every regional territory.")
-      )))
+      val task = new ScriptedConsolidation(_ =>
+        Some(ConsolidateMemoriesInput(
+          verdict = ConsolidationVerdict.Merge,
+          mergedFact = Some("Quarterly revenue exceeded projections across every regional territory.")
+        )))
       task.runOnce(TestSigil).flatMap { _ =>
         TestSigil.withDB(_.memories.transaction(_.list)).map { rows =>
           task.consulted.size should be(1)
@@ -245,10 +256,18 @@ class MemoryConsolidationTaskSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
     "refuse a merge whose fact is empty or an unbounded expansion" in {
       val cluster = List(
-        ContextMemory(fact = "The deploy target is us-east-1.", label = "t", summary = "s",
-          source = MemorySource.Compression, spaceId = MemoryTestSpace),
-        ContextMemory(fact = "Deploys go to us-east-1.", label = "t", summary = "s",
-          source = MemorySource.Compression, spaceId = MemoryTestSpace)
+        ContextMemory(
+          fact = "The deploy target is us-east-1.",
+          label = "t",
+          summary = "s",
+          source = MemorySource.Compression,
+          spaceId = MemoryTestSpace),
+        ContextMemory(
+          fact = "Deploys go to us-east-1.",
+          label = "t",
+          summary = "s",
+          source = MemorySource.Compression,
+          spaceId = MemoryTestSpace)
       )
       Task {
         sigil.maintenance.MemoryConsolidationTask.validateMerge(cluster, None).isLeft should be(true)

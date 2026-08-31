@@ -44,7 +44,7 @@ class RecallTokenizerSpec extends AnyWordSpec with Matchers {
       // gives up recall the fusion has no other source for.
       val t = tokens("What do you do?")
       t should not be empty
-      t should contain ("what")
+      t should contain("what")
     }
 
     "deduplicate repeated terms" in {

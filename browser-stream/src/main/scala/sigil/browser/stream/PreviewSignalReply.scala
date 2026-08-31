@@ -22,4 +22,5 @@ import sigil.signal.ConversationNotice
  */
 final case class PreviewSignalReply(conversationId: Id[Conversation],
                                     streamId: String,
-                                    message: SignalMessage) extends ConversationNotice derives RW
+                                    message: SignalMessage)
+  extends ConversationNotice derives RW

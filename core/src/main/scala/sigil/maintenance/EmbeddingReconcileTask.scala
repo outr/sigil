@@ -38,22 +38,25 @@ import scala.concurrent.duration.*
  */
 case class EmbeddingReconcileTask(override val interval: FiniteDuration = 1.hour,
                                   maxPerSweep: Int = EmbeddingReconcileTask.DefaultMaxPerSweep,
-                                  override val runImmediatelyOnStart: Boolean = false) extends MaintenanceTask {
+                                  override val runImmediatelyOnStart: Boolean = false)
+  extends MaintenanceTask {
 
   override def name: String = "embedding-reconcile"
 
   override def runOnce(host: Sigil): Task[Unit] =
     if (!vectorReady(host)) Task(scribe.debug(s"$name: vector search not wired — skipping sweep"))
     else drifted(host).flatMap {
-      case Nil  => Task.unit
+      case Nil => Task.unit
       case rows => reconcile(host, rows)
     }
 
   private def vectorReady(host: Sigil): Boolean =
     host.embeddingProvider.dimensions > 0 && (host.vectorIndex ne NoOpVectorIndex)
 
-  /** Recallable records whose stored point doesn't match the text they
-    * currently carry, embedded by the embedder currently wired. */
+  /**
+   * Recallable records whose stored point doesn't match the text they
+   * currently carry, embedded by the embedder currently wired.
+   */
   private def drifted(host: Sigil): Task[List[ContextMemory]] = {
     val expected = EmbeddingRef.identityOf(host.embeddingProvider)
     host.withDB(_.memories.transaction { tx =>
@@ -64,10 +67,12 @@ case class EmbeddingReconcileTask(override val interval: FiniteDuration = 1.hour
     })
   }
 
-  /** Re-embed and restamp each drifted record, then drop cached
-    * retrievals so the repaired points are reachable on the next turn.
-    * A record that fails to re-index keeps its stale stamp and is
-    * retried on the following sweep. */
+  /**
+   * Re-embed and restamp each drifted record, then drop cached
+   * retrievals so the repaired points are reachable on the next turn.
+   * A record that fails to re-index keeps its stale stamp and is
+   * retried on the following sweep.
+   */
   private def reconcile(host: Sigil, rows: List[ContextMemory]): Task[Unit] =
     Task.sequence(rows.map { m =>
       host.reindexMemory(m).handleError { e =>
@@ -83,8 +88,11 @@ case class EmbeddingReconcileTask(override val interval: FiniteDuration = 1.hour
 }
 
 object EmbeddingReconcileTask {
-  /** Records repaired per sweep. Bounds the embedding spend a single
-    * tick can incur when a whole corpus needs re-embedding after a
-    * model change. */
+
+  /**
+   * Records repaired per sweep. Bounds the embedding spend a single
+   * tick can incur when a whole corpus needs re-embedding after a
+   * model change.
+   */
   val DefaultMaxPerSweep: Int = 200
 }

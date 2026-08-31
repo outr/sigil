@@ -21,13 +21,17 @@ import sigil.tool.{
   ToolSpec
 }
 
-/** Input type deliberately NEVER registered into the polymorphic
-  * `RW[ToolInput]` — the boot pass must fail naming it. */
+/**
+ * Input type deliberately NEVER registered into the polymorphic
+ * `RW[ToolInput]` — the boot pass must fail naming it.
+ */
 case class UnregisteredProbeInput(value: String) extends ToolInput derives RW
 
-/** A field-carrying SpaceId — the shape every multi-tenant downstream
-  * app registers, and the shape that makes a required SpaceId input
-  * union unfillable. */
+/**
+ * A field-carrying SpaceId — the shape every multi-tenant downstream
+ * app registers, and the shape that makes a required SpaceId input
+ * union unfillable.
+ */
 case class Bug437FieldSpace(tenantId: String) extends sigil.SpaceId {
   override val value: String = s"tenant-$tenantId"
 }
@@ -35,8 +39,10 @@ object Bug437FieldSpace {
   implicit val rw: RW[Bug437FieldSpace] = RW.gen
 }
 
-/** Deliberately violates the ergonomics rule once a field-carrying
-  * SpaceId variant is registered. */
+/**
+ * Deliberately violates the ergonomics rule once a field-carrying
+ * SpaceId variant is registered.
+ */
 case class RequiredSpaceProbeInput(target: sigil.SpaceId) extends ToolInput derives RW
 
 /**
@@ -156,8 +162,9 @@ class BootCompletenessSpec extends AnyWordSpec with Matchers {
         )
         protected def resolve: Resolution[Input, Output] = {
           import spice.net.*
-          Resolution.Simple((_: sigil.tool.JsonInput, _: ToolContext) => Task.pure(
-            sigil.tool.ImageToolOutput(url = url"https://example.invalid/probe.png")))
+          Resolution.Simple((_: sigil.tool.JsonInput, _: ToolContext) =>
+            Task.pure(
+              sigil.tool.ImageToolOutput(url = url"https://example.invalid/probe.png")))
         }
       }
       BootCompletenessCheck.collectViolations(List(screenshotLike)) shouldBe empty

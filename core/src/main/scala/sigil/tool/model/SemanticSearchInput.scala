@@ -22,4 +22,5 @@ import sigil.tool.ToolInput
 case class SemanticSearchInput(query: String,
                                limit: Int = 10,
                                includeHistory: Boolean = false,
-                               spaces: Set[SpaceId] = Set.empty) extends ToolInput derives RW
+                               spaces: Set[SpaceId] = Set.empty)
+  extends ToolInput derives RW

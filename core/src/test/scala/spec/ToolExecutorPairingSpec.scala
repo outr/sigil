@@ -9,7 +9,10 @@ import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput
 import sigil.event.{Event, Message, MessageRole, MessageVisibility, ToolOutcome}
 import sigil.signal.{EventState, Signal, ToolDelta}
 import sigil.tool.model.ResponseContent
-import sigil.tool.{DiscoverySpec, Effect, LateEmissionException, MutationTargeting, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, LateEmissionException, MutationTargeting, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolInput,
+  ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 /**
  * Executor pairing property — for resolutions that succeed, logically
@@ -24,11 +27,11 @@ class ToolExecutorPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private val convId = Conversation.id(s"pairing-${rapid.Unique()}")
   private def turn: TurnContext = TurnContext(
-    sigil        = TestSigil,
-    chain        = List(TestUser),
+    sigil = TestSigil,
+    chain = List(TestUser),
     conversation = Conversation(topics = List(TopicEntry(TestTopicId, "t", "t")), _id = convId),
-    turnInput    = TurnInput(ConversationView(conversationId = convId)),
-    model        = TestSigil.defaultTestModel
+    turnInput = TurnInput(ConversationView(conversationId = convId)),
+    model = TestSigil.defaultTestModel
   )
 
   private def spec(n: String): ToolSpec = ToolSpec(
@@ -39,13 +42,13 @@ class ToolExecutorPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   )
 
   private def emitted(ctx: ToolContext, marker: String): Message = Message(
-    participantId  = ctx.caller,
+    participantId = ctx.caller,
     conversationId = ctx.conversation.id,
-    topicId        = ctx.conversation.currentTopicId,
-    role           = MessageRole.Tool,
-    content        = Vector(ResponseContent.Text(marker)),
-    state          = EventState.Complete,
-    visibility     = MessageVisibility.Agents
+    topicId = ctx.conversation.currentTopicId,
+    role = MessageRole.Tool,
+    content = Vector(ResponseContent.Text(marker)),
+    state = EventState.Complete,
+    visibility = MessageVisibility.Agents
   )
 
   private def settleDeltas(signals: List[Signal]): List[ToolDelta] =
@@ -54,11 +57,11 @@ class ToolExecutorPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   private def markerCount(signals: List[Signal], marker: String): Int =
     signals.count {
       case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString.contains(marker)
-      case _          => false
+      case _ => false
     }
 
-  private abstract class Fixture(n: String) extends Tool {
-    type Input  = PairingProbeInput
+  abstract private class Fixture(n: String) extends Tool {
+    type Input = PairingProbeInput
     type Output = TextToolOutput
     val io: ToolIO[PairingProbeInput, TextToolOutput] = ToolIO.derived[PairingProbeInput, TextToolOutput]
     val spec: ToolSpec = ToolExecutorPairingSpec.this.spec(n)
@@ -121,11 +124,11 @@ class ToolExecutorPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         // The emitted event precedes the settle delta in the stream.
         val emitIdx = signals.indexWhere {
           case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString.contains("EMITTED-BEFORE-THROW")
-          case _          => false
+          case _ => false
         }
         val settleIdx = signals.indexWhere {
           case d: ToolDelta if d.state.contains(EventState.Complete) => true
-          case _                                                     => false
+          case _ => false
         }
         emitIdx should be < settleIdx
       }
@@ -161,7 +164,7 @@ class ToolExecutorPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
           .map(_ => fail("expected LateEmissionException"))
           .handleError {
             case _: LateEmissionException => Task.pure(succeed)
-            case other                    => Task(fail(s"expected LateEmissionException, got $other"))
+            case other => Task(fail(s"expected LateEmissionException, got $other"))
           }
       }
     }
@@ -197,9 +200,9 @@ class ToolExecutorPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         settleDeltas(signals) should have size 1
         val delivered = markerCount(signals, "RACING-EMIT")
         emitOutcome.get() match {
-          case Right(())                     => delivered shouldBe 1
+          case Right(()) => delivered shouldBe 1
           case Left(_: LateEmissionException) => delivered shouldBe 0
-          case Left(other)                    => fail(s"unexpected emit failure: $other")
+          case Left(other) => fail(s"unexpected emit failure: $other")
         }
       }
     }

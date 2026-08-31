@@ -44,10 +44,10 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
     val haikuId = Model.id("anthropic", "claude-haiku-4-5")
     val haiku = TestSigil.testModel(haikuId).copy(
       contextLength = 200_000L,
-      topProvider   = sigil.db.ModelTopProvider(
-        contextLength       = Some(200_000L),
+      topProvider = sigil.db.ModelTopProvider(
+        contextLength = Some(200_000L),
         maxCompletionTokens = Some(64_000L),
-        isModerated         = false
+        isModerated = false
       )
     )
     TestSigil.cache.merge(List(haiku)).sync()
@@ -211,7 +211,7 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
   "OpenAIProvider reasoning" should {
     val provider = OpenAIProvider(apiKey = "sk-test", sigilRef = TestSigil)
     val reasoningModelId = Model.id("openai", "gpt-5")
-    val plainModelId     = Model.id("openai", "gpt-4o-mini")
+    val plainModelId = Model.id("openai", "gpt-4o-mini")
 
     // Bug #62 — for reasoning-family models, the request always opts
     // into `reasoning.summary = "auto"` (and `include =

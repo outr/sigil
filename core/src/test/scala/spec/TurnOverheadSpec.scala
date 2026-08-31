@@ -47,23 +47,29 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private val modelId: Id[Model] = Model.id("test", "turn-overhead-model")
   TestSigil.testModel(modelId)
 
-  /** Coarse wall-clock ceiling for one warm turn's non-provider work.
-    * Deliberately loose: absolute milliseconds are dominated by the
-    * host's store-commit latency, and the suite runs several forked JVMs
-    * at once, so a tight bound measures the runner rather than the
-    * framework. This catches an order-of-magnitude regression; the
-    * scaling assertion below — where both measurements share whatever
-    * load the host is under — is the tight guard. */
+  /**
+   * Coarse wall-clock ceiling for one warm turn's non-provider work.
+   * Deliberately loose: absolute milliseconds are dominated by the
+   * host's store-commit latency, and the suite runs several forked JVMs
+   * at once, so a tight bound measures the runner rather than the
+   * framework. This catches an order-of-magnitude regression; the
+   * scaling assertion below — where both measurements share whatever
+   * load the host is under — is the tight guard.
+   */
   private val OverheadBudget: FiniteDuration = 5.seconds
 
-  /** Known in-call cost of the scripted provider, so the measurement can
-    * subtract a real "model time" rather than assume zero. */
+  /**
+   * Known in-call cost of the scripted provider, so the measurement can
+   * subtract a real "model time" rather than assume zero.
+   */
   private val ProviderDelay: FiniteDuration = 200.millis
 
-  /** Events written into unrelated conversations before the loaded
-    * measurement. Large enough that a per-turn whole-store scan costs
-    * more than the run-to-run noise in the measurement, small enough to
-    * seed in a few seconds. */
+  /**
+   * Events written into unrelated conversations before the loaded
+   * measurement. Large enough that a per-turn whole-store scan costs
+   * more than the run-to-run noise in the measurement, small enough to
+   * seed in a few seconds.
+   */
   private val UnrelatedEvents: Int = 20000
 
   /**
@@ -87,7 +93,9 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
    */
   private val ScalingTolerance: Double = 1.3
 
-  /** Warm turns per measurement; the median is reported. */
+  /**
+   * Warm turns per measurement; the median is reported.
+   */
   private val MeasuredTurns: Int = 5
 
   /**
@@ -120,10 +128,10 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
             // The conversation's existing label, so the topic-shift
             // fast path applies and the turn makes exactly one provider
             // call — the measurement isolates framework cost.
-            topicLabel   = TestTopicEntry.label,
+            topicLabel = TestTopicEntry.label,
             topicSummary = TestTopicEntry.summary,
-            content      = "Acknowledged.",
-            endsTurn     = true
+            content = "Acknowledged.",
+            endsTurn = true
           )),
           ProviderEvent.Done(StopReason.Complete)
         ))
@@ -133,21 +141,26 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(64), temperature = Some(0.0))
     )
 
-  /** One measured turn's outcome: the wall clock from the user message's
-    * publish to the agent's reply settling, the provider time inside it,
-    * and the turn's own [[TurnPhases]] breakdown. */
+  /**
+   * One measured turn's outcome: the wall clock from the user message's
+   * publish to the agent's reply settling, the provider time inside it,
+   * and the turn's own [[TurnPhases]] breakdown.
+   */
   private case class Measured(wallMs: Long, providerMs: Long, phases: Option[TurnPhases]) {
-    /** The turn's framework cost: the recorder's own accounting when the
-      * breakdown arrived (it brackets the whole claim, including the
-      * release the spec's wall clock stops short of), otherwise the
-      * observed wall clock minus the provider's in-call time. */
+
+    /**
+     * The turn's framework cost: the recorder's own accounting when the
+     * breakdown arrived (it brackets the whole claim, including the
+     * release the spec's wall clock stops short of), otherwise the
+     * observed wall clock minus the provider's in-call time.
+     */
     def overheadMs: Long = phases.map(_.overheadMs).getOrElse(wallMs - providerMs)
     def render: String =
       s"wall=${wallMs}ms provider=${providerMs}ms overhead=${overheadMs}ms" +
@@ -169,16 +182,17 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     // signal a consumer waits on.
     def replySeen(after: Long): Boolean = {
       val replyIds = recorded.iterator().asScala.collect {
-        case m: Message if m.conversationId == convId &&
-          m.participantId == TestAgent &&
-          m.role == MessageRole.Standard &&
-          m.timestamp.value >= after => m._id
+        case m: Message
+            if m.conversationId == convId &&
+              m.participantId == TestAgent &&
+              m.role == MessageRole.Standard &&
+              m.timestamp.value >= after => m._id
       }.toSet
       recorded.iterator().asScala.exists {
-        case m: Message      => replyIds.contains(m._id) && m.state == EventState.Complete
-        case d: StateDelta   => replyIds.contains(d.target) && d.state == EventState.Complete
+        case m: Message => replyIds.contains(m._id) && m.state == EventState.Complete
+        case d: StateDelta => replyIds.contains(d.target) && d.state == EventState.Complete
         case d: MessageDelta => replyIds.contains(d.target) && d.state.contains(EventState.Complete)
-        case _               => false
+        case _ => false
       }
     }
     def await(after: Long, deadline: Long): Task[Unit] = Task.defer {
@@ -192,11 +206,11 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val providerBefore = provider.inCallMillis
       val phasesBefore = phaseNotices.size
       TestSigil.publish(Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        content        = Vector(ResponseContent.Text(text)),
-        state          = EventState.Complete
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text(text)),
+        state = EventState.Complete
       )).flatMap(_ => await(startedAt, startedAt + 60000L))
         .map(_ => System.currentTimeMillis() - startedAt)
         .flatMap(wall => TestSigil.awaitSettled(convId).map(_ => wall))
@@ -213,24 +227,29 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         // The FIRST breakdown after this turn started is the claim that
         // produced the reply; a conversation can re-fire after release
         // and that second claim is not what the user waited on.
-        .map(wall => Measured(wall, provider.inCallMillis - providerBefore,
-          phaseNotices.drop(phasesBefore).headOption))
+        .map(wall =>
+          Measured(
+            wall,
+            provider.inCallMillis - providerBefore,
+            phaseNotices.drop(phasesBefore).headOption))
     }
   }
 
-  /** Write `count` events into conversations the measured turn has
-    * nothing to do with — the store history a long-lived deployment
-    * accumulates. */
+  /**
+   * Write `count` events into conversations the measured turn has
+   * nothing to do with — the store history a long-lived deployment
+   * accumulates.
+   */
   private def seedUnrelatedEvents(count: Int): Task[Unit] = {
     val perConversation = 100
     TestSigil.withDB(_.events.transaction { tx =>
       Stream.emits((0 until count).toList).evalMap { i =>
         tx.insert(Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = Conversation.id(s"turn-overhead-unrelated-${i / perConversation}"),
-          topicId        = TestTopicEntry.id,
-          content        = Vector(ResponseContent.Text(s"Unrelated history entry $i.")),
-          state          = EventState.Complete
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text(s"Unrelated history entry $i.")),
+          state = EventState.Complete
         )).unit
       }.drain
     })
@@ -258,7 +277,7 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       // Several warm turns; the median is the reported figure, since a
       // single turn is at the mercy of a GC pause or a JIT compile.
       samples <- Task.sequence((1 to MeasuredTurns).toList.map(i =>
-                   turn(convId, provider, s"Measured turn $i.", recorded)))
+        turn(convId, provider, s"Measured turn $i.", recorded)))
     } yield {
       running.set(false)
       samples.foreach(s => scribe.info(s"TurnOverheadSpec[$label] sample: ${s.render}"))
@@ -268,38 +287,38 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
   }
 
-  /** Both measurements, in order, shared across the assertions below —
-    * they exercise one store and must not interleave. */
+  /**
+   * Both measurements, in order, shared across the assertions below —
+   * they exercise one store and must not interleave.
+   */
   private lazy val measurements: Task[(Measured, Measured)] =
     (for {
-      small  <- measure("small-store")
-      _      <- seedUnrelatedEvents(UnrelatedEvents)
+      small <- measure("small-store")
+      _ <- seedUnrelatedEvents(UnrelatedEvents)
       loaded <- measure("loaded-store")
     } yield (small, loaded)).singleton
 
   "Per-turn orchestration overhead" should {
 
-    "keep a warm turn's non-provider work under the budget" in {
+    "keep a warm turn's non-provider work under the budget" in
       measurements.map { case (small, _) =>
         withClue(s"${small.render}: ") {
           small.providerMs should be >= ProviderDelay.toMillis
           small.overheadMs should be < OverheadBudget.toMillis
         }
       }
-    }
 
-    "not grow unboundedly with unrelated history in the event store" in {
+    "not grow unboundedly with unrelated history in the event store" in
       measurements.map { case (small, loaded) =>
         withClue(s"small: ${small.render} / loaded: ${loaded.render}: ") {
           loaded.overheadMs.toDouble should be < (small.overheadMs * ScalingTolerance)
         }
       }
-    }
   }
 
   "TurnPhases instrumentation" should {
 
-    "emit one breakdown per turn covering every phase" in {
+    "emit one breakdown per turn covering every phase" in
       measurements.map { case (small, _) =>
         withClue(s"${small.render}: ") {
           val phases = small.phases.getOrElse(fail("no TurnPhases notice was emitted for the measured turn"))
@@ -308,9 +327,8 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           phases.durations.filter(_._2 < 0L) shouldBe empty
         }
       }
-    }
 
-    "sum its phases to the turn's wall clock" in {
+    "sum its phases to the turn's wall clock" in
       measurements.map { case (small, _) =>
         val phases = small.phases.getOrElse(fail("no TurnPhases notice was emitted for the measured turn"))
         withClue(s"${small.render}: ") {
@@ -322,9 +340,8 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           phases.totalMs should be >= phases(TurnPhase.ModelStream)
         }
       }
-    }
 
-    "attribute the provider's time to ModelStream and the rest to overhead" in {
+    "attribute the provider's time to ModelStream and the rest to overhead" in
       measurements.map { case (small, _) =>
         val phases = small.phases.getOrElse(fail("no TurnPhases notice was emitted for the measured turn"))
         withClue(s"${small.render}: ") {
@@ -335,7 +352,6 @@ class TurnOverheadSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           phases.overheadMs shouldBe (phases.totalMs - phases(TurnPhase.ModelStream))
         }
       }
-    }
   }
 
   "tear down" should {

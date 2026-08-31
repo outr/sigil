@@ -23,8 +23,10 @@ import sigil.tool.ToolRoster
 class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Counts 'x' characters across all message content blocks — keeps
-    * the test's expected token math obvious. */
+  /**
+   * Counts 'x' characters across all message content blocks — keeps
+   * the test's expected token math obvious.
+   */
   private class CountingProvider(modelRecord: Model) extends Provider {
     override def `type`: ProviderType = ProviderType.OpenAI
     override def models: List[Model] = List(modelRecord)
@@ -32,23 +34,27 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
     override def call(input: ProviderCall): Stream[ProviderEvent] = Stream.empty
-    override protected def estimateRequest(call: ProviderCall): Int = {
+    override protected def estimateRequest(call: ProviderCall): Int =
       call.system.count(_ == 'x') + call.messages.foldLeft(0) { (acc, m) =>
-        acc + (m match {
-          case ProviderMessage.User(blocks) =>
-            blocks.iterator.collect { case t: MessageContent.Text => t.text.count(_ == 'x') }.sum
-          case ProviderMessage.Assistant(c, _)  => c.count(_ == 'x')
-          case ProviderMessage.ToolResult(_, c) => c.count(_ == 'x')
-          case ProviderMessage.System(c)        => c.count(_ == 'x')
-          case _                                => 0
-        })
+        acc +
+          (m match {
+            case ProviderMessage.User(blocks) =>
+              blocks.iterator.collect { case t: MessageContent.Text => t.text.count(_ == 'x') }.sum
+            case ProviderMessage.Assistant(c, _) => c.count(_ == 'x')
+            case ProviderMessage.ToolResult(_, c) => c.count(_ == 'x')
+            case ProviderMessage.System(c) => c.count(_ == 'x')
+            case _ => 0
+          })
       }
-    }
 
-    /** Reflectively drive the private pre-flight gate. */
+    /**
+     * Reflectively drive the private pre-flight gate.
+     */
     def runGate(req: ProviderRequest, call: ProviderCall): Either[Throwable, ProviderCall] = {
       val m = classOf[Provider].getDeclaredMethod(
-        "preFlightGate", classOf[ProviderRequest], classOf[ProviderCall]
+        "preFlightGate",
+        classOf[ProviderRequest],
+        classOf[ProviderCall]
       )
       m.setAccessible(true)
       m.invoke(this, req, call).asInstanceOf[Either[Throwable, ProviderCall]]
@@ -58,37 +64,37 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
   private def baseModel(modelId: lightdb.id.Id[Model],
                         contextLength: Long,
                         ratePerMinute: Option[Long]): Model = Model(
-    canonicalSlug                  = modelId.value,
-    huggingFaceId                  = "",
-    name                           = modelId.value,
-    description                    = "",
-    contextLength                  = contextLength,
-    architecture                   = sigil.db.ModelArchitecture(
-      modality         = "text->text",
-      inputModalities  = List("text"),
+    canonicalSlug = modelId.value,
+    huggingFaceId = "",
+    name = modelId.value,
+    description = "",
+    contextLength = contextLength,
+    architecture = sigil.db.ModelArchitecture(
+      modality = "text->text",
+      inputModalities = List("text"),
       outputModalities = List("text"),
-      tokenizer        = "None",
-      instructType     = None
+      tokenizer = "None",
+      instructType = None
     ),
-    pricing                        = sigil.db.ModelPricing(
-      prompt    = BigDecimal(0),
+    pricing = sigil.db.ModelPricing(
+      prompt = BigDecimal(0),
       completion = BigDecimal(0),
       webSearch = None,
       inputCacheRead = None
     ),
-    topProvider                    = sigil.db.ModelTopProvider(
-      contextLength       = Some(contextLength),
+    topProvider = sigil.db.ModelTopProvider(
+      contextLength = Some(contextLength),
       maxCompletionTokens = None,
-      isModerated         = false
+      isModerated = false
     ),
-    perRequestLimits               = None,
-    supportedParameters            = Set.empty,
-    knowledgeCutoff                = None,
-    expirationDate                 = None,
-    links                          = sigil.db.ModelLinks(details = ""),
-    created                        = lightdb.time.Timestamp(),
-    inputTokensPerMinute           = ratePerMinute,
-    _id                            = modelId
+    perRequestLimits = None,
+    supportedParameters = Set.empty,
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = sigil.db.ModelLinks(details = ""),
+    created = lightdb.time.Timestamp(),
+    inputTokensPerMinute = ratePerMinute,
+    _id = modelId
   )
 
   private def callOf(model: Model,
@@ -96,21 +102,21 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
                      tools: Vector[sigil.tool.Tool] = Vector.empty,
                      system: String = ""): ProviderCall =
     ProviderCall(
-      model              = model,
-      system             = system,
-      messages           = messages,
+      model = model,
+      system = system,
+      messages = messages,
       roster = ToolRoster(tools),
-      builtInTools       = Set.empty,
-      toolChoice         = sigil.provider.ToolChoice.None,
+      builtInTools = Set.empty,
+      toolChoice = sigil.provider.ToolChoice.None,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      currentMode        = ConversationMode
+      currentMode = ConversationMode
     )
 
   private def oneShot(modelId: lightdb.id.Id[Model]): ProviderRequest =
     sigil.provider.OneShotRequest(
-      model        = TestSigil.testModel(modelId),
+      model = TestSigil.testModel(modelId),
       systemPrompt = "",
-      userPrompt   = "ping"
+      userPrompt = "ping"
     )
 
   "Provider pre-flight gate (sigil #283)" should {
@@ -160,12 +166,12 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val call = callOf(
         model,
         messages = Vector(ProviderMessage.User("x" * 200)),
-        system   = "x" * 5000
+        system = "x" * 5000
       )
       val result = provider.runGate(oneShot(modelId), call)
       Task {
         result.isLeft shouldBe true
-        result.swap.toOption.get shouldBe a [RequestExceedsRateLimitException]
+        result.swap.toOption.get shouldBe a[RequestExceedsRateLimitException]
         val ex = result.swap.toOption.get.asInstanceOf[RequestExceedsRateLimitException]
         ex.inputTokensPerMinute shouldBe 1000L
         ex.modelId shouldBe modelId
@@ -197,12 +203,12 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val call = callOf(
         model,
         messages = Vector(ProviderMessage.User("x" * 50)),
-        system   = "x" * 5000
+        system = "x" * 5000
       )
       val result = provider.runGate(oneShot(modelId), call)
       Task {
         result.isLeft shouldBe true
-        result.swap.toOption.get shouldBe a [RequestOverBudgetException]
+        result.swap.toOption.get shouldBe a[RequestOverBudgetException]
       }
     }
   }
@@ -211,10 +217,10 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
     "classify RequestExceedsRateLimitException as Fatal so it doesn't enter the 429 retry loop" in Task {
       val ex = new RequestExceedsRateLimitException(
-        estimatedTokens      = 5000,
+        estimatedTokens = 5000,
         inputTokensPerMinute = 1000L,
-        safetyMargin         = 0.85,
-        modelId              = Model.id("test", "rl-classifier")
+        safetyMargin = 0.85,
+        modelId = Model.id("test", "rl-classifier")
       )
       ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Fatal
     }
@@ -222,7 +228,9 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     "typed-dispatch StreamingHttpFailedException by status code" in Task {
       def make(status: Int): spice.http.client.StreamingHttpFailedException =
         new spice.http.client.StreamingHttpFailedException(
-          status = status, headers = spice.http.Headers.empty, body = ""
+          status = status,
+          headers = spice.http.Headers.empty,
+          body = ""
         )
       ErrorClassifier.Default.classify(make(429)) shouldBe ErrorClassification.Retry
       ErrorClassifier.Default.classify(make(503)) shouldBe ErrorClassification.Retry
@@ -233,8 +241,10 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     }
   }
 
-  /** Reflective bridge to exercise the framework's private
-    * retry-after extractor against a synthetic exception. */
+  /**
+   * Reflective bridge to exercise the framework's private
+   * retry-after extractor against a synthetic exception.
+   */
   private def runRetryAfter(prov: Provider, t: Throwable): Option[scala.concurrent.duration.FiniteDuration] = {
     val m = classOf[Provider].getDeclaredMethod("retryAfterFrom", classOf[Throwable])
     m.setAccessible(true)
@@ -248,7 +258,9 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val provider = new CountingProvider(baseModel(modelId, 1000L, None))
       val headers = spice.http.Headers.empty.withHeader("Retry-After", "12")
       val ex = new spice.http.client.StreamingHttpFailedException(
-        status = 429, headers = headers, body = "rate-limited"
+        status = 429,
+        headers = headers,
+        body = "rate-limited"
       )
       Task {
         runRetryAfter(provider, ex) shouldBe Some(scala.concurrent.duration.FiniteDuration(12_000L, "millis"))
@@ -262,7 +274,9 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val httpDate = futureInstant.format(java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
       val headers = spice.http.Headers.empty.withHeader("Retry-After", httpDate)
       val ex = new spice.http.client.StreamingHttpFailedException(
-        status = 429, headers = headers, body = ""
+        status = 429,
+        headers = headers,
+        body = ""
       )
       Task {
         val delta = runRetryAfter(provider, ex)
@@ -275,7 +289,9 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val modelId = Model.id("test", "ra-none")
       val provider = new CountingProvider(baseModel(modelId, 1000L, None))
       val ex = new spice.http.client.StreamingHttpFailedException(
-        status = 429, headers = spice.http.Headers.empty, body = ""
+        status = 429,
+        headers = spice.http.Headers.empty,
+        body = ""
       )
       Task {
         runRetryAfter(provider, ex) shouldBe None
@@ -286,10 +302,10 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val modelId = Model.id("test", "ra-typed")
       val provider = new CountingProvider(baseModel(modelId, 1000L, None))
       val ex = new sigil.provider.ProviderStreamException(
-        providerKey   = "test",
-        code          = 429,
-        typ           = "rate_limit",
-        message_      = "too many",
+        providerKey = "test",
+        code = 429,
+        typ = "rate_limit",
+        message_ = "too many",
         errorMetadata = Some(sigil.provider.ProviderErrorMetadata(retryAfterMs = Some(7500L)))
       )
       Task {
@@ -311,7 +327,9 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       // 60ms window so the test finishes promptly; same arithmetic
       // as the production 60s window.
       val tracker = new sigil.provider.TokenWindowTracker(
-        perMinute = 1000L, safetyMargin = 0.85, windowMs = 60L
+        perMinute = 1000L,
+        safetyMargin = 0.85,
+        windowMs = 60L
       )
       // Ceiling = 850. Two 500-token requests can't both fit (sum 1000).
       val start = System.currentTimeMillis()

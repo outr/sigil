@@ -33,7 +33,9 @@ import scala.concurrent.duration.*
  */
 class ProviderTokenIdleTimeoutSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Synthetic source: emits N elements with `gap` between each. */
+  /**
+   * Synthetic source: emits N elements with `gap` between each.
+   */
   private def slowStream(elements: Int, gap: FiniteDuration): Stream[Int] =
     Stream.emits((0 until elements).toList).evalMap { i =>
       Task { Thread.sleep(gap.toMillis); i }
@@ -44,8 +46,8 @@ class ProviderTokenIdleTimeoutSpec extends AsyncWordSpec with AsyncTaskSpec with
     "kill a slow-but-steadily-streaming source after the wall-clock deadline" in {
       // 10 elements × 50ms gap = 500ms total; deadline 100ms forces
       // the wall-clock kill mid-stream.
-      val source   = slowStream(elements = 10, gap = 50.millis)
-      val gated    = source.timeout(100.millis)
+      val source = slowStream(elements = 10, gap = 50.millis)
+      val gated = source.timeout(100.millis)
       gated.toList.attempt.map { result =>
         result.isFailure shouldBe true
         result.failed.get.getClass.getName should include("TimeoutException")

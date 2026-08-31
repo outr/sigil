@@ -34,14 +34,18 @@ object AgenticSignalFilter extends HighSignalFilter {
     raw"\b(rejects?|requires?|expects?|only supports?|not supported|deprecated|incompatible)\b".r
   )
 
-  /** Error / exception class names — `NullPointerException`,
-    * `RequestOverBudgetException`, `TypeError`. Case-sensitive on the
-    * original text: the CamelCase shape is the signal. */
+  /**
+   * Error / exception class names — `NullPointerException`,
+   * `RequestOverBudgetException`, `TypeError`. Case-sensitive on the
+   * original text: the CamelCase shape is the signal.
+   */
   private val errorNamePattern: Regex = raw"\b[A-Z][A-Za-z0-9]*(Exception|Error)\b".r
 
-  /** Version pins — three-component versions (`4.31.1`,
-    * `1.12.10-RC2`) or `v`-prefixed tags (`v2`, `v3.8`). Deliberately
-    * NOT bare `N.N` — too many casual number collisions. */
+  /**
+   * Version pins — three-component versions (`4.31.1`,
+   * `1.12.10-RC2`) or `v`-prefixed tags (`v2`, `v3.8`). Deliberately
+   * NOT bare `N.N` — too many casual number collisions.
+   */
   private val versionPinPattern: Regex = raw"(\b\d+\.\d+\.\d+(-[A-Za-z0-9.]+)?\b|\bv\d+(\.\d+)*\b)".r
 
   private val correctionPatterns: List[Regex] = List(
@@ -54,12 +58,11 @@ object AgenticSignalFilter extends HighSignalFilter {
   private def matchesAny(patterns: List[Regex], lower: String): Boolean =
     patterns.exists(_.findFirstIn(lower).isDefined)
 
-  private def hasDecisionSignal(text: String): Boolean = {
+  private def hasDecisionSignal(text: String): Boolean =
     if (text == null || text.isEmpty) false
     else matchesAny(decisionPatterns, text.toLowerCase) ||
-      errorNamePattern.findFirstIn(text).isDefined ||
-      versionPinPattern.findFirstIn(text).isDefined
-  }
+    errorNamePattern.findFirstIn(text).isDefined ||
+    versionPinPattern.findFirstIn(text).isDefined
 
   private def hasCorrectionSignal(userMessage: String): Boolean =
     userMessage != null && userMessage.nonEmpty && matchesAny(correctionPatterns, userMessage.toLowerCase)

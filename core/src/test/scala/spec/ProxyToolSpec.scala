@@ -80,8 +80,10 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       Task.pure(ToolPreconditionResult.Unsatisfied("the remote daemon is offline", suggestedFix = Some("start_daemon")))
   }
 
-  /** Consent-gated, destructive, detachable, preconditioned — the full
-    * capability profile a proxy must forward by construction. */
+  /**
+   * Consent-gated, destructive, detachable, preconditioned — the full
+   * capability profile a proxy must forward by construction.
+   */
   private case object GuardedWrappedTool extends Tool {
     type Input = FakeToolInput
     type Output = TextToolOutput

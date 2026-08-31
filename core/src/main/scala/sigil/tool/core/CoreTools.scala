@@ -72,17 +72,19 @@ import sigil.tool.util.LookupTool
  */
 object CoreTools {
 
-  /** The tool instances — pass to `ProviderRequest.tools`.
-    *
-    * [[CancelTool]] is intentionally NOT in this default set. Field
-    * evidence showed agents reaching for `cancel` under stress
-    * (e.g. when a duplicate-tool-call warning lands on the next
-    * turn) and terminating the conversation when the right move was
-    * to recover and continue. The agent's "I'm stuck" path is
-    * `respond` — say so, keep the conversation alive. Apps that
-    * legitimately need agent-initiated cancellation (monitor agents
-    * intercepting child agents via `cancel(force=true)`) opt in by
-    * appending [[CancelTool]] to their `staticTools` override. */
+  /**
+   * The tool instances — pass to `ProviderRequest.tools`.
+   *
+   * [[CancelTool]] is intentionally NOT in this default set. Field
+   * evidence showed agents reaching for `cancel` under stress
+   * (e.g. when a duplicate-tool-call warning lands on the next
+   * turn) and terminating the conversation when the right move was
+   * to recover and continue. The agent's "I'm stuck" path is
+   * `respond` — say so, keep the conversation alive. Apps that
+   * legitimately need agent-initiated cancellation (monitor agents
+   * intercepting child agents via `cancel(force=true)`) opt in by
+   * appending [[CancelTool]] to their `staticTools` override.
+   */
   val all: Vector[Tool] =
     Vector(
       RespondTool,
@@ -109,13 +111,15 @@ object CoreTools {
   // "Type not found" on every `listTools` read (#380); keep it here so the
   // type stays resolvable — separate registration from advertisement.
 
-  /** The ToolInput RWs for polymorphic registration. Sigil registers these
-    * automatically during `instance.sync()`; apps don't need to touch this.
-    *
-    * Includes `ChangeModeInput` so apps that opt into [[ChangeModeTool]]
-    * via their own `staticTools` round-trip without further wiring —
-    * the input RW is cheap to register and harmless when the tool
-    * itself isn't in the roster. */
+  /**
+   * The ToolInput RWs for polymorphic registration. Sigil registers these
+   * automatically during `instance.sync()`; apps don't need to touch this.
+   *
+   * Includes `ChangeModeInput` so apps that opt into [[ChangeModeTool]]
+   * via their own `staticTools` round-trip without further wiring —
+   * the input RW is cheap to register and harmless when the tool
+   * itself isn't in the roster.
+   */
   val inputRWs: List[RW[? <: ToolInput]] =
     List(
       // No `Tool` behind it — the framework's internal directive channel
@@ -178,22 +182,26 @@ object CoreTools {
       summon[RW[sigil.tool.UnknownToolInput]]
     )
 
-  /** The default advertised roster names. `lookup` is deliberately
-    * excluded: it is registered (in [[all]]) and injected per-turn by
-    * `Sigil.reconcileLookupTool` whenever the turn's input carries
-    * memories or information, so a default roster stays lean on turns
-    * with nothing to look up. Apps that want it unconditionally add
-    * the name themselves. */
+  /**
+   * The default advertised roster names. `lookup` is deliberately
+   * excluded: it is registered (in [[all]]) and injected per-turn by
+   * `Sigil.reconcileLookupTool` whenever the turn's input carries
+   * memories or information, so a default roster stays lean on turns
+   * with nothing to look up. Apps that want it unconditionally add
+   * the name themselves.
+   */
   val coreToolNames: List[sigil.tool.ToolName] =
     all.iterator.map(_.schema.name).filterNot(_ == LookupTool.schema.name).toList
 
- /** Names of the atomic content tools — those whose output IS the
-    * agent's user-facing content rather than a tool result feeding
-    * back to the model. Their `executeResult` emits a `Standard`-role
-    * `Message` via `ctx.emit` (alongside the standard settling
-    * [[sigil.signal.ToolDelta]]); the framework's frame renderer
-    * pairs each such call with a synthetic empty output to satisfy
-    * providers (notably OpenAI Responses) that strictly require every
-    * `function_call` to have a matching `function_call_output`. */
+  /**
+   * Names of the atomic content tools — those whose output IS the
+   * agent's user-facing content rather than a tool result feeding
+   * back to the model. Their `executeResult` emits a `Standard`-role
+   * `Message` via `ctx.emit` (alongside the standard settling
+   * [[sigil.signal.ToolDelta]]); the framework's frame renderer
+   * pairs each such call with a synthetic empty output to satisfy
+   * providers (notably OpenAI Responses) that strictly require every
+   * `function_call` to have a matching `function_call_output`.
+   */
   val atomicContentToolNames: Set[sigil.tool.ToolName] = RespondFamilyTool.names
 }

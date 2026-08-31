@@ -31,20 +31,23 @@ import sigil.tool.model.ResponseContent
  * time and forward only the text content. Apps that need to detect
  * this should pre-check the target model's `architecture.modality`.
  */
-case class OneShotRequest(/** Sigil #277 — required Model record. Resolved
-                            * from [[sigil.cache.ModelRegistry]] before
-                            * construction; framework callers go through
-                            * `sigil.cache.find(id).getOrElse(throw …)` at
-                            * the boundary. */
-                          model: Model,
-                          systemPrompt: String,
-                          userPrompt: String,
-                          userContent: Vector[ResponseContent] = Vector.empty,
-                          generationSettings: GenerationSettings = GenerationSettings(),
-                          tools: Vector[Tool] = Vector.empty,
-                          builtInTools: Set[BuiltInTool] = Set.empty,
-                          chain: List[ParticipantId] = Nil,
-                          requestId: Id[ProviderRequest] = Id())
+case class OneShotRequest(
+  /**
+   * Sigil #277 — required Model record. Resolved
+   * from [[sigil.cache.ModelRegistry]] before
+   * construction; framework callers go through
+   * `sigil.cache.find(id).getOrElse(throw …)` at
+   * the boundary.
+   */
+  model: Model,
+  systemPrompt: String,
+  userPrompt: String,
+  userContent: Vector[ResponseContent] = Vector.empty,
+  generationSettings: GenerationSettings = GenerationSettings(),
+  tools: Vector[Tool] = Vector.empty,
+  builtInTools: Set[BuiltInTool] = Set.empty,
+  chain: List[ParticipantId] = Nil,
+  requestId: Id[ProviderRequest] = Id())
   extends ProviderRequest {
 
   require(

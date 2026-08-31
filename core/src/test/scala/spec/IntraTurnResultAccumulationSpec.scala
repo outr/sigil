@@ -43,19 +43,27 @@ import scala.jdk.CollectionConverters.*
 class IntraTurnResultAccumulationSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  override implicit val testTimeout: FiniteDuration = 120.seconds
+  implicit override val testTimeout: FiniteDuration = 120.seconds
 
-  /** Identical-args calls before the escalation. */
+  /**
+   * Identical-args calls before the escalation.
+   */
   private val duplicateCalls = 2
 
-  /** Fresh-args calls made AFTER the escalation — the ones whose
-    * results must stay readable. */
+  /**
+   * Fresh-args calls made AFTER the escalation — the ones whose
+   * results must stay readable.
+   */
   private val postCalls = 8
 
-  /** Iteration index (1-based) on which the agent escalates. */
+  /**
+   * Iteration index (1-based) on which the agent escalates.
+   */
   private val escalationCall = duplicateCalls + 1
 
-  /** [[StandardIntraTurnCompactor]]'s default `recentTailN`. */
+  /**
+   * [[StandardIntraTurnCompactor]]'s default `recentTailN`.
+   */
   private val recentTail = 4
 
   private val roomyNominalId: Id[Model] = Model.id("test", "accum-nominal-roomy")
@@ -125,7 +133,10 @@ class IntraTurnResultAccumulationSpec extends AsyncWordSpec with AsyncTaskSpec w
         else Stream.emits(List(
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
           ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-            topicLabel = "Probes", topicSummary = "Probe accumulation", content = "Done.", endsTurn = true)),
+            topicLabel = "Probes",
+            topicSummary = "Probe accumulation",
+            content = "Done.",
+            endsTurn = true)),
           ProviderEvent.Done(StopReason.Complete)
         ))
       } else Stream.emits(List(ProviderEvent.Done(StopReason.Complete)))
@@ -138,14 +149,16 @@ class IntraTurnResultAccumulationSpec extends AsyncWordSpec with AsyncTaskSpec w
     ))
   }
 
-  /** Everything the model would actually read on this request. */
+  /**
+   * Everything the model would actually read on this request.
+   */
   private def renderedText(call: ProviderCall): String = {
     val body = call.messagesWithVolatileTail.iterator.map {
-      case ProviderMessage.System(c)         => c
-      case ProviderMessage.User(content)     => content.mkString(" ")
+      case ProviderMessage.System(c) => c
+      case ProviderMessage.User(content) => content.mkString(" ")
       case ProviderMessage.Assistant(c, tcs) => s"$c ${tcs.mkString(" ")}"
-      case ProviderMessage.ToolResult(_, c)  => c
-      case other                             => other.toString
+      case ProviderMessage.ToolResult(_, c) => c
+      case other => other.toString
     }.mkString("\n")
     s"${call.system}\n$body"
   }
@@ -171,8 +184,11 @@ class IntraTurnResultAccumulationSpec extends AsyncWordSpec with AsyncTaskSpec w
     )
 
   private case class RunResult(calls: List[ProviderCall], convId: Id[Conversation], summaryConsults: Int) {
-    /** Post-escalation probe results readable on the LAST request of
-      * the turn — what the model still had to reason from at the end. */
+
+    /**
+     * Post-escalation probe results readable on the LAST request of
+     * the turn — what the model still had to reason from at the end.
+     */
     def visibleAtEnd: Vector[String] = {
       val text = renderedText(calls.last)
       (1 to postCalls).map(postProbe).filter(p => text.contains(probeText(p))).toVector
@@ -200,18 +216,20 @@ class IntraTurnResultAccumulationSpec extends AsyncWordSpec with AsyncTaskSpec w
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId = TestUser,
-             conversationId = convId,
-             topicId = TestTopicEntry.id,
-             content = Vector(ResponseContent.Text("Run the probe reads and report back.")),
-             state = sigil.signal.EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Run the probe reads and report back.")),
+        state = sigil.signal.EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId, timeout = 90.seconds)
     } yield RunResult(recorded.iterator().asScala.toList, convId, provider.summaryConsults.get())
   }
 
-  /** Shared preconditions: the script ran to completion and the
-    * escalation really did swap the routed model mid-turn. */
+  /**
+   * Shared preconditions: the script ran to completion and the
+   * escalation really did swap the routed model mid-turn.
+   */
   private def assertScenarioRan(result: RunResult, clue: String): Unit = {
     withClue(s"$clue — agent iterations recorded: ${result.calls.size}\n") {
       result.calls.size should be >= (escalationCall + postCalls)
@@ -246,7 +264,7 @@ class IntraTurnResultAccumulationSpec extends AsyncWordSpec with AsyncTaskSpec w
       }
     }
 
-    "size the fold against the routed model, not the agent's nominal default" in {
+    "size the fold against the routed model, not the agent's nominal default" in
       // The nominal model's window would arm compaction several
       // iterations in; the model this turn actually routes to has ample
       // headroom, so nothing should be folded and every result stays.
@@ -264,9 +282,8 @@ class IntraTurnResultAccumulationSpec extends AsyncWordSpec with AsyncTaskSpec w
           result.renderedLengths.last should be > result.renderedLengths(escalationCall)
         }
       }
-    }
 
-    "accumulate every result on a turn where compaction never arms (control)" in {
+    "accumulate every result on a turn where compaction never arms (control)" in
       runTurn(roomyNominalId, "accum-control").map { result =>
         assertScenarioRan(result, "control turn")
         result.summaryConsults shouldBe 0
@@ -278,7 +295,6 @@ class IntraTurnResultAccumulationSpec extends AsyncWordSpec with AsyncTaskSpec w
           result.renderedLengths.last should be > result.renderedLengths(escalationCall)
         }
       }
-    }
   }
 
   "tear down" should {

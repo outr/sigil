@@ -8,8 +8,10 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextMemory, Conversation, ConversationView, MemorySource}
 import sigil.conversation.compression.StandardMemoryRetriever
-import sigil.conversation.compression.retrieval.{BudgetStage, FuseStage, MemoryReranker, MemoryRetrievalContext, MemoryRetrievalState,
-  RecallStage, RerankStage}
+import sigil.conversation.compression.retrieval.{
+  BudgetStage, FuseStage, MemoryReranker, MemoryRetrievalContext, MemoryRetrievalState,
+  RecallStage, RerankStage
+}
 import sigil.event.Event
 import sigil.vector.InMemoryVectorIndex
 
@@ -62,7 +64,9 @@ class MemoryRetrievalPipelineSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   "FuseStage" should {
     "break an exact RRF tie toward the fresher memory" in {
-      val stale = mem("stale fact", created = Timestamp(now.value - 30 * 24 * 60 * 60 * 1000L),
+      val stale = mem(
+        "stale fact",
+        created = Timestamp(now.value - 30 * 24 * 60 * 60 * 1000L),
         modified = Timestamp(now.value - 30 * 24 * 60 * 60 * 1000L))
       val fresh = mem("fresh fact")
       // Symmetric leg weights, each memory rank 1 in exactly one leg —
@@ -143,11 +147,10 @@ class MemoryRetrievalPipelineSpec extends AsyncWordSpec with AsyncTaskSpec with 
       }
     }
 
-    "handle empty legs gracefully" in {
+    "handle empty legs gracefully" in
       FuseStage().run(MemoryRetrievalState(), ctx()).map { fused =>
         fused.ranked should be(Vector.empty)
       }
-    }
 
     "let a low-confidence record lose to a high-confidence peer at identical ranks" in {
       val a = mem("alpha", confidence = 0.2)
@@ -169,9 +172,11 @@ class MemoryRetrievalPipelineSpec extends AsyncWordSpec with AsyncTaskSpec with 
     }
   }
 
-  /** Straight transcription of the weighted-RRF formula, independent of
-    * the stage's accumulation, so the stage is checked against the
-    * definition rather than against itself. */
+  /**
+   * Straight transcription of the weighted-RRF formula, independent of
+   * the stage's accumulation, so the stage is checked against the
+   * definition rather than against itself.
+   */
   private def referenceRrf(legs: List[(Vector[ContextMemory], Double)], k: Int): List[Id[ContextMemory]] = {
     val accum = scala.collection.mutable.LinkedHashMap.empty[Id[ContextMemory], Double]
     legs.foreach { case (ranking, legWeight) =>
@@ -179,7 +184,7 @@ class MemoryRetrievalPipelineSpec extends AsyncWordSpec with AsyncTaskSpec with 
         val contribution = m.confidence * legWeight / (k + idx + 1)
         accum.updateWith(m._id) {
           case Some(v) => Some(v + contribution)
-          case None    => Some(contribution)
+          case None => Some(contribution)
         }
       }
     }
@@ -200,11 +205,10 @@ class MemoryRetrievalPipelineSpec extends AsyncWordSpec with AsyncTaskSpec with 
       }
     }
 
-    "pass through unchanged when no reranker is configured" in {
+    "pass through unchanged when no reranker is configured" in
       RerankStage(None).run(state, ctx()).map { out =>
         out.ranked.map(_.fact) should be(Vector("first", "second", "third"))
       }
-    }
 
     "keep the fused order when the reranker fails" in {
       val failing = new MemoryReranker {
@@ -322,8 +326,8 @@ class MemoryRetrievalPipelineSpec extends AsyncWordSpec with AsyncTaskSpec with 
         TestSigil.flushMemoryAccesses.flatMap { _ =>
           TestSigil.withDB(_.memories.transaction(_.get(stored._id))).flatMap {
             case Some(m) if m.accessCount > 0 => Task.pure(m.accessCount)
-            case _ if remaining <= 0          => Task.pure(0)
-            case _                            => Task.sleep(100.millis).flatMap(_ => awaitBump(remaining - 1))
+            case _ if remaining <= 0 => Task.pure(0)
+            case _ => Task.sleep(100.millis).flatMap(_ => awaitBump(remaining - 1))
           }
         }
 

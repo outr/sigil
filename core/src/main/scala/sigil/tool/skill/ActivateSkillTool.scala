@@ -5,7 +5,9 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.conversation.{ActiveSkillSlot, SkillSource}
 import sigil.skill.Skill
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 /**
  * Loads a [[sigil.skill.Skill]] into the agent's
@@ -29,7 +31,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToo
  * silently.
  */
 case object ActivateSkillTool extends Tool {
-  type Input  = ActivateSkillInput
+  type Input = ActivateSkillInput
   type Output = TextToolOutput
   val io: ToolIO[ActivateSkillInput, TextToolOutput] = ToolIO.derived[ActivateSkillInput, TextToolOutput]
 

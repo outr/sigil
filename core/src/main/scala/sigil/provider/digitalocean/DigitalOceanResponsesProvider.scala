@@ -17,18 +17,17 @@ import spice.net.*
  * default. Use this opt-in factory when the app wants Responses-API
  * features (response-id chaining, `reasoning.summary`, web/file/code
  * built-in tools where DO surfaces them) against DO-hosted models.
- *
  */
 object DigitalOceanResponsesProvider {
   def create(sigil: Sigil,
              apiKey: String,
              baseUrl: URL = url"https://inference.do-ai.run"): Task[OpenAIProvider] =
     Task.pure(OpenAIProvider(
-      apiKey                      = apiKey,
-      sigilRef                    = sigil,
-      baseUrl                     = baseUrl,
-      providerType                = ProviderType.DigitalOcean,
-      providerNamespace           = DigitalOcean.Provider,
+      apiKey = apiKey,
+      sigilRef = sigil,
+      baseUrl = baseUrl,
+      providerType = ProviderType.DigitalOcean,
+      providerNamespace = DigitalOcean.Provider,
       // Historically DO's Responses surface rejected
       // `tool_choice: "required"` with HTTP 424 "unexpected EOF".
       // Recent (2026-05) probes against kimi-k2.5 + 6 tools show

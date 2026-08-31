@@ -5,11 +5,15 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
 case class RegisterTriggerInput(workflowId: String,
-                                trigger: WorkflowTrigger) extends ToolInput derives RW
+                                trigger: WorkflowTrigger)
+  extends ToolInput derives RW
 
 /**
  * Append a [[WorkflowTrigger]] to a persisted template's
@@ -21,7 +25,7 @@ case class RegisterTriggerInput(workflowId: String,
  * baseline four.
  */
 final class RegisterTriggerTool extends Tool with WorkflowToolSupport {
-  type Input  = RegisterTriggerInput
+  type Input = RegisterTriggerInput
   type Output = TextToolOutput
   // `trigger` is a rich union whose variants require payload fields —
   // ordinarily the ergonomics lint rejects that shape, but the trigger

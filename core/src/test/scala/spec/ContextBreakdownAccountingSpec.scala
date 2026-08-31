@@ -7,8 +7,10 @@ import sigil.TurnContext
 import sigil.conversation.{ContextFrame, Conversation, TurnInput}
 import sigil.diagnostics.{ProfileSection, RequestProfiler}
 import sigil.event.Event
-import sigil.provider.{ContextFeatures, ConversationMode, ConversationRequest, GenerationSettings, Instructions,
-  ResolvedReferences, SectionContext}
+import sigil.provider.{
+  ContextFeatures, ConversationMode, ConversationRequest, GenerationSettings, Instructions,
+  ResolvedReferences, SectionContext
+}
 import sigil.tokenize.HeuristicTokenizer
 import sigil.tool.ToolContext
 import sigil.tool.context.{ContextBreakdownInput, ContextBreakdownTool}
@@ -55,9 +57,11 @@ class ContextBreakdownAccountingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     ToolContext(turnCtx, Event.id(), ContextBreakdownTool.name)
   }
 
-  /** The profile the framework itself would compute for this turn. The
-    * turn references no memories or summaries, so the resolved set is
-    * empty by construction. */
+  /**
+   * The profile the framework itself would compute for this turn. The
+   * turn references no memories or summaries, so the resolved set is
+   * empty by construction.
+   */
   private def referenceProfile: Task[sigil.diagnostics.RequestProfile] = {
     val resolved = ResolvedReferences(Vector.empty, Vector.empty, Vector.empty)
     val request = ConversationRequest(
@@ -71,7 +75,10 @@ class ContextBreakdownAccountingSpec extends AsyncWordSpec with AsyncTaskSpec wi
       generationSettings = GenerationSettings(),
       chain = List(TestUser, TestAgent)
     )
-    val base = SectionContext(request, resolved, TestSigil.discoveredCapabilitiesPromptCap,
+    val base = SectionContext(
+      request,
+      resolved,
+      TestSigil.discoveredCapabilitiesPromptCap,
       promptShape = TestSigil.modelProfileFor(TestSigil.defaultTestModel).promptShape)
     ContextFeatures.evaluate(TestSigil.enabledContextFeatures, base).map { ctx =>
       RequestProfiler.profile(ctx, HeuristicTokenizer, TestSigil, TestSigil.resolvedContextSections)
@@ -83,7 +90,7 @@ class ContextBreakdownAccountingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     "report the profiler's total for the turn" in {
       for {
         expected <- referenceProfile
-        out      <- ContextBreakdownTool.invoke(ContextBreakdownInput(), toolContext)
+        out <- ContextBreakdownTool.invoke(ContextBreakdownInput(), toolContext)
       } yield {
         out.totalTokens shouldBe expected.total
         out.totalTokens should be > 0
@@ -93,18 +100,15 @@ class ContextBreakdownAccountingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     "report the profiler's per-section numbers, section for section" in {
       for {
         expected <- referenceProfile
-        out      <- ContextBreakdownTool.invoke(ContextBreakdownInput(), toolContext)
-      } yield {
-        out.sections.map(s => s.section -> s.tokens).toMap shouldBe expected.sections
-      }
+        out <- ContextBreakdownTool.invoke(ContextBreakdownInput(), toolContext)
+      } yield out.sections.map(s => s.section -> s.tokens).toMap shouldBe expected.sections
     }
 
-    "count the conversation's frames and name the current mode" in {
+    "count the conversation's frames and name the current mode" in
       ContextBreakdownTool.invoke(ContextBreakdownInput(), toolContext).map { out =>
         out.currentMode shouldBe ConversationMode.name
         out.sections.find(_.section == ProfileSection.Frames).map(_.count) shouldBe Some(frames.size)
       }
-    }
   }
 
   "tear down" should {

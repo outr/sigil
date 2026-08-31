@@ -32,37 +32,38 @@ class RespondOptionsSelectionFramingSpec extends AsyncWordSpec with AsyncTaskSpe
 
   private def upsertConv(): Task[Conversation] = {
     val convId = Conversation.id(s"options-frame-${rapid.Unique()}")
-    val topic  = TestTopicEntry.copy(id = sigil.conversation.Topic.id(s"topic-$convId"))
-    val conv   = Conversation(_id = convId, topics = List(topic))
+    val topic = TestTopicEntry.copy(id = sigil.conversation.Topic.id(s"topic-$convId"))
+    val conv = Conversation(_id = convId, topics = List(topic))
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
   }
 
-  /** Publish an agent Message containing a `respond_options` block, then
-    * a user Message with `userText`. Returns the persisted user
-    * message so the test can inspect its `content` after the
-    * transform ran. */
-  private def driveOptionsThenReply(opts: ResponseContent, userText: String): Task[Message] = {
+  /**
+   * Publish an agent Message containing a `respond_options` block, then
+   * a user Message with `userText`. Returns the persisted user
+   * message so the test can inspect its `content` after the
+   * transform ran.
+   */
+  private def driveOptionsThenReply(opts: ResponseContent, userText: String): Task[Message] =
     for {
       conv <- upsertConv()
       agentMsg = Message(
-        participantId  = TestAgent,
+        participantId = TestAgent,
         conversationId = conv._id,
-        topicId        = conv.currentTopicId,
-        content        = Vector(opts),
-        state          = EventState.Complete
+        topicId = conv.currentTopicId,
+        content = Vector(opts),
+        state = EventState.Complete
       )
       _ <- TestSigil.publish(agentMsg)
       userMsg = Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = conv._id,
-        topicId        = conv.currentTopicId,
-        content        = Vector(ResponseContent.Text(userText)),
-        state          = EventState.Complete
+        topicId = conv.currentTopicId,
+        content = Vector(ResponseContent.Text(userText)),
+        state = EventState.Complete
       )
       _ <- TestSigil.publish(userMsg)
       stored <- TestSigil.withDB(_.events.transaction(_.get(userMsg._id)))
     } yield stored.collect { case m: Message => m }.getOrElse(fail(s"User message ${userMsg._id} disappeared"))
-  }
 
   private def textOf(m: Message): String =
     m.content.collect { case ResponseContent.Text(t) => t }.mkString("\n")
@@ -71,8 +72,8 @@ class RespondOptionsSelectionFramingSpec extends AsyncWordSpec with AsyncTaskSpe
 
     "rewrite a single-select reply to action framing" in {
       val opts = ResponseContent.Options(
-        prompt        = "What would you like to set up for this workspace?",
-        options       = List(
+        prompt = "What would you like to set up for this workspace?",
+        options = List(
           SelectOption("Start Metals (Scala LSP)", "start_metals", description = Some("Boot the Scala language server.")),
           SelectOption("Skip", "skip")
         ),
@@ -90,8 +91,8 @@ class RespondOptionsSelectionFramingSpec extends AsyncWordSpec with AsyncTaskSpe
 
     "populate Message.optionSelection so chat views can render selections distinctly (bug #73)" in {
       val opts = ResponseContent.Options(
-        prompt        = "What would you like to set up for this workspace?",
-        options       = List(
+        prompt = "What would you like to set up for this workspace?",
+        options = List(
           SelectOption("Start Metals (Scala LSP)", "start_metals", description = Some("Boot the Scala language server.")),
           SelectOption("Skip", "skip")
         ),
@@ -127,8 +128,8 @@ class RespondOptionsSelectionFramingSpec extends AsyncWordSpec with AsyncTaskSpe
 
     "leave optionSelection empty on a free-form reply that doesn't match any option" in {
       val opts = ResponseContent.Options(
-        prompt        = "Should I commit this change?",
-        options       = List(SelectOption("Yes", "yes"), SelectOption("No", "no")),
+        prompt = "Should I commit this change?",
+        options = List(SelectOption("Yes", "yes"), SelectOption("No", "no")),
         allowMultiple = false
       )
       driveOptionsThenReply(opts, "Actually, hold off — I want to review the diff first.").map { stored =>
@@ -158,8 +159,8 @@ class RespondOptionsSelectionFramingSpec extends AsyncWordSpec with AsyncTaskSpe
 
     "leave a non-matching free-form reply unchanged" in {
       val opts = ResponseContent.Options(
-        prompt        = "Should I commit this change?",
-        options       = List(SelectOption("Yes", "yes"), SelectOption("No", "no")),
+        prompt = "Should I commit this change?",
+        options = List(SelectOption("Yes", "yes"), SelectOption("No", "no")),
         allowMultiple = false
       )
       driveOptionsThenReply(opts, "Actually, hold off — I want to review the diff first.").map { stored =>

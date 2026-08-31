@@ -41,7 +41,7 @@ import scala.concurrent.duration.*
  */
 object MemoryArmsBench {
 
-  private final case class QuestionResult(question: ArmQuestion,
+  final private case class QuestionResult(question: ArmQuestion,
                                           reply: String,
                                           tokens: Long,
                                           searches: Int,
@@ -49,20 +49,23 @@ object MemoryArmsBench {
                                           hedged: Boolean,
                                           goldRetrieved: Boolean)
 
-  private final case class ArmResult(arm: MemoryArm, label: String, results: List[QuestionResult]) {
+  final private case class ArmResult(arm: MemoryArm, label: String, results: List[QuestionResult]) {
     private def answerable = results.filter(_.question.answerable)
     private def adversarial = results.filterNot(_.question.answerable)
     def accuracy: String = s"${answerable.count(_.correct)}/${answerable.size}"
-    /** recall@limit — did the gold fact reach the prompt at all? The
-      * metric the fusion weights move directly; answer accuracy sits
-      * downstream of it and adds the runtime model's variance. */
+
+    /**
+     * recall@limit — did the gold fact reach the prompt at all? The
+     * metric the fusion weights move directly; answer accuracy sits
+     * downstream of it and adds the runtime model's variance.
+     */
     def recall: String = s"${answerable.count(_.goldRetrieved)}/${answerable.size}"
     def hedgedRate: String = s"${adversarial.count(_.hedged)}/${adversarial.size}"
     def meanTokens: Long = if (results.isEmpty) 0L else results.map(_.tokens).sum / results.size
     def searchCalls: Int = results.map(_.searches).sum
   }
 
-  private final case class Weights(lexical: Double, vector: Double, keyword: Double) {
+  final private case class Weights(lexical: Double, vector: Double, keyword: Double) {
     def label: String = f"lex=$lexical%.1f/vec=$vector%.1f/kw=$keyword%.1f"
   }
 
@@ -72,7 +75,7 @@ object MemoryArmsBench {
     val reportPath = argValue(args, "--report")
     val arms: List[MemoryArm] = argValue(args, "--arms") match {
       case Some(csv) => csv.split(',').toList.map(_.trim.toLowerCase).flatMap(n =>
-        MemoryArm.values.find(_.toString.toLowerCase == n))
+          MemoryArm.values.find(_.toString.toLowerCase == n))
       case None => MemoryArm.values.toList
     }
     // `--lexical-weights 0,1,2,4` sweeps the lexical leg's RRF weight,
@@ -112,7 +115,8 @@ object MemoryArmsBench {
     host.instance.sync()
     println(s"\n=== MemoryArmsBench ===")
     println(s"host: $llamaHost  model: $modelName  vector: ${if (vectorWired) "embeddings + in-memory index" else "OFF (lexical-only)"}")
-    println(s"questions: ${questions.size} (${questions.count(_.answerable)} answerable + ${questions.count(!_.answerable)} adversarial)  arms: ${arms.mkString(", ")}\n")
+    println(
+      s"questions: ${questions.size} (${questions.count(_.answerable)} answerable + ${questions.count(!_.answerable)} adversarial)  arms: ${arms.mkString(", ")}\n")
 
     if (weightSweep.size > 1) println(s"weight sweep: ${weightSweep.map(_.label).mkString("  ")}\n")
 
@@ -130,7 +134,8 @@ object MemoryArmsBench {
     println("\n=== Final ===")
     println(table)
     reportPath.foreach { p =>
-      java.nio.file.Files.writeString(java.nio.file.Path.of(p),
+      java.nio.file.Files.writeString(
+        java.nio.file.Path.of(p),
         s"# MemoryArmsBench\n\nmodel: `$modelName`  vector: ${if (vectorWired) "on" else "off (lexical-only)"}\n\n$table\n")
       println(s"report written to $p")
     }
@@ -221,20 +226,23 @@ object MemoryArmsBench {
         case _ => q.question
       }
       val trace = harness.runConversation(
-        conversationFactory = id => Conversation(
-          topics = List(TopicEntry(id = Topic.id(s"arms-${arm.toString.toLowerCase}-${rapid.Unique()}"),
-            label = "Persona questions", summary = "")),
-          participants = List(agent),
-          space = space,
-          _id = id
-        ),
+        conversationFactory = id =>
+          Conversation(
+            topics = List(TopicEntry(
+              id = Topic.id(s"arms-${arm.toString.toLowerCase}-${rapid.Unique()}"),
+              label = "Persona questions",
+              summary = "")),
+            participants = List(agent),
+            space = space,
+            _id = id
+          ),
         userMessages = List(text),
         perTurnTimeout = 180.seconds
       ).sync()
       val result = score(q, trace, host.lastInjected)
       if (verbose) {
         val flag = if (q.answerable) { if (result.correct) "OK  " else "MISS" }
-                   else { if (result.hedged) "HEDGE" else "ASSERT" }
+        else { if (result.hedged) "HEDGE" else "ASSERT" }
         val ret = if (!q.answerable) "" else if (result.goldRetrieved) " [gold retrieved]" else " [gold MISSING]"
         println(s"  [$arm] $flag$ret ${q.question} -> ${result.reply.replaceAll("\\s+", " ").take(110)}")
       }

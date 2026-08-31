@@ -57,7 +57,7 @@ case class BenchJudge(modelId: Id[Model]) {
         generationSettings = JudgeVerdictTool.consultSettings
       ).map {
         case Some(v) => JudgeResult(correct = v.correct, reasoning = v.reasoning.trim, judgeFailed = false)
-        case None    => JudgeResult(correct = false, reasoning = "judge returned no verdict", judgeFailed = true)
+        case None => JudgeResult(correct = false, reasoning = "judge returned no verdict", judgeFailed = true)
       }.handleError { e =>
         Task.pure(JudgeResult(correct = false, reasoning = s"judge error: ${e.getMessage}", judgeFailed = true))
       }
@@ -81,7 +81,9 @@ object BenchJudge {
       |carries the right answer.""".stripMargin
 }
 
-/** One judgment. `judgeFailed` distinguishes "the judge said no" from
-  * "the judge did not answer" — the second is a harness problem and is
-  * reported separately so it can't masquerade as a model result. */
+/**
+ * One judgment. `judgeFailed` distinguishes "the judge said no" from
+ * "the judge did not answer" — the second is a harness problem and is
+ * reported separately so it can't masquerade as a model result.
+ */
 case class JudgeResult(correct: Boolean, reasoning: String, judgeFailed: Boolean)

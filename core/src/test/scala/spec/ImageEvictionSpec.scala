@@ -29,13 +29,13 @@ class ImageEvictionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     else
       ToolCallState.Complete(content = "ok", images = Nil)
     ContextFrame.ToolCall(
-      toolName       = ToolName.parse(name).fold(sys.error, identity),
-      argsJson       = "{}",
-      callId         = callId,
-      participantId  = TestAgent,
-      sourceEventId  = callId,
-      visibility     = MessageVisibility.All,
-      state          = state
+      toolName = ToolName.parse(name).fold(sys.error, identity),
+      argsJson = "{}",
+      callId = callId,
+      participantId = TestAgent,
+      sourceEventId = callId,
+      visibility = MessageVisibility.All,
+      state = state
     )
   }
 
@@ -46,9 +46,9 @@ class ImageEvictionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "drop the oldest N image pixels while preserving their captions" in Task {
       val frames: Vector[ContextFrame] = Vector(
-        toolCallFrame("preview_theme", withImage = true),  // oldest — evicted
-        toolCallFrame("preview_theme", withImage = true),  // kept
-        toolCallFrame("preview_theme", withImage = true)   // kept
+        toolCallFrame("preview_theme", withImage = true), // oldest — evicted
+        toolCallFrame("preview_theme", withImage = true), // kept
+        toolCallFrame("preview_theme", withImage = true) // kept
       )
       val result = StandardContextCurator.evictOldestImages(frames, evictCount = 1)
       result.size shouldBe 3
@@ -75,9 +75,9 @@ class ImageEvictionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "leave non-image ToolCall frames untouched" in Task {
       val frames: Vector[ContextFrame] = Vector(
-        toolCallFrame("preview_theme", withImage = true),     // oldest image — evicted
-        toolCallFrame("read_theme_file", withImage = false),  // no image — untouched
-        toolCallFrame("preview_theme", withImage = true)      // kept
+        toolCallFrame("preview_theme", withImage = true), // oldest image — evicted
+        toolCallFrame("read_theme_file", withImage = false), // no image — untouched
+        toolCallFrame("preview_theme", withImage = true) // kept
       )
       val result = StandardContextCurator.evictOldestImages(frames, evictCount = 1)
       // Non-image frame untouched.

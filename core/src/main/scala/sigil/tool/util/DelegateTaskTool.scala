@@ -10,14 +10,20 @@ import sigil.participant.{AgentParticipant, DefaultAgentParticipant, WorkerParti
 import sigil.provider.ToolPolicy
 import sigil.signal.EventState
 import sigil.tool.model.{DelegateTaskInput, ResponseContent}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, RefusalPayload, Resolution, Tool, ToolContext, ToolExample, ToolIO, ToolName, ToolOutput, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, RefusalPayload, Resolution, Tool, ToolContext, ToolExample, ToolIO, ToolName, ToolOutput,
+  ToolProfile, ToolResult, ToolSpec
+}
 
-/** Typed result of [[DelegateTaskTool]] — the handle the caller uses to
-  * track / drill into the spawned worker. `taskId` is the worker agent's
-  * participant id; `workerConvId` is the sub-conversation it runs in. */
+/**
+ * Typed result of [[DelegateTaskTool]] — the handle the caller uses to
+ * track / drill into the spawned worker. `taskId` is the worker agent's
+ * participant id; `workerConvId` is the sub-conversation it runs in.
+ */
 case class DelegateTaskOutput(taskId: String,
                               workerConvId: String,
-                              role: String) extends ToolOutput derives RW
+                              role: String)
+  extends ToolOutput derives RW
 
 /**
  * `delegate_task` — spawn a worker as a *real agent in a sub-conversation*
@@ -48,7 +54,7 @@ case class DelegateTaskOutput(taskId: String,
  * workspace via `parentConversationId` (sigil #325).
  */
 case object DelegateTaskTool extends Tool {
-  type Input  = DelegateTaskInput
+  type Input = DelegateTaskInput
   type Output = DelegateTaskOutput
   val io: ToolIO[DelegateTaskInput, DelegateTaskOutput] = ToolIO.derived[DelegateTaskInput, DelegateTaskOutput].withExamples(
     ToolExample(
@@ -125,28 +131,28 @@ case object DelegateTaskTool extends Tool {
   private def spawnWorker(input: DelegateTaskInput,
                           ctx: ToolContext,
                           supervisor: AgentParticipant): Task[ToolResult[DelegateTaskOutput]] = {
-    val host         = ctx.sigil
+    val host = ctx.sigil
     val parentConvId = ctx.conversation.id
     // Build the worker's Role from the flat input (sigil #346) — the
     // brief doubles as the identity statement when no override is given.
-    val role         = sigil.role.Role(name = input.role, description = input.roleDescription.getOrElse(input.brief))
-    val workerLabel  = s"Worker: ${role.name}"
+    val role = sigil.role.Role(name = input.role, description = input.roleDescription.getOrElse(input.brief))
+    val workerLabel = s"Worker: ${role.name}"
 
     val resolvedModelTask: Task[LId[Model]] = input.modelId match {
       case Some(explicit) =>
         Task.pure(host.cache.findTolerant(LId[Model](explicit.toLowerCase)).map(_._id).getOrElse(LId[Model](explicit)))
       case None =>
         host.routedModelFor(
-          workType   = role.workType,
-          chain      = ctx.chain,
-          fallback   = ctx.modelId,
+          workType = role.workType,
+          chain = ctx.chain,
+          fallback = ctx.modelId,
           complexity = input.complexity
         )
     }
 
-    val workerId   = WorkerParticipantId(s"${role.name}-${rapid.Unique()}")
+    val workerId = WorkerParticipantId(s"${role.name}-${rapid.Unique()}")
     val workerTools = input.toolNames.map(ToolName.internal)
-    val brief       = composeBrief(input)
+    val brief = composeBrief(input)
     // #355 — the worker inherits the spawning conversation's mode by default
     // (a coding supervisor yields a coding worker, with its skill/roster), and
     // an explicit `mode` name overrides. An unknown/blank name falls back to
@@ -158,12 +164,12 @@ case object DelegateTaskTool extends Tool {
     for {
       resolvedModel <- resolvedModelTask
       workerAgent = DefaultAgentParticipant(
-        id        = workerId,
-        modelId   = resolvedModel,
+        id = workerId,
+        modelId = resolvedModel,
         toolNames = workerTools,
-        tools     = ToolPolicy.Standard,
-        workType  = role.workType,
-        roles     = List(role)
+        tools = ToolPolicy.Standard,
+        workType = role.workType,
+        roles = List(role)
       )
       // The sub-conversation: supervisor (the delegating agent) + worker,
       // linked to the parent so the worker inherits its workspace (#325)
@@ -178,52 +184,54 @@ case object DelegateTaskTool extends Tool {
       // each turn re-classifies thereafter; `pinnedComplexity` stays the
       // home for `request_escalation`'s earned, sticky bump only.
       workerConv <- host.newConversation(
-        createdBy            = ctx.caller,
-        label                = workerLabel,
-        summary              = input.goal.getOrElse(brief).take(80),
-        participants         = List(supervisor, workerAgent),
-        currentMode          = workerMode,
+        createdBy = ctx.caller,
+        label = workerLabel,
+        summary = input.goal.getOrElse(brief).take(80),
+        participants = List(supervisor, workerAgent),
+        currentMode = workerMode,
         parentConversationId = Some(parentConvId)
       )
       // Activate the supervisor bridge guidance on the caller's projection
       // in the worker conversation (renders only while it acts there).
       _ <- host.activateSkill(
         conversationId = workerConv._id,
-        participantId  = ctx.caller,
-        source         = SkillSource.Supervisor,
-        slot           = WorkerSupervisorSkill.slot(brief, parentConvId, role.name)
+        participantId = ctx.caller,
+        source = SkillSource.Supervisor,
+        slot = WorkerSupervisorSkill.slot(brief, parentConvId, role.name)
       )
       // Sigil #348 — symmetric doer framing on the WORKER's own projection:
       // it is the delegated agent for this brief, must carry it out itself
       // and report back, and must not re-delegate its whole assignment.
       _ <- host.activateSkill(
         conversationId = workerConv._id,
-        participantId  = workerId,
-        source         = SkillSource.Worker,
-        slot           = WorkerSelfSkill.slot(brief, role.name)
+        participantId = workerId,
+        source = SkillSource.Worker,
+        slot = WorkerSelfSkill.slot(brief, role.name)
       )
       // Post the brief addressed to the worker → fires its first turn.
       // From the supervisor's own id, so it doesn't wake the supervisor.
       _ <- host.publish(Message(
-        participantId  = ctx.caller,
+        participantId = ctx.caller,
         conversationId = workerConv._id,
-        topicId        = workerConv.currentTopicId,
-        content        = Vector(ResponseContent.Text(brief)),
-        state          = EventState.Complete,
-        role           = MessageRole.Standard,
-        addressees     = Some(Set(workerId))
+        topicId = workerConv.currentTopicId,
+        content = Vector(ResponseContent.Text(brief)),
+        state = EventState.Complete,
+        role = MessageRole.Standard,
+        addressees = Some(Set(workerId))
       ))
     } yield ToolResult.Success(DelegateTaskOutput(
-      taskId       = workerId.value,
+      taskId = workerId.value,
       workerConvId = workerConv._id.value,
-      role         = role.name
+      role = role.name
     ))
   }
 
-  /** Build the actionable refusal returned when `input.modelId` is set to
-    * an id the host doesn't know about. Visible for testing; tools with
-    * the same `modelId` validation shape call this so the format stays
-    * consistent. */
+  /**
+   * Build the actionable refusal returned when `input.modelId` is set to
+   * an id the host doesn't know about. Visible for testing; tools with
+   * the same `modelId` validation shape call this so the format stays
+   * consistent.
+   */
   private[util] def unknownModelRefusal(supplied: String, ctx: ToolContext): ToolResult.Failure = {
     val registered = ctx.sigil.cache.all
     val sample = registered.iterator.map(_._id.value).toList.sorted.take(20)
@@ -244,11 +252,13 @@ case object DelegateTaskTool extends Tool {
     )
   }
 
-  /** Prepend the goal to the worker's brief when set — the worker sees
-    * both the high-level intent and the detailed directive. */
+  /**
+   * Prepend the goal to the worker's brief when set — the worker sees
+   * both the high-level intent and the detailed directive.
+   */
   private def composeBrief(input: DelegateTaskInput): String =
     input.goal match {
       case Some(g) if g.nonEmpty => s"Goal: $g\n\n${input.brief}"
-      case _                     => input.brief
+      case _ => input.brief
     }
 }

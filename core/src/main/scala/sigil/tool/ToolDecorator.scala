@@ -23,11 +23,13 @@ import sigil.provider.Mode
  */
 trait ToolDecorator extends Tool {
 
-  /** The decorated tool — the single source every surface forwards
-    * from. Supply as a constructor parameter (`class MyDecorator(val
-    * underlying: Tool, …) extends ToolDecorator`). [[spec]] is `lazy`
-    * so a subclass that initializes `underlying` in its own body
-    * (rather than as a parameter) still reads a constructed value. */
+  /**
+   * The decorated tool — the single source every surface forwards
+   * from. Supply as a constructor parameter (`class MyDecorator(val
+   * underlying: Tool, …) extends ToolDecorator`). [[spec]] is `lazy`
+   * so a subclass that initializes `underlying` in its own body
+   * (rather than as a parameter) still reads a constructed value.
+   */
   val underlying: Tool
 
   type Input = underlying.Input

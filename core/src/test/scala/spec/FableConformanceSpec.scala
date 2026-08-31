@@ -43,8 +43,16 @@ class FableConformanceSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   // carries that case.
   TestSigil.cache.merge(List(TestSigil.testModel(modelId).copy(
     supportedParameters = Set(
-      "include_reasoning", "max_completion_tokens", "max_tokens", "reasoning",
-      "response_format", "stop", "structured_outputs", "tool_choice", "tools", "verbosity"
+      "include_reasoning",
+      "max_completion_tokens",
+      "max_tokens",
+      "reasoning",
+      "response_format",
+      "stop",
+      "structured_outputs",
+      "tool_choice",
+      "tools",
+      "verbosity"
     )
   ))).sync()
 
@@ -55,10 +63,10 @@ class FableConformanceSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       // The two things Fable/Mythos reject ride this turn: a sampling param
       // here, and the forced tool_choice the framework defaults to.
       generationSettings = GenerationSettings(temperature = Some(0.7), maxOutputTokens = Some(256))
@@ -67,20 +75,20 @@ class FableConformanceSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   "Claude Fable 5 conformance (sigil #387 + #390)" should {
     "complete a real agent turn despite default forced tool_choice + temperature" in {
       val convId = Conversation.id(s"fable-conformance-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       TestSigil.setProvider(AnthropicProvider.create(TestSigil, AnthropicLiveSupport.apiKey.getOrElse("")))
       for {
-        _    <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _    <- TestSigil.publish(Message(
-                  participantId  = TestUser,
-                  conversationId = convId,
-                  topicId        = TestTopicEntry.id,
-                  content        = Vector(ResponseContent.Text("Say hello in one short sentence.")),
-                  state          = EventState.Complete
-                ))
-        _    <- TestSigil.awaitSettled(convId)
-        evs  <- TestSigil.withDB(_.events.transaction(_.list)).map(_.filter(_.conversationId == convId))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Say hello in one short sentence.")),
+          state = EventState.Complete
+        ))
+        _ <- TestSigil.awaitSettled(convId)
+        evs <- TestSigil.withDB(_.events.transaction(_.list)).map(_.filter(_.conversationId == convId))
       } yield {
         // The conformance signal: NO Failure bubble. A propagated 400
         // (forced tool_choice or deprecated temperature) would surface as a

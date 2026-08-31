@@ -25,4 +25,5 @@ import sigil.conversation.Conversation
  */
 case class RequestConversationHistory(conversationId: Id[Conversation],
                                       beforeMs: Long,
-                                      limit: Int = 100) extends ConversationNotice derives RW
+                                      limit: Int = 100)
+  extends ConversationNotice derives RW

@@ -2,7 +2,9 @@ package sigil.tool.consult
 
 import rapid.Task
 import sigil.provider.{GenerationSettings, OutputTokenCap, ReasoningMode, SummarizationWork, WorkType}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 /**
  * Internal consult invoked by
@@ -12,7 +14,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput,
  * IS the distillation payload.
  */
 case object DistillMemoryTool extends Tool with FrameworkConsult {
-  type Input  = DistillMemoryInput
+  type Input = DistillMemoryInput
   type Output = TextToolOutput
   val io: ToolIO[DistillMemoryInput, TextToolOutput] = ToolIO.derived[DistillMemoryInput, TextToolOutput]
 
@@ -39,14 +41,18 @@ case object DistillMemoryTool extends Tool with FrameworkConsult {
 
   override def consultWorkType: WorkType = SummarizationWork
 
-  /** A one-line summary plus an optional passage-sized rewrite. */
+  /**
+   * A one-line summary plus an optional passage-sized rewrite.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(1024),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invoke]]. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invoke]].
+   */
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit { (_, _: ToolContext) =>
     Task.pure(ToolResult.success(TextToolOutput("")))
   }

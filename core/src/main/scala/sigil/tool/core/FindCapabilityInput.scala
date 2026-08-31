@@ -4,13 +4,13 @@ import fabric.rw.*
 import sigil.tool.ToolInput
 
 /**
-   * Input for [[FindCapabilityTool]]. `keywords` is a free-form string
-   * describing the desired capability. The tool normalises it
-   * (lowercase, drop punctuation, collapse whitespace) before handing
-   * it to the app's [[sigil.Sigil.findTools]], so the model can pass
-   * snake_case identifiers, camelCase phrases, or mixed-case prose
-   * without rejection.
-   */
+ * Input for [[FindCapabilityTool]]. `keywords` is a free-form string
+ * describing the desired capability. The tool normalises it
+ * (lowercase, drop punctuation, collapse whitespace) before handing
+ * it to the app's [[sigil.Sigil.findTools]], so the model can pass
+ * snake_case identifiers, camelCase phrases, or mixed-case prose
+ * without rejection.
+ */
 case class FindCapabilityInput(
   @description("Words describing the desired capability. Prefer multiple terms for better match quality — 'send slack channel message' rather than just 'slack'. Snake_case / camelCase identifiers are accepted; the tool lowercases and splits on non-alphanumeric runs before matching.")
   keywords: String

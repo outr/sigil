@@ -46,23 +46,30 @@ class ReadFileEditAnchorSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   }
 
   private def typedRead(signals: List[Signal]): ReadFileOutput =
-    signals.collectFirst { case d: ToolDelta if d.output.exists(_.isInstanceOf[ReadFileOutput]) =>
-      d.output.get.asInstanceOf[ReadFileOutput]
+    signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_.isInstanceOf[ReadFileOutput]) =>
+        d.output.get.asInstanceOf[ReadFileOutput]
     }.getOrElse(fail("no ReadFileOutput in read signals"))
 
-  /** The exact text the model reads for the read — the settled ToolInvoke's
-    * projected frame content, not the typed field. */
+  /**
+   * The exact text the model reads for the read — the settled ToolInvoke's
+   * projected frame content, not the typed field.
+   */
   private def modelFacingRender(out: ReadFileOutput): String = {
     val invoke = ToolInvoke(
-      toolName = ToolName("read_file"), participantId = TestAgent,
-      conversationId = Conversation.id("x"), topicId = Id[Topic]("t"),
-      output = out, outcome = ToolOutcome.Success, state = EventState.Complete
+      toolName = ToolName("read_file"),
+      participantId = TestAgent,
+      conversationId = Conversation.id("x"),
+      topicId = Id[Topic]("t"),
+      output = out,
+      outcome = ToolOutcome.Success,
+      state = EventState.Complete
     )
     FrameBuilder.computeFrame(invoke).collect {
       case tc: ContextFrame.ToolCall => tc.state match {
-        case ToolCallState.Complete(c, _) => c
-        case _                            => fail("read_file frame not Complete")
-      }
+          case ToolCallState.Complete(c, _) => c
+          case _ => fail("read_file frame not Complete")
+        }
     }.getOrElse(fail("no frame for read_file invoke"))
   }
 
@@ -71,19 +78,21 @@ class ReadFileEditAnchorSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       // A line with BOTH a double-quote and a slash — the class that broke.
       val fileBody = "package x\nval path = \"/home/u/project/x.scala\"\nval y = 2\n"
       for {
-        _    <- new WriteFileTool(fs).execute(WriteFileInput("Main.scala", fileBody), tc, Event.id()).toList
+        _ <- new WriteFileTool(fs).execute(WriteFileInput("Main.scala", fileBody), tc, Event.id()).toList
         read <- new ReadFileTool(fs).execute(ReadFileInput("Main.scala"), tc, Event.id()).toList
-        out   = typedRead(read)
+        out = typedRead(read)
         rendered = modelFacingRender(out)
         // Copy the anchor line verbatim from what the model saw.
         anchor = rendered.linesIterator.find(_.contains("val path")).getOrElse(fail(s"no val-path line in:\n$rendered"))
         edit <- new EditFileTool(fs).execute(
-                  EditFileInput(path = "Main.scala", oldString = anchor, newString = "val path = \"/tmp/moved.scala\""),
-                  tc, Event.id()
-                ).toList
+          EditFileInput(path = "Main.scala", oldString = anchor, newString = "val path = \"/tmp/moved.scala\""),
+          tc,
+          Event.id()
+        ).toList
       } yield {
-        val editOut = edit.collectFirst { case d: ToolDelta if d.output.exists(_.isInstanceOf[EditFileOutput]) =>
-          d.output.get.asInstanceOf[EditFileOutput]
+        val editOut = edit.collectFirst {
+          case d: ToolDelta if d.output.exists(_.isInstanceOf[EditFileOutput]) =>
+            d.output.get.asInstanceOf[EditFileOutput]
         }.getOrElse(fail(s"no EditFileOutput; signals: ${edit.map(_.getClass.getSimpleName)}"))
         withClue(s"anchor copied from render = [$anchor]\nrendered:\n$rendered\n") {
           // Pre-fix: anchor carried \" and \/ → no match → a Failure, not Success.

@@ -11,20 +11,28 @@ package sigil.provider
  */
 case class FeatureBody(body: SectionBody, placement: Option[Placement] = None) {
 
-  /** This body, pinned to `placement` regardless of the feature's default. */
+  /**
+   * This body, pinned to `placement` regardless of the feature's default.
+   */
   def at(placement: Placement): FeatureBody = copy(placement = Some(placement))
 
-  /** The placement this body renders at, given its feature's default. */
+  /**
+   * The placement this body renders at, given its feature's default.
+   */
   def placementIn(feature: ContextFeature): Placement = placement.getOrElse(feature.placement)
 }
 
 object FeatureBody {
 
-  /** Prose, rendered as one unit and never budget-trimmed. */
+  /**
+   * Prose, rendered as one unit and never budget-trimmed.
+   */
   def prose(text: String): FeatureBody = FeatureBody(SectionBody.Blob(text))
 
-  /** A header over independently droppable lines — the shape a feature
-    * budget can actually trim. */
+  /**
+   * A header over independently droppable lines — the shape a feature
+   * budget can actually trim.
+   */
   def entries(header: String, lines: List[String], footer: String = ""): FeatureBody =
     FeatureBody(SectionBody.Entries(header, lines, footer))
 }

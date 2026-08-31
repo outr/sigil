@@ -35,9 +35,11 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider that emits a streaming `respond` call: ToolCallStart,
-    * ContentBlockStart, ContentBlockDelta(text), ToolCallComplete,
-    * Done. Mirrors the live OpenAI Responses API shape. */
+  /**
+   * Provider that emits a streaming `respond` call: ToolCallStart,
+   * ContentBlockStart, ContentBlockDelta(text), ToolCallComplete,
+   * Done. Mirrors the live OpenAI Responses API shape.
+   */
   private class StreamingRespondProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -50,15 +52,21 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
         ProviderEvent.ContentBlockStart(callId, "Text", arg = None),
         ProviderEvent.ContentBlockDelta(callId, "Hello, world."),
-        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Greeting", topicSummary = "A friendly hello", content = "Hello, world.", endsTurn = true)),
+        ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
+          topicLabel = "Greeting",
+          topicSummary = "A friendly hello",
+          content = "Hello, world.",
+          endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
   }
 
-  /** Atomic `no_response` — agent decides not to speak. Same
-    * suppression rule applies: no ToolInvoke / ToolDelta on the
-    * wire. */
+  /**
+   * Atomic `no_response` — agent decides not to speak. Same
+   * suppression rule applies: no ToolInvoke / ToolDelta on the
+   * wire.
+   */
   private class AtomicNoResponseProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -80,25 +88,25 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val viewConvId = convId
     val request = ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = viewConvId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = viewConvId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector(RespondTool, NoResponseTool)
+      chain = List(TestUser, TestAgent),
+      tools = Vector(RespondTool, NoResponseTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator (bug #56)" should {
-    "flag the streaming respond call's ToolInvoke and settle ToolDelta as internal" in {
+    "flag the streaming respond call's ToolInvoke and settle ToolDelta as internal" in
       runWith(new StreamingRespondProvider, suffix = "respond").map { signals =>
         val invokes = signals.collect { case t: ToolInvoke => t }
         invokes should have size 1
@@ -123,9 +131,8 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
         settles should have size 1
         settles.head.target shouldBe messages.head._id
       }
-    }
 
-    "flag the atomic no_response call's ToolInvoke and ToolDelta as internal" in {
+    "flag the atomic no_response call's ToolInvoke and ToolDelta as internal" in
       runWith(new AtomicNoResponseProvider, suffix = "noresp").map { signals =>
         val invokes = signals.collect { case t: ToolInvoke => t }
         invokes should have size 1
@@ -134,20 +141,20 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
         val deltas = signals.collect { case d: ToolDelta => d }
         all(deltas.map(_.internal)) shouldBe true
       }
-    }
 
-    "leave non-respond-family tool calls' internal flag false (default)" in {
+    "leave non-respond-family tool calls' internal flag false (default)" in
       runWith(new FindCapabilityProvider, suffix = "fc").map { signals =>
         val invokes = signals.collect { case t: ToolInvoke => t }
         invokes should have size 1
         invokes.head.internal shouldBe false
       }
-    }
   }
 
-  /** Sanity that the flag isn't getting set for everything — only
-    * the framework's terminal speech tools should be marked.
-    * Outer-class so the type isn't path-dependent. */
+  /**
+   * Sanity that the flag isn't getting set for everything — only
+   * the framework's terminal speech tools should be marked.
+   * Outer-class so the type isn't path-dependent.
+   */
   private class FindCapabilityProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil

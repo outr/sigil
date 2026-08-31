@@ -26,23 +26,31 @@ import scala.util.matching.Regex
  */
 object DestructiveWriteGuard {
 
-  /** Whole-content tool-call / pagination placeholder, e.g.
-    * `[read_file: offset=152 limit=200]` or `[… to read more …]`. */
+  /**
+   * Whole-content tool-call / pagination placeholder, e.g.
+   * `[read_file: offset=152 limit=200]` or `[… to read more …]`.
+   */
   private val BracketPlaceholder: Regex =
     """(?i)^\[[^\]]*(read_file|write_file|read more|offset=\s*\d+\s*,?\s*limit=\s*\d+)[^\]]*\]$""".r
 
-  /** Whole content is a single unresolved template variable, e.g. `{{edited}}`. */
+  /**
+   * Whole content is a single unresolved template variable, e.g. `{{edited}}`.
+   */
   private val LoneTemplate: Regex = """^\{\{[^{}]+\}\}$""".r
 
-  /** A file is "substantial" — and therefore protected from collapse — at or
-    * above this many lines. */
+  /**
+   * A file is "substantial" — and therefore protected from collapse — at or
+   * above this many lines.
+   */
   private val SubstantialLines = 10
 
-  /** Inspect a proposed overwrite. `current` is the file's existing contents
-    * (the caller invokes this only when the file exists and is non-empty);
-    * `replacement` is the new content. Returns `Some(reason)` when the write
-    * is self-evidently destructive and should be refused, `None` when it looks
-    * like a legitimate rewrite. */
+  /**
+   * Inspect a proposed overwrite. `current` is the file's existing contents
+   * (the caller invokes this only when the file exists and is non-empty);
+   * `replacement` is the new content. Returns `Some(reason)` when the write
+   * is self-evidently destructive and should be refused, `None` when it looks
+   * like a legitimate rewrite.
+   */
   def check(current: String, replacement: String): Option[String] = {
     val trimmed = replacement.trim
     if (LoneTemplate.matches(trimmed))
@@ -51,9 +59,9 @@ object DestructiveWriteGuard {
       Some(s"the new content is a tool-call / pagination placeholder ($trimmed) — not real file content")
     else {
       val origLines = current.count(_ == '\n') + 1
-      val newLines  = replacement.count(_ == '\n') + 1
+      val newLines = replacement.count(_ == '\n') + 1
       val origBytes = current.getBytes("UTF-8").length.toLong
-      val newBytes  = replacement.getBytes("UTF-8").length.toLong
+      val newBytes = replacement.getBytes("UTF-8").length.toLong
       val collapses = origLines >= SubstantialLines && (newLines <= 2 || newBytes * 10 < origBytes)
       if (collapses)
         Some(s"the new content collapses the file from $origLines lines / $origBytes bytes to " +

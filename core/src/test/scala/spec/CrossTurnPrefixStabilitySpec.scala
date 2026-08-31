@@ -51,15 +51,19 @@ class CrossTurnPrefixStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with
   private val modelId: Id[Model] = Model.id("test", "cross-turn-prefix")
   TestSigil.testModel(modelId)
 
-  /** The label the stub proposes on every respond — kept equal to the
-    * conversation's live topic label so `resolveTopicShift` short-circuits
-    * and the agent's own reply never drives topic churn. Topic churn in
-    * this spec comes from explicit framework `TopicChange` publishes. */
+  /**
+   * The label the stub proposes on every respond — kept equal to the
+   * conversation's live topic label so `resolveTopicShift` short-circuits
+   * and the agent's own reply never drives topic churn. Topic churn in
+   * this spec comes from explicit framework `TopicChange` publishes.
+   */
   private val proposedLabel = new AtomicReference[String](TestTopicEntry.label)
 
-  /** Captures every [[ProviderCall]] the framework's translation pass
-    * produces, then answers with a turn-ending `respond`. */
-  private final class CapturingProvider extends Provider {
+  /**
+   * Captures every [[ProviderCall]] the framework's translation pass
+   * produces, then answers with a turn-ending `respond`.
+   */
+  final private class CapturingProvider extends Provider {
     val calls = new ConcurrentLinkedQueue[ProviderCall]()
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -72,10 +76,10 @@ class CrossTurnPrefixStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
         ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-          topicLabel   = proposedLabel.get(),
+          topicLabel = proposedLabel.get(),
           topicSummary = "unchanged",
-          content      = "ok",
-          endsTurn     = true
+          content = "ok",
+          endsTurn = true
         )),
         ProviderEvent.Done(StopReason.Complete)
       ))
@@ -84,21 +88,25 @@ class CrossTurnPrefixStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private val provider = new CapturingProvider
 
-  /** Information entries the curate hook injects — grows across turns. */
+  /**
+   * Information entries the curate hook injects — grows across turns.
+   */
   private val informationCount = new AtomicInteger(0)
 
-  /** Ids of Critical memories the curate hook pins — the positive control. */
+  /**
+   * Ids of Critical memories the curate hook pins — the positive control.
+   */
   private val pinned = new AtomicReference[Vector[Id[ContextMemory]]](Vector.empty)
 
   private def installCurate(): Unit =
     TestSigil.setCurate { (convId, mid, chain) =>
       sigil.conversation.compression.StandardContextCurator(TestSigil).curate(convId, mid, chain).map { t =>
         t.copy(
-          information      = (1 to informationCount.get()).toVector.map { i =>
+          information = (1 to informationCount.get()).toVector.map { i =>
             InformationSummary(
-              id              = Id[Information](s"xturn-info-$i"),
+              id = Id[Information](s"xturn-info-$i"),
               informationType = Information.name.of[StoredInformation],
-              summary         = s"Reference document number $i"
+              summary = s"Reference document number $i"
             )
           },
           criticalMemories = t.criticalMemories ++ pinned.get()
@@ -108,16 +116,16 @@ class CrossTurnPrefixStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def startRecorder(): (ConcurrentLinkedQueue[Signal], java.util.concurrent.atomic.AtomicBoolean) = {
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new java.util.concurrent.atomic.AtomicBoolean(true)
+    val running = new java.util.concurrent.atomic.AtomicBoolean(true)
     TestSigil.signals.takeWhile(_ => running.get()).evalMap(s => Task { recorded.add(s); () }).drain.startUnit()
     (recorded, running)
   }
@@ -129,25 +137,25 @@ class CrossTurnPrefixStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with
   private def idleCount(snap: List[Signal]): Int =
     snap.count {
       case d: AgentStateDelta => d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete)
-      case _                  => false
+      case _ => false
     }
 
   private val convId = Conversation.id(s"xturn-prefix-${rapid.Unique()}")
 
   private val seedTopic = Topic(
     conversationId = convId,
-    label          = TestTopicEntry.label,
-    summary        = TestTopicEntry.summary,
-    createdBy      = TestUser,
-    _id            = Id[Topic](s"xturn-topic-${rapid.Unique()}")
+    label = TestTopicEntry.label,
+    summary = TestTopicEntry.summary,
+    createdBy = TestUser,
+    _id = Id[Topic](s"xturn-topic-${rapid.Unique()}")
   )
 
   private val secondTopic = Topic(
     conversationId = convId,
-    label          = "Second subject under discussion",
-    summary        = "The conversation moved on to an unrelated subject.",
-    createdBy      = TestUser,
-    _id            = Id[Topic](s"xturn-topic2-${rapid.Unique()}")
+    label = "Second subject under discussion",
+    summary = "The conversation moved on to an unrelated subject.",
+    createdBy = TestUser,
+    _id = Id[Topic](s"xturn-topic2-${rapid.Unique()}")
   )
 
   private val liveTopicId = new AtomicReference[Id[Topic]](seedTopic._id)
@@ -157,54 +165,61 @@ class CrossTurnPrefixStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with
   private def rosterBytes(call: ProviderCall): String =
     fabric.io.JsonFormatter.Compact(fabric.arr(OpenAIChatCompletions.renderTools(call, TestSigil, toolsConfig)*))
 
-  /** Publish a user Message and wait for the agent turn to settle. */
+  /**
+   * Publish a user Message and wait for the agent turn to settle.
+   */
   private def turn(text: String,
                    recorded: ConcurrentLinkedQueue[Signal],
                    priorIdles: Int): Task[Unit] =
     TestSigil.publish(Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = liveTopicId.get(),
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete
+      topicId = liveTopicId.get(),
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete
     )).flatMap { _ =>
       waitFor(System.currentTimeMillis() + 30_000L)(idleCount(recorded.iterator().asScala.toList) > priorIdles)
     }.flatMap(_ => Task.sleep(200.millis))
 
-  /** Rename the live topic the way the framework does: rewrite the Topic
-    * record, then publish the settled `TopicChange` that reprojects the
-    * conversation's topic stack. */
+  /**
+   * Rename the live topic the way the framework does: rewrite the Topic
+   * record, then publish the settled `TopicChange` that reprojects the
+   * conversation's topic stack.
+   */
   private def renameTopic(label: String, summary: String): Task[Unit] =
     TestSigil.withDB(_.topics.transaction(_.upsert(seedTopic.copy(label = label, summary = summary)))).flatMap { _ =>
       TestSigil.publish(TopicChange(
-        kind           = TopicChangeKind.Rename(previousLabel = proposedLabel.get()),
-        newLabel       = label,
-        newSummary     = summary,
-        participantId  = TestAgent,
+        kind = TopicChangeKind.Rename(previousLabel = proposedLabel.get()),
+        newLabel = label,
+        newSummary = summary,
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = seedTopic._id,
-        state          = EventState.Complete
+        topicId = seedTopic._id,
+        state = EventState.Complete
       ))
-    }.flatMap(_ => Task { proposedLabel.set(label) })
+    }.flatMap(_ => Task(proposedLabel.set(label)))
       .flatMap(_ => Task.sleep(150.millis))
 
-  /** Open a second subject — pushes the renamed topic onto the stack's
-    * prior entries, which is what grows the `Previous topics` section. */
+  /**
+   * Open a second subject — pushes the renamed topic onto the stack's
+   * prior entries, which is what grows the `Previous topics` section.
+   */
   private def switchTopic(): Task[Unit] =
     TestSigil.withDB(_.topics.transaction(_.upsert(secondTopic))).flatMap { _ =>
       TestSigil.publish(TopicChange(
-        kind           = TopicChangeKind.Switch(previousTopicId = seedTopic._id),
-        newLabel       = secondTopic.label,
-        newSummary     = secondTopic.summary,
-        participantId  = TestAgent,
+        kind = TopicChangeKind.Switch(previousTopicId = seedTopic._id),
+        newLabel = secondTopic.label,
+        newSummary = secondTopic.summary,
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = secondTopic._id,
-        state          = EventState.Complete
+        topicId = secondTopic._id,
+        state = EventState.Complete
       ))
-    }.flatMap(_ => Task {
-      proposedLabel.set(secondTopic.label)
-      liveTopicId.set(secondTopic._id)
-    }).flatMap(_ => Task.sleep(150.millis))
+    }.flatMap(_ =>
+      Task {
+        proposedLabel.set(secondTopic.label)
+        liveTopicId.set(secondTopic._id)
+      }).flatMap(_ => Task.sleep(150.millis))
 
   private lazy val runTurns: Task[List[ProviderCall]] = {
     TestSigil.reset()
@@ -213,42 +228,42 @@ class CrossTurnPrefixStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with
     val (recorded, running) = startRecorder()
     val agent = makeAgent()
     val conv = Conversation(
-      topics       = List(sigil.conversation.TopicEntry(seedTopic._id, seedTopic.label, seedTopic.summary)),
+      topics = List(sigil.conversation.TopicEntry(seedTopic._id, seedTopic.label, seedTopic.summary)),
       participants = List(agent),
-      _id          = convId
+      _id = convId
     )
     for {
       _ <- Task.sleep(120.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.withDB(_.topics.transaction(_.upsert(seedTopic)))
-      _ <- Task { informationCount.set(1) }
+      _ <- Task(informationCount.set(1))
       _ <- turn("first user message", recorded, priorIdles = 0)
       // --- cache-irrelevant churn between turn 1 and turn 2 ---
       _ <- renameTopic("Prefix stability under churn", "The topic label and summary moved on.")
       _ <- switchTopic()
-      _ <- Task { informationCount.set(3) }
+      _ <- Task(informationCount.set(3))
       _ <- turn("second user message", recorded, priorIdles = 1)
       // --- deliberate pin between turn 2 and turn 3 (positive control) ---
       m <- TestSigil.persistMemory(ContextMemory(
-        fact    = "The operator prefers metric units in every reply.",
-        label   = "units",
+        fact = "The operator prefers metric units in every reply.",
+        label = "units",
         summary = "Prefers metric units.",
-        source  = MemorySource.Explicit,
-        pinned  = true,
+        source = MemorySource.Explicit,
+        pinned = true,
         spaceId = TestSpace
       ))
-      _ <- Task { pinned.set(Vector(m._id)) }
+      _ <- Task(pinned.set(Vector(m._id)))
       _ <- turn("third user message", recorded, priorIdles = 2)
-      _ <- Task { running.set(false) }
+      _ <- Task(running.set(false))
     } yield provider.calls.iterator().asScala.toList
   }.singleton
 
   "Cross-turn stable-prefix stability" should {
 
-    "keep the stable system prompt byte-identical across consecutive ordinary turns" in {
+    "keep the stable system prompt byte-identical across consecutive ordinary turns" in
       runTurns.map { calls =>
         calls.size should be >= 2
-        val first  = calls.head
+        val first = calls.head
         val second = calls(1)
         withClue(
           s"""stable system diverged between turn 1 and turn 2.
@@ -260,46 +275,40 @@ class CrossTurnPrefixStabilitySpec extends AsyncWordSpec with AsyncTaskSpec with
           second.system shouldBe first.system
         }
       }
-    }
 
-    "keep the rendered tool roster byte-identical across consecutive ordinary turns" in {
+    "keep the rendered tool roster byte-identical across consecutive ordinary turns" in
       runTurns.map { calls =>
         rosterBytes(calls(1)) shouldBe rosterBytes(calls.head)
       }
-    }
 
-    "carry the current topic in the volatile tail, never in the stable prefix" in {
+    "carry the current topic in the volatile tail, never in the stable prefix" in
       runTurns.map { calls =>
         val second = calls(1)
         second.system should not include secondTopic.label
         second.systemVolatile should include(secondTopic.label)
       }
-    }
 
-    "carry the accumulated prior topics in the volatile tail, never in the stable prefix" in {
+    "carry the accumulated prior topics in the volatile tail, never in the stable prefix" in
       runTurns.map { calls =>
         val second = calls(1)
         second.system should not include "Prefix stability under churn"
         second.systemVolatile should include("Prefix stability under churn")
       }
-    }
 
-    "carry the accrued Information catalog in the volatile tail, never in the stable prefix" in {
+    "carry the accrued Information catalog in the volatile tail, never in the stable prefix" in
       runTurns.map { calls =>
         val second = calls(1)
         second.system should not include "Reference document number 3"
         second.systemVolatile should include("Reference document number 3")
       }
-    }
 
-    "let a deliberate pin change the stable prefix" in {
+    "let a deliberate pin change the stable prefix" in
       runTurns.map { calls =>
         calls.size should be >= 3
         val third = calls(2)
         third.system should include("Prefers metric units.")
         third.system should not be calls(1).system
       }
-    }
   }
 
   "tear down" should {

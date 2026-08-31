@@ -213,14 +213,17 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val bad = fabric.obj("answer" -> fabric.arr(fabric.str("not-a-string")))
       val provider = new ScriptedProvider(List(
         ProviderEvent.ToolCallStart(CallId("p-bad"), ProbeTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(CallId("p-bad"), sigil.tool.WireCall.Malformed(
-          name    = ProbeTool.schema.name.value,
-          error   = sigil.tool.DecodeError(
-            List(sigil.tool.DecodeViolation(List("answer"), "expected a string", sigil.tool.ViolationKind.Structural)),
-            bad
-          ),
-          rawArgs = bad
-        )),
+        ProviderEvent.ToolCallComplete(
+          CallId("p-bad"),
+          sigil.tool.WireCall.Malformed(
+            name = ProbeTool.schema.name.value,
+            error = sigil.tool.DecodeError(
+              List(sigil.tool.DecodeViolation(List("answer"), "expected a string", sigil.tool.ViolationKind.Structural)),
+              bad
+            ),
+            rawArgs = bad
+          )
+        ),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
       withProvider(provider) {

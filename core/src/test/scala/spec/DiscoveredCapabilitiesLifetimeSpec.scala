@@ -37,47 +37,53 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
 
   private val modelId: Id[Model] = Model.id("test", "lifetime-model")
 
-  /** The roster includes `sleep`/`lookup` because the renderer filters
-    * the discovered-capabilities section to tools actually offered this
-    * turn (#299), and both are registered in [[TestSigil]]. */
+  /**
+   * The roster includes `sleep`/`lookup` because the renderer filters
+   * the discovered-capabilities section to tools actually offered this
+   * turn (#299), and both are registered in [[TestSigil]].
+   */
   private def requestWith(discovered: Map[String, DiscoveredCapability]): ConversationRequest =
     ConversationRequest(
-      conversationId         = Conversation.id("disc-cap-lifetime"),
-      model                = TestSigil.testModel(modelId),
-      instructions           = Instructions(),
-      turnInput              = TurnInput(conversationId = Conversation.id("disc-cap-lifetime")),
-      currentMode            = ConversationMode,
-      currentTopic           = TestTopicEntry,
-      previousTopics         = Nil,
-      generationSettings     = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools                  = CoreTools.all ++ Vector(SleepTool, LookupTool),
-      chain                  = List(TestUser, TestAgent),
+      conversationId = Conversation.id("disc-cap-lifetime"),
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = Conversation.id("disc-cap-lifetime")),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
+      generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
+      tools = CoreTools.all ++ Vector(SleepTool, LookupTool),
+      chain = List(TestUser, TestAgent),
       discoveredCapabilities = discovered
     )
 
-  /** Render the system prompt the provider would send, exercising the
-    * full `renderSystem` code path that reads
-    * `ConversationRequest.discoveredCapabilities`. */
+  /**
+   * Render the system prompt the provider would send, exercising the
+   * full `renderSystem` code path that reads
+   * `ConversationRequest.discoveredCapabilities`.
+   */
   private def renderSystem(req: ConversationRequest): Task[String] = {
     val provider = LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)
     provider.requestConverter(req).map(_.content match {
       case Some(c: spice.http.content.StringContent) => c.value
-      case _                                          => ""
+      case _ => ""
     })
   }
 
-  /** Build a fresh TurnContext over a freshly seeded conversation —
-    * mirrors the shape the agent loop hands tools. The
-    * `discoveredCapabilitiesRef` defaults to a fresh empty cell so
-    * mutations stay scoped to this test. */
+  /**
+   * Build a fresh TurnContext over a freshly seeded conversation —
+   * mirrors the shape the agent loop hands tools. The
+   * `discoveredCapabilitiesRef` defaults to a fresh empty cell so
+   * mutations stay scoped to this test.
+   */
   private def buildCtx(convId: Id[Conversation]): Task[TurnContext] = {
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map { _ =>
       TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestUser, TestAgent),
+        sigil = TestSigil,
+        chain = List(TestUser, TestAgent),
         conversation = conv,
-        turnInput    = TurnInput(conversationId = convId),
+        turnInput = TurnInput(conversationId = convId),
         model = TestSigil.defaultTestModel
       )
     }
@@ -156,13 +162,14 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
         // the side-effect on the cache.
         _ <- RespondTool.execute(
           RespondInput(
-            topicLabel   = "Done",
+            topicLabel = "Done",
             topicSummary = "Test reply",
-            content      = "All done.",
-            disposition  = ResponseDisposition.Success,
-            endsTurn     = true
+            content = "All done.",
+            disposition = ResponseDisposition.Success,
+            endsTurn = true
           ),
-          ctx, Event.id()
+          ctx,
+          Event.id()
         ).toList
       } yield ctx.discoveredCapabilities shouldBe Map.empty
     }
@@ -174,17 +181,16 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
         _ = ctx.recordDiscovery("send slack message", List(ToolName("send_slack_message")))
         _ <- RespondTool.execute(
           RespondInput(
-            topicLabel   = "Working",
+            topicLabel = "Working",
             topicSummary = "Status pulse",
-            content      = "Let me check that…",
-            disposition  = ResponseDisposition.Success,
-            endsTurn     = false
+            content = "Let me check that…",
+            disposition = ResponseDisposition.Success,
+            endsTurn = false
           ),
-          ctx, Event.id()
+          ctx,
+          Event.id()
         ).toList
-      } yield {
-        ctx.discoveredCapabilities.keySet should contain("send slack message")
-      }
+      } yield ctx.discoveredCapabilities.keySet should contain("send slack message")
     }
   }
 
@@ -197,28 +203,29 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
       // publishing a `CapabilityResults` event must NOT write the
       // cache onto the projection (the framework now leaves it to
       // `TurnContext`).
-      val convId  = Conversation.id(s"disc-cap-projection-${rapid.Unique()}")
+      val convId = Conversation.id(s"disc-cap-projection-${rapid.Unique()}")
       val originId = lightdb.id.Id[sigil.event.Event]("find-capability-projection-stub")
       val cr = CapabilityResults(
-        matches        = List(CapabilityMatch(
-          name           = "read_file",
-          description    = "read file",
+        matches = List(CapabilityMatch(
+          name = "read_file",
+          description = "read file",
           capabilityType = CapabilityType.Tool,
-          score          = 1.0,
-          status         = CapabilityStatus.Ready
+          score = 1.0,
+          status = CapabilityStatus.Ready
         )),
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        query          = "view file source contents",
-        state          = EventState.Complete,
-        role           = sigil.event.MessageRole.Tool,
-        origin         = Some(originId)
+        topicId = TestTopicEntry.id,
+        query = "view file source contents",
+        state = EventState.Complete,
+        role = sigil.event.MessageRole.Tool,
+        origin = Some(originId)
       )
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-               _id = convId, topics = TestTopicStack
-             ))))
+          _id = convId,
+          topics = TestTopicStack
+        ))))
         _ <- TestSigil.publish(cr)
         proj <- TestSigil.projectionFor(TestUser, convId)
       } yield {

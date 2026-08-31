@@ -28,7 +28,7 @@ import scala.jdk.CollectionConverters.*
  * looks up the matching key(s) and runs `cancel`.
  */
 final class ProviderStreamRegistry {
-  private final case class Entry(token: Long, cancel: Task[Unit])
+  final private case class Entry(token: Long, cancel: Task[Unit])
 
   private val inFlight: ConcurrentHashMap[ProviderStreamRegistry.Key, Entry] =
     new ConcurrentHashMap()
@@ -73,13 +73,15 @@ final class ProviderStreamRegistry {
                 agentId: Option[ParticipantId]): Task[Unit] = Task.defer {
     val matches = inFlight.entrySet().iterator().asScala.toList.filter { e =>
       e.getKey.conversationId == conversationId &&
-        agentId.forall(_ == e.getKey.agentId)
+      agentId.forall(_ == e.getKey.agentId)
     }
     matches.foreach(e => inFlight.remove(e.getKey, e.getValue))
     Task.sequence(matches.map(_.getValue.cancel.handleError(_ => Task.unit))).unit
   }
 
-  /** Number of in-flight handles currently registered. Test/diagnostic. */
+  /**
+   * Number of in-flight handles currently registered. Test/diagnostic.
+   */
   def size: Int = inFlight.size()
 
   /**
@@ -104,6 +106,9 @@ final class ProviderStreamRegistry {
 }
 
 object ProviderStreamRegistry {
-  /** Per-(agent, conversation) key — the granularity Stop dispatch uses. */
+
+  /**
+   * Per-(agent, conversation) key — the granularity Stop dispatch uses.
+   */
   final case class Key(conversationId: Id[Conversation], agentId: ParticipantId)
 }

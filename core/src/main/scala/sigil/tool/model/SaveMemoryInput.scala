@@ -43,4 +43,5 @@ case class SaveMemoryInput(fact: String,
                            space: Option[String] = None,
                            keywords: Vector[String] = Vector.empty,
                            memoryType: MemoryType = MemoryType.Fact,
-                           modeAffinity: Set[String] = Set.empty) extends ToolInput derives RW
+                           modeAffinity: Set[String] = Set.empty)
+  extends ToolInput derives RW

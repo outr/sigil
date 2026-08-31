@@ -19,7 +19,8 @@ import scala.jdk.CollectionConverters.*
  * Registered automatically via [[StreamBrowserSigil.maintenanceTasks]].
  */
 final case class StreamBrowserIdleReaper(idleTimeoutMs: Long,
-                                         interval: FiniteDuration = 30.seconds) extends MaintenanceTask {
+                                         interval: FiniteDuration = 30.seconds)
+  extends MaintenanceTask {
   override def name: String = "stream-browser-idle-reaper"
 
   override def runOnce(host: Sigil): Task[Unit] = host match {

@@ -19,33 +19,39 @@ enum Effect {
   case Mutating(target: MutationTargeting)
   case Destructive(target: MutationTargeting, consequence: String)
 
-  /** The read freshness, when this effect is a read. */
+  /**
+   * The read freshness, when this effect is a read.
+   */
   def readFreshness: Option[Freshness] = this match {
     case ReadOnly(f) => Some(f)
     case _ => None
   }
 
-  /** The mutation targeting, when this effect mutates. */
+  /**
+   * The mutation targeting, when this effect mutates.
+   */
   def targeting: Option[MutationTargeting] = this match {
-    case Mutating(t)       => Some(t)
+    case Mutating(t) => Some(t)
     case Destructive(t, _) => Some(t)
-    case _                 => None
+    case _ => None
   }
 
   def isReadOnly: Boolean = this match {
     case ReadOnly(_) => true
-    case _           => false
+    case _ => false
   }
 
   def isDestructive: Boolean = this match {
     case Destructive(_, _) => true
-    case _                 => false
+    case _ => false
   }
 
-  /** True for [[Mutating]] and [[Destructive]] — anything that changes
-    * state outside the conversation log. */
+  /**
+   * True for [[Mutating]] and [[Destructive]] — anything that changes
+   * state outside the conversation log.
+   */
   def mutates: Boolean = this match {
     case ReadOnly(_) => false
-    case _           => true
+    case _ => true
   }
 }

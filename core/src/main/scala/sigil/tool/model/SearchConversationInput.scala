@@ -29,8 +29,11 @@ case class SearchConversationInput(query: String,
                                    topicId: Option[Id[Topic]] = None,
                                    limit: Int = 10,
                                    conversationId: Option[Id[Conversation]] = None,
-                                   /** Zero-indexed page for walk mode (empty query).
-                                     * Page N skips `N * limit` events from the start. Ignored
-                                     * in search mode (search returns ranked top-N hits, not
-                                     * paginated chronological output). */
-                                   page: Int = 0) extends ToolInput derives RW
+                                   /**
+                                    * Zero-indexed page for walk mode (empty query).
+                                    * Page N skips `N * limit` events from the start. Ignored
+                                    * in search mode (search returns ranked top-N hits, not
+                                    * paginated chronological output).
+                                    */
+                                   page: Int = 0)
+  extends ToolInput derives RW

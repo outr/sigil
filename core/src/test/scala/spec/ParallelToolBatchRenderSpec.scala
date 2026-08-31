@@ -45,7 +45,9 @@ class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
   private val anthropic: Provider = AnthropicProvider(apiKey = "sk-ant-test-placeholder", sigilRef = TestSigil)
   private val deepSeek: Provider = DeepSeekProvider(apiKey = "sk-test-placeholder", sigilRef = TestSigil)
 
-  /** The three calls of the batch: wire id -> (args marker, result marker). */
+  /**
+   * The three calls of the batch: wire id -> (args marker, result marker).
+   */
   private val batch: List[(String, String, String)] = List(
     ("call_alpha", "ARGS_MARKER_ALPHA", "RESULT_MARKER_ALPHA"),
     ("call_bravo", "ARGS_MARKER_BRAVO", "RESULT_MARKER_BRAVO"),
@@ -86,7 +88,7 @@ class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
     )
     provider.requestConverter(request).sync().content match {
       case Some(c: spice.http.content.StringContent) => c.value
-      case _                                         => ""
+      case _ => ""
     }
   }
 
@@ -95,7 +97,9 @@ class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
 
   private def roleOf(message: Json): String = message.get("role").map(_.asString).getOrElse("")
 
-  /** Anthropic content blocks of the given `type` on one message. */
+  /**
+   * Anthropic content blocks of the given `type` on one message.
+   */
   private def blocksOf(message: Json, blockType: String): Vector[Json] =
     message.get("content").toVector
       .flatMap(c => scala.util.Try(c.asVector).getOrElse(Vector.empty))
@@ -120,7 +124,7 @@ class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
       }
     }
 
-    "answer each assistant turn's tool_use ids in the IMMEDIATELY following user message" in {
+    "answer each assistant turn's tool_use ids in the IMMEDIATELY following user message" in
       messages.zipWithIndex.foreach { case (m, idx) =>
         val useIds = blocksOf(m, "tool_use").flatMap(_.get("id").map(_.asString)).toSet
         if (useIds.nonEmpty) {
@@ -133,7 +137,6 @@ class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
           }
         }
       }
-    }
 
     "keep each result attributed to its own call" in {
       val byId = messages.flatMap(m => blocksOf(m, "tool_result")).flatMap { b =>
@@ -182,7 +185,7 @@ class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
       }
     }
 
-    "follow each assistant turn with the results of exactly its own calls" in {
+    "follow each assistant turn with the results of exactly its own calls" in
       messages.zipWithIndex.foreach { case (m, idx) =>
         val callIds = m.get("tool_calls").toVector.flatMap(_.asVector).flatMap(_.get("id").map(_.asString))
         if (callIds.nonEmpty) {
@@ -193,7 +196,6 @@ class ParallelToolBatchRenderSpec extends AnyWordSpec with Matchers {
           }
         }
       }
-    }
 
     "keep each result attributed to its own call" in {
       val byId = messages.filter(roleOf(_) == "tool").flatMap { m =>

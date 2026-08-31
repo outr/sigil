@@ -4,11 +4,15 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 import sigil.workflow.{WorkflowScheduler, WorkflowTemplate}
 
 case class RunWorkflowInput(workflowId: String,
-                            variables: Map[String, String] = Map.empty) extends ToolInput derives RW
+                            variables: Map[String, String] = Map.empty)
+  extends ToolInput derives RW
 
 /**
  * Schedule an immediate run of a persisted workflow template.
@@ -23,7 +27,7 @@ case class RunWorkflowInput(workflowId: String,
  * etc.) to refer to a specific run.
  */
 final class RunWorkflowTool extends Tool with WorkflowToolSupport {
-  type Input  = RunWorkflowInput
+  type Input = RunWorkflowInput
   type Output = TextToolOutput
   val io: ToolIO[RunWorkflowInput, TextToolOutput] = ToolIO.derived[RunWorkflowInput, TextToolOutput].withExamples(
     ToolExample(

@@ -57,10 +57,13 @@ final class PreviewFixtureServer {
   def start(): Task[Unit] = Task { server.start().sync(); () }
 
   def stop(): Task[Unit] = Task {
-    try server.stop().sync() catch { case _: Throwable => () }
+    try server.stop().sync()
+    catch { case _: Throwable => () }
   }
 
-  /** Explicit IPv4 — spice's listener binds 127.0.0.1 only, and Chrome
-    * resolves `localhost` to ::1 first on some runners. */
+  /**
+   * Explicit IPv4 — spice's listener binds 127.0.0.1 only, and Chrome
+   * resolves `localhost` to ::1 first on some runners.
+   */
   def url: String = s"http://127.0.0.1:${server.config.listeners().head.port.getOrElse(0)}/"
 }

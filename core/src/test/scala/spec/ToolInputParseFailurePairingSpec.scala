@@ -42,12 +42,12 @@ class ToolInputParseFailurePairingSpec extends AsyncWordSpec with AsyncTaskSpec 
   "Sigil #263 — Tool-role failure Message paired by origin" should {
 
     "transition the matching ToolInvoke's ContextFrame.ToolCall from Active to Complete" in {
-      val convId   = Conversation.id(s"parse-fail-${rapid.Unique()}")
+      val convId = Conversation.id(s"parse-fail-${rapid.Unique()}")
       val invokeId: Id[Event] = Id[Event](s"invoke-${rapid.Unique()}")
       val conv = Conversation(
-        topics       = TestTopicStack,
+        topics = TestTopicStack,
         participants = Nil,
-        _id          = convId
+        _id = convId
       )
 
       // Mirrors the production parse-failure flow: the orchestrator
@@ -67,32 +67,32 @@ class ToolInputParseFailurePairingSpec extends AsyncWordSpec with AsyncTaskSpec 
         //    + summary inline — what the orchestrator's settling delta
         //    folds onto the durable invoke row in production.
         _ <- TestSigil.publish(ToolInvoke(
-               toolName       = ToolName("create_page"),
-               participantId  = TestAgent,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               _id            = invokeId,
-               state          = EventState.Complete,
-               output         = ToolOutput.Pending,
-               outcome        = ToolOutcome.Failure(failureReason, recoverable = true),
-               summary        = failureReason
-             ))
+          toolName = ToolName("create_page"),
+          participantId = TestAgent,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          _id = invokeId,
+          state = EventState.Complete,
+          output = ToolOutput.Pending,
+          outcome = ToolOutcome.Failure(failureReason, recoverable = true),
+          summary = failureReason
+        ))
         // 2. Publish the paired Tool-role failure Message so
         //    TriggerFilter re-fires the agent loop (production also
         //    emits this). The frame transition is already complete
         //    from the invoke's inlined outcome above.
         _ <- TestSigil.publish(Message(
-               participantId  = TestAgent,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               role           = MessageRole.Tool,
-               content        = Vector(ResponseContent.Text(failureReason)),
-               state          = EventState.Complete,
-               disposition    = MessageDisposition.Failure(recoverable = true),
-               origin         = Some(invokeId)
-             ))
+          participantId = TestAgent,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          role = MessageRole.Tool,
+          content = Vector(ResponseContent.Text(failureReason)),
+          state = EventState.Complete,
+          disposition = MessageDisposition.Failure(recoverable = true),
+          origin = Some(invokeId)
+        ))
         // Brief settle for the async publish pipeline.
-        _   <- Task.sleep(scala.concurrent.duration.Duration(150, "millis"))
+        _ <- Task.sleep(scala.concurrent.duration.Duration(150, "millis"))
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val invoke = evs.collectFirst { case ti: ToolInvoke if ti._id == invokeId => ti }

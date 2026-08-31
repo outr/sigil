@@ -56,32 +56,32 @@ class ActiveTurnElisionProtectionSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   private def userMsg(convId: Id[Conversation], text: String, at: Long): Message =
     Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      content        = Vector(sigil.tool.model.ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      timestamp      = Timestamp(at)
+      topicId = TestTopicEntry.id,
+      content = Vector(sigil.tool.model.ResponseContent.Text(text)),
+      state = EventState.Complete,
+      timestamp = Timestamp(at)
     )
 
   private def invoke(convId: Id[Conversation], name: String, at: Long): ToolInvoke =
     ToolInvoke(
-      toolName       = ToolName.parse(name).fold(sys.error, identity),
-      participantId  = TestAgent,
+      toolName = ToolName.parse(name).fold(sys.error, identity),
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      state          = EventState.Complete,
-      timestamp      = Timestamp(at)
+      topicId = TestTopicEntry.id,
+      state = EventState.Complete,
+      timestamp = Timestamp(at)
     )
 
   private def toolFrame(ev: ToolInvoke, content: String): ContextFrame.ToolCall =
     ContextFrame.ToolCall(
-      toolName      = ev.toolName,
-      argsJson      = "{}",
-      callId        = ev._id,
+      toolName = ev.toolName,
+      argsJson = "{}",
+      callId = ev._id,
       participantId = TestAgent,
       sourceEventId = ev._id,
-      state         = ToolCallState.Complete(content, Nil)
+      state = ToolCallState.Complete(content, Nil)
     )
 
   private def textFrame(ev: Message, text: String): ContextFrame.Text =
@@ -91,20 +91,22 @@ class ActiveTurnElisionProtectionSpec extends AsyncWordSpec with AsyncTaskSpec w
     TestSigil.withDB(_.events.transaction(tx => Task.sequence(events.map(tx.upsert)).unit))
 
   private def frameText(f: ContextFrame): String = f match {
-    case t: ContextFrame.Text     => t.content
+    case t: ContextFrame.Text => t.content
     case tc: ContextFrame.ToolCall => tc.state match {
-      case ToolCallState.Complete(c, _) => c
-      case ToolCallState.Active         => ""
-    }
-    case other                    => other.toString
+        case ToolCallState.Complete(c, _) => c
+        case ToolCallState.Active => ""
+      }
+    case other => other.toString
   }
 
-  /** Two-turn fixture: an old user task + old big read, then the active
-    * user task + this-turn big read. Returns (conversationId, TurnInput,
-    * per-frame token counts). */
+  /**
+   * Two-turn fixture: an old user task + old big read, then the active
+   * user task + this-turn big read. Returns (conversationId, TurnInput,
+   * per-frame token counts).
+   */
   private def fixture(prefix: String): Task[(Id[Conversation], TurnInput)] = {
     val convId = Conversation.id(s"$prefix-${rapid.Unique()}")
-    val base   = 1_700_000_000_000L
+    val base = 1_700_000_000_000L
     val u1 = userMsg(convId, "old task", base)
     val t1 = invoke(convId, "read_old", base + 1000)
     val u2 = userMsg(convId, "new task", base + 100_000)
@@ -171,7 +173,7 @@ class ActiveTurnElisionProtectionSpec extends AsyncWordSpec with AsyncTaskSpec w
 
     "escalate to the durable stage-3 shed after consecutive eliding curates" in {
       val convId = Conversation.id(s"escalate-${rapid.Unique()}")
-      val base   = 1_700_000_000_000L
+      val base = 1_700_000_000_000L
       val u1 = userMsg(convId, "old task", base)
       val oldReads = (1 to 5).toList.map(i => invoke(convId, s"read_old_$i", base + i * 1000))
       val u2 = userMsg(convId, "new task", base + 100_000)
@@ -197,19 +199,22 @@ class ActiveTurnElisionProtectionSpec extends AsyncWordSpec with AsyncTaskSpec w
                               conversationId: Id[Conversation]): Task[Option[ContextSummary]] =
           frames.toList.map { fs =>
             Some(ContextSummary(
-              text           = s"summary of ${fs.size} frames",
+              text = s"summary of ${fs.size} frames",
               conversationId = conversationId,
-              tokenEstimate  = 10
+              tokenEstimate = 10
             ))
           }
       }
-      val cur = StandardContextCurator(TestSigil, budgetTokenizer = HeuristicTokenizer,
-        keepMinimum = 1, compressor = stubCompressor)
+      val cur = StandardContextCurator(
+        TestSigil,
+        budgetTokenizer = HeuristicTokenizer,
+        keepMinimum = 1,
+        compressor = stubCompressor)
       def pass(): Task[TurnInput] =
         cur.refit(input, modelId, List(TestUser, TestAgent), capOverride = Some(cap))
       for {
-        _  <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _  <- persist(List(u1, u2, t2) ++ oldReads)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- persist(List(u1, u2, t2) ++ oldReads)
         r1 <- pass()
         r2 <- pass()
         r3 <- pass() // streak reaches elisionPressureEscalationStreak (3)
@@ -229,10 +234,10 @@ class ActiveTurnElisionProtectionSpec extends AsyncWordSpec with AsyncTaskSpec w
 
     "back off on a context-pressured turn — commit the prose instead of challenging" in {
       val convId = Conversation.id(s"pressured-challenge-${rapid.Unique()}")
-      val conv   = Conversation(topics = TestTopicStack, _id = convId)
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
       val turnInput = TurnInput(
         conversationId = convId,
-        extraContext   = Map(StandardContextCurator.ContextPressureKey -> "3 frame(s) elided")
+        extraContext = Map(StandardContextCurator.ContextPressureKey -> "3 frame(s) elided")
       )
       val provider = new Provider {
         override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -247,19 +252,19 @@ class ActiveTurnElisionProtectionSpec extends AsyncWordSpec with AsyncTaskSpec w
           ))
       }
       val request = ConversationRequest(
-        conversationId     = convId,
-        model              = TestSigil.testModel(modelId),
-        instructions       = Instructions(),
-        turnInput          = turnInput,
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
+        conversationId = convId,
+        model = TestSigil.testModel(modelId),
+        instructions = Instructions(),
+        turnInput = turnInput,
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50)),
-        tools              = Vector.empty,
-        chain              = List(TestUser, TestAgent),
+        tools = Vector.empty,
+        chain = List(TestUser, TestAgent),
         toolResultCacheRef = new AtomicReference(Map.empty)
       )
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
       } yield {
         // The prose commits as the terminal reply — no challenge round-trip

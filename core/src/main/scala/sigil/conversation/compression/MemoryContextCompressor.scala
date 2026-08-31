@@ -51,46 +51,55 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                    tokenizer: sigil.tokenize.Tokenizer = sigil.tokenize.HeuristicTokenizer,
                                    reservedOutputTokens: Long = 1024L,
                                    promptOverheadTokens: Long = 512L,
-                                   /** Wire-protocol body ceiling shared with the
-                                     * chunker. Defaults to [[SummaryOnlyCompressor.DefaultMaxChunkBytes]]
-                                     * (8 MB). */
+                                   /**
+                                    * Wire-protocol body ceiling shared with the
+                                    * chunker. Defaults to [[SummaryOnlyCompressor.DefaultMaxChunkBytes]]
+                                    * (8 MB).
+                                    */
                                    maxChunkBytes: Long = SummaryOnlyCompressor.DefaultMaxChunkBytes,
-                                   /** Concurrent leaf-summarization fan-out for
-                                     * [[compressHierarchical]]. Default 1 = serial
-                                     * (preserves the original behaviour for
-                                     * llama.cpp single-slot setups). Apps with
-                                     * `--parallel N` configured locally, or
-                                     * hosted providers that aren't slot-limited,
-                                     * bump this to run leaf chunks concurrently.
-                                     * At parallelism = 4 a 100-chunk pass drops
-                                     * from ~50 minutes to ~12. Epoch folds run
-                                     * with the same knob — fewer calls per
-                                     * level, but the same bound applies. */
+                                   /**
+                                    * Concurrent leaf-summarization fan-out for
+                                    * [[compressHierarchical]]. Default 1 = serial
+                                    * (preserves the original behaviour for
+                                    * llama.cpp single-slot setups). Apps with
+                                    * `--parallel N` configured locally, or
+                                    * hosted providers that aren't slot-limited,
+                                    * bump this to run leaf chunks concurrently.
+                                    * At parallelism = 4 a 100-chunk pass drops
+                                    * from ~50 minutes to ~12. Epoch folds run
+                                    * with the same knob — fewer calls per
+                                    * level, but the same bound applies.
+                                    */
                                    hierarchicalParallelism: Int = 1,
-                                   /** Hard cap on the summarisation call's
-                                     * generation. Without a cap the model
-                                     * falls through to the provider's
-                                     * server-side `n_predict` default —
-                                     * observed in the wild generating 12K-
-                                     * token "summaries" (functionally
-                                     * paraphrases of the input) before the
-                                     * server truncates mid-sentence. The
-                                     * truncated text persisted as a
-                                     * `ContextSummary` regardless. 2048
-                                     * comfortably fits the two-paragraph
-                                     * shape the system prompt asks for;
-                                     * chunks that would genuinely need more
-                                     * were producing lossy paraphrase
-                                     * anyway. Bug #148. */
+                                   /**
+                                    * Hard cap on the summarisation call's
+                                    * generation. Without a cap the model
+                                    * falls through to the provider's
+                                    * server-side `n_predict` default —
+                                    * observed in the wild generating 12K-
+                                    * token "summaries" (functionally
+                                    * paraphrases of the input) before the
+                                    * server truncates mid-sentence. The
+                                    * truncated text persisted as a
+                                    * `ContextSummary` regardless. 2048
+                                    * comfortably fits the two-paragraph
+                                    * shape the system prompt asks for;
+                                    * chunks that would genuinely need more
+                                    * were producing lossy paraphrase
+                                    * anyway. Bug #148.
+                                    */
                                    maxSummaryTokens: Int = 2048,
-                                   /** Hard cap on the fact-extraction call's
-                                     * generation. Mirror of `maxSummaryTokens`
-                                     * for the `extract_memories` path so an
-                                     * aggressive extractor can't enumerate
-                                     * hundreds of pseudo-facts past any
-                                     * useful limit. 1024 holds 20-30 typical
-                                     * fact records. Bug #148. */
-                                   maxExtractionTokens: Int = 1024) extends ContextCompressor {
+                                   /**
+                                    * Hard cap on the fact-extraction call's
+                                    * generation. Mirror of `maxSummaryTokens`
+                                    * for the `extract_memories` path so an
+                                    * aggressive extractor can't enumerate
+                                    * hundreds of pseudo-facts past any
+                                    * useful limit. 1024 holds 20-30 typical
+                                    * fact records. Bug #148.
+                                    */
+                                   maxExtractionTokens: Int = 1024)
+  extends ContextCompressor {
 
   override def compress(sigil: Sigil,
                         callerModelId: Id[Model],
@@ -106,25 +115,26 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
         val materialized = framesList.toVector
         if (materialized.isEmpty) Task.pure(None)
         else for {
-          _   <- control.step(s"Routing summarization model (${materialized.size} frames)")
+          _ <- control.step(s"Routing summarization model (${materialized.size} frames)")
           ctx <- loadContext(sigil, conversationId)
-          transcript     = renderTranscript(materialized, ctx._1, ctx._2)
-          estimatedInput = (tokenizer.count(transcript) +
-                              tokenizer.count(summarizationSystemPrompt) +
-                              tokenizer.count(extractionSystemPrompt) +
-                              promptOverheadTokens).toLong
+          transcript = renderTranscript(materialized, ctx._1, ctx._2)
+          estimatedInput =
+            (tokenizer.count(transcript) +
+              tokenizer.count(summarizationSystemPrompt) +
+              tokenizer.count(extractionSystemPrompt) +
+              promptOverheadTokens).toLong
           summarizationModel <- sigil.auxModelFor(
-                                  conversationId,
-                                  SummarizationWork,
-                                  chain,
-                                  fallback = callerModelId,
-                                  estimatedInputTokens = Some(estimatedInput),
-                                  reservedOutputTokens = reservedOutputTokens
-                                ).handleError(_ => Task.pure(callerModelId))
+            conversationId,
+            SummarizationWork,
+            chain,
+            fallback = callerModelId,
+            estimatedInputTokens = Some(estimatedInput),
+            reservedOutputTokens = reservedOutputTokens
+          ).handleError(_ => Task.pure(callerModelId))
           spaceOpt <- if (extractFacts) sigil.compressionMemorySpace(conversationId) else Task.pure(None)
-          available        = sigil.cache.find(summarizationModel).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
+          available = sigil.cache.find(summarizationModel).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
           transcriptTokens = tokenizer.count(transcript).toLong
-          transcriptBytes  = transcript.getBytes(java.nio.charset.StandardCharsets.UTF_8).length.toLong
+          transcriptBytes = transcript.getBytes(java.nio.charset.StandardCharsets.UTF_8).length.toLong
           // Single-shot only when BOTH the token window accommodates
           // the transcript AND the wire body fits the byte ceiling.
           // Bug #143 — token-only check let 18 MB transcripts through
@@ -132,36 +142,44 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
           fitsSinglePass = (available <= 0L || transcriptTokens <= available) && transcriptBytes <= maxChunkBytes
           _ <- control.step("Extracting facts")
           _ <- spaceOpt match {
-                 case Some(space) =>
-                   if (fitsSinglePass)
-                     extractAndPersist(sigil, summarizationModel, chain, transcript, conversationId, space,
-                       materialized.iterator.map(_.sourceEventId).distinct.toList)
-                   else
-                     extractAndPersistChunked(sigil, summarizationModel, chain, materialized, ctx, conversationId, space, available)
-                 case None => Task.unit
-               }
+            case Some(space) =>
+              if (fitsSinglePass)
+                extractAndPersist(
+                  sigil,
+                  summarizationModel,
+                  chain,
+                  transcript,
+                  conversationId,
+                  space,
+                  materialized.iterator.map(_.sourceEventId).distinct.toList)
+              else
+                extractAndPersistChunked(sigil, summarizationModel, chain, materialized, ctx, conversationId, space, available)
+            case None => Task.unit
+          }
           _ <- control.step("Summarizing transcript")
           summary <- if (fitsSinglePass)
-                       summarize(sigil, summarizationModel, chain, transcript, conversationId)
-                     else
-                       SummaryOnlyCompressor(
-                         systemPrompt = summarizationSystemPrompt,
-                         renderTranscript = renderTranscript,
-                         tokenizer = tokenizer,
-                         reservedOutputTokens = reservedOutputTokens,
-                         promptOverheadTokens = promptOverheadTokens,
-                         maxChunkBytes = maxChunkBytes,
-                         maxSummaryTokens = maxSummaryTokens
-                       ).compress(sigil, summarizationModel, chain, rapid.Stream.emits(materialized), conversationId)
+            summarize(sigil, summarizationModel, chain, transcript, conversationId)
+          else
+            SummaryOnlyCompressor(
+              systemPrompt = summarizationSystemPrompt,
+              renderTranscript = renderTranscript,
+              tokenizer = tokenizer,
+              reservedOutputTokens = reservedOutputTokens,
+              promptOverheadTokens = promptOverheadTokens,
+              maxChunkBytes = maxChunkBytes,
+              maxSummaryTokens = maxSummaryTokens
+            ).compress(sigil, summarizationModel, chain, rapid.Stream.emits(materialized), conversationId)
         } yield summary
       }
     }
 
-  /** Bug #41 — extraction with chunk-and-merge: for inputs bigger than
-    * the picked model's window, run `extract_memories` per chunk and
-    * concatenate the resulting facts. No final merge step (each fact
-    * is independently meaningful; cross-chunk dedup happens via
-    * `upsertMemoryByKeyFor`). */
+  /**
+   * Bug #41 — extraction with chunk-and-merge: for inputs bigger than
+   * the picked model's window, run `extract_memories` per chunk and
+   * concatenate the resulting facts. No final merge step (each fact
+   * is independently meaningful; cross-chunk dedup happens via
+   * `upsertMemoryByKeyFor`).
+   */
   private def extractAndPersistChunked(sigil: Sigil,
                                        modelId: Id[Model],
                                        chain: List[ParticipantId],
@@ -172,22 +190,35 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                        availableTokens: Long): Task[Unit] = {
     val effectiveTokenBudget = if (availableTokens <= 0L) Long.MaxValue else availableTokens
     val chunks = SummaryOnlyCompressor.chunkByTokensAndBytes(
-      frames, ctx, renderTranscript, tokenizer, effectiveTokenBudget, maxChunkBytes
+      frames,
+      ctx,
+      renderTranscript,
+      tokenizer,
+      effectiveTokenBudget,
+      maxChunkBytes
     )
     Task.sequence(chunks.map { chunk =>
       val text = renderTranscript(chunk, ctx._1, ctx._2)
-      extractAndPersist(sigil, modelId, chain, text, conversationId, space,
+      extractAndPersist(
+        sigil,
+        modelId,
+        chain,
+        text,
+        conversationId,
+        space,
         chunk.iterator.map(_.sourceEventId).distinct.toList)
     }).unit
   }
 
-  /** Run the app's chosen [[sigil.conversation.compression.extract.HighSignalFilter]]
-    * over a chunk before spending an extraction consult on it. The
-    * per-turn pathway already gates on this filter; the compression
-    * pathway extracting unconditionally meant an app that deliberately
-    * narrowed what counts as durable still paid for — and stored —
-    * extractions from every shed chunk. Chunks with no filter wired
-    * (`signalFilter = None`) extract as before. */
+  /**
+   * Run the app's chosen [[sigil.conversation.compression.extract.HighSignalFilter]]
+   * over a chunk before spending an extraction consult on it. The
+   * per-turn pathway already gates on this filter; the compression
+   * pathway extracting unconditionally meant an app that deliberately
+   * narrowed what counts as durable still paid for — and stored —
+   * extractions from every shed chunk. Chunks with no filter wired
+   * (`signalFilter = None`) extract as before.
+   */
   private def passesSignalFilter(sigil: Sigil, transcript: String): Boolean =
     sigil.memoryExtractor.signalFilter.forall(_.isHighSignal(
       ExtractionTurn(userMessage = transcript, agentResponse = "")))
@@ -198,7 +229,7 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                 transcript: String,
                                 conversationId: Id[Conversation],
                                 space: SpaceId,
-                                sourceEventIds: List[Id[_root_.sigil.event.Event]]): Task[Unit] = {
+                                sourceEventIds: List[Id[_root_.sigil.event.Event]]): Task[Unit] =
     if (!passesSignalFilter(sigil, transcript))
       Task(scribe.debug(s"MemoryContextCompressor: chunk failed the high-signal filter for " +
         s"conversation ${conversationId.value} — skipping extraction consult"))
@@ -213,18 +244,18 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
            |identity slot whose value may change over time (so future extractions can version it);
            |omit `key` for one-shot facts.
            |
-           |${transcript}""".stripMargin,
+           |$transcript""".stripMargin,
       tool = ExtractMemoriesTool,
       generationSettings = GenerationSettings(
         outputTokenCap = OutputTokenCap.Below(maxExtractionTokens),
-        reasoningMode  = ReasoningMode.Off
+        reasoningMode = ReasoningMode.Off
       )
     ).flatMap {
       case Some(result) =>
         val kept = result.memories.filter(_.content.trim.length >= minFactChars)
         val memories = kept.map { m =>
           val label = if (m.label.trim.nonEmpty) m.label
-                      else MemoryContextCompressor.synthesizeLabel(m.content)
+          else MemoryContextCompressor.synthesizeLabel(m.content)
           ContextMemory(
             fact = m.content,
             label = label,
@@ -242,7 +273,6 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
     }.handleError { e =>
       Task(scribe.warn(s"MemoryContextCompressor: extraction failed for conversation ${conversationId.value}: ${e.getMessage}"))
     }
-  }
 
   private def summarize(sigil: Sigil,
                         modelId: Id[Model],
@@ -253,7 +283,7 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
     val userPrompt =
       s"""Summarize the following conversation excerpt. Output via the `summarize_conversation` tool.
          |
-         |${transcript}""".stripMargin
+         |$transcript""".stripMargin
     ConsultTool.invoke[SummarizationInput](
       sigil = sigil,
       modelId = modelId,
@@ -263,7 +293,7 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       tool = SummarizationTool,
       generationSettings = GenerationSettings(
         outputTokenCap = OutputTokenCap.Below(maxSummaryTokens),
-        reasoningMode  = ReasoningMode.Off
+        reasoningMode = ReasoningMode.Off
       )
     ).flatMap {
       case Some(result) if result.summary.trim.nonEmpty =>
@@ -283,42 +313,44 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
     }
   }
 
-  /** Sigil #285 — compress a specific list of frames and persist the
-    * resulting summary tagged with the source events' ids. The
-    * curator filters those events from subsequent turns' frames so
-    * the agent sees the summary in their place — mid-turn elision
-    * without modifying the durable event log.
-    *
-    * Differs from [[compress]] only in (a) the inputs are a fixed
-    * pre-selected vector rather than a stream walked from the full
-    * conversation, (b) the produced [[ContextSummary]] carries
-    * `coversEventIds`, and (c) the extract-memories pass is skipped
-    * — intra-turn folding is about budget pressure mid-loop, not
-    * durable-fact mining, and adding an LLM call slows the
-    * iteration boundary unnecessarily.
-    *
-    * @param coversEventIds the durable [[sigil.event.Event]] ids that
-    *                       the summary's text subsumes. Empty list
-    *                       skips the summarization (no-op). */
+  /**
+   * Sigil #285 — compress a specific list of frames and persist the
+   * resulting summary tagged with the source events' ids. The
+   * curator filters those events from subsequent turns' frames so
+   * the agent sees the summary in their place — mid-turn elision
+   * without modifying the durable event log.
+   *
+   * Differs from [[compress]] only in (a) the inputs are a fixed
+   * pre-selected vector rather than a stream walked from the full
+   * conversation, (b) the produced [[ContextSummary]] carries
+   * `coversEventIds`, and (c) the extract-memories pass is skipped
+   * — intra-turn folding is about budget pressure mid-loop, not
+   * durable-fact mining, and adding an LLM call slows the
+   * iteration boundary unnecessarily.
+   *
+   * @param coversEventIds the durable [[sigil.event.Event]] ids that
+   *                       the summary's text subsumes. Empty list
+   *                       skips the summarization (no-op).
+   */
   def compressCovering(sigil: Sigil,
                        callerModelId: Id[Model],
                        chain: List[ParticipantId],
                        frames: Vector[ContextFrame],
                        conversationId: Id[Conversation],
-                       coversEventIds: List[Id[_root_.sigil.event.Event]]): Task[Option[ContextSummary]] = {
+                       coversEventIds: List[Id[_root_.sigil.event.Event]]): Task[Option[ContextSummary]] =
     if (frames.isEmpty || coversEventIds.isEmpty) Task.pure(None)
     else for {
-      ctx               <- loadContext(sigil, conversationId)
-      transcript         = renderTranscript(frames, ctx._1, ctx._2)
+      ctx <- loadContext(sigil, conversationId)
+      transcript = renderTranscript(frames, ctx._1, ctx._2)
       summarizationModel <- sigil.auxModelFor(
-                              conversationId,
-                              SummarizationWork,
-                              chain,
-                              fallback = callerModelId,
-                              estimatedInputTokens = Some(tokenizer.count(transcript).toLong),
-                              reservedOutputTokens = reservedOutputTokens
-                            ).handleError(_ => Task.pure(callerModelId))
-      summary           <- summarize(sigil, summarizationModel, chain, transcript, conversationId, coversEventIds)
+        conversationId,
+        SummarizationWork,
+        chain,
+        fallback = callerModelId,
+        estimatedInputTokens = Some(tokenizer.count(transcript).toLong),
+        reservedOutputTokens = reservedOutputTokens
+      ).handleError(_ => Task.pure(callerModelId))
+      summary <- summarize(sigil, summarizationModel, chain, transcript, conversationId, coversEventIds)
       // A rolling summary is ONE evolving artifact, not an append log.
       // Each intra-turn compaction covers a superset of the previous
       // one's events, so the fresh summary SUPERSEDES every earlier
@@ -329,21 +361,23 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       // creation rates (measured: ~$45 of a $54 turn was cache
       // creation). Best-effort — a cleanup failure never loses the
       // fresh summary.
-      _                 <- summary match {
-                             case Some(fresh) => supersedeSubsumed(sigil, conversationId, fresh)
-                               .handleError(t => Task(scribe.warn(
-                                 s"MemoryContextCompressor: supersede cleanup failed for ${conversationId.value}: ${t.getMessage}")))
-                             case None => Task.unit
-                           }
+      _ <- summary match {
+        case Some(fresh) => supersedeSubsumed(sigil, conversationId, fresh)
+            .handleError(t =>
+              Task(scribe.warn(
+                s"MemoryContextCompressor: supersede cleanup failed for ${conversationId.value}: ${t.getMessage}")))
+        case None => Task.unit
+      }
     } yield summary
-  }
 
-  /** Delete every summary of `conversationId` (other than `fresh`)
-    * whose event coverage is a non-empty subset of `fresh`'s — the
-    * fresh summary already tells that part of the story. Scoped to
-    * the rolling [[compressCovering]] stream; hierarchical
-    * compression persists its levels deliberately and never routes
-    * through here. */
+  /**
+   * Delete every summary of `conversationId` (other than `fresh`)
+   * whose event coverage is a non-empty subset of `fresh`'s — the
+   * fresh summary already tells that part of the story. Scoped to
+   * the rolling [[compressCovering]] stream; hierarchical
+   * compression persists its levels deliberately and never routes
+   * through here.
+   */
   private def supersedeSubsumed(sigil: Sigil,
                                 conversationId: Id[Conversation],
                                 fresh: ContextSummary): Task[Unit] = {
@@ -362,7 +396,7 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
   private def loadContext(sigil: Sigil, conversationId: Id[Conversation]) =
     sigil.withDB(_.conversations.transaction(_.get(conversationId))).map {
       case Some(conv) => (Some(conv.currentMode), conv.topics.lastOption)
-      case None       => (None, None)
+      case None => (None, None)
     }
 
   /**
@@ -410,34 +444,41 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                            conversationId: Id[Conversation],
                            depth: Int = 1,
                            epochSize: Int = 8,
-                           /** When supplied, the hierarchical pass emits a
-                             * `control.step(...)` event before each leaf
-                             * summarize, before each epoch fold, and at the
-                             * end of every level so the activity bar reflects
-                             * forward motion. Default `None` keeps the path
-                             * silent for apps that haven't wired a workflow
-                             * surface. Bug #145. */
-                           control: Option[FrameworkWorkflowControl] = None): Task[Vector[ContextSummary]] = {
+                           /**
+                            * When supplied, the hierarchical pass emits a
+                            * `control.step(...)` event before each leaf
+                            * summarize, before each epoch fold, and at the
+                            * end of every level so the activity bar reflects
+                            * forward motion. Default `None` keeps the path
+                            * silent for apps that haven't wired a workflow
+                            * surface. Bug #145.
+                            */
+                           control: Option[FrameworkWorkflowControl] = None): Task[Vector[ContextSummary]] =
     if (frames.isEmpty) Task.pure(Vector.empty)
     else for {
       ctx <- loadContext(sigil, conversationId)
       // Route once for the whole hierarchical pass — every chunk
       // and every epoch fold goes through the same model.
       summarizationModel <- sigil.auxModelFor(
-                              conversationId,
-                              SummarizationWork,
-                              chain,
-                              fallback = callerModelId,
-                              estimatedInputTokens = None,
-                              reservedOutputTokens = reservedOutputTokens
-                            ).handleError(_ => Task.pure(callerModelId))
+        conversationId,
+        SummarizationWork,
+        chain,
+        fallback = callerModelId,
+        estimatedInputTokens = None,
+        reservedOutputTokens = reservedOutputTokens
+      ).handleError(_ => Task.pure(callerModelId))
       available = sigil.cache.find(summarizationModel).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
       effectiveTokens = if (available <= 0L) Long.MaxValue else available
       // Stage 0 — leaf chunks. Bytes ceiling applied alongside the
       // token budget per bug #143.
       leafChunks = SummaryOnlyCompressor.chunkByTokensAndBytes(
-                     frames, ctx, renderTranscript, tokenizer, effectiveTokens, maxChunkBytes
-                   )
+        frames,
+        ctx,
+        renderTranscript,
+        tokenizer,
+        effectiveTokens,
+        maxChunkBytes
+      )
       total = leafChunks.size
       _ <- emit(control, s"Hierarchical compression: $total leaf chunks queued")
       // Counter for per-leaf progress. With parallelism > 1 the
@@ -445,12 +486,12 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       // monotonic "k of N done" surface the UI can display.
       completed = new java.util.concurrent.atomic.AtomicInteger(0)
       leafTasks = leafChunks.map { chunk =>
-                    val text = renderTranscript(chunk, ctx._1, ctx._2)
-                    summarize(sigil, summarizationModel, chain, text, conversationId).flatMap { settled =>
-                      val done = completed.incrementAndGet()
-                      emit(control, s"Hierarchical compression: leaf $done / $total summarized").map(_ => settled)
-                    }
-                  }
+        val text = renderTranscript(chunk, ctx._1, ctx._2)
+        summarize(sigil, summarizationModel, chain, text, conversationId).flatMap { settled =>
+          val done = completed.incrementAndGet()
+          emit(control, s"Hierarchical compression: leaf $done / $total summarized").map(_ => settled)
+        }
+      }
       // Bounded parallelism: default 1 = serial (current
       // behaviour). Apps bump for hosted providers / multi-slot
       // local backends. Bug #145.
@@ -461,15 +502,23 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       // `epochSize` leaves, group + summarize into epoch
       // summaries and recurse. The fold runs through the same
       // progress + parallelism surface.
-      top <- foldSummaries(sigil, summarizationModel, chain, leafSummaries, conversationId,
-                            remainingDepth = depth - 1, epochSize = epochSize, control = control)
+      top <- foldSummaries(
+        sigil,
+        summarizationModel,
+        chain,
+        leafSummaries,
+        conversationId,
+        remainingDepth = depth - 1,
+        epochSize = epochSize,
+        control = control)
     } yield top
-  }
 
-  /** Fold a vector of summaries into epoch summaries — `epochSize`
-    * inputs per fold — and recurse `remainingDepth` levels deeper.
-    * Each epoch summary is persisted so the curator's
-    * `summariesFor` lookup surfaces every level. */
+  /**
+   * Fold a vector of summaries into epoch summaries — `epochSize`
+   * inputs per fold — and recurse `remainingDepth` levels deeper.
+   * Each epoch summary is persisted so the curator's
+   * `summariesFor` lookup surfaces every level.
+   */
   private def foldSummaries(sigil: Sigil,
                             modelId: Id[Model],
                             chain: List[ParticipantId],
@@ -477,11 +526,11 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                             conversationId: Id[Conversation],
                             remainingDepth: Int,
                             epochSize: Int,
-                            control: Option[FrameworkWorkflowControl]): Task[Vector[ContextSummary]] = {
+                            control: Option[FrameworkWorkflowControl]): Task[Vector[ContextSummary]] =
     if (remainingDepth <= 0 || summaries.size <= epochSize) Task.pure(summaries)
     else {
       val groups = summaries.grouped(epochSize).toVector
-      val total  = groups.size
+      val total = groups.size
       val completed = new java.util.concurrent.atomic.AtomicInteger(0)
       val groupTasks = groups.toList.map { group =>
         val text = group.zipWithIndex.map { case (s, i) =>
@@ -489,26 +538,27 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
         }.mkString("\n\n")
         summarize(sigil, modelId, chain, text, conversationId).flatMap { settled =>
           val done = completed.incrementAndGet()
-          emit(control, s"Epoch fold (depth ${remainingDepth}): $done / $total summarized").map(_ => settled)
+          emit(control, s"Epoch fold (depth $remainingDepth): $done / $total summarized").map(_ => settled)
         }
       }
       for {
-        _    <- emit(control, s"Epoch fold (depth ${remainingDepth}): $total groups queued")
+        _ <- emit(control, s"Epoch fold (depth $remainingDepth): $total groups queued")
         merged <- Task.parSequenceBounded(groupTasks, math.max(1, hierarchicalParallelism))
         epoch = merged.flatten.toVector
-        _    <- emit(control, s"Epoch fold (depth ${remainingDepth}) complete · ${epoch.size} summaries")
+        _ <- emit(control, s"Epoch fold (depth $remainingDepth) complete · ${epoch.size} summaries")
         next <- foldSummaries(sigil, modelId, chain, epoch, conversationId, remainingDepth - 1, epochSize, control)
       } yield next
     }
-  }
 
-  /** Fire a progress step against the supplied control handle, if
-    * any. Swallows control-side errors — a workflow-pulse hiccup
-    * never blocks compression itself. Bug #145. */
+  /**
+   * Fire a progress step against the supplied control handle, if
+   * any. Swallows control-side errors — a workflow-pulse hiccup
+   * never blocks compression itself. Bug #145.
+   */
   private def emit(control: Option[FrameworkWorkflowControl], label: String): Task[Unit] =
     control match {
       case Some(c) => c.step(label).handleError(_ => Task.unit)
-      case None    => Task.unit
+      case None => Task.unit
     }
 }
 
@@ -529,9 +579,11 @@ object MemoryContextCompressor {
       |Call the `extract_memories` tool with the list. Return an empty list if the excerpt carries no
       |durable facts.""".stripMargin
 
-  /** Synthesise a short human-readable label from a compressor-
-    * extracted fact. Takes the first sentence (or first ~60 chars,
-    * whichever ends earlier) and trims trailing punctuation. */
+  /**
+   * Synthesise a short human-readable label from a compressor-
+   * extracted fact. Takes the first sentence (or first ~60 chars,
+   * whichever ends earlier) and trims trailing punctuation.
+   */
   def synthesizeLabel(fact: String): String = {
     val firstClause = {
       val idx = fact.indexWhere(c => c == '.' || c == '!' || c == '?')

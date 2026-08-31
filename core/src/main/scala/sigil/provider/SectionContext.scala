@@ -29,39 +29,52 @@ case class SectionContext(request: ConversationRequest,
                           promptShape: PromptShape = PromptShape.Full,
                           featureBodies: Map[FeatureId, List[FeatureBody]] = Map.empty) {
 
-  /** Apply the prompt shape's general per-section entry cap to a
-    * list-shaped section. `Full` caps nothing. */
+  /**
+   * Apply the prompt shape's general per-section entry cap to a
+   * list-shaped section. `Full` caps nothing.
+   */
   def capped[A](entries: List[A]): List[A] = capped(entries, promptShape.entryCap)
 
-  /** Apply a specific [[PromptShape]] cap (memories, summaries, skills)
-    * to a list-shaped section. */
+  /**
+   * Apply a specific [[PromptShape]] cap (memories, summaries, skills)
+   * to a list-shaped section.
+   */
   def capped[A](entries: List[A], cap: Option[Int]): List[A] = cap.fold(entries)(entries.take)
 
   def turn: TurnInput = request.turnInput
 
   def chain: List[ParticipantId] = request.chain
 
-  /** Whether discovery is in the roster. Telling a model to call
-    * `find_capability` when the active [[ToolPolicy]] excluded it is a
-    * dead loop, so three sections branch their wording on this. */
+  /**
+   * Whether discovery is in the roster. Telling a model to call
+   * `find_capability` when the active [[ToolPolicy]] excluded it is a
+   * dead loop, so three sections branch their wording on this.
+   */
   lazy val findCapabilityAvailable: Boolean =
     request.tools.exists(_.schema.name.value == "find_capability")
 
-  /** The roster actually going on the wire. Sections that advertise
-    * tool names filter by this so the prompt's claim is accurate by
-    * construction even after roster narrowing. */
+  /**
+   * The roster actually going on the wire. Sections that advertise
+   * tool names filter by this so the prompt's claim is accurate by
+   * construction even after roster narrowing.
+   */
   lazy val wireToolNames: Set[ToolName] = request.tools.map(_.schema.name).toSet
 
   lazy val instructionsText: String =
     if (!findCapabilityAvailable) request.instructions.renderWithoutTools
     else request.instructions.render
 
-  /** Chain-aggregated skills plus role- and mode-bundled slots.
-    * `distinctBy(_.name)` keeps the mode fold idempotent with the
-    * ModeChange-driven path. */
+  /**
+   * Chain-aggregated skills plus role- and mode-bundled slots.
+   * `distinctBy(_.name)` keeps the mode fold idempotent with the
+   * ModeChange-driven path.
+   */
   lazy val allSkills: Vector[sigil.conversation.ActiveSkillSlot] =
-    capped((turn.aggregatedSkills(chain) ++ request.roles.flatMap(_.skill.toList) ++
-      request.currentMode.skill.toList).distinctBy(_.name).toList, promptShape.skillCap).toVector
+    capped(
+      (turn.aggregatedSkills(chain) ++ request.roles.flatMap(_.skill.toList) ++
+        request.currentMode.skill.toList).distinctBy(_.name).toList,
+      promptShape.skillCap
+    ).toVector
 
   lazy val recentInvocations: List[sigil.conversation.RecentToolInvocation] =
     chain.flatMap(id => turn.projectionFor(id).recentToolInvocations)

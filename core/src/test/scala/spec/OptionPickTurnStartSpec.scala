@@ -58,10 +58,12 @@ class OptionPickTurnStartSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       Task.pure(Nil)
   }
 
-  /** Turn 1 runs two iterations — a plain tool call, then the
-    * `respond_options` that ends it. Every later call replies with
-    * `respond`, so the second turn is observable as its reply. */
-  private final class ScriptedProvider extends Provider {
+  /**
+   * Turn 1 runs two iterations — a plain tool call, then the
+   * `respond_options` that ends it. Every later call replies with
+   * `respond`, so the second turn is observable as its reply.
+   */
+  final private class ScriptedProvider extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -74,29 +76,29 @@ class OptionPickTurnStartSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         val callId = CallId(s"call-$n")
         val events: List[ProviderEvent] = n match {
           case 1 => List(
-            ProviderEvent.ToolCallStart(callId, GetMagicNumberTool.schema.name.value),
-            ProviderEvent.toolCall(callId, GetMagicNumberTool)(GetMagicNumberInput()),
-            ProviderEvent.Done(StopReason.ToolCall)
-          )
+              ProviderEvent.ToolCallStart(callId, GetMagicNumberTool.schema.name.value),
+              ProviderEvent.toolCall(callId, GetMagicNumberTool)(GetMagicNumberInput()),
+              ProviderEvent.Done(StopReason.ToolCall)
+            )
           case 2 => List(
-            ProviderEvent.ToolCallStart(callId, RespondOptionsTool.schema.name.value),
-            ProviderEvent.toolCall(callId, RespondOptionsTool)(RespondOptionsInput(
-              prompt        = "Should I bind this workspace?",
-              options       = List(SelectOption("Yes", PickValue), SelectOption("No", "no")),
-              allowMultiple = false
-            )),
-            ProviderEvent.Done(StopReason.ToolCall)
-          )
+              ProviderEvent.ToolCallStart(callId, RespondOptionsTool.schema.name.value),
+              ProviderEvent.toolCall(callId, RespondOptionsTool)(RespondOptionsInput(
+                prompt = "Should I bind this workspace?",
+                options = List(SelectOption("Yes", PickValue), SelectOption("No", "no")),
+                allowMultiple = false
+              )),
+              ProviderEvent.Done(StopReason.ToolCall)
+            )
           case _ => List(
-            ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
-              topicLabel   = TestTopicEntry.label,
-              topicSummary = TestTopicEntry.summary,
-              content      = SecondTurnReply,
-              endsTurn     = true
-            )),
-            ProviderEvent.Done(StopReason.ToolCall)
-          )
+              ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
+              ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
+                topicLabel = TestTopicEntry.label,
+                topicSummary = TestTopicEntry.summary,
+                content = SecondTurnReply,
+                endsTurn = true
+              )),
+              ProviderEvent.Done(StopReason.ToolCall)
+            )
         }
         Stream.emits(events)
       }
@@ -105,25 +107,25 @@ class OptionPickTurnStartSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames ++ List(ToolName("respond_options"), GetMagicNumberTool.name),
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames ++ List(ToolName("respond_options"), GetMagicNumberTool.name),
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def userMessage(convId: Id[Conversation], text: String): Message =
     Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete
     )
 
   private def newConversation(name: String): Task[Conversation] = {
     val convId = Conversation.id(s"$name-${rapid.Unique()}")
-    val conv   = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
+    val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
   }
 
@@ -139,14 +141,16 @@ class OptionPickTurnStartSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     TestSigil.withDB(_.eventsTransaction(convId)(_.list)).map(_.collect {
       case m: Message if m.conversationId == convId && m.participantId == TestAgent && m.role == MessageRole.Standard =>
         m.content.collect {
-          case ResponseContent.Text(t)     => t
+          case ResponseContent.Text(t) => t
           case ResponseContent.Markdown(t) => t
         }.mkString
     })
 
-  /** Stamp the pick the moment the agent's first tool call goes out —
-    * the turn is live and its terminal iteration has not started, so
-    * the pick predates the boundary the release path checks against. */
+  /**
+   * Stamp the pick the moment the agent's first tool call goes out —
+   * the turn is live and its terminal iteration has not started, so
+   * the pick predates the boundary the release path checks against.
+   */
   private def stampPickMidTurn(convId: Id[Conversation],
                                pick: AtomicReference[Option[Message]]): Signal => Task[Unit] = {
     case ti: ToolInvoke if ti.conversationId == convId && ti.toolName == GetMagicNumberTool.name =>
@@ -193,9 +197,9 @@ class OptionPickTurnStartSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         stamp = stampPickMidTurn(conv._id, pick)
         _ = TestSigil.setInboundGate {
           case d: AgentStateDelta
-            if d.conversationId == conv._id
-              && d.activity.contains(AgentActivity.Idle)
-              && released.compareAndSet(false, true) =>
+              if d.conversationId == conv._id
+                && d.activity.contains(AgentActivity.Idle)
+                && released.compareAndSet(false, true) =>
             Task(TestSigil.publish(pick.get().getOrElse(fail("the pick was never stamped"))).startUnit())
               .flatMap(_ => Task.sleep(1.second))
           case other => stamp(other)
@@ -229,9 +233,9 @@ class OptionPickTurnStartSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
           .takeWhile(_ => running.get())
           .evalMap {
             case m: Message
-              if m.conversationId == conv._id && m.participantId == TestAgent
-                && m.content.exists(_.isInstanceOf[ResponseContent.Options])
-                && published.compareAndSet(false, true) =>
+                if m.conversationId == conv._id && m.participantId == TestAgent
+                  && m.content.exists(_.isInstanceOf[ResponseContent.Options])
+                  && published.compareAndSet(false, true) =>
               TestSigil.publish(userMessage(conv._id, PickValue))
             case _ => Task.unit
           }

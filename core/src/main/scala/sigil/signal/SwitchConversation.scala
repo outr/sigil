@@ -23,4 +23,5 @@ import sigil.conversation.Conversation
  * for fresh state.
  */
 case class SwitchConversation(conversationId: Id[Conversation],
-                              limit: Int = 100) extends ConversationNotice derives RW
+                              limit: Int = 100)
+  extends ConversationNotice derives RW

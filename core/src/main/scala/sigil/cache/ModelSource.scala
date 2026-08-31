@@ -22,24 +22,30 @@ import java.util.concurrent.atomic.AtomicReference
  */
 trait ModelSource {
 
-  /** Stable identity for this slice. Registering a source whose name
-    * already exists swaps the implementation in place, keeping the
-    * original registration position (and therefore its precedence). */
+  /**
+   * Stable identity for this slice. Registering a source whose name
+   * already exists swaps the implementation in place, keeping the
+   * original registration position (and therefore its precedence).
+   */
   def name: String
 
-  /** Current snapshot of the models this source serves. Read on every
-    * composite-index rebuild, never on the read hot path. */
+  /**
+   * Current snapshot of the models this source serves. Read on every
+   * composite-index rebuild, never on the read hot path.
+   */
   def models: List[Model]
 
   private val listeners: AtomicReference[List[ModelSource => Unit]] =
     new AtomicReference(Nil)
 
-  /** Announce that this source's slice changed. Implementations call
-    * this after the swap, so every registry composing the source
-    * rebuilds against the new snapshot. */
-  protected final def sliceChanged(): Unit = listeners.get.foreach(_(this))
+  /**
+   * Announce that this source's slice changed. Implementations call
+   * this after the swap, so every registry composing the source
+   * rebuilds against the new snapshot.
+   */
+  final protected def sliceChanged(): Unit = listeners.get.foreach(_(this))
 
-  private[cache] final def subscribe(listener: ModelSource => Unit): Unit = {
+  final private[cache] def subscribe(listener: ModelSource => Unit): Unit = {
     val _ = listeners.updateAndGet(listener :: _)
     ()
   }

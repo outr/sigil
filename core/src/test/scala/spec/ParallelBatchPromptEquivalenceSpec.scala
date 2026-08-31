@@ -44,7 +44,8 @@ class ParallelBatchPromptEquivalenceSpec extends AnyWordSpec with Matchers {
   private val outDir = Paths.get("target", "prompt-equivalence")
 
   private class ScriptedProvider(emit: Int => List[(CallId, String)],
-                                 recorded: ConcurrentLinkedQueue[ProviderCall]) extends Provider {
+                                 recorded: ConcurrentLinkedQueue[ProviderCall])
+    extends Provider {
     private val iterations = new AtomicInteger(0)
 
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -64,12 +65,16 @@ class ParallelBatchPromptEquivalenceSpec extends AnyWordSpec with Matchers {
             Stream.emits(List(
               ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
               ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-                topicLabel = "Probes", topicSummary = "Probe lookup", content = "Done.", endsTurn = true)),
+                topicLabel = "Probes",
+                topicSummary = "Probe lookup",
+                content = "Done.",
+                endsTurn = true)),
               ProviderEvent.Done(StopReason.Complete)
             ))
           case calls =>
             val body = calls.flatMap { case (cid, probe) =>
-              List(ProviderEvent.ToolCallStart(cid, ProbeReadTool.name.value),
+              List(
+                ProviderEvent.ToolCallStart(cid, ProbeReadTool.name.value),
                 ProviderEvent.toolCall(cid, ProbeReadTool)(ProbeReadInput(probe = probe)))
             }
             Stream.emits(body ::: List(ProviderEvent.Done(StopReason.ToolCall)))
@@ -96,19 +101,21 @@ class ParallelBatchPromptEquivalenceSpec extends AnyWordSpec with Matchers {
     val task = for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId = TestUser,
-             conversationId = convId,
-             topicId = TestTopicEntry.id,
-             content = Vector(ResponseContent.Text("Read the probes and report back.")),
-             state = sigil.signal.EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Read the probes and report back.")),
+        state = sigil.signal.EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId, timeout = 90.seconds)
     } yield recorded.iterator().asScala.toList
     task.sync()
   }
 
-  /** Whole prompt as text, with wire call ids replaced by the position
-    * they occupy so two turns that minted different ids compare. */
+  /**
+   * Whole prompt as text, with wire call ids replaced by the position
+   * they occupy so two turns that minted different ids compare.
+   */
   private def render(call: ProviderCall): String = {
     val ids = call.messages.collect {
       case a: ProviderMessage.Assistant => a.toolCalls.map(_.id)
@@ -117,12 +124,12 @@ class ParallelBatchPromptEquivalenceSpec extends AnyWordSpec with Matchers {
       ids.zipWithIndex.foldLeft(text) { case (acc, (id, i)) => acc.replace(id, s"<call-$i>") }
 
     val trail = call.messages.map {
-      case ProviderMessage.System(c)         => s"SYSTEM\n$c"
-      case ProviderMessage.User(blocks)      => s"USER\n${blocks.mkString("\n")}"
+      case ProviderMessage.System(c) => s"SYSTEM\n$c"
+      case ProviderMessage.User(blocks) => s"USER\n${blocks.mkString("\n")}"
       case ProviderMessage.Assistant(c, tcs) =>
         s"ASSISTANT text=<$c> calls=${tcs.map(t => s"${t.id}:${t.name}${t.argsJson}").mkString(" | ")}"
       case ProviderMessage.ToolResult(id, c) => s"TOOLRESULT $id\n$c"
-      case other                             => other.toString
+      case other => other.toString
     }.mkString("\n----\n")
 
     normalize(
@@ -137,9 +144,11 @@ class ParallelBatchPromptEquivalenceSpec extends AnyWordSpec with Matchers {
     Files.writeString(outDir.resolve(name), text)
   }
 
-  /** Every probe called so far answered by its own result, in order.
-    * Equivalence alone is satisfied by two prompts corrupted the same
-    * way; completeness is what says the prompt is right. */
+  /**
+   * Every probe called so far answered by its own result, in order.
+   * Equivalence alone is satisfied by two prompts corrupted the same
+   * way; completeness is what says the prompt is right.
+   */
   private def assertComplete(label: String, call: ProviderCall, rendered: String): Unit = {
     val calls = call.messages.collect { case a: ProviderMessage.Assistant => a.toolCalls }.flatten
     val byId = call.messages.collect { case ProviderMessage.ToolResult(id, content) => id -> content }.toMap
@@ -161,10 +170,14 @@ class ParallelBatchPromptEquivalenceSpec extends AnyWordSpec with Matchers {
 
   "the prompt replaying settled tool calls" should {
     "carry every call with its own result, however the calls arrived" in {
-      val batched = runTurn("equiv-batched", n =>
-        if (n == 1) probes.zipWithIndex.map { case (p, i) => CallId(s"batch-$i") -> p } else Nil)
-      val serial = runTurn("equiv-serial", n =>
-        if (n <= probes.size) List(CallId(s"serial-${n - 1}") -> probes(n - 1)) else Nil)
+      val batched = runTurn(
+        "equiv-batched",
+        n =>
+          if (n == 1) probes.zipWithIndex.map { case (p, i) => CallId(s"batch-$i") -> p } else Nil)
+      val serial = runTurn(
+        "equiv-serial",
+        n =>
+          if (n <= probes.size) List(CallId(s"serial-${n - 1}") -> probes(n - 1)) else Nil)
 
       // The first prompt carrying every settled call: right after the
       // batch, and right after the last of the singles.

@@ -15,11 +15,15 @@ import sigil.conversation.{Conversation, ContextKey, TurnInput}
  */
 class ContextKeyWireFormatSpec extends AnyWordSpec with Matchers {
 
-  /** Exactly what the case-class-derived RW wrote. */
+  /**
+   * Exactly what the case-class-derived RW wrote.
+   */
   private val legacyKey: Json = obj("value" -> str("_budgetWarning"))
 
-  /** A `Map[ContextKey, String]` rides fabric's array-of-pairs encoding
-    * because the key's definition is an object, not a string. */
+  /**
+   * A `Map[ContextKey, String]` rides fabric's array-of-pairs encoding
+   * because the key's definition is an object, not a string.
+   */
   private val legacyMap: Json = arr(
     obj("key" -> obj("value" -> str("_budgetWarning")), "value" -> str("31% of the window")),
     obj("key" -> obj("value" -> str("focus")), "value" -> str("the config sweep"))

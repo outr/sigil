@@ -26,19 +26,19 @@ class ReadFileCleanRenderSpec extends AnyWordSpec with Matchers {
 
   private def renderedFor(out: ReadFileOutput): String = {
     val invoke = ToolInvoke(
-      toolName       = ToolName("read_file"),
-      participantId  = TestAgent,
+      toolName = ToolName("read_file"),
+      participantId = TestAgent,
       conversationId = Conversation.id("readfile-render"),
-      topicId        = Id[Topic]("t"),
-      output         = out,
-      outcome        = ToolOutcome.Success,
-      state          = EventState.Complete
+      topicId = Id[Topic]("t"),
+      output = out,
+      outcome = ToolOutcome.Success,
+      state = EventState.Complete
     )
     FrameBuilder.computeFrame(invoke) match {
       case Some(tc: ContextFrame.ToolCall) =>
         tc.state match {
           case ToolCallState.Complete(content, _) => content
-          case other                              => fail(s"expected a Complete tool frame, got $other")
+          case other => fail(s"expected a Complete tool frame, got $other")
         }
       case other => fail(s"expected a ToolCall frame, got $other")
     }
@@ -51,11 +51,11 @@ class ReadFileCleanRenderSpec extends AnyWordSpec with Matchers {
       val rendered = renderedFor(ReadFileOutput(content = src, totalLines = 2, linesRead = 2, hash = Some("9f3a")))
       withClue(s"rendered:\n$rendered\n") {
         // The exact bytes an edit anchor would need are present verbatim...
-        rendered should include ("val x = \"hi\"")
-        rendered should include ("/home/u/project/x.scala")
+        rendered should include("val x = \"hi\"")
+        rendered should include("/home/u/project/x.scala")
         // ...and the JSON-escaped forms that broke edit anchors are gone.
-        rendered should not include ("""\"hi\"""")
-        rendered should not include ("""\/home""")
+        rendered should not include """\"hi\""""
+        rendered should not include """\/home"""
       }
     }
 
@@ -63,10 +63,10 @@ class ReadFileCleanRenderSpec extends AnyWordSpec with Matchers {
       val rendered = renderedFor(ReadFileOutput(content = "line one", totalLines = 10, linesRead = 3, hash = Some("deadbeef")))
       withClue(s"rendered:\n$rendered\n") {
         // The content leads, unwrapped (not `{"content":"line one",...}`).
-        rendered should startWith ("line one")
-        rendered should not include ("\"content\":")
+        rendered should startWith("line one")
+        rendered should not include "\"content\":"
         // The hash the agent echoes into `edit_file.expectedHash` still rides along.
-        rendered should include ("deadbeef")
+        rendered should include("deadbeef")
       }
     }
   }

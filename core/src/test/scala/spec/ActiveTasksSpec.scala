@@ -57,10 +57,11 @@ class ActiveTasksSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         // Waiting (still active) or — race-window-permitted — already
         // dropped from the active list.
         _ <- sigil.workflow.WorkflowScheduler.scheduleTemplate(
-          TestWorkflowSigil, template
+          TestWorkflowSigil,
+          template
         )
         tasks <- TestWorkflowSigil.activeTasksFor(conv._id)
-      } yield {
+      } yield
         // The list either contains the scheduled run by name, or is
         // empty because the noop already settled. Both prove the
         // projection isn't returning unrelated work; the more
@@ -69,7 +70,6 @@ class ActiveTasksSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           tasks.map(_.name) should contain("panel-noop")
           tasks.head.conversationId shouldBe conv._id
         } else succeed
-      }
     }
 
     "exclude workflow runs whose conversationId points elsewhere" in {
@@ -85,18 +85,19 @@ class ActiveTasksSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(convB)))
         _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
         _ <- sigil.workflow.WorkflowScheduler.scheduleTemplate(
-          TestWorkflowSigil, template
+          TestWorkflowSigil,
+          template
         )
         tasksForA <- TestWorkflowSigil.activeTasksFor(convA._id)
-      } yield {
-        tasksForA.find(_.name == "elsewhere") shouldBe None
-      }
+      } yield tasksForA.find(_.name == "elsewhere") shouldBe None
     }
   }
 
-  /** The scheduled no-op workflows settle on background fibers. Wait
-    * for every run to reach a terminal state before disposing the DB,
-    * so a still-running run can't hit a closed Lucene IndexWriter. */
+  /**
+   * The scheduled no-op workflows settle on background fibers. Wait
+   * for every run to reach a terminal state before disposing the DB,
+   * so a still-running run can't hit a closed Lucene IndexWriter.
+   */
   private def awaitWorkflowsSettled(remainingMs: Long): Task[Unit] =
     TestWorkflowSigil.workflowManager.collection.transaction(_.query.toList).flatMap { runs =>
       if (runs.forall(_.finished) || remainingMs <= 0) Task.unit

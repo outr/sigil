@@ -50,11 +50,13 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private val modelId: Id[Model] = Model.id("test", "eager-active")
   TestSigil.testModel(modelId)
 
-  /** Provider that emits a single blocking-tool call on the first
-    * attempt, then an atomic `respond` to end the turn cleanly on any
-    * subsequent attempt (the agent loop re-triggers after the tool's
-    * Tool-role result settles). */
-  private final class LatchThenRespondProvider extends Provider {
+  /**
+   * Provider that emits a single blocking-tool call on the first
+   * attempt, then an atomic `respond` to end the turn cleanly on any
+   * subsequent attempt (the agent loop re-triggers after the tool's
+   * Tool-role result settles).
+   */
+  final private class LatchThenRespondProvider extends Provider {
     val attemptCount = new atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -75,10 +77,10 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         Stream.emits(List(
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
           ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-            topicLabel   = "Latch done",
+            topicLabel = "Latch done",
             topicSummary = "tool released, replying",
-            content      = "All done.",
-            endsTurn     = true
+            content = "All done.",
+            endsTurn = true
           )),
           ProviderEvent.Done(StopReason.Complete)
         ))
@@ -88,16 +90,16 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = EagerActiveAgent,
-      modelId            = modelId,
-      toolNames          = List(EagerActiveLatchTool.name) ++ CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = EagerActiveAgent,
+      modelId = modelId,
+      toolNames = List(EagerActiveLatchTool.name) ++ CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def startRecorder(): (ConcurrentLinkedQueue[Signal], atomic.AtomicBoolean) = {
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
@@ -120,9 +122,9 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "broadcast ToolInvoke(Active) at tool-start, while the tool is still blocked" in {
       TestSigil.reset()
       EagerActiveLatchTool.reset()
-      val convId  = Conversation.id(s"eager-active-${rapid.Unique()}")
-      val agent   = makeAgent()
-      val conv    = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val convId = Conversation.id(s"eager-active-${rapid.Unique()}")
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       val provider = new LatchThenRespondProvider
       TestSigil.setProvider(Task.pure(provider))
 
@@ -132,11 +134,11 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         _ <- Task.sleep(150.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = convId,
-          topicId        = TestTopicEntry.id,
-          content        = Vector(ResponseContent.Text("run the latch tool")),
-          state          = EventState.Complete
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("run the latch tool")),
+          state = EventState.Complete
         ))
         // Wait until the tool body is genuinely executing (and therefore
         // blocked on its latch) — proving the iteration drain has NOT yet
@@ -155,8 +157,9 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         _ <- Task(EagerActiveLatchTool.releaseLatch.countDown())
         _ <- waitFor(System.currentTimeMillis() + 20_000L)(
           recorded.iterator().asScala.exists {
-            case m: Message if m.participantId == agent.id && !m.isFailure
-                            && m.state == EventState.Complete => true
+            case m: Message
+                if m.participantId == agent.id && !m.isFailure
+                  && m.state == EventState.Complete => true
             case _ => false
           }
         )
@@ -176,9 +179,9 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "deliver the settling ToolDelta(Complete) only after the result is released" in {
       TestSigil.reset()
       EagerActiveLatchTool.reset()
-      val convId  = Conversation.id(s"eager-active-settle-${rapid.Unique()}")
-      val agent   = makeAgent()
-      val conv    = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val convId = Conversation.id(s"eager-active-settle-${rapid.Unique()}")
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       val provider = new LatchThenRespondProvider
       TestSigil.setProvider(Task.pure(provider))
 
@@ -188,11 +191,11 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         _ <- Task.sleep(150.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = convId,
-          topicId        = TestTopicEntry.id,
-          content        = Vector(ResponseContent.Text("run the latch tool")),
-          state          = EventState.Complete
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("run the latch tool")),
+          state = EventState.Complete
         ))
         _ <- Task(EagerActiveLatchTool.startedLatch.await(20, TimeUnit.SECONDS))
         // Eager Active is on the wire; the settle delta is NOT — the
@@ -206,8 +209,9 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         _ <- Task(EagerActiveLatchTool.releaseLatch.countDown())
         _ <- waitFor(System.currentTimeMillis() + 20_000L)(
           recorded.iterator().asScala.exists {
-            case m: Message if m.participantId == agent.id && !m.isFailure
-                            && m.state == EventState.Complete => true
+            case m: Message
+                if m.participantId == agent.id && !m.isFailure
+                  && m.state == EventState.Complete => true
             case _ => false
           }
         )
@@ -233,9 +237,9 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "persist + broadcast the ToolInvoke exactly once (batch owns the durable write)" in {
       TestSigil.reset()
       EagerActiveLatchTool.reset()
-      val convId  = Conversation.id(s"eager-active-once-${rapid.Unique()}")
-      val agent   = makeAgent()
-      val conv    = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val convId = Conversation.id(s"eager-active-once-${rapid.Unique()}")
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       val provider = new LatchThenRespondProvider
       TestSigil.setProvider(Task.pure(provider))
 
@@ -245,18 +249,19 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         _ <- Task.sleep(150.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = convId,
-          topicId        = TestTopicEntry.id,
-          content        = Vector(ResponseContent.Text("run the latch tool")),
-          state          = EventState.Complete
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("run the latch tool")),
+          state = EventState.Complete
         ))
         _ <- Task(EagerActiveLatchTool.startedLatch.await(20, TimeUnit.SECONDS))
         _ <- Task(EagerActiveLatchTool.releaseLatch.countDown())
         _ <- waitFor(System.currentTimeMillis() + 20_000L)(
           recorded.iterator().asScala.exists {
-            case m: Message if m.participantId == agent.id && !m.isFailure
-                            && m.state == EventState.Complete => true
+            case m: Message
+                if m.participantId == agent.id && !m.isFailure
+                  && m.state == EventState.Complete => true
             case _ => false
           }
         )
@@ -295,8 +300,10 @@ class ToolInvokeEagerActiveSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   }
 }
 
-/** Distinct agent id for #317 coverage so its signal queue doesn't
-  * cross-pollinate with other specs sharing the TestSigil JVM. */
+/**
+ * Distinct agent id for #317 coverage so its signal queue doesn't
+ * cross-pollinate with other specs sharing the TestSigil JVM.
+ */
 case object EagerActiveAgent extends AgentParticipantId {
   override val value: String = "eager-active-agent"
 }

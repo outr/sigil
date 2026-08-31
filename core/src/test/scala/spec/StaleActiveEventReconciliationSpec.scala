@@ -63,7 +63,7 @@ class StaleActiveEventReconciliationSpec extends AsyncWordSpec with AsyncTaskSpe
           state = EventState.Active,
           content = Vector.empty
         ))
-        _   <- TestSigil.runStaleActiveReconciliation()
+        _ <- TestSigil.runStaleActiveReconciliation()
         out <- fetchEvent(staleMessageId)
       } yield {
         val msg = out.collect { case m: Message => m }
@@ -74,7 +74,7 @@ class StaleActiveEventReconciliationSpec extends AsyncWordSpec with AsyncTaskSpe
         failure.recoverable shouldBe false
         failure.errorContext shouldBe defined
         failure.errorContext.get.classification shouldBe ErrorClassification.FrameworkBug
-        failure.errorContext.get.message should include ("stale-from-previous-session")
+        failure.errorContext.get.message should include("stale-from-previous-session")
       }
     }
 
@@ -91,13 +91,13 @@ class StaleActiveEventReconciliationSpec extends AsyncWordSpec with AsyncTaskSpe
           state = EventState.Active,
           origin = Some(syntheticParent)
         ))
-        _   <- TestSigil.runStaleActiveReconciliation()
+        _ <- TestSigil.runStaleActiveReconciliation()
         out <- fetchEvent(staleInvokeId)
       } yield {
         val ti = out.collect { case t: ToolInvoke => t }
           .getOrElse(fail(s"expected a ToolInvoke at $staleInvokeId"))
         ti.state shouldBe EventState.Complete
-        ti.toolName shouldBe ToolName("respond")  // preserved
+        ti.toolName shouldBe ToolName("respond") // preserved
       }
     }
 
@@ -119,7 +119,7 @@ class StaleActiveEventReconciliationSpec extends AsyncWordSpec with AsyncTaskSpe
           activity = AgentActivity.Thinking,
           state = EventState.Active
         ))
-        _   <- TestSigil.runStaleActiveReconciliation()
+        _ <- TestSigil.runStaleActiveReconciliation()
         out <- fetchEvent(staleLockId)
       } yield {
         val lock = out.collect { case a: AgentState => a }
@@ -142,7 +142,7 @@ class StaleActiveEventReconciliationSpec extends AsyncWordSpec with AsyncTaskSpe
           activity = AgentActivity.Typing,
           state = EventState.Active
         ))
-        _   <- TestSigil.runStaleActiveReconciliation()
+        _ <- TestSigil.runStaleActiveReconciliation()
         out <- fetchEvent(staleTypingId)
       } yield {
         val lock = out.collect { case a: AgentState => a }
@@ -165,7 +165,7 @@ class StaleActiveEventReconciliationSpec extends AsyncWordSpec with AsyncTaskSpe
           activity = AgentActivity.Idle,
           state = EventState.Complete
         ))
-        _   <- TestSigil.runStaleActiveReconciliation()
+        _ <- TestSigil.runStaleActiveReconciliation()
         out <- fetchEvent(cleanLockId)
       } yield {
         val lock = out.collect { case a: AgentState => a }
@@ -189,7 +189,7 @@ class StaleActiveEventReconciliationSpec extends AsyncWordSpec with AsyncTaskSpe
       for {
         _ <- seedConversation()
         _ <- insertEvent(original)
-        _   <- TestSigil.runStaleActiveReconciliation()
+        _ <- TestSigil.runStaleActiveReconciliation()
         out <- fetchEvent(cleanMessageId)
       } yield {
         val msg = out.collect { case m: Message => m }
@@ -211,9 +211,9 @@ class StaleActiveEventReconciliationSpec extends AsyncWordSpec with AsyncTaskSpe
           state = EventState.Active,
           content = Vector.empty
         ))
-        _   <- TestSigil.runStaleActiveReconciliation()
+        _ <- TestSigil.runStaleActiveReconciliation()
         after1 <- fetchEvent(staleId)
-        _   <- TestSigil.runStaleActiveReconciliation()   // second pass — no-op
+        _ <- TestSigil.runStaleActiveReconciliation() // second pass — no-op
         after2 <- fetchEvent(staleId)
       } yield {
         // The second pass should leave the row identical to the first pass's output.

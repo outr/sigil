@@ -44,15 +44,14 @@ object DurableJsonRpc {
   def issueDurable[T](operation: String,
                       silenceWindow: FiniteDuration = 60.seconds,
                       maxAttempts: Int = 2,
-                      pollInterval: FiniteDuration = 200.millis)
-                     (activitySource: () => Long)
-                     (makeRequest: () => CompletableFuture[T]): Task[T] = {
+                      pollInterval: FiniteDuration =
+                        200.millis)(activitySource: () => Long)(makeRequest: () => CompletableFuture[T]): Task[T] = {
 
     def attempt(n: Int): Task[T] = Task.defer {
-      val startedAt   = System.currentTimeMillis()
-      val outcome     = Task.completable[Either[Throwable, T]]
-      val resolved    = new AtomicBoolean(false)
-      val future      = makeRequest()
+      val startedAt = System.currentTimeMillis()
+      val outcome = Task.completable[Either[Throwable, T]]
+      val resolved = new AtomicBoolean(false)
+      val future = makeRequest()
 
       // Bridge future → outcome.
       future.whenComplete { (value, error) =>
@@ -60,7 +59,7 @@ object DurableJsonRpc {
         else if (error != null) {
           val unwrapped = error match {
             case ce: java.util.concurrent.CompletionException if ce.getCause != null => ce.getCause
-            case other                                                               => other
+            case other => other
           }
           outcome.success(Left(unwrapped))
         } else outcome.success(Right(value))
@@ -71,14 +70,15 @@ object DurableJsonRpc {
         def loop: Task[Unit] = Task.sleep(pollInterval).flatMap { _ =>
           if (resolved.get()) Task.unit
           else {
-            val now          = System.currentTimeMillis()
+            val now = System.currentTimeMillis()
             val lastActivity = math.max(activitySource(), startedAt)
             if (now - lastActivity > silenceWindow.toMillis) {
               if (resolved.compareAndSet(false, true)) {
                 // Cancel the in-flight future best-effort; the
                 // server may still finish processing but its
                 // response is no longer relevant to this Task.
-                try future.cancel(true) catch { case _: Throwable => () }
+                try future.cancel(true)
+                catch { case _: Throwable => () }
                 outcome.success(Left(SilenceMarker))
               }
               Task.unit
@@ -105,8 +105,10 @@ object DurableJsonRpc {
     attempt(1)
   }
 
-  /** Sentinel inside `outcome`'s `Left` branch — distinguishes
-    * "silence detector fired" from "future failed with a real
-    * error". Local marker only; never leaves the wrapper. */
+  /**
+   * Sentinel inside `outcome`'s `Left` branch — distinguishes
+   * "silence detector fired" from "future failed with a real
+   * error". Local marker only; never leaves the wrapper.
+   */
   private object SilenceMarker extends Throwable
 }

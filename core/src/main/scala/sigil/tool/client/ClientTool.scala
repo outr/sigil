@@ -4,7 +4,10 @@ import fabric.define.Definition
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, Freshness, JsonInput, JsonSchemaToDefinition, MutationTargeting, Resolution, TextToolOutput, Tool, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, Freshness, JsonInput, JsonSchemaToDefinition, MutationTargeting, Resolution, TextToolOutput, Tool, ToolIO,
+  ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 /**
  * A UI-registered interaction tool — the in-memory [[Tool]] the
@@ -31,13 +34,16 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, JsonInput, JsonSchemaToDefi
  */
 final class ClientTool(val clientSpec: ClientToolSpec,
                        conversationId: lightdb.id.Id[sigil.conversation.Conversation],
-                       registry: ClientToolRegistry) extends Tool {
-  type Input  = JsonInput
+                       registry: ClientToolRegistry)
+  extends Tool {
+  type Input = JsonInput
   type Output = TextToolOutput
 
   val spec: ToolSpec = ClientTool.specFor(clientSpec)
 
-  /** The client's registered schema over honest JSON args. */
+  /**
+   * The client's registered schema over honest JSON args.
+   */
   val io: ToolIO[JsonInput, TextToolOutput] = ToolIO.dynamic(JsonSchemaToDefinition(clientSpec.inputSchema))
 
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
@@ -64,10 +70,12 @@ final class ClientTool(val clientSpec: ClientToolSpec,
 
 object ClientTool {
 
-  /** Derive the [[ToolSpec]] from a client registration. The name must
-    * satisfy the provider grammar (registration fails loudly
-    * otherwise); a blank description or empty keyword set is repaired
-    * with a warn so a sloppy client can't leave the tool unfillable. */
+  /**
+   * Derive the [[ToolSpec]] from a client registration. The name must
+   * satisfy the provider grammar (registration fails loudly
+   * otherwise); a blank description or empty keyword set is repaired
+   * with a warn so a sloppy client can't leave the tool unfillable.
+   */
   def specFor(clientSpec: ClientToolSpec): ToolSpec = {
     val name = ToolName.parse(clientSpec.name).fold(
       err => throw new IllegalArgumentException(s"Client tool registration rejected: $err"),

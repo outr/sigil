@@ -38,12 +38,12 @@ class MemoryHistoryToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private def memoryAt(key: String, fact: String): ContextMemory =
     ContextMemory(
-      fact     = fact,
-      label    = "Language",
-      summary  = fact,
-      source   = MemorySource.Explicit,
-      spaceId  = TestSpace,
-      key      = Some(key)
+      fact = fact,
+      label = "Language",
+      summary = fact,
+      source = MemorySource.Explicit,
+      spaceId = TestSpace,
+      key = Some(key)
     )
 
   "MemoryHistoryTool" should {
@@ -53,14 +53,19 @@ class MemoryHistoryToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       for {
         _ <- TestSigil.upsertMemoryByKey(memoryAt(key, "Scala"))
         _ <- TestSigil.upsertMemoryByKey(memoryAt(key, "Rust"))
-        signals <- MemoryHistoryTool.execute(MemoryHistoryInput(
-          key = key, spaceId = Some(TestSpace)), ctx(c), Event.id()).toList
+        signals <- MemoryHistoryTool.execute(
+          MemoryHistoryInput(
+            key = key,
+            spaceId = Some(TestSpace)),
+          ctx(c),
+          Event.id()).toList
       } yield {
         val body = signals.collectFirst {
           case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>
             d.output.collect { case TextToolOutput(text) => text }
         }.flatten
-          .getOrElse(fail(s"expected a Success ToolDelta carrying TextToolOutput; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
+          .getOrElse(fail(
+            s"expected a Success ToolDelta carrying TextToolOutput; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
         body should include("2 version(s)")
         body should include("Scala")
         body should include("Rust")

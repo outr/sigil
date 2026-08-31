@@ -22,8 +22,10 @@ package sigil.orchestrator
  */
 object ReasoningResidue {
 
-  /** Reasoning-block markers observed across served open-weight models.
-    * Matched case-insensitively. */
+  /**
+   * Reasoning-block markers observed across served open-weight models.
+   * Matched case-insensitively.
+   */
   private val Tags: List[String] = List("think", "thinking", "reasoning", "thought")
 
   private val closePattern =
@@ -41,10 +43,12 @@ object ReasoningResidue {
       case None =>
         openPattern.findFirstMatchIn(text) match {
           case Some(m) => text.substring(0, m.start).stripTrailing
-          case None    => text
+          case None => text
         }
     }
 
-  /** Whether `text` carries prose once its reasoning residue is gone. */
+  /**
+   * Whether `text` carries prose once its reasoning residue is gone.
+   */
   def spoken(text: String): Boolean = strip(text).strip.nonEmpty
 }

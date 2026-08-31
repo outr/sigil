@@ -44,7 +44,7 @@ case class RecallStage() extends MemoryRetrievalStage {
       // space-scoped listing, which fused at vectorWeight would inject
       // arbitrary-order noise the lexical leg already supersedes.
       vector <- if (question.isEmpty || !ctx.sigil.vectorWired) Task.pure(Nil)
-                else ctx.sigil.searchMemories(question, ctx.spaces, ctx.candidatePool)
+      else ctx.sigil.searchMemories(question, ctx.spaces, ctx.candidatePool)
       lexical <- luceneHits(ctx, tokensOf(question))
       keyword <- luceneHits(ctx, tokensOf(ctx.contextTerms.mkString(" ")))
     } yield state.copy(
@@ -54,30 +54,32 @@ case class RecallStage() extends MemoryRetrievalStage {
     )
   }
 
-  /** Query terms for a BM25 leg: tokenized the SAME way the indexed
-    * content is — punctuation split off and stopwords dropped (via
-    * [[sigil.vector.HybridSearch.tokenizeList]]) — then deduplicated
-    * and capped at [[RecallStage.MaxQueryTokens]].
-    *
-    * Both halves of that normalization are load-bearing for a
-    * naturally-phrased question. Splitting on whitespace alone leaves
-    * the one discriminative term carrying its punctuation
-    * (`"tobacco?"`), which no exact-term clause matches. Keeping
-    * stopwords ORs in near-universal function words (`where`, `do`,
-    * `you`, `your`), each matching thousands of unrelated facts — and
-    * at `lexicalWeight = 2.0` that flood outvotes a vector leg that
-    * ranked the answer first. "Where do you keep your tobacco?"
-    * reduces to `[keep, tobacco]`.
-    *
-    * A query of pure stopwords falls back to the punctuation-split
-    * tokens: a leg matching common words is weak, but a leg matching
-    * nothing gives up recall the fusion has no other source for.
-    *
-    * The cap bounds the clause count — one `Should` clause is built
-    * per token, and a pasted artefact in the user's message would
-    * otherwise compile into a clause count Lucene rejects outright
-    * (taking the turn with it). Past the cap the extra terms add
-    * noise, not recall. */
+  /**
+   * Query terms for a BM25 leg: tokenized the SAME way the indexed
+   * content is — punctuation split off and stopwords dropped (via
+   * [[sigil.vector.HybridSearch.tokenizeList]]) — then deduplicated
+   * and capped at [[RecallStage.MaxQueryTokens]].
+   *
+   * Both halves of that normalization are load-bearing for a
+   * naturally-phrased question. Splitting on whitespace alone leaves
+   * the one discriminative term carrying its punctuation
+   * (`"tobacco?"`), which no exact-term clause matches. Keeping
+   * stopwords ORs in near-universal function words (`where`, `do`,
+   * `you`, `your`), each matching thousands of unrelated facts — and
+   * at `lexicalWeight = 2.0` that flood outvotes a vector leg that
+   * ranked the answer first. "Where do you keep your tobacco?"
+   * reduces to `[keep, tobacco]`.
+   *
+   * A query of pure stopwords falls back to the punctuation-split
+   * tokens: a leg matching common words is weak, but a leg matching
+   * nothing gives up recall the fusion has no other source for.
+   *
+   * The cap bounds the clause count — one `Should` clause is built
+   * per token, and a pasted artefact in the user's message would
+   * otherwise compile into a clause count Lucene rejects outright
+   * (taking the turn with it). Past the cap the extra terms add
+   * noise, not recall.
+   */
   private[retrieval] def tokensOf(text: String): List[String] = {
     val filtered = HybridSearch.tokenizeList(text)
     val tokens =
@@ -86,8 +88,10 @@ case class RecallStage() extends MemoryRetrievalStage {
     tokens.distinct.take(RecallStage.MaxQueryTokens)
   }
 
-  /** Lucene BM25 query over `ContextMemory.searchText`, OR-matching
-    * the supplied tokens; result order is BM25 relevance. */
+  /**
+   * Lucene BM25 query over `ContextMemory.searchText`, OR-matching
+   * the supplied tokens; result order is BM25 relevance.
+   */
   private def luceneHits(ctx: MemoryRetrievalContext, tokens: List[String]): Task[List[ContextMemory]] =
     if (tokens.isEmpty || ctx.spaces.isEmpty) Task.pure(Nil)
     else ctx.sigil.withDB(_.memories.transaction { tx =>
@@ -100,9 +104,9 @@ case class RecallStage() extends MemoryRetrievalStage {
             FilterClause(ContextMemory.spaceIdValue === space.value, Condition.Should, None)
           }
           Filter.Multi(minShould = 1, filters = clauses) &&
-            Filter.Multi(minShould = 1, filters = spaceClauses) &&
-            (ContextMemory.pinned === false) &&
-            (ContextMemory.statusName === MemoryStatus.Approved.toString)
+          Filter.Multi(minShould = 1, filters = spaceClauses) &&
+          (ContextMemory.pinned === false) &&
+          (ContextMemory.statusName === MemoryStatus.Approved.toString)
         }
         .scored
         .sort(Sort.BestMatch())
@@ -112,7 +116,10 @@ case class RecallStage() extends MemoryRetrievalStage {
 }
 
 object RecallStage {
-  /** Ceiling on the distinct query tokens compiled into a lexical
-    * leg's clause list. */
+
+  /**
+   * Ceiling on the distinct query tokens compiled into a lexical
+   * leg's clause list.
+   */
   val MaxQueryTokens: Int = 32
 }

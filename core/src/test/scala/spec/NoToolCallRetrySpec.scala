@@ -34,8 +34,7 @@ import scala.concurrent.duration.*
  * no-tool-call response stripped the roster, turning one hiccup into
  * a guaranteed non-answer for any turn that needed tools.
  */
-class NoToolCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
-                          with org.scalatest.BeforeAndAfterAll {
+class NoToolCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers with org.scalatest.BeforeAndAfterAll {
   TestSigil.initFor(getClass.getSimpleName)
   // Sigil #273 bumped the default from 1 to 3; this spec's call-count
   // assertions were written for limit=1 and asserting on exact roster
@@ -51,9 +50,11 @@ class NoToolCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   private val modelId: Id[Model] = Model.id("test", "no-toolcall-retry")
   TestSigil.testModel(modelId)
 
-  /** Records each [[ProviderCall]] so the spec can inspect the roster
-    * the framework sent on every turn. */
-  private final class CallRecorder {
+  /**
+   * Records each [[ProviderCall]] so the spec can inspect the roster
+   * the framework sent on every turn.
+   */
+  final private class CallRecorder {
     val calls: atomic.AtomicReference[Vector[ProviderCall]] =
       new atomic.AtomicReference(Vector.empty)
     def record(input: ProviderCall): Unit = {
@@ -62,9 +63,11 @@ class NoToolCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     }
   }
 
-  /** Call 1 returns no tool call (a transient hiccup); every later
-    * call emits a real `respond`. */
-  private final class HiccupThenRespondProvider(recorder: CallRecorder) extends Provider {
+  /**
+   * Call 1 returns no tool call (a transient hiccup); every later
+   * call emits a real `respond`.
+   */
+  final private class HiccupThenRespondProvider(recorder: CallRecorder) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -78,17 +81,21 @@ class NoToolCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         val callId = CallId(s"retry-${rapid.Unique()}")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-          ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Done", topicSummary = "recovered", content = "all set", endsTurn = true)),
+          ProviderEvent.toolCall(
+            callId,
+            RespondTool)(RespondInput(topicLabel = "Done", topicSummary = "recovered", content = "all set", endsTurn = true)),
           ProviderEvent.Done(StopReason.Complete)
         ))
       }
     }
   }
 
-  /** Every call returns no tool call — the retry never recovers, so
-    * the loop must eventually fall back to the respond-only forced
-    * synthesis. */
-  private final class AlwaysHiccupProvider(recorder: CallRecorder) extends Provider {
+  /**
+   * Every call returns no tool call — the retry never recovers, so
+   * the loop must eventually fall back to the respond-only forced
+   * synthesis.
+   */
+  final private class AlwaysHiccupProvider(recorder: CallRecorder) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -102,38 +109,40 @@ class NoToolCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = ToolName("change_mode") :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = ToolName("change_mode") :: CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def runTurn(provider: Provider, convPrefix: String): Task[List[Event]] = {
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"$convPrefix-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
     for {
-      _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      _   <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("do the task")),
-               state          = EventState.Complete
-             ))
-      _   <- Task.sleep(6.seconds)
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.publish(Message(
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("do the task")),
+        state = EventState.Complete
+      ))
+      _ <- Task.sleep(6.seconds)
       evs <- TestSigil.withDB(_.events.transaction(_.list))
     } yield evs.filter(_.conversationId == convId)
   }
 
   private val respondFamily: Set[ToolName] = CoreTools.atomicContentToolNames
 
-  /** The provider calls that are agent-loop turns — i.e. carry the
-    * agent's roster (which always includes `respond`). Filters out the
-    * framework's one-shot consult calls (topic classification,
-    * memory extraction) that also route through the stub provider. */
+  /**
+   * The provider calls that are agent-loop turns — i.e. carry the
+   * agent's roster (which always includes `respond`). Filters out the
+   * framework's one-shot consult calls (topic classification,
+   * memory extraction) that also route through the stub provider.
+   */
   private def agentLoopCalls(recorder: CallRecorder): Vector[ProviderCall] =
     recorder.calls.get().filter(_.tools.exists(_.schema.name.value == "respond"))
 

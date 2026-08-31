@@ -60,12 +60,12 @@ class EphemeralNoticeDecodeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "NOT dispatch a Signal that deserializes to a non-Notice — and not throw" in {
       recorded.synchronized(recorded.clear())
       val msg: Signal = Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = Conversation.id("c409"),
-        topicId        = TestTopicEntry.id,
-        content        = Vector(ResponseContent.Text("hi")),
-        state          = EventState.Complete,
-        role           = MessageRole.Standard
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("hi")),
+        state = EventState.Complete,
+        role = MessageRole.Standard
       )
       dispatch(signalRW.read(msg)).map(_ => recorded.synchronized(recorded.toList) shouldBe empty)
     }

@@ -45,22 +45,28 @@ object CurrentDateFeature {
 
   val Id: FeatureId = FeatureId("currentDate")
 
-  /** `Locale.US` pins the day and month names: the rendered prompt must
-    * not change because the host JVM's default locale did. */
+  /**
+   * `Locale.US` pins the day and month names: the rendered prompt must
+   * not change because the host JVM's default locale did.
+   */
   private val DateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.US)
   private val TimeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
   val Header: String = "\n== Current date and time ==\n"
 
-  /** The authoritative-source directive. Stated as a prohibition
-    * because the failure mode is not ignorance but confident recall. */
+  /**
+   * The authoritative-source directive. Stated as a prohibition
+   * because the failure mode is not ignorance but confident recall.
+   */
   val Directive: String =
     "Base ALL date and time reasoning on the value above — it is authoritative and current. " +
       "Never infer, recall, or guess today's date from anything else: not from your training data, " +
       "not from dates mentioned in the conversation, not from a previous turn. Resolve \"today\", " +
       "\"now\", \"this week\", and every other relative date against it.\n"
 
-  /** The section text for an instant, normalized to UTC. */
+  /**
+   * The section text for an instant, normalized to UTC.
+   */
   def render(instant: Instant): String = {
     val utc = instant.atZone(ZoneOffset.UTC)
     Header + s"Today is ${DateFormat.format(utc)}, ${TimeFormat.format(utc)} UTC.\n" + Directive

@@ -32,38 +32,46 @@ class GeminiContextCacheSpec extends AnyWordSpec with Matchers with BeforeAndAft
 
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Count of `cachedContents.create` POSTs the stub has served. */
+  /**
+   * Count of `cachedContents.create` POSTs the stub has served.
+   */
   private val createCount = new AtomicInteger(0)
 
   private val server: HttpServer = {
     val s = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
     // cachedContents.create — POST /v1beta/cachedContents
-    s.createContext("/v1beta/cachedContents", new HttpHandler {
-      override def handle(ex: HttpExchange): Unit = {
-        ex.getRequestBody.readAllBytes()
-        val n = createCount.incrementAndGet()
-        val responseBody = s"""{"name":"cachedContents/stub-resource-$n"}"""
-        val bytes = responseBody.getBytes("UTF-8")
-        ex.getResponseHeaders.set("Content-Type", "application/json")
-        ex.sendResponseHeaders(200, bytes.length.toLong)
-        val os = ex.getResponseBody; os.write(bytes); os.close()
+    s.createContext(
+      "/v1beta/cachedContents",
+      new HttpHandler {
+        override def handle(ex: HttpExchange): Unit = {
+          ex.getRequestBody.readAllBytes()
+          val n = createCount.incrementAndGet()
+          val responseBody = s"""{"name":"cachedContents/stub-resource-$n"}"""
+          val bytes = responseBody.getBytes("UTF-8")
+          ex.getResponseHeaders.set("Content-Type", "application/json")
+          ex.sendResponseHeaders(200, bytes.length.toLong)
+          val os = ex.getResponseBody; os.write(bytes); os.close()
+        }
       }
-    })
+    )
     // streamGenerateContent — POST /v1beta/models/{model}:streamGenerateContent
-    s.createContext("/v1beta/models", new HttpHandler {
-      override def handle(ex: HttpExchange): Unit = {
-        ex.getRequestBody.readAllBytes()
-        val chunk =
-          """{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],""" +
-            """"usageMetadata":{"promptTokenCount":5000,"candidatesTokenCount":10,""" +
-            """"totalTokenCount":5010,"cachedContentTokenCount":4800}}"""
-        val sse = s"data: $chunk\n\n"
-        val bytes = sse.getBytes("UTF-8")
-        ex.getResponseHeaders.set("Content-Type", "text/event-stream")
-        ex.sendResponseHeaders(200, bytes.length.toLong)
-        val os = ex.getResponseBody; os.write(bytes); os.close()
+    s.createContext(
+      "/v1beta/models",
+      new HttpHandler {
+        override def handle(ex: HttpExchange): Unit = {
+          ex.getRequestBody.readAllBytes()
+          val chunk =
+            """{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],""" +
+              """"usageMetadata":{"promptTokenCount":5000,"candidatesTokenCount":10,""" +
+              """"totalTokenCount":5010,"cachedContentTokenCount":4800}}"""
+          val sse = s"data: $chunk\n\n"
+          val bytes = sse.getBytes("UTF-8")
+          ex.getResponseHeaders.set("Content-Type", "text/event-stream")
+          ex.sendResponseHeaders(200, bytes.length.toLong)
+          val os = ex.getResponseBody; os.write(bytes); os.close()
+        }
       }
-    })
+    )
     s.start()
     s
   }
@@ -75,11 +83,15 @@ class GeminiContextCacheSpec extends AnyWordSpec with Matchers with BeforeAndAft
     super.afterAll()
   }
 
-  /** A cache-capable Gemini model id. */
+  /**
+   * A cache-capable Gemini model id.
+   */
   private def cacheCapableModel: Id[Model] = Model.id("google", "gemini-2.5-flash")
 
-  /** A system prompt large enough to exceed the 4096-token caching
-    * threshold under the heuristic tokenizer (~2 tokens per 7 chars). */
+  /**
+   * A system prompt large enough to exceed the 4096-token caching
+   * threshold under the heuristic tokenizer (~2 tokens per 7 chars).
+   */
   private def largeSystem: String = "stable-prefix-line content here. " * 800
 
   private def callWith(system: String, modelId: Id[Model] = cacheCapableModel): ProviderCall =

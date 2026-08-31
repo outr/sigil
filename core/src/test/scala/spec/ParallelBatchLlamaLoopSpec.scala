@@ -30,7 +30,9 @@ class ParallelBatchLlamaLoopSpec extends AnyWordSpec with Matchers {
 
   override def run(testName: Option[String], args: Args): Status =
     LiveProbe.requireSlowEnabled(this).getOrElse {
-      LiveProbe.runGatedProbe(this, c => s"llama.cpp host unreachable ($c)",
+      LiveProbe.runGatedProbe(
+        this,
+        c => s"llama.cpp host unreachable ($c)",
         HttpRequest(method = HttpMethod.Get, url = host.withPath("/v1/models")))(super.run(testName, args))
     }
 
@@ -64,12 +66,12 @@ class ParallelBatchLlamaLoopSpec extends AnyWordSpec with Matchers {
     val task = for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId = TestUser,
-             conversationId = convId,
-             topicId = TestTopicEntry.id,
-             content = Vector(ResponseContent.Text(prompt)),
-             state = sigil.signal.EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text(prompt)),
+        state = sigil.signal.EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId, timeout = 300.seconds)
     } yield ()
     task.sync()
@@ -97,17 +99,18 @@ class ParallelBatchLlamaLoopSpec extends AnyWordSpec with Matchers {
 
   "the local model, driving the whole loop live" should {
 
-    "not re-issue a probe it already has the result for" in {
-      arm("single-round",
+    "not re-issue a probe it already has the result for" in
+      arm(
+        "single-round",
         "Read the probes named 'alpha', 'bravo' and 'charlie' using probe_read, " +
           "then tell me all three values in one reply.")
-    }
 
-    "not re-issue across two rounds of batched reads" in {
-      arm("two-round",
+    "not re-issue across two rounds of batched reads" in
+      arm(
+        "two-round",
         "First read the probes named 'alpha' and 'bravo'. Then read the probes named " +
-          "'charlie' and 'delta'. Finally summarize all four values in one reply.")
-    }
+          "'charlie' and 'delta'. Finally summarize all four values in one reply."
+      )
   }
 
   "tear down" should {

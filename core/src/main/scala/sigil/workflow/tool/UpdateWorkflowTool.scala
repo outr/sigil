@@ -5,7 +5,10 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 import sigil.workflow.{WorkflowStepSpec, WorkflowTemplate, WorkflowTrigger}
 
 case class UpdateWorkflowInput(workflowId: String,

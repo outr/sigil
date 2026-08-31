@@ -48,4 +48,5 @@ case class DelegateTaskInput(role: String,
                              modelId: Option[String] = None,
                              complexity: Option[Complexity] = None,
                              mode: Option[String] = None,
-                             toolNames: List[String] = Nil) extends ToolInput derives RW
+                             toolNames: List[String] = Nil)
+  extends ToolInput derives RW

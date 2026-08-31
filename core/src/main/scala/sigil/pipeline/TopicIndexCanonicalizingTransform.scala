@@ -51,7 +51,7 @@ object TopicIndexCanonicalizingTransform extends InboundTransform {
             case tc: TopicChange =>
               val canonical = conv.topics.indexWhere(_.id == tc.topicId) match {
                 case n if n >= 0 => n
-                case _           => conv.topics.length
+                case _ => conv.topics.length
               }
               if (tc.topicIndex == canonical) tc
               else tc.withTopic(tc.topicId, canonical)

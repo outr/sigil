@@ -7,7 +7,9 @@ import lightdb.id.Id
 import lightdb.store.CollectionManager
 import lightdb.upgrade.DatabaseUpgrade
 import rapid.Task
-import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationToolOverlay, EncodedContext, ParticipantProjection, Topic}
+import sigil.conversation.{
+  ContextMemory, ContextSummary, Conversation, ConversationToolOverlay, EncodedContext, ParticipantProjection, Topic
+}
 import sigil.event.Event
 import sigil.information.StoredInformation
 import sigil.signal.{Delta, Signal}
@@ -44,7 +46,8 @@ import scala.concurrent.duration.*
  */
 abstract class SigilDB(override val directory: Option[Path],
                        override val storeManager: CollectionManager,
-                       appUpgrades: List[DatabaseUpgrade] = Nil) extends LightDB {
+                       appUpgrades: List[DatabaseUpgrade] = Nil)
+  extends LightDB {
   override type SM = CollectionManager
 
   val events: S[Event, Event.type] = store(Event)()
@@ -67,16 +70,20 @@ abstract class SigilDB(override val directory: Option[Path],
   val conversationToolOverlays: S[ConversationToolOverlay, ConversationToolOverlay.type] =
     store(ConversationToolOverlay).withCache(CacheConfig.lru(500))()
 
-  /** Large frame content externalized by block extraction during
-    * curation, resolved back via [[sigil.Sigil.getInformation]]. */
+  /**
+   * Large frame content externalized by block extraction during
+   * curation, resolved back via [[sigil.Sigil.getInformation]].
+   */
   val storedInformations: S[StoredInformation, StoredInformation.type] =
     store(StoredInformation).withCache(CacheConfig.lru(200, 30.minutes))()
 
-  /** Persisted snapshot of the framework's known [[Model]] catalog
-    * (sigil #277). Seeded into the in-memory [[sigil.cache.ModelRegistry]]
-    * at `Sigil.instance` boot; refreshed from OpenRouter when the slot
-    * is empty or stale per `Sigil.modelRefreshInterval`. Default is a
-    * never-refreshed empty marker. */
+  /**
+   * Persisted snapshot of the framework's known [[Model]] catalog
+   * (sigil #277). Seeded into the in-memory [[sigil.cache.ModelRegistry]]
+   * at `Sigil.instance` boot; refreshed from OpenRouter when the slot
+   * is empty or stale per `Sigil.modelRefreshInterval`. Default is a
+   * never-refreshed empty marker.
+   */
   val models: lightdb.StoredValue[Models] = stored[Models]("models", Models())
 
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
@@ -120,7 +127,9 @@ abstract class SigilDB(override val directory: Option[Path],
   private val eventsWriteCommitCount: java.util.concurrent.atomic.AtomicLong =
     new java.util.concurrent.atomic.AtomicLong(0L)
 
-  /** Current value of the [[eventsWriteCommitCount]] commit counter. */
+  /**
+   * Current value of the [[eventsWriteCommitCount]] commit counter.
+   */
   def eventsWriteCommits: Long = eventsWriteCommitCount.get()
 
   /**
@@ -180,7 +189,7 @@ abstract class SigilDB(override val directory: Option[Path],
       // holds one backing connection; concurrent fibers (the turn plus foreign publishes to the
       // same conversation) must not drive it at once or a completion is lost and the loop hangs.
       case Some(scope) => scope.serialize(f(scope.transaction))
-      case None        => events.transaction(f)
+      case None => events.transaction(f)
     }
 
   /**
@@ -212,8 +221,10 @@ abstract class SigilDB(override val directory: Option[Path],
   protected def recentEventWindow: Int = 64
   protected def recentEventConversations: Int = 128
 
-  /** In-process window of recently-written events, merged over the indexed read by
-    * [[conversationEventsConsistent]]. Maintained by [[write]]. */
+  /**
+   * In-process window of recently-written events, merged over the indexed read by
+   * [[conversationEventsConsistent]]. Maintained by [[write]].
+   */
   private lazy val recentEvents: RecentEventOverlay = new RecentEventOverlay(recentEventWindow, recentEventConversations)
 
   /**
@@ -249,17 +260,21 @@ abstract class SigilDB(override val directory: Option[Path],
       }
     }
 
-  /** Record `event` into the [[recentEvents]] window without writing it.
-    *
-    * The window wins on id when [[conversationEventsConsistent]] merges, so a framework path that
-    * mutates an event row through a raw transaction rather than [[write]] — the paired-tool-frame
-    * settle, the fossilized-placeholder self-heal, the agent claim — has to say so, or the window
-    * goes on serving the version it last saw. Called alongside the upsert, never in place of it. */
+  /**
+   * Record `event` into the [[recentEvents]] window without writing it.
+   *
+   * The window wins on id when [[conversationEventsConsistent]] merges, so a framework path that
+   * mutates an event row through a raw transaction rather than [[write]] — the paired-tool-frame
+   * settle, the fossilized-placeholder self-heal, the agent claim — has to say so, or the window
+   * goes on serving the version it last saw. Called alongside the upsert, never in place of it.
+   */
   def recordRecentEvent(event: Event): Unit = recentEvents.record(event.conversationId, event)
 
-  /** Drop `conversationId` from the [[recentEvents]] window. Called by the conversation-delete
-    * and staging-merge cascades, whose bulk rewrites move or remove rows wholesale and would
-    * otherwise leave the window describing rows that no longer exist under that id. */
+  /**
+   * Drop `conversationId` from the [[recentEvents]] window. Called by the conversation-delete
+   * and staging-merge cascades, whose bulk rewrites move or remove rows wholesale and would
+   * otherwise leave the window describing rows that no longer exist under that id.
+   */
   def forgetRecentEvents(conversationId: Id[Conversation]): Unit = recentEvents.forget(conversationId)
 
   /**
@@ -301,29 +316,34 @@ abstract class SigilDB(override val directory: Option[Path],
         .flatMap(_ => eventsTransaction(row.conversationId)(_.insert(row)).unit)
         .map(_ => recordWritten(row.conversationId, row))
     case d: Delta =>
-      countUnbatchedWrite(d.conversationId).flatMap(_ => eventsTransaction(d.conversationId) { tx =>
-        tx.get(d.target.asInstanceOf[Id[Event]]).flatMap {
-          case Some(target) =>
-            val updated = prepareRow(d(target))
-            tx.upsert(updated).map(_ => recordWritten(d.conversationId, updated))
-          case None => Task.pure(None)
-        }
-      })
+      countUnbatchedWrite(d.conversationId).flatMap(_ =>
+        eventsTransaction(d.conversationId) { tx =>
+          tx.get(d.target.asInstanceOf[Id[Event]]).flatMap {
+            case Some(target) =>
+              val updated = prepareRow(d(target))
+              tx.upsert(updated).map(_ => recordWritten(d.conversationId, updated))
+            case None => Task.pure(None)
+          }
+        })
     case _: sigil.signal.Notice => Task.pure(None)
   }
 
-  /** Record `event` into the batched scope's accumulator (when one is active for
-    * `conversationId`) and into the [[recentEvents]] window, then hand it back as the written
-    * row. */
+  /**
+   * Record `event` into the batched scope's accumulator (when one is active for
+   * `conversationId`) and into the [[recentEvents]] window, then hand it back as the written
+   * row.
+   */
   private def recordWritten(conversationId: Id[Conversation], event: Event): Option[Event] = {
     batchedEventTx.get(conversationId).foreach(_.record(event))
     recentEvents.record(conversationId, event)
     Some(event)
   }
 
-  /** Tick the write-commit counter for an `apply` that will open
-    * its own fresh transaction (no [[withBatchedEvents]] scope to
-    * join). Batched writes are counted once per scope, not here. */
+  /**
+   * Tick the write-commit counter for an `apply` that will open
+   * its own fresh transaction (no [[withBatchedEvents]] scope to
+   * join). Batched writes are counted once per scope, not here.
+   */
   private def countUnbatchedWrite(conversationId: Id[Conversation]): Task[Unit] =
     Task {
       if (!batchedEventTx.contains(conversationId)) eventsWriteCommitCount.incrementAndGet()

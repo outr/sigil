@@ -50,9 +50,11 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   private val modelId: Id[Model] = Model.id("test", "post-respond-model")
   TestSigil.testModel(modelId)
 
-  /** Provider that records ProviderCalls + scripts two iterations:
-    *   - Call 1: emit `respond_field` (terminal — settles the loop).
-    *   - Call 2: emit `respond` (terminal — settles the second loop). */
+  /**
+   * Provider that records ProviderCalls + scripts two iterations:
+   *   - Call 1: emit `respond_field` (terminal — settles the loop).
+   *   - Call 2: emit `respond` (terminal — settles the second loop).
+   */
   private class RecordingTwoIterProvider extends Provider {
     val calls: ConcurrentLinkedQueue[ProviderCall] = new ConcurrentLinkedQueue()
     private val callCount = new atomic.AtomicInteger(0)
@@ -69,14 +71,21 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         if (n == 1)
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Project", topicSummary = "Project readiness",
-                content = "> [!Field]\n> Project Ready: true", endsTurn = true)),
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
+              topicLabel = "Project",
+              topicSummary = "Project readiness",
+              content = "> [!Field]\n> Project Ready: true",
+              endsTurn = true)),
             ProviderEvent.Done(StopReason.Complete)
           )
         else
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(topicLabel = "Overview", topicSummary = "Project overview", content = "Here's an overview.", endsTurn = true)),
+            ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
+              topicLabel = "Overview",
+              topicSummary = "Project overview",
+              content = "Here's an overview.",
+              endsTurn = true)),
             ProviderEvent.Done(StopReason.Complete)
           )
       Stream.emits(events)
@@ -85,10 +94,10 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = ToolName("respond_field") :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = ToolName("respond_field") :: CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -98,8 +107,8 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val provider = new RecordingTwoIterProvider
       TestSigil.setProvider(Task.pure(provider))
       val convId = Conversation.id(s"post-respond-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
       // Poll until `cond` holds (or the deadline passes — the assertions
       // then fail with the recorded shapes). Fixed sleeps were flaky
@@ -117,31 +126,32 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Set up project ready field.")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Set up project ready field.")),
+          state = EventState.Complete
+        ))
         // Turn 1 settles: the claim row appears (absent rows keep
         // polling) and completes.
         _ <- TestSigil.awaitSettled(convId, timeout = 30.seconds)
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Can you give me an overview of this project?")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Can you give me an overview of this project?")),
+          state = EventState.Complete
+        ))
         // Turn 2: `awaitSettled` would race (the claim row is already
         // Complete from turn 1 until turn 2 claims), so poll on the
         // assertion's own predicate — a recorded wire request carrying
         // the accumulated history.
         _ <- awaitCondition(30.seconds)(
-               provider.calls.iterator().asScala.exists(_.messages.size >= 3))
+          provider.calls.iterator().asScala.exists(_.messages.size >= 3))
       } yield {
         val recorded = provider.calls.iterator().asScala.toList
-        withClue(s"Provider received ${recorded.size} call(s); expected 2 — iteration 1 (respond_field) + iteration 2 (respond after user reply).") {
+        withClue(
+          s"Provider received ${recorded.size} call(s); expected 2 — iteration 1 (respond_field) + iteration 2 (respond after user reply).") {
           recorded.size should be >= 2
         }
 
@@ -149,11 +159,11 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         // anchors what each call carries.
         recorded.zipWithIndex.foreach { case (call, idx) =>
           val shape = call.messages.map {
-            case _: ProviderMessage.User       => "user"
-            case _: ProviderMessage.Assistant  => "assistant"
+            case _: ProviderMessage.User => "user"
+            case _: ProviderMessage.Assistant => "assistant"
             case _: ProviderMessage.ToolResult => "tool_result"
-            case _: ProviderMessage.System     => "system"
-            case other                          => other.getClass.getSimpleName
+            case _: ProviderMessage.System => "system"
+            case other => other.getClass.getSimpleName
           }.mkString(", ")
           info(s"Iteration ${idx + 1}: ${call.messages.size} messages [$shape]")
         }

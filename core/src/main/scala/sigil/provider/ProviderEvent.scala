@@ -23,43 +23,53 @@ enum ProviderEvent derives RW {
   case ContentBlockDelta(callId: CallId, text: String)
   case ThinkingDelta(text: String)
 
-  /** A server-managed [[BuiltInTool]] began executing on the provider
-    * side. Informational — no client action needed; the result (if
-    * any) arrives inline in subsequent events or as part of the final
-    * response. `query` is the tool-specific argument the model chose
-    * (e.g. the web search query, the image generation prompt), when
-    * the provider exposes it in the stream. */
+  /**
+   * A server-managed [[BuiltInTool]] began executing on the provider
+   * side. Informational — no client action needed; the result (if
+   * any) arrives inline in subsequent events or as part of the final
+   * response. `query` is the tool-specific argument the model chose
+   * (e.g. the web search query, the image generation prompt), when
+   * the provider exposes it in the stream.
+   */
   case ServerToolStart(callId: CallId, tool: BuiltInTool, query: Option[String])
 
-  /** The server-managed tool finished. Emitted for observability /
-    * logging; most consumers don't need to handle it. */
+  /**
+   * The server-managed tool finished. Emitted for observability /
+   * logging; most consumers don't need to handle it.
+   */
   case ServerToolComplete(callId: CallId, tool: BuiltInTool)
 
-  /** A streamed partial image — a progressively-improving preview the
-    * provider emits before the final [[ImageGenerationComplete]]. */
+  /**
+   * A streamed partial image — a progressively-improving preview the
+   * provider emits before the final [[ImageGenerationComplete]].
+   */
   case ImageGenerationPartial(callId: CallId, image: ProviderImage)
 
-  /** The final, fully-rendered generated image. The orchestrator
-    * materializes this into a [[sigil.tool.model.ResponseContent.Image]]
-    * block on the outgoing [[sigil.event.Message]], persisting any
-    * inline image bytes via storage so they never enter conversation
-    * history. */
+  /**
+   * The final, fully-rendered generated image. The orchestrator
+   * materializes this into a [[sigil.tool.model.ResponseContent.Image]]
+   * block on the outgoing [[sigil.event.Message]], persisting any
+   * inline image bytes via storage so they never enter conversation
+   * history.
+   */
   case ImageGenerationComplete(callId: CallId, image: ProviderImage)
 
   case Usage(usage: TokenUsage)
   case Done(stopReason: StopReason)
   case Error(message: String)
 
-  /** A provider captured a server-side state handle for the just-
-    * settled call. Today only OpenAI's Responses API emits this —
-    * `responseId` is the `response.id` from the SSE `response.created`
-    * event, `messageCount` is the count of rendered messages this call
-    * sent so the next turn can skip them and reference the prior state
-    * via `previous_response_id`. The orchestrator persists the pair on
-    * the agent's ParticipantProjection. `responseId = None` means
-    * "invalidate any cached state" — fires when the API rejected a
-    * `previous_response_id` (expired upstream) so the next turn falls
-    * back to the full-transcript shape. */
+  /**
+   * A provider captured a server-side state handle for the just-
+   * settled call. Today only OpenAI's Responses API emits this —
+   * `responseId` is the `response.id` from the SSE `response.created`
+   * event, `messageCount` is the count of rendered messages this call
+   * sent so the next turn can skip them and reference the prior state
+   * via `previous_response_id`. The orchestrator persists the pair on
+   * the agent's ParticipantProjection. `responseId = None` means
+   * "invalidate any cached state" — fires when the API rejected a
+   * `previous_response_id` (expired upstream) so the next turn falls
+   * back to the full-transcript shape.
+   */
   case ResponseStateCaptured(responseId: Option[String], messageCount: Int)
 
   case ReasoningItem(providerItemId: String,
@@ -87,8 +97,11 @@ enum ProviderEvent derives RW {
 }
 
 object ProviderEvent {
-  /** Typed [[ToolCallComplete]] construction — packs tool + input into a
-    * [[WireCall.Decoded]] so the pairing holds by construction. */
+
+  /**
+   * Typed [[ToolCallComplete]] construction — packs tool + input into a
+   * [[WireCall.Decoded]] so the pairing holds by construction.
+   */
   def toolCall(callId: CallId, t: Tool)(i: t.Input): ProviderEvent =
     ToolCallComplete(callId, WireCall.Decoded(DecodedCall(t)(i)))
 }

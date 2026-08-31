@@ -12,15 +12,19 @@ import sigil.tool.{DiscoveryFilter, DiscoveryRequest, JsonInput, Tool, ToolFinde
  */
 final class McpToolFinder(manager: McpManager) extends ToolFinder {
 
-  /** All MCP tools surface via [[JsonInput]] and the open
-    * [[ToolOutput]] (a server result may be text OR an image) — one
-    * representative IO covers the codecs this finder's tools use. */
+  /**
+   * All MCP tools surface via [[JsonInput]] and the open
+   * [[ToolOutput]] (a server result may be text OR an image) — one
+   * representative IO covers the codecs this finder's tools use.
+   */
   override val toolIO: List[ToolIO[?, ?]] =
     List(ToolIO.dynamicAs[ToolOutput](Definition(DefType.Json)))
 
-  /** Materialize every advertised tool with collision-resolved names —
-    * two raw names that sanitize to one would otherwise silently
-    * shadow, dropping a tool from the roster. */
+  /**
+   * Materialize every advertised tool with collision-resolved names —
+   * two raw names that sanitize to one would otherwise silently
+   * shadow, dropping a tool from the roster.
+   */
   private def allTools: Task[List[McpTool]] =
     manager.allToolsByDisplayName.map { all =>
       val names = McpTool.resolveNames(all.keys)

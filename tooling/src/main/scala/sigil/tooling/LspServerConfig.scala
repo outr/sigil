@@ -70,6 +70,8 @@ object LspServerConfig extends RecordDocumentModel[LspServerConfig] with JsonCon
 
   override def id(value: String = rapid.Unique()): Id[LspServerConfig] = Id(value)
 
-  /** Stable id derived from `languageId` — one record per language. */
+  /**
+   * Stable id derived from `languageId` — one record per language.
+   */
   def idFor(languageId: String): Id[LspServerConfig] = Id(languageId)
 }

@@ -24,32 +24,40 @@ package sigil.tool
  */
 object ReproductionIntegrity {
 
-  /** A non-editable original line that did not survive verbatim, in order.
-    * `lineNumber` is the 1-indexed position in the original. */
+  /**
+   * A non-editable original line that did not survive verbatim, in order.
+   * `lineNumber` is the 1-indexed position in the original.
+   */
   sealed trait Violation {
     def lineNumber: Int
     def text: String
   }
 
-  /** The original line vanished with no replacement at its position. */
+  /**
+   * The original line vanished with no replacement at its position.
+   */
   final case class DroppedLine(lineNumber: Int, text: String) extends Violation
 
-  /** The original line was replaced by different content at its position. */
+  /**
+   * The original line was replaced by different content at its position.
+   */
   final case class AlteredLine(lineNumber: Int, text: String, replacedWith: Option[String]) extends Violation
 
   final case class Verdict(violations: List[Violation]) {
     def ok: Boolean = violations.isEmpty
   }
 
-  /** Validate that every original line survives IN ORDER in `refactored`,
-    * except lines `editable` admits. `editable(line)` returns true for
-    * original lines the instruction was allowed to change or remove (e.g.
-    * "comment lines only" for a comment-sweep). Non-editable lines that
-    * vanished or changed are violations. Insertions are always allowed.
-    *
-    * Order matters: LCS keeps in-order matches, so a line MOVED away from
-    * its position is a drop at the old position plus an insertion at the
-    * new one — it flags rather than silently passing. */
+  /**
+   * Validate that every original line survives IN ORDER in `refactored`,
+   * except lines `editable` admits. `editable(line)` returns true for
+   * original lines the instruction was allowed to change or remove (e.g.
+   * "comment lines only" for a comment-sweep). Non-editable lines that
+   * vanished or changed are violations. Insertions are always allowed.
+   *
+   * Order matters: LCS keeps in-order matches, so a line MOVED away from
+   * its position is a drop at the old position plus an insertion at the
+   * new one — it flags rather than silently passing.
+   */
   def validate(original: String, refactored: String, editable: String => Boolean): Verdict = {
     val orig = original.linesIterator.toIndexedSeq
     val ref = refactored.linesIterator.toIndexedSeq
@@ -88,7 +96,7 @@ object ReproductionIntegrity {
 
     var oi = 0
     var rj = 0
-    while (oi < n && rj < m) {
+    while (oi < n && rj < m)
       if (orig(oi) == ref(rj) && dp(oi)(rj) == dp(oi + 1)(rj + 1) + 1) {
         flushGap()
         oi += 1
@@ -100,7 +108,6 @@ object ReproductionIntegrity {
         gapRef += ref(rj)
         rj += 1
       }
-    }
     while (oi < n) {
       gapOrig += ((oi + 1, orig(oi)))
       oi += 1

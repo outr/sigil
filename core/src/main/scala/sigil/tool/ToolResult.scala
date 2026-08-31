@@ -33,28 +33,37 @@ sealed trait ToolResult[+O]
 
 object ToolResult {
 
-  /** The tool ran successfully and produced a typed payload. The
-    * framework folds `value` into the settling
-    * [[sigil.signal.ToolDelta]] (carried as `output` on the
-    * originating [[sigil.event.ToolInvoke]]) via the tool's
-    * `outputRW` at emission time — no [[fabric.rw.RW]] context
-    * bound on `Out` here because the envelope itself doesn't
-    * round-trip. */
+  /**
+   * The tool ran successfully and produced a typed payload. The
+   * framework folds `value` into the settling
+   * [[sigil.signal.ToolDelta]] (carried as `output` on the
+   * originating [[sigil.event.ToolInvoke]]) via the tool's
+   * `outputRW` at emission time — no [[fabric.rw.RW]] context
+   * bound on `Out` here because the envelope itself doesn't
+   * round-trip.
+   */
   final case class Success[O](value: O) extends ToolResult[O]
 
-  /** The tool didn't produce a useful payload — the call hit a
-    * recoverable shape (logical mismatch, missing precondition,
-    * invalid input the framework's grammar didn't catch). */
+  /**
+   * The tool didn't produce a useful payload — the call hit a
+   * recoverable shape (logical mismatch, missing precondition,
+   * invalid input the framework's grammar didn't catch).
+   */
   final case class Failure(message: String,
                            hint: Option[String] = None,
-                           args: Option[String] = None) extends ToolResult[Nothing]
+                           args: Option[String] = None)
+    extends ToolResult[Nothing]
 
-  /** Convenience constructor: wrap a value in `Success`. */
+  /**
+   * Convenience constructor: wrap a value in `Success`.
+   */
   def success[O](value: O): ToolResult[O] = Success(value)
 
-  /** Convenience constructor: build a `Failure` with optional hint
-    * and args. The type parameter is `Nothing`-widened so callers
-    * don't have to spell the output type at the failure site. */
+  /**
+   * Convenience constructor: build a `Failure` with optional hint
+   * and args. The type parameter is `Nothing`-widened so callers
+   * don't have to spell the output type at the failure site.
+   */
   def failure(message: String,
               hint: Option[String] = None,
               args: Option[String] = None): ToolResult[Nothing] =

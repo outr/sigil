@@ -2,8 +2,10 @@ package sigil.tool.consult
 
 import rapid.Task
 import sigil.provider.{GenerationSettings, OutputTokenCap, ReasoningMode, SummarizationWork, WorkType}
-import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolName, ToolProfile,
-  ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput, Tool, ToolContext, ToolIO, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 
 /**
  * Internal-only one-shot tool. Invoked by
@@ -16,7 +18,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, TextToolOutput,
  * [[ConsultTool.invokeRouted]] with `tool_choice = required`.
  */
 case object ConsolidateMemoriesTool extends Tool with FrameworkConsult {
-  type Input  = ConsolidateMemoriesInput
+  type Input = ConsolidateMemoriesInput
   type Output = TextToolOutput
   val io: ToolIO[ConsolidateMemoriesInput, TextToolOutput] = ToolIO.derived[ConsolidateMemoriesInput, TextToolOutput]
 
@@ -45,19 +47,25 @@ case object ConsolidateMemoriesTool extends Tool with FrameworkConsult {
     discovery = DiscoverySpec(kind = ConsultKind)
   )
 
-  /** Condensing work — routes through the cheap summarization tier. */
+  /**
+   * Condensing work — routes through the cheap summarization tier.
+   */
   override def consultWorkType: WorkType = SummarizationWork
 
-  /** Output is one verdict + one merged fact/label. 512 covers a rich
-    * merged fact plus the reasoning-spill margin. */
+  /**
+   * Output is one verdict + one merged fact/label. 512 covers a rich
+   * merged fact plus the reasoning-spill margin.
+   */
   override def consultSettings: GenerationSettings = GenerationSettings(
     outputTokenCap = OutputTokenCap.Below(512),
-    reasoningMode  = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 
-  /** Never executed — the framework reads the typed input directly via
-    * [[ConsultTool.invokeRouted]]. Resolves to an empty success for
-    * completeness. */
+  /**
+   * Never executed — the framework reads the typed input directly via
+   * [[ConsultTool.invokeRouted]]. Resolves to an empty success for
+   * completeness.
+   */
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 
   private def executeResult(input: ConsolidateMemoriesInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =

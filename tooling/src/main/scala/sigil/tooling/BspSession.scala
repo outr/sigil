@@ -26,61 +26,67 @@ import scala.jdk.CollectionConverters.*
  * [[client]]; tools snapshot them between calls.
  */
 class BspSession(val config: BspBuildConfig,
-                       process: Process,
-                       server: CombinedBuildServer,
-                       val client: BspRecordingBuildClient) {
+                 process: Process,
+                 server: CombinedBuildServer,
+                 val client: BspRecordingBuildClient) {
 
   private val lastUseAt: AtomicLong = new AtomicLong(System.currentTimeMillis())
 
   def touch(): Unit = lastUseAt.set(System.currentTimeMillis())
   def idleSince: Long = lastUseAt.get()
 
-  /** Default silence window for BSP requests. BSP queries vary
-    * wildly in duration — `dependencyModules` on a cold cache can
-    * legitimately take minutes; `workspaceBuildTargets` is fast.
-    * The window is generous; the client's `lastActivityAtMillis`
-    * (progress notifications, log lines) keeps long-but-working
-    * operations from tripping it. */
+  /**
+   * Default silence window for BSP requests. BSP queries vary
+   * wildly in duration — `dependencyModules` on a cold cache can
+   * legitimately take minutes; `workspaceBuildTargets` is fast.
+   * The window is generous; the client's `lastActivityAtMillis`
+   * (progress notifications, log lines) keeps long-but-working
+   * operations from tripping it.
+   */
   protected def defaultSilenceWindow: FiniteDuration = 5.minutes
 
-  /** Wrap a BSP request in [[DurableJsonRpc.issueDurable]] so a
-    * lost JSON-RPC response is recovered via idempotent retry
-    * rather than stranding the calling Task forever (see bug
-    * notes in [[JsonRpcTransportException]]). All BSP queries
-    * Sigil performs are idempotent — the retry just re-asks the
-    * server for the (cached) result. */
+  /**
+   * Wrap a BSP request in [[DurableJsonRpc.issueDurable]] so a
+   * lost JSON-RPC response is recovered via idempotent retry
+   * rather than stranding the calling Task forever (see bug
+   * notes in [[JsonRpcTransportException]]). All BSP queries
+   * Sigil performs are idempotent — the retry just re-asks the
+   * server for the (cached) result.
+   */
   protected def issueDurable[T](operation: String,
-                                silenceWindow: FiniteDuration = defaultSilenceWindow)
-                               (makeRequest: () => CompletableFuture[T]): Task[T] =
+                                silenceWindow: FiniteDuration = defaultSilenceWindow)(makeRequest: () => CompletableFuture[T]): Task[T] =
     DurableJsonRpc.issueDurable(
-      operation     = operation,
+      operation = operation,
       silenceWindow = silenceWindow
     )(activitySource = () => client.lastActivityAtMillis)(makeRequest)
 
-  /** Attributable-silence threshold for origin-scoped long requests
-    * (`compile` / `test`). NOT a cap on the request's duration — a
-    * compile streaming its own progress stays alive for as long as it
-    * needs. The window bounds how long a request may show ZERO
-    * activity attributable to itself (its originId's diagnostics, or
-    * un-attributed task events while it is the connection's only
-    * request) before the durable-RPC machinery treats the response as
-    * lost — retries once, then fails with the transport exception. */
+  /**
+   * Attributable-silence threshold for origin-scoped long requests
+   * (`compile` / `test`). NOT a cap on the request's duration — a
+   * compile streaming its own progress stays alive for as long as it
+   * needs. The window bounds how long a request may show ZERO
+   * activity attributable to itself (its originId's diagnostics, or
+   * un-attributed task events while it is the connection's only
+   * request) before the durable-RPC machinery treats the response as
+   * lost — retries once, then fails with the transport exception.
+   */
   protected def scopedSilenceWindow: FiniteDuration = 3.minutes
 
-  /** [[issueDurable]] with REQUEST-scoped liveness: the silence clock
-    * follows activity attributable to `originId`, not the whole
-    * connection. Connection-level liveness hides abandoned requests
-    * behind unrelated chatter — cross-client diagnostic broadcasts
-    * (an editor's Metals compiling the same sbt), or our own earlier
-    * request's progress — which is how a compile that would never be
-    * answered sat Pending forever on a visibly busy connection. */
+  /**
+   * [[issueDurable]] with REQUEST-scoped liveness: the silence clock
+   * follows activity attributable to `originId`, not the whole
+   * connection. Connection-level liveness hides abandoned requests
+   * behind unrelated chatter — cross-client diagnostic broadcasts
+   * (an editor's Metals compiling the same sbt), or our own earlier
+   * request's progress — which is how a compile that would never be
+   * answered sat Pending forever on a visibly busy connection.
+   */
   protected def issueDurableScoped[T](operation: String,
                                       originId: String,
-                                      silenceWindow: FiniteDuration)
-                                     (makeRequest: () => CompletableFuture[T]): Task[T] = Task.defer {
+                                      silenceWindow: FiniteDuration)(makeRequest: () => CompletableFuture[T]): Task[T] = Task.defer {
     client.beginRequest(originId)
     DurableJsonRpc.issueDurable(
-      operation     = operation,
+      operation = operation,
       silenceWindow = silenceWindow
     )(activitySource = () => client.requestActivityFor(originId).getOrElse(0L))(makeRequest)
       .guarantee(Task { client.endRequest(originId); () })
@@ -139,11 +145,13 @@ class BspSession(val config: BspBuildConfig,
 
   // ---- build / test / run ----
 
-  /** In-flight compiles keyed by target set. A second compile of the
-    * same targets JOINS the running one (shared `.singleton` task)
-    * instead of queueing a duplicate server-side build: every caller's
-    * invoke still settles — with the same result — and a blind
-    * re-call can never stack full compiles behind a slow one. */
+  /**
+   * In-flight compiles keyed by target set. A second compile of the
+   * same targets JOINS the running one (shared `.singleton` task)
+   * instead of queueing a duplicate server-side build: every caller's
+   * invoke still settles — with the same result — and a blind
+   * re-call can never stack full compiles behind a slow one.
+   */
   private val inFlightCompiles: ConcurrentHashMap[String, Task[CompileResult]] = new ConcurrentHashMap()
 
   def compile(targets: List[BuildTargetIdentifier]): Task[CompileResult] = Task.defer {
@@ -227,9 +235,12 @@ class BspSession(val config: BspBuildConfig,
   // ---- shutdown ----
 
   def shutdown(): Task[Unit] = Task {
-    try { server.buildShutdown().get(2, java.util.concurrent.TimeUnit.SECONDS); () } catch { case _: Throwable => () }
-    try { server.onBuildExit() } catch { case _: Throwable => () }
-    try { process.destroy() } catch { case _: Throwable => () }
+    try { server.buildShutdown().get(2, java.util.concurrent.TimeUnit.SECONDS); () }
+    catch { case _: Throwable => () }
+    try server.onBuildExit()
+    catch { case _: Throwable => () }
+    try process.destroy()
+    catch { case _: Throwable => () }
     if (process.isAlive) {
       process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
       if (process.isAlive) process.destroyForcibly()
@@ -240,10 +251,12 @@ class BspSession(val config: BspBuildConfig,
 
 object BspSession {
 
-  /** Spawn a BSP server subprocess and run the `build/initialize`
-    * handshake. The server proxy is typed as [[CombinedBuildServer]]
-    * so both the BSP base contract and the Scala / JVM extensions
-    * are reachable. */
+  /**
+   * Spawn a BSP server subprocess and run the `build/initialize`
+   * handshake. The server proxy is typed as [[CombinedBuildServer]]
+   * so both the BSP base contract and the Scala / JVM extensions
+   * are reachable.
+   */
   def spawn(config: BspBuildConfig,
             client: BspRecordingBuildClient = new BspRecordingBuildClient): Task[BspSession] = Task.defer {
     val pb = new ProcessBuilder((config.command :: config.args).asJava)
@@ -287,7 +300,7 @@ object BspSession {
       if (error != null) {
         val unwrapped = error match {
           case ce: java.util.concurrent.CompletionException if ce.getCause != null => ce.getCause
-          case other                                                               => other
+          case other => other
         }
         completable.failure(unwrapped)
       } else completable.success(value)

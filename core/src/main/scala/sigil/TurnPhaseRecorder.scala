@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
  *
  * Process-local and turn-scoped, exactly like the claim it hangs off.
  */
-private[sigil] final class TurnPhaseRecorder(startedAt: Long) {
+final private[sigil] class TurnPhaseRecorder(startedAt: Long) {
   private val cursor = new AtomicLong(startedAt)
   private val totals = new ConcurrentHashMap[TurnPhase, java.lang.Long]()
   private val iterationCount = new AtomicInteger(0)
@@ -38,7 +38,9 @@ private[sigil] final class TurnPhaseRecorder(startedAt: Long) {
     ()
   }
 
-  /** Note that another agent-loop iteration has begun. */
+  /**
+   * Note that another agent-loop iteration has begun.
+   */
   def nextIteration(): Unit = {
     iterationCount.incrementAndGet()
     reached.set(0)
@@ -47,7 +49,9 @@ private[sigil] final class TurnPhaseRecorder(startedAt: Long) {
 
   def iterations: Int = math.max(1, iterationCount.get())
 
-  /** Every phase in temporal order with its accumulated milliseconds. */
+  /**
+   * Every phase in temporal order with its accumulated milliseconds.
+   */
   def durations: List[(TurnPhase, Long)] =
     TurnPhase.values.toList.map(p => p -> Option(totals.get(p)).map(_.longValue()).getOrElse(0L))
 

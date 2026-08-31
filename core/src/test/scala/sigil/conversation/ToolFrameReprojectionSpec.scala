@@ -28,28 +28,28 @@ class ToolFrameReprojectionSpec extends AnyWordSpec with Matchers {
   private def invoke(outcome: ToolOutcome = ToolOutcome.Pending,
                      output: sigil.tool.ToolOutput = sigil.tool.ToolOutput.Pending): ToolInvoke =
     ToolInvoke(
-      toolName       = ToolName("live_probe_read"),
-      participantId  = TestAgent,
+      toolName = ToolName("live_probe_read"),
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = topicId,
-      _id            = invokeId,
-      state          = EventState.Complete,
-      input          = Some(ProbeReadInput(probe = "alpha")),
-      outcome        = outcome,
-      output         = output
+      topicId = topicId,
+      _id = invokeId,
+      state = EventState.Complete,
+      input = Some(ProbeReadInput(probe = "alpha")),
+      outcome = outcome,
+      output = output
     )
 
   private def pairedResult(text: String): Message =
     Message(
-      participantId  = TestAgent,
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = topicId,
-      role           = MessageRole.Tool,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      disposition    = MessageDisposition.Failure(recoverable = true),
-      visibility     = MessageVisibility.Agents,
-      origin         = Some(invokeId)
+      topicId = topicId,
+      role = MessageRole.Tool,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      disposition = MessageDisposition.Failure(recoverable = true),
+      visibility = MessageVisibility.Agents,
+      origin = Some(invokeId)
     )
 
   private def toolCall(frame: Option[ContextFrame]): ContextFrame.ToolCall =
@@ -62,7 +62,7 @@ class ToolFrameReprojectionSpec extends AnyWordSpec with Matchers {
       frame.resultPending shouldBe true
       frame.state match {
         case ToolCallState.Complete(content, _) => content should include("result did not reach this turn")
-        case other                              => fail(s"expected a settled placeholder, got $other")
+        case other => fail(s"expected a settled placeholder, got $other")
       }
     }
 

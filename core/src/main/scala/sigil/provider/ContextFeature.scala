@@ -39,36 +39,50 @@ import sigil.conversation.TurnInput
  */
 trait ContextFeature {
 
-  /** Stable identity — the disable handle and the profiler key. */
+  /**
+   * Stable identity — the disable handle and the profiler key.
+   */
   def id: FeatureId
 
-  /** Whether merely registering the feature makes it contribute.
-    * Framework features ship `true`; a module that wants its context
-    * opt-in ships `false` and the app turns it on by overriding
-    * [[sigil.Sigil.featureEnabled]]. */
+  /**
+   * Whether merely registering the feature makes it contribute.
+   * Framework features ship `true`; a module that wants its context
+   * opt-in ships `false` and the app turns it on by overriding
+   * [[sigil.Sigil.featureEnabled]].
+   */
   def defaultEnabled: Boolean = true
 
-  /** Where this feature's bodies land when they don't say otherwise.
-    * Anything computed fresh per turn belongs in
-    * [[Placement.VolatileTail]] — a per-turn value in the stable prefix
-    * costs the whole request its cross-turn cache hit. */
+  /**
+   * Where this feature's bodies land when they don't say otherwise.
+   * Anything computed fresh per turn belongs in
+   * [[Placement.VolatileTail]] — a per-turn value in the stable prefix
+   * costs the whole request its cross-turn cache hit.
+   */
   def placement: Placement
 
-  /** Position in the curator's shed cascade — lower sheds first; `None`
-    * never sheds. A feature takes part on exactly the terms a section
-    * does, so a stage declared here REQUIRES [[shed]]. */
+  /**
+   * Position in the curator's shed cascade — lower sheds first; `None`
+   * never sheds. A feature takes part on exactly the terms a section
+   * does, so a stage declared here REQUIRES [[shed]].
+   */
   def shedStage: Option[Int] = None
 
-  /** How the curator drops this feature's contribution from a turn.
-    * Placement-agnostic: it edits the `TurnInput` the feature's
-    * `compute` later reads, so one effect covers every body. */
+  /**
+   * How the curator drops this feature's contribution from a turn.
+   * Placement-agnostic: it edits the `TurnInput` the feature's
+   * `compute` later reads, so one effect covers every body.
+   */
   def shed: Option[TurnInput => TurnInput] = None
 
-  /** Tokens this feature's bodies may occupy, `None` unbounded. Bites
-    * on entry-shaped bodies only, like any section budget. */
+  /**
+   * Tokens this feature's bodies may occupy, `None` unbounded. Bites
+   * on entry-shaped bodies only, like any section budget.
+   */
   def budget: Option[Int] = None
 
-  /** This turn's contributions, or `Nil` for none. Called exactly once
-    * per request, before anything renders. */
+  /**
+   * This turn's contributions, or `Nil` for none. Called exactly once
+   * per request, before anything renders.
+   */
   def compute(ctx: SectionContext): Task[List[FeatureBody]]
 }

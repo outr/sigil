@@ -8,7 +8,10 @@ import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, ContextFrame, ToolCallState, TopicEntry, TurnInput}
 import sigil.event.{Event, ToolInvoke}
 import sigil.signal.{EventState, ToolDelta}
-import sigil.tool.{DiscoverySpec, Effect, ImageToolOutput, MutationTargeting, Resolution, Tool, ToolContext, ToolIO, ToolInput, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, ImageToolOutput, MutationTargeting, Resolution, Tool, ToolContext, ToolIO, ToolInput, ToolName, ToolProfile,
+  ToolSpec
+}
 
 /**
  * Envelope image preservation — an [[ImageToolOutput]] whose rendered
@@ -24,18 +27,18 @@ class ToolEnvelopeImagePreservationSpec extends AsyncWordSpec with AsyncTaskSpec
 
   private val convId = Conversation.id(s"img-envelope-${rapid.Unique()}")
   private val ctx: TurnContext = TurnContext(
-    sigil        = TestSigil,
-    chain        = List(TestUser),
+    sigil = TestSigil,
+    chain = List(TestUser),
     conversation = Conversation(topics = List(TopicEntry(TestTopicId, "t", "t")), _id = convId),
-    turnInput    = TurnInput(ConversationView(conversationId = convId)),
-    model        = TestSigil.defaultTestModel
+    turnInput = TurnInput(ConversationView(conversationId = convId)),
+    model = TestSigil.defaultTestModel
   )
 
   private val imageUrl = spice.net.URL.parse("https://example.com/preview.png")
   private val hugeCaption = "caption " * 8000
 
   private case object BigCaptionImageTool extends Tool {
-    type Input  = ImageProbeInput
+    type Input = ImageProbeInput
     type Output = ImageToolOutput
     val io: ToolIO[ImageProbeInput, ImageToolOutput] = ToolIO.derived[ImageProbeInput, ImageToolOutput]
     val spec: ToolSpec = ToolSpec(
@@ -59,11 +62,11 @@ class ToolEnvelopeImagePreservationSpec extends AsyncWordSpec with AsyncTaskSpec
         delta.overflow shouldBe defined
         // The settled frame delivers the image AND a bounded prose channel.
         val invoke = ToolInvoke(
-          toolName       = BigCaptionImageTool.name,
-          participantId  = TestUser,
+          toolName = BigCaptionImageTool.name,
+          participantId = TestUser,
           conversationId = convId,
-          topicId        = ctx.conversation.currentTopicId,
-          _id            = invokeId
+          topicId = ctx.conversation.currentTopicId,
+          _id = invokeId
         )
         val settled = delta.apply(invoke)
         val frame = sigil.conversation.FrameBuilder.computeFrame(settled)

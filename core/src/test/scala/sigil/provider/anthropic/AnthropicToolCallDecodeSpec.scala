@@ -28,8 +28,10 @@ class AnthropicToolCallDecodeSpec extends AnyWordSpec with Matchers {
 
   private val provider = AnthropicProvider("test-key", TestSigil, url"https://api.anthropic.com")
 
-  /** Feed canned SSE `data:` lines through the streaming decoder with
-    * a fresh state, collecting every emitted ProviderEvent. */
+  /**
+   * Feed canned SSE `data:` lines through the streaming decoder with
+   * a fresh state, collecting every emitted ProviderEvent.
+   */
   private def decode(lines: List[String]): Vector[ProviderEvent] = {
     val state = new provider.StreamState(
       new ToolCallAccumulator(ToolRoster(Vector(NoResponseTool)), providerKey = "anthropic")
@@ -39,9 +41,9 @@ class AnthropicToolCallDecodeSpec extends AnyWordSpec with Matchers {
 
   private val toolUseStart =
     """data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_x","name":"no_response"}}"""
-  private val blockStop    = """data: {"type":"content_block_stop","index":0}"""
-  private val deltaStop    = """data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}"""
-  private val messageStop  = """data: {"type":"message_stop"}"""
+  private val blockStop = """data: {"type":"content_block_stop","index":0}"""
+  private val deltaStop = """data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}"""
+  private val messageStop = """data: {"type":"message_stop"}"""
 
   "AnthropicProvider streaming tool_use decode" should {
 
@@ -67,7 +69,9 @@ class AnthropicToolCallDecodeSpec extends AnyWordSpec with Matchers {
         toolUseStart,
         """data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"reason\":"}}""",
         """data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"all done\"}"}}""",
-        blockStop, deltaStop, messageStop
+        blockStop,
+        deltaStop,
+        messageStop
       ))
 
       events.collect { case e: ProviderEvent.Error => e } shouldBe empty
@@ -93,13 +97,13 @@ class AnthropicToolCallDecodeSpec extends AnyWordSpec with Matchers {
       ))
       val kinds = events.map {
         case _: ProviderEvent.ToolCallComplete => "complete"
-        case _: ProviderEvent.Usage            => "usage"
-        case _: ProviderEvent.Done             => "done"
-        case _                                 => "other"
+        case _: ProviderEvent.Usage => "usage"
+        case _: ProviderEvent.Done => "done"
+        case _ => "other"
       }
       val completeIdx = kinds.indexOf("complete")
-      val usageIdx    = kinds.indexOf("usage")
-      val doneIdx     = kinds.indexOf("done")
+      val usageIdx = kinds.indexOf("usage")
+      val doneIdx = kinds.indexOf("done")
       withClue(s"event order: ${kinds.mkString(" -> ")}: ") {
         completeIdx should be >= 0
         usageIdx should be > completeIdx
@@ -116,7 +120,9 @@ class AnthropicToolCallDecodeSpec extends AnyWordSpec with Matchers {
       val events = decode(List(
         toolUseStart,
         """data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}""",
-        blockStop, deltaStop, messageStop
+        blockStop,
+        deltaStop,
+        messageStop
       ))
 
       events.collect { case e: ProviderEvent.Error => e } shouldBe empty

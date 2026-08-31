@@ -45,16 +45,18 @@ case class MessageDelta(target: Id[Event],
                         usage: Option[TokenUsage] = None,
                         state: Option[EventState] = None,
                         disposition: Option[sigil.event.MessageDisposition] = None,
-                        /** Sigil #392 — set on the settle delta that commits a
-                          * naked-text terminal answer: a turn that ended with
-                          * `end_turn` + a user-visible text Message and NO tool
-                          * call (the no-forced-tool_choice path — Fable/Mythos 5
-                          * under the #387 self-heal). The agent loop treats it
-                          * as a user-visible reply (like a `respond` settle), so
-                          * the complete prose answer commits on the FIRST
-                          * occurrence instead of being dropped and re-requested.
-                          * Purely a loop signal; does not affect the projected
-                          * `Message`. */
+                        /**
+                         * Sigil #392 — set on the settle delta that commits a
+                         * naked-text terminal answer: a turn that ended with
+                         * `end_turn` + a user-visible text Message and NO tool
+                         * call (the no-forced-tool_choice path — Fable/Mythos 5
+                         * under the #387 self-heal). The agent loop treats it
+                         * as a user-visible reply (like a `respond` settle), so
+                         * the complete prose answer commits on the FIRST
+                         * occurrence instead of being dropped and re-requested.
+                         * Purely a loop signal; does not affect the projected
+                         * `Message`.
+                         */
                         terminalReply: Boolean = false)
   extends Delta derives RW {
 
@@ -90,7 +92,7 @@ case class MessageDelta(target: Id[Event],
       }
       val nextUsage = usage match {
         case Some(u) if !u.isEstimated => m.usage + u
-        case _                         => m.usage
+        case _ => m.usage
       }
       val nextState = state.getOrElse(m.state)
       val nextDisposition = disposition.getOrElse(m.disposition)

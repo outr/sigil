@@ -30,7 +30,7 @@ package sigil.provider
 final class StreamSlotGate(val permits: Int) {
   import StreamSlotGate.Outcome
 
-  private final class Waiter {
+  final private class Waiter {
     var granted: Boolean = false
     var abandoned: Boolean = false
   }
@@ -41,8 +41,10 @@ final class StreamSlotGate(val permits: Int) {
   private val interactiveQueue = new java.util.ArrayDeque[Waiter]()
   private val batchQueue = new java.util.ArrayDeque[Waiter]()
 
-  /** Acquire a slot. Blocks (virtual-thread friendly) until granted,
-    * `stopRequested` turns true, or `timeoutMs` passes. */
+  /**
+   * Acquire a slot. Blocks (virtual-thread friendly) until granted,
+   * `stopRequested` turns true, or `timeoutMs` passes.
+   */
   def acquire(interactive: Boolean, stopRequested: () => Boolean, timeoutMs: Long): Outcome = {
     val deadline = System.currentTimeMillis() + timeoutMs
     val waiter = new Waiter
@@ -72,16 +74,20 @@ final class StreamSlotGate(val permits: Int) {
     }
   }
 
-  /** Release a held slot — grants the next eligible waiter, interactive
-    * first. Must be called exactly once per successful [[acquire]]. */
+  /**
+   * Release a held slot — grants the next eligible waiter, interactive
+   * first. Must be called exactly once per successful [[acquire]].
+   */
   def release(): Unit = lock.synchronized {
     available += 1
     grantEligible()
   }
 
-  /** Block NEW batch admissions until the matching
-    * [[releaseBatchHold]]. In-flight streams and interactive
-    * admissions are unaffected. Counting — concurrent holds nest. */
+  /**
+   * Block NEW batch admissions until the matching
+   * [[releaseBatchHold]]. In-flight streams and interactive
+   * admissions are unaffected. Counting — concurrent holds nest.
+   */
   def holdBatch(): Unit = lock.synchronized {
     batchHolds += 1
   }
@@ -91,12 +97,16 @@ final class StreamSlotGate(val permits: Int) {
     if (batchHolds == 0) grantEligible()
   }
 
-  /** Snapshot of free permits — diagnostics only. */
+  /**
+   * Snapshot of free permits — diagnostics only.
+   */
   def availablePermits: Int = lock.synchronized(available)
 
-  /** Grant free permits to queued waiters: every interactive waiter
-    * first, then batch (only while no hold is active). Runs under
-    * [[lock]]. */
+  /**
+   * Grant free permits to queued waiters: every interactive waiter
+   * first, then batch (only while no hold is active). Runs under
+   * [[lock]].
+   */
   private def grantEligible(): Unit = {
     var granted = false
     while (available > 0 && !interactiveQueue.isEmpty) {
@@ -118,11 +128,13 @@ final class StreamSlotGate(val permits: Int) {
     if (granted) lock.notifyAll()
   }
 
-  /** A waiter abandoning the line (stop / timeout). If a grant raced
-    * the abandonment, hand the permit straight back so it isn't
-    * leaked; otherwise mark the queue entry dead for `grantEligible`
-    * to skip. Runs under [[lock]]. */
-  private def removeOrHandBack(waiter: Waiter, interactive: Boolean): Unit = {
+  /**
+   * A waiter abandoning the line (stop / timeout). If a grant raced
+   * the abandonment, hand the permit straight back so it isn't
+   * leaked; otherwise mark the queue entry dead for `grantEligible`
+   * to skip. Runs under [[lock]].
+   */
+  private def removeOrHandBack(waiter: Waiter, interactive: Boolean): Unit =
     if (waiter.granted) {
       available += 1
       grantEligible()
@@ -130,12 +142,14 @@ final class StreamSlotGate(val permits: Int) {
       waiter.abandoned = true
       (if (interactive) interactiveQueue else batchQueue).remove(waiter)
     }
-  }
 }
 
 object StreamSlotGate {
-  /** Why an [[StreamSlotGate.acquire]] returned without a permit — or
-    * that it got one. */
+
+  /**
+   * Why an [[StreamSlotGate.acquire]] returned without a permit — or
+   * that it got one.
+   */
   enum Outcome {
     case Acquired
     case TimedOut

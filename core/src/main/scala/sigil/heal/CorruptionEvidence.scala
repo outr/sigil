@@ -11,7 +11,7 @@ import sigil.event.Event
  * at a deleted origin, a memory-summary covering events that no
  * longer exist, …
  *
-* Heals produce one or more `CorruptionEvidence` rows during their
+ * Heals produce one or more `CorruptionEvidence` rows during their
  *
  * Open trait — apps with their own corruption shapes add subtypes
  * and register them through fabric polymorphic RW. The framework
@@ -33,8 +33,7 @@ object CorruptionEvidence extends PolyType[CorruptionEvidence]()(using scala.ref
    * @param callId    wire-level `call_<hash>` the provider remembers
    * @param toolName  the tool name the invoke carried
    */
-  case class MissingToolResult(invokeId: Id[Event], callId: String, toolName: String)
-    extends CorruptionEvidence derives RW
+  case class MissingToolResult(invokeId: Id[Event], callId: String, toolName: String) extends CorruptionEvidence derives RW
 
   /**
    * A `Tool`-role Message / settle delta names an `origin` event id
@@ -42,8 +41,7 @@ object CorruptionEvidence extends PolyType[CorruptionEvidence]()(using scala.ref
    * partial migration, manual surgery). The current renderer would
    * either drop the message or render it without a paired tool_use.
    */
-  case class DanglingToolResultOrigin(resultId: Id[Event], orphanOriginId: Id[Event])
-    extends CorruptionEvidence derives RW
+  case class DanglingToolResultOrigin(resultId: Id[Event], orphanOriginId: Id[Event]) extends CorruptionEvidence derives RW
 
   /**
    * A persisted summary covers events that no longer exist. The

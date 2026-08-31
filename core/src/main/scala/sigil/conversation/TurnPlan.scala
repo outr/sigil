@@ -18,4 +18,5 @@ import fabric.rw.*
 case class TurnPlan(objective: String,
                     constraints: List[String],
                     doneCriteria: String,
-                    currentPhase: Option[String]) derives RW
+                    currentPhase: Option[String])
+  derives RW

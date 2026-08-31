@@ -32,7 +32,7 @@ import scala.jdk.CollectionConverters.*
  * text rather than markup, a quoted transcript, or an essay.
  */
 class LlamaCppReplySuggestionsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
-  override implicit protected val testTimeout: FiniteDuration = 5.minutes
+  implicit override protected val testTimeout: FiniteDuration = 5.minutes
 
   TestSigil.initFor(getClass.getSimpleName)
   TestSigil.setProvider(CachedProviderFixtures.wrap(this, LlamaCppProvider(TestSigil, TestSigil.llamaCppHost)))
@@ -40,8 +40,10 @@ class LlamaCppReplySuggestionsSpec extends AsyncWordSpec with AsyncTaskSpec with
   private val modelId: Id[Model] = Model.id("qwen3.5-9b-q4_k_m")
   TestSigil.testModel(modelId)
 
-  /** The per-turn extractor issues its own live call after each turn;
-    * this suite is scoped to the suggestion consult. */
+  /**
+   * The per-turn extractor issues its own live call after each turn;
+   * this suite is scoped to the suggestion consult.
+   */
   private object NoExtraction extends sigil.conversation.compression.extract.MemoryExtractor {
     override def extract(sigil: _root_.sigil.Sigil,
                          conversationId: Id[Conversation],
@@ -102,10 +104,12 @@ class LlamaCppReplySuggestionsSpec extends AsyncWordSpec with AsyncTaskSpec with
     loop
   }
 
-  /** Sanity a composer can rely on: something to type, short enough to
-    * sit in an input, and free of the markup a model reaches for when
-    * it forgets it is writing AS the user. */
-  private def beComposerReady(suggestion: String): org.scalatest.Assertion = {
+  /**
+   * Sanity a composer can rely on: something to type, short enough to
+   * sit in an input, and free of the markup a model reaches for when
+   * it forgets it is writing AS the user.
+   */
+  private def beComposerReady(suggestion: String): org.scalatest.Assertion =
     withClue(s"suggestion: '$suggestion' — ") {
       suggestion.trim should not be empty
       suggestion.length should be < 300
@@ -115,7 +119,6 @@ class LlamaCppReplySuggestionsSpec extends AsyncWordSpec with AsyncTaskSpec with
       suggestion should not startWith "* "
       suggestion.linesIterator.size should be(1)
     }
-  }
 
   private def runTurn(convId: Id[Conversation], question: String): Task[Timestamp] = {
     val conv = Conversation(topics = List(TestTopicEntry), _id = convId, participants = List(makeAgent()))

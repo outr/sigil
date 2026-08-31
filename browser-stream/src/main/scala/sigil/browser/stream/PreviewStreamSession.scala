@@ -24,15 +24,19 @@ import sigil.conversation.Conversation
 sealed trait PreviewStreamSession {
   def conversationId: Id[Conversation]
 
-  /** Session identifier — the address half of [[PreviewSignal]] /
-    * [[PreviewSignalReply]]. Unique per session, not per conversation:
-    * a conversation may be previewed by several viewers at once. It
-    * names a session rather than authorising it — a session started for
-    * a viewer answers only to that viewer, whoever holds the id (see
-    * [[StreamBrowserSigil.previewStreamFor]]). */
+  /**
+   * Session identifier — the address half of [[PreviewSignal]] /
+   * [[PreviewSignalReply]]. Unique per session, not per conversation:
+   * a conversation may be previewed by several viewers at once. It
+   * names a session rather than authorising it — a session started for
+   * a viewer answers only to that viewer, whoever holds the id (see
+   * [[StreamBrowserSigil.previewStreamFor]]).
+   */
   def streamId: String
 
-  /** Idempotent teardown of this session only. */
+  /**
+   * Idempotent teardown of this session only.
+   */
   def stop: Task[Unit]
 }
 
@@ -46,14 +50,19 @@ object PreviewStreamSession {
    */
   final case class WebRtc(conversationId: Id[Conversation],
                           streamId: String,
-                          session: StreamSession) extends PreviewStreamSession {
+                          session: StreamSession)
+    extends PreviewStreamSession {
 
-    /** Feed a viewer-originated signaling message (answer / ICE) into
-      * the session. */
+    /**
+     * Feed a viewer-originated signaling message (answer / ICE) into
+     * the session.
+     */
     def accept(message: SignalMessage): Task[Unit] = session.fromClient(message)
 
-    /** Encoder, resolution, frame rate, bitrate, RTT and — when the
-      * viewer reports it — glass-to-glass latency. */
+    /**
+     * Encoder, resolution, frame rate, bitrate, RTT and — when the
+     * viewer reports it — glass-to-glass latency.
+     */
     def stats: Task[StreamStats] = session.stats
 
     def stopped: Boolean = session.stopped()
@@ -74,7 +83,8 @@ object PreviewStreamSession {
   final case class Screencast(conversationId: Id[Conversation],
                               streamId: String,
                               frames: Stream[PreviewFrame],
-                              stop: Task[Unit]) extends PreviewStreamSession
+                              stop: Task[Unit])
+    extends PreviewStreamSession
 
   private[stream] def newStreamId(): String = Unique()
 }

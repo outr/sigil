@@ -79,35 +79,47 @@ trait StreamBrowserSigil extends BrowserSigil {
         // switches. Overridable like everything else here.
         passwordManager = false,
         testType = true,
-        disableFeatures = (base.browserConfig.disableFeatures ++
-          List("Translate", "PasswordLeakDetection")).distinct,
-        extraArgs = (base.browserConfig.extraArgs ++
-          List("--hide-crash-restore-bubble", "--no-first-run", "--no-default-browser-check")).distinct
+        disableFeatures =
+          (base.browserConfig.disableFeatures ++
+            List("Translate", "PasswordLeakDetection")).distinct,
+        extraArgs =
+          (base.browserConfig.extraArgs ++
+            List("--hide-crash-restore-bubble", "--no-first-run", "--no-default-browser-check")).distinct
       ),
       virtualDisplay = base.virtualDisplay.orElse(Some(VirtualDisplayConfig()))
     )
   }
 
-  /** How long to keep a preview browser nobody is watching before
-    * disposing it. Defaults to the automation browser's timeout; a
-    * headful Chrome plus an Xvfb display is heavier still, so apps
-    * serving many short previews may want it shorter. */
+  /**
+   * How long to keep a preview browser nobody is watching before
+   * disposing it. Defaults to the automation browser's timeout; a
+   * headful Chrome plus an Xvfb display is heavier still, so apps
+   * serving many short previews may want it shorter.
+   */
   def streamBrowserIdleTimeoutMs: Long = browserIdleTimeoutMs
 
-  /** Whether an unavailable WebRTC stack degrades to the CDP screencast
-    * (default) or raises [[StreamUnavailableException]]. */
+  /**
+   * Whether an unavailable WebRTC stack degrades to the CDP screencast
+   * (default) or raises [[StreamUnavailableException]].
+   */
   def streamFallbackToScreencast: Boolean = true
 
-  /** Frames buffered for a screencast preview whose consumer hasn't
-    * caught up. On overflow the oldest frame is shed — a preview is
-    * worth less the staler it is, and Chrome must never be
-    * back-pressured (it stalls the screencast rather than queueing). */
+  /**
+   * Frames buffered for a screencast preview whose consumer hasn't
+   * caught up. On overflow the oldest frame is shed — a preview is
+   * worth less the staler it is, and Chrome must never be
+   * back-pressured (it stalls the screencast rather than queueing).
+   */
   def previewFrameBuffer: Int = 120
 
-  /** Screencast image encoding — `"jpeg"` (default) or `"png"`. */
+  /**
+   * Screencast image encoding — `"jpeg"` (default) or `"png"`.
+   */
   def previewFrameFormat: String = "jpeg"
 
-  /** Screencast JPEG quality, 0-100. */
+  /**
+   * Screencast JPEG quality, 0-100.
+   */
   def previewFrameQuality: Int = 70
 
   /**
@@ -140,11 +152,13 @@ trait StreamBrowserSigil extends BrowserSigil {
     }
   }
 
-  /** Clamp a requested render target to the live display's framebuffer
-    * envelope. RandR cannot grow a running Xvfb framebuffer, so a
-    * target beyond it (a 4K fullscreen pane against a smaller
-    * envelope) is served at the envelope size — the client's video
-    * element scales it — rather than aborting the stream. */
+  /**
+   * Clamp a requested render target to the live display's framebuffer
+   * envelope. RandR cannot grow a running Xvfb framebuffer, so a
+   * target beyond it (a 4K fullscreen pane against a smaller
+   * envelope) is served at the envelope size — the client's video
+   * element scales it — rather than aborting the stream.
+   */
   private def clampToEnvelope(controller: StreamBrowserController,
                               width: Int,
                               height: Int): (Int, Int) = {
@@ -166,11 +180,13 @@ trait StreamBrowserSigil extends BrowserSigil {
   final def streamBrowserController(convId: Id[Conversation]): Task[StreamBrowserController] =
     streamBrowserController(convId, StreamConfig())
 
-  /** As [[streamBrowserController]], sizing a *freshly launched* browser's
-    * virtual display to `config`'s render target. An already-running
-    * browser keeps the display it has; a target within it is served as a
-    * capture region, and a larger one fails loudly rather than silently
-    * cropping. */
+  /**
+   * As [[streamBrowserController]], sizing a *freshly launched* browser's
+   * virtual display to `config`'s render target. An already-running
+   * browser keeps the display it has; a target within it is served as a
+   * capture region, and a larger one fails loudly rather than silently
+   * cropping.
+   */
   final def streamBrowserController(convId: Id[Conversation],
                                     config: StreamConfig): Task[StreamBrowserController] = Task.defer {
     Option(StreamBrowserSigil.controllers.get(convId.value)) match {
@@ -178,35 +194,45 @@ trait StreamBrowserSigil extends BrowserSigil {
       case _ =>
         RoboBrowser(streamBrowserConfigFor(config)).flatMap { browser =>
           val fresh = new StreamBrowserController(convId, browser)
-          val winner = StreamBrowserSigil.controllers.compute(convId.value, (_, prior) =>
-            if (prior != null && !prior.isDisposed) prior else fresh
+          val winner = StreamBrowserSigil.controllers.compute(
+            convId.value,
+            (_, prior) =>
+              if (prior != null && !prior.isDisposed) prior else fresh
           )
           if (winner eq fresh) Task.pure(fresh) else fresh.dispose.map(_ => winner)
         }
     }
   }
 
-  /** Stop every live preview and dispose this conversation's stream
-    * browser (and its Xvfb display). Idempotent. */
+  /**
+   * Stop every live preview and dispose this conversation's stream
+   * browser (and its Xvfb display). Idempotent.
+   */
   final def disposeStreamBrowserController(convId: Id[Conversation]): Task[Unit] = {
     val removed = StreamBrowserSigil.controllers.remove(convId.value)
     if (removed == null) Task.unit else removed.dispose
   }
 
-  /** Why WebRTC streaming can't run for this conversation, or `None`
-    * when it can. Launches the preview browser if it isn't running —
-    * the answer depends on the browser having a virtual display, not
-    * just on the host's GStreamer install. Consumers render the reason
-    * ("preview degraded because ...") rather than guessing. */
+  /**
+   * Why WebRTC streaming can't run for this conversation, or `None`
+   * when it can. Launches the preview browser if it isn't running —
+   * the answer depends on the browser having a virtual display, not
+   * just on the host's GStreamer install. Consumers render the reason
+   * ("preview degraded because ...") rather than guessing.
+   */
   final def previewStreamAvailability(convId: Id[Conversation]): Task[Option[StreamUnavailable]] =
     streamBrowserController(convId).map(c => RoboStream(c.browser).availability)
 
-  /** Live preview sessions for a conversation — one per viewer. */
+  /**
+   * Live preview sessions for a conversation — one per viewer.
+   */
   final def previewStreamsFor(convId: Id[Conversation]): List[PreviewStreamSession] =
     Option(StreamBrowserSigil.controllers.get(convId.value)).map(_.sessions).getOrElse(Nil)
 
-  /** The viewer a live session belongs to, or `None` for a session
-    * started through the broadcast overload of [[previewStreamFor]]. */
+  /**
+   * The viewer a live session belongs to, or `None` for a session
+   * started through the broadcast overload of [[previewStreamFor]].
+   */
   final def previewStreamOwner(convId: Id[Conversation], streamId: String): Option[ParticipantId] =
     Option(StreamBrowserSigil.controllers.get(convId.value)).flatMap(_.owner(streamId))
 
@@ -374,14 +400,15 @@ trait StreamBrowserSigil extends BrowserSigil {
     // deliver two concurrently. Stamping and enqueueing under one lock
     // is what makes `sequence` match the order a consumer pulls in;
     // doing them separately lets a later frame overtake an earlier one.
-    val enqueue: ScreencastFrameEvent => Unit = frame => queue.synchronized {
-      val next = Some(PreviewFrame(frame.data, frame.metadata, sequence.incrementAndGet()))
-      if (!queue.offer(next)) {
-        queue.poll()
-        queue.offer(next)
-        ()
+    val enqueue: ScreencastFrameEvent => Unit = frame =>
+      queue.synchronized {
+        val next = Some(PreviewFrame(frame.data, frame.metadata, sequence.incrementAndGet()))
+        if (!queue.offer(next)) {
+          queue.poll()
+          queue.offer(next)
+          ()
+        }
       }
-    }
 
     // The screencast rung has no display capture to crop, so the render
     // target is applied where the page is laid out: device-metrics
@@ -395,13 +422,14 @@ trait StreamBrowserSigil extends BrowserSigil {
         case (Some(w), Some(h)) => controller.browser.setViewportSize(w, h)
         case _ => Task.unit
       }
-      layout.flatMap(_ => controller.browser.screencast.start(
-        onFrame = enqueue,
-        format = previewFrameFormat,
-        quality = previewFrameQuality,
-        maxWidth = config.maxWidth,
-        maxHeight = config.maxHeight
-      ))
+      layout.flatMap(_ =>
+        controller.browser.screencast.start(
+          onFrame = enqueue,
+          format = previewFrameFormat,
+          quality = previewFrameQuality,
+          maxWidth = config.maxWidth,
+          maxHeight = config.maxHeight
+        ))
     }
 
     capture(config.width, config.height).map { _ =>
@@ -433,9 +461,9 @@ trait StreamBrowserSigil extends BrowserSigil {
     val (w, h) = controller.map(clampToEnvelope(_, width, height)).getOrElse((width, height))
     controller.toList.flatMap(c => c.sessions.flatMap(s => c.resizer(s.streamId))) match {
       case Nil => Task {
-        scribe.warn(s"resizePreview(${width}x$height) for ${convId.value}: no live preview session — ignored")
-        ()
-      }
+          scribe.warn(s"resizePreview(${width}x$height) for ${convId.value}: no live preview session — ignored")
+          ()
+        }
       case resizers => Task.sequence(resizers.map(_.apply(w, h))).unit
     }
   }
@@ -474,27 +502,28 @@ trait StreamBrowserSigil extends BrowserSigil {
     val owner = controller.flatMap(_.owner(reply.streamId))
     controller.flatMap(_.session(reply.streamId)) match {
       case None => Task {
-        scribe.warn(s"PreviewSignalReply for unknown stream ${reply.streamId} " +
-          s"in conversation ${reply.conversationId.value} — ignored")
-        ()
-      }
-      case Some(_) if owner.nonEmpty && owner != from => Task {
-        scribe.warn(s"PreviewSignalReply for stream ${reply.streamId} from " +
-          s"${from.map(_.value).getOrElse("an unattributed sender")} — the session belongs to " +
-          s"${owner.get.value}; ignored")
-        ()
-      }
-      case Some(session) => reply.message match {
-        case SignalMessage.Bye => session.stop
-        case other => session match {
-          case webRtc: PreviewStreamSession.WebRtc => webRtc.accept(other)
-          case _ => Task {
-            scribe.warn(s"Ignoring $other for screencast preview ${reply.streamId}: " +
-              "the screencast fallback does not use WebRTC signaling")
-            ()
-          }
+          scribe.warn(s"PreviewSignalReply for unknown stream ${reply.streamId} " +
+            s"in conversation ${reply.conversationId.value} — ignored")
+          ()
         }
-      }
+      case Some(_) if owner.nonEmpty && owner != from =>
+        Task {
+          scribe.warn(s"PreviewSignalReply for stream ${reply.streamId} from " +
+            s"${from.map(_.value).getOrElse("an unattributed sender")} — the session belongs to " +
+            s"${owner.get.value}; ignored")
+          ()
+        }
+      case Some(session) => reply.message match {
+          case SignalMessage.Bye => session.stop
+          case other => session match {
+              case webRtc: PreviewStreamSession.WebRtc => webRtc.accept(other)
+              case _ => Task {
+                  scribe.warn(s"Ignoring $other for screencast preview ${reply.streamId}: " +
+                    "the screencast fallback does not use WebRTC signaling")
+                  ()
+                }
+            }
+        }
     }
   }
 
@@ -503,36 +532,46 @@ trait StreamBrowserSigil extends BrowserSigil {
     case other => super.handleNotice(other, fromViewer)
   }
 
-  /** Auto-register the module's signaling notices so they round-trip
-    * through fabric's polymorphic discriminator. */
+  /**
+   * Auto-register the module's signaling notices so they round-trip
+   * through fabric's polymorphic discriminator.
+   */
   override protected def noticeRegistrations: List[RW[? <: Notice]] =
     super.noticeRegistrations ++ List(summon[RW[PreviewSignal]], summon[RW[PreviewSignalReply]])
 
   override def maintenanceTasks: List[MaintenanceTask] =
     super.maintenanceTasks :+ StreamBrowserIdleReaper(streamBrowserIdleTimeoutMs)
 
-  /** Dispose this conversation's preview browser before its records are
-    * purged, then delegate to the standard cascade. */
+  /**
+   * Dispose this conversation's preview browser before its records are
+   * purged, then delegate to the standard cascade.
+   */
   override def deleteConversation(conversationId: Id[Conversation]): Task[Unit] =
     disposeStreamBrowserController(conversationId)
       .handleError(_ => Task.unit)
       .flatMap(_ => super.deleteConversation(conversationId))
 
-  /** Tear down every live preview browser on `Sigil.shutdown`, then
-    * chain the rest of the module stack. */
+  /**
+   * Tear down every live preview browser on `Sigil.shutdown`, then
+   * chain the rest of the module stack.
+   */
   override protected def onShutdown: Task[Unit] =
     StreamBrowserSigil.disposeAll.flatMap(_ => super.onShutdown)
 }
 
 object StreamBrowserSigil {
 
-  /** Per-(JVM, conversation) registry of live preview browsers. Keyed by
-    * conversation-id string, mirroring `BrowserSigil.controllers`, so the
-    * map survives a `Sigil` restart inside one JVM. */
+  /**
+   * Per-(JVM, conversation) registry of live preview browsers. Keyed by
+   * conversation-id string, mirroring `BrowserSigil.controllers`, so the
+   * map survives a `Sigil` restart inside one JVM.
+   */
   private[stream] val controllers: ConcurrentHashMap[String, StreamBrowserController] =
     new ConcurrentHashMap[String, StreamBrowserController]()
 
-  /** Dispose every live preview browser. Idempotent. */
+  /**
+   * Dispose every live preview browser. Idempotent.
+   */
   def disposeAll: Task[Unit] = Task.defer {
     val all = controllers.values().asScala.toList
     controllers.clear()

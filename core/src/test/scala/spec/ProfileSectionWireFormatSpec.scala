@@ -23,11 +23,10 @@ class ProfileSectionWireFormatSpec extends AnyWordSpec with Matchers {
       ProfileSection.ToolRoster.json shouldBe Str("ProfileSection.ToolRoster")
     }
 
-    "round-trip every closed case" in {
+    "round-trip every closed case" in
       ProfileSection.values.foreach { section =>
         section.json.as[ProfileSection] shouldBe section
       }
-    }
 
     "still read the leaf-form name earlier records carry" in {
       str("Memories").as[ProfileSection] shouldBe ProfileSection.Memories

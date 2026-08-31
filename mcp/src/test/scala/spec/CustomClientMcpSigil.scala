@@ -24,7 +24,9 @@ object CustomClientMcpSigil extends TestMcpSigilBase {
 
   private val supplied = new ConcurrentHashMap[String, InProcessMcpClient]()
 
-  /** The client the host handed the manager for `name`, if any. */
+  /**
+   * The client the host handed the manager for `name`, if any.
+   */
   def suppliedClient(name: String): Option[InProcessMcpClient] = Option(supplied.get(name))
 
   override protected def mcpClientFor(context: McpClientContext): Option[McpClient] =

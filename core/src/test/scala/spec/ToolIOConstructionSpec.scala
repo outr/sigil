@@ -97,7 +97,9 @@ class ToolIOConstructionSpec extends AnyWordSpec with Matchers {
   }
 }
 
-/** Union whose variants require payload fields beyond the discriminator. */
+/**
+ * Union whose variants require payload fields beyond the discriminator.
+ */
 enum UnionPredFixture derives RW {
   case RegexPred(pattern: String)
   case FieldPred(field: String, regex: String)
@@ -107,8 +109,10 @@ case class UnfillableUnionInput(predicate: UnionPredFixture) extends ToolInput d
 
 case class OptionalUnionInput(predicate: Option[UnionPredFixture] = None) extends ToolInput derives RW
 
-/** Carrier whose own `predicate` is required — required only when the
-  * CARRIER is required too. */
+/**
+ * Carrier whose own `predicate` is required — required only when the
+ * CARRIER is required too.
+ */
 case class UnionCarrierFixture(predicate: UnionPredFixture) derives RW
 
 case class OptionalParentUnionInput(advanced: Option[UnionCarrierFixture] = None) extends ToolInput derives RW

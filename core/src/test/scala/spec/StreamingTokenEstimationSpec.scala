@@ -28,12 +28,14 @@ class StreamingTokenEstimationSpec extends AnyWordSpec with Matchers {
 
   private val cfg: Config = Config(
     providerNamespace = "test",
-    providerName      = "Test"
+    providerName = "Test"
   )
 
-  /** Mutable clock used so the time-based cadence trigger is
-    * deterministic. Tests advance `nowNanos` between chunks. */
-  private final class MutableClock(startNanos: Long = 0L) {
+  /**
+   * Mutable clock used so the time-based cadence trigger is
+   * deterministic. Tests advance `nowNanos` between chunks.
+   */
+  final private class MutableClock(startNanos: Long = 0L) {
     private var current: Long = startNanos
     def advanceMs(ms: Long): Unit = current += ms * 1000000L
     def nowNanos(): Long = current
@@ -49,7 +51,8 @@ class StreamingTokenEstimationSpec extends AnyWordSpec with Matchers {
     JsonParser(s"""{"choices":[{"index":0,"delta":{"reasoning_content":${fabric.io.JsonFormatter.Compact(fabric.str(text))}}}]}""")
 
   private def usageChunk(prompt: Int, completion: Int): fabric.Json =
-    JsonParser(s"""{"choices":[],"usage":{"prompt_tokens":$prompt,"completion_tokens":$completion,"total_tokens":${prompt + completion}}}""")
+    JsonParser(s"""{"choices":[],"usage":{"prompt_tokens":$prompt,"completion_tokens":$completion,"total_tokens":${prompt +
+        completion}}}""")
 
   private def usageEvents(events: Vector[ProviderEvent]): Vector[ProviderEvent.Usage] =
     events.collect { case u: ProviderEvent.Usage => u }
@@ -85,7 +88,7 @@ class StreamingTokenEstimationSpec extends AnyWordSpec with Matchers {
       // increasing completion-token counts — the ticker's whole point.
       estimated.map(_.usage.completionTokens).sliding(2).foreach {
         case Seq(a, b) => a should be <= b
-        case _         => ()
+        case _ => ()
       }
     }
 

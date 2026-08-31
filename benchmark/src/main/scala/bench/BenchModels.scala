@@ -11,9 +11,11 @@ import sigil.db.{Model, ModelArchitecture, ModelDefaultParameters, ModelLinks, M
  */
 object BenchModels {
 
-  /** A llama.cpp-served local model. `contextLength` is the server's
-    * configured window; pricing is zero — local inference has no
-    * per-token cost, which is exactly why the corpus runs here. */
+  /**
+   * A llama.cpp-served local model. `contextLength` is the server's
+   * configured window; pricing is zero — local inference has no
+   * per-token cost, which is exactly why the corpus runs here.
+   */
   def llamaCpp(modelId: Id[Model], name: String, contextLength: Long = 32768L): Model = Model(
     canonicalSlug = s"llamacpp/$name",
     huggingFaceId = "",

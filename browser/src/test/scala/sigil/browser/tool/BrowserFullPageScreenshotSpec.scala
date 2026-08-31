@@ -17,8 +17,11 @@ import robobrowser.{BrowserConfig, RoboBrowser, RoboBrowserConfig}
 class BrowserFullPageScreenshotSpec extends AnyWordSpec with Matchers {
 
   private val chromeAvailable: Boolean =
-    List("/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
-         "/usr/bin/chromium", "/usr/local/bin/google-chrome")
+    List(
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/local/bin/google-chrome")
       .exists(p => new java.io.File(p).canExecute)
 
   // A document far taller than the viewport so a viewport-only capture
@@ -30,11 +33,10 @@ class BrowserFullPageScreenshotSpec extends AnyWordSpec with Matchers {
       "<div style='height:4000px;width:100%;background:red'></div>" +
       "</body></html>"
 
-  private def beInt(bytes: Array[Byte], off: Int): Int =
-    ((bytes(off) & 0xff) << 24) | ((bytes(off + 1) & 0xff) << 16) |
-      ((bytes(off + 2) & 0xff) << 8) | (bytes(off + 3) & 0xff)
+  private def beInt(bytes: Array[Byte], off: Int): Int = ((bytes(off) & 0xff) << 24) | ((bytes(off + 1) & 0xff) << 16) |
+    ((bytes(off + 2) & 0xff) << 8) | (bytes(off + 3) & 0xff)
   // PNG IHDR: width at byte offset 16, height at 20 (big-endian).
-  private def pngWidth(bytes: Array[Byte]): Int  = beInt(bytes, 16)
+  private def pngWidth(bytes: Array[Byte]): Int = beInt(bytes, 16)
   private def pngHeight(bytes: Array[Byte]): Int = beInt(bytes, 20)
 
   "BrowserScreenshotTool.captureFullPage" should {

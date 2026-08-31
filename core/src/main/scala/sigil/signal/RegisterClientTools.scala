@@ -25,4 +25,5 @@ import sigil.tool.client.ClientToolSpec
 case class RegisterClientTools(conversationId: Id[Conversation],
                                sessionId: String,
                                tools: List[ClientToolSpec],
-                               replace: Boolean = true) extends ConversationNotice derives RW
+                               replace: Boolean = true)
+  extends ConversationNotice derives RW

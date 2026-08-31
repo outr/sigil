@@ -21,8 +21,10 @@ import sigil.vector.InMemoryVectorIndex
 class SearchMemoriesScopeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers with BeforeAndAfterAll {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Embeds every text to the same direction so any query "matches"
-    * any stored memory — the leak, if present, shows up on any query. */
+  /**
+   * Embeds every text to the same direction so any query "matches"
+   * any stored memory — the leak, if present, shows up on any query.
+   */
   private object UniformEmbedding extends EmbeddingProvider {
     override val id: String = "scope-uniform"
     override val dimensions: Int = 2
@@ -32,8 +34,12 @@ class SearchMemoriesScopeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   }
 
   private def memory(fact: String, space: SpaceId): ContextMemory =
-    ContextMemory(fact = fact, label = fact.take(16), summary = fact,
-      source = MemorySource.Explicit, spaceId = space)
+    ContextMemory(
+      fact = fact,
+      label = fact.take(16),
+      summary = fact,
+      source = MemorySource.Explicit,
+      spaceId = space)
 
   override protected def afterAll(): Unit = {
     TestSigil.reset()
@@ -50,16 +56,14 @@ class SearchMemoriesScopeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       )).map(_ should have size 2)
     }
 
-    "return nothing for an empty scope even though every memory matches the query" in {
+    "return nothing for an empty scope even though every memory matches the query" in
       TestSigil.searchMemories("deploy key", Set.empty).map(_ shouldBe empty)
-    }
 
-    "still return the in-scope tenant's memories for a concrete scope" in {
+    "still return the in-scope tenant's memories for a concrete scope" in
       TestSigil.searchMemories("deploy key", Set(TestSpace)).map { hits =>
         hits.map(_.spaceId) should contain only TestSpace
         hits should have size 1
       }
-    }
 
     "agree with findMemories on the empty scope" in {
       for {
@@ -78,12 +82,11 @@ class SearchMemoriesScopeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       TestSigil.searchMemories("deploy key", Set.empty).map(_ shouldBe empty)
     }
 
-    "still return the in-scope tenant's memories for a concrete scope" in {
+    "still return the in-scope tenant's memories for a concrete scope" in
       TestSigil.searchMemories("deploy key", Set(MemoryTestSpace)).map { hits =>
         hits.map(_.spaceId) should contain only MemoryTestSpace
         hits should have size 1
       }
-    }
   }
 
   "tear down" should {

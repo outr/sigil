@@ -59,27 +59,29 @@ class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     }
   }
 
-  /** Pre-seed the agent's projection with `racedPriors` RACED (resulted=false)
-    * identical invocations of `find_capability(keywords)`, scoped to this turn. */
+  /**
+   * Pre-seed the agent's projection with `racedPriors` RACED (resulted=false)
+   * identical invocations of `find_capability(keywords)`, scoped to this turn.
+   */
   private def requestWithRacedPriors(convId: Id[Conversation], racedPriors: Int, keywords: String): ConversationRequest = {
-    val hash    = ToolInputCanonicalizer.argsHash(FindCapabilityInput(keywords = keywords))
+    val hash = ToolInputCanonicalizer.argsHash(FindCapabilityInput(keywords = keywords))
     val preview = ToolInputCanonicalizer.argsPreview(FindCapabilityInput(keywords = keywords))
-    val now     = Timestamp(Nowish())
-    val priors  = (1 to racedPriors).toList.map(_ =>
+    val now = Timestamp(Nowish())
+    val priors = (1 to racedPriors).toList.map(_ =>
       RecentToolInvocation(FindCapabilityTool.name, hash, preview, invokedAt = now, resulted = false))
     val projection = ParticipantProjection.empty(TestAgent, convId).copy(recentToolInvocations = priors)
     ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId, participantProjections = Map(TestAgent -> projection)),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId, participantProjections = Map(TestAgent -> projection)),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = Vector(FindCapabilityTool),
-      chain              = List(TestUser, TestAgent),
+      tools = Vector(FindCapabilityTool),
+      chain = List(TestUser, TestAgent),
       // Scope the recent window to "this turn": priors stamped `now` count.
-      turnStartedAt      = Some(Timestamp(0L))
+      turnStartedAt = Some(Timestamp(0L))
     )
   }
 
@@ -97,27 +99,27 @@ class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val convId = Conversation.id(s"raced-settled-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val settledRow = ToolInvoke(
-        toolName       = FindCapabilityTool.name,
-        participantId  = TestAgent,
+        toolName = FindCapabilityTool.name,
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        input          = Some(FindCapabilityInput(keywords = "x")),
-        output         = sigil.tool.TextToolOutput("Created ingredient entry (id 63444255077, handle bacopa)."),
-        outcome        = sigil.event.ToolOutcome.Success,
-        state          = sigil.signal.EventState.Complete
+        topicId = TestTopicEntry.id,
+        input = Some(FindCapabilityInput(keywords = "x")),
+        output = sigil.tool.TextToolOutput("Created ingredient entry (id 63444255077, handle bacopa)."),
+        outcome = sigil.event.ToolOutcome.Success,
+        state = sigil.signal.EventState.Complete
       )
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _       <- TestSigil.withDB(_.eventsTransaction(convId)(_.upsert(settledRow)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.eventsTransaction(convId)(_.upsert(settledRow)))
         signals <- Orchestrator.process(TestSigil, new FindCapStubProvider("x"), requestWithRacedPriors(convId, 2, "x"), conv).toList
       } yield {
         val texts = redirectMessages(signals)
         withClue(s"tool-failure messages: $texts\n") {
           val refusal = texts.find(_.contains("SUCCEEDED")).getOrElse(fail("no truthful refusal emitted"))
           // The actual result rides inline — the agent needs nothing else.
-          refusal should include ("Created ingredient entry (id 63444255077, handle bacopa).")
-          refusal should include ("Do NOT re-issue")
-          refusal should include ("undo")
+          refusal should include("Created ingredient entry (id 63444255077, handle bacopa).")
+          refusal should include("Do NOT re-issue")
+          refusal should include("undo")
           // No ghost file, no hardcoded recovery tools.
           refusal should not include ".sigil/output/"
           refusal should not include "read_file"
@@ -131,23 +133,23 @@ class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val convId = Conversation.id(s"raced-failed-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val failedRow = ToolInvoke(
-        toolName       = FindCapabilityTool.name,
-        participantId  = TestAgent,
+        toolName = FindCapabilityTool.name,
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        input          = Some(FindCapabilityInput(keywords = "x")),
-        outcome        = sigil.event.ToolOutcome.Failure("rate limited by upstream", recoverable = true),
-        state          = sigil.signal.EventState.Complete
+        topicId = TestTopicEntry.id,
+        input = Some(FindCapabilityInput(keywords = "x")),
+        outcome = sigil.event.ToolOutcome.Failure("rate limited by upstream", recoverable = true),
+        state = sigil.signal.EventState.Complete
       )
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _       <- TestSigil.withDB(_.eventsTransaction(convId)(_.upsert(failedRow)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.eventsTransaction(convId)(_.upsert(failedRow)))
         signals <- Orchestrator.process(TestSigil, new FindCapStubProvider("x"), requestWithRacedPriors(convId, 2, "x"), conv).toList
       } yield {
         val texts = redirectMessages(signals)
         withClue(s"tool-failure messages: $texts\n") {
           val refusal = texts.find(_.contains("COMPLETED WITH A FAILURE")).getOrElse(fail("no truthful refusal emitted"))
-          refusal should include ("rate limited by upstream")
+          refusal should include("rate limited by upstream")
           refusal should not include ".sigil/output/"
         }
       }
@@ -158,13 +160,13 @@ class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val convId = Conversation.id(s"raced-inflight-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, new FindCapStubProvider("x"), requestWithRacedPriors(convId, 2, "x"), conv).toList
       } yield {
         val texts = redirectMessages(signals)
         withClue(s"tool-failure messages: $texts\n") {
           val refusal = texts.find(_.contains("still")).getOrElse(fail("no still-finishing refusal emitted"))
-          refusal should include ("do NOT assume it failed")
+          refusal should include("do NOT assume it failed")
           refusal should not include ".sigil/output/"
           refusal should not include "read_file"
           texts.exists(_.contains("Refused to dispatch")) shouldBe false
@@ -176,7 +178,7 @@ class RacedReissueBackstopSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val convId = Conversation.id(s"raced-allow-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, new FindCapStubProvider("x"), requestWithRacedPriors(convId, 1, "x"), conv).toList
       } yield {
         // Below the bound: no redirect, and the tool actually dispatches.

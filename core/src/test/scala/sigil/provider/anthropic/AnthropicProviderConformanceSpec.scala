@@ -49,8 +49,8 @@ class AnthropicProviderConformanceSpec extends AbstractProviderConformanceSpec {
 
   override protected def midStreamErrorOutcome: Either[Throwable, Vector[ProviderEvent]] =
     try Right(parseAll(List(
-      """data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"""
-    )))
+        """data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"""
+      )))
     catch { case t: Throwable => Left(t) }
 
   "tear down" should {

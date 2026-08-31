@@ -34,9 +34,11 @@ import spice.http.HttpRequest
 class BatchDefaultFallbackSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Synthetic provider: echo the request's `userPrompt` reversed
-    * as TextDelta + a fixed Usage. Stable enough to assert response
-    * content / usage match. */
+  /**
+   * Synthetic provider: echo the request's `userPrompt` reversed
+   * as TextDelta + a fixed Usage. Stable enough to assert response
+   * content / usage match.
+   */
   private class EchoProvider extends Provider {
     override def `type`: ProviderType = ProviderType.OpenAI
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -60,9 +62,9 @@ class BatchDefaultFallbackSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   private val provider = new EchoProvider
 
   private def req(text: String): OneShotRequest = OneShotRequest(
-    model        = TestSigil.defaultTestModel,
+    model = TestSigil.defaultTestModel,
     systemPrompt = "",
-    userPrompt   = text
+    userPrompt = text
   )
 
   "Provider.batch (sigil #299)" should {
@@ -92,11 +94,10 @@ class BatchDefaultFallbackSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
     }
 
-    "accept an empty input stream and emit an empty output stream" in {
+    "accept an empty input stream and emit an empty output stream" in
       provider.batch(Stream.empty).toList.map { responses =>
         responses shouldBe Nil
       }
-    }
   }
 
   "Default applyOneShot fallback" should {
@@ -117,7 +118,7 @@ class BatchDefaultFallbackSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         responses should have size 2
         responses.foreach { r =>
           r.error shouldBe defined
-          r.error.get.message should include ("boom")
+          r.error.get.message should include("boom")
         }
         responses.map(_.requestId) shouldBe List(req1.requestId, req2.requestId)
       }

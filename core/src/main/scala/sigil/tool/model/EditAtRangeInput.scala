@@ -18,4 +18,5 @@ case class EditAtRangeInput(path: String,
                             endLine: Int,
                             endChar: Int,
                             newText: String,
-                            expectedHash: Option[String] = None) extends ToolInput derives RW
+                            expectedHash: Option[String] = None)
+  extends ToolInput derives RW

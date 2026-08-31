@@ -63,16 +63,16 @@ class TurnCostHookSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "fire once per charged turn with full attribution (participant, model, mode, cost, usage, eventId)" in {
       val convId = Conversation.id(s"turncost-${rapid.Unique()}")
-      val conv   = Conversation(topics = TestTopicStack, _id = convId)
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
       val msg = Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        content        = Vector(ResponseContent.Text("hi")),
-        usage          = usage,
-        modelId        = Some(modelId),
-        state          = EventState.Complete,
-        role           = MessageRole.Standard
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("hi")),
+        usage = usage,
+        modelId = Some(modelId),
+        state = EventState.Complete,
+        role = MessageRole.Standard
       )
       captured.clear()
       for {
@@ -80,19 +80,17 @@ class TurnCostHookSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _ <- host.cache.merge(List(model))
         _ <- host.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- host.publish(msg)
-      } yield {
-        withClue(s"captured=${captured.toList}\n") {
-          captured should have size 1
-          val tc = captured.head
-          tc.conversationId shouldBe convId
-          tc.eventId shouldBe msg._id
-          tc.participantId shouldBe TestUser
-          tc.modelId shouldBe modelId
-          tc.mode shouldBe sigil.provider.ConversationMode.name
-          tc.usage shouldBe usage
-          // cost = fresh-input × prompt-rate + completion × completion-rate; both rates non-zero.
-          tc.cost should be > BigDecimal(0)
-        }
+      } yield withClue(s"captured=${captured.toList}\n") {
+        captured should have size 1
+        val tc = captured.head
+        tc.conversationId shouldBe convId
+        tc.eventId shouldBe msg._id
+        tc.participantId shouldBe TestUser
+        tc.modelId shouldBe modelId
+        tc.mode shouldBe sigil.provider.ConversationMode.name
+        tc.usage shouldBe usage
+        // cost = fresh-input × prompt-rate + completion × completion-rate; both rates non-zero.
+        tc.cost should be > BigDecimal(0)
       }
     }
   }

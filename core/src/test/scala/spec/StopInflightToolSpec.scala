@@ -46,9 +46,11 @@ class StopInflightToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   private val modelId: Id[Model] = Model.id("test", "stop-inflight-model")
   TestSigil.testModel(modelId)
 
-  /** Calls the given fixture tool once, then answers any later call with
-    * a terminal respond (topic fast-path). */
-  private final class ToolThenRespondProvider(tool: SlowStopToolBase) extends Provider {
+  /**
+   * Calls the given fixture tool once, then answers any later call with
+   * a terminal respond (topic fast-path).
+   */
+  final private class ToolThenRespondProvider(tool: SlowStopToolBase) extends Provider {
     private val calls = new java.util.concurrent.atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -68,10 +70,10 @@ class StopInflightToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
           ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-            topicLabel   = "Sweep done",
+            topicLabel = "Sweep done",
             topicSummary = "slow tool finished, replying",
-            content      = "Wrapped up.",
-            endsTurn     = true
+            content = "Wrapped up.",
+            endsTurn = true
           )),
           ProviderEvent.Done(StopReason.Complete)
         ))
@@ -80,10 +82,10 @@ class StopInflightToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   private def makeAgent(toolName: ToolName): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = toolName :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = toolName :: CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -96,26 +98,26 @@ class StopInflightToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     val provider = new ToolThenRespondProvider(tool)
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"stop-inflight-${rapid.Unique()}")
-    val conv   = Conversation(topics = TestTopicStack, participants = List(makeAgent(tool.name)), _id = convId)
+    val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent(tool.name)), _id = convId)
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Run the sweep.")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Run the sweep.")),
+        state = EventState.Complete
+      ))
     } yield convId
   }
 
   private def publishStop(convId: Id[Conversation], force: Boolean): Task[Unit] =
     TestSigil.publish(Stop(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      force          = force,
-      reason         = Some("stopped by user")
+      topicId = TestTopicEntry.id,
+      force = force,
+      reason = Some("stopped by user")
     )).unit
 
   private def invokeFor(convId: Id[Conversation], toolName: ToolName): Task[Option[ToolInvoke]] =
@@ -123,15 +125,18 @@ class StopInflightToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       case ti: ToolInvoke if ti.conversationId == convId && ti.toolName == toolName => ti
     })
 
-  /** Poll until the tool's invoke reaches Complete (or the deadline
-    * passes — assertions then fail with the final state). */
-  private def awaitInvokeSettled(convId: Id[Conversation], toolName: ToolName,
+  /**
+   * Poll until the tool's invoke reaches Complete (or the deadline
+   * passes — assertions then fail with the final state).
+   */
+  private def awaitInvokeSettled(convId: Id[Conversation],
+                                 toolName: ToolName,
                                  deadline: FiniteDuration = 20.seconds): Task[Option[ToolInvoke]] = {
     val end = System.currentTimeMillis() + deadline.toMillis
     def loop: Task[Option[ToolInvoke]] =
       invokeFor(convId, toolName).flatMap {
         case s @ Some(ti) if ti.state == EventState.Complete => Task.pure(s)
-        case s if System.currentTimeMillis() > end            => Task.pure(s)
+        case s if System.currentTimeMillis() > end => Task.pure(s)
         case _ => Task.sleep(50.millis).flatMap(_ => loop)
       }
     loop
@@ -143,9 +148,9 @@ class StopInflightToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val tool = SlowCooperativeTool
       for {
         convId <- startTurn(tool)
-        _      <- Task(tool.midwayLatch.await(10, TimeUnit.SECONDS))
-        _      <- publishStop(convId, force = false)
-        _      <- Task(tool.proceedLatch.countDown())
+        _ <- Task(tool.midwayLatch.await(10, TimeUnit.SECONDS))
+        _ <- publishStop(convId, force = false)
+        _ <- Task(tool.proceedLatch.countDown())
         invoke <- awaitInvokeSettled(convId, tool.name)
       } yield {
         // The checkpoint fired: steps 3-6 never ran.
@@ -164,18 +169,16 @@ class StopInflightToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val tool = SlowStubbornTool
       for {
         convId <- startTurn(tool)
-        _      <- Task(tool.midwayLatch.await(10, TimeUnit.SECONDS))
-        _      <- publishStop(convId, force = true)
-        _      <- Task(tool.proceedLatch.countDown())
+        _ <- Task(tool.midwayLatch.await(10, TimeUnit.SECONDS))
+        _ <- publishStop(convId, force = true)
+        _ <- Task(tool.proceedLatch.countDown())
         invoke <- awaitInvokeSettled(convId, tool.name)
-        _      <- Task.sleep(300.millis) // let any late tool completion land
-      } yield {
-        withClue(s"invoke=$invoke stepsRun=${tool.stepsRun.get()}: ") {
-          invoke should not be empty
-          // The one invariant no stop route may break: never a
-          // permanently-Active invoke.
-          invoke.get.state shouldBe EventState.Complete
-        }
+        _ <- Task.sleep(300.millis) // let any late tool completion land
+      } yield withClue(s"invoke=$invoke stepsRun=${tool.stepsRun.get()}: ") {
+        invoke should not be empty
+        // The one invariant no stop route may break: never a
+        // permanently-Active invoke.
+        invoke.get.state shouldBe EventState.Complete
       }
     }
   }
@@ -186,9 +189,9 @@ class StopInflightToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val tool = SlowCooperativeTool
       for {
         convId <- startTurn(tool)
-        _      <- Task(tool.midwayLatch.await(10, TimeUnit.SECONDS))
-        _      <- Task(tool.proceedLatch.countDown()) // no Stop — just proceed
-        _      <- TestSigil.awaitSettled(convId)
+        _ <- Task(tool.midwayLatch.await(10, TimeUnit.SECONDS))
+        _ <- Task(tool.proceedLatch.countDown()) // no Stop — just proceed
+        _ <- TestSigil.awaitSettled(convId)
         invoke <- invokeFor(convId, tool.name)
       } yield {
         tool.stepsRun.get() shouldBe 6

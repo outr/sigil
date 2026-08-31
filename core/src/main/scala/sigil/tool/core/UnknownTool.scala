@@ -10,7 +10,7 @@ import sigil.tool.model.ResponseContent
 /**
  * Framework sentinel for tool dispatch — substituted by the orchestrator when a
  * model emits a `tool_use` block whose name doesn't resolve to any registered
-* tool.
+ * tool.
  *
  * `UnknownTool` is NOT registered into the static roster, NEVER discoverable
  * via `find_capability`, and never advertised to the model. It exists only as
@@ -26,7 +26,7 @@ import sigil.tool.model.ResponseContent
  * (typically by calling `find_capability` or `respond`) on its next iteration.
  */
 case object UnknownTool extends sigil.tool.Tool {
-  type Input  = JsonInput
+  type Input = JsonInput
   type Output = TextToolOutput
 
   val io: ToolIO[JsonInput, TextToolOutput] = ToolIO.derived[JsonInput, TextToolOutput]
@@ -51,24 +51,24 @@ case object UnknownTool extends sigil.tool.Tool {
     // agent can carry them over to the corrected call.
     val sentArgs: Option[String] = input.json match {
       case fabric.Obj(map) if map.isEmpty => None
-      case fabric.Str(s, _)               => Some(s)
-      case other                          => Some(fabric.io.JsonFormatter.Default(other))
+      case fabric.Str(s, _) => Some(s)
+      case other => Some(fabric.io.JsonFormatter.Default(other))
     }
     val failure = RefusalPayload.unknownTool(
       invokedName = invokedName,
-      offered     = context.turn.offeredTools,
-      sentArgs    = sentArgs
+      offered = context.turn.offeredTools,
+      sentArgs = sentArgs
     )
     context.emit(Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      role           = MessageRole.Tool,
-      content        = Vector(ResponseContent.Text(failure.message)),
-      state          = EventState.Complete,
-      disposition    = MessageDisposition.Failure(recoverable = true),
-      visibility     = MessageVisibility.Agents,
-      origin         = Some(context.invokeId)
+      topicId = context.conversation.currentTopicId,
+      role = MessageRole.Tool,
+      content = Vector(ResponseContent.Text(failure.message)),
+      state = EventState.Complete,
+      disposition = MessageDisposition.Failure(recoverable = true),
+      visibility = MessageVisibility.Agents,
+      origin = Some(context.invokeId)
     )).map(_ => failure)
   }
 }

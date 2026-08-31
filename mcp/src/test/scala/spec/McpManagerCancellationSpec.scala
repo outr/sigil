@@ -16,7 +16,9 @@ class McpManagerCancellationSpec extends AsyncWordSpec with AsyncTaskSpec with M
     override val value: String = "test-agent"
   }
 
-  /** Stub client that records `cancelRequest` calls. */
+  /**
+   * Stub client that records `cancelRequest` calls.
+   */
   private class RecordingClient(override val config: McpServerConfig) extends McpClient {
     val cancellations: ConcurrentLinkedQueue[(Long, Option[String])] = new ConcurrentLinkedQueue()
 
@@ -43,7 +45,7 @@ class McpManagerCancellationSpec extends AsyncWordSpec with AsyncTaskSpec with M
   "McpManager.cancelInFlight" should {
     "send notifications/cancelled for every in-flight call owned by the agent" in {
       val manager = TestMcpSigil.mcpManager
-      val client  = new RecordingClient(cfg)
+      val client = new RecordingClient(cfg)
       manager.registerClientForTesting(cfg.name, client)
       // Simulate three in-flight calls owned by the agent.
       manager.registerInFlightForTesting(TestAgent, cfg.name, 1L)
@@ -61,7 +63,7 @@ class McpManagerCancellationSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
     "no-op when the agent has no in-flight calls" in {
       val manager = TestMcpSigil.mcpManager
-      val client  = new RecordingClient(cfg)
+      val client = new RecordingClient(cfg)
       manager.registerClientForTesting("server-2", client)
       // No registrations for OtherAgent.
       case object OtherAgent extends AgentParticipantId {

@@ -30,7 +30,7 @@ class WorkflowEmittedEventsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       import scala.jdk.CollectionConverters.*
       val seen = recorded.iterator().asScala.exists {
         case _: WorkflowRunCompleted | _: WorkflowRunFailed => true
-        case _                                              => false
+        case _ => false
       }
       if (seen || System.currentTimeMillis() > deadline) Task.unit
       else Task.sleep(100.millis).flatMap(_ => loop)
@@ -87,7 +87,7 @@ class WorkflowEmittedEventsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
           import scala.jdk.CollectionConverters.*
           val runId = recorded.iterator().asScala.collectFirst {
             case e: WorkflowRunCompleted => e.runId
-            case e: WorkflowRunFailed    => e.runId
+            case e: WorkflowRunFailed => e.runId
           }.getOrElse(fail("no terminal workflow lifecycle event observed"))
           TestWorkflowSigil.withDB(_.workflows.transaction(_.get(lightdb.id.Id[strider.Workflow](runId))))
         }
@@ -95,7 +95,8 @@ class WorkflowEmittedEventsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         // the gated step's consent lookup reads from.
         runConvId = run.flatMap(_.conversationId).getOrElse(fail("run has no bound conversation"))
         approval <- TestWorkflowSigil.latestToolApproval(
-          sigil.tool.ToolName("consent_probe"), Conversation.id(runConvId))
+          sigil.tool.ToolName("consent_probe"),
+          Conversation.id(runConvId))
       } yield {
         running = false
         val wf = run.getOrElse(fail("run record not found"))

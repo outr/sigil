@@ -6,7 +6,9 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.conversation.{ConversationView, ContextFrame, ContextMemory, Conversation, MemorySource, TurnInput}
-import sigil.conversation.compression.{NoOpBlockExtractor, NoOpContextCompressor, Percentage, StandardContextCurator, StandardContextOptimizer, StandardMemoryRetriever}
+import sigil.conversation.compression.{
+  NoOpBlockExtractor, NoOpContextCompressor, Percentage, StandardContextCurator, StandardContextOptimizer, StandardMemoryRetriever
+}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.Event
 import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, ProviderEvent}
@@ -101,11 +103,11 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
         Conversation(_id = convId, topics = List(TestTopicEntry))
       ))).sync()
       TestSigil.publish(sigil.event.Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        content        = Vector(sigil.tool.model.ResponseContent.Text(question)),
-        state          = sigil.signal.EventState.Complete
+        topicId = TestTopicEntry.id,
+        content = Vector(sigil.tool.model.ResponseContent.Text(question)),
+        state = sigil.signal.EventState.Complete
       )).sync()
 
       val curator = StandardContextCurator(
@@ -156,7 +158,7 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
         provider(request).toList.map { events =>
           val respondText = events.flatMap {
             case ProviderEvent.ToolCallComplete(_, wc) => wc.inputFor(RespondTool).map(_.content)
-            case _                                     => None
+            case _ => None
           }.headOption
           val replyText = respondText.toList.mkString(" ")
           val toolsSeen = events.collect { case s: ProviderEvent.ToolCallStart => s.toolName }.toSet
@@ -197,24 +199,31 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
         }
 
       for {
-        pinned    <- TestSigil.persistMemory(ContextMemory(
-                       fact = pinnedFact, label = "French pets", summary = pinnedFact,
-                       source = MemorySource.Explicit, spaceId = MemoryTestSpace, pinned = true))
+        pinned <- TestSigil.persistMemory(ContextMemory(
+          fact = pinnedFact,
+          label = "French pets",
+          summary = pinnedFact,
+          source = MemorySource.Explicit,
+          spaceId = MemoryTestSpace,
+          pinned = true))
         retrieved <- TestSigil.persistMemory(ContextMemory(
-                       fact = retrievedFact, label = "Dog name", summary = retrievedFact,
-                       source = MemorySource.Explicit, spaceId = MemoryTestSpace))
+          fact = retrievedFact,
+          label = "Dog name",
+          summary = retrievedFact,
+          source = MemorySource.Explicit,
+          spaceId = MemoryTestSpace))
         // The id list is fixed at curation time; both memories are live
         // when it is built.
-        turnInput  = TurnInput(
-                       conversationId = convId,
-                       frames = Vector(ContextFrame.Text("What is my dog's name?", TestUser, Id[Event](s"q-${rapid.Unique()}"))),
-                       criticalMemories = Vector(pinned._id),
-                       memories = Vector(retrieved._id)
-                     )
-        before     = bodyFor(turnInput)
-        _         <- TestSigil.rejectMemory(retrieved._id)
-        _         <- TestSigil.rejectMemory(pinned._id)
-        after      = bodyFor(turnInput)
+        turnInput = TurnInput(
+          conversationId = convId,
+          frames = Vector(ContextFrame.Text("What is my dog's name?", TestUser, Id[Event](s"q-${rapid.Unique()}"))),
+          criticalMemories = Vector(pinned._id),
+          memories = Vector(retrieved._id)
+        )
+        before = bodyFor(turnInput)
+        _ <- TestSigil.rejectMemory(retrieved._id)
+        _ <- TestSigil.rejectMemory(pinned._id)
+        after = bodyFor(turnInput)
       } yield {
         withClue(s"pre-revocation body:\n$before") {
           before should include(retrievedFact)

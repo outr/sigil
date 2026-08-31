@@ -4,7 +4,10 @@ import fabric.rw.*
 import rapid.Task
 import sigil.SpaceId
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult,
+  ToolSpec
+}
 
 /**
  * Forget (mark rejected, or hard-delete by key) a previously stored
@@ -24,12 +27,14 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToo
  * CRUD surface.
  */
 case object ForgetMemoryTool extends Tool {
-  type Input  = ForgetMemoryInput
+  type Input = ForgetMemoryInput
   type Output = TextToolOutput
   val io: ToolIO[ForgetMemoryInput, TextToolOutput] = ToolIO.derived[ForgetMemoryInput, TextToolOutput].withExamples(
-    ToolExample("Reject a single auto-extracted memory",
+    ToolExample(
+      "Reject a single auto-extracted memory",
       ForgetMemoryInput(memoryId = Some(lightdb.id.Id("mem-12345")))),
-    ToolExample("Hard-delete every version of a keyed memory",
+    ToolExample(
+      "Hard-delete every version of a keyed memory",
       ForgetMemoryInput(key = Some("user.units")))
   )
 
@@ -46,7 +51,6 @@ case object ForgetMemoryTool extends Tool {
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set("memory", "forget", "delete", "remove"))
   )
-
 
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 

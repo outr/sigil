@@ -35,7 +35,7 @@ class MemoryRetrievalCacheSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
       for {
         first <- cache.getOrCompute(convId, compute)
-        _      = callCount.get() shouldBe 1
+        _ = callCount.get() shouldBe 1
         second <- cache.getOrCompute(convId, compute)
       } yield {
         callCount.get() shouldBe 1 // compute did NOT run again
@@ -55,8 +55,8 @@ class MemoryRetrievalCacheSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
       for {
         first <- cache.getOrCompute(convId, compute(1))
-        _      = first.memories.map(_.value) shouldBe Vector("v1-a", "v1-b")
-        _      = cache.invalidate(convId)
+        _ = first.memories.map(_.value) shouldBe Vector("v1-a", "v1-b")
+        _ = cache.invalidate(convId)
         second <- cache.getOrCompute(convId, compute(2))
       } yield {
         callCount.get() shouldBe 2 // compute ran twice
@@ -115,10 +115,10 @@ class MemoryRetrievalCacheSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         _ <- cache.getOrCompute(a, compute(1))
         _ <- cache.getOrCompute(b, compute(1))
-        _  = calls.get() shouldBe 2
-        _  = cache.invalidateAll()
-        _  = cache.peek(a) shouldBe None
-        _  = cache.peek(b) shouldBe None
+        _ = calls.get() shouldBe 2
+        _ = cache.invalidateAll()
+        _ = cache.peek(a) shouldBe None
+        _ = cache.peek(b) shouldBe None
         reA <- cache.getOrCompute(a, compute(2))
         reB <- cache.getOrCompute(b, compute(2))
         // Post-bump entries stay hot: the epoch invalidates once, not forever.
@@ -144,8 +144,8 @@ class MemoryRetrievalCacheSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         withMems("shared")
       }
       for {
-        fibers  <- Task.sequence((1 to 8).toList.map(_ => cache.getOrCompute(convId, compute).start))
-        _       <- Task(started.countDown())
+        fibers <- Task.sequence((1 to 8).toList.map(_ => cache.getOrCompute(convId, compute).start))
+        _ <- Task(started.countDown())
         results <- Task.sequence(fibers.map(_.join))
       } yield {
         calls.get() shouldBe 1
@@ -170,10 +170,12 @@ class MemoryRetrievalCacheSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val convId = Conversation.id("conv-inflight-fail")
       val calls = new AtomicInteger(0)
       for {
-        failed <- cache.getOrCompute(convId, Task {
-                    calls.incrementAndGet()
-                    throw new RuntimeException("retrieval boom")
-                  }).attempt
+        failed <- cache.getOrCompute(
+          convId,
+          Task {
+            calls.incrementAndGet()
+            throw new RuntimeException("retrieval boom")
+          }).attempt
         second <- cache.getOrCompute(convId, Task { calls.incrementAndGet(); withMems("recovered") })
       } yield {
         failed.isFailure shouldBe true

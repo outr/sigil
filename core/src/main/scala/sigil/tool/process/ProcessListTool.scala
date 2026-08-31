@@ -12,11 +12,11 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExamp
  * every entry.
  */
 final class ProcessListTool(registry: ProcessRegistry) extends Tool {
-  type Input  = ProcessListInput
+  type Input = ProcessListInput
   type Output = ProcessListOutput
   val io: ToolIO[ProcessListInput, ProcessListOutput] = ToolIO.derived[ProcessListInput, ProcessListOutput].withExamples(
     ToolExample("Processes spawned by this conversation", ProcessListInput()),
-    ToolExample("Every registered process",                ProcessListInput(scope = ProcessListScope.All))
+    ToolExample("Every registered process", ProcessListInput(scope = ProcessListScope.All))
   )
 
   override val name = ToolName("process_list")
@@ -35,7 +35,7 @@ final class ProcessListTool(registry: ProcessRegistry) extends Tool {
 
   private def executeOutput(input: ProcessListInput, ctx: ToolContext): Task[ProcessListOutput] =
     registry.list(filterByConversation = input.scope match {
-      case ProcessListScope.All     => None
+      case ProcessListScope.All => None
       case ProcessListScope.Current => Some(ctx.conversation.id)
     }).map { handles =>
       ProcessListOutput(handles.map { h =>

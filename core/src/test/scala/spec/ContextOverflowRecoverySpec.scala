@@ -40,10 +40,12 @@ class ContextOverflowRecoverySpec extends AsyncWordSpec with AsyncTaskSpec with 
     new RuntimeException(
       """HTTP 400: {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 200277 tokens > 200000 maximum"}}""")
 
-  /** Throws the vendor overflow 400 for the first `failures` calls, then
-    * answers with a terminal respond (topic fast-path — no classifier
-    * consult). */
-  private final class OverflowThenRespondProvider(failures: Int) extends Provider {
+  /**
+   * Throws the vendor overflow 400 for the first `failures` calls, then
+   * answers with a terminal respond (topic fast-path — no classifier
+   * consult).
+   */
+  final private class OverflowThenRespondProvider(failures: Int) extends Provider {
     val calls = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -58,10 +60,10 @@ class ContextOverflowRecoverySpec extends AsyncWordSpec with AsyncTaskSpec with 
         Stream.emits(List[ProviderEvent](
           ProviderEvent.ToolCallStart(cid, "respond"),
           ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-            topicLabel   = TestTopicEntry.label,
+            topicLabel = TestTopicEntry.label,
             topicSummary = TestTopicEntry.summary,
-            content      = "Recovered and finished the work.",
-            endsTurn     = true
+            content = "Recovered and finished the work.",
+            endsTurn = true
           )),
           ProviderEvent.Done(StopReason.ToolCall)
         ))
@@ -70,27 +72,27 @@ class ContextOverflowRecoverySpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def runUserTurn(provider: Provider): Task[Id[Conversation]] = {
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"overflow-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Build the page.")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Build the page.")),
+        state = EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId)
     } yield convId
   }
@@ -118,14 +120,15 @@ class ContextOverflowRecoverySpec extends AsyncWordSpec with AsyncTaskSpec with 
       val provider = new OverflowThenRespondProvider(failures = 1)
       for {
         convId <- runUserTurn(provider)
-        evs    <- eventsFor(convId)
+        evs <- eventsFor(convId)
       } yield {
         // Call 1 overflowed; the loop re-ran the iteration with the
         // emergency refit and call 2 answered.
         provider.calls.get() shouldBe 2
         val replies = evs.collect {
-          case m: Message if m.participantId == TestAgent && m.role == MessageRole.Standard
-                          && m.state == EventState.Complete && m.isSuccess => m
+          case m: Message
+              if m.participantId == TestAgent && m.role == MessageRole.Standard
+                && m.state == EventState.Complete && m.isSuccess => m
         }
         replies.map(_.content.mkString).exists(_.contains("Recovered and finished")) shouldBe true
         // No Failure bubble — the overflow was contained.
@@ -137,7 +140,7 @@ class ContextOverflowRecoverySpec extends AsyncWordSpec with AsyncTaskSpec with 
       val provider = new OverflowThenRespondProvider(failures = Int.MaxValue)
       for {
         convId <- runUserTurn(provider)
-        evs    <- eventsFor(convId)
+        evs <- eventsFor(convId)
       } yield {
         // Initial attempt + maxOverflowCompactions (2) recoveries, then the
         // clean terminal failure.

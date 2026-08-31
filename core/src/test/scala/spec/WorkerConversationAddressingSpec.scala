@@ -55,7 +55,7 @@ class WorkerConversationAddressingSpec extends AsyncWordSpec with AsyncTaskSpec 
         out <- WorkerConversationAddressingTransform.apply(msg(wId, TestAgent), TestSigil)
       } yield out match {
         case m: Message => m.addressees shouldBe Some(Set[ParticipantId](workerId))
-        case other      => fail(s"expected a Message, got $other")
+        case other => fail(s"expected a Message, got $other")
       }
     }
 
@@ -64,7 +64,7 @@ class WorkerConversationAddressingSpec extends AsyncWordSpec with AsyncTaskSpec 
       val c = Conversation(
         topics = List(TopicEntry(TestTopicId, "c", "c")),
         participants = List(agent(TestAgent), agent(workerId)),
-        _id = cId  // no parentConversationId
+        _id = cId // no parentConversationId
       )
       for {
         _ <- persistConv(c)
@@ -84,7 +84,8 @@ class WorkerConversationAddressingSpec extends AsyncWordSpec with AsyncTaskSpec 
       for {
         _ <- persistConv(w)
         out <- WorkerConversationAddressingTransform.apply(
-          msg(wId, TestAgent, addressees = Some(Set[ParticipantId](TestUser))), TestSigil)
+          msg(wId, TestAgent, addressees = Some(Set[ParticipantId](TestUser))),
+          TestSigil)
       } yield out.asInstanceOf[Message].addressees shouldBe Some(Set[ParticipantId](TestUser))
     }
   }

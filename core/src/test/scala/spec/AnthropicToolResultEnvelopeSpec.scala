@@ -29,31 +29,31 @@ class AnthropicToolResultEnvelopeSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private val conversationId = sigil.conversation.Conversation.id("tool-result-envelope")
-  private val topicId        = sigil.conversation.Topic.id("tool-result-envelope-topic")
+  private val topicId = sigil.conversation.Topic.id("tool-result-envelope-topic")
   private val callId: Id[Event] = Id[Event]("call-text-tool-1")
 
   private def settledTextInvoke(text: String): ToolInvoke = ToolInvoke(
-    toolName       = ToolName("send_slack_message"),
-    participantId  = TestAgent,
+    toolName = ToolName("send_slack_message"),
+    participantId = TestAgent,
     conversationId = conversationId,
-    topicId        = topicId,
-    state          = EventState.Complete,
-    outcome        = ToolOutcome.Success,
-    output         = TextToolOutput(text),
-    timestamp      = Timestamp(),
-    _id            = callId
+    topicId = topicId,
+    state = EventState.Complete,
+    outcome = ToolOutcome.Success,
+    output = TextToolOutput(text),
+    timestamp = Timestamp(),
+    _id = callId
   )
 
   private def settledImageInvoke(image: ImageToolOutput): ToolInvoke = ToolInvoke(
-    toolName       = ToolName("preview_theme"),
-    participantId  = TestAgent,
+    toolName = ToolName("preview_theme"),
+    participantId = TestAgent,
     conversationId = conversationId,
-    topicId        = topicId,
-    state          = EventState.Complete,
-    outcome        = ToolOutcome.Success,
-    output         = image,
-    timestamp      = Timestamp(),
-    _id            = callId
+    topicId = topicId,
+    state = EventState.Complete,
+    outcome = ToolOutcome.Success,
+    output = image,
+    timestamp = Timestamp(),
+    _id = callId
   )
 
   private def turnInputFor(invoke: ToolInvoke): TurnInput = {
@@ -84,7 +84,7 @@ class AnthropicToolResultEnvelopeSpec extends AnyWordSpec with Matchers {
     val httpReq = provider.requestConverter(requestFor(input)).sync()
     httpReq.content match {
       case Some(c: spice.http.content.StringContent) => fabric.io.JsonParser(c.value)
-      case _                                         => obj()
+      case _ => obj()
     }
   }
 
@@ -99,7 +99,7 @@ class AnthropicToolResultEnvelopeSpec extends AnyWordSpec with Matchers {
     val provider = AnthropicProvider(apiKey = "sk-ant-test", sigilRef = TestSigil)
 
     "render TextToolOutput as a plain string, not a JSON-stringified envelope" in {
-      val body   = render(provider, turnInputFor(settledTextInvoke("Sent to #foo: hello")))
+      val body = render(provider, turnInputFor(settledTextInvoke("Sent to #foo: hello")))
       val blocks = toolResultBlocks(body)
       blocks should have size 1
       val content = blocks.head("content")
@@ -110,7 +110,7 @@ class AnthropicToolResultEnvelopeSpec extends AnyWordSpec with Matchers {
     }
 
     "render an empty TextToolOutput as the empty string, not `{\"text\":\"\"}`" in {
-      val body   = render(provider, turnInputFor(settledTextInvoke("")))
+      val body = render(provider, turnInputFor(settledTextInvoke("")))
       val blocks = toolResultBlocks(body)
       blocks should have size 1
       blocks.head("content") shouldBe a[Str]
@@ -125,27 +125,29 @@ class AnthropicToolResultEnvelopeSpec extends AnyWordSpec with Matchers {
 
     "render the textual channel of an ImageToolOutput as the caption string, " +
       "and surface the image as a follow-up user message" in {
-      val body   = render(provider, turnInputFor(settledImageInvoke(
-        ImageToolOutput(sampleUrl, alt = "preview", text = Some("Preview of /pages/x"))
-      )))
-      val blocks = toolResultBlocks(body)
-      blocks should have size 1
-      blocks.head("content") shouldBe a[Str]
-      blocks.head("content").asString shouldBe "Preview of /pages/x"
+        val body = render(
+          provider,
+          turnInputFor(settledImageInvoke(
+            ImageToolOutput(sampleUrl, alt = "preview", text = Some("Preview of /pages/x"))
+          )))
+        val blocks = toolResultBlocks(body)
+        blocks should have size 1
+        blocks.head("content") shouldBe a[Str]
+        blocks.head("content").asString shouldBe "Preview of /pages/x"
 
-      // The image rides as a follow-up `user` message carrying an
-      // image content block (Provider.renderFrames appends it after the
-      // tool_result). Anthropic's URL-image shape is
-      // `{"type":"image","source":{"type":"url","url":"…"}}`.
-      val messages = body("messages").asVector
-      val imageBlocks = messages.flatMap { msg =>
-        msg("content").asVector.collect {
-          case b if b.get("type").map(_.asString).contains("image") => b
+        // The image rides as a follow-up `user` message carrying an
+        // image content block (Provider.renderFrames appends it after the
+        // tool_result). Anthropic's URL-image shape is
+        // `{"type":"image","source":{"type":"url","url":"…"}}`.
+        val messages = body("messages").asVector
+        val imageBlocks = messages.flatMap { msg =>
+          msg("content").asVector.collect {
+            case b if b.get("type").map(_.asString).contains("image") => b
+          }
         }
+        imageBlocks should not be empty
+        imageBlocks.head("source")("url").asString shouldBe sampleUrl.toString
       }
-      imageBlocks should not be empty
-      imageBlocks.head("source")("url").asString shouldBe sampleUrl.toString
-    }
   }
 
   "tear down" should {

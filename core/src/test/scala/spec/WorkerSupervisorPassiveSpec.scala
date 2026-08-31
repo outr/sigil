@@ -34,7 +34,9 @@ class WorkerSupervisorPassiveSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private val modelId: Id[Model] = Model.id("test", "worker-passive")
   TestSigil.testModel(modelId)
 
-  /** Any agent that is woken settles immediately — no work loop. */
+  /**
+   * Any agent that is woken settles immediately — no work loop.
+   */
   private object SilentProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -55,7 +57,9 @@ class WorkerSupervisorPassiveSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def agentP(id: AgentParticipantId): AgentParticipant =
     DefaultAgentParticipant(
-      id = id, modelId = modelId, instructions = Instructions(),
+      id = id,
+      modelId = modelId,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -76,15 +80,17 @@ class WorkerSupervisorPassiveSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private val negativeWindow = 500.millis
 
-  /** A directed worker conversation [supervisor, worker], linked to a parent. */
+  /**
+   * A directed worker conversation [supervisor, worker], linked to a parent.
+   */
   private def workerConv(): Task[Conversation] = {
-    val convId   = Conversation.id(s"worker-passive-${rapid.Unique()}")
+    val convId = Conversation.id(s"worker-passive-${rapid.Unique()}")
     val parentId = Conversation.id(s"worker-passive-parent-${rapid.Unique()}")
     TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-      topics               = List(TopicEntry(TestTopicId, "t", "t")),
-      participants         = List(agentP(supervisorId), agentP(workerId)),
+      topics = List(TopicEntry(TestTopicId, "t", "t")),
+      participants = List(agentP(supervisorId), agentP(workerId)),
       parentConversationId = Some(parentId),
-      _id                  = convId
+      _id = convId
     ))))
   }
 
@@ -98,14 +104,14 @@ class WorkerSupervisorPassiveSpec extends AsyncWordSpec with AsyncTaskSpec with 
           // every paired tool result does). Under the old TriggerFilter
           // this woke EVERY participant (line 48) — the supervisor too.
           _ <- TestSigil.publish(Message(
-                 participantId  = workerId,
-                 conversationId = conv._id,
-                 topicId        = conv.currentTopicId,
-                 role           = MessageRole.Tool,
-                 content        = Vector(ResponseContent.Text("grep: 31 matches in 8 files")),
-                 origin         = Some(Event.id()),
-                 state          = EventState.Complete
-               ))
+            participantId = workerId,
+            conversationId = conv._id,
+            topicId = conv.currentTopicId,
+            role = MessageRole.Tool,
+            content = Vector(ResponseContent.Text("grep: 31 matches in 8 files")),
+            origin = Some(Event.id()),
+            state = EventState.Complete
+          ))
           _ <- Task.sleep(negativeWindow)
         } yield supervisorClaims(rec, conv._id) shouldBe empty
       }
@@ -115,15 +121,15 @@ class WorkerSupervisorPassiveSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val rec = new RecordingBroadcaster; rec.attach(TestSigil)
       workerConv().flatMap { conv =>
         for {
-          _    <- TestSigil.publish(Message(
-                    participantId  = workerId,
-                    conversationId = conv._id,
-                    topicId        = conv.currentTopicId,
-                    role           = MessageRole.Standard,
-                    content        = Vector(ResponseContent.Text("Found the references; should I write the report?")),
-                    addressees     = Some(Set[ParticipantId](supervisorId)),
-                    state          = EventState.Complete
-                  ))
+          _ <- TestSigil.publish(Message(
+            participantId = workerId,
+            conversationId = conv._id,
+            topicId = conv.currentTopicId,
+            role = MessageRole.Standard,
+            content = Vector(ResponseContent.Text("Found the references; should I write the report?")),
+            addressees = Some(Set[ParticipantId](supervisorId)),
+            state = EventState.Complete
+          ))
           woke <- awaitSupervisorClaim(rec, conv._id)
         } yield woke shouldBe true
       }

@@ -17,13 +17,15 @@ object ScalaDiagnosticParser {
   private val HeaderPattern =
     """--\s*\[E\d+\]\s*[^:]*:\s*(?:[^:]*:)?\s*(\d+):(\d+)""".r
 
-  /** Parse `diagnostics` into typed [[CompileError]]s. When the output
-    * contains error markers the parser could not position-decode, it
-    * still emits one [[CompileError]] per recognised header (line /
-    * column `0` when no position parsed). When no header is found at
-    * all but the output looks like an error, a single positionless
-    * [[CompileError]] carrying the whole text is returned so callers
-    * never get an empty list for a genuine failure. */
+  /**
+   * Parse `diagnostics` into typed [[CompileError]]s. When the output
+   * contains error markers the parser could not position-decode, it
+   * still emits one [[CompileError]] per recognised header (line /
+   * column `0` when no position parsed). When no header is found at
+   * all but the output looks like an error, a single positionless
+   * [[CompileError]] carrying the whole text is returned so callers
+   * never get an empty list for a genuine failure.
+   */
   def parse(diagnostics: String): List[CompileError] = {
     if (diagnostics.trim.isEmpty) return Nil
     val lines = diagnostics.linesIterator.toList
@@ -41,7 +43,7 @@ object ScalaDiagnosticParser {
         val header = block.headOption.getOrElse("")
         val (line, column) = header match {
           case HeaderPattern(l, c) => (l.toInt, c.toInt)
-          case _                   => (0, 0)
+          case _ => (0, 0)
         }
         val message = block.mkString("\n").trim
         CompileError(line, column, if (message.isEmpty) header.trim else message)

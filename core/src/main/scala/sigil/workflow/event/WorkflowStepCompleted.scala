@@ -32,15 +32,19 @@ case class WorkflowStepCompleted(participantId: ParticipantId,
                                  override val origin: Option[Id[Event]] = None,
                                  override val source: Option[String] = None,
                                  override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
-                                 _id: Id[Event] = Event.id()) extends sigil.event.ControlPlaneEvent derives RW {
+                                 _id: Id[Event] = Event.id())
+  extends sigil.event.ControlPlaneEvent derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withTopic(topicId: Id[Topic], topicIndex: Int): Event = copy(topicId = topicId, topicIndex = topicIndex)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
-  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): Event = copy(conversationId = conversationId)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): Event =
+    copy(conversationId = conversationId)
 
-  /** Deliver this run-lifecycle Event to the bound parent's subscribers too,
-    * so the parent's activity bar surfaces a run that lives on its own
-    * sub-conversation (#376/#385). */
+  /**
+   * Deliver this run-lifecycle Event to the bound parent's subscribers too,
+   * so the parent's activity bar surfaces a run that lives on its own
+   * sub-conversation (#376/#385).
+   */
   override def additionalDeliveryScopes: Set[Id[Conversation]] = parentConversationId.toSet
 }

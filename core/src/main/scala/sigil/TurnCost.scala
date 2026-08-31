@@ -46,4 +46,5 @@ case class TurnCost(conversationId: Id[Conversation],
                     mode: String,
                     cost: BigDecimal,
                     usage: TokenUsage,
-                    timestamp: Timestamp) derives RW
+                    timestamp: Timestamp)
+  derives RW

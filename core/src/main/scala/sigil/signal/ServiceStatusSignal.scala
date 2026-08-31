@@ -37,4 +37,5 @@ case class ServiceStatusSignal(serviceId: Id[Service],
                                state: ServiceState,
                                primaryLine: Option[String] = None,
                                secondaryLine: Option[String] = None,
-                               metrics: Map[String, String] = Map.empty) extends Notice derives RW
+                               metrics: Map[String, String] = Map.empty)
+  extends Notice derives RW

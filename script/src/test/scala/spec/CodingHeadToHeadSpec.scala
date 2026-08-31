@@ -40,8 +40,8 @@ class CodingHeadToHeadSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   override protected val testTimeout: FiniteDuration = 20.minutes
 
   private val anthropicKey = sys.env.get("ANTHROPIC_API_KEY").filter(_.nonEmpty)
-  private val cfToken      = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
-  private val cfAccount    = sys.env.get("CLOUDFLARE_ACCOUNT_ID").filter(_.nonEmpty)
+  private val cfToken = sys.env.get("CLOUDFLARE_AUTH_TOKEN").filter(_.nonEmpty)
+  private val cfAccount = sys.env.get("CLOUDFLARE_ACCOUNT_ID").filter(_.nonEmpty)
 
   private val executor = new ScalaScriptExecutor()
 
@@ -81,7 +81,9 @@ class CodingHeadToHeadSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "  def eval(expr: String): Either[String, Long] = ..."
   ).mkString("\n")
 
-  /** 25 cases — a few shown anchors plus many hidden discriminators. */
+  /**
+   * 25 cases — a few shown anchors plus many hidden discriminators.
+   */
   private val harness = List(
     "val __cases: List[(String, Either[String, Long])] = List(",
     "  (\"2 + 3 * 4\", Right(14L)),",
@@ -142,11 +144,12 @@ class CodingHeadToHeadSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     )
     provider.call(pc).toList.flatMap { events =>
       val text = events.collect {
-        case ProviderEvent.TextDelta(t)            => t
+        case ProviderEvent.TextDelta(t) => t
         case ProviderEvent.ContentBlockDelta(_, t) => t
       }.mkString
       scala.util.Try(java.nio.file.Files.writeString(
-        java.nio.file.Path.of(s"/tmp/h2h-${model._id.value.replaceAll("[^A-Za-z0-9]", "_")}.txt"), text))
+        java.nio.file.Path.of(s"/tmp/h2h-${model._id.value.replaceAll("[^A-Za-z0-9]", "_")}.txt"),
+        text))
       if (text.trim.isEmpty) Task.pure("no text output")
       else verify(extractCode(text))
     }.handleError(t => Task.pure(s"call error: ${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("").take(70)}"))
@@ -157,17 +160,17 @@ class CodingHeadToHeadSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       if (anthropicKey.isEmpty || cfToken.isEmpty || cfAccount.isEmpty)
         cancel("ANTHROPIC_API_KEY / CLOUDFLARE creds not set — skipping live coding comparison")
 
-      val cf   = CloudflareProvider(cfToken.get, cfAccount.get, TestSigil, tokenIdleTimeout = 90.seconds)
+      val cf = CloudflareProvider(cfToken.get, cfAccount.get, TestSigil, tokenIdleTimeout = 90.seconds)
       val anth = AnthropicProvider(apiKey = anthropicKey.get, sigilRef = TestSigil)
 
       // Reliable models first; Kimi last (it may hang on Cloudflare).
       val entries: List[(String, Provider, Id[Model])] = List(
-        ("anthropic/haiku-4-5",   anth, Model.id("anthropic/claude-haiku-4-5")),
-        ("cf/glm-4.7-flash",      cf,   Model.id("cloudflare", "@cf/zai-org/glm-4.7-flash")),
-        ("cf/gpt-oss-120b",       cf,   Model.id("cloudflare", "@cf/openai/gpt-oss-120b")),
-        ("anthropic/sonnet-4-6",  anth, Model.id("anthropic/claude-sonnet-4-6")),
-        ("anthropic/opus-4-8",    anth, Model.id("anthropic/claude-opus-4-8")),
-        ("cf/kimi-k2.6",          cf,   Model.id("cloudflare", "@cf/moonshotai/kimi-k2.6"))
+        ("anthropic/haiku-4-5", anth, Model.id("anthropic/claude-haiku-4-5")),
+        ("cf/glm-4.7-flash", cf, Model.id("cloudflare", "@cf/zai-org/glm-4.7-flash")),
+        ("cf/gpt-oss-120b", cf, Model.id("cloudflare", "@cf/openai/gpt-oss-120b")),
+        ("anthropic/sonnet-4-6", anth, Model.id("anthropic/claude-sonnet-4-6")),
+        ("anthropic/opus-4-8", anth, Model.id("anthropic/claude-opus-4-8")),
+        ("cf/kimi-k2.6", cf, Model.id("cloudflare", "@cf/moonshotai/kimi-k2.6"))
       )
 
       info("=== Coding head-to-head HARD: integer expression evaluator (25 hidden cases) ===")

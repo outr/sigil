@@ -4,7 +4,9 @@ import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 case class UnpinEffortInput() extends ToolInput derives RW
 
@@ -14,7 +16,7 @@ case class UnpinEffortInput() extends ToolInput derives RW
  * Companion to [[PinEffortTool]]. Not auto-registered.
  */
 case object UnpinEffortTool extends Tool {
-  type Input  = UnpinEffortInput
+  type Input = UnpinEffortInput
   type Output = TextToolOutput
   val io: ToolIO[UnpinEffortInput, TextToolOutput] = ToolIO.derived[UnpinEffortInput, TextToolOutput]
   override val name = ToolName("unpin_effort")
@@ -33,7 +35,7 @@ case object UnpinEffortTool extends Tool {
   private def executeResult(input: UnpinEffortInput,
                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
-      case None       => Task.pure(None)
+      case None => Task.pure(None)
       case Some(conv) => Task.pure(Some(conv.copy(pinnedEffort = None, modified = Timestamp())))
     })).map {
       case None =>

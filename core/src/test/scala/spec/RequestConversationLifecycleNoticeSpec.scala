@@ -53,21 +53,21 @@ class RequestConversationLifecycleNoticeSpec extends AsyncWordSpec with AsyncTas
         _ <- Task.sleep(100.millis)
         _ <- TestSigil.newConversation(createdBy = TestUser, conversationId = convId)
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("first")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("first")),
+          state = EventState.Complete
+        ))
         before <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
-        _      = before.flatMap(_.clearedAt) shouldBe None
+        _ = before.flatMap(_.clearedAt) shouldBe None
         _ <- TestSigil.handleNotice(RequestConversationClear(convId), TestUser)
         _ <- Task.sleep(250.millis)
         after <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
         stop()
         // Server-side action ran — clearedAt advanced.
-        after.flatMap(_.clearedAt) should be (defined)
+        after.flatMap(_.clearedAt) should be(defined)
         // Broadcast Notice landed on the requester's stream, identifying
         // the requesting viewer as the clearedBy.
         val cleared = recorded.iterator().asScala.toList.collectFirst {
@@ -87,7 +87,7 @@ class RequestConversationLifecycleNoticeSpec extends AsyncWordSpec with AsyncTas
         _ <- Task.sleep(100.millis)
         _ <- TestSigil.newConversation(createdBy = TestUser, conversationId = convId)
         before <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
-        _      = before should be (defined)
+        _ = before should be(defined)
         _ <- TestSigil.handleNotice(RequestConversationDelete(convId), TestUser)
         _ <- Task.sleep(250.millis)
         after <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
@@ -99,7 +99,7 @@ class RequestConversationLifecycleNoticeSpec extends AsyncWordSpec with AsyncTas
         val deleted = recorded.iterator().asScala.toList.collectFirst {
           case d: ConversationDeleted if d.conversationId == convId => d
         }
-        deleted should be (defined)
+        deleted should be(defined)
       }
     }
   }

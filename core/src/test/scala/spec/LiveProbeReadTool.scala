@@ -46,7 +46,9 @@ case object LiveProbeReadTool extends Tool {
 
   val executions: AtomicInteger = new AtomicInteger(0)
 
-  /** Per-probe resolution delay, so siblings of a batch settle apart. */
+  /**
+   * Per-probe resolution delay, so siblings of a batch settle apart.
+   */
   @volatile var delays: Map[String, FiniteDuration] = Map.empty
 
   def resultTextFor(probe: String): String = s"live-probe-result:$probe"

@@ -13,30 +13,35 @@ final case class ToolSpec private (name: ToolName,
                                    profile: ToolProfile,
                                    discovery: DiscoverySpec) {
 
-  /** Convenience projections. */
+  /**
+   * Convenience projections.
+   */
   def keywords: Set[String] = discovery.keywords
   def effect: Effect = profile.effect
 }
 
 object ToolSpec {
 
-  /** Ceiling on wire-facing description length in characters.
-    * Providers accept descriptions well past this, but a description
-    * beyond it is a per-turn token tax on every request carrying the
-    * roster; the largest legitimate framework description sits near
-    * 3.5K. */
+  /**
+   * Ceiling on wire-facing description length in characters.
+   * Providers accept descriptions well past this, but a description
+   * beyond it is a per-turn token tax on every request carrying the
+   * roster; the largest legitimate framework description sits near
+   * 3.5K.
+   */
   val DescriptionBudget: Int = 4096
 
-  /** Validation gate. Collects every violation and raises one
-    * [[ToolSpecException]] carrying them all:
-    *
-    *   - description non-blank and within [[DescriptionBudget]]
-    *   - destructive consequence non-blank
-    *   - detachable progress story non-blank
-    *   - consent prompt non-blank when a consent gate is declared
-    *   - discoverable kinds (see [[ToolKind.discoverable]]) declare
-    *     non-empty keywords
-    */
+  /**
+   * Validation gate. Collects every violation and raises one
+   * [[ToolSpecException]] carrying them all:
+   *
+   *   - description non-blank and within [[DescriptionBudget]]
+   *   - destructive consequence non-blank
+   *   - detachable progress story non-blank
+   *   - consent prompt non-blank when a consent gate is declared
+   *   - discoverable kinds (see [[ToolKind.discoverable]]) declare
+   *     non-empty keywords
+   */
   def apply(name: ToolName,
             description: String,
             profile: ToolProfile,

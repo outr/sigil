@@ -21,4 +21,5 @@ import sigil.event.Event
 case class ClientToolResult(conversationId: Id[Conversation],
                             invokeId: Id[Event],
                             content: String,
-                            isError: Boolean = false) extends ConversationNotice derives RW
+                            isError: Boolean = false)
+  extends ConversationNotice derives RW

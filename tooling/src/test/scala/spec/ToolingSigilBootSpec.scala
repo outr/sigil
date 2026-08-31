@@ -20,11 +20,13 @@ import sigil.tooling.{ToolingCollections, ToolingSigil}
  */
 class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Concrete DB carrying both core SigilDB collections and ToolingCollections —
-    * the shape apps use when they mix in ToolingSigil. */
+  /**
+   * Concrete DB carrying both core SigilDB collections and ToolingCollections —
+   * the shape apps use when they mix in ToolingSigil.
+   */
   private class ToolingSigilTestDB(directory: Option[java.nio.file.Path],
-                                    storeManager: lightdb.store.CollectionManager,
-                                    appUpgrades: List[lightdb.upgrade.DatabaseUpgrade] = Nil)
+                                   storeManager: lightdb.store.CollectionManager,
+                                   appUpgrades: List[lightdb.upgrade.DatabaseUpgrade] = Nil)
     extends SigilDB(directory, storeManager, appUpgrades) with ToolingCollections
 
   private def freshSigil(): ToolingSigil = {
@@ -57,7 +59,7 @@ class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
 
     // The framework's dispatch / rename family must surface via
-     // ToolingSigil's staticTools so `find_capability` can advertise
+    // ToolingSigil's staticTools so `find_capability` can advertise
     "register dispatch_workers and lsp_rename_symbol in staticTools" in {
       val s = freshSigil()
       for {

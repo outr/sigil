@@ -52,8 +52,10 @@ class ParallelBatchLiveLoopSpec extends AnyWordSpec with Matchers {
     generationSettings = GenerationSettings(maxOutputTokens = Some(2048))
   )
 
-  /** Every probe_read invoke of one conversation, in order, tagged with
-    * the args it carried. */
+  /**
+   * Every probe_read invoke of one conversation, in order, tagged with
+   * the args it carried.
+   */
   private def invokeTrail(convId: Id[Conversation]): List[(String, String)] =
     TestSigil.withDB(_.events.transaction(_.list)).sync()
       .filter(_.conversationId == convId)
@@ -69,12 +71,12 @@ class ParallelBatchLiveLoopSpec extends AnyWordSpec with Matchers {
     val task = for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId = TestUser,
-             conversationId = convId,
-             topicId = TestTopicEntry.id,
-             content = Vector(ResponseContent.Text(prompt)),
-             state = sigil.signal.EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text(prompt)),
+        state = sigil.signal.EventState.Complete
+      ))
       _ <- TestSigil.awaitSettled(convId, timeout = 300.seconds)
     } yield ()
     task.sync()
@@ -102,20 +104,24 @@ class ParallelBatchLiveLoopSpec extends AnyWordSpec with Matchers {
 
   "the field model, driving the whole loop live" should {
 
-    "not re-issue a probe it already has the result for" in {
-      arm("direct", ProbeReadTool.name :: CoreTools.coreToolNames,
+    "not re-issue a probe it already has the result for" in
+      arm(
+        "direct",
+        ProbeReadTool.name :: CoreTools.coreToolNames,
         "Read the probes named 'alpha', 'bravo' and 'charlie' using probe_read, " +
-          "then tell me all three values in one reply.")
-    }
+          "then tell me all three values in one reply."
+      )
 
-    "not re-issue after discovering the tool through find_capability" in {
+    "not re-issue after discovering the tool through find_capability" in
       // The discovery directive ("invoke it on THIS iteration") is
       // re-rendered on every iteration of the turn, including the one
       // that follows the batch it already produced.
-      arm("discovered", CoreTools.coreToolNames,
+      arm(
+        "discovered",
+        CoreTools.coreToolNames,
         "Find a capability that reads probe values, then read the probes named " +
-          "'alpha', 'bravo' and 'charlie' and tell me all three values in one reply.")
-    }
+          "'alpha', 'bravo' and 'charlie' and tell me all three values in one reply."
+      )
   }
 
   "tear down" should {

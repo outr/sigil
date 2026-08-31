@@ -21,7 +21,7 @@ import sigil.tool.model.RespondCardInput
  * Message rather than forcing N separate ones.
  */
 case object RespondCardTool extends RespondFamilyTool {
-  type Input  = RespondCardInput
+  type Input = RespondCardInput
   type Output = TextToolOutput
   val io: ToolIO[RespondCardInput, TextToolOutput] = ToolIO.derived[RespondCardInput, TextToolOutput]
 

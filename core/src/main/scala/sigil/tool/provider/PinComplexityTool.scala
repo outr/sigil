@@ -6,7 +6,10 @@ import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.ComplexityChange
 import sigil.provider.Complexity
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolInput, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 
 case class PinComplexityInput(tier: String) extends ToolInput derives RW
 
@@ -24,11 +27,11 @@ case class PinComplexityInput(tier: String) extends ToolInput derives RW
  * add this to `staticTools` when they want the surface exposed.
  */
 case object PinComplexityTool extends Tool {
-  type Input  = PinComplexityInput
+  type Input = PinComplexityInput
   type Output = TextToolOutput
   val io: ToolIO[PinComplexityInput, TextToolOutput] = ToolIO.derived[PinComplexityInput, TextToolOutput].withExamples(
-    ToolExample("Pin to medium tier",     PinComplexityInput("medium")),
-    ToolExample("Pin to frontier",        PinComplexityInput("very-high")),
+    ToolExample("Pin to medium tier", PinComplexityInput("medium")),
+    ToolExample("Pin to frontier", PinComplexityInput("very-high")),
     ToolExample("Local-only with low tier", PinComplexityInput("low"))
   )
   override val name = ToolName("pin_complexity")
@@ -55,8 +58,19 @@ case object PinComplexityTool extends Tool {
     description = description,
     profile = ToolProfile(effect = Effect.Mutating(MutationTargeting.none)),
     discovery = DiscoverySpec(keywords = Set(
-      "pin", "lock", "force", "stick", "fix", "always", "deterministic",
-      "complexity", "tier", "routing", "cost", "ceiling", "level"
+      "pin",
+      "lock",
+      "force",
+      "stick",
+      "fix",
+      "always",
+      "deterministic",
+      "complexity",
+      "tier",
+      "routing",
+      "cost",
+      "ceiling",
+      "level"
     ))
   )
 
@@ -66,11 +80,11 @@ case object PinComplexityTool extends Tool {
                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val normalized = input.tier.trim.toLowerCase.replaceAll("\\s+|-|_", "")
     val parsed: Option[Complexity] = normalized match {
-      case "low"                            => Some(Complexity.Low)
-      case "medium" | "med" | "mid"         => Some(Complexity.Medium)
-      case "high"                           => Some(Complexity.High)
+      case "low" => Some(Complexity.Low)
+      case "medium" | "med" | "mid" => Some(Complexity.Medium)
+      case "high" => Some(Complexity.High)
       case "veryhigh" | "vhigh" | "frontier" | "max" => Some(Complexity.VeryHigh)
-      case _                                => None
+      case _ => None
     }
     parsed match {
       case None =>
@@ -81,7 +95,7 @@ case object PinComplexityTool extends Tool {
       case Some(tier) =>
         ctx.sigil.withDB(_.conversations.transaction { tx =>
           tx.get(ctx.conversation.id).flatMap {
-            case None       => Task.pure(None)
+            case None => Task.pure(None)
             case Some(conv) =>
               val previous = conv.pinnedComplexity
               tx.upsert(conv.copy(pinnedComplexity = Some(tier), modified = Timestamp()))
@@ -98,15 +112,16 @@ case object PinComplexityTool extends Tool {
               if (previous.isEmpty) ComplexityChange.Reason.Pinned
               else ComplexityChange.Reason.Repinned
             ctx.emit(ComplexityChange(
-              participantId  = ctx.caller,
+              participantId = ctx.caller,
               conversationId = ctx.conversation.id,
-              topicId        = ctx.conversation.currentTopicId,
-              previousTier   = previous,
-              newTier        = Some(tier),
-              reason         = reason
-            )).map(_ => ToolResult.Success(TextToolOutput(
-              s"Pinned to `$tier` complexity tier. Every LLM call in this conversation will route to that " +
-                s"tier's candidate until `unpin_complexity` is called.")))
+              topicId = ctx.conversation.currentTopicId,
+              previousTier = previous,
+              newTier = Some(tier),
+              reason = reason
+            )).map(_ =>
+              ToolResult.Success(TextToolOutput(
+                s"Pinned to `$tier` complexity tier. Every LLM call in this conversation will route to that " +
+                  s"tier's candidate until `unpin_complexity` is called.")))
         }
     }
   }

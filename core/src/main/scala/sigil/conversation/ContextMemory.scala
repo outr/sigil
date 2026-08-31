@@ -73,95 +73,111 @@ case class ContextMemory(fact: String,
                          createdBy: Option[ParticipantId] = None,
                          location: Option[Place] = None,
                          extraContext: Map[ContextKey, String] = Map.empty,
-                         /** Per-[[Mode]] retrieval gate. When non-empty, the
-                           * memory only surfaces during turns whose
-                           * [[Conversation.currentMode]] id is in this set.
-                           * Empty (the default) = the memory is universal —
-                           * surfaces regardless of current mode.
-                           *
-                           * Scoping critical directives to the mode they
-                           * apply to avoids loading them into every turn of
-                           * conversations that swap modes — a "always create
-                           * failing tests before fixing" directive captured
-                           * during Coding mode is wasted prompt budget when
-                           * the conversation switches back to Conversation
-                           * mode. */
+                         /**
+                          * Per-[[Mode]] retrieval gate. When non-empty, the
+                          * memory only surfaces during turns whose
+                          * [[Conversation.currentMode]] id is in this set.
+                          * Empty (the default) = the memory is universal —
+                          * surfaces regardless of current mode.
+                          *
+                          * Scoping critical directives to the mode they
+                          * apply to avoids loading them into every turn of
+                          * conversations that swap modes — a "always create
+                          * failing tests before fixing" directive captured
+                          * during Coding mode is wasted prompt budget when
+                          * the conversation switches back to Conversation
+                          * mode.
+                          */
                          modeAffinity: Set[Id[Mode]] = Set.empty,
-                         /** Event-grain provenance — the durable [[Event]] ids
-                           * of the exchange this memory was extracted from.
-                           * Populated by the per-turn extractor (the turn's
-                           * event window) and the compression-time extractor
-                           * (the summarised chunk's frames). Keyed-upsert
-                           * semantics: a `Refreshed` write unions the prior
-                           * record's ids with the new extraction's; a
-                           * `Versioned` write starts the new record with only
-                           * the new extraction's ids (the superseded version
-                           * keeps its own). Empty for memories written outside
-                           * any conversation (seeding, app-side writes). */
+                         /**
+                          * Event-grain provenance — the durable [[Event]] ids
+                          * of the exchange this memory was extracted from.
+                          * Populated by the per-turn extractor (the turn's
+                          * event window) and the compression-time extractor
+                          * (the summarised chunk's frames). Keyed-upsert
+                          * semantics: a `Refreshed` write unions the prior
+                          * record's ids with the new extraction's; a
+                          * `Versioned` write starts the new record with only
+                          * the new extraction's ids (the superseded version
+                          * keeps its own). Empty for memories written outside
+                          * any conversation (seeding, app-side writes).
+                          */
                          sourceEventIds: List[Id[Event]] = Nil,
-                         /** Retrieval-optimized rewrite of `fact`, produced by
-                           * an ingest-time
-                           * [[sigil.conversation.compression.MemoryDistiller]]
-                           * (opt-in via `Sigil.memoryDistiller`). When set it
-                           * is what gets embedded into the vector index and
-                           * folded into the lexical `searchText` — a
-                           * self-contained rewrite whose vocabulary a question
-                           * can actually share. `fact` stays the record of
-                           * truth and is what `lookup` returns; rendering is
-                           * untouched. `None` (the default) embeds the raw
-                           * fact, exactly the pre-distillation behavior. */
+                         /**
+                          * Retrieval-optimized rewrite of `fact`, produced by
+                          * an ingest-time
+                          * [[sigil.conversation.compression.MemoryDistiller]]
+                          * (opt-in via `Sigil.memoryDistiller`). When set it
+                          * is what gets embedded into the vector index and
+                          * folded into the lexical `searchText` — a
+                          * self-contained rewrite whose vocabulary a question
+                          * can actually share. `fact` stays the record of
+                          * truth and is what `lookup` returns; rendering is
+                          * untouched. `None` (the default) embeds the raw
+                          * fact, exactly the pre-distillation behavior.
+                          */
                          embeddedText: Option[String] = None,
-                         /** Provenance for this record's point in
-                           * [[sigil.vector.VectorIndex]] — stamped by the
-                           * framework's index paths, cleared when the point is
-                           * evicted. `None` means "no live point": either
-                           * vector search isn't wired, or the record has never
-                           * been indexed, or its point was deleted. Compared
-                           * against `fact` and the live
-                           * [[sigil.embedding.EmbeddingProvider]] by
-                           * [[sigil.maintenance.EmbeddingReconcileTask]] to
-                           * find rows whose vector drifted from the store. */
+                         /**
+                          * Provenance for this record's point in
+                          * [[sigil.vector.VectorIndex]] — stamped by the
+                          * framework's index paths, cleared when the point is
+                          * evicted. `None` means "no live point": either
+                          * vector search isn't wired, or the record has never
+                          * been indexed, or its point was deleted. Compared
+                          * against `fact` and the live
+                          * [[sigil.embedding.EmbeddingProvider]] by
+                          * [[sigil.maintenance.EmbeddingReconcileTask]] to
+                          * find rows whose vector drifted from the store.
+                          */
                          embedding: Option[EmbeddingRef] = None,
                          created: Timestamp = Timestamp(),
                          modified: Timestamp = Timestamp(),
                          _id: Id[ContextMemory] = ContextMemory.id())
   extends RecordDocument[ContextMemory] {
 
-  /** The shared retrieval gate: `true` when this record is the current
-    * version of its slot (`validUntil` unset), its `status` is
-    * [[MemoryStatus.Approved]], and it has not expired (`expiresAt`
-    * unset or in the future). Every retrieval surface — the hybrid
-    * retriever legs, the pinned load, [[sigil.Sigil.searchMemories]],
-    * [[sigil.Sigil.findMemories]] — applies this predicate, so
-    * superseded versions, pending / rejected records, and expired
-    * records never reach a prompt. Versioning and history queries
-    * (`memoryHistory`, the keyed-upsert write path,
-    * `listPendingMemories`) deliberately bypass it. */
+  /**
+   * The shared retrieval gate: `true` when this record is the current
+   * version of its slot (`validUntil` unset), its `status` is
+   * [[MemoryStatus.Approved]], and it has not expired (`expiresAt`
+   * unset or in the future). Every retrieval surface — the hybrid
+   * retriever legs, the pinned load, [[sigil.Sigil.searchMemories]],
+   * [[sigil.Sigil.findMemories]] — applies this predicate, so
+   * superseded versions, pending / rejected records, and expired
+   * records never reach a prompt. Versioning and history queries
+   * (`memoryHistory`, the keyed-upsert write path,
+   * `listPendingMemories`) deliberately bypass it.
+   */
   def isRecallable(now: Timestamp): Boolean =
     validUntil.isEmpty &&
       status == MemoryStatus.Approved &&
       !expiresAt.exists(_.value <= now.value)
 
-  /** The text this record's vector point (and lexical index) is built
-    * from: the retrieval-optimized `embeddedText` when a distiller
-    * produced one, the raw `fact` otherwise. */
+  /**
+   * The text this record's vector point (and lexical index) is built
+   * from: the retrieval-optimized `embeddedText` when a distiller
+   * produced one, the raw `fact` otherwise.
+   */
   def embeddingSource: String = embeddedText.map(_.trim).filter(_.nonEmpty).getOrElse(fact)
 
-  /** The embedding space this record's live vector point belongs to,
-    * or [[EmbeddingRef.Unindexed]] when it holds no point built from
-    * the [[embeddingSource]] it currently carries. Purely
-    * document-local, so it can be indexed: comparing it to the running
-    * provider's identity turns "never indexed", "text drifted since
-    * indexing", and "embedder changed" into one inequality. */
+  /**
+   * The embedding space this record's live vector point belongs to,
+   * or [[EmbeddingRef.Unindexed]] when it holds no point built from
+   * the [[embeddingSource]] it currently carries. Purely
+   * document-local, so it can be indexed: comparing it to the running
+   * provider's identity turns "never indexed", "text drifted since
+   * indexing", and "embedder changed" into one inequality.
+   */
   def embeddingIdentity: String =
     embedding.filter(_.contentHash == EmbeddingRef.hash(embeddingSource)).map(_.identity).getOrElse(EmbeddingRef.Unindexed)
 
-  /** `true` when a drifted vector point on this record is worth
-    * re-embedding. Archived versions, non-Approved records, and empty
-    * facts hold no point by design, and an expiring memory's point
-    * outlives its usefulness anyway — sweeping any of them would spend
-    * embedding calls on rows no retrieval can reach, and (for the
-    * evicted ones) fight the eviction that cleared the stamp. */
+  /**
+   * `true` when a drifted vector point on this record is worth
+   * re-embedding. Archived versions, non-Approved records, and empty
+   * facts hold no point by design, and an expiring memory's point
+   * outlives its usefulness anyway — sweeping any of them would spend
+   * embedding calls on rows no retrieval can reach, and (for the
+   * evicted ones) fight the eviction that cleared the stamp.
+   */
   def embeddingReconcilable: Boolean =
     embeddingSource.nonEmpty && validUntil.isEmpty && status == MemoryStatus.Approved && expiresAt.isEmpty
 }
@@ -178,38 +194,48 @@ object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConvers
   val statusName: I[String] = field.index(_.status.toString)
   val pinned: I[Boolean] = field.index(_.pinned)
   val conversationId: I[Option[Id[Conversation]]] = field.index(_.conversationId)
-  /** `expiresAt.value` projected for indexing — Lucene can't filter on
-    * the polymorphic `Timestamp` directly. Records with no expiry
-    * project as `None`. Backs the opt-in expiry sweep
-    * ([[Sigil.expiredMemorySweepInterval]]). */
+
+  /**
+   * `expiresAt.value` projected for indexing — Lucene can't filter on
+   * the polymorphic `Timestamp` directly. Records with no expiry
+   * project as `None`. Backs the opt-in expiry sweep
+   * ([[Sigil.expiredMemorySweepInterval]]).
+   */
   val expiresAtValue: I[Option[Long]] = field.index("expiresAtValue", _.expiresAt.map(_.value))
 
-  /** Projections of [[ContextMemory.embeddingIdentity]] and
-    * [[ContextMemory.embeddingReconcilable]]. Together they let
-    * [[sigil.maintenance.EmbeddingReconcileTask]] find every drifted
-    * row with a single indexed query — `embeddingIdentity !== <live
-    * provider identity> && embeddingReconcilable === true` — which
-    * matches nothing at all when the index is in sync, so the sweep
-    * costs one empty query rather than a scan. */
+  /**
+   * Projections of [[ContextMemory.embeddingIdentity]] and
+   * [[ContextMemory.embeddingReconcilable]]. Together they let
+   * [[sigil.maintenance.EmbeddingReconcileTask]] find every drifted
+   * row with a single indexed query — `embeddingIdentity !== <live
+   * provider identity> && embeddingReconcilable === true` — which
+   * matches nothing at all when the index is in sync, so the sweep
+   * costs one empty query rather than a scan.
+   */
   val embeddingIdentity: I[String] = field.index("embeddingIdentity", _.embeddingIdentity)
   val embeddingReconcilable: I[Boolean] = field.index("embeddingReconcilable", _.embeddingReconcilable)
 
-  /** Tokenized full-text index over key + label + summary + fact +
-    * keywords. Backs `find_capability`'s BM25-scored memory search
-    * AND the lexical leg of [[StandardMemoryRetriever]]'s hybrid
-    * retrieval. `keywords` is the union of agent-supplied tags and
-    * the unified classifier's LLM-extracted retrieval signals — both
-    * arrive in the same field so semantically-relevant queries that
-    * don't share lexical tokens with `fact` / `summary` still hit.
-    * Memory matches in `find_capability` carry only the key + summary
-    * — the agent calls `lookup(capabilityType=Memory, name=key)` to
-    * pull the full fact when it judges the memory worth the tokens. */
+  /**
+   * Tokenized full-text index over key + label + summary + fact +
+   * keywords. Backs `find_capability`'s BM25-scored memory search
+   * AND the lexical leg of [[StandardMemoryRetriever]]'s hybrid
+   * retrieval. `keywords` is the union of agent-supplied tags and
+   * the unified classifier's LLM-extracted retrieval signals — both
+   * arrive in the same field so semantically-relevant queries that
+   * don't share lexical tokens with `fact` / `summary` still hit.
+   * Memory matches in `find_capability` carry only the key + summary
+   * — the agent calls `lookup(capabilityType=Memory, name=key)` to
+   * pull the full fact when it judges the memory worth the tokens.
+   */
   val searchText: lightdb.field.Field.Tokenized[ContextMemory] =
-    field.tokenized("searchText", (m: ContextMemory) => {
-      val k = m.key.getOrElse("")
-      val rewrite = m.embeddedText.getOrElse("")
-      s"$k ${m.label} ${m.summary} ${m.fact} $rewrite ${m.keywords.mkString(" ")}"
-    })
+    field.tokenized(
+      "searchText",
+      (m: ContextMemory) => {
+        val k = m.key.getOrElse("")
+        val rewrite = m.embeddedText.getOrElse("")
+        s"$k ${m.label} ${m.summary} ${m.fact} $rewrite ${m.keywords.mkString(" ")}"
+      }
+    )
 
   override def id(value: String = Unique()): Id[ContextMemory] = Id(value)
 }

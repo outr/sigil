@@ -5,24 +5,27 @@ import rapid.Task
 import sigil.event.CapabilityResults
 import sigil.signal.EventState
 import sigil.tool.ToolContext
-import sigil.tool.{DiscoveryRequest, DiscoverySpec, Effect, Freshness, OutputBounds, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoveryRequest, DiscoverySpec, Effect, Freshness, OutputBounds, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile,
+  ToolResult, ToolSpec
+}
 
 /**
-   * Discovery tool. The agent calls `find_capability` when it needs to
-   * check what capabilities exist to satisfy the current request.
-   * Resolves a [[FindCapabilityOutput]] carrying matches across every
-   * category the framework surfaces (tools, modes, skills) so the LLM
-   * has both the discovery (what exists) and the actionable next call
-   * (`change_mode("…")` for a Mode, the tool name for a Tool) on its
-   * next turn.
-   */
+ * Discovery tool. The agent calls `find_capability` when it needs to
+ * check what capabilities exist to satisfy the current request.
+ * Resolves a [[FindCapabilityOutput]] carrying matches across every
+ * category the framework surfaces (tools, modes, skills) so the LLM
+ * has both the discovery (what exists) and the actionable next call
+ * (`change_mode("…")` for a Mode, the tool name for a Tool) on its
+ * next turn.
+ */
 case object FindCapabilityTool extends Tool {
-  type Input  = FindCapabilityInput
+  type Input = FindCapabilityInput
   type Output = FindCapabilityOutput
   val io: ToolIO[FindCapabilityInput, FindCapabilityOutput] = ToolIO.derived[FindCapabilityInput, FindCapabilityOutput].withExamples(
-    ToolExample("Send a message",          FindCapabilityInput("send slack channel message")),
-    ToolExample("Pause / wait / sleep",    FindCapabilityInput("sleep wait delay pause")),
-    ToolExample("Look up by concept",      FindCapabilityInput("billing invoice payment charge"))
+    ToolExample("Send a message", FindCapabilityInput("send slack channel message")),
+    ToolExample("Pause / wait / sleep", FindCapabilityInput("sleep wait delay pause")),
+    ToolExample("Look up by concept", FindCapabilityInput("billing invoice payment charge"))
   )
 
   override val name = ToolName("find_capability")
@@ -84,7 +87,6 @@ case object FindCapabilityTool extends Tool {
     discovery = DiscoverySpec(keywords = Set("find", "capability", "discover", "search", "catalog", "tool"))
   )
 
-
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 
   private def executeResult(input: FindCapabilityInput,
@@ -102,7 +104,9 @@ case object FindCapabilityTool extends Tool {
         // window (count + rendered-bytes budget), trimming lowest-scored
         // matches first, so a small-context model gets a roster that fits
         // with room to act instead of one that overflows and gets chopped.
-        val matches = FindCapabilityTool.sizeToModel(allMatches, context.turn.model.contextLength,
+        val matches = FindCapabilityTool.sizeToModel(
+          allMatches,
+          context.turn.model.contextLength,
           context.sigil.modelProfileFor(context.turn.model))
         val toolNames = matches.collect {
           case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName.internal(m.name)
@@ -121,43 +125,45 @@ case object FindCapabilityTool extends Tool {
         //     on every turn, not just the discovery turn.
         context.turn.recordDiscovery(request.keywords, toolNames)
         val cr = CapabilityResults(
-          matches        = matches,
-          participantId  = context.caller,
+          matches = matches,
+          participantId = context.caller,
           conversationId = context.conversation.id,
-          topicId        = context.conversation.currentTopicId,
-          query          = request.keywords,
-          state          = EventState.Complete,
-          origin         = Some(context.invokeId)
+          topicId = context.conversation.currentTopicId,
+          query = request.keywords,
+          state = EventState.Complete,
+          origin = Some(context.invokeId)
         )
         val hints = sigil.tool.discovery.TaskShapeHints.synthesize(request.keywords, matches)
         context.emit(cr).map { _ =>
           ToolResult.Success(FindCapabilityOutput(
-            query          = request.keywords,
-            matches        = matches,
+            query = request.keywords,
+            matches = matches,
             taskShapeHints = hints
           ))
         }
       }
     }
 
-  /** Trim a score-sorted match list to what the running model can hold
-    * with room to act: a rendered-bytes budget (~15% of the window at
-    * ~4 chars/token) and a count cap that scales with the window (3 on
-    * a tiny model, up to 25 on a large one).
-    *
-    * The window used is `min(contextComfort, contextLength)` — a model
-    * with a large window it doesn't use well is sized to the part it
-    * does. Weak selectors additionally take their tier's roster count
-    * ceiling, since a long list costs them accuracy regardless of
-    * whether it fits. Lowest-scored matches drop first; at least one
-    * match always survives. Input must be sorted by score desc. */
+  /**
+   * Trim a score-sorted match list to what the running model can hold
+   * with room to act: a rendered-bytes budget (~15% of the window at
+   * ~4 chars/token) and a count cap that scales with the window (3 on
+   * a tiny model, up to 25 on a large one).
+   *
+   * The window used is `min(contextComfort, contextLength)` — a model
+   * with a large window it doesn't use well is sized to the part it
+   * does. Weak selectors additionally take their tier's roster count
+   * ceiling, since a long list costs them accuracy regardless of
+   * whether it fits. Lowest-scored matches drop first; at least one
+   * match always survives. Input must be sorted by score desc.
+   */
   private[core] def sizeToModel(matches: List[sigil.tool.discovery.CapabilityMatch],
                                 contextLength: Long,
                                 profile: sigil.provider.ModelProfile): List[sigil.tool.discovery.CapabilityMatch] = {
-    val window      = math.min(profile.contextComfort.toLong, contextLength)
+    val window = math.min(profile.contextComfort.toLong, contextLength)
     val budgetChars = math.max(1500, (window.toDouble * 4.0 * 0.15).toInt)
     val windowCount = math.max(3, math.min(25, (window / 8000L).toInt))
-    val maxCount    = profile.instructionTier.rosterCountCeiling.fold(windowCount)(math.min(windowCount, _))
+    val maxCount = profile.instructionTier.rosterCountCeiling.fold(windowCount)(math.min(windowCount, _))
     val out = scala.collection.mutable.ListBuffer.empty[sigil.tool.discovery.CapabilityMatch]
     var used = 0
     var stopped = false
@@ -172,9 +178,11 @@ case object FindCapabilityTool extends Tool {
     out.toList
   }
 
-  /** Normalise a keywords string into the lowercase, space-separated
-    * form `findTools` expects: drop punctuation, split snake_case /
-    * camelCase / kebab-case, collapse runs to single spaces. */
+  /**
+   * Normalise a keywords string into the lowercase, space-separated
+   * form `findTools` expects: drop punctuation, split snake_case /
+   * camelCase / kebab-case, collapse runs to single spaces.
+   */
   private[core] def normaliseKeywords(raw: String): String = {
     // Insert a space at every camelCase boundary BEFORE lowercasing,
     // so `getRandomDogImage` → `get Random Dog Image` → `get random dog image`.

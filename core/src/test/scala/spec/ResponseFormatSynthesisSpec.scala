@@ -33,13 +33,15 @@ class ResponseFormatSynthesisSpec extends AnyWordSpec with Matchers {
 
   private val cfg: Config = Config(
     providerNamespace = "test",
-    providerName      = "Test",
+    providerName = "Test",
     schemaDialect = sigil.provider.SchemaDialect.OpenAIStrict,
-    honorsStrict      = false,
-    forcedCallShape   = ForcedCallShape.ResponseFormatJsonSchema
+    honorsStrict = false,
+    forcedCallShape = ForcedCallShape.ResponseFormatJsonSchema
   )
 
-  /** Stub an SSE chunk: content delta */
+  /**
+   * Stub an SSE chunk: content delta
+   */
   private def contentChunk(text: String): fabric.Json =
     JsonParser(s"""{"choices":[{"delta":{"content":${fabric.io.JsonFormatter.Compact(fabric.str(text))}}}]}""")
 
@@ -53,7 +55,7 @@ class ResponseFormatSynthesisSpec extends AnyWordSpec with Matchers {
     val acc = new ToolCallAccumulator(ToolRoster(tools), providerKey = "test")
     val state = new StreamState(acc, Some(mode))
     val events = Vector.newBuilder[ProviderEvent]
-    contentParts.foreach { p => events ++= OpenAIChatCompletions.parseChunk(contentChunk(p), state, cfg) }
+    contentParts.foreach(p => events ++= OpenAIChatCompletions.parseChunk(contentChunk(p), state, cfg))
     events ++= OpenAIChatCompletions.parseChunk(finishChunk("stop"), state, cfg)
     events ++= OpenAIChatCompletions.parseChunk(doneChunk(), state, cfg)
     events ++= state.flushDone(cfg)
@@ -106,12 +108,13 @@ class ResponseFormatSynthesisSpec extends AnyWordSpec with Matchers {
       val events = runStream(mode, List(meta), tools)
       val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
       completes should have size 1
-      val fc = completes.head.call.inputFor(FindCapabilityTool).getOrElse(fail(s"expected a decoded find_capability call, got ${completes.head.call}"))
+      val fc = completes.head.call.inputFor(FindCapabilityTool).getOrElse(fail(
+        s"expected a decoded find_capability call, got ${completes.head.call}"))
       fc.keywords shouldBe "sleep wait delay"
     }
 
     "throw ProviderStreamException when content lacks tool_name" in {
-      val malformed = """{"arguments":{"keywords":"x"}}"""  // missing tool_name
+      val malformed = """{"arguments":{"keywords":"x"}}""" // missing tool_name
       val acc = new ToolCallAccumulator(ToolRoster(tools), providerKey = "test")
       val state = new StreamState(acc, Some(mode))
       OpenAIChatCompletions.parseChunk(contentChunk(malformed), state, cfg)

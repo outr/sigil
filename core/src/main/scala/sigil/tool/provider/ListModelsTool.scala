@@ -15,9 +15,10 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, T
  * Pair with [[CurrentModelTool]] for "you're on X; here are
  * alternatives Y, Z, …".
  *
- * **Not auto-registered.** Apps add to `staticTools` to expose. */
+ * **Not auto-registered.** Apps add to `staticTools` to expose.
+ */
 case object ListModelsTool extends Tool {
-  type Input  = ListModelsInput
+  type Input = ListModelsInput
   type Output = ListModelsOutput
   val io: ToolIO[ListModelsInput, ListModelsOutput] = ToolIO.derived[ListModelsInput, ListModelsOutput]
 
@@ -39,8 +40,17 @@ case object ListModelsTool extends Tool {
     description = description,
     profile = ToolProfile(effect = Effect.ReadOnly(Freshness.Stable)),
     discovery = DiscoverySpec(keywords = Set(
-      "list", "models", "available", "provider", "options",
-      "switch", "pin", "alternatives", "what", "which", "catalog"
+      "list",
+      "models",
+      "available",
+      "provider",
+      "options",
+      "switch",
+      "pin",
+      "alternatives",
+      "what",
+      "which",
+      "catalog"
     ))
   )
 
@@ -52,18 +62,18 @@ case object ListModelsTool extends Tool {
     val filtered = q match {
       case None => all
       case Some(needle) => all.filter { m =>
-        m._id.value.toLowerCase.contains(needle) ||
+          m._id.value.toLowerCase.contains(needle) ||
           m.name.toLowerCase.contains(needle) ||
           m.description.toLowerCase.contains(needle)
-      }
+        }
     }
     val sorted = filtered.sortBy(_._id.value)
-    val total  = sorted.size
+    val total = sorted.size
     val window = input.limit.fold(sorted)(n => sorted.take(math.max(0, n)))
     ListModelsOutput(
-      total    = total,
+      total = total,
       returned = window.size,
-      models   = window.map(ModelSummary.from)
+      models = window.map(ModelSummary.from)
     )
   }
 }

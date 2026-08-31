@@ -58,9 +58,11 @@ final class SigilDbEventLog(sigil: Sigil,
   private val seqCounters: ConcurrentHashMap[LId[Conversation], AtomicLong] =
     new ConcurrentHashMap[LId[Conversation], AtomicLong]()
 
-  /** Per-channel monotonic seq. `hint` biases the value (Event
-    * timestamp, or now) but the result is always > the previous
-    * seq returned for the channel. */
+  /**
+   * Per-channel monotonic seq. `hint` biases the value (Event
+   * timestamp, or now) but the result is always > the previous
+   * seq returned for the channel.
+   */
   private def nextSeq(channelId: LId[Conversation], hint: Long): Long = {
     val counter = seqCounters.computeIfAbsent(channelId, _ => new AtomicLong(0L))
     counter.updateAndGet(prev => math.max(prev + 1, hint))
@@ -68,7 +70,7 @@ final class SigilDbEventLog(sigil: Sigil,
 
   override def append(channelId: LId[Conversation], signal: Signal): Task[Long] = signal match {
     case e: Event => Task.pure(nextSeq(channelId, e.timestamp.value))
-    case _        => Task.pure(nextSeq(channelId, System.currentTimeMillis()))
+    case _ => Task.pure(nextSeq(channelId, System.currentTimeMillis()))
   }
 
   override def replay(channelId: LId[Conversation], afterSeq: Long): Task[List[(Long, Signal)]] =
@@ -76,7 +78,10 @@ final class SigilDbEventLog(sigil: Sigil,
     // the exclusive lower timestamp bound applies the resume cursor,
     // no message cap returns the whole post-cursor window oldest-first.
     // Viewer-scoped when a viewer is bound (see class docs).
-    sigil.eventsFor(channelId, maxMessages = None, minTimestamp = Some(lightdb.time.Timestamp(afterSeq)),
+    sigil.eventsFor(
+      channelId,
+      maxMessages = None,
+      minTimestamp = Some(lightdb.time.Timestamp(afterSeq)),
       viewer = viewer).map { page =>
       page.events.map(e => (e.timestamp.value, e: Signal))
     }

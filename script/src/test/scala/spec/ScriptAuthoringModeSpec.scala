@@ -72,8 +72,10 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     )
   }
 
-  /** Rendered text from a SUCCESS tool result — the `TextToolOutput`
-    * text carried on the settling [[ToolDelta]]'s `output` field. */
+  /**
+   * Rendered text from a SUCCESS tool result — the `TextToolOutput`
+   * text carried on the settling [[ToolDelta]]'s `output` field.
+   */
   private def successText(signals: List[Signal]): List[String] =
     signals.collect {
       case d: ToolDelta if d.output.exists(_.isInstanceOf[TextToolOutput]) =>
@@ -90,8 +92,8 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
     "appear in availableModes alongside ConversationMode" in Task {
       val names = TestScriptSigil.availableModes.map(_.name).toSet
-      names should contain ("conversation")
-      names should contain ("script-authoring")
+      names should contain("conversation")
+      names should contain("script-authoring")
       succeed
     }
 
@@ -100,26 +102,26 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       slot shouldBe defined
       val body = slot.get.content
       // Cookbook entries the skill teaches.
-      body should include ("HttpClient.url")
-      body should include ("JsonParser")
+      body should include("HttpClient.url")
+      body should include("JsonParser")
       // Best-practices guardrails the skill enforces.
-      body should include ("library_lookup")
-      body should include ("Pre-imported")
+      body should include("library_lookup")
+      body should include("Pre-imported")
       // Forbidden Scala 2 idioms the skill calls out.
-      body should include ("scala.util.parsing.json")
+      body should include("scala.util.parsing.json")
       succeed
     }
 
     "declare ToolPolicy.Active including the introspection + management tools" in Task {
       ScriptAuthoringMode.tools shouldBe a[ToolPolicy.Active]
       val names = ScriptAuthoringMode.tools.listed.map(_.value).toSet
-      names should contain ("library_lookup")
-      names should contain ("class_signatures")
-      names should contain ("read_source")
-      names should contain ("create_script_tool")
-      names should contain ("update_script_tool")
-      names should contain ("delete_script_tool")
-      names should contain ("list_script_tools")
+      names should contain("library_lookup")
+      names should contain("class_signatures")
+      names should contain("read_source")
+      names should contain("create_script_tool")
+      names should contain("update_script_tool")
+      names should contain("delete_script_tool")
+      names should contain("list_script_tools")
       succeed
     }
   }
@@ -129,7 +131,8 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val context = ctx("change-mode")
       ChangeModeTool.execute(
         ChangeModeInput(mode = "script-authoring", reason = Some("user asked to author a tool")),
-        context, Event.id()
+        context,
+        Event.id()
       ).toList.map { events =>
         val changes = events.collect { case mc: ModeChange => mc }
         changes should have size 1
@@ -146,7 +149,8 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val context = ctx("change-mode-unknown")
       ChangeModeTool.execute(
         ChangeModeInput(mode = "no-such-mode"),
-        context, Event.id()
+        context,
+        Event.id()
       ).toList.map { signals =>
         signals.collect { case mc: ModeChange => mc } shouldBe empty
         val failureOutcomes = signals.collect {
@@ -183,13 +187,13 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       TestScriptSigil.resetSpaceResolver()
       val context = ctx("e2e-run")
       val createInput = CreateScriptToolInput(
-        name        = "e2e-multiply",
+        name = "e2e-multiply",
         description = "Multiply a value by 3.",
         // The script body sees `args: fabric.Json` per the cookbook.
         // Last expression is the return value; Tool's execute path
         // calls `.toString` on it.
-        code        = "(args(\"x\").asInt * 3).toString",
-        parameters  = obj(
+        code = "(args(\"x\").asInt * 3).toString",
+        parameters = obj(
           "type" -> str("object"),
           "properties" -> obj("x" -> obj("type" -> str("integer"))),
           "required" -> arr(str("x"))
@@ -197,18 +201,18 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       )
       for {
         // 1) Persist the tool.
-        _      <- CreateScriptToolTool.execute(createInput, context, Event.id()).toList
+        _ <- CreateScriptToolTool.execute(createInput, context, Event.id()).toList
         // 2) Re-load from the DB so we exercise the round-trip path
         //    rather than holding an in-memory reference.
         loaded <- TestScriptSigil.withDB(_.tools.transaction { tx =>
-                    tx.query.filter(_.toolName === "e2e-multiply").toList.map(_.headOption)
-                  })
+          tx.query.filter(_.toolName === "e2e-multiply").toList.map(_.headOption)
+        })
         // 3) Execute the loaded tool with a live JsonInput; assert the
         //    ToolResults carries the expected ScriptToolOutput.
         runEvents <- loaded.get
-                       .asInstanceOf[ScriptTool]
-                       .execute(JsonInput(obj("x" -> num(7))), context, Event.id())
-                       .toList
+          .asInstanceOf[ScriptTool]
+          .execute(JsonInput(obj("x" -> num(7))), context, Event.id())
+          .toList
       } yield {
         loaded shouldBe defined
         loaded.get shouldBe a[ScriptTool]
@@ -234,7 +238,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         // (rt.jar / java.base lives behind the platform loader), so we
         // assert against a class we know is on the application
         // classpath: `Sigil` itself.
-        text should include ("Candidates for 'String'")
+        text should include("Candidates for 'String'")
       }
     }
 
@@ -242,7 +246,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val context = ctx("lib-lookup-sigil")
       LibraryLookupTool.execute(LibraryLookupInput(symbol = "ScriptAuthoringMode"), context, Event.id()).toList.map { events =>
         val text = successText(events).mkString("\n")
-        text should include ("sigil.script.ScriptAuthoringMode")
+        text should include("sigil.script.ScriptAuthoringMode")
       }
     }
 
@@ -250,14 +254,15 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val context = ctx("class-sigs")
       ClassSignaturesTool.execute(
         ClassSignaturesInput(fqn = "java.util.ArrayList"),
-        context, Event.id()
+        context,
+        Event.id()
       ).toList.map { events =>
         val text = successText(events).mkString("\n")
-        text should include ("# java.util.ArrayList")
+        text should include("# java.util.ArrayList")
         // ArrayList's surface is broad; pick a method that is stable
         // across JDK 17+ to avoid version-coupled flakes.
-        text should include ("add")
-        text should include ("Public methods")
+        text should include("add")
+        text should include("Public methods")
       }
     }
 
@@ -265,10 +270,11 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val context = ctx("class-sigs-missing")
       ClassSignaturesTool.execute(
         ClassSignaturesInput(fqn = "no.such.Class"),
-        context, Event.id()
+        context,
+        Event.id()
       ).toList.map { events =>
         val text = successText(events).mkString("\n")
-        text should include ("class not found on classpath")
+        text should include("class not found on classpath")
       }
     }
 
@@ -276,10 +282,11 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val context = ctx("read-src-missing")
       ReadSourceTool.execute(
         ReadSourceInput(fqn = "no.such.Class"),
-        context, Event.id()
+        context,
+        Event.id()
       ).toList.map { events =>
         val text = successText(events).mkString("\n")
-        text should include ("source not available")
+        text should include("source not available")
       }
     }
   }

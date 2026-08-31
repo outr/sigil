@@ -25,46 +25,56 @@ import sigil.tool.model.ResponseContent
  */
 object SyntheticDiagnostic {
 
-  /** Mint the synthetic `internal = true` `ToolInvoke` that parents a
-    * diagnostic Message. Callers that build a bespoke Message (a copy of
-    * an existing intervention, a non-Failure directive) use this and
-    * stamp `origin = Some(invoke._id)` themselves; callers that want the
-    * standard Failure-message pairing use [[apply]].
-    *
-    * Framework-internal: the diagnostic channel's vocabulary is
-    * [[Directive]], and a raw name carries no typed payload for
-    * consumers to match on. */
+  /**
+   * Mint the synthetic `internal = true` `ToolInvoke` that parents a
+   * diagnostic Message. Callers that build a bespoke Message (a copy of
+   * an existing intervention, a non-Failure directive) use this and
+   * stamp `origin = Some(invoke._id)` themselves; callers that want the
+   * standard Failure-message pairing use [[apply]].
+   *
+   * Framework-internal: the diagnostic channel's vocabulary is
+   * [[Directive]], and a raw name carries no typed payload for
+   * consumers to match on.
+   */
   private[sigil] def invoke(name: String,
-             caller: ParticipantId,
-             convId: Id[Conversation],
-             topicId: Id[Topic],
-             input: Option[sigil.tool.ToolInput] = None): ToolInvoke = {
+                            caller: ParticipantId,
+                            convId: Id[Conversation],
+                            topicId: Id[Topic],
+                            input: Option[sigil.tool.ToolInput] = None): ToolInvoke = {
     val syntheticInvokeId = Event.id()
     ToolInvoke(
-      toolName       = ToolName.internal(name),
-      participantId  = caller,
+      toolName = ToolName.internal(name),
+      participantId = caller,
       conversationId = convId,
-      topicId        = topicId,
-      _id            = syntheticInvokeId,
-      state          = EventState.Complete,
-      internal       = true,
-      input          = input
+      topicId = topicId,
+      _id = syntheticInvokeId,
+      state = EventState.Complete,
+      internal = true,
+      input = input
     )
   }
 
-  /** Mint the synthetic invoke for a typed [[Directive]] — the wire
-    * name comes from the directive and the typed payload rides along
-    * as a [[sigil.tool.DirectiveInput]]. */
+  /**
+   * Mint the synthetic invoke for a typed [[Directive]] — the wire
+   * name comes from the directive and the typed payload rides along
+   * as a [[sigil.tool.DirectiveInput]].
+   */
   def invoke(directive: Directive,
              caller: ParticipantId,
              convId: Id[Conversation],
              topicId: Id[Topic]): ToolInvoke =
-    invoke(directive.wireName, caller, convId, topicId,
+    invoke(
+      directive.wireName,
+      caller,
+      convId,
+      topicId,
       Some(sigil.tool.DirectiveInput(directive)))
 
-  /** Build the (synthetic-invoke, paired Tool-role Message) pair for a
-    * typed [[Directive]]: name, prose, and typed payload all sourced
-    * from the one ADT. */
+  /**
+   * Build the (synthetic-invoke, paired Tool-role Message) pair for a
+   * typed [[Directive]]: name, prose, and typed payload all sourced
+   * from the one ADT.
+   */
   def apply(directive: Directive,
             caller: ParticipantId,
             convId: Id[Conversation],
@@ -72,58 +82,62 @@ object SyntheticDiagnostic {
             disposition: MessageDisposition): List[Signal] =
     build(invoke(directive, caller, convId, topicId), directive.render, disposition)
 
-  /** Build the (synthetic-invoke, paired Tool-role Message) signal pair
-    * from a raw name + prose. The Message carries
-    * `MessageVisibility.Agents` so the diagnostic never leaks to
-    * user-facing viewers; `disposition` defaults to `Success` — callers
-    * surfacing a recoverable failure pass
-    * `MessageDisposition.Failure(...)`.
-    *
-    * Framework-internal, and the last resort within the framework too:
-    * every publish site the framework owns carries a [[Directive]], so
-    * the persisted invoke has a typed payload and the prose has one
-    * render seam. */
+  /**
+   * Build the (synthetic-invoke, paired Tool-role Message) signal pair
+   * from a raw name + prose. The Message carries
+   * `MessageVisibility.Agents` so the diagnostic never leaks to
+   * user-facing viewers; `disposition` defaults to `Success` — callers
+   * surfacing a recoverable failure pass
+   * `MessageDisposition.Failure(...)`.
+   *
+   * Framework-internal, and the last resort within the framework too:
+   * every publish site the framework owns carries a [[Directive]], so
+   * the persisted invoke has a typed payload and the prose has one
+   * render seam.
+   */
   private[sigil] def apply(name: String,
-            caller: ParticipantId,
-            convId: Id[Conversation],
-            topicId: Id[Topic],
-            reason: String,
-            disposition: MessageDisposition = MessageDisposition.Success): List[Signal] =
+                           caller: ParticipantId,
+                           convId: Id[Conversation],
+                           topicId: Id[Topic],
+                           reason: String,
+                           disposition: MessageDisposition = MessageDisposition.Success): List[Signal] =
     build(invoke(name, caller, convId, topicId), reason, disposition)
 
-  /** Pair a minted synthetic invoke with its Tool-role Message.
-    *
-    * Sigil #341 — the invoke is made SELF-DESCRIBING by stamping the
-    * reason onto its own `outcome` + `summary`. The diagnostic's whole
-    * job is to hand the agent its `reason`, but that lived solely in
-    * the paired Message — and on the orchestrator's execute-stream emit
-    * path that Message wasn't reaching the agent's frame, so the invoke
-    * rendered as a content-free `(pending)` and stranded the agent.
-    * `FrameBuilder` pairs the Message into the invoke's frame when
-    * present and otherwise falls back to the invoke's own
-    * outcome/summary, so carrying the reason here means the guidance
-    * always reaches the frame. */
+  /**
+   * Pair a minted synthetic invoke with its Tool-role Message.
+   *
+   * Sigil #341 — the invoke is made SELF-DESCRIBING by stamping the
+   * reason onto its own `outcome` + `summary`. The diagnostic's whole
+   * job is to hand the agent its `reason`, but that lived solely in
+   * the paired Message — and on the orchestrator's execute-stream emit
+   * path that Message wasn't reaching the agent's frame, so the invoke
+   * rendered as a content-free `(pending)` and stranded the agent.
+   * `FrameBuilder` pairs the Message into the invoke's frame when
+   * present and otherwise falls back to the invoke's own
+   * outcome/summary, so carrying the reason here means the guidance
+   * always reaches the frame.
+   */
   private def build(syntheticInvokeBase: ToolInvoke,
                     reason: String,
                     disposition: MessageDisposition): List[Signal] = {
     val outcome = disposition match {
       case f: MessageDisposition.Failure => ToolOutcome.Failure(reason, f.recoverable)
-      case _                             => ToolOutcome.Success
+      case _ => ToolOutcome.Success
     }
     val syntheticInvoke = syntheticInvokeBase.copy(outcome = outcome, summary = reason)
     val caller = syntheticInvoke.participantId
     val convId = syntheticInvoke.conversationId
     val topicId = syntheticInvoke.topicId
     val diagnostic = Message(
-      participantId  = caller,
+      participantId = caller,
       conversationId = convId,
-      topicId        = topicId,
-      role           = MessageRole.Tool,
-      content        = Vector(ResponseContent.Text(reason)),
-      disposition    = disposition,
-      state          = EventState.Complete,
-      visibility     = MessageVisibility.Agents,
-      origin         = Some(syntheticInvoke._id)
+      topicId = topicId,
+      role = MessageRole.Tool,
+      content = Vector(ResponseContent.Text(reason)),
+      disposition = disposition,
+      state = EventState.Complete,
+      visibility = MessageVisibility.Agents,
+      origin = Some(syntheticInvoke._id)
     )
     List[Signal](syntheticInvoke, diagnostic)
   }

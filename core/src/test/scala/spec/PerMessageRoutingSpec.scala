@@ -53,7 +53,7 @@ class ProviderStrategySkipGatesSpec extends AnyWordSpec with Matchers {
     "be false when every WorkType chain equals the default" in {
       val s = ProviderStrategy.routed(
         default = List(llama),
-        routes  = Map(CodingWork -> List(llama), ConversationWork -> List(llama))
+        routes = Map(CodingWork -> List(llama), ConversationWork -> List(llama))
       )
       s.workTypeMatters shouldBe false
       s.shouldClassifyWorkType shouldBe false
@@ -62,7 +62,7 @@ class ProviderStrategySkipGatesSpec extends AnyWordSpec with Matchers {
     "be true when any chain differs from default" in {
       val s = ProviderStrategy.routed(
         default = List(llama, gpt, claude),
-        routes  = Map(CodingWork -> List(gpt, claude, llama))
+        routes = Map(CodingWork -> List(gpt, claude, llama))
       )
       s.workTypeMatters shouldBe true
     }
@@ -70,8 +70,8 @@ class ProviderStrategySkipGatesSpec extends AnyWordSpec with Matchers {
     "compose with inferWorkType.isDefined → shouldClassifyWorkType" in {
       val classifier: ProviderStrategy.InferWorkType = (_, _) => Task.pure(CodingWork)
       val s = ProviderStrategy.routed(
-        default       = List(llama, gpt),
-        routes        = Map(CodingWork -> List(gpt, llama)),
+        default = List(llama, gpt),
+        routes = Map(CodingWork -> List(gpt, llama)),
         inferWorkType = Some(classifier)
       )
       s.shouldClassifyWorkType shouldBe true
@@ -98,7 +98,7 @@ class ProviderStrategySkipGatesSpec extends AnyWordSpec with Matchers {
     "shouldClassifyComplexity composes with inferComplexity.isDefined + per-chain check" in {
       val classifier: ProviderStrategy.InferComplexity = (_, _) => Task.pure(Complexity.High)
       val s = ProviderStrategy.routed(
-        default         = List(llama, gpt, claude),
+        default = List(llama, gpt, claude),
         inferComplexity = Some(classifier)
       )
       s.shouldClassifyComplexity(ConversationWork) shouldBe true
@@ -126,19 +126,21 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private val testModelId: Id[Model] = Model.id("test", "routing")
 
-  /** Counts how many times each callback fired — drives the
-    * "fires exactly once per turn / N iterations" assertions. */
-  private final class CallbackCounters {
-    val workType   = new AtomicInteger(0)
+  /**
+   * Counts how many times each callback fired — drives the
+   * "fires exactly once per turn / N iterations" assertions.
+   */
+  final private class CallbackCounters {
+    val workType = new AtomicInteger(0)
     val complexity = new AtomicInteger(0)
   }
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = testModelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = testModelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -157,7 +159,7 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         ),
         routes = Map(
           CodingWork -> List(
-            ModelCandidate(Model.id("test", "code-low"),  supportedComplexity = Set(Complexity.Low)),
+            ModelCandidate(Model.id("test", "code-low"), supportedComplexity = Set(Complexity.Low)),
             ModelCandidate(Model.id("test", "code-high"), supportedComplexity = Set(Complexity.Low, Complexity.Medium, Complexity.High))
           )
         ),
@@ -167,23 +169,23 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val convId = Conversation.id(s"routing-cache-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
       val userMsg = Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        content        = Vector(ResponseContent.Text("hi there")),
-        state          = EventState.Complete
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("hi there")),
+        state = EventState.Complete
       )
       val ctx = TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestUser),
+        sigil = TestSigil,
+        chain = List(TestUser),
         conversation = conv,
-        turnInput    = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty),
+        turnInput = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty),
         model = TestSigil.defaultTestModel
       )
       for {
-        first  <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)
+        first <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)
         second <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)
-        third  <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)
+        third <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)
       } yield {
         first shouldBe (CodingWork, Complexity.High)
         second shouldBe first
@@ -203,21 +205,32 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         ),
         routes = Map(
           CodingWork -> List(
-            ModelCandidate(Model.id("test", "code-low"),  supportedComplexity = Set(Complexity.Low)),
+            ModelCandidate(Model.id("test", "code-low"), supportedComplexity = Set(Complexity.Low)),
             ModelCandidate(Model.id("test", "code-high"), supportedComplexity = Set(Complexity.Low, Complexity.Medium, Complexity.High))
           )
         ),
-        inferWorkType   = Some((_, _) => Task { counters.workType.incrementAndGet(); CodingWork }),
+        inferWorkType = Some((_, _) => Task { counters.workType.incrementAndGet(); CodingWork }),
         inferComplexity = Some((_, _) => Task { counters.complexity.incrementAndGet(); Complexity.High })
       )
       val convId = Conversation.id(s"routing-cache-newmsg-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
-      val firstMsg  = Message(participantId = TestUser, conversationId = convId, topicId = TestTopicEntry.id,
-        content = Vector(ResponseContent.Text("first turn")), state = EventState.Complete)
-      val secondMsg = Message(participantId = TestUser, conversationId = convId, topicId = TestTopicEntry.id,
-        content = Vector(ResponseContent.Text("second turn")), state = EventState.Complete)
+      val firstMsg = Message(
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("first turn")),
+        state = EventState.Complete)
+      val secondMsg = Message(
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("second turn")),
+        state = EventState.Complete
+      )
       val ctx = TurnContext(
-        sigil = TestSigil, chain = List(TestUser), conversation = conv,
+        sigil = TestSigil,
+        chain = List(TestUser),
+        conversation = conv,
         turnInput = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty),
         model = TestSigil.defaultTestModel
       )
@@ -238,16 +251,22 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val uniform = List(ModelCandidate(testModelId))
       val strategy = ProviderStrategy.routed(
         default = uniform,
-        routes  = Map(CodingWork -> uniform, ConversationWork -> uniform),
-        inferWorkType   = Some((_, _) => Task { counters.workType.incrementAndGet(); CodingWork }),
+        routes = Map(CodingWork -> uniform, ConversationWork -> uniform),
+        inferWorkType = Some((_, _) => Task { counters.workType.incrementAndGet(); CodingWork }),
         inferComplexity = Some((_, _) => Task { counters.complexity.incrementAndGet(); Complexity.High })
       )
       val convId = Conversation.id(s"skip-wt-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
-      val userMsg = Message(participantId = TestUser, conversationId = convId, topicId = TestTopicEntry.id,
-        content = Vector(ResponseContent.Text("any")), state = EventState.Complete)
+      val userMsg = Message(
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("any")),
+        state = EventState.Complete)
       val ctx = TurnContext(
-        sigil = TestSigil, chain = List(TestUser), conversation = conv,
+        sigil = TestSigil,
+        chain = List(TestUser),
+        conversation = conv,
         turnInput = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty),
         model = TestSigil.defaultTestModel
       )
@@ -269,26 +288,40 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         default = List(
           ModelCandidate(testModelId, supportedComplexity = Set(Complexity.Low)),
           ModelCandidate(Model.id("test", "med"), supportedComplexity = Set(Complexity.Medium)),
-          ModelCandidate(Model.id("test", "hi"),  supportedComplexity = Set(Complexity.High))
+          ModelCandidate(Model.id("test", "hi"), supportedComplexity = Set(Complexity.High))
         ),
-        inferWorkType   = Some((_, _) => Task { counters.workType.incrementAndGet(); ConversationWork }),
+        inferWorkType = Some((_, _) => Task { counters.workType.incrementAndGet(); ConversationWork }),
         inferComplexity = Some((_, _) => Task { counters.complexity.incrementAndGet(); Complexity.Low })
       )
       val convId = Conversation.id(s"escalate-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, participants = List(makeAgent()), _id = convId)
-      val userMsg = Message(participantId = TestUser, conversationId = convId, topicId = TestTopicEntry.id,
-        content = Vector(ResponseContent.Text("simple")), state = EventState.Complete)
+      val userMsg = Message(
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("simple")),
+        state = EventState.Complete)
       val ctx = TurnContext(
-        sigil = TestSigil, chain = List(TestUser), conversation = conv,
+        sigil = TestSigil,
+        chain = List(TestUser),
+        conversation = conv,
         turnInput = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty),
         model = TestSigil.defaultTestModel
       )
       for {
-        _    <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)
-        out1 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "harder than I thought"), ToolContext(ctx, Event.id(), RequestEscalationTool.name))
-        out2 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "harder still"), ToolContext(ctx, Event.id(), RequestEscalationTool.name))
-        out3 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "frontier needed"), ToolContext(ctx, Event.id(), RequestEscalationTool.name))
-        out4 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "max it out"), ToolContext(ctx, Event.id(), RequestEscalationTool.name))
+        _ <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)
+        out1 <- RequestEscalationTool.invoke(
+          RequestEscalationInput(reason = "harder than I thought"),
+          ToolContext(ctx, Event.id(), RequestEscalationTool.name))
+        out2 <- RequestEscalationTool.invoke(
+          RequestEscalationInput(reason = "harder still"),
+          ToolContext(ctx, Event.id(), RequestEscalationTool.name))
+        out3 <- RequestEscalationTool.invoke(
+          RequestEscalationInput(reason = "frontier needed"),
+          ToolContext(ctx, Event.id(), RequestEscalationTool.name))
+        out4 <- RequestEscalationTool.invoke(
+          RequestEscalationInput(reason = "max it out"),
+          ToolContext(ctx, Event.id(), RequestEscalationTool.name))
       } yield {
         out1.tier shouldBe Complexity.Medium
         out1.bumped shouldBe true
@@ -297,7 +330,7 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         out3.tier shouldBe Complexity.VeryHigh
         out3.bumped shouldBe true
         out4.tier shouldBe Complexity.VeryHigh
-        out4.bumped shouldBe false  // clamp at VeryHigh
+        out4.bumped shouldBe false // clamp at VeryHigh
       }
     }
   }

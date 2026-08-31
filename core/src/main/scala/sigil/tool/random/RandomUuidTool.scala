@@ -16,10 +16,10 @@ import sigil.tool.model.{RandomUuidInput, RandomUuidOutput}
  * where guessability matters.
  */
 case object RandomUuidTool extends Tool {
-  type Input  = RandomUuidInput
+  type Input = RandomUuidInput
   type Output = RandomUuidOutput
   val io: ToolIO[RandomUuidInput, RandomUuidOutput] = ToolIO.derived[RandomUuidInput, RandomUuidOutput].withExamples(
-ToolExample("fresh uuid", RandomUuidInput())
+    ToolExample("fresh uuid", RandomUuidInput())
   )
 
   override val name = ToolName("random_uuid")

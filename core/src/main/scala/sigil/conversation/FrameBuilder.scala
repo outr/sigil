@@ -3,7 +3,10 @@ package sigil.conversation
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import fabric.{Json, Obj}
-import sigil.event.{AgentState, CapabilityResults, Event, Message, ModeChange, MessageRole, Reasoning, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome}
+import sigil.event.{
+  AgentState, CapabilityResults, Event, Message, ModeChange, MessageRole, Reasoning, Stop, TopicChange, TopicChangeKind, ToolInvoke,
+  ToolOutcome
+}
 import sigil.signal.EventState
 import sigil.tool.{ToolInput, ToolOutput}
 import sigil.tool.ToolInput.given
@@ -64,16 +67,18 @@ object FrameBuilder {
         (JsonFormatter.Compact(stripEventBoilerplate(Event.rw.read(other))), Nil)
     }
 
-  /** Sigil #265 — render the settled tool transaction's content + image
-    * URLs from a `state = Complete` [[ToolInvoke]]. Success outcomes
-    * render the typed `output` via the polymorphic `RW[ToolOutput]` and
-    * use the result as the function_call_output text; failure outcomes
-    * surface the reason; pending outputs (Failure with no output) fall
-    * back to `ti.summary`. Sigil #280: framework-shipped
-    * [[sigil.tool.ImageToolOutput]] surfaces its URL into the
-    * `images` list so providers can render the image in the agent's
-    * next-turn visual context. Apps with custom multi-image output
-    * types override this hook to do the same for their own shapes. */
+  /**
+   * Sigil #265 — render the settled tool transaction's content + image
+   * URLs from a `state = Complete` [[ToolInvoke]]. Success outcomes
+   * render the typed `output` via the polymorphic `RW[ToolOutput]` and
+   * use the result as the function_call_output text; failure outcomes
+   * surface the reason; pending outputs (Failure with no output) fall
+   * back to `ti.summary`. Sigil #280: framework-shipped
+   * [[sigil.tool.ImageToolOutput]] surfaces its URL into the
+   * `images` list so providers can render the image in the agent's
+   * next-turn visual context. Apps with custom multi-image output
+   * types override this hook to do the same for their own shapes.
+   */
   private[sigil] def toolInvokePayload(ti: ToolInvoke): (String, List[spice.net.URL]) =
     ti.outcome match {
       case ToolOutcome.Failure(reason, _) =>
@@ -87,7 +92,7 @@ object FrameBuilder {
         // oversized caption keeps its image.
         val images = ti.output match {
           case img: sigil.tool.ImageToolOutput => List(sigil.tool.ImageQuality.stamp(img.url, img.quality))
-          case _                               => Nil
+          case _ => Nil
         }
         (ti.summary, images)
       case ToolOutcome.Success =>
@@ -148,7 +153,7 @@ object FrameBuilder {
         (if (ti.summary.nonEmpty) ti.summary else raceMarker, Nil)
     }
 
- /**
+  /**
    * Compute the render-ready [[ContextFrame]] for a single Event.
    * `None` for in-flight events and event types that don't produce
    * a frame (`AgentState`, `Stop`, `ControlPlaneEvent`s).
@@ -179,10 +184,10 @@ object FrameBuilder {
               s"Surfacing as a synthetic agents-only frame so the conversation continues."
           )
           return Some(ContextFrame.Text(
-            content       = s"[framework: skipped malformed Tool-role event ${event._id.value} (no origin)]",
+            content = s"[framework: skipped malformed Tool-role event ${event._id.value} (no origin)]",
             participantId = event.participantId,
             sourceEventId = event._id,
-            visibility    = sigil.event.MessageVisibility.Agents
+            visibility = sigil.event.MessageVisibility.Agents
           ))
       }
     }
@@ -265,7 +270,7 @@ object FrameBuilder {
           visibility = r.visibility
         ))
 
-      case _: AgentState | _: Stop                       => None
+      case _: AgentState | _: Stop => None
 
       // Sigil #313 — heal-pipeline audit events render as system
       // frames so the agent's next iteration reads them in context.
@@ -280,25 +285,25 @@ object FrameBuilder {
             s"${d.detectedCorruption.size} evidence row(s); " +
             s"original error: ${d.originalError.errorClass}: ${d.originalError.message}.",
           sourceEventId = d._id,
-          visibility    = d.visibility
+          visibility = d.visibility
         ))
       case h: sigil.event.ConversationHealed =>
         Some(ContextFrame.System(
           content = s"[framework-heal] ${h.strategyName} applied ${h.corrections.size} correction(s)" +
             (if (h.remainingIssues.isEmpty) "." else s"; remaining: ${h.remainingIssues.mkString("; ")}"),
           sourceEventId = h._id,
-          visibility    = h.visibility
+          visibility = h.visibility
         ))
       case ex: sigil.event.HealingExhausted =>
         Some(ContextFrame.System(
           content = s"[framework-heal] ${ex.strategyName} exhausted: retry failed with " +
             s"${ex.retryError.errorClass}: ${ex.retryError.message}",
           sourceEventId = ex._id,
-          visibility    = ex.visibility
+          visibility = ex.visibility
         ))
-      case _: sigil.event.Reaction                       => None
-     case _: sigil.event.ReadState                      => None
-      case _: sigil.event.ControlPlaneEvent              => None
+      case _: sigil.event.Reaction => None
+      case _: sigil.event.ReadState => None
+      case _: sigil.event.ControlPlaneEvent => None
 
       case other =>
         throw new RuntimeException(
@@ -357,15 +362,19 @@ object FrameBuilder {
       }
     }
 
-  /** Whether a frame's settled state holds something the model can
-    * read — the payload worth protecting from re-projection. */
+  /**
+   * Whether a frame's settled state holds something the model can
+   * read — the payload worth protecting from re-projection.
+   */
   private def carriesResult(frame: ContextFrame.ToolCall): Boolean = frame.state match {
     case ToolCallState.Complete(content, images) => content.trim.nonEmpty || images.nonEmpty
-    case ToolCallState.Active                    => false
+    case ToolCallState.Active => false
   }
 
-  /** Apply a settled Tool-role event's payload to `frame` — the shared
-    * transition every pairing path performs once it decides to fold. */
+  /**
+   * Apply a settled Tool-role event's payload to `frame` — the shared
+   * transition every pairing path performs once it decides to fold.
+   */
   private[sigil] def settledPairedFrame(frame: ContextFrame.ToolCall, event: Event): ContextFrame.ToolCall = {
     val (content, images) = toolResultPayload(event)
     frame.copy(state = ToolCallState.Complete(content, images), resultPending = false)
@@ -398,12 +407,12 @@ object FrameBuilder {
           // sees a clean result rather than doubly-wrapped JSON.
           val parentIdx = existing.indexWhere {
             case tc: ContextFrame.ToolCall => tc.callId == callId
-            case _                         => false
+            case _ => false
           }
           if (parentIdx >= 0) {
             val tc = existing(parentIdx).asInstanceOf[ContextFrame.ToolCall]
             return if (settlesPairedCall(tc)) existing.updated(parentIdx, settledPairedFrame(tc, event))
-                   else existing
+            else existing
           }
           // No parent ToolCall frame at all — genuine orphan result.
           // Surface as a synthetic agents-only Text frame so the data
@@ -412,10 +421,10 @@ object FrameBuilder {
           // scenarios.
           val (content, _) = toolResultPayload(event)
           return existing :+ ContextFrame.Text(
-            content       = s"[framework: orphan tool result for callId=${callId.value} — content: $content]",
+            content = s"[framework: orphan tool result for callId=${callId.value} — content: $content]",
             participantId = event.participantId,
             sourceEventId = event._id,
-            visibility    = sigil.event.MessageVisibility.Agents
+            visibility = sigil.event.MessageVisibility.Agents
           )
         case None =>
           // Malformed Tool-role event. `computeFrame` degrades rather
@@ -437,19 +446,21 @@ object FrameBuilder {
 
   private def renderMessageText(m: Message): String = renderContentText(m.content)
 
-  /** Render content blocks to clean prompt text. Delegates to the exhaustive
-    * [[sigil.render.MarkdownRenderer]] so EVERY [[ResponseContent]] variant has
-    * a real textual form — a partial match's `case other => other.toString` was
-    * leaking raw case-class renderings (`ItemList(List(...),false)`,
-    * `Options(...,List(SelectOption(...)))`) into the assistant history, teaching
-    * the model to emit them. Images are reduced to a short alt-text placeholder
-    * so a `data:` URL or base64 bytes don't bloat the prompt (image bytes ride
-    * the provider's own multimodal channel, not the frame text). */
+  /**
+   * Render content blocks to clean prompt text. Delegates to the exhaustive
+   * [[sigil.render.MarkdownRenderer]] so EVERY [[ResponseContent]] variant has
+   * a real textual form — a partial match's `case other => other.toString` was
+   * leaking raw case-class renderings (`ItemList(List(...),false)`,
+   * `Options(...,List(SelectOption(...)))`) into the assistant history, teaching
+   * the model to emit them. Images are reduced to a short alt-text placeholder
+   * so a `data:` URL or base64 bytes don't bloat the prompt (image bytes ride
+   * the provider's own multimodal channel, not the frame text).
+   */
   private[sigil] def renderContentText(content: Vector[ResponseContent]): String =
     sigil.render.MarkdownRenderer.render(content.map {
-      case ResponseContent.Image(_, alt)         => ResponseContent.Text(imagePlaceholder(alt))
+      case ResponseContent.Image(_, alt) => ResponseContent.Text(imagePlaceholder(alt))
       case ResponseContent.ImageBytes(_, _, alt) => ResponseContent.Text(imagePlaceholder(alt))
-      case other                                 => other
+      case other => other
     })
 
   private def imagePlaceholder(alt: Option[String]): String =

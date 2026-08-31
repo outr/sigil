@@ -30,8 +30,10 @@ class RecallQueryTokenizationSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private val chain = List[sigil.participant.ParticipantId](TestUser, TestAgent)
 
-  /** The answer, plus decoys that share the question's STOPWORDS (and
-    * one that shares a surviving content word) but not its subject. */
+  /**
+   * The answer, plus decoys that share the question's STOPWORDS (and
+   * one that shares a surviving content word) but not its subject.
+   */
   private val corpus: List[String] = List(
     "Sherlock Holmes keeps his tobacco in the toe end of a Persian slipper.",
     "Keep your hands off the evidence, Watson, as you value your reason.",
@@ -59,7 +61,9 @@ class RecallQueryTokenizationSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def ask(convId: Id[Conversation], question: String): Task[List[String]] =
     StandardMemoryRetriever(limit = 5)
-      .retrieve(TestSigil, convId,
+      .retrieve(
+        TestSigil,
+        convId,
         Vector(ContextFrame.Text(question, TestUser, Id[Event](s"tok-q-${rapid.Unique()}"))),
         chain)
       .flatMap { result =>
@@ -74,8 +78,12 @@ class RecallQueryTokenizationSpec extends AsyncWordSpec with AsyncTaskSpec with 
     "seed the corpus" in {
       TestSigil.setAccessibleSpaces(_ => Task.pure(Set[SpaceId](TestSpace)))
       TestSigil.persistMemories(corpus.map { fact =>
-        ContextMemory(fact = fact, label = fact.take(24), summary = fact,
-          source = MemorySource.Explicit, spaceId = TestSpace)
+        ContextMemory(
+          fact = fact,
+          label = fact.take(24),
+          summary = fact,
+          source = MemorySource.Explicit,
+          spaceId = TestSpace)
       }).map(_ should have size corpus.size)
     }
 

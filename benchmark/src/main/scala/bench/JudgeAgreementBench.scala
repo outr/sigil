@@ -45,7 +45,7 @@ import scala.io.{Codec, Source}
  */
 object JudgeAgreementBench {
 
-  private final case class Record(index: Int,
+  final private case class Record(index: Int,
                                   question: String,
                                   gold: String,
                                   answer: String,
@@ -102,8 +102,7 @@ object JudgeAgreementBench {
     val (correct, incorrect) = unique.partition(_.localCorrect)
     val take = math.min(sample, unique.size)
     val correctShare = math.round(take.toDouble * correct.size / math.max(unique.size, 1)).toInt
-    val selected =
-      (correct.take(correctShare) ++ incorrect.take(take - correctShare)).sortBy(_.index)
+    val selected = (correct.take(correctShare) ++ incorrect.take(take - correctShare)).sortBy(_.index)
 
     profig.Profig("sigil.dbPath").store(s"db/bench/judge-agreement-${System.currentTimeMillis()}")
     val host = new MemoryArmsSigil
@@ -142,7 +141,7 @@ object JudgeAgreementBench {
          ||---|--:|
          || records sampled | ${selected.size} |
          || reference judge | `$judgeModelName` |
-         || **agreement** | **${f"${rate * 100}%.1f%%"}** (${agree}/${decided}) |
+         || **agreement** | **${f"${rate * 100}%.1f%%"}** ($agree/$decided) |
          || local correct / reference incorrect | $localYesRefNo |
          || local incorrect / reference correct | $localNoRefYes |
          || reference judge failures (excluded) | $refFailed |""".stripMargin
@@ -155,7 +154,8 @@ object JudgeAgreementBench {
     }
 
     reportPath.foreach { p =>
-      java.nio.file.Files.writeString(java.nio.file.Path.of(p),
+      java.nio.file.Files.writeString(
+        java.nio.file.Path.of(p),
         s"# Judge agreement\n\n$table\n\n## Disagreements\n\n${disputes.mkString("\n")}\n")
       println(s"\nreport written to $p")
     }
@@ -163,8 +163,10 @@ object JudgeAgreementBench {
     System.exit(0)
   }
 
-  /** Pricing is the published Anthropic rate so the run's cost is
-    * recoverable from `Message.usage` after the fact. */
+  /**
+   * Pricing is the published Anthropic rate so the run's cost is
+   * recoverable from `Message.usage` after the fact.
+   */
   private def anthropicModel(modelId: Id[Model], name: String): Model = Model(
     canonicalSlug = s"anthropic/$name",
     huggingFaceId = "",

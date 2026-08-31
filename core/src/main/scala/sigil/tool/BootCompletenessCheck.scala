@@ -31,13 +31,17 @@ import fabric.rw.RW
  */
 object BootCompletenessCheck {
 
-  /** Run the full pass over the memoized static roster. */
+  /**
+   * Run the full pass over the memoized static roster.
+   */
   def run(tools: List[Tool]): Unit = {
     val violations = collectViolations(tools)
     if (violations.nonEmpty) throw new ToolRegistrationException(violations)
   }
 
-  /** Collect every violation without throwing — the testable core. */
+  /**
+   * Collect every violation without throwing — the testable core.
+   */
   def collectViolations(tools: List[Tool]): List[String] = {
     val names = tools.map(_.name.value)
     // Re-listing the SAME tool value twice (super.staticTools already
@@ -61,12 +65,14 @@ object BootCompletenessCheck {
       specConsistency(tools) ++ ergonomicsViolations(tools) ++ ioViolations
   }
 
-  /** The schema-ergonomics rule, evaluated here — with registrations
-    * FINAL — rather than at `ToolIO.derived` time: a union field's
-    * emitted shape depends on the app's registered polymorphic
-    * subtypes, so only the boot pass sees the truth. Tools built via
-    * `ToolIO.withSchema` / `dynamic*` are exempt (the recorded
-    * decision to keep the shape). */
+  /**
+   * The schema-ergonomics rule, evaluated here — with registrations
+   * FINAL — rather than at `ToolIO.derived` time: a union field's
+   * emitted shape depends on the app's registered polymorphic
+   * subtypes, so only the boot pass sees the truth. Tools built via
+   * `ToolIO.withSchema` / `dynamic*` are exempt (the recorded
+   * decision to keep the shape).
+   */
   private def ergonomicsViolations(tools: List[Tool]): List[String] =
     tools.filterNot(_.io.lintExempt).flatMap { t =>
       SchemaErgonomics.unfillableUnionFindings(WireSurface.emitSchema(t.inputDefinition)).map { finding =>
@@ -74,19 +80,22 @@ object BootCompletenessCheck {
       }
     }
 
-  /** Fabric's polymorphic dispatch keys on the LOWERCASED SIMPLE class
-    * name, while registration dedupes by fully-qualified name — so two
-    * input (or output) types named the same in different packages both
-    * register and the second silently shadows the first. Every value of
-    * the shadowed type then decodes as the other one. Report the pair. */
+  /**
+   * Fabric's polymorphic dispatch keys on the LOWERCASED SIMPLE class
+   * name, while registration dedupes by fully-qualified name — so two
+   * input (or output) types named the same in different packages both
+   * register and the second silently shadows the first. Every value of
+   * the shadowed type then decodes as the other one. Report the pair.
+   */
   private def simpleNameCollisions(tools: List[Tool]): List[String] = {
     def collisionsFor(side: String, classNames: List[String]): List[String] =
       classNames.distinct
         .groupBy(fqcn => fqcn.split('.').last.toLowerCase)
-        .collect { case (simple, fqcns) if fqcns.size > 1 =>
-          s"registered tool $side types collide on the simple name '$simple': ${fqcns.sorted.mkString(", ")} — " +
-            "fabric dispatches polymorphic reads by lowercased simple name, so one silently shadows the other. " +
-            "Rename one of the types."
+        .collect {
+          case (simple, fqcns) if fqcns.size > 1 =>
+            s"registered tool $side types collide on the simple name '$simple': ${fqcns.sorted.mkString(", ")} — " +
+              "fabric dispatches polymorphic reads by lowercased simple name, so one silently shadows the other. " +
+              "Rename one of the types."
         }
         .toList
         .sorted
@@ -96,10 +105,12 @@ object BootCompletenessCheck {
     collisionsFor("input", inputs) ++ collisionsFor("output", outputs)
   }
 
-  /** A tool's accessors and its [[ToolSpec]] must agree. `name`
-    * especially: it keys the record `_id`, the consent lookup, and
-    * roster resolution, so a divergent override splits one tool into
-    * two identities. */
+  /**
+   * A tool's accessors and its [[ToolSpec]] must agree. `name`
+   * especially: it keys the record `_id`, the consent lookup, and
+   * roster resolution, so a divergent override splits one tool into
+   * two identities.
+   */
   private def specConsistency(tools: List[Tool]): List[String] =
     tools.flatMap { t =>
       List(
@@ -154,15 +165,17 @@ object BootCompletenessCheck {
     }
   }
 
-  /** Try the full value round-trip; when it fails, separate the two
-    * failure classes. A missing polymorphic registration is THE
-    * violation this pass exists for. A synthesized probe value that a
-    * refined field type rejects (a `URL`-typed field handed the
-    * placeholder string, a regex-constrained field, …) is a synthesis
-    * limitation, not a registration gap — for those, registration is
-    * still verified by dispatching the bare discriminator through the
-    * polymorphic RW: dispatch reaching field-level errors proves the
-    * subtype is registered. */
+  /**
+   * Try the full value round-trip; when it fails, separate the two
+   * failure classes. A missing polymorphic registration is THE
+   * violation this pass exists for. A synthesized probe value that a
+   * refined field type rejects (a `URL`-typed field handed the
+   * placeholder string, a regex-constrained field, …) is a synthesis
+   * limitation, not a registration gap — for those, registration is
+   * still verified by dispatching the bare discriminator through the
+   * polymorphic RW: dispatch reaching field-level errors proves the
+   * subtype is registered.
+   */
   private def probe[P](tool: Tool,
                        side: String,
                        probeClass: String,
@@ -186,11 +199,13 @@ object BootCompletenessCheck {
         }
     }
 
-  /** True when the polymorphic RW's dispatch recognizes the class's
-    * discriminator — tried with both the full and the simple class
-    * name, accepting any failure that is NOT type-not-found (a
-    * missing-field error means dispatch succeeded and decoding reached
-    * the subtype's own RW). */
+  /**
+   * True when the polymorphic RW's dispatch recognizes the class's
+   * discriminator — tried with both the full and the simple class
+   * name, accepting any failure that is NOT type-not-found (a
+   * missing-field error means dispatch succeeded and decoding reached
+   * the subtype's own RW).
+   */
   private def dispatchResolves[P](polyRW: RW[P], className: String): Boolean = {
     val simpleName = className.split('.').last
     List(className, simpleName).distinct.exists { candidate =>

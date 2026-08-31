@@ -46,38 +46,44 @@ class MemoryExtractionLargeInputSpec extends AsyncWordSpec with AsyncTaskSpec wi
   TestSigil.testModel(modelId)
 
   TestSigil.cache.replace(List(Model(
-    canonicalSlug       = "test/extraction-cap-model",
-    huggingFaceId       = "",
-    name                = "extraction-cap-model",
-    description         = "",
-    contextLength       = 100_000L,
-    architecture        = ModelArchitecture(
-      modality         = "text->text",
-      inputModalities  = List("text"),
+    canonicalSlug = "test/extraction-cap-model",
+    huggingFaceId = "",
+    name = "extraction-cap-model",
+    description = "",
+    contextLength = 100_000L,
+    architecture = ModelArchitecture(
+      modality = "text->text",
+      inputModalities = List("text"),
       outputModalities = List("text"),
-      tokenizer        = "None",
-      instructType     = None
+      tokenizer = "None",
+      instructType = None
     ),
-    pricing             = ModelPricing(
-      prompt = BigDecimal(0), completion = BigDecimal(0),
-      webSearch = None, inputCacheRead = None
+    pricing = ModelPricing(
+      prompt = BigDecimal(0),
+      completion = BigDecimal(0),
+      webSearch = None,
+      inputCacheRead = None
     ),
-    topProvider         = ModelTopProvider(
-      contextLength = Some(100_000L), maxCompletionTokens = Some(64_000L), isModerated = false
+    topProvider = ModelTopProvider(
+      contextLength = Some(100_000L),
+      maxCompletionTokens = Some(64_000L),
+      isModerated = false
     ),
-    perRequestLimits    = None,
+    perRequestLimits = None,
     supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
-    knowledgeCutoff     = None,
-    expirationDate      = None,
-    links               = ModelLinks(details = ""),
-    created             = Timestamp(),
-    _id                 = modelId
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(details = ""),
+    created = Timestamp(),
+    _id = modelId
   ))).sync()
 
-  /** Captures the `max_tokens` cap on every ProviderCall it sees so
-    * the spec can assert the extractor's wire request carries the
-    * expected ceiling. Returns a canned `extract_memories` result so
-    * the extractor settles. */
+  /**
+   * Captures the `max_tokens` cap on every ProviderCall it sees so
+   * the spec can assert the extractor's wire request carries the
+   * expected ceiling. Returns a canned `extract_memories` result so
+   * the extractor settles.
+   */
   private class CapturingStubProvider extends Provider {
     val seenMaxOutput = new AtomicReference[Vector[Option[Int]]](Vector.empty)
 
@@ -109,10 +115,9 @@ class MemoryExtractionLargeInputSpec extends AsyncWordSpec with AsyncTaskSpec wi
   // Synthetic large excerpt — large enough that an 1500-token output cap
   // is dangerously tight for the structured tool_use the extractor must
   // emit. Mirrors the Shopkeeper sitemap.json paste shape.
-  private val largeUserPaste: String =
-    (1 to 200).map { i =>
-      s"""{"path":"/page-$i","title":"Page $i","navLabel":"Section $i","color":"#${i.toHexString.padTo(6, '0')}"}"""
-    }.mkString("\n")
+  private val largeUserPaste: String = (1 to 200).map { i =>
+    s"""{"path":"/page-$i","title":"Page $i","navLabel":"Section $i","color":"#${i.toHexString.padTo(6, '0')}"}"""
+  }.mkString("\n")
 
   "StandardMemoryExtractor (sigil #303)" should {
 
@@ -127,7 +132,10 @@ class MemoryExtractionLargeInputSpec extends AsyncWordSpec with AsyncTaskSpec wi
       )
 
       extractor.extract(
-        TestSigil, convId, modelId, List(TestUser, TestAgent),
+        TestSigil,
+        convId,
+        modelId,
+        List(TestUser, TestAgent),
         userMessage = largeUserPaste,
         agentResponse = "Acknowledged — sitemap captured."
       ).map { _ =>
@@ -150,12 +158,15 @@ class MemoryExtractionLargeInputSpec extends AsyncWordSpec with AsyncTaskSpec wi
       TestSigil.setProvider(Task.pure(provider))
 
       val extractor = StandardMemoryExtractor(
-        spaceIdFor          = _ => Task.pure(Some(MemoryTestSpace)),
+        spaceIdFor = _ => Task.pure(Some(MemoryTestSpace)),
         maxExtractionTokens = 12_000
       )
 
       extractor.extract(
-        TestSigil, convId, modelId, List(TestUser, TestAgent),
+        TestSigil,
+        convId,
+        modelId,
+        List(TestUser, TestAgent),
         userMessage = largeUserPaste,
         agentResponse = "Acknowledged."
       ).map { _ =>
@@ -170,7 +181,7 @@ class MemoryExtractionLargeInputSpec extends AsyncWordSpec with AsyncTaskSpec wi
       val cap = sigil.tool.consult.ExtractMemoriesTool.consultSettings.effectiveCap
       cap match {
         case OutputTokenCap.Below(n) => n should be >= 4096
-        case other                   => fail(s"expected Below(n>=4096), got $other")
+        case other => fail(s"expected Below(n>=4096), got $other")
       }
     }
   }

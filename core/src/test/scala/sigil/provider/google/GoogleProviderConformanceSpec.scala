@@ -37,8 +37,8 @@ class GoogleProviderConformanceSpec extends AbstractProviderConformanceSpec {
 
   override protected def midStreamErrorOutcome: Either[Throwable, Vector[ProviderEvent]] =
     try Right(parseAll(List(
-      """data: {"error":{"code":429,"message":"quota exhausted","status":"RESOURCE_EXHAUSTED"}}"""
-    )))
+        """data: {"error":{"code":429,"message":"quota exhausted","status":"RESOURCE_EXHAUSTED"}}"""
+      )))
     catch { case t: Throwable => Left(t) }
 
   "tear down" should {

@@ -20,15 +20,17 @@ import sigil.diagnostics.ProfileSection
  */
 object ContextSections {
 
-  /** Prompt rendering for a memory: the summary when set (the
-    * compressed per-turn form), the full fact otherwise. When the
-    * summary elides a materially longer fact the line carries its
-    * drill-down handle — `[full: lookup("<key>")]`, falling back to
-    * the record id for keyless memories (`lookup` resolves both) —
-    * mirroring the summaries section's inline `reload_content("<id>")`
-    * convention. "Materially longer" is a small fixed margin: a
-    * handle on a fact the summary already carries verbatim would
-    * spend tokens pointing at nothing. */
+  /**
+   * Prompt rendering for a memory: the summary when set (the
+   * compressed per-turn form), the full fact otherwise. When the
+   * summary elides a materially longer fact the line carries its
+   * drill-down handle — `[full: lookup("<key>")]`, falling back to
+   * the record id for keyless memories (`lookup` resolves both) —
+   * mirroring the summaries section's inline `reload_content("<id>")`
+   * convention. "Materially longer" is a small fixed margin: a
+   * handle on a fact the summary already carries verbatim would
+   * spend tokens pointing at nothing.
+   */
   def memoryRenderText(m: ContextMemory): String =
     if (m.summary.trim.isEmpty) m.fact
     else if (memoryElides(m)) {
@@ -36,23 +38,31 @@ object ContextSections {
       m.summary + " [full: lookup(\"" + reference + "\")]"
     } else m.summary
 
-  /** `true` when the memory's render (its summary) elides materially
-    * more fact text than it shows — the condition under which the
-    * rendered line carries a `lookup` drill-down handle. */
+  /**
+   * `true` when the memory's render (its summary) elides materially
+   * more fact text than it shows — the condition under which the
+   * rendered line carries a `lookup` drill-down handle.
+   */
   def memoryElides(m: ContextMemory): Boolean =
     m.summary.trim.nonEmpty &&
       m.fact.trim != m.summary.trim &&
       m.fact.trim.length > m.summary.trim.length + MemoryElisionMarginChars
 
-  /** Minimum character difference between fact and summary before the
-    * summary counts as eliding the fact. */
+  /**
+   * Minimum character difference between fact and summary before the
+   * summary counts as eliding the fact.
+   */
   val MemoryElisionMarginChars: Int = 40
 
-  /** One memory's rendered line, bullet and newline included. */
+  /**
+   * One memory's rendered line, bullet and newline included.
+   */
   def memoryLine(m: ContextMemory): String = s"- ${memoryRenderText(m)}\n"
 
-  /** One summary's rendered line: its text plus, when it covers events,
-    * the inline `reload_content` drill-down handle. */
+  /**
+   * One summary's rendered line: its text plus, when it covers events,
+   * the inline `reload_content` drill-down handle.
+   */
   def summaryLine(s: ContextSummary): String = {
     val handle =
       if (s.coversEventIds.nonEmpty)
@@ -69,23 +79,25 @@ object ContextSections {
     "\nWhen an entry shows `reload_content(\"<id>\")`, call it to reload the full content " +
       "it elided (an event id → that event; a summary id → the events it covers).\n"
 
-  /** A prose section: rendered as one unit, never budget-trimmed. */
+  /**
+   * A prose section: rendered as one unit, never budget-trimmed.
+   */
   private def section(id: ProfileSection,
                       placement: Placement,
                       shedStage: Option[Int] = None,
-                      shed: Option[TurnInput => TurnInput] = None)
-                     (render: SectionContext => Option[String]): ContextSection =
+                      shed: Option[TurnInput => TurnInput] = None)(render: SectionContext => Option[String]): ContextSection =
     ContextSection(id, placement, shedStage, c => render(c).map(SectionBody.Blob(_)), shed)
 
-  /** A header-over-lines section: the prompt shape's entry cap bounds
-    * how many lines render, and `budget` trims the rendered result
-    * further when one is declared. */
+  /**
+   * A header-over-lines section: the prompt shape's entry cap bounds
+   * how many lines render, and `budget` trims the rendered result
+   * further when one is declared.
+   */
   private def entrySection(id: ProfileSection,
                            placement: Placement,
                            shedStage: Option[Int] = None,
                            shed: Option[TurnInput => TurnInput] = None,
-                           budget: Option[Int] = None)
-                          (render: SectionContext => Option[SectionBody.Entries]): ContextSection =
+                           budget: Option[Int] = None)(render: SectionContext => Option[SectionBody.Entries]): ContextSection =
     ContextSection(id, placement, shedStage, render(_), shed, budget)
 
   private def nonEmpty(s: String): Option[String] = if (s.isEmpty) None else Some(s)
@@ -108,41 +120,47 @@ object ContextSections {
       )
     }
 
-  /** The active mode's identity and description only — the topic lines
-    * render separately in the volatile tail. Mode changes on an explicit
-    * `change_mode`, which is a deliberate act; the topic label and
-    * summary are rewritten as the conversation progresses, and carrying
-    * them here cold-invalidated the cacheable prefix on ordinary turns.
-    *
-    * Tools that need runtime context (e.g. `change_mode` enumerating
-    * the available modes) override `Tool.descriptionFor` to fold that
-    * context into their own description, so this stays free of
-    * per-tool special cases. */
+  /**
+   * The active mode's identity and description only — the topic lines
+   * render separately in the volatile tail. Mode changes on an explicit
+   * `change_mode`, which is a deliberate act; the topic label and
+   * summary are rewritten as the conversation progresses, and carrying
+   * them here cold-invalidated the cacheable prefix on ordinary turns.
+   *
+   * Tools that need runtime context (e.g. `change_mode` enumerating
+   * the available modes) override `Tool.descriptionFor` to fold that
+   * context into their own description, so this stays free of
+   * per-tool special cases.
+   */
   private val modeBlock: ContextSection =
     section(ProfileSection.ModeBlock, Placement.StablePrefix) { c =>
       Some(s"Current mode: ${c.request.currentMode} — ${c.request.currentMode.description}\n")
     }
 
-  /** The discovery block teaches discovery-first behaviour generically —
-    * it names no specific tool, so tool-specific guidance travels with
-    * each tool's own description. The one gate is whether discovery
-    * itself is in the roster. */
+  /**
+   * The discovery block teaches discovery-first behaviour generically —
+   * it names no specific tool, so tool-specific guidance travels with
+   * each tool's own description. The one gate is whether discovery
+   * itself is in the roster.
+   */
   private val instructions: ContextSection =
     section(ProfileSection.Instructions, Placement.StablePrefix) { c =>
       val instr = c.instructionsText
       if (instr.isEmpty) None else Some("\n" + instr + "\n")
     }
 
-  /** A single role renders linearly; multiple roles get a preamble and
-    * per-role enumeration so the model handles multi-role identity
-    * explicitly even when each description was written self-contained. */
+  /**
+   * A single role renders linearly; multiple roles get a preamble and
+   * per-role enumeration so the model handles multi-role identity
+   * explicitly even when each description was written self-contained.
+   */
   private val roles: ContextSection =
     section(ProfileSection.Roles, Placement.StablePrefix) { c =>
       c.request.roles match {
-        case Nil          => None
+        case Nil => None
         case List(single) =>
           if (single.description.nonEmpty) Some("\n" + single.description + "\n") else None
-        case multi        =>
+        case multi =>
           Some("\nYou serve the following roles:\n" + multi.map { r =>
             val tail = if (r.description.nonEmpty) s" — ${r.description}" else ""
             s"- ${r.name}$tail\n"
@@ -155,16 +173,18 @@ object ContextSections {
       if (c.allSkills.isEmpty) None
       else Some(SectionBody.Entries(
         header = "\n== Active skills ==\n",
-        lines  = c.allSkills.toList.map { s =>
+        lines = c.allSkills.toList.map { s =>
           s"- ${s.name}\n" + (if (s.content.nonEmpty) s.content + "\n" else "")
         }))
     }
 
-  /** Pinned directives hold the stable prefix deliberately: the set
-    * changes only when someone pins or unpins, so the invalidation is
-    * one acknowledged event rather than per-turn churn. Rendering them
-    * ahead of the message history is also what gives them the standing
-    * the name implies. */
+  /**
+   * Pinned directives hold the stable prefix deliberately: the set
+   * changes only when someone pins or unpins, so the invalidation is
+   * one acknowledged event rather than per-turn churn. Rendering them
+   * ahead of the message history is also what gives them the standing
+   * the name implies.
+   */
   private val criticalMemories: ContextSection =
     section(ProfileSection.CriticalMemories, Placement.StablePrefix) { c =>
       if (c.resolved.criticalMemories.isEmpty) None
@@ -173,90 +193,114 @@ object ContextSections {
 
   // ---- volatile tail (per-turn, excluded from the cacheable prefix) ----
 
-  /** Drops the Information entries the turn's frames never reference —
-    * a catalog line nothing points at is pure overhead. */
+  /**
+   * Drops the Information entries the turn's frames never reference —
+   * a catalog line nothing points at is pure overhead.
+   */
   private val shedUnreferencedInformation: TurnInput => TurnInput = t => {
     val referenced = StandardContextCurator.referencedInformationIds(t.frames)
     t.copy(information = t.information.filter(i => referenced.contains(i.id.value)))
   }
 
-  /** The conversation's active subject, rewritten whenever a `respond`
-    * refines or switches it. Every rewrite would otherwise shift the
-    * leading bytes of the system prompt and cost the whole request its
-    * cache hit. */
+  /**
+   * The conversation's active subject, rewritten whenever a `respond`
+   * refines or switches it. Every rewrite would otherwise shift the
+   * leading bytes of the system prompt and cost the whole request its
+   * cache hit.
+   */
   private val currentTopic: ContextSection =
     section(ProfileSection.CurrentTopic, Placement.VolatileTail) { c =>
       Some(s"\nCurrent topic: \"${c.request.currentTopic.label}\" — ${c.request.currentTopic.summary}\n")
     }
 
-  /** Grows on every topic shift, so it rides behind the history for the
-    * same reason [[currentTopic]] does. */
+  /**
+   * Grows on every topic shift, so it rides behind the history for the
+   * same reason [[currentTopic]] does.
+   */
   private val previousTopics: ContextSection =
     entrySection(ProfileSection.PreviousTopics, Placement.VolatileTail) { c =>
       if (c.request.previousTopics.isEmpty) None
       else Some(SectionBody.Entries(
         header = "Previous topics in this conversation:\n",
-        lines  = c.capped(c.request.previousTopics.toList).map(t => s"  - \"${t.label}\" — ${t.summary}\n")))
+        lines = c.capped(c.request.previousTopics.toList).map(t => s"  - \"${t.label}\" — ${t.summary}\n")))
     }
 
-  /** The catalog accrues as the turn's frames externalize content, so
-    * it changes across ordinary turns and belongs behind the history.
-    * The shed cascade is placement-agnostic — it edits the `TurnInput`
-    * the renderer reads, not the rendered position. */
+  /**
+   * The catalog accrues as the turn's frames externalize content, so
+   * it changes across ordinary turns and belongs behind the history.
+   * The shed cascade is placement-agnostic — it edits the `TurnInput`
+   * the renderer reads, not the rendered position.
+   */
   private val information: ContextSection =
-    section(ProfileSection.Information, Placement.VolatileTail, shedStage = Some(2),
+    section(
+      ProfileSection.Information,
+      Placement.VolatileTail,
+      shedStage = Some(2),
       shed = Some(shedUnreferencedInformation)) { c =>
       if (c.turn.information.isEmpty) None
       else Some("\n== Referenced content (look up by id) ==\n" +
         c.turn.information.map(i => s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n").mkString)
     }
 
-  /** Summaries ride the volatile tail because the rolling intra-turn
-    * compaction stream updates them mid-turn; rendered ahead of the
-    * message history they invalidated the whole prompt cache on every
-    * update. In the tail, an update invalidates nothing ahead of it. */
+  /**
+   * Summaries ride the volatile tail because the rolling intra-turn
+   * compaction stream updates them mid-turn; rendered ahead of the
+   * message history they invalidated the whole prompt cache on every
+   * update. In the tail, an update invalidates nothing ahead of it.
+   */
   private val summaries: ContextSection =
-    entrySection(ProfileSection.Summaries, Placement.VolatileTail, shedStage = Some(3),
+    entrySection(
+      ProfileSection.Summaries,
+      Placement.VolatileTail,
+      shedStage = Some(3),
       shed = Some(t => t.copy(summaries = Vector.empty))) { c =>
       if (c.resolved.summaries.isEmpty) None
       else Some(SectionBody.Entries(
         header = SummariesHeader,
-        lines  = c.capped(c.resolved.summaries.toList, c.promptShape.summaryCap).map(summaryLine),
+        lines = c.capped(c.resolved.summaries.toList, c.promptShape.summaryCap).map(summaryLine),
         footer = SummariesFooter))
     }
 
   private val memories: ContextSection =
-    entrySection(ProfileSection.Memories, Placement.VolatileTail, shedStage = Some(1),
+    entrySection(
+      ProfileSection.Memories,
+      Placement.VolatileTail,
+      shedStage = Some(1),
       shed = Some(t => t.copy(memories = Vector.empty))) { c =>
       if (c.resolved.memories.isEmpty) None
       else Some(SectionBody.Entries(
         header = MemoriesHeader,
-        lines  = c.capped(c.resolved.memories.toList, c.promptShape.memoryCap).map(memoryLine)))
+        lines = c.capped(c.resolved.memories.toList, c.promptShape.memoryCap).map(memoryLine)))
     }
 
-  /** Agency must be unambiguous: this digest is a memory aid about the
-    * assistant's OWN prior calls, not an external log. When budget
-    * pressure has trimmed a call's full transaction from the history,
-    * this line is the only remaining record. */
+  /**
+   * Agency must be unambiguous: this digest is a memory aid about the
+   * assistant's OWN prior calls, not an external log. When budget
+   * pressure has trimmed a call's full transaction from the history,
+   * this line is the only remaining record.
+   */
   private val recentTools: ContextSection =
     entrySection(ProfileSection.RecentTools, Placement.VolatileTail) { c =>
       if (c.recentTools.isEmpty) None
       else Some(SectionBody.Entries(
         header = "\n== Recently used tools ==\n" +
           "These are tool calls YOU (the assistant) made earlier in this conversation:\n",
-        lines  = c.recentTools.map { inv =>
+        lines = c.recentTools.map { inv =>
           val ago = Provider.humanizeAgo(c.now - inv.invokedAt.value)
           val previewSuffix = if (inv.argsPreview.nonEmpty) s" (${inv.argsPreview})" else ""
           s"- ${inv.toolName.value}$previewSuffix -- $ago\n"
-        }))
+        }
+      ))
     }
 
-  /** Every `(toolName, argsHash)` bucket firing more than once in the
-    * rolling window. Informational, not directive: the count and args
-    * are stated as data. Earlier wording prescribed an action, which
-    * some models read as a hard stop and answered by abandoning the
-    * turn. The explanation is stated once — repeating it per group
-    * bloats the prompt and reads as noise. */
+  /**
+   * Every `(toolName, argsHash)` bucket firing more than once in the
+   * rolling window. Informational, not directive: the count and args
+   * are stated as data. Earlier wording prescribed an action, which
+   * some models read as a hard stop and answered by abandoning the
+   * turn. The explanation is stated once — repeating it per group
+   * bloats the prompt and reads as noise.
+   */
   private val repeatedToolCalls: ContextSection =
     section(ProfileSection.RepeatedToolCalls, Placement.VolatileTail) { c =>
       if (c.duplicateGroups.isEmpty) None
@@ -286,25 +330,28 @@ object ContextSections {
       if (c.suggestedTools.isEmpty) None
       else Some(SectionBody.Entries(
         header = "\n== Suggested tools ==\n",
-        lines  = c.suggestedTools.map(t => s"- ${t.value}\n")))
+        lines = c.suggestedTools.map(t => s"- ${t.value}\n")))
     }
 
-  /** Tools the agent already discovered via `find_capability` earlier
-    * in this agent loop. The per-match wire-roster filter keeps the
-    * DIRECTIVE sentence honest when narrowing dropped a discovered
-    * tool from the offered set. */
+  /**
+   * Tools the agent already discovered via `find_capability` earlier
+   * in this agent loop. The per-match wire-roster filter keeps the
+   * DIRECTIVE sentence honest when narrowing dropped a discovered
+   * tool from the offered set.
+   */
   private val discoveredCapabilities: ContextSection =
     entrySection(ProfileSection.DiscoveredCapabilities, Placement.VolatileTail) { c =>
       if (c.discovered.isEmpty) None
       else Some(SectionBody.Entries(
         header = "\n== Capabilities you've already discovered (this turn) ==\n",
-        lines  = c.discovered.map { case (query, matches) =>
+        lines = c.discovered.map { case (query, matches) =>
           s"- `find_capability($query)` → ${matches.map(_.value).mkString(", ")}\n"
         },
         footer = "DIRECTIVE: These tools are NOW in your roster — call them directly to complete the task. " +
           "Re-calling `find_capability` for the same query, or falling back to `respond` without first " +
           "calling the discovered action tool the user requested, is a protocol violation. If the user's " +
-          "request maps to one of these tools, invoke it on THIS iteration.\n"))
+          "request maps to one of these tools, invoke it on THIS iteration.\n"
+      ))
     }
 
   private val extraContext: ContextSection =
@@ -321,11 +368,13 @@ object ContextSections {
         c.perParticipantExtras.map { case (pid, (k, v)) => s"- ${pid.value} ${k.value}: $v\n" }.mkString)
     }
 
-  /** When the turn was fired by `greetsOnJoin`'s greeting flow, say so
-    * explicitly — without the hint the model picks `respond` vs
-    * `no_response` stochastically, breaking the contract implied by
-    * `greetsOnJoin = true`. Rendered last so it sits within the
-    * model's recency-biased attention. */
+  /**
+   * When the turn was fired by `greetsOnJoin`'s greeting flow, say so
+   * explicitly — without the hint the model picks `respond` vs
+   * `no_response` stochastically, breaking the contract implied by
+   * `greetsOnJoin = true`. Rendered last so it sits within the
+   * model's recency-biased attention.
+   */
   private val greetingHint: ContextSection =
     section(ProfileSection.GreetingHint, Placement.VolatileTail) { c =>
       if (!c.request.isGreeting) None
@@ -339,7 +388,9 @@ object ContextSections {
            "Do NOT call `no_response` on this turn; the user expects a greeting, not silence.\n"))
     }
 
-  /** The framework's section list, in emission order. */
+  /**
+   * The framework's section list, in emission order.
+   */
   val all: List[ContextSection] = List(
     toolFramingPrefix,
     modeBlock,
@@ -361,18 +412,22 @@ object ContextSections {
     greetingHint
   )
 
-  /** Concatenate every section rendering for one placement. */
+  /**
+   * Concatenate every section rendering for one placement.
+   */
   def render(sections: List[ContextSection], placement: Placement, c: SectionContext): String =
     sections.iterator.filter(_.placement == placement).flatMap(_.rendered(c)).mkString
 
-  /** The curator's section-shed cascade for a section list: every
-    * section declaring a `shedStage`, ordered by it.
-    *
-    * Throws when a section declares a stage without a `shed` effect —
-    * a stage the cascade would run as a no-op, quietly weakening the
-    * budget guard. The framework calls this at boot against
-    * [[sigil.Sigil.contextSections]] so an app's mistake surfaces at
-    * startup rather than under budget pressure. */
+  /**
+   * The curator's section-shed cascade for a section list: every
+   * section declaring a `shedStage`, ordered by it.
+   *
+   * Throws when a section declares a stage without a `shed` effect —
+   * a stage the cascade would run as a no-op, quietly weakening the
+   * budget guard. The framework calls this at boot against
+   * [[sigil.Sigil.contextSections]] so an app's mistake surfaces at
+   * startup rather than under budget pressure.
+   */
   def shedCascade(sections: List[ContextSection]): List[ContextSection] = {
     val staged = sections.filter(_.shedStage.nonEmpty)
     staged.find(_.shed.isEmpty).foreach { s =>

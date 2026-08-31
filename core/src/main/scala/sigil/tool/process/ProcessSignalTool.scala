@@ -4,7 +4,9 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.{ProcessSignalInput, ProcessSignalOutput}
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec
+}
 
 /**
  * Send a signal to a registered subprocess. Default `terminate`
@@ -13,10 +15,10 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, Resolution, Tool, T
  * SIGKILL.
  */
 final class ProcessSignalTool(registry: ProcessRegistry) extends Tool {
-  type Input  = ProcessSignalInput
+  type Input = ProcessSignalInput
   type Output = ProcessSignalOutput
   val io: ToolIO[ProcessSignalInput, ProcessSignalOutput] = ToolIO.derived[ProcessSignalInput, ProcessSignalOutput].withExamples(
-    ToolExample("Terminate gracefully",  ProcessSignalInput(handle = "p1")),
+    ToolExample("Terminate gracefully", ProcessSignalInput(handle = "p1")),
     ToolExample("Force-kill a hung proc", ProcessSignalInput(handle = "p1", signal = sigil.tool.model.ProcessSignal.Kill))
   )
 

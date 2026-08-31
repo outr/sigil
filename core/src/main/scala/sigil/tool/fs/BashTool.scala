@@ -4,7 +4,10 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.tool.model.BashInput
-import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, PlaceholderInputDetector, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName, ToolProfile, ToolResult, ToolSpec}
+import sigil.tool.{
+  DiscoverySpec, Effect, MutationTargeting, PlaceholderInputDetector, Resolution, TextToolOutput, Tool, ToolExample, ToolIO, ToolName,
+  ToolProfile, ToolResult, ToolSpec
+}
 
 /**
  * Execute a shell command via the [[FileSystemContext]]. Returns the
@@ -17,7 +20,7 @@ import sigil.tool.{DiscoverySpec, Effect, MutationTargeting, PlaceholderInputDet
  * that confines the command's working directory.
  */
 final class BashTool(context: FileSystemContext) extends Tool {
-  type Input  = BashInput
+  type Input = BashInput
   type Output = TextToolOutput
   val io: ToolIO[BashInput, TextToolOutput] = ToolIO.derived[BashInput, TextToolOutput].withExamples(
     ToolExample("List a directory", BashInput(command = "ls -la /tmp")),
@@ -35,14 +38,25 @@ final class BashTool(context: FileSystemContext) extends Tool {
     profile = ToolProfile(effect = Effect.Destructive(target = MutationTargeting.none, consequence = "DESTRUCTIVE.")),
     discovery = DiscoverySpec(
       keywords = Set(
-        "bash", "shell", "command", "exec", "run", "sh",
-        "script", "terminal", "execute", "invoke", "system",
-        "cli", "process", "spawn", "subprocess"
+        "bash",
+        "shell",
+        "command",
+        "exec",
+        "run",
+        "sh",
+        "script",
+        "terminal",
+        "execute",
+        "invoke",
+        "system",
+        "cli",
+        "process",
+        "spawn",
+        "subprocess"
       ),
       preferIfNoBetter = true
     )
   )
-
 
   protected def resolve: Resolution[Input, Output] = Resolution.Explicit(executeResult)
 

@@ -40,4 +40,5 @@ case class ClientToolSpec(name: String,
                           expectsResult: Boolean = false,
                           readOnly: Boolean = false,
                           destructive: Boolean = false,
-                          consequence: Option[String] = None) derives RW
+                          consequence: Option[String] = None)
+  derives RW

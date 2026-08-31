@@ -31,7 +31,7 @@ trait ErrorClassifier {
       override def classify(throwable: Throwable): ErrorClassification =
         self.classify(throwable) match {
           case ErrorClassification.Fallthrough => other.classify(throwable)
-          case decided                         => decided
+          case decided => decided
         }
     }
   }
@@ -40,34 +40,45 @@ trait ErrorClassifier {
 sealed trait ErrorClassification
 
 object ErrorClassification {
-  /** Same candidate, after `retryDelay`. The candidate's
-    * `retryCount` caps how many times this fires. */
+
+  /**
+   * Same candidate, after `retryDelay`. The candidate's
+   * `retryCount` caps how many times this fires.
+   */
   case object Retry extends ErrorClassification
 
-  /** Move to the next candidate in the chain. The current
-    * candidate enters its `cooldown` before being eligible
-    * again. */
+  /**
+   * Move to the next candidate in the chain. The current
+   * candidate enters its `cooldown` before being eligible
+   * again.
+   */
   case object Fallthrough extends ErrorClassification
 
-  /** Stop the strategy — surface the error to the caller. */
+  /**
+   * Stop the strategy — surface the error to the caller.
+   */
   case object Fatal extends ErrorClassification
 
-  /** Error matches a registered [[sigil.heal.HealingStrategy]]. The
-    * agent loop's `handleError` chain branches here BEFORE the
-    * Retry / Fallthrough / Fatal triage — runs the strategy
-    * ([[sigil.heal.HealingMode.Recover]]) or records the corruption
-    * and re-throws ([[sigil.heal.HealingMode.Strict]]).
-    *
-    * Distinguished from `Retry` because the heal repairs the
-    * durable log BEFORE retrying — the agent's iteration runs
-    * against a fixed history, not the same broken history that
-    * caused the failure. */
+  /**
+   * Error matches a registered [[sigil.heal.HealingStrategy]]. The
+   * agent loop's `handleError` chain branches here BEFORE the
+   * Retry / Fallthrough / Fatal triage — runs the strategy
+   * ([[sigil.heal.HealingMode.Recover]]) or records the corruption
+   * and re-throws ([[sigil.heal.HealingMode.Strict]]).
+   *
+   * Distinguished from `Retry` because the heal repairs the
+   * durable log BEFORE retrying — the agent's iteration runs
+   * against a fixed history, not the same broken history that
+   * caused the failure.
+   */
   case class Healable(strategy: HealingStrategy) extends ErrorClassification
 }
 
 object ErrorClassifier {
 
-  /** The throwable plus its transitive causes, depth-capped against cycles. */
+  /**
+   * The throwable plus its transitive causes, depth-capped against cycles.
+   */
   private def causeChain(t: Throwable): List[Throwable] = {
     val b = List.newBuilder[Throwable]
     var c = t
@@ -87,7 +98,7 @@ object ErrorClassifier {
   private[provider] def isConnectionAcquireTimeout(t: Throwable): Boolean =
     causeChain(t).exists { c =>
       c.isInstanceOf[java.util.concurrent.TimeoutException] ||
-        Option(c.getMessage).exists(_.toLowerCase.contains("acquire operation took longer"))
+      Option(c.getMessage).exists(_.toLowerCase.contains("acquire operation took longer"))
     }
 
   /**
@@ -105,7 +116,7 @@ object ErrorClassifier {
     override def classify(throwable: Throwable): ErrorClassification =
       strategies.find(_.matches(throwable)) match {
         case Some(strategy) => ErrorClassification.Healable(strategy)
-        case None           => ErrorClassification.Fallthrough
+        case None => ErrorClassification.Fallthrough
       }
   }
 
@@ -190,11 +201,11 @@ object ErrorClassifier {
         // model id).
         case e: spice.http.client.StreamingHttpFailedException =>
           return e.status match {
-            case 429 | 502 | 503 | 504       => ErrorClassification.Retry
-            case 401 | 403 | 400             => ErrorClassification.Fatal
-            case 404                         => ErrorClassification.Fallthrough
-            case s if s >= 500 && s <= 599   => ErrorClassification.Retry
-            case _                           => ErrorClassification.Fallthrough
+            case 429 | 502 | 503 | 504 => ErrorClassification.Retry
+            case 401 | 403 | 400 => ErrorClassification.Fatal
+            case 404 => ErrorClassification.Fallthrough
+            case s if s >= 500 && s <= 599 => ErrorClassification.Retry
+            case _ => ErrorClassification.Fallthrough
           }
 
         // Run-out — agent loop exhausted iterations. Fatal so the user

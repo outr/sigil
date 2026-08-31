@@ -10,24 +10,38 @@ import fabric.rw.*
  */
 enum WorkflowStepKind derives RW {
 
-  /** Run one tool or LLM prompt; capture the result in `output`. */
+  /**
+   * Run one tool or LLM prompt; capture the result in `output`.
+   */
   case Job
 
-  /** Branch on a variable expression to one of two step ids. */
+  /**
+   * Branch on a variable expression to one of two step ids.
+   */
   case Condition
 
-  /** Pause for a human gate; resumed via `resume_workflow`. */
+  /**
+   * Pause for a human gate; resumed via `resume_workflow`.
+   */
   case Approval
 
-  /** Fork into branches (each a list of step ids) and join. */
+  /**
+   * Fork into branches (each a list of step ids) and join.
+   */
   case Parallel
 
-  /** Iterate body steps once per element of an `over` variable. */
+  /**
+   * Iterate body steps once per element of an `over` variable.
+   */
   case Loop
 
-  /** Invoke another persisted workflow by id. */
+  /**
+   * Invoke another persisted workflow by id.
+   */
   case SubWorkflow
 
-  /** Pause until an external trigger fires. */
+  /**
+   * Pause until an external trigger fires.
+   */
   case Trigger
 }

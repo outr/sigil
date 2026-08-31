@@ -12,7 +12,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolExamp
  * [[WebSearchOutput]] carrying the ranked hit list.
  */
 final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10) extends Tool {
-  type Input  = WebSearchInput
+  type Input = WebSearchInput
   type Output = WebSearchOutput
   val io: ToolIO[WebSearchInput, WebSearchOutput] = ToolIO.derived[WebSearchInput, WebSearchOutput].withExamples(
     ToolExample("General lookup", WebSearchInput(query = "Scala 3 enums tutorial")),
@@ -35,10 +35,10 @@ final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10)
     provider.search(input.query, input.maxResults.getOrElse(defaultMaxResults)).map { results =>
       val items = results.toList.map { r =>
         WebSearchResult(
-          title      = r.title,
-          url        = r.url,
-          snippet    = r.snippet,
-          score      = r.score,
+          title = r.title,
+          url = r.url,
+          snippet = r.snippet,
+          score = r.score,
           rawContent = r.rawContent
         )
       }

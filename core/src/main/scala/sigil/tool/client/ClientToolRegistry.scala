@@ -29,21 +29,27 @@ import scala.jdk.CollectionConverters.*
  */
 final class ClientToolRegistry(sigil: _root_.sigil.Sigil) {
 
-  private final case class Registered(spec: ClientToolSpec, sessionId: String, tool: ClientTool)
+  final private case class Registered(spec: ClientToolSpec, sessionId: String, tool: ClientTool)
 
-  /** conversationId → toolName → registration. */
+  /**
+   * conversationId → toolName → registration.
+   */
   private val entries: ConcurrentHashMap[Id[Conversation], ConcurrentHashMap[String, Registered]] =
     new ConcurrentHashMap()
 
-  /** Parked round-trip calls awaiting a [[sigil.signal.ClientToolResult]]. */
+  /**
+   * Parked round-trip calls awaiting a [[sigil.signal.ClientToolResult]].
+   */
   private val pending: ConcurrentHashMap[Id[Event], rapid.task.Completable[ClientToolRegistry.Outcome]] =
     new ConcurrentHashMap()
 
-  /** Register (or replace) `specs` for `sessionId` on the conversation.
-    * Returns `(accepted, rejected)` — rejected carries a per-name
-    * reason. `replace = true` (the default wire semantics) first drops
-    * the session's previous registrations for the conversation, so a
-    * reconnecting client's fresh set IS the set. */
+  /**
+   * Register (or replace) `specs` for `sessionId` on the conversation.
+   * Returns `(accepted, rejected)` — rejected carries a per-name
+   * reason. `replace = true` (the default wire semantics) first drops
+   * the session's previous registrations for the conversation, so a
+   * reconnecting client's fresh set IS the set.
+   */
   def register(conversationId: Id[Conversation],
                sessionId: String,
                specs: List[ClientToolSpec],
@@ -68,7 +74,7 @@ final class ClientToolRegistry(sigil: _root_.sigil.Sigil) {
     Task.sequence(results.collect { case Right(spec) => spec }.map { spec =>
       sigil.findTools.byName(ToolName.internal(spec.name)).map {
         case Some(_) => Left(spec.name -> "collides with a server-registered tool of the same name")
-        case None    => Right(spec)
+        case None => Right(spec)
       }
     }).map { collisionChecked =>
       val rejected = results.collect { case Left(pair) => pair } ++ collisionChecked.collect { case Left(pair) => pair }
@@ -78,14 +84,17 @@ final class ClientToolRegistry(sigil: _root_.sigil.Sigil) {
       admitted.foreach { spec =>
         conv.put(spec.name, Registered(spec, sessionId, new ClientTool(spec, conversationId, this)))
       }
-      val allRejected = (rejected ++ overflow.map(s =>
-        s.name -> s"registration limit reached (${sigil.clientToolLimit} client tools per conversation)")).toMap
+      val allRejected =
+        (rejected ++ overflow.map(s =>
+          s.name -> s"registration limit reached (${sigil.clientToolLimit} client tools per conversation)")).toMap
       (admitted.map(_.name), allRejected)
     }
   }
 
-  /** Drop `sessionId`'s registrations on the conversation — `names`
-    * narrows to a subset; `None` drops the session's whole set. */
+  /**
+   * Drop `sessionId`'s registrations on the conversation — `names`
+   * narrows to a subset; `None` drops the session's whole set.
+   */
   def deregister(conversationId: Id[Conversation], sessionId: String, names: Option[Set[String]] = None): Task[Unit] = Task {
     Option(entries.get(conversationId)).foreach { conv =>
       conv.entrySet().removeIf { e =>
@@ -96,8 +105,10 @@ final class ClientToolRegistry(sigil: _root_.sigil.Sigil) {
     ()
   }
 
-  /** Drop every registration `sessionId` made, across all
-    * conversations. Transports call this on client detach. */
+  /**
+   * Drop every registration `sessionId` made, across all
+   * conversations. Transports call this on client detach.
+   */
   def deregisterSession(sessionId: String): Task[Unit] = Task {
     entries.forEach { (convId, conv) =>
       conv.entrySet().removeIf(_.getValue.sessionId == sessionId)
@@ -109,19 +120,25 @@ final class ClientToolRegistry(sigil: _root_.sigil.Sigil) {
   def isLive(conversationId: Id[Conversation], name: String): Boolean =
     Option(entries.get(conversationId)).exists(_.containsKey(name))
 
-  /** Conversation-scoped exact-name lookup — the roster-resolution
-    * seam. Client tools shadow nothing: registration rejects names
-    * that collide with server tools. */
+  /**
+   * Conversation-scoped exact-name lookup — the roster-resolution
+   * seam. Client tools shadow nothing: registration rejects names
+   * that collide with server tools.
+   */
   def byName(conversationId: Id[Conversation], name: ToolName): Option[Tool] =
     Option(entries.get(conversationId)).flatMap(c => Option(c.get(name.value))).map(_.tool)
 
-  /** All live client tools for a conversation, for discovery. */
+  /**
+   * All live client tools for a conversation, for discovery.
+   */
   def toolsFor(conversationId: Id[Conversation]): List[Tool] =
     Option(entries.get(conversationId)).map(_.values().asScala.map(_.tool).toList).getOrElse(Nil)
 
-  /** Park a round-trip call until [[completeResult]] answers or
-    * `timeoutMs` elapses. The pending slot is cleared on every exit
-    * path (answer, timeout, cancellation). */
+  /**
+   * Park a round-trip call until [[completeResult]] answers or
+   * `timeoutMs` elapses. The pending slot is cleared on every exit
+   * path (answer, timeout, cancellation).
+   */
   def awaitResult(invokeId: Id[Event], timeoutMs: Long): Task[ClientToolRegistry.Outcome] = Task.defer {
     val completable = Task.completable[ClientToolRegistry.Outcome]
     pending.put(invokeId, completable)
@@ -143,13 +160,15 @@ final class ClientToolRegistry(sigil: _root_.sigil.Sigil) {
   private def sanitize(spec: ClientToolSpec): ClientToolSpec =
     spec.copy(
       description = spec.description.take(sigil.clientToolDescriptionMaxChars),
-      keywords    = spec.keywords.take(16).map(_.take(32))
+      keywords = spec.keywords.take(16).map(_.take(32))
     )
 
-  /** Complete a parked call from a [[sigil.signal.ClientToolResult]].
-    * Returns `false` when no call is parked under `invokeId` (already
-    * answered, timed out, or fire-and-forget) — duplicates are
-    * ignored, first answer wins. */
+  /**
+   * Complete a parked call from a [[sigil.signal.ClientToolResult]].
+   * Returns `false` when no call is parked under `invokeId` (already
+   * answered, timed out, or fire-and-forget) — duplicates are
+   * ignored, first answer wins.
+   */
   def completeResult(invokeId: Id[Event], content: String, isError: Boolean): Boolean =
     Option(pending.remove(invokeId)) match {
       case Some(completable) =>
@@ -164,8 +183,10 @@ object ClientToolRegistry {
   final case class Answer(content: String, isError: Boolean) extends Outcome
   case object TimedOut extends Outcome
 
-  /** Valid client-tool name: snake_case, bounded — the same shape
-    * every server tool uses, so prompts and dispatch treat them
-    * uniformly. */
+  /**
+   * Valid client-tool name: snake_case, bounded — the same shape
+   * every server tool uses, so prompts and dispatch treat them
+   * uniformly.
+   */
   private[client] val NamePattern = "^[a-z][a-z0-9_]{0,63}$".r
 }

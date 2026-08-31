@@ -35,21 +35,28 @@ class OutcomeGovernorRegistrationSpec extends AsyncWordSpec with AsyncTaskSpec w
     super.afterAll()
   }
 
-  /** Records the outcome it was handed and emits the directive it was
-    * built with, so both consultation and emission order are
-    * observable. */
-  private final class MarkerGovernor(override val name: String, directive: Directive) extends OutcomeGovernor {
+  /**
+   * Records the outcome it was handed and emits the directive it was
+   * built with, so both consultation and emission order are
+   * observable.
+   */
+  final private class MarkerGovernor(override val name: String, directive: Directive) extends OutcomeGovernor {
     val seen: atomic.AtomicReference[Option[TurnOutcome]] = new atomic.AtomicReference(None)
     override def evaluate(outcome: TurnOutcome, host: _root_.sigil.Sigil): Task[OutcomeVerdict] = Task {
       seen.set(Some(outcome))
       OutcomeVerdict.Emit(SyntheticDiagnostic(
-        directive, outcome.caller, outcome.conversationId, outcome.topicId,
+        directive,
+        outcome.caller,
+        outcome.conversationId,
+        outcome.topicId,
         disposition = MessageDisposition.Success))
     }
   }
 
-  /** Reads the outcome but declines to act. */
-  private final class SilentGovernor(override val name: String) extends OutcomeGovernor {
+  /**
+   * Reads the outcome but declines to act.
+   */
+  final private class SilentGovernor(override val name: String) extends OutcomeGovernor {
     val seen: atomic.AtomicReference[Option[TurnOutcome]] = new atomic.AtomicReference(None)
     override def evaluate(outcome: TurnOutcome, host: _root_.sigil.Sigil): Task[OutcomeVerdict] = Task {
       seen.set(Some(outcome))
@@ -57,9 +64,11 @@ class OutcomeGovernorRegistrationSpec extends AsyncWordSpec with AsyncTaskSpec w
     }
   }
 
-  /** Plain prose then `end_turn`, no tool call — the drift shape the
-    * built-in plain-text guard acts on. */
-  private final class PlainTextProvider extends Provider {
+  /**
+   * Plain prose then `end_turn`, no tool call — the drift shape the
+   * built-in plain-text guard acts on.
+   */
+  final private class PlainTextProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -76,18 +85,18 @@ class OutcomeGovernorRegistrationSpec extends AsyncWordSpec with AsyncTaskSpec w
     val convId = Conversation.id(s"outcome-governor-$suffix")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      model              = TestSigil.testModel(Model.id("test", "outcome-governor")),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(ConversationView(conversationId = convId)),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      model = TestSigil.testModel(Model.id("test", "outcome-governor")),
+      instructions = Instructions(),
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector(NoResponseTool, RespondTool)
+      chain = List(TestUser, TestAgent),
+      tools = Vector(NoResponseTool, RespondTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, new PlainTextProvider, request, conv).toList
     } yield signals
   }
@@ -100,9 +109,9 @@ class OutcomeGovernorRegistrationSpec extends AsyncWordSpec with AsyncTaskSpec w
   "A registered OutcomeGovernor" should {
 
     "read the drained iteration's evidence, be consulted alongside every peer, and emit in list order" in {
-      val first  = new MarkerGovernor("marker-first", Directive.RepeatedQueryIntercept("marker"))
+      val first = new MarkerGovernor("marker-first", Directive.RepeatedQueryIntercept("marker"))
       val silent = new SilentGovernor("marker-silent")
-      val last   = new MarkerGovernor("marker-last", Directive.RefusalChallenge)
+      val last = new MarkerGovernor("marker-last", Directive.RefusalChallenge)
       TestSigil.setOutcomeGovernors(List(first, silent, last))
       runWith("ordering").map { signals =>
         // Every governor was consulted — a Proceed does not short-circuit

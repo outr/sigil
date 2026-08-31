@@ -33,13 +33,17 @@ final class StreamBrowserController private[stream] (val conversationId: Id[Conv
   @volatile private var _lastTouchMs: Long = System.currentTimeMillis()
   private val _disposed: AtomicBoolean = new AtomicBoolean(false)
 
-  /** The browser's virtual-display framebuffer size — the envelope no
-    * render target can exceed (RandR cannot grow a running Xvfb). */
+  /**
+   * The browser's virtual-display framebuffer size — the envelope no
+   * render target can exceed (RandR cannot grow a running Xvfb).
+   */
   def displaySize: (Int, Int) =
     browser.virtualDisplay.map(d => (d.width, d.height)).getOrElse((Int.MaxValue, Int.MaxValue))
 
-  /** Run a block against the live browser, marking the controller
-    * touched so the idle reaper doesn't claim it mid-action. */
+  /**
+   * Run a block against the live browser, marking the controller
+   * touched so the idle reaper doesn't claim it mid-action.
+   */
   def run[A](f: RoboBrowser => Task[A]): Task[A] =
     if (_disposed.get())
       Task.error(new IllegalStateException(s"StreamBrowserController for $conversationId is disposed"))
@@ -52,14 +56,18 @@ final class StreamBrowserController private[stream] (val conversationId: Id[Conv
 
   def session(streamId: String): Option[PreviewStreamSession] = Option(_sessions.get(streamId))
 
-  /** How a live session changes the size it renders and captures at, when
-    * it was started against a resizable rung. */
+  /**
+   * How a live session changes the size it renders and captures at, when
+   * it was started against a resizable rung.
+   */
   def resizer(streamId: String): Option[PreviewResize] = Option(_resizers.get(streamId))
 
-  /** The viewer a session was started for, when it was started through
-    * the viewer-addressed [[StreamBrowserSigil.previewStreamFor]]
-    * overload. `None` is a broadcast session — its signaling reaches the
-    * whole conversation and any viewer may answer it. */
+  /**
+   * The viewer a session was started for, when it was started through
+   * the viewer-addressed [[StreamBrowserSigil.previewStreamFor]]
+   * overload. `None` is a broadcast session — its signaling reaches the
+   * whole conversation and any viewer may answer it.
+   */
   def owner(streamId: String): Option[ParticipantId] = Option(_owners.get(streamId))
 
   private[stream] def register(session: PreviewStreamSession,
@@ -87,9 +95,11 @@ final class StreamBrowserController private[stream] (val conversationId: Id[Conv
 
   def isDisposed: Boolean = _disposed.get()
 
-  /** Stop every live session, then dispose the browser (which tears down
-    * its Xvfb display). Idempotent; a failing session teardown is logged
-    * and never blocks browser disposal. */
+  /**
+   * Stop every live session, then dispose the browser (which tears down
+   * its Xvfb display). Idempotent; a failing session teardown is logged
+   * and never blocks browser disposal.
+   */
   def dispose: Task[Unit] =
     if (_disposed.compareAndSet(false, true)) {
       val live = sessions

@@ -33,31 +33,42 @@ opaque type ToolName = String
 
 object ToolName {
 
-  /** Authoring grammar for literal names — lowercase snake_case. */
+  /**
+   * Authoring grammar for literal names — lowercase snake_case.
+   */
   inline val LiteralGrammar = "[a-z][a-z0-9_]{0,63}"
 
-  /** Wire grammar for dynamic names — what providers accept. */
+  /**
+   * Wire grammar for dynamic names — what providers accept.
+   */
   val DynamicGrammar: String = "[a-zA-Z0-9_-]{1,64}"
 
   private val dynamicPattern = DynamicGrammar.r
 
-  /** Compile-time-validated literal construction. A non-matching
-    * literal (or a non-constant argument) fails compilation. */
+  /**
+   * Compile-time-validated literal construction. A non-matching
+   * literal (or a non-constant argument) fails compilation.
+   */
   inline def apply[S <: String & Singleton](inline value: S): ToolName =
     inline if constValue[Matches[S, LiteralGrammar.type]] then value
-    else scala.compiletime.error("Invalid tool name literal '" + value +
-      "' — grammar is [a-z][a-z0-9_]{0,63} (lowercase snake_case, max 64 chars). " +
-      "Runtime-built names go through ToolName.parse.")
+    else
+      scala.compiletime.error("Invalid tool name literal '" + value +
+        "' — grammar is [a-z][a-z0-9_]{0,63} (lowercase snake_case, max 64 chars). " +
+        "Runtime-built names go through ToolName.parse.")
 
-  /** Runtime construction for dynamically-built names (MCP server
-    * prefixing, user-created tools). Validates the provider grammar. */
+  /**
+   * Runtime construction for dynamically-built names (MCP server
+   * prefixing, user-created tools). Validates the provider grammar.
+   */
   def parse(value: String): Either[String, ToolName] =
     if (dynamicPattern.matches(value)) Right(value)
     else Left(s"Invalid tool name '$value' — providers accept $DynamicGrammar")
 
-  /** Framework-internal constructor: underscore-prefixed synthetic
-    * diagnostic names and round-trips of names already validated at
-    * their original construction (event rows, wire calls). */
+  /**
+   * Framework-internal constructor: underscore-prefixed synthetic
+   * diagnostic names and round-trips of names already validated at
+   * their original construction (event rows, wire calls).
+   */
   private[sigil] def internal(value: String): ToolName = value
 
   extension (name: ToolName) {

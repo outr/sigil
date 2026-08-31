@@ -17,7 +17,7 @@ import scala.concurrent.duration.*
  * a typed [[WebFetchOutput]].
  */
 final class WebFetchTool(timeout: FiniteDuration = 30.seconds) extends Tool {
-  type Input  = WebFetchInput
+  type Input = WebFetchInput
   type Output = WebFetchOutput
   val io: ToolIO[WebFetchInput, WebFetchOutput] = ToolIO.derived[WebFetchInput, WebFetchOutput].withExamples(
     ToolExample("Read a documentation page", WebFetchInput(url = "https://example.com/docs/intro")),
@@ -45,18 +45,18 @@ final class WebFetchTool(timeout: FiniteDuration = 30.seconds) extends Tool {
       .send()
       .flatMap { response =>
         val statusCode = response.status.code
-        val ct         = response.content.map(_.contentType.outputString).getOrElse("text/plain")
-        val maxLen     = input.maxLength.getOrElse(WebFetchTool.DefaultMaxLength)
+        val ct = response.content.map(_.contentType.outputString).getOrElse("text/plain")
+        val maxLen = input.maxLength.getOrElse(WebFetchTool.DefaultMaxLength)
         response.content match {
           case Some(content) =>
             content.asString.map { raw =>
               val processed = if (ct.contains("text/html")) HtmlToMarkdown.convert(raw) else raw
               val truncated = processed.length > maxLen
               WebFetchOutput(
-                content     = if (truncated) processed.take(maxLen) else processed,
+                content = if (truncated) processed.take(maxLen) else processed,
                 contentType = ct,
-                statusCode  = statusCode,
-                truncated   = truncated
+                statusCode = statusCode,
+                truncated = truncated
               )
             }
           case None =>

@@ -15,20 +15,26 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex}
 
 import java.util.concurrent.atomic.AtomicReference
 
-/** The bench viewer (user-side) participant. */
+/**
+ * The bench viewer (user-side) participant.
+ */
 case object ArmsBenchUser extends ParticipantId {
   override val value: String = "arms-bench-user"
 }
 
-/** The bench agent participant id. */
+/**
+ * The bench agent participant id.
+ */
 case object ArmsBenchAgent extends AgentParticipantId {
   override val value: String = "arms-bench-agent"
 }
 
-/** Per-arm memory space — the isolation boundary between arms: each
-  * arm's corpus is seeded into its own space and the active arm's
-  * space is the only accessible one, so no arm can recall another
-  * arm's rows (the cross-arm contamination class). */
+/**
+ * Per-arm memory space — the isolation boundary between arms: each
+ * arm's corpus is seeded into its own space and the active arm's
+ * space is the only accessible one, so no arm can recall another
+ * arm's rows (the cross-arm contamination class).
+ */
 case class ArmSpace(arm: String) extends SpaceId derives RW {
   override val value: String = s"memory-arms-$arm"
   override val displayName: String = s"Memory arms bench: $arm"
@@ -55,10 +61,12 @@ final class MemoryArmsSigil extends Sigil {
   private val distillerRef = new AtomicReference[Option[MemoryDistiller]](None)
   private val lastInjectedRef = new AtomicReference[List[String]](Nil)
 
-  /** Facts injected by the most recent `curate` — the retrieval-level
-    * observation the runner scores recall@k from. Answer accuracy
-    * conflates retrieval with the runtime model's reading of what it
-    * got; this isolates the half the fusion weights actually move. */
+  /**
+   * Facts injected by the most recent `curate` — the retrieval-level
+   * observation the runner scores recall@k from. Answer accuracy
+   * conflates retrieval with the runtime model's reading of what it
+   * got; this isolates the half the fusion weights actually move.
+   */
   def lastInjected: List[String] = lastInjectedRef.get()
 
   def setProvider(p: Provider): Unit = providerRef.set(Some(p))
@@ -96,7 +104,8 @@ final class MemoryArmsSigil extends Sigil {
             val facts = loaded.flatten.map(_.fact)
             lastInjectedRef.set(facts)
             if (sys.env.contains("ARMS_DEBUG")) {
-              println(s"  [debug] curated memories=${input.memories.size} critical=${input.criticalMemories.size} (vectorWired=$vectorWired) for ${conversationId.value}")
+              println(
+                s"  [debug] curated memories=${input.memories.size} critical=${input.criticalMemories.size} (vectorWired=$vectorWired) for ${conversationId.value}")
               facts.foreach(f => println(s"  [debug]   - ${f.take(90)}"))
             }
             input
@@ -113,10 +122,12 @@ final class MemoryArmsSigil extends Sigil {
 
   override def staticTools: List[sigil.tool.Tool] = super.staticTools :+ SemanticSearchTool
 
-  /** The benchmark-defined consult inputs. A consult's tool is never
-    * rostered, but its `ToolInput` subtype still has to round-trip
-    * through fabric's poly RW or the provider's tool-call decode fails
-    * with "Type not found". */
+  /**
+   * The benchmark-defined consult inputs. A consult's tool is never
+   * rostered, but its `ToolInput` subtype still has to round-trip
+   * through fabric's poly RW or the provider's tool-call decode fails
+   * with "Type not found".
+   */
   override def toolInputRegistrations: List[RW[? <: sigil.tool.ToolInput]] =
     super.toolInputRegistrations :+ summon[RW[JudgeVerdictInput]]
 

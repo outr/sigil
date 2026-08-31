@@ -34,12 +34,14 @@ class MeaningfulProgressTerminationSpec extends AsyncWordSpec with AsyncTaskSpec
   private val modelId: Id[Model] = Model.id("test", "model")
   TestSigil.testModel(modelId)
 
-  /** Provider that always emits Done with NO tool call — the
-    * orchestrator treats this as an empty-response turn. After the
-    * no-tool-call retry budget exhausts and the forced-synthesis
-    * recovery still doesn't produce a respond, the loop raises
-    * AgentRunawayException and handleError publishes a Failure
-    * Message. */
+  /**
+   * Provider that always emits Done with NO tool call — the
+   * orchestrator treats this as an empty-response turn. After the
+   * no-tool-call retry budget exhausts and the forced-synthesis
+   * recovery still doesn't produce a respond, the loop raises
+   * AgentRunawayException and handleError publishes a Failure
+   * Message.
+   */
   private class EmptyResponseProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -52,26 +54,28 @@ class MeaningfulProgressTerminationSpec extends AsyncWordSpec with AsyncTaskSpec
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
-  /** Drive a single user turn against [[EmptyResponseProvider]] and
-    * — once iter=1's drain done lands — publish a ProgressCheckpoint
-    * carrying the test status text into the agent's conversation
-    * history. The publishFailureMessage path then picks it up. */
+  /**
+   * Drive a single user turn against [[EmptyResponseProvider]] and
+   * — once iter=1's drain done lands — publish a ProgressCheckpoint
+   * carrying the test status text into the agent's conversation
+   * history. The publishFailureMessage path then picks it up.
+   */
   private def runScenarioWithCheckpoint(statusText: String,
                                         stuckOn: Option[String]): Task[List[Signal]] = {
     TestSigil.setProvider(Task.pure(new EmptyResponseProvider))
     val convId = Conversation.id(s"meaningful-progress-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
@@ -86,7 +90,7 @@ class MeaningfulProgressTerminationSpec extends AsyncWordSpec with AsyncTaskSpec
     def hasIdle: Boolean =
       recorded.iterator().asScala.exists {
         case d: AgentStateDelta
-          if d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete) => true
+            if d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete) => true
         case _ => false
       }
     def settled: Boolean = hasFailure && hasIdle
@@ -99,26 +103,26 @@ class MeaningfulProgressTerminationSpec extends AsyncWordSpec with AsyncTaskSpec
       _ <- Task.sleep(100.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Do the thing")),
-             state          = EventState.Complete
-           ))
-       // Pre-publish a ProgressCheckpoint into the conversation — mirrors what
-       // [[Sigil.runProgressCheckpoint]] writes at iteration boundaries.
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Do the thing")),
+        state = EventState.Complete
+      ))
+      // Pre-publish a ProgressCheckpoint into the conversation — mirrors what
+      // [[Sigil.runProgressCheckpoint]] writes at iteration boundaries.
       _ <- TestSigil.publish(ProgressCheckpoint(
-             participantId        = TestAgent,
-             conversationId       = convId,
-             topicId              = TestTopicEntry.id,
-             iterationCount       = 1,
-             prevCheckpointStatus = None,
-             currentStatus        = statusText,
-             meaningfulProgress   = false,
-             remainingSteps       = "",
-             stuckOn              = stuckOn,
-             shouldAskUser        = false
-           ))
+        participantId = TestAgent,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        iterationCount = 1,
+        prevCheckpointStatus = None,
+        currentStatus = statusText,
+        meaningfulProgress = false,
+        remainingSteps = "",
+        stuckOn = stuckOn,
+        shouldAskUser = false
+      ))
       _ <- waitForSettle(System.currentTimeMillis() + 15_000L)
     } yield {
       running.set(false)
@@ -127,10 +131,10 @@ class MeaningfulProgressTerminationSpec extends AsyncWordSpec with AsyncTaskSpec
   }
 
   "Sigil bug #282 — agent loop silent-termination guard" should {
-    "include the most recent ProgressCheckpoint's status text in the failure body" in {
+    "include the most recent ProgressCheckpoint's status text in the failure body" in
       runScenarioWithCheckpoint(
         statusText = "Stuck on a placeholder task with no progress",
-        stuckOn    = Some("bsp_list_targets returns no results")
+        stuckOn = Some("bsp_list_targets returns no results")
       ).map { signals =>
         val failures = signals.collect {
           case m: Message if m.participantId == TestAgent && m.isFailure => m
@@ -140,12 +144,11 @@ class MeaningfulProgressTerminationSpec extends AsyncWordSpec with AsyncTaskSpec
           case t: ResponseContent.Text => t.text
         }).mkString("\n")
         // The agent's reported status anchors the failure for the user.
-        combinedBody should include ("Stuck on a placeholder task")
+        combinedBody should include("Stuck on a placeholder task")
         // And the stuck-on rationale is surfaced too — pre-fix the user
         // only saw the technical exception class.
-        combinedBody should include ("bsp_list_targets returns no results")
+        combinedBody should include("bsp_list_targets returns no results")
       }
-    }
   }
 
   "tear down" should {

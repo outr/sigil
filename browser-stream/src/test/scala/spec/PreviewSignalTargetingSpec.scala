@@ -78,7 +78,8 @@ class PreviewSignalTargetingSpec extends AnyWordSpec with Matchers with BeforeAn
 
   override protected def afterAll(): Unit = {
     if (chromeAvailable) {
-      try TestStreamBrowserSigil.disposeStreamBrowserController(convId).sync() catch { case _: Throwable => () }
+      try TestStreamBrowserSigil.disposeStreamBrowserController(convId).sync()
+      catch { case _: Throwable => () }
     }
     TestStreamBrowserSigil.shutdown.sync()
     super.afterAll()
@@ -146,23 +147,24 @@ class PreviewSignalTargetingSpec extends AnyWordSpec with Matchers with BeforeAn
         TestStreamBrowserSigil.previewStreamOwner(convId, session.streamId) shouldBe Some(ViewerA)
 
         TestStreamBrowserSigil.handleNotice(
-          PreviewSignalReply(convId, session.streamId, SignalMessage.Bye), ViewerB
+          PreviewSignalReply(convId, session.streamId, SignalMessage.Bye),
+          ViewerB
         ).sync()
-        TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should contain (session.streamId)
+        TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should contain(session.streamId)
 
         // Nor can an ingress that cannot name the replier spend the id.
         TestStreamBrowserSigil.routePreviewSignal(
           PreviewSignalReply(convId, session.streamId, SignalMessage.Bye)
         ).sync()
-        TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should contain (session.streamId)
+        TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should contain(session.streamId)
 
         TestStreamBrowserSigil.handleNotice(
-          PreviewSignalReply(convId, session.streamId, SignalMessage.Bye), ViewerA
+          PreviewSignalReply(convId, session.streamId, SignalMessage.Bye),
+          ViewerA
         ).sync()
         TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should not contain session.streamId
-      } finally {
+      } finally
         session.stop.sync()
-      }
     }
 
     "not apply to an unowned session, which any viewer may still answer" in {
@@ -170,11 +172,12 @@ class PreviewSignalTargetingSpec extends AnyWordSpec with Matchers with BeforeAn
       TestStreamBrowserSigil.usePreviewConfig(TestStreamBrowserSigil.headlessPreviewConfig)
 
       val session = TestStreamBrowserSigil.previewStreamFor(convId).sync()
-      session shouldBe a [PreviewStreamSession.Screencast]
+      session shouldBe a[PreviewStreamSession.Screencast]
       TestStreamBrowserSigil.previewStreamOwner(convId, session.streamId) shouldBe None
 
       TestStreamBrowserSigil.handleNotice(
-        PreviewSignalReply(convId, session.streamId, SignalMessage.Bye), ViewerB
+        PreviewSignalReply(convId, session.streamId, SignalMessage.Bye),
+        ViewerB
       ).sync()
       TestStreamBrowserSigil.previewStreamsFor(convId).map(_.streamId) should not contain session.streamId
     }

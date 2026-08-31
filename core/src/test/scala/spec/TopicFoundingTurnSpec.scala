@@ -56,16 +56,18 @@ class TopicFoundingTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       Task.pure(Nil)
   }
 
-  /** Serves both call shapes: the primary agent turn emits a respond
-    * proposing `proposedLabel`; the classifier consult returns the
-    * scripted kind. */
+  /**
+   * Serves both call shapes: the primary agent turn emits a respond
+   * proposing `proposedLabel`; the classifier consult returns the
+   * scripted kind.
+   */
   private class DualShapeProvider(proposedLabel: String, classifierKind: String) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
     override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
-    override def call(input: ProviderCall): Stream[ProviderEvent] = {
+    override def call(input: ProviderCall): Stream[ProviderEvent] =
       if (input.tools.exists(_.schema.name.value == "classify_topic_shift")) {
         val callId = CallId(s"classify-${rapid.Unique()}")
         Stream.emits(List(
@@ -78,23 +80,22 @@ class TopicFoundingTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
           ProviderEvent.toolCall(callId, RespondTool)(RespondInput(
-            topicLabel   = proposedLabel,
+            topicLabel = proposedLabel,
             topicSummary = s"$proposedLabel summary",
-            content      = "On it.",
-            endsTurn     = true
+            content = "On it.",
+            endsTurn = true
           )),
           ProviderEvent.Done(StopReason.ToolCall)
         ))
       }
-    }
   }
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -107,34 +108,39 @@ class TopicFoundingTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     loop
   }
 
-  /** Seed a conversation with an established topic and one persisted
-    * prior-turn exchange (direct row inserts — no trigger fired), then
-    * publish the founding user message and let the agent turn run. */
+  /**
+   * Seed a conversation with an established topic and one persisted
+   * prior-turn exchange (direct row inserts — no trigger fired), then
+   * publish the founding user message and let the agent turn run.
+   */
   private def runFoundingTurn(proposedLabel: String,
                               classifierKind: String,
                               suffix: String): Task[(Id[Conversation], Topic, Message, Message)] = {
     val convId = Conversation.id(s"founding-$suffix-${rapid.Unique()}")
-    val seed = Topic(conversationId = convId, label = "sigil project setup",
-      summary = "Setting up the sigil project.", createdBy = TestUser)
+    val seed = Topic(
+      conversationId = convId,
+      label = "sigil project setup",
+      summary = "Setting up the sigil project.",
+      createdBy = TestUser)
     val conv = Conversation(
-      topics       = List(TopicEntry(seed._id, seed.label, seed.summary)),
+      topics = List(TopicEntry(seed._id, seed.label, seed.summary)),
       participants = List(makeAgent()),
-      _id          = convId
+      _id = convId
     )
     val priorUserMsg = Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = seed._id,
-      content        = Vector(ResponseContent.Text("please set up the project")),
-      state          = EventState.Complete,
-      timestamp      = Timestamp(lightdb.util.Nowish() - 60000L)
+      topicId = seed._id,
+      content = Vector(ResponseContent.Text("please set up the project")),
+      state = EventState.Complete,
+      timestamp = Timestamp(lightdb.util.Nowish() - 60000L)
     )
     val foundingMsg = Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = seed._id,
-      content        = Vector(ResponseContent.Text("Find and remove all references to bugs in the code.")),
-      state          = EventState.Complete
+      topicId = seed._id,
+      content = Vector(ResponseContent.Text("Find and remove all references to bugs in the code.")),
+      state = EventState.Complete
     )
     TestSigil.setProvider(Task.pure(new DualShapeProvider(proposedLabel, classifierKind)))
     TestSigil.setMemoryExtractor(NoExtraction)
@@ -149,7 +155,7 @@ class TopicFoundingTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         TestSigil.withDB(_.eventsTransaction(convId)(_.list)).map { events =>
           events.exists {
             case m: Message => m.participantId == TestAgent && m.role == MessageRole.Standard
-            case _          => false
+            case _ => false
           }
         }
       }
@@ -162,7 +168,7 @@ class TopicFoundingTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   "the founding-turn topic sweep" should {
 
-    "re-home every event of the turn that caused a New topic — user message, tool invokes, reply" in {
+    "re-home every event of the turn that caused a New topic — user message, tool invokes, reply" in
       runFoundingTurn("bug removal sweep", classifierKind = "New", suffix = "new").flatMap {
         case (convId, seed, priorUserMsg, foundingMsg) =>
           for {
@@ -202,7 +208,8 @@ class TopicFoundingTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
             }
             reply should not be empty
             val dump = events.sortBy(_.timestamp.value).map(e =>
-              s"${e.timestamp.value} ${e.getClass.getSimpleName} topic=${e.topicId.value.take(8)} idx=${e.topicIndex} state=${e.state}").mkString("\n")
+              s"${e.timestamp.value} ${e.getClass.getSimpleName} topic=${e.topicId.value.take(8)} idx=${e.topicIndex} state=${e.state}").mkString(
+              "\n")
             withClue(s"agent reply (seed=${seed._id.value.take(8)} new=${newTopic._id.value.take(8)}):\n$dump\n") {
               reply.foreach { m =>
                 m.topicId shouldBe newTopic._id
@@ -223,9 +230,8 @@ class TopicFoundingTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
             prior.topicIndex shouldBe 0
           }
       }
-    }
 
-    "leave stamps untouched when the classifier says Refine (same topic, sharper label)" in {
+    "leave stamps untouched when the classifier says Refine (same topic, sharper label)" in
       runFoundingTurn("sigil workspace setup", classifierKind = "Refine", suffix = "refine").flatMap {
         case (convId, seed, _, foundingMsg) =>
           for {
@@ -243,9 +249,8 @@ class TopicFoundingTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
             founding.topicIndex shouldBe 0
           }
       }
-    }
 
-    "leave stamps untouched when the classifier says NoChange" in {
+    "leave stamps untouched when the classifier says NoChange" in
       runFoundingTurn("unrelated label", classifierKind = "NoChange", suffix = "nochange").flatMap {
         case (convId, seed, _, foundingMsg) =>
           eventsOf(convId).map { events =>
@@ -255,7 +260,6 @@ class TopicFoundingTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
             founding.topicIndex shouldBe 0
           }
       }
-    }
   }
 
   "tear down" should {

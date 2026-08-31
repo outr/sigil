@@ -23,9 +23,11 @@ import scala.concurrent.duration.*
  */
 class BrowserIdleReaperSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Build a controller with a `null` browser whose last-touch is set
-    * `idleMs` in the past, so [[BrowserController.isIdle]] classifies
-    * it deterministically without sleeping the test. */
+  /**
+   * Build a controller with a `null` browser whose last-touch is set
+   * `idleMs` in the past, so [[BrowserController.isIdle]] classifies
+   * it deterministically without sleeping the test.
+   */
   private def controllerIdleFor(idleMs: Long): BrowserController = {
     val convId: Id[Conversation] = Conversation.id(s"reaper-spec-${rapid.Unique()}")
     val c = new BrowserController(

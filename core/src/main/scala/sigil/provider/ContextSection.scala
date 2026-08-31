@@ -43,16 +43,19 @@ case class ContextSection(id: ProfileSection,
                           shed: Option[TurnInput => TurnInput] = None,
                           budget: Option[Int] = None) {
 
-  /** The section's text for this turn, trimmed to its effective budget.
-    * Every consumer reads THIS rather than `render`, so the renderer and
-    * the profiler count the same bytes under a budget too. */
+  /**
+   * The section's text for this turn, trimmed to its effective budget.
+   * Every consumer reads THIS rather than `render`, so the renderer and
+   * the profiler count the same bytes under a budget too.
+   */
   def rendered(c: SectionContext): Option[String] =
     render(c).flatMap { body =>
       effectiveBudget(c.promptShape).fold(Option(body))(body.within(_)).map(_.rendered)
     }
 
-  /** The tighter of the section's own budget and the one the running
-    * model's prompt shape declares for it. */
-  def effectiveBudget(shape: PromptShape): Option[Int] =
-    (budget.toList ++ shape.budgetFor(id).toList).minOption
+  /**
+   * The tighter of the section's own budget and the one the running
+   * model's prompt shape declares for it.
+   */
+  def effectiveBudget(shape: PromptShape): Option[Int] = (budget.toList ++ shape.budgetFor(id).toList).minOption
 }

@@ -14,7 +14,9 @@ import sigil.tool.ToolRoster
  */
 trait ChatCompletionsConformanceSupport { this: AbstractProviderConformanceSpec =>
 
-  /** The provider's actual wire config. */
+  /**
+   * The provider's actual wire config.
+   */
   protected def chatWireConfig: OpenAIChatCompletions.Config
 
   private def parseAll(lines: List[String]): Vector[ProviderEvent] = {
@@ -38,8 +40,8 @@ trait ChatCompletionsConformanceSupport { this: AbstractProviderConformanceSpec 
 
   override protected def midStreamErrorOutcome: Either[Throwable, Vector[ProviderEvent]] =
     try Right(parseAll(List(
-      """data: {"choices":[{"delta":{"content":"partial"}}]}""",
-      """data: {"error":{"code":502,"message":"upstream exploded mid-stream"}}"""
-    )))
+        """data: {"choices":[{"delta":{"content":"partial"}}]}""",
+        """data: {"error":{"code":502,"message":"upstream exploded mid-stream"}}"""
+      )))
     catch { case t: Throwable => Left(t) }
 }

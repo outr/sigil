@@ -23,8 +23,14 @@ class CompactPromptShapeSpec extends AnyWordSpec with Matchers {
   private val convId = Conversation.id("compact-shape-conv")
   private val modelId = Model.id("anthropic", "claude-haiku-4-5")
 
-  private val suggested = List("grep", "respond", "no_response", "stop", "find_capability",
-    "respond_options", "change_mode")
+  private val suggested = List(
+    "grep",
+    "respond",
+    "no_response",
+    "stop",
+    "find_capability",
+    "respond_options",
+    "change_mode")
 
   private val projection = ParticipantProjection.empty(TestAgent, convId).copy(
     suggestedTools = suggested.map(s => ToolName.parse(s).fold(sys.error, identity)),
@@ -40,8 +46,10 @@ class CompactPromptShapeSpec extends AnyWordSpec with Matchers {
     extraContext = Map(ContextKey("focus") -> "the config sweep")
   )
 
-  /** Fixed clock so the golden render's relative timestamps
-    * ("2m ago") are deterministic. */
+  /**
+   * Fixed clock so the golden render's relative timestamps
+   * ("2m ago") are deterministic.
+   */
   private val GoldenNow: Long = 1_700_000_000_000L
 
   private val skills = (1 to 6).toVector.map(i =>
@@ -129,8 +137,9 @@ class CompactPromptShapeSpec extends AnyWordSpec with Matchers {
         succeed
       } else {
         val stream = getClass.getResourceAsStream("/golden/full-prompt-render.txt")
-        withClue("missing test resource /golden/full-prompt-render.txt: ") { stream should not be null }
-        val expected = try new String(stream.readAllBytes(), "UTF-8") finally stream.close()
+        withClue("missing test resource /golden/full-prompt-render.txt: ")(stream should not be null)
+        val expected = try new String(stream.readAllBytes(), "UTF-8")
+        finally stream.close()
         rendered shouldBe expected
       }
     }
@@ -160,7 +169,7 @@ class CompactPromptShapeSpec extends AnyWordSpec with Matchers {
 
     "never drop a pinned directive" in {
       val prefix = render(PromptShape.Compact, Placement.StablePrefix)
-      resolved.criticalMemories.foreach(m => prefix should include (m.summary))
+      resolved.criticalMemories.foreach(m => prefix should include(m.summary))
       succeed
     }
 
@@ -172,10 +181,10 @@ class CompactPromptShapeSpec extends AnyWordSpec with Matchers {
 
     "keep the same section headers it caps entries within" in {
       val compact = render(PromptShape.Compact, Placement.VolatileTail)
-      compact should include ("== Suggested tools ==")
-      compact should include ("== Repeated tool calls ==")
-      compact should include ("== Memories ==")
-      compact should include ("== Earlier in this conversation (summarized) ==")
+      compact should include("== Suggested tools ==")
+      compact should include("== Repeated tool calls ==")
+      compact should include("== Memories ==")
+      compact should include("== Earlier in this conversation (summarized) ==")
     }
 
     "keep directive framing prefixes identical" in {

@@ -10,7 +10,6 @@ import java.nio.file.Path
 class TestMcpDB(directory: Option[Path],
                 storeManager: CollectionManager,
                 upgrades: List[DatabaseUpgrade] = Nil)
-  extends SigilDB(directory, storeManager, upgrades)
-    with McpCollections
+  extends SigilDB(directory, storeManager, upgrades) with McpCollections
 
 object TestMcpSigil extends TestMcpSigilBase

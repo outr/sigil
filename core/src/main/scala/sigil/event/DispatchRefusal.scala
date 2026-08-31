@@ -20,19 +20,25 @@ import fabric.rw.*
  */
 enum DispatchRefusal derives RW {
 
-  /** The duplicate-call cap: this exact (tool, canonical args) call has
-    * already run in this turn and repeating it cannot produce a
-    * different answer. */
+  /**
+   * The duplicate-call cap: this exact (tool, canonical args) call has
+   * already run in this turn and repeating it cannot produce a
+   * different answer.
+   */
   case DuplicateCap
 
-  /** The per-response cap: the model fired more action tools in one
-    * completion than the framework dispatches. The specific call is not
-    * convicted — re-issuing it alone on a later iteration is exactly
-    * what the corrective asks for. */
+  /**
+   * The per-response cap: the model fired more action tools in one
+   * completion than the framework dispatches. The specific call is not
+   * convicted — re-issuing it alone on a later iteration is exactly
+   * what the corrective asks for.
+   */
   case PerResponseCap
 
-  /** The raced-reissue bound: the same call has been re-issued while its
-    * result kept arriving after the prompt was built, and the redirect
-    * hands the agent that result instead of running it again. */
+  /**
+   * The raced-reissue bound: the same call has been re-issued while its
+   * result kept arriving after the prompt was built, and the redirect
+   * hands the agent that result instead of running it again.
+   */
   case RacedReissue
 }

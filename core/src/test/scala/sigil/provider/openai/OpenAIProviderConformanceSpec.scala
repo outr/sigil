@@ -49,8 +49,8 @@ class OpenAIProviderConformanceSpec extends AbstractProviderConformanceSpec {
 
   override protected def midStreamErrorOutcome: Either[Throwable, Vector[ProviderEvent]] =
     try Right(parseAll(List(
-      """data: {"type":"error","error":{"code":"server_error","message":"upstream exploded mid-stream"}}"""
-    )))
+        """data: {"type":"error","error":{"code":"server_error","message":"upstream exploded mid-stream"}}"""
+      )))
     catch { case t: Throwable => Left(t) }
 
   "tear down" should {

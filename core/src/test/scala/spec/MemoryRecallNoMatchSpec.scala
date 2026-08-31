@@ -53,8 +53,12 @@ class MemoryRecallNoMatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         "Works from the Berlin office on Tuesdays.",
         "The staging deploy target is cluster seven."
       ).map { fact =>
-        ContextMemory(fact = fact, label = fact.take(20), summary = fact,
-          source = MemorySource.Explicit, spaceId = TestSpace)
+        ContextMemory(
+          fact = fact,
+          label = fact.take(20),
+          summary = fact,
+          source = MemorySource.Explicit,
+          spaceId = TestSpace)
       }
       TestSigil.persistMemories(memories).map(_ should have size 3)
     }
@@ -63,13 +67,12 @@ class MemoryRecallNoMatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       for {
         convId <- seedConv("nonsense")
         result <- StandardMemoryRetriever(limit = 5).retrieve(
-          TestSigil, convId,
+          TestSigil,
+          convId,
           Vector(ContextFrame.Text("xyzzy plugh quux?", TestUser, Id[Event]("nomatch-q"))),
           chain)
-      } yield {
-        withClue(s"retrieved=${result.memories}: ") {
-          result.memories shouldBe empty
-        }
+      } yield withClue(s"retrieved=${result.memories}: ") {
+        result.memories shouldBe empty
       }
     }
 
@@ -77,7 +80,8 @@ class MemoryRecallNoMatchSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       for {
         convId <- seedConv("match")
         result <- StandardMemoryRetriever(limit = 5).retrieve(
-          TestSigil, convId,
+          TestSigil,
+          convId,
           Vector(ContextFrame.Text("staging deploy target cluster?", TestUser, Id[Event]("nomatch-m"))),
           chain)
         hydrated <- Task.sequence(result.memories.toList.map(id =>

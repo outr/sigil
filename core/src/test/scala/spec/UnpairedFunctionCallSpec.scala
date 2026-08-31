@@ -80,10 +80,18 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
     "render a real ToolResult for a paired call and throw on the unpaired one (Sigil #313)" in {
       // callA paired (Complete state), callB unpaired (Active state).
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(nonAtomicName, """{"q":"a"}""", callA, agent,
+        ContextFrame.ToolCall(
+          nonAtomicName,
+          """{"q":"a"}""",
+          callA,
+          agent,
           sourceEventId = Id[Event]("frame-A"),
           state = ToolCallState.Complete("real-result-A")),
-        ContextFrame.ToolCall(nonAtomicName, """{"q":"b"}""", callB, agent,
+        ContextFrame.ToolCall(
+          nonAtomicName,
+          """{"q":"b"}""",
+          callB,
+          agent,
           sourceEventId = Id[Event]("frame-B"))
       )
       val thrown = intercept[sigil.heal.BrokenHistoryException] {
@@ -101,17 +109,17 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
       // and the renderer ships that as ordinary text rather than an
       // unpairable wire result.
       val stray: Event = Message(
-        participantId  = agent,
+        participantId = agent,
         conversationId = Conversation.id("unpaired-conv"),
-        topicId        = TestTopicId,
-        role           = MessageRole.Tool,
-        content        = Vector(ResponseContent.Text("orphan-result")),
-        state          = EventState.Complete,
-        origin         = Some(callC)
+        topicId = TestTopicId,
+        role = MessageRole.Tool,
+        content = Vector(ResponseContent.Text("orphan-result")),
+        state = EventState.Complete,
+        origin = Some(callC)
       )
       val frames = FrameBuilder.build(List(stray))
       frames should have size 1
-      frames.head.asInstanceOf[ContextFrame.Text].content should include (callC.value)
+      frames.head.asInstanceOf[ContextFrame.Text].content should include(callC.value)
       noException should be thrownBy TestProvider.render(frames, agent)
       TestProvider.render(frames, agent).collect {
         case t: ProviderMessage.ToolResult => t

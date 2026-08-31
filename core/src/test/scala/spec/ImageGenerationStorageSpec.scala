@@ -30,7 +30,9 @@ class ImageGenerationStorageSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private val modelId: Id[Model] = Model.id("test", "image-model")
 
-  /** A real 1x1 transparent PNG, base64-encoded. */
+  /**
+   * A real 1x1 transparent PNG, base64-encoded.
+   */
   private val tinyPng: String =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII="
 
@@ -59,23 +61,24 @@ class ImageGenerationStorageSpec extends AsyncWordSpec with AsyncTaskSpec with M
       tools = CoreTools.all.toVector
     )
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      .flatMap(_ => Orchestrator.process(TestSigil, new ImageProvider(events), request, conv)
-        // Publish each signal as it streams so events exist before the
-        // orchestrator's termination-guarantee block runs — mirrors the
-        // production agent loop.
-        .flatMap(s => Stream.force(TestSigil.publish(s).map(_ => Stream.emits(List(s)))))
-        .toList)
+      .flatMap(_ =>
+        Orchestrator.process(TestSigil, new ImageProvider(events), request, conv)
+          // Publish each signal as it streams so events exist before the
+          // orchestrator's termination-guarantee block runs — mirrors the
+          // production agent loop.
+          .flatMap(s => Stream.force(TestSigil.publish(s).map(_ => Stream.emits(List(s)))))
+          .toList)
   }
 
   private def imageUrls(signals: List[Signal]): List[spice.net.URL] =
     signals.collect {
-      case m: Message    => m.content.collectFirst { case i: ResponseContent.Image => i.url }
+      case m: Message => m.content.collectFirst { case i: ResponseContent.Image => i.url }
       case d: ImageDelta => Some(d.url)
     }.flatten
 
   "image-generation result storage" should {
 
-    "persist an inline image and reference it by a storage URL, never a data URL" in {
+    "persist an inline image and reference it by a storage URL, never a data URL" in
       run(List(
         ProviderEvent.ImageGenerationComplete(CallId("img-1"), ProviderImage.Inline(tinyPng, "image/png")),
         ProviderEvent.Done(StopReason.Complete)
@@ -85,7 +88,6 @@ class ImageGenerationStorageSpec extends AsyncWordSpec with AsyncTaskSpec with M
         urls.head.toString should startWith("sigil://storage/")
         urls.head.toString should not include "data:"
       }
-    }
 
     "pass a hosted image URL through unchanged" in {
       val hosted = spice.net.URL.get("https://example.com/generated.png").toOption.get
@@ -120,7 +122,7 @@ class ImageGenerationStorageSpec extends AsyncWordSpec with AsyncTaskSpec with M
       }
     }
 
-    "settle a partial-only image message at turn end when no completion event arrives" in {
+    "settle a partial-only image message at turn end when no completion event arrives" in
       run(List(
         ProviderEvent.ImageGenerationPartial(CallId("img-orphan"), ProviderImage.Inline(tinyPng, "image/png")),
         ProviderEvent.Done(StopReason.Complete)
@@ -137,7 +139,6 @@ class ImageGenerationStorageSpec extends AsyncWordSpec with AsyncTaskSpec with M
           }
         }
       }
-    }
   }
 
   "tear down" should {

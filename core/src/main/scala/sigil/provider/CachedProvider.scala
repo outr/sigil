@@ -36,7 +36,8 @@ import spice.http.HttpRequest
 final class CachedProvider(underlying: Provider,
                            sigilRef: Sigil,
                            cacheStore: CacheStore,
-                           mode: CacheMode = CacheMode.RecordOrReplay) extends Provider {
+                           mode: CacheMode = CacheMode.RecordOrReplay)
+  extends Provider {
 
   override def `type`: ProviderType = underlying.`type`
 
@@ -46,17 +47,21 @@ final class CachedProvider(underlying: Provider,
 
   override def models: List[Model] = underlying.models
 
-  /** Local heuristic tokenizer — under-counts chat-template bytes by
-    * single-digit percent vs. a backend-exact tokenizer, but lets the
-    * pre-flight budget gate run without a network round-trip on cache
-    * replays (the primary use case). Underlying providers whose
-    * tokenizer hits the wire (e.g. `LlamaCppTokenizer` POSTing to
-    * `/tokenize`) would defeat the "no network on replay" guarantee
-    * otherwise. */
+  /**
+   * Local heuristic tokenizer — under-counts chat-template bytes by
+   * single-digit percent vs. a backend-exact tokenizer, but lets the
+   * pre-flight budget gate run without a network round-trip on cache
+   * replays (the primary use case). Underlying providers whose
+   * tokenizer hits the wire (e.g. `LlamaCppTokenizer` POSTing to
+   * `/tokenize`) would defeat the "no network on replay" guarantee
+   * otherwise.
+   */
   override def tokenizer: Tokenizer = HeuristicTokenizer
 
-  /** The cache key must hash the same dialected schema the underlying
-    * provider ships, so replay and live recordings agree. */
+  /**
+   * The cache key must hash the same dialected schema the underlying
+   * provider ships, so replay and live recordings agree.
+   */
   override def schemaDialect: SchemaDialect = underlying.schemaDialect
 
   override def id: Id[Service] = underlying.id
@@ -67,13 +72,15 @@ final class CachedProvider(underlying: Provider,
 
   override def currentState: ServiceState = underlying.currentState
 
-  /** Read a cached response, treating an unreadable entry (a fixture
-    * recorded under an older serialization of [[ProviderEvent]], a
-    * truncated file) as a miss rather than a failure. A stale cache
-    * must never poison a live call — in `RecordOrReplay` the miss
-    * falls through to a fresh recording that overwrites the stale
-    * file; in `ReplayOnly` it surfaces as the standard
-    * [[MissingCacheException]] pointing at re-recording. */
+  /**
+   * Read a cached response, treating an unreadable entry (a fixture
+   * recorded under an older serialization of [[ProviderEvent]], a
+   * truncated file) as a miss rather than a failure. A stale cache
+   * must never poison a live call — in `RecordOrReplay` the miss
+   * falls through to a fresh recording that overwrites the stale
+   * file; in `ReplayOnly` it surfaces as the standard
+   * [[MissingCacheException]] pointing at re-recording.
+   */
   private def readCache(keyHash: String): Option[CachedResponse] =
     try cacheStore.read(keyHash)
     catch {
@@ -96,7 +103,7 @@ final class CachedProvider(underlying: Provider,
           case Some(cached) =>
             scribe.debug(s"CachedProvider(replay-only): hit $keyHash (${cached.events.size} events)")
             Stream.emits(cached.events)
-          case None         =>
+          case None =>
             Stream.force(Task.error(new MissingCacheException(
               s"No cached response for request hash $keyHash (mode = ReplayOnly). " +
                 s"To record, run with ${CacheMode.EnvName}=record."
@@ -108,7 +115,7 @@ final class CachedProvider(underlying: Provider,
           case Some(cached) =>
             scribe.debug(s"CachedProvider(record-or-replay): hit $keyHash (${cached.events.size} events)")
             Stream.emits(cached.events)
-          case None         =>
+          case None =>
             scribe.debug(s"CachedProvider(record-or-replay): miss $keyHash — recording")
             recordAndCache(input, keyHash)
         }
@@ -122,18 +129,22 @@ final class CachedProvider(underlying: Provider,
   override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
     underlying.httpRequestFor(input)
 
-  /** Drain the underlying call into a buffered list, write to cache on
-    * clean completion, and re-emit. Errors propagate without writing
-    * — a failed recording must not become a frozen replay. */
+  /**
+   * Drain the underlying call into a buffered list, write to cache on
+   * clean completion, and re-emit. Errors propagate without writing
+   * — a failed recording must not become a frozen replay.
+   */
   private def recordAndCache(input: ProviderCall, keyHash: String): Stream[ProviderEvent] =
     Stream.force(
       underlying.call(input).toList.map { events =>
         scribe.debug(s"CachedProvider: writing $keyHash (${events.size} events)")
-        cacheStore.write(keyHash, CachedResponse(
-          requestHash = keyHash,
-          recordedAt = Timestamp(),
-          events = events
-        ))
+        cacheStore.write(
+          keyHash,
+          CachedResponse(
+            requestHash = keyHash,
+            recordedAt = Timestamp(),
+            events = events
+          ))
         Stream.emits(events)
       }.handleError { t =>
         scribe.debug(s"CachedProvider: not writing $keyHash — underlying stream errored: ${t.getMessage}")
@@ -144,9 +155,11 @@ final class CachedProvider(underlying: Provider,
 
 object CachedProvider {
 
-  /** Convenience builder that takes the `Sigil` reference from the
-    * caller and falls back to the same construction shape every
-    * downstream test uses. */
+  /**
+   * Convenience builder that takes the `Sigil` reference from the
+   * caller and falls back to the same construction shape every
+   * downstream test uses.
+   */
   def apply(underlying: Provider,
             sigilRef: Sigil,
             cacheStore: CacheStore,

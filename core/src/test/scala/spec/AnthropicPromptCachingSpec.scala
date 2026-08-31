@@ -26,8 +26,10 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
 
   private val conversationId = sigil.conversation.Conversation.id("cache-control-conv")
 
-  /** A multi-turn history so the third (history) breakpoint has a
-    * second-to-last message to anchor on: user, agent, user. */
+  /**
+   * A multi-turn history so the third (history) breakpoint has a
+   * second-to-last message to anchor on: user, agent, user.
+   */
   private def multiTurnInput: TurnInput = TurnInput(
     conversationId = conversationId,
     frames = Vector(
@@ -60,7 +62,7 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
     val httpReq = provider.requestConverter(requestFor(input, topic, priorTopics)).sync()
     val body = httpReq.content match {
       case Some(c: spice.http.content.StringContent) => fabric.io.JsonParser(c.value)
-      case _                                         => obj()
+      case _ => obj()
     }
     val headers = httpReq.headers.map.map { case (k, v) => k.toLowerCase -> v.mkString(",") }
     (body, headers)
@@ -130,8 +132,8 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
 
     "keep every breakpoint-covered block byte-identical across consecutive turns" in {
       val renamedTopic = sigil.conversation.TopicEntry(
-        id      = TestTopicEntry.id,
-        label   = "Refined subject after progress",
+        id = TestTopicEntry.id,
+        label = "Refined subject after progress",
         summary = "The subject sharpened as the conversation went on."
       )
       val nextTurn = TurnInput(
@@ -141,7 +143,7 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
           ContextFrame.Text("follow-up user message", TestUser, Id[Event]("seed-5"))
         )
       )
-      val (first, _)  = render(provider, multiTurnInput)
+      val (first, _) = render(provider, multiTurnInput)
       val (second, _) = render(provider, nextTurn, renamedTopic, List(TestTopicEntry))
 
       // Breakpoints sit at the end of the tool roster and on the system
@@ -218,8 +220,12 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
         "total_tokens" -> num(580),
         "prompt_tokens_details" -> obj("cached_tokens" -> num(384))
       )
-      val parsed = TokenUsage.fromJson(usage, "prompt_tokens", "completion_tokens",
-        Some("total_tokens"), CacheKeys.OpenAIChat)
+      val parsed = TokenUsage.fromJson(
+        usage,
+        "prompt_tokens",
+        "completion_tokens",
+        Some("total_tokens"),
+        CacheKeys.OpenAIChat)
       parsed.promptTokens shouldBe 500
       parsed.cacheReadTokens shouldBe 384
       parsed.cacheCreationTokens shouldBe 0
@@ -233,8 +239,12 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
         "prompt_cache_hit_tokens" -> num(640),
         "prompt_cache_miss_tokens" -> num(60)
       )
-      val parsed = TokenUsage.fromJson(usage, "prompt_tokens", "completion_tokens",
-        Some("total_tokens"), CacheKeys.DeepSeek)
+      val parsed = TokenUsage.fromJson(
+        usage,
+        "prompt_tokens",
+        "completion_tokens",
+        Some("total_tokens"),
+        CacheKeys.DeepSeek)
       parsed.cacheReadTokens shouldBe 640
       parsed.cacheCreationTokens shouldBe 60
     }
@@ -252,8 +262,12 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
 
     "round-trip the cache fields through fabric RW" in {
       import fabric.rw.*
-      val usage = TokenUsage(promptTokens = 10, completionTokens = 5, totalTokens = 15,
-        cacheReadTokens = 8, cacheCreationTokens = 2)
+      val usage = TokenUsage(
+        promptTokens = 10,
+        completionTokens = 5,
+        totalTokens = 15,
+        cacheReadTokens = 8,
+        cacheCreationTokens = 2)
       val restored = usage.json.as[TokenUsage]
       restored shouldBe usage
     }

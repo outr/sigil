@@ -25,44 +25,58 @@ import scala.jdk.CollectionConverters.*
  */
 class BspRecordingBuildClient extends BuildClient {
 
-  /** Per-build-target diagnostics — keyed by document URI (BSP
-    * `PublishDiagnosticsParams.textDocument.uri`), each entry is the
-    * latest set the server published for that file. */
+  /**
+   * Per-build-target diagnostics — keyed by document URI (BSP
+   * `PublishDiagnosticsParams.textDocument.uri`), each entry is the
+   * latest set the server published for that file.
+   */
   val diagnostics: ConcurrentHashMap[String, java.util.List[Diagnostic]] = new ConcurrentHashMap()
 
-  /** All log messages received since the last clear. Apps that want
-    * to render compile output streams subscribe by polling between
-    * calls. */
+  /**
+   * All log messages received since the last clear. Apps that want
+   * to render compile output streams subscribe by polling between
+   * calls.
+   */
   val logs: ConcurrentLinkedQueue[LogMessageParams] = new ConcurrentLinkedQueue()
 
-  /** Run-target stdout. Captured separately from logs so test/run
-    * tools can extract just the program output. */
+  /**
+   * Run-target stdout. Captured separately from logs so test/run
+   * tools can extract just the program output.
+   */
   val runStdout: ConcurrentLinkedQueue[PrintParams] = new ConcurrentLinkedQueue()
 
-  /** Run-target stderr. */
+  /**
+   * Run-target stderr.
+   */
   val runStderr: ConcurrentLinkedQueue[PrintParams] = new ConcurrentLinkedQueue()
 
-  /** Active task ids → most recent progress / start params. Cleared
-    * when `onBuildTaskFinish` arrives for the matching id. */
+  /**
+   * Active task ids → most recent progress / start params. Cleared
+   * when `onBuildTaskFinish` arrives for the matching id.
+   */
   val activeTasks: ConcurrentHashMap[String, java.lang.Object] = new ConcurrentHashMap()
 
-  /** Per-call status callback. The active BSP tool (via
-    * [[BspToolSupport.withSession]] / `withSessionTyped`) installs a
-    * `Some(handler)` that publishes [[sigil.event.ToolProgress]] for
-    * the chip; cleared back to `None` on exit. Routes BSP-server
-    * progress (log messages, task start/progress/finish) so long
-    * builds surface live status instead of looking frozen.
-    *
-    * Thread-safe; the callback is invoked synchronously from the
-    * BSP4J notification thread, so handlers should be cheap and
-    * return quickly (typically just a `Task.startUnit` of a
-    * `ctx.reportProgress` call). */
+  /**
+   * Per-call status callback. The active BSP tool (via
+   * [[BspToolSupport.withSession]] / `withSessionTyped`) installs a
+   * `Some(handler)` that publishes [[sigil.event.ToolProgress]] for
+   * the chip; cleared back to `None` on exit. Routes BSP-server
+   * progress (log messages, task start/progress/finish) so long
+   * builds surface live status instead of looking frozen.
+   *
+   * Thread-safe; the callback is invoked synchronously from the
+   * BSP4J notification thread, so handlers should be cheap and
+   * return quickly (typically just a `Task.startUnit` of a
+   * `ctx.reportProgress` call).
+   */
   private val statusCallback: AtomicReference[Option[String => Unit]] =
     new AtomicReference(None)
 
-  /** Install (or clear with `None`) the status-update callback for
-    * the currently-running tool. Thread-safe; replacement is
-    * atomic. */
+  /**
+   * Install (or clear with `None`) the status-update callback for
+   * the currently-running tool. Thread-safe; replacement is
+   * atomic.
+   */
   def setStatusCallback(cb: Option[String => Unit]): Unit =
     statusCallback.set(cb)
 
@@ -71,64 +85,78 @@ class BspRecordingBuildClient extends BuildClient {
     if (trimmed.nonEmpty) statusCallback.get().foreach(_.apply(trimmed))
   }
 
-  /** Wall-clock millis of the most recent incoming server activity
-    * (any notification or diagnostic). Read by
-    * [[DurableJsonRpc.issueDurable]] to reset the silence window —
-    * a long operation that's actively reporting progress isn't
-    * stuck. Updated by every notification handler. */
+  /**
+   * Wall-clock millis of the most recent incoming server activity
+   * (any notification or diagnostic). Read by
+   * [[DurableJsonRpc.issueDurable]] to reset the silence window —
+   * a long operation that's actively reporting progress isn't
+   * stuck. Updated by every notification handler.
+   */
   private val lastActivityAt: AtomicLong = new AtomicLong(System.currentTimeMillis())
 
-  /** Accessor for [[DurableJsonRpc.issueDurable]]. Returns the wall-
-    * clock millis of the most recent server-side activity. */
+  /**
+   * Accessor for [[DurableJsonRpc.issueDurable]]. Returns the wall-
+   * clock millis of the most recent server-side activity.
+   */
   def lastActivityAtMillis: Long = lastActivityAt.get()
 
   private def markActivity(): Unit = lastActivityAt.set(System.currentTimeMillis())
 
-  /** Per-request activity clocks, keyed by the `originId` the session
-    * stamped on the outgoing request. Connection-level activity is the
-    * wrong liveness signal for long requests: build servers broadcast
-    * diagnostics from OTHER clients' builds (an editor's Metals
-    * compiling the same sbt), and our own queued requests ride the
-    * running one's chatter — so a request that will never be answered
-    * hides behind traffic that has nothing to do with it. A request-
-    * scoped clock only advances on activity attributable to THAT
-    * request:
-    *
-    *   - `publishDiagnostics` carrying the request's `originId` — the
-    *     strong signal; servers stamp it per the BSP spec.
-    *   - task start/progress/finish and log messages when this
-    *     request is the connection's ONLY one in flight — unambiguous
-    *     attribution without originId (bsp4j 2.1 task notifications
-    *     don't carry one).
-    *
-    * Diagnostics with a FOREIGN originId never bump anyone's clock —
-    * that's exactly the cross-client chatter the scoping exists to
-    * ignore. */
+  /**
+   * Per-request activity clocks, keyed by the `originId` the session
+   * stamped on the outgoing request. Connection-level activity is the
+   * wrong liveness signal for long requests: build servers broadcast
+   * diagnostics from OTHER clients' builds (an editor's Metals
+   * compiling the same sbt), and our own queued requests ride the
+   * running one's chatter — so a request that will never be answered
+   * hides behind traffic that has nothing to do with it. A request-
+   * scoped clock only advances on activity attributable to THAT
+   * request:
+   *
+   *   - `publishDiagnostics` carrying the request's `originId` — the
+   *     strong signal; servers stamp it per the BSP spec.
+   *   - task start/progress/finish and log messages when this
+   *     request is the connection's ONLY one in flight — unambiguous
+   *     attribution without originId (bsp4j 2.1 task notifications
+   *     don't carry one).
+   *
+   * Diagnostics with a FOREIGN originId never bump anyone's clock —
+   * that's exactly the cross-client chatter the scoping exists to
+   * ignore.
+   */
   private val requestActivity: ConcurrentHashMap[String, AtomicLong] = new ConcurrentHashMap()
 
-  /** Open a request-scoped activity clock, seeded at now. */
+  /**
+   * Open a request-scoped activity clock, seeded at now.
+   */
   def beginRequest(originId: String): Unit = {
     requestActivity.put(originId, new AtomicLong(System.currentTimeMillis()))
     ()
   }
 
-  /** Close (and forget) a request's activity clock. */
+  /**
+   * Close (and forget) a request's activity clock.
+   */
   def endRequest(originId: String): Unit = {
     requestActivity.remove(originId)
     ()
   }
 
-  /** The request's own last-activity clock; `None` once ended /
-    * never begun. */
+  /**
+   * The request's own last-activity clock; `None` once ended /
+   * never begun.
+   */
   def requestActivityFor(originId: String): Option[Long] =
     Option(requestActivity.get(originId)).map(_.get())
 
   private def markRequestActivity(originId: String): Unit =
     Option(requestActivity.get(originId)).foreach(_.set(System.currentTimeMillis()))
 
-  /** Un-attributed server work (task events, logs): counts for the
-    * in-flight request only when it is unambiguous — exactly one
-    * request open on this connection. */
+  /**
+   * Un-attributed server work (task events, logs): counts for the
+   * in-flight request only when it is unambiguous — exactly one
+   * request open on this connection.
+   */
   private def markSoleInFlightRequest(): Unit = {
     val it = requestActivity.values().iterator()
     if (it.hasNext) {
@@ -137,13 +165,17 @@ class BspRecordingBuildClient extends BuildClient {
     }
   }
 
-  /** Snapshot the current diagnostics map. Useful for tools that
-    * want to show what the server has flagged after a compile. */
+  /**
+   * Snapshot the current diagnostics map. Useful for tools that
+   * want to show what the server has flagged after a compile.
+   */
   def diagnosticsSnapshot: Map[String, List[Diagnostic]] =
     diagnostics.asScala.view.mapValues(_.asScala.toList).toMap
 
-  /** Snapshot and CLEAR the log queue — typical pattern for tools
-    * that want "what new logs arrived during this call". */
+  /**
+   * Snapshot and CLEAR the log queue — typical pattern for tools
+   * that want "what new logs arrived during this call".
+   */
   def drainLogs(): List[LogMessageParams] = {
     val out = scala.collection.mutable.ListBuffer.empty[LogMessageParams]
     var next = logs.poll()
@@ -210,10 +242,10 @@ class BspRecordingBuildClient extends BuildClient {
     val msg = Option(params.getMessage).getOrElse("")
     val statusName = Option(params.getStatus).map(_.toString).getOrElse("")
     val combined = (msg, statusName) match {
-      case ("", "")   => ""
-      case ("", s)    => s
-      case (m, "")    => m
-      case (m, s)     => s"$m ($s)"
+      case ("", "") => ""
+      case ("", s) => s
+      case (m, "") => m
+      case (m, s) => s"$m ($s)"
     }
     emitStatus(combined)
   }
@@ -222,7 +254,7 @@ class BspRecordingBuildClient extends BuildClient {
     markActivity()
     Option(params.getOriginId).filter(_.nonEmpty) match {
       case Some(originId) => markRequestActivity(originId)
-      case None           => markSoleInFlightRequest()
+      case None => markSoleInFlightRequest()
     }
     val uri = params.getTextDocument.getUri
     diagnostics.put(uri, params.getDiagnostics)

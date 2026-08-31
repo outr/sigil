@@ -13,6 +13,8 @@ import rapid.Task
  */
 trait PreviewResize {
 
-  /** Render and capture at `width` x `height` from now on. */
+  /**
+   * Render and capture at `width` x `height` from now on.
+   */
   def apply(width: Int, height: Int): Task[Unit]
 }

@@ -37,13 +37,15 @@ class CurrentDateFeatureSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   private val modelId: Id[Model] = Model.id("test", "current-date")
   TestSigil.testModel(modelId)
 
-  /** The text the pinned clock renders — the whole section, exactly. */
+  /**
+   * The text the pinned clock renders — the whole section, exactly.
+   */
   private val expectedBlock: String =
     "\n== Current date and time ==\n" +
       "Today is Saturday, March 14, 2026, 15:09 UTC.\n" +
       CurrentDateFeature.Directive
 
-  private final class CapturingProvider extends Provider {
+  final private class CapturingProvider extends Provider {
     val calls = new ConcurrentLinkedQueue[ProviderCall]()
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -56,10 +58,10 @@ class CurrentDateFeatureSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
         ProviderEvent.toolCall(cid, RespondTool)(RespondInput(
-          topicLabel   = TestTopicEntry.label,
+          topicLabel = TestTopicEntry.label,
           topicSummary = TestTopicEntry.summary,
-          content      = "ok",
-          endsTurn     = true
+          content = "ok",
+          endsTurn = true
         )),
         ProviderEvent.Done(StopReason.Complete)
       ))
@@ -72,17 +74,17 @@ class CurrentDateFeatureSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private val topic = Topic(
     conversationId = convId,
-    label          = TestTopicEntry.label,
-    summary        = TestTopicEntry.summary,
-    createdBy      = TestUser,
-    _id            = Id[Topic](s"current-date-topic-${rapid.Unique()}")
+    label = TestTopicEntry.label,
+    summary = TestTopicEntry.summary,
+    createdBy = TestUser,
+    _id = Id[Topic](s"current-date-topic-${rapid.Unique()}")
   )
 
   private def agent: AgentParticipant = DefaultAgentParticipant(
-    id                 = TestAgent,
-    modelId            = modelId,
-    toolNames          = CoreTools.coreToolNames,
-    instructions       = Instructions(),
+    id = TestAgent,
+    modelId = modelId,
+    toolNames = CoreTools.coreToolNames,
+    instructions = Instructions(),
     generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
   )
 
@@ -93,52 +95,50 @@ class CurrentDateFeatureSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   private def idleCount(snap: List[Signal]): Int =
     snap.count {
       case d: AgentStateDelta => d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete)
-      case _                  => false
+      case _ => false
     }
 
   private lazy val runTurn: Task[ProviderCall] = {
     TestSigil.reset()
     TestSigil.setProvider(Task.pure(provider))
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new AtomicBoolean(true)
+    val running = new AtomicBoolean(true)
     TestSigil.signals.takeWhile(_ => running.get()).evalMap(s => Task { recorded.add(s); () }).drain.startUnit()
     val conv = Conversation(
-      topics       = List(sigil.conversation.TopicEntry(topic._id, topic.label, topic.summary)),
+      topics = List(sigil.conversation.TopicEntry(topic._id, topic.label, topic.summary)),
       participants = List(agent),
-      _id          = convId
+      _id = convId
     )
     for {
       _ <- Task.sleep(120.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.withDB(_.topics.transaction(_.upsert(topic)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = topic._id,
-             content        = Vector(ResponseContent.Text("what is today's date?")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = topic._id,
+        content = Vector(ResponseContent.Text("what is today's date?")),
+        state = EventState.Complete
+      ))
       _ <- waitFor(System.currentTimeMillis() + 30_000L)(idleCount(recorded.iterator().asScala.toList) > 0)
-      _ <- Task { running.set(false) }
+      _ <- Task(running.set(false))
     } yield provider.calls.iterator().asScala.toList.headOption.getOrElse(
       throw new IllegalStateException("no provider call captured"))
   }.singleton
 
   "A rendered request" should {
-    "carry the current date and the directive to reason only from it" in {
+    "carry the current date and the directive to reason only from it" in
       runTurn.map { call =>
         withClue(s"rendered system prompt:\n${call.systemCombined}\n") {
           call.systemCombined should include(expectedBlock)
         }
       }
-    }
 
-    "carry the clock in the volatile tail, never in the cacheable prefix" in {
+    "carry the clock in the volatile tail, never in the cacheable prefix" in
       runTurn.map { call =>
         call.systemVolatile should include(expectedBlock)
         call.system should not include "Today is"
       }
-    }
   }
 
   "The rendered section" should {
@@ -162,7 +162,8 @@ class CurrentDateFeatureSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         val feature = CurrentDateFeature(Clock.fixed(Instant.parse(instant), ZoneOffset.UTC))
         val sections = ContextSections.all ++ ContextFeatures.sections(List(feature))
         val ctx = ContextFeatures.evaluate(List(feature), sectionContext).sync()
-        (ContextSections.render(sections, Placement.StablePrefix, ctx),
+        (
+          ContextSections.render(sections, Placement.StablePrefix, ctx),
           ContextSections.render(sections, Placement.VolatileTail, ctx))
       }
       val (prefixA, tailA) = rendered("2026-03-14T15:09:00Z")
@@ -185,7 +186,10 @@ class CurrentDateFeatureSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       tools = CoreTools.all,
       chain = List(TestUser, TestAgent)
     )
-    SectionContext(request, ResolvedReferences(Vector.empty, Vector.empty, Vector.empty),
-      discoveredCapabilitiesPromptCap = 25, now = Timestamp().value)
+    SectionContext(
+      request,
+      ResolvedReferences(Vector.empty, Vector.empty, Vector.empty),
+      discoveredCapabilitiesPromptCap = 25,
+      now = Timestamp().value)
   }
 }

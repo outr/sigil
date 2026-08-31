@@ -30,7 +30,7 @@ import sigil.tool.{DiscoverySpec, Effect, Freshness, Resolution, Tool, ToolIO, T
  * Emits a typed [[ContextBreakdownOutput]].
  */
 case object ContextBreakdownTool extends Tool {
-  type Input  = ContextBreakdownInput
+  type Input = ContextBreakdownInput
   type Output = ContextBreakdownOutput
   val io: ToolIO[ContextBreakdownInput, ContextBreakdownOutput] = ToolIO.derived[ContextBreakdownInput, ContextBreakdownOutput]
   override val name = ToolName("context_breakdown")
@@ -53,34 +53,37 @@ case object ContextBreakdownTool extends Tool {
 
   private def executeOutput(input: ContextBreakdownInput, context: ToolContext): Task[ContextBreakdownOutput] = {
     val sigil = context.sigil
-    val conv  = context.conversation
+    val conv = context.conversation
     val agent = conv.participants.collectFirst {
       case a: AgentParticipant if a.id == context.caller => a
     }
     val rolesTask = agent.fold(Task.pure(List.empty[_root_.sigil.role.Role]))(_.resolveRoles(context.turn))
     for {
       resolved <- sigil.resolveReferences(context.turnInput)
-      roles    <- rolesTask
+      roles <- rolesTask
       // Features are computed here for the same reason the provider
       // computes them before rendering: the breakdown must account for
       // the bytes a real turn would carry, features included.
-      sectionContext <- ContextFeatures.evaluate(sigil.enabledContextFeatures, SectionContext(
-        request                         = ConversationRequest(
-          conversationId     = conv.id,
-          model              = context.model,
-          instructions       = agent.map(_.instructions).getOrElse(Instructions()),
-          turnInput          = context.turnInput,
-          currentMode        = conv.currentMode,
-          currentTopic       = conv.currentTopic,
-          previousTopics     = conv.previousTopics,
-          generationSettings = GenerationSettings(),
-          chain              = context.chain,
-          roles              = roles
-        ),
-        resolved                        = resolved,
-        discoveredCapabilitiesPromptCap = sigil.discoveredCapabilitiesPromptCap,
-        promptShape                     = sigil.modelProfileFor(context.model).promptShape
-      ))
+      sectionContext <- ContextFeatures.evaluate(
+        sigil.enabledContextFeatures,
+        SectionContext(
+          request = ConversationRequest(
+            conversationId = conv.id,
+            model = context.model,
+            instructions = agent.map(_.instructions).getOrElse(Instructions()),
+            turnInput = context.turnInput,
+            currentMode = conv.currentMode,
+            currentTopic = conv.currentTopic,
+            previousTopics = conv.previousTopics,
+            generationSettings = GenerationSettings(),
+            chain = context.chain,
+            roles = roles
+          ),
+          resolved = resolved,
+          discoveredCapabilitiesPromptCap = sigil.discoveredCapabilitiesPromptCap,
+          promptShape = sigil.modelProfileFor(context.model).promptShape
+        )
+      )
     } yield {
       val profile = RequestProfiler.profile(sectionContext, HeuristicTokenizer, sigil, sigil.resolvedContextSections)
       val sections = profile.sections.toList
@@ -89,7 +92,7 @@ case object ContextBreakdownTool extends Tool {
       ContextBreakdownOutput(
         totalTokens = profile.total,
         currentMode = conv.currentMode.name,
-        sections    = sections,
+        sections = sections,
         note = "Section accounting is the framework's own wire profiler, minus the tool roster and its " +
           "framing preamble (not visible from a tool dispatch). Tokens estimated via the char/4 heuristic; " +
           "production budget uses the provider's tokenizer."
@@ -97,23 +100,25 @@ case object ContextBreakdownTool extends Tool {
     }
   }
 
-  /** How many entries a section rendered, for the list-shaped ones;
-    * `1` for the sections that render a single block. */
+  /**
+   * How many entries a section rendered, for the list-shaped ones;
+   * `1` for the sections that render a single block.
+   */
   private def entryCount(id: ProfileSection, c: SectionContext): Int = id match {
-    case ProfileSection.Frames                 => c.turn.frames.size
-    case ProfileSection.CriticalMemories       => c.resolved.criticalMemories.size
-    case ProfileSection.Memories               => c.capped(c.resolved.memories.toList, c.promptShape.memoryCap).size
-    case ProfileSection.Summaries              => c.capped(c.resolved.summaries.toList, c.promptShape.summaryCap).size
-    case ProfileSection.Information            => c.turn.information.size
-    case ProfileSection.ActiveSkills           => c.allSkills.size
-    case ProfileSection.PreviousTopics         => c.capped(c.request.previousTopics).size
-    case ProfileSection.RecentTools            => c.recentTools.size
-    case ProfileSection.RepeatedToolCalls      => c.duplicateGroups.size
-    case ProfileSection.SuggestedTools         => c.suggestedTools.size
+    case ProfileSection.Frames => c.turn.frames.size
+    case ProfileSection.CriticalMemories => c.resolved.criticalMemories.size
+    case ProfileSection.Memories => c.capped(c.resolved.memories.toList, c.promptShape.memoryCap).size
+    case ProfileSection.Summaries => c.capped(c.resolved.summaries.toList, c.promptShape.summaryCap).size
+    case ProfileSection.Information => c.turn.information.size
+    case ProfileSection.ActiveSkills => c.allSkills.size
+    case ProfileSection.PreviousTopics => c.capped(c.request.previousTopics).size
+    case ProfileSection.RecentTools => c.recentTools.size
+    case ProfileSection.RepeatedToolCalls => c.duplicateGroups.size
+    case ProfileSection.SuggestedTools => c.suggestedTools.size
     case ProfileSection.DiscoveredCapabilities => c.discovered.size
-    case ProfileSection.ExtraContext           => c.turn.extraContext.size
-    case ProfileSection.ParticipantContext     => c.perParticipantExtras.size
-    case ProfileSection.ToolRoster             => c.request.tools.size
-    case _                                     => 1
+    case ProfileSection.ExtraContext => c.turn.extraContext.size
+    case ProfileSection.ParticipantContext => c.perParticipantExtras.size
+    case ProfileSection.ToolRoster => c.request.tools.size
+    case _ => 1
   }
 }

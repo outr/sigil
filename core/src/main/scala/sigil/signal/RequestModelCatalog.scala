@@ -24,5 +24,6 @@ import fabric.rw.*
  *                  `Model._id.value` (case-insensitive).
  */
 case class RequestModelCatalog(provider: Option[String] = None,
-                                modality: Option[String] = None,
-                                query: Option[String] = None) extends Notice derives RW
+                               modality: Option[String] = None,
+                               query: Option[String] = None)
+  extends Notice derives RW

@@ -20,16 +20,18 @@ import sigil.tool.Tool
  */
 object RequestProfiler {
 
-  /** Profile a request using a Sigil instance (typical Provider call site).
-    * `descriptionFor` calls hit `Tool.descriptionFor(currentMode, sigil)` —
-    * which is the wire-accurate string for tools like `change_mode` that
-    * fold runtime context into their description. Adds insights derived
-    * from the model's `contextLength` (looked up via `sigil.cache`).
-    *
-    * The [[SectionContext]] is the renderer's own — the provider builds
-    * it once per turn and hands the same value to both, so the profile
-    * counts the bytes the wire carries (same `now`, same derivations,
-    * one pass of the shared lazy vals). */
+  /**
+   * Profile a request using a Sigil instance (typical Provider call site).
+   * `descriptionFor` calls hit `Tool.descriptionFor(currentMode, sigil)` —
+   * which is the wire-accurate string for tools like `change_mode` that
+   * fold runtime context into their description. Adds insights derived
+   * from the model's `contextLength` (looked up via `sigil.cache`).
+   *
+   * The [[SectionContext]] is the renderer's own — the provider builds
+   * it once per turn and hands the same value to both, so the profile
+   * counts the bytes the wire carries (same `now`, same derivations,
+   * one pass of the shared lazy vals).
+   */
   def profile(ctx: SectionContext,
               tokenizer: Tokenizer,
               sigil: Sigil,
@@ -50,10 +52,12 @@ object RequestProfiler {
     raw.copy(insights = insights)
   }
 
-  /** Profile a request with an explicit description supplier. Used by
-    * synthetic benches that don't want to spin up a full Sigil — pass
-    * `_.description` to fall back to static descriptions, or supply a
-    * custom mapping for richer scenarios. */
+  /**
+   * Profile a request with an explicit description supplier. Used by
+   * synthetic benches that don't want to spin up a full Sigil — pass
+   * `_.description` to fall back to static descriptions, or supply a
+   * custom mapping for richer scenarios.
+   */
   def profileWith(sectionContext: SectionContext,
                   tokenizer: Tokenizer,
                   descriptionFor: Tool => String,
@@ -72,7 +76,7 @@ object RequestProfiler {
     // Frames (the message array) — wire-level, outside the section list.
     val frameProfiles = turn.frames.map { f =>
       val (kind, text, eventId) = f match {
-        case t: ContextFrame.Text      => ("Text", t.content, t.sourceEventId)
+        case t: ContextFrame.Text => ("Text", t.content, t.sourceEventId)
         case tc: ContextFrame.ToolCall =>
           // Sigil #261 — unified ToolCall(state) frame contributes
           // both its args AND (when Complete) the result content to
@@ -80,10 +84,10 @@ object RequestProfiler {
           // two separate Frame rows (ToolCall + ToolResult).
           val resultText = tc.state match {
             case sigil.conversation.ToolCallState.Complete(content, _) => "\n" + content
-            case sigil.conversation.ToolCallState.Active               => ""
+            case sigil.conversation.ToolCallState.Active => ""
           }
           ("ToolCall", tc.argsJson + resultText, tc.sourceEventId)
-        case s: ContextFrame.System    => ("System", s.content, s.sourceEventId)
+        case s: ContextFrame.System => ("System", s.content, s.sourceEventId)
         case r: ContextFrame.Reasoning => ("Reasoning", r.summary.mkString("\n"), r.sourceEventId)
       }
       FrameProfile(kind, eventId, tokenizer.count(text))

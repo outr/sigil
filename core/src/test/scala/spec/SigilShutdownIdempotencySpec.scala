@@ -28,15 +28,17 @@ import sigil.db.SigilDB
  */
 class SigilShutdownIdempotencySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Build a fresh Sigil whose `instance` lifecycle we control
-    * independently of the shared `TestSigil`. We deliberately never
-    * call `instance.sync()` in these tests — shutdown's `instanceStarted`
-    * guard is what we're verifying. So `buildDB` can throw — the
-    * assertion is precisely that it's never invoked. */
+  /**
+   * Build a fresh Sigil whose `instance` lifecycle we control
+   * independently of the shared `TestSigil`. We deliberately never
+   * call `instance.sync()` in these tests — shutdown's `instanceStarted`
+   * guard is what we're verifying. So `buildDB` can throw — the
+   * assertion is precisely that it's never invoked.
+   */
   private def freshSigil(name: String): Sigil = new Sigil {
     override protected def buildDB(directory: Option[java.nio.file.Path],
-                                    storeManager: lightdb.store.CollectionManager,
-                                    appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
+                                   storeManager: lightdb.store.CollectionManager,
+                                   appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
       throw new AssertionError(
         s"Sigil[$name].buildDB was invoked, meaning shutdown forced the DB open. " +
           s"This violates the codegen-safe shutdown invariant — instanceStarted should " +
@@ -77,7 +79,7 @@ class SigilShutdownIdempotencySpec extends AsyncWordSpec with AsyncTaskSpec with
         _ <- s.shutdown
       } yield {
         s.isShutdown shouldBe true
-        s.isShutdown shouldBe true  // still true on subsequent reads
+        s.isShutdown shouldBe true // still true on subsequent reads
       }
     }
   }

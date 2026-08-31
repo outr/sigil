@@ -48,25 +48,22 @@ class FuseStageKeywordLegSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     FuseStage(keywordWeight = keywordWeight, recencyWeight = 0.0, reinforcementWeight = 0.0)
 
   "the fuse stage" should {
-    "rank question-leg agreement above keyword-supported and keyword-only hits" in {
+    "rank question-leg agreement above keyword-supported and keyword-only hits" in
       stage(keywordWeight = 1.0).run(state, ctx).map { fused =>
         fused.ranked.map(_._id.value) shouldBe Vector("question-hit", "mixed-hit", "keyword-only")
       }
-    }
 
-    "keep a keyword-only hit reachable through the context leg" in {
+    "keep a keyword-only hit reachable through the context leg" in
       stage(keywordWeight = 1.0).run(state.copy(lexical = Vector(mixedHit), vectorHits = Vector.empty), ctx).map { fused =>
-        fused.ranked.map(_._id.value) should contain ("keyword-only")
+        fused.ranked.map(_._id.value) should contain("keyword-only")
       }
-    }
 
-    "silence the context leg at keywordWeight = 0" in {
+    "silence the context leg at keywordWeight = 0" in
       stage(keywordWeight = 0.0).run(state, ctx).map { fused =>
         // The keyword-only memory scores zero — it can only trail the
         // question-backed entries.
         fused.ranked.map(_._id.value).take(2) shouldBe Vector("question-hit", "mixed-hit")
         fused.ranked.map(_._id.value).last shouldBe "keyword-only"
       }
-    }
   }
 }

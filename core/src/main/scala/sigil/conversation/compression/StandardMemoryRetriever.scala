@@ -6,8 +6,10 @@ import lightdb.time.Timestamp
 import rapid.Task
 import sigil.{GlobalSpace, Sigil, SpaceId}
 import sigil.conversation.{ContextFrame, ContextMemory, Conversation, MemoryStatus}
-import sigil.conversation.compression.retrieval.{BudgetStage, FuseStage, GateStage, MemoryReranker, MemoryRetrievalContext,
-  MemoryRetrievalStage, MemoryRetrievalState, RecallStage, RecordStage, RerankStage}
+import sigil.conversation.compression.retrieval.{
+  BudgetStage, FuseStage, GateStage, MemoryReranker, MemoryRetrievalContext,
+  MemoryRetrievalStage, MemoryRetrievalState, RecallStage, RecordStage, RerankStage
+}
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
 
@@ -83,26 +85,32 @@ case class StandardMemoryRetriever(limit: Int = 5,
                                    contextTermsFrom: Option[StandardMemoryRetriever.ContextTermsBuilder] = None,
                                    includePinned: Boolean = true,
                                    rrfK: Int = 60,
-                                   /** Per-signal weight on the Lucene leg of RRF.
-                                     * Default 2.0 — BM25 scores are semantically
-                                     * grounded (keyword match means keyword match),
-                                     * while vector signal quality depends on
-                                     * embedding model + dimension count. When the
-                                     * pools are small (a few candidates), pure-
-                                     * symmetric ranking lets a noisy vector
-                                     * embedding override a clear lexical match;
-                                     * giving Lucene more weight prevents that
-                                     * inversion. Apps with high-quality semantic
-                                     * embeddings can set both to 1.0 for
-                                     * traditional RRF. */
+                                   /**
+                                    * Per-signal weight on the Lucene leg of RRF.
+                                    * Default 2.0 — BM25 scores are semantically
+                                    * grounded (keyword match means keyword match),
+                                    * while vector signal quality depends on
+                                    * embedding model + dimension count. When the
+                                    * pools are small (a few candidates), pure-
+                                    * symmetric ranking lets a noisy vector
+                                    * embedding override a clear lexical match;
+                                    * giving Lucene more weight prevents that
+                                    * inversion. Apps with high-quality semantic
+                                    * embeddings can set both to 1.0 for
+                                    * traditional RRF.
+                                    */
                                    lexicalWeight: Double = 2.0,
-                                   /** Per-signal weight on the vector leg of RRF.
-                                     * Default 1.0. Pair with `lexicalWeight`. */
+                                   /**
+                                    * Per-signal weight on the vector leg of RRF.
+                                    * Default 1.0. Pair with `lexicalWeight`.
+                                    */
                                    vectorWeight: Double = 1.0,
-                                   /** Per-signal weight on the context keyword leg
-                                     * (`currentKeywords` + topic label). Default 1.0
-                                     * — context informs the ranking without outvoting
-                                     * a direct question match; `0.0` disables it. */
+                                   /**
+                                    * Per-signal weight on the context keyword leg
+                                    * (`currentKeywords` + topic label). Default 1.0
+                                    * — context informs the ranking without outvoting
+                                    * a direct question match; `0.0` disables it.
+                                    */
                                    keywordWeight: Double = 1.0,
                                    recencyWeight: Double = FuseStage.DefaultRecencyWeight,
                                    reinforcementWeight: Double = FuseStage.DefaultReinforcementWeight,
@@ -110,7 +118,8 @@ case class StandardMemoryRetriever(limit: Int = 5,
                                    reranker: Option[MemoryReranker] = None,
                                    tokenBudget: Option[Int] = None,
                                    recordAccess: Boolean = true,
-                                   pipeline: Option[List[MemoryRetrievalStage]] = None) extends MemoryRetriever {
+                                   pipeline: Option[List[MemoryRetrievalStage]] = None)
+  extends MemoryRetriever {
 
   override def retrieve(sigil: Sigil,
                         conversationId: Id[Conversation],
@@ -118,8 +127,10 @@ case class StandardMemoryRetriever(limit: Int = 5,
                         chain: List[ParticipantId]): Task[MemoryRetrievalResult] =
     sigil.cachedMemoryRetrieve(conversationId, computeFresh(sigil, conversationId, frames, chain))
 
-  /** The stage list the pipeline runs — [[pipeline]] when supplied,
-    * otherwise the standard six derived from this retriever's knobs. */
+  /**
+   * The stage list the pipeline runs — [[pipeline]] when supplied,
+   * otherwise the standard six derived from this retriever's knobs.
+   */
   def stages: List[MemoryRetrievalStage] = pipeline.getOrElse(
     StandardMemoryRetriever.defaultStages(
       limit = limit,
@@ -136,18 +147,20 @@ case class StandardMemoryRetriever(limit: Int = 5,
     )
   )
 
-  /** The uncached retrieval path — runs once per (conversation,
-    * cache lifetime) under [[Sigil.cachedMemoryRetrieve]]. */
+  /**
+   * The uncached retrieval path — runs once per (conversation,
+   * cache lifetime) under [[Sigil.cachedMemoryRetrieve]].
+   */
   private def computeFresh(sigil: Sigil,
                            conversationId: Id[Conversation],
                            frames: Vector[ContextFrame],
                            chain: List[ParticipantId]): Task[MemoryRetrievalResult] = {
     val now = Timestamp()
     for {
-      spaces       <- resolveSpaces(sigil, chain, conversationId)
-      currentMode  <- currentModeOf(sigil, conversationId)
-      criticals    <- if (includePinned) loadPinned(sigil, spaces, currentMode, now) else Task.pure(Vector.empty)
-      regular      <- buildRecallInputs(sigil, conversationId, frames, chain).flatMap {
+      spaces <- resolveSpaces(sigil, chain, conversationId)
+      currentMode <- currentModeOf(sigil, conversationId)
+      criticals <- if (includePinned) loadPinned(sigil, spaces, currentMode, now) else Task.pure(Vector.empty)
+      regular <- buildRecallInputs(sigil, conversationId, frames, chain).flatMap {
         case None => Task.pure(Vector.empty)
         case Some((question, terms)) =>
           val ctx = MemoryRetrievalContext(
@@ -171,35 +184,41 @@ case class StandardMemoryRetriever(limit: Int = 5,
     } yield MemoryRetrievalResult(memories = regular, criticalMemories = criticals)
   }
 
-  /** Read the conversation's current mode for the per-turn
-    * [[ContextMemory.modeAffinity]] gate. `None` when the
-    * conversation row has been deleted out from under the retriever
-    * (the modeAffinity filter then degrades to "universal-only" —
-    * mode-scoped memories drop out). */
+  /**
+   * Read the conversation's current mode for the per-turn
+   * [[ContextMemory.modeAffinity]] gate. `None` when the
+   * conversation row has been deleted out from under the retriever
+   * (the modeAffinity filter then degrades to "universal-only" —
+   * mode-scoped memories drop out).
+   */
   private def currentModeOf(sigil: Sigil, conversationId: Id[Conversation]): Task[Option[Id[Mode]]] =
     sigil.withDB(_.conversations.transaction(_.get(conversationId)))
       .map(_.map(_.currentMode.id))
 
-  /** Resolve the per-turn space set: caller's accessible spaces plus
-    * [[GlobalSpace]] (universally accessible — pinned memories in
-    * Global render across every conversation that can see them). */
+  /**
+   * Resolve the per-turn space set: caller's accessible spaces plus
+   * [[GlobalSpace]] (universally accessible — pinned memories in
+   * Global render across every conversation that can see them).
+   */
   private def resolveSpaces(sigilArg: Sigil,
                             chain: List[ParticipantId],
                             conversationId: lightdb.id.Id[sigil.conversation.Conversation]): Task[Set[SpaceId]] =
     sigilArg.accessibleSpaces(chain, conversationId).map(_ + GlobalSpace)
 
-  /** Compose the per-turn recall inputs: the question text and the
-    * context terms. `None` when neither yields anything (no user
-    * message, no keywords, no topic) — retrieval is skipped for the
-    * turn.
-    *
-    * The question is the user's latest message ALONE ([[queryFrom]]
-    * overrides). The context terms are the conversation's
-    * `currentKeywords` plus the active topic's `label` tokens
-    * ([[contextTermsFrom]] overrides); the topic `summary` is
-    * deliberately excluded — mixing it into any query biases recall
-    * toward the conversation's general theme and crowds out the
-    * memory that answers a specific question. */
+  /**
+   * Compose the per-turn recall inputs: the question text and the
+   * context terms. `None` when neither yields anything (no user
+   * message, no keywords, no topic) — retrieval is skipped for the
+   * turn.
+   *
+   * The question is the user's latest message ALONE ([[queryFrom]]
+   * overrides). The context terms are the conversation's
+   * `currentKeywords` plus the active topic's `label` tokens
+   * ([[contextTermsFrom]] overrides); the topic `summary` is
+   * deliberately excluded — mixing it into any query biases recall
+   * toward the conversation's general theme and crowds out the
+   * memory that answers a specific question.
+   */
   private def buildRecallInputs(sigil: Sigil,
                                 conversationId: Id[Conversation],
                                 frames: Vector[ContextFrame],
@@ -208,9 +227,9 @@ case class StandardMemoryRetriever(limit: Int = 5,
       .map(_.trim).filter(_.nonEmpty)
     val termsTask = contextTermsFrom match {
       case Some(builder) => Task.pure(builder(frames, chain))
-      case None          =>
+      case None =>
         sigil.withDB(_.conversations.transaction(_.get(conversationId))).map {
-          case None       => Nil
+          case None => Nil
           case Some(conv) =>
             val labelTerms = conv.topics.lastOption.toList.flatMap(_.label.split("\\s+"))
             (conv.currentKeywords ++ labelTerms).iterator.map(_.trim).filter(_.nonEmpty).toList.distinct
@@ -222,15 +241,17 @@ case class StandardMemoryRetriever(limit: Int = 5,
     }
   }
 
-  /** Load every pinned memory in the supplied spaces. Pushes the
-    * filter into Lucene via the indexed `pinned` boolean, the
-    * `statusName` projection, and the `spaceIdValue` string
-    * projection: `pinned == true AND status == Approved AND
-    * spaceIdValue IN spaces`. The remainder of the recall gate
-    * ([[ContextMemory.isRecallable]] — current version + expiry) is
-    * filtered in-memory on the (small) result.
-    * O(N_pinned_in_accessible_spaces) per turn instead of
-    * O(N_total_memories). */
+  /**
+   * Load every pinned memory in the supplied spaces. Pushes the
+   * filter into Lucene via the indexed `pinned` boolean, the
+   * `statusName` projection, and the `spaceIdValue` string
+   * projection: `pinned == true AND status == Approved AND
+   * spaceIdValue IN spaces`. The remainder of the recall gate
+   * ([[ContextMemory.isRecallable]] — current version + expiry) is
+   * filtered in-memory on the (small) result.
+   * O(N_pinned_in_accessible_spaces) per turn instead of
+   * O(N_total_memories).
+   */
   private def loadPinned(sigil: Sigil,
                          spaces: Set[SpaceId],
                          currentMode: Option[Id[Mode]],
@@ -244,8 +265,7 @@ case class StandardMemoryRetriever(limit: Int = 5,
         .filter(_ =>
           Filter.Multi(minShould = 1, filters = spaceClauses) &&
             (ContextMemory.pinned === true) &&
-            (ContextMemory.statusName === MemoryStatus.Approved.toString)
-        )
+            (ContextMemory.statusName === MemoryStatus.Approved.toString))
         .toList
     }).map { rows =>
       rows.iterator
@@ -256,20 +276,27 @@ case class StandardMemoryRetriever(limit: Int = 5,
 }
 
 object StandardMemoryRetriever {
-  /** Function that derives a retrieval query from the turn's frames +
-    * participant chain. Returning `None` or an empty string skips
-    * the retrieval call for this turn. */
+
+  /**
+   * Function that derives a retrieval query from the turn's frames +
+   * participant chain. Returning `None` or an empty string skips
+   * the retrieval call for this turn.
+   */
   type QueryBuilder = (Vector[ContextFrame], List[ParticipantId]) => Option[String]
 
-  /** Function that derives the context keyword leg's terms from the
-    * turn's frames + participant chain. Returning `Nil` skips the
-    * keyword leg for the turn. */
+  /**
+   * Function that derives the context keyword leg's terms from the
+   * turn's frames + participant chain. Returning `Nil` skips the
+   * keyword leg for the turn.
+   */
   type ContextTermsBuilder = (Vector[ContextFrame], List[ParticipantId]) => List[String]
 
-  /** The standard six-stage pipeline, assembled from the retriever's
-    * knobs. Apps that want to swap one stage build on this — replace
-    * the entry and pass the list as
-    * `StandardMemoryRetriever(pipeline = Some(...))`. */
+  /**
+   * The standard six-stage pipeline, assembled from the retriever's
+   * knobs. Apps that want to swap one stage build on this — replace
+   * the entry and pass the list as
+   * `StandardMemoryRetriever(pipeline = Some(...))`.
+   */
   def defaultStages(limit: Int = 5,
                     rrfK: Int = 60,
                     lexicalWeight: Double = 2.0,
@@ -297,18 +324,22 @@ object StandardMemoryRetriever {
     RecordStage(recordAccess)
   )
 
-  /** Memory is expired (and should be skipped on retrieval) when its
-    * `expiresAt` field is set and not in the future. Records with
-    * `expiresAt = None` never expire. The store row stays — only the
-    * per-turn surfaced set excludes it. Apps that want hard eviction
-    * (DB-level deletion) wire a separate sweep effect. */
+  /**
+   * Memory is expired (and should be skipped on retrieval) when its
+   * `expiresAt` field is set and not in the future. Records with
+   * `expiresAt = None` never expire. The store row stays — only the
+   * per-turn surfaced set excludes it. Apps that want hard eviction
+   * (DB-level deletion) wire a separate sweep effect.
+   */
   def isExpired(m: ContextMemory, now: Timestamp): Boolean =
     m.expiresAt.exists(_.value <= now.value)
 
-  /** Walk frames back-to-front; take the first `Text` frame whose
-    * participant isn't `chain.last` (the agent about to act). That's
-    * typically the user's latest message — the most natural retrieval
-    * query. */
+  /**
+   * Walk frames back-to-front; take the first `Text` frame whose
+   * participant isn't `chain.last` (the agent about to act). That's
+   * typically the user's latest message — the most natural retrieval
+   * query.
+   */
   val lastNonAgentMessage: QueryBuilder = (frames, chain) => {
     val agent = chain.lastOption
     frames.reverseIterator.collectFirst {

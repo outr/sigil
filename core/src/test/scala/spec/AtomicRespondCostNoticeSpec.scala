@@ -76,16 +76,16 @@ class AtomicRespondCostNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def buildRequest(convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
-      conversationId     = convId,
-      model            = TestSigil.testModel(modelId),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      model = TestSigil.testModel(modelId),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = CoreTools.all.toVector
+      chain = List(TestUser, TestAgent),
+      tools = CoreTools.all.toVector
     )
 
   private def seedConversation(convId: Id[Conversation]): Task[Conversation] = {
@@ -106,12 +106,12 @@ class AtomicRespondCostNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with 
       .startUnit()
 
     for {
-      _       <- Task.sleep(100.millis)
+      _ <- Task.sleep(100.millis)
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
-      _       <- signals.foldLeft(Task.unit) { (acc, s) =>
-                   acc.flatMap(_ => TestSigil.publish(s).handleError(_ => Task.unit))
-                 }
-      _       <- Task.sleep(200.millis)
+      _ <- signals.foldLeft(Task.unit) { (acc, s) =>
+        acc.flatMap(_ => TestSigil.publish(s).handleError(_ => Task.unit))
+      }
+      _ <- Task.sleep(200.millis)
     } yield {
       running = false
       import scala.jdk.CollectionConverters.*
@@ -135,13 +135,13 @@ class AtomicRespondCostNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with 
         override def call(input: ProviderCall): Stream[ProviderEvent] = Stream.emits(List(
           ProviderEvent.ToolCallStart(CallId("respond-1"), RespondTool.schema.name.value),
           ProviderEvent.toolCall(CallId("respond-1"), RespondTool)(RespondInput(
-              topicLabel   = "Greeting",
-              topicSummary = "Hello world",
-              content      = "Hello.",
-              disposition  = ResponseDisposition.Success,
-              endsTurn     = true,
-              keywords     = Nil
-            )),
+            topicLabel = "Greeting",
+            topicSummary = "Hello world",
+            content = "Hello.",
+            disposition = ResponseDisposition.Success,
+            endsTurn = true,
+            keywords = Nil
+          )),
           ProviderEvent.Done(StopReason.Complete),
           ProviderEvent.Usage(TokenUsage(promptTokens = 1000, completionTokens = 500, totalTokens = 1500))
         ))
@@ -150,9 +150,9 @@ class AtomicRespondCostNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val expectedDelta = pricing.prompt * 1000 + pricing.completion * 500
 
       for {
-        conv    <- seedConversation(convId)
+        conv <- seedConversation(convId)
         notices <- runAndCollectNotices(provider, convId, conv, request)
-        loaded  <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+        loaded <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
         withClue("conversation row should carry the accumulated cost: ") {
           loaded.map(_.cost) shouldBe Some(expectedDelta)
@@ -191,9 +191,9 @@ class AtomicRespondCostNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val expectedDelta = pricing.prompt * 2000 + pricing.completion * 25
 
       for {
-        conv    <- seedConversation(convId)
+        conv <- seedConversation(convId)
         notices <- runAndCollectNotices(provider, convId, conv, request)
-        loaded  <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+        loaded <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
         withClue("conversation row should carry the accumulated cost: ") {
           loaded.map(_.cost) shouldBe Some(expectedDelta)

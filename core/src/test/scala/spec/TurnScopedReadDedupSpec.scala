@@ -163,7 +163,7 @@ class TurnScopedReadDedupSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
               case tc: ContextFrame.ToolCall =>
                 tc.state match {
                   case ToolCallState.Complete(content, _) => content
-                  case ToolCallState.Active               => "(active)"
+                  case ToolCallState.Active => "(active)"
                 }
             }.getOrElse("(no frame)")
         }.toList

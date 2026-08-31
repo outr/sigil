@@ -23,17 +23,21 @@ enum WireCall {
   case Unresolved(name: String, rawArgs: Json)
   case Malformed(name: String, error: DecodeError, rawArgs: Json)
 
-  /** The wire-level tool name the model invoked. */
+  /**
+   * The wire-level tool name the model invoked.
+   */
   def toolName: String = this match {
-    case Decoded(c)         => c.tool.name.value
-    case Unresolved(n, _)   => n
+    case Decoded(c) => c.tool.name.value
+    case Unresolved(n, _) => n
     case Malformed(n, _, _) => n
   }
 
-  /** Re-attempt resolution against a roster. `Decoded` passes through;
-    * an `Unresolved` whose name now resolves is decoded through that
-    * tool's surface. Used where a serialized event stream (replayed
-    * fixtures) re-enters a context that holds the live roster. */
+  /**
+   * Re-attempt resolution against a roster. `Decoded` passes through;
+   * an `Unresolved` whose name now resolves is decoded through that
+   * tool's surface. Used where a serialized event stream (replayed
+   * fixtures) re-enters a context that holds the live roster.
+   */
   def rebind(roster: ToolRoster): WireCall = this match {
     case Decoded(_) => this
     case Unresolved(name, raw) =>
@@ -41,41 +45,49 @@ enum WireCall {
         case Some(tool) =>
           tool.wireSurface.decode(raw) match {
             case Right(input) => Decoded(DecodedCall(tool)(input))
-            case Left(error)  => Malformed(name, error, raw)
+            case Left(error) => Malformed(name, error, raw)
           }
         case None => this
       }
     case Malformed(_, _, _) => this
   }
 
-  /** The decoded input widened to [[ToolInput]] — `None` unless this
-    * call is `Decoded`. */
+  /**
+   * The decoded input widened to [[ToolInput]] — `None` unless this
+   * call is `Decoded`.
+   */
   def decodedInput: Option[ToolInput] = this match {
     case Decoded(c) => Some(c.input)
-    case _          => None
+    case _ => None
   }
 
-  /** Typed read-back for a caller holding a specific tool — `Some` only
-    * when this call is that tool's, carrying its typed input. An
-    * `Unresolved` matching by name (a replayed fixture) decodes through
-    * the tool's surface. */
+  /**
+   * Typed read-back for a caller holding a specific tool — `Some` only
+   * when this call is that tool's, carrying its typed input. An
+   * `Unresolved` matching by name (a replayed fixture) decodes through
+   * the tool's surface.
+   */
   def inputFor(t: Tool): Option[t.Input] = this match {
-    case Decoded(c)                                      => c.inputFor(t)
-    case Unresolved(name, raw) if name == t.name.value   => t.wireSurface.decode(raw).toOption
-    case _                                               => None
+    case Decoded(c) => c.inputFor(t)
+    case Unresolved(name, raw) if name == t.name.value => t.wireSurface.decode(raw).toOption
+    case _ => None
   }
 }
 
 object WireCall {
 
-  /** Convenience constructor packing a tool + typed input. */
+  /**
+   * Convenience constructor packing a tool + typed input.
+   */
   def decoded(t: Tool)(i: t.Input): WireCall = Decoded(DecodedCall(t)(i))
 
-  /** Serialization is name + args JSON. The tool reference inside
-    * `Decoded` cannot round-trip through JSON (it is a live object), so a
-    * deserialized call comes back `Unresolved` and is restored to
-    * `Decoded` by [[WireCall.rebind]] against the consuming context's
-    * roster. */
+  /**
+   * Serialization is name + args JSON. The tool reference inside
+   * `Decoded` cannot round-trip through JSON (it is a live object), so a
+   * deserialized call comes back `Unresolved` and is restored to
+   * `Decoded` by [[WireCall.rebind]] against the consuming context's
+   * roster.
+   */
   given rw: RW[WireCall] = RW.from(
     r = {
       case Decoded(call) =>
@@ -103,7 +115,7 @@ object WireCall {
           val violations = json("violations").asVector.toList.map { v =>
             val kind = v.get("kind").map(_.asString) match {
               case Some("Structural") => ViolationKind.Structural
-              case _                  => ViolationKind.Constraint
+              case _ => ViolationKind.Constraint
             }
             DecodeViolation(v("path").asVector.toList.map(_.asString), v("reason").asString, kind)
           }

@@ -34,10 +34,11 @@ import java.util.concurrent.CompletableFuture
  */
 class LspPullDiagnosticsVerdictSpec extends AnyWordSpec with Matchers {
 
-  /** Minimal scripted LanguageServer whose `textDocument/diagnostic`
-    * answers from `respond`. */
-  private final class StubServer(respond: DocumentDiagnosticParams => CompletableFuture[DocumentDiagnosticReport])
-    extends LanguageServer {
+  /**
+   * Minimal scripted LanguageServer whose `textDocument/diagnostic`
+   * answers from `respond`.
+   */
+  final private class StubServer(respond: DocumentDiagnosticParams => CompletableFuture[DocumentDiagnosticReport]) extends LanguageServer {
     var diagnosticCalls: Int = 0
     private val tds = new TextDocumentService {
       override def didOpen(params: org.eclipse.lsp4j.DidOpenTextDocumentParams): Unit = ()
@@ -64,11 +65,11 @@ class LspPullDiagnosticsVerdictSpec extends AnyWordSpec with Matchers {
   private def session(caps: ServerCapabilities, server: LanguageServer): (LspSession, LspRecordingClient) = {
     val client = new LspRecordingClient(PermissiveWorkspaceEditApplier)
     val s = new LspSession(
-      config             = LspServerConfig(languageId = "scala", command = "fake", args = Nil),
-      projectRoot        = "/tmp/fake-project",
-      process            = null.asInstanceOf[Process],
-      server             = server,
-      client             = client,
+      config = LspServerConfig(languageId = "scala", command = "fake", args = Nil),
+      projectRoot = "/tmp/fake-project",
+      process = null.asInstanceOf[Process],
+      server = server,
+      client = client,
       serverCapabilities = caps
     )
     (s, client)
@@ -81,16 +82,20 @@ class LspPullDiagnosticsVerdictSpec extends AnyWordSpec with Matchers {
   }
 
   private def error(line: Int, message: String): Diagnostic =
-    new Diagnostic(new Range(new Position(line, 0), new Position(line, 4)), message,
-      DiagnosticSeverity.Error, "stub-server")
+    new Diagnostic(
+      new Range(new Position(line, 0), new Position(line, 4)),
+      message,
+      DiagnosticSeverity.Error,
+      "stub-server")
 
   private val uri = "file:///tmp/fake-project/Main.scala"
 
   "pullDiagnosticsVerdict" should {
 
     "return Some(Nil) for a clean file — a verdict, not a timeout" in {
-      val server = new StubServer(_ => CompletableFuture.completedFuture(
-        new DocumentDiagnosticReport(new RelatedFullDocumentDiagnosticReport(java.util.List.of()))))
+      val server = new StubServer(_ =>
+        CompletableFuture.completedFuture(
+          new DocumentDiagnosticReport(new RelatedFullDocumentDiagnosticReport(java.util.List.of()))))
       val (s, _) = session(pullCaps, server)
       s.pullDiagnosticsVerdict(uri).sync() shouldBe Some(Nil)
       server.diagnosticCalls shouldBe 1
@@ -98,16 +103,18 @@ class LspPullDiagnosticsVerdictSpec extends AnyWordSpec with Matchers {
 
     "return Some(errors) for a broken file" in {
       val d = error(3, "not found: value reason")
-      val server = new StubServer(_ => CompletableFuture.completedFuture(
-        new DocumentDiagnosticReport(new RelatedFullDocumentDiagnosticReport(java.util.List.of(d)))))
+      val server = new StubServer(_ =>
+        CompletableFuture.completedFuture(
+          new DocumentDiagnosticReport(new RelatedFullDocumentDiagnosticReport(java.util.List.of(d)))))
       val (s, _) = session(pullCaps, server)
       val verdict = s.pullDiagnosticsVerdict(uri).sync()
       verdict.map(_.map(_.getMessage.getLeft)) shouldBe Some(List("not found: value reason"))
     }
 
     "report pull unavailable and never call a server without the capability" in {
-      val server = new StubServer(_ => CompletableFuture.completedFuture(
-        new DocumentDiagnosticReport(new RelatedFullDocumentDiagnosticReport(java.util.List.of()))))
+      val server = new StubServer(_ =>
+        CompletableFuture.completedFuture(
+          new DocumentDiagnosticReport(new RelatedFullDocumentDiagnosticReport(java.util.List.of()))))
       val (s, client) = session(new ServerCapabilities(), server)
       s.supportsPullDiagnostics shouldBe false
       s.pullDiagnosticsVerdict(uri).sync() shouldBe None

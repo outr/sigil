@@ -18,12 +18,16 @@ case class VectorQueryFilter(exact: Map[String, String] = Map.empty,
                              anyOf: Map[String, Set[String]] = Map.empty) {
   def isEmpty: Boolean = exact.isEmpty && anyOf.isEmpty
 
-  /** `true` when some `anyOf` clause has an empty value set — the
-    * filter is unsatisfiable and backends can short-circuit to no
-    * results without a round-trip. */
+  /**
+   * `true` when some `anyOf` clause has an empty value set — the
+   * filter is unsatisfiable and backends can short-circuit to no
+   * results without a round-trip.
+   */
   def matchesNothing: Boolean = anyOf.valuesIterator.exists(_.isEmpty)
 
-  /** In-memory evaluation of the predicate against a point's payload. */
+  /**
+   * In-memory evaluation of the predicate against a point's payload.
+   */
   def matches(payload: Map[String, String]): Boolean =
     exact.forall { case (k, v) => payload.get(k).contains(v) } &&
       anyOf.forall { case (k, vs) => payload.get(k).exists(vs.contains) }

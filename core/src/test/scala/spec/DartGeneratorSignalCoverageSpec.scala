@@ -29,21 +29,22 @@ class DartGeneratorSignalCoverageSpec extends AnyWordSpec with Matchers {
     spice.openapi.generator.dart.DurableSocketDartGenerator(
       spice.openapi.generator.dart.DurableSocketDartConfig(
         serviceName = "Test",
-        wireType    = "Signal" -> summon[RW[Signal]].definition,
-        infoFields  = Nil
+        wireType = "Signal" -> summon[RW[Signal]].definition,
+        infoFields = Nil
       )
     ).generate()
   }
 
-  /** Snake-case helper matching the generator's own `snakeCaseFile`. */
-  private def snake(camel: String): String = {
+  /**
+   * Snake-case helper matching the generator's own `snakeCaseFile`.
+   */
+  private def snake(camel: String): String =
     if (camel.isEmpty) camel
     else {
       val pre = camel.charAt(0).toLower
       val suffix = "\\p{Lu}".r.replaceAllIn(camel.substring(1), m => s"_${m.group(0).toLowerCase}")
       s"$pre$suffix"
     }
-  }
 
   "Dart codegen for the Signal poly (sigil #294)" should {
 
@@ -64,8 +65,8 @@ class DartGeneratorSignalCoverageSpec extends AnyWordSpec with Matchers {
       }
 
       withClue(s"Missing Dart files (${missing.size}):\n" +
-               missing.toList.sortBy(_._1).map { case (d, f) => s"  - $d → $f" }.mkString("\n") +
-               s"\n\nEmitted files (${emittedDartFiles.size}): ${emittedDartFiles.toList.sorted.mkString(", ")}\n") {
+        missing.toList.sortBy(_._1).map { case (d, f) => s"  - $d → $f" }.mkString("\n") +
+        s"\n\nEmitted files (${emittedDartFiles.size}): ${emittedDartFiles.toList.sorted.mkString(", ")}\n") {
         missing shouldBe empty
       }
     }

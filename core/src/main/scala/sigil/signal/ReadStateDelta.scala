@@ -18,7 +18,7 @@ import sigil.participant.ParticipantId
  * cost is one Signal broadcast per advance + one indexed write
  * to a single row.
  *
-    * **`participantId`** is carried on the delta itself
+ * **`participantId`** is carried on the delta itself
  * so consumers can route the cursor advance per-participant
  * without re-resolving the parent `ReadState`. Matches the
  * pattern other event/delta pairs use (e.g. `Message` /
@@ -39,6 +39,6 @@ case class ReadStateDelta(target: Id[Event],
 
   override def apply(target: Event): Event = target match {
     case r: ReadState => r.copy(lastReadAt = lastReadAt)
-    case other        => other
+    case other => other
   }
 }

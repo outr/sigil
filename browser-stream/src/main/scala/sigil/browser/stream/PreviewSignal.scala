@@ -33,4 +33,5 @@ import sigil.signal.ConversationNotice
 final case class PreviewSignal(conversationId: Id[Conversation],
                                streamId: String,
                                message: SignalMessage,
-                               forViewer: Option[ParticipantId] = None) extends ConversationNotice derives RW
+                               forViewer: Option[ParticipantId] = None)
+  extends ConversationNotice derives RW

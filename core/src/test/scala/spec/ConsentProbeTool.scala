@@ -2,14 +2,19 @@ package spec
 
 import rapid.Task
 import sigil.tool.model.NoResponseInput
-import sigil.tool.{ConsentSpec, DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolGates, ToolIO, ToolName, ToolProfile, ToolSpec}
+import sigil.tool.{
+  ConsentSpec, DiscoverySpec, Effect, MutationTargeting, Resolution, TextToolOutput, Tool, ToolGates, ToolIO, ToolName, ToolProfile,
+  ToolSpec
+}
 
-/** Test-only consent-gated tool. Used by [[WorkflowEmittedEventsSpec]] to
-  * prove a workflow step's `ctx.emit`-ed events are actually published:
-  * without the persisted `ToolApproval` from a preceding `record_consent`
-  * step, this tool's gate refuses and `ran` stays `false`. */
+/**
+ * Test-only consent-gated tool. Used by [[WorkflowEmittedEventsSpec]] to
+ * prove a workflow step's `ctx.emit`-ed events are actually published:
+ * without the persisted `ToolApproval` from a preceding `record_consent`
+ * step, this tool's gate refuses and `ran` stays `false`.
+ */
 case object ConsentProbeTool extends Tool {
-  type Input  = NoResponseInput
+  type Input = NoResponseInput
   type Output = TextToolOutput
   val io: ToolIO[NoResponseInput, TextToolOutput] = ToolIO.derived[NoResponseInput, TextToolOutput]
 

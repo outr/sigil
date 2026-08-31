@@ -56,16 +56,18 @@ class DestructiveWriteGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private def succeeded(signals: List[Signal]): Boolean =
     signals.exists {
       case d: ToolDelta => d.output.exists(_.isInstanceOf[WriteFileOutput.Success])
-      case _            => false
+      case _ => false
     }
 
   "write_file overwriting an existing non-empty file" should {
 
     "REFUSE a tool-call/pagination placeholder and leave the original untouched (#395)" in withWorkspace { (fs, tc) =>
       for {
-        _      <- fs.writeFile("Probe.scala", original)
+        _ <- fs.writeFile("Probe.scala", original)
         result <- new WriteFileTool(fs).execute(
-                    WriteFileInput("Probe.scala", "[read_file: offset=152 limit=200]"), tc, Event.id()).toList
+          WriteFileInput("Probe.scala", "[read_file: offset=152 limit=200]"),
+          tc,
+          Event.id()).toList
         onDisk <- fs.readFile("Probe.scala")
       } yield {
         isFailure(result) shouldBe true
@@ -76,7 +78,7 @@ class DestructiveWriteGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "REFUSE a lone unresolved {{var}} and leave the original untouched (#395)" in withWorkspace { (fs, tc) =>
       for {
-        _      <- fs.writeFile("Probe.scala", original)
+        _ <- fs.writeFile("Probe.scala", original)
         result <- new WriteFileTool(fs).execute(WriteFileInput("Probe.scala", "{{edited}}"), tc, Event.id()).toList
         onDisk <- fs.readFile("Probe.scala")
       } yield {
@@ -87,7 +89,7 @@ class DestructiveWriteGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "REFUSE a drastic collapse (200 lines → 1 line) and leave the original untouched (#395)" in withWorkspace { (fs, tc) =>
       for {
-        _      <- fs.writeFile("Probe.scala", original)
+        _ <- fs.writeFile("Probe.scala", original)
         result <- new WriteFileTool(fs).execute(WriteFileInput("Probe.scala", "oops"), tc, Event.id()).toList
         onDisk <- fs.readFile("Probe.scala")
       } yield {
@@ -99,7 +101,7 @@ class DestructiveWriteGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "ALLOW a legitimate edit (200 lines → 196 lines, real content) (#395)" in withWorkspace { (fs, tc) =>
       val edited = (1 to 196).map(i => s"val y$i = $i // still a real line $i").mkString("\n")
       for {
-        _      <- fs.writeFile("Probe.scala", original)
+        _ <- fs.writeFile("Probe.scala", original)
         result <- new WriteFileTool(fs).execute(WriteFileInput("Probe.scala", edited), tc, Event.id()).toList
         onDisk <- fs.readFile("Probe.scala")
       } yield {
@@ -110,7 +112,7 @@ class DestructiveWriteGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "ALLOW a destructive collapse when force = true (#395)" in withWorkspace { (fs, tc) =>
       for {
-        _      <- fs.writeFile("Probe.scala", original)
+        _ <- fs.writeFile("Probe.scala", original)
         result <- new WriteFileTool(fs).execute(WriteFileInput("Probe.scala", "intentionally tiny", force = true), tc, Event.id()).toList
         onDisk <- fs.readFile("Probe.scala")
       } yield {

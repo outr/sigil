@@ -41,11 +41,11 @@ object LlamaCpp {
     derives RW
 
   /**
-    * Convert a llama.cpp entry into a sigil [[sigil.db.Model]].
-    *
-    * The sigil id is `llamacpp/<model-name>` where model-name is derived from
-    * the llama.cpp id (basename, `.gguf` extension stripped, lowercased).
-    */
+   * Convert a llama.cpp entry into a sigil [[sigil.db.Model]].
+   *
+   * The sigil id is `llamacpp/<model-name>` where model-name is derived from
+   * the llama.cpp id (basename, `.gguf` extension stripped, lowercased).
+   */
   def toModel(entry: Entry, runtimeContextOverride: Option[Long] = None): Model = {
     val name = modelNameFromId(entry.id)
     val id = Id[Model](s"$Provider/${name.toLowerCase}")
@@ -124,24 +124,31 @@ object LlamaCpp {
       }
     }
 
- /** Subset of `/props` Sigil cares about: runtime context budget +
-    * concurrent-slot count. */
+  /**
+   * Subset of `/props` Sigil cares about: runtime context budget +
+   * concurrent-slot count.
+   */
   case class RuntimeProps(nCtx: Long, totalSlots: Long) {
-    /** Per-slot context budget — the hard limit any single request
-      * can occupy. llama-server's `/props` already reports
-      * `default_generation_settings.n_ctx` as the per-slot value
-      * (total `--ctx-size` ÷ `--parallel`), so we surface it
-      * directly. Prior implementation divided by `totalSlots`
-      * again, producing a value `1/parallel` of the real budget
-      * whenever `--parallel > 1`; that drove pre-flight false
-      * positives on multi-slot setups. */
+
+    /**
+     * Per-slot context budget — the hard limit any single request
+     * can occupy. llama-server's `/props` already reports
+     * `default_generation_settings.n_ctx` as the per-slot value
+     * (total `--ctx-size` ÷ `--parallel`), so we surface it
+     * directly. Prior implementation divided by `totalSlots`
+     * again, producing a value `1/parallel` of the real budget
+     * whenever `--parallel > 1`; that drove pre-flight false
+     * positives on multi-slot setups.
+     */
     def perSlotContext: Long = math.max(1L, nCtx)
   }
 
-  /** Read the running server's `default_generation_settings.n_ctx`
-    * and `total_slots` from `/props`. Returns `None` when the
-    * endpoint is unreachable or the fields are missing — callers
-    * fall back to safe defaults. */
+  /**
+   * Read the running server's `default_generation_settings.n_ctx`
+   * and `total_slots` from `/props`. Returns `None` when the
+   * endpoint is unreachable or the fields are missing — callers
+   * fall back to safe defaults.
+   */
   def fetchProps(baseUrl: URL): Task[Option[RuntimeProps]] =
     HttpClient.url(baseUrl.withPath("/props")).timeout(scala.concurrent.duration.FiniteDuration(5, "seconds")).call[Json].map { json =>
       val nCtx = json.get("default_generation_settings")
@@ -159,16 +166,18 @@ object LlamaCpp {
     if (basename.toLowerCase.endsWith(".gguf")) basename.dropRight(5) else basename
   }
 
-  /** Heuristic friendly name for a llama.cpp model loaded from a gguf
-    * basename. Drops common quantization suffixes (`-iq4_xs`,
-    * `-q4_k_m`, `-q5_k_s`, `-bf16`, `-f16`, `-f32`), collapses
-    * vendor-prefix duplicates (`qwen_qwen3.6-...` → `qwen3.6-...`),
-    * replaces underscores with spaces, and title-cases the first
-    * letter. Returns `None` when the cleanup yields an empty string.
-    *
-    * Always best-effort — apps that need a guaranteed pretty label
-    * override the LlamaCpp seed (or post-process via their own model
-    * registry override). */
+  /**
+   * Heuristic friendly name for a llama.cpp model loaded from a gguf
+   * basename. Drops common quantization suffixes (`-iq4_xs`,
+   * `-q4_k_m`, `-q5_k_s`, `-bf16`, `-f16`, `-f32`), collapses
+   * vendor-prefix duplicates (`qwen_qwen3.6-...` → `qwen3.6-...`),
+   * replaces underscores with spaces, and title-cases the first
+   * letter. Returns `None` when the cleanup yields an empty string.
+   *
+   * Always best-effort — apps that need a guaranteed pretty label
+   * override the LlamaCpp seed (or post-process via their own model
+   * registry override).
+   */
   def displayNameFromBasename(basename: String): Option[String] = {
     val quantPattern =
       raw"(?i)[-_](iq?\d+([-_][xkmlsq0-9]+)*|q\d+([-_][kmsxlqf0-9]+)*|bf16|f16|f32)$$".r

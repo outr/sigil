@@ -26,4 +26,5 @@ import sigil.tool.ToolInput
  */
 case class RelayMessageInput(conversationId: Id[Conversation],
                              content: String,
-                             addressees: Option[List[String]] = None) extends ToolInput derives RW
+                             addressees: Option[List[String]] = None)
+  extends ToolInput derives RW

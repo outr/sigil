@@ -18,12 +18,11 @@ class ProfigExplicitConfigSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   "Sigil.instance" should {
-    "preserve explicitly merged Profig configuration across the defaults load" in {
+    "preserve explicitly merged Profig configuration across the defaults load" in
       // initFor merged the per-suite path and then booted the instance;
       // a defaults load that clobbers explicit values reverts this to
       // "db/sigil".
       Profig("sigil.dbPath").as[String].should(endWith("ProfigExplicitConfigSpec"))
-    }
   }
 
   "tear down" should {

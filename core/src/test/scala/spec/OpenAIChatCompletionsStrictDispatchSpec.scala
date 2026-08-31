@@ -77,10 +77,12 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
-  /** Marker dialect standing in for an app-custom transform — proves
-    * the renderer ships the dialect's output verbatim and never bolts
-    * strict-mode reshaping on after. */
-  private final class MarkerDialect(marker: String) extends SchemaDialect {
+  /**
+   * Marker dialect standing in for an app-custom transform — proves
+   * the renderer ships the dialect's output verbatim and never bolts
+   * strict-mode reshaping on after.
+   */
+  final private class MarkerDialect(marker: String) extends SchemaDialect {
     val name: String = "marker"
     def transform(canonical: Json, containsOpenJson: Boolean): Json =
       fabric.obj("type" -> fabric.str(marker))

@@ -28,13 +28,22 @@ class CandidateFallbackSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   private val sonnet = Model.id("anthropic", "sonnet")
 
   private def msg(text: String): Signal =
-    Message(participantId = TestUser, conversationId = convId, topicId = TestTopicId,
-      content = Vector(ResponseContent.Text(text)), state = EventState.Complete)
+    Message(
+      participantId = TestUser,
+      conversationId = convId,
+      topicId = TestTopicId,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete)
 
   private def overload: Stream[Signal] =
-    Stream.emit(()).evalMap[Signal](_ => Task.error[Signal](
-      new ProviderStreamException(providerKey = "anthropic", code = 0, typ = "overloaded_error",
-        message_ = "Overloaded", status = None)))
+    Stream.emit(()).evalMap[Signal](_ =>
+      Task.error[Signal](
+        new ProviderStreamException(
+          providerKey = "anthropic",
+          code = 0,
+          typ = "overloaded_error",
+          message_ = "Overloaded",
+          status = None)))
 
   private def succeeds(text: String): Stream[Signal] =
     Stream.emits(List(msg(text)))
@@ -45,8 +54,8 @@ class CandidateFallbackSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val reported = new AtomicReference[List[Id[Model]]](Nil)
       val attempts = new AtomicReference[List[Id[Model]]](Nil)
       val stream = CandidateFallback.stream(
-        candidates    = List(opus, sonnet),
-        classifier    = ErrorClassifier.Default,
+        candidates = List(opus, sonnet),
+        classifier = ErrorClassifier.Default,
         reportFailure = id => reported.updateAndGet(_ :+ id)
       ) { id =>
         attempts.updateAndGet(_ :+ id)
@@ -70,8 +79,8 @@ class CandidateFallbackSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val partialThenError: Stream[Signal] =
         Stream.emits[Signal](List(msg("partial"))) ++ overload
       val stream = CandidateFallback.stream(
-        candidates    = List(opus, sonnet),
-        classifier    = ErrorClassifier.Default,
+        candidates = List(opus, sonnet),
+        classifier = ErrorClassifier.Default,
         reportFailure = id => reported.updateAndGet(_ :+ id)
       ) { id =>
         attempts.updateAndGet(_ :+ id)
@@ -79,19 +88,20 @@ class CandidateFallbackSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       }
       stream.toList.attempt.map { result =>
         result.isFailure shouldBe true
-        attempts.get() shouldBe List(opus)        // sonnet never attempted
-        reported.get() shouldBe Nil               // no cooldown — committed output
+        attempts.get() shouldBe List(opus) // sonnet never attempted
+        reported.get() shouldBe Nil // no cooldown — committed output
       }
     }
 
     "surface a Fatal error immediately without trying the next candidate" in {
       val reported = new AtomicReference[List[Id[Model]]](Nil)
       val attempts = new AtomicReference[List[Id[Model]]](Nil)
-      val fatal: Stream[Signal] = Stream.emit(()).evalMap[Signal](_ => Task.error[Signal](
-        new RequestOverBudgetException(estimatedTokens = 99999, contextLength = 8192, modelId = opus)))
+      val fatal: Stream[Signal] = Stream.emit(()).evalMap[Signal](_ =>
+        Task.error[Signal](
+          new RequestOverBudgetException(estimatedTokens = 99999, contextLength = 8192, modelId = opus)))
       val stream = CandidateFallback.stream(
-        candidates    = List(opus, sonnet),
-        classifier    = ErrorClassifier.Default,
+        candidates = List(opus, sonnet),
+        classifier = ErrorClassifier.Default,
         reportFailure = id => reported.updateAndGet(_ :+ id)
       ) { id =>
         attempts.updateAndGet(_ :+ id)
@@ -99,7 +109,7 @@ class CandidateFallbackSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       }
       stream.toList.attempt.map { result =>
         result.isFailure shouldBe true
-        attempts.get() shouldBe List(opus)        // Fatal → no fallback
+        attempts.get() shouldBe List(opus) // Fatal → no fallback
         reported.get() shouldBe Nil
       }
     }
@@ -107,8 +117,8 @@ class CandidateFallbackSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     "exhaust the chain and surface the last error when every candidate fails" in {
       val reported = new AtomicReference[List[Id[Model]]](Nil)
       val stream = CandidateFallback.stream(
-        candidates    = List(opus, sonnet),
-        classifier    = ErrorClassifier.Default,
+        candidates = List(opus, sonnet),
+        classifier = ErrorClassifier.Default,
         reportFailure = id => reported.updateAndGet(_ :+ id)
       )(_ => overload)
       stream.toList.attempt.map { result =>
