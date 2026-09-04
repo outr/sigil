@@ -21,7 +21,7 @@ class BspDependencyModulesCacheSpec extends AsyncWordSpec with AsyncTaskSpec wit
     val dir = Files.createTempDirectory(s"bsp-cache-${rapid.Unique()}-")
     Files.writeString(
       dir.resolve("build.sbt"),
-      "scalaVersion := \"3.8.4\"\n",
+      "scalaVersion := \"3.9.0\"\n",
       StandardOpenOption.CREATE
     )
     dir.toAbsolutePath
@@ -65,7 +65,7 @@ class BspDependencyModulesCacheSpec extends AsyncWordSpec with AsyncTaskSpec wit
         before <- BspDependencyModulesTool.cacheKeyFor(root.toString, Nil)
         _ = Files.writeString(
           root.resolve("build.sbt"),
-          "scalaVersion := \"3.8.4\"\nlibraryDependencies += \"org.foo\" %% \"bar\" % \"1.0\"\n",
+          "scalaVersion := \"3.9.0\"\nlibraryDependencies += \"org.foo\" %% \"bar\" % \"1.0\"\n",
           StandardOpenOption.TRUNCATE_EXISTING
         )
         after <- BspDependencyModulesTool.cacheKeyFor(root.toString, Nil)

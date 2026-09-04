@@ -100,7 +100,7 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "skip target/ by default" in withTempDir { root =>
       writeFile(root.resolve("src/main/scala/Bar.scala"), "object Bar { /* TODO */ }")
-      writeFile(root.resolve("target/scala-3.8.4/classes/Bar.scala"), "object Bar { /* TODO */ }")
+      writeFile(root.resolve("target/scala-3.9.0/classes/Bar.scala"), "object Bar { /* TODO */ }")
       runGrep(root, includeIgnored = false).map { files =>
         files shouldBe List("src/main/scala/Bar.scala")
       }
